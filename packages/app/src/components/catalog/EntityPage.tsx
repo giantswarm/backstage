@@ -47,6 +47,10 @@ import {
   isCircleCIAvailable,
 } from '@backstage/plugin-circleci';
 import {
+  EntityGithubPullRequestsContent,
+  EntityGithubPullRequestsOverviewCard
+} from '@roadiehq/backstage-plugin-github-pull-requests';
+import {
   RELATION_API_CONSUMED_BY,
   RELATION_API_PROVIDED_BY,
   RELATION_CONSUMES_API,
@@ -101,10 +105,6 @@ const githubActionsContent = (
       <EntityGithubActionsContent />
     </EntitySwitch.Case>
 
-    {/* <EntitySwitch.Case if={isCircleCIAvailable}>
-      <EntityCircleCIContent />
-    </EntitySwitch.Case> */}
-
     <EntitySwitch.Case>
       <EmptyState
         title="GitHub Actions not available for this entity"
@@ -157,6 +157,9 @@ const overviewContent = (
     <Grid item md={4} xs={12}>
       <EntityLinksCard />
     </Grid>
+    <Grid item md={6}>
+      <EntityGithubPullRequestsOverviewCard />
+    </Grid>
     <Grid item md={8} xs={12}>
       <EntityHasSubcomponentsCard variant="gridItem" />
     </Grid>
@@ -167,6 +170,10 @@ const serviceEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/pull-requests" title="Pull Requests">
+      <EntityGithubPullRequestsContent />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/github-actions" title="GitHub Actions">
@@ -209,6 +216,10 @@ const websiteEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/pull-requests" title="Pull Requests">
+      <EntityGithubPullRequestsContent />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/github-actions" title="GitHub Actions">
