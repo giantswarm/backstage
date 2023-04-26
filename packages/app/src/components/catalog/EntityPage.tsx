@@ -43,6 +43,10 @@ import {
   EntityCatalogGraphCard,
 } from '@backstage/plugin-catalog-graph';
 import {
+  EntityCircleCIContent,
+  isCircleCIAvailable,
+} from '@backstage/plugin-circleci';
+import {
   RELATION_API_CONSUMED_BY,
   RELATION_API_PROVIDED_BY,
   RELATION_CONSUMES_API,
@@ -64,7 +68,32 @@ const techdocsContent = (
   </EntityTechdocsContent>
 );
 
-const cicdContent = (
+const circleCIContent = (
+  <EntitySwitch>
+    <EntitySwitch.Case if={isCircleCIAvailable}>
+      <EntityCircleCIContent />
+    </EntitySwitch.Case>
+
+    <EntitySwitch.Case>
+      <EmptyState
+        title="CircleCI not available for this entity"
+        missing="info"
+        description="You need to add the annotation 'circleci.com/project-slug' to your component if you want to show CircleCI build information for it."
+        action={
+          <Button
+            variant="contained"
+            color="primary"
+            href="https://backstage.io/docs/features/software-catalog/well-known-annotations#circlecicomproject-slug"
+          >
+            Read more
+          </Button>
+        }
+      />
+    </EntitySwitch.Case>
+  </EntitySwitch>
+);
+
+const githubActionsContent = (
   // This is an example of how you can implement your company's logic in entity page.
   // You can for example enforce that all components of type 'service' should use GitHubActions
   <EntitySwitch>
@@ -72,16 +101,20 @@ const cicdContent = (
       <EntityGithubActionsContent />
     </EntitySwitch.Case>
 
+    {/* <EntitySwitch.Case if={isCircleCIAvailable}>
+      <EntityCircleCIContent />
+    </EntitySwitch.Case> */}
+
     <EntitySwitch.Case>
       <EmptyState
-        title="No CI/CD available for this entity"
+        title="GitHub Actions not available for this entity"
         missing="info"
-        description="You need to add an annotation to your component if you want to enable CI/CD for it. You can read more about annotations in Backstage by clicking the button below."
+        description="You need to add the annotation 'github.com/project-slug' to your component if you want to enable GitHub Actions for it."
         action={
           <Button
             variant="contained"
             color="primary"
-            href="https://backstage.io/docs/features/software-catalog/well-known-annotations"
+            href="https://backstage.io/docs/features/software-catalog/well-known-annotations#githubcomproject-slug"
           >
             Read more
           </Button>
@@ -136,8 +169,12 @@ const serviceEntityPage = (
       {overviewContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/ci-cd" title="CI/CD">
-      {cicdContent}
+    <EntityLayout.Route path="/github-actions" title="GitHub Actions">
+      {githubActionsContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/circleci" title="CircleCI">
+      {circleCIContent}
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/api" title="API">
@@ -174,8 +211,12 @@ const websiteEntityPage = (
       {overviewContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/ci-cd" title="CI/CD">
-      {cicdContent}
+    <EntityLayout.Route path="/github-actions" title="GitHub Actions">
+      {githubActionsContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/circleci" title="CircleCI">
+      {circleCIContent}
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
@@ -206,6 +247,14 @@ const defaultEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/github-actions" title="GitHub Actions">
+      {githubActionsContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/circleci" title="CircleCI">
+      {circleCIContent}
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/docs" title="Docs">
