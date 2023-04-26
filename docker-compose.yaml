@@ -8,8 +8,8 @@ services:
       test: ['CMD', 'pg_isready', '-U', 'postgres']
     volumes:
       - ./volumes/postgres14:/var/lib/postgresql/data
+    env_file: .env
     environment:
-      POSTGRES_PASSWORD: password
       POSTGRES_USER: backstage
       POSTGRES_DB: backstage
       POSTGRES_HOST_AUTH_METHOD: trust

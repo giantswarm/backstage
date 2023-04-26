@@ -51,3 +51,4 @@ site
 *.session.sql
 
 /volumes
+/.env
