@@ -1,9 +1,9 @@
 app:
-  title: Scaffolded Backstage App
+  title: Dev Portal
   baseUrl: http://localhost:3000
 
 organization:
-  name: My Company
+  name: Giant Swarm
 
 backend:
   # Used for enabling authentication, secret is shared by all backend plugins
@@ -28,8 +28,12 @@ backend:
   # This is for local development only, it is not recommended to use this in production
   # The production database configuration is stored in app-config.production.yaml
   database:
-    client: better-sqlite3
-    connection: ':memory:'
+    client: pg
+    connection:
+      host: localhost
+      port: 5432
+      user: backstage
+      password: ${POSTGRES_PASSWORD}
   cache:
     store: memory
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
@@ -65,7 +69,12 @@ techdocs:
 
 auth:
   # see https://backstage.io/docs/auth/ to learn about auth providers
-  providers: {}
+  environment: development
+  providers:
+    github:
+      development:
+        clientId: ${GITHUB_OAUTH_CLIENT_ID}
+        clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
 
 scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
