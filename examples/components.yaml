@@ -1,0 +1,368 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: api
+  description: Deprecated Rest API. Replaced by the management API.
+  annotations:
+    github.com/project-slug: giantswarm/api
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/api
+    circleci.com/project-slug: github/giantswarm/api
+    quay.io/repository-slug: giantswarm/api
+  links:
+    - url: https://docs.giantswarm.io/api/
+      title: API docs
+      icon: docs
+spec:
+  type: service
+  domain: kaas
+  lifecycle: deprecated
+  owner: team-rainbow
+  providesApis:
+  - rest-api
+  consumesApis:
+  - management-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: app-operator
+  description: Deploys apps in clusters, with the help of chart-operator.
+  annotations:
+    github.com/project-slug: giantswarm/app-operator
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/app-operator
+    circleci.com/project-slug: github/giantswarm/app-operator
+    quay.io/repository-slug: giantswarm/app-operator
+spec:
+  type: service
+  domain: platform
+  system: app-platform
+  lifecycle: production
+  owner: team-honeybadger
+  providesApis:
+  - app-crd
+  consumesApis:
+  - chart-crd
+  - appcatalogentry-crd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: athena
+  description: Helps kubectl-gs logging in to management and workload clusters by exposing a few non-private details to unauthenticated clients. Athena speaks GraphQL and there is a web UI available in every deployment.
+  annotations:
+    github.com/project-slug: giantswarm/athena
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/athena
+    circleci.com/project-slug: github/giantswarm/athena
+    quay.io/repository-slug: giantswarm/athena
+spec:
+  type: service
+  domain: kaas
+  lifecycle: production
+  owner: team-rainbow
+  providesApis:
+  - athena-graphql-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: chart-operator
+  description: Deploys apps in workload clusters.
+  annotations:
+    github.com/project-slug: giantswarm/chart-operator
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/chart-operator
+    circleci.com/project-slug: github/giantswarm/chart-operator
+    quay.io/repository-slug: giantswarm/chart-operator
+spec:
+  type: service
+  domain: platform
+  system: app-platform
+  lifecycle: production
+  owner: team-honeybadger
+  consumesApis:
+  - app-crd
+  - chart-crd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: companyd
+  description: Organization management microservice used for the Giant Swarm Rest API.
+  annotations:
+    github.com/project-slug: giantswarm/companyd
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/companyd
+    circleci.com/project-slug: github/giantswarm/companyd
+    quay.io/repository-slug: giantswarm/companyd
+spec:
+  type: service
+  domain: kaas
+  lifecycle: deprecated
+  owner: team-rainbow
+  subcomponentOf: api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dex
+  description: Identity broker enabling the use of a variety of identity providers to authenticate with for the Kubernetes API. Giant Swarm provides Dex as a managed app in all management clusters and also allow installing it in workload clusters.
+  annotations:
+    github.com/project-slug: giantswarm/dex
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/dex
+    circleci.com/project-slug: github/giantswarm/dex
+    quay.io/repository-slug: giantswarm/dex
+  links:
+    - url: https://github.com/dexidp/dex
+      title: Upstream source
+      icon: github
+    - url: https://dexidp.io/
+      title: Documentation
+      icon: docs
+    - url: https://github.com/orgs/giantswarm/projects/270/views/4?filterQuery=is%3Aopen+-status%3ADone+component%3Adex
+      title: Issues
+      icon: github
+
+spec:
+  type: service
+  domain: kaas
+  lifecycle: production
+  owner: team-rainbow
+  subcomponentOf: dex-app
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dex-app
+  description: App providing our own version of Dex for management and workload clusters.
+  annotations:
+    github.com/project-slug: giantswarm/dex-app
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/dex-app
+    circleci.com/project-slug: github/giantswarm/dex-app
+spec:
+  type: app
+  domain: kaas
+  lifecycle: production
+  owner: team-rainbow
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dex-k8s-authenticator
+  description: Web UI to create a kubeconfig file with OIDC authentication. Deprecated, as the development of the OSS project is discontinued. Use case is covered by kubectl-gs login.
+  annotations:
+    github.com/project-slug: giantswarm/dex-k8s-authenticator
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/dex-k8s-authenticator
+spec:
+  type: service
+  domain: kaas
+  lifecycle: deprecated
+  owner: team-rainbow
+  subcomponentOf: dex-app
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: docs
+  description: Deprecated Rest API. Replaced by the management API.
+  annotations:
+    github.com/project-slug: giantswarm/docs
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/docs
+    circleci.com/project-slug: github/giantswarm/docs
+    quay.io/repository-slug: giantswarm/docs
+  links:
+    - url: https://docs.giantswarm.io/
+      title: Live docs
+      icon: docs
+spec:
+  type: website
+  lifecycle: production
+  owner: team-rainbow
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: gitops-template
+  description: A template for managing infrastructure via GitOps.
+  annotations:
+    github.com/project-slug: giantswarm/gitops-template
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/gitops-template
+    circleci.com/project-slug: github/giantswarm/gitops-template
+    backstage.io/techdocs-ref: url:https://github.com/giantswarm/gitops-template/blob/main/README.md
+spec:
+  type: service
+  lifecycle: production
+  owner: team-honeybadger
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: gsctl
+  description: Deprecated command line interface for the Giant Swarm Rest API.
+  annotations:
+    github.com/project-slug: giantswarm/gsctl
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/gsctl
+    circleci.com/project-slug: github/giantswarm/gsctl
+spec:
+  type: cli
+  domain: kaas
+  lifecycle: deprecated
+  owner: team-rainbow
+  consumesApis:
+  - rest-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: happa
+  description: Web UI for the management API, used by platform teams to manage organizations, clusters, and apps.
+  annotations:
+    github.com/project-slug: giantswarm/happa
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/happa
+    sentry.io/project-slug: giantswarm/happa
+    circleci.com/project-slug: github/giantswarm/happa
+    quay.io/repository-slug: giantswarm/happa
+  links:
+    - url: https://fe-docs.giantswarm.io/
+      title: Storybook
+      icon: docs
+    - url: https://happa.g8s.gollum.westeurope.azure.gigantic.io/admin-login
+      title: happa on gollum (production Azure)
+    - url: https://happa.g8s.gorilla.eu-central-1.aws.gigantic.io/admin-login
+      title: happa on gorilla (production AWS)
+spec:
+  type: service
+  lifecycle: production
+  owner: team-rainbow
+  consumesApis:
+  - rest-api
+  - management-api
+  - passage-api
+  - organization-crd
+  - app-crd
+  - appcatalogentry-crd
+  dependsOn:
+  - component:sentry
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: kubectl-gs
+  description: Kubectl plugin for the Giant Swarm Management API. Used by platform teams to manage clusters and apps, give access to workload clusters, and more.
+  annotations:
+    github.com/project-slug: giantswarm/kubectl-gs
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/kubectl-gs
+    circleci.com/project-slug: github/giantswarm/kubectl-gs
+spec:
+  type: cli
+  lifecycle: production
+  owner: team-rainbow
+  consumesApis:
+  - athena-graphql-api
+  - management-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: organization-operator
+  description: Creates namespaces based on Organization resources.
+  annotations:
+    github.com/project-slug: giantswarm/gitops-template
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/gitops-template
+    circleci.com/project-slug: github/giantswarm/gitops-template
+    backstage.io/techdocs-ref: url:https://github.com/giantswarm/gitops-template/blob/main/README.md
+    quay.io/repository-slug: giantswarm/organization-operator
+spec:
+  type: service
+  domain: kaas
+  lifecycle: production
+  owner: team-honeybadger
+  providesApis:
+  - organization-crd
+  consumesApis:
+  - organization-crd
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: passage
+  description: Handles user invites for the Rest API, allowing users to self-register for the Rest API.
+  annotations:
+    github.com/project-slug: giantswarm/passage
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/passage
+    circleci.com/project-slug: github/giantswarm/passage
+    quay.io/repository-slug: giantswarm/passage
+spec:
+  type: service
+  domain: kaas
+  lifecycle: deprecated
+  owner: team-rainbow
+  subcomponentOf: api
+  providesApis:
+  - passage-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: rbac-operator
+  description: Operator that automates the creation of roles and role bindings in the management cluster.
+  annotations:
+    github.com/project-slug: giantswarm/rbac-operator
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/rbac-operator
+    circleci.com/project-slug: github/giantswarm/rbac-operator
+    quay.io/repository-slug: giantswarm/rbac-operator
+spec:
+  type: service
+  domain: kaas
+  lifecycle: production
+  owner: team-rainbow
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: userd
+  description: User management microservice used for the Giant Swarm Rest API.
+  annotations:
+    github.com/project-slug: giantswarm/userd
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/userd
+    circleci.com/project-slug: github/giantswarm/userd
+    quay.io/repository-slug: giantswarm/userd
+spec:
+  type: service
+  domain: kaas
+  lifecycle: deprecated
+  owner: team-rainbow
+  subcomponentOf: api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: tokend
+  description: Auth session management microservice used for the Giant Swarm Rest API.
+  annotations:
+    github.com/project-slug: giantswarm/tokend
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/tokend
+    circleci.com/project-slug: github/giantswarm/tokend
+    quay.io/repository-slug: giantswarm/tokend
+spec:
+  type: service
+  domain: kaas
+  lifecycle: deprecated
+  owner: team-rainbow
+  subcomponentOf: api

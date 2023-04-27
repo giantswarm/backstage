@@ -1,0 +1,171 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: athena-graphql-api
+  description: GraphQL API exposed by athena to facilitate logging in via kubectl-gs.
+  annotations:
+    github.com/team-slug: team-rainbow
+spec:
+  type: graphql
+  lifecycle: production
+  owner: team-rainbow
+  definition: |
+    # Explore schema
+    {
+      __schema {
+        queryType {
+          fields {
+            name
+          }
+        }
+      }
+    }
+
+    # Explore methods
+    {
+      __schema {
+        mutationType {
+          fields {
+            name
+          }
+        }
+      }
+    }
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: rest-api
+  description: Giant Swarm Rest API, replaced by the Management Cluster Kubernetes API.
+  annotations:
+    github.com/team-slug: team-rainbow
+    github.com/project-slug: giantswarm/api-spec
+    backstage.io/source-location: url:https://github.com/giantswarm/api-spec
+    circleci.com/project-slug: github/giantswarm/api-spec
+spec:
+  type: openapi
+  lifecycle: deprecated
+  owner: team-rainbow
+  definition: OpenAPI spec can be found at https://docs.giantswarm.io/api/yaml/spec.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: management-api
+  title: Management API
+  description: Kubernetes API of Giant Swarm management clusters.
+spec:
+  type: openapi
+  lifecycle: production
+  owner: tbd
+  definition: To be looked up via the Kubernetes API reference.
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: organization-crd
+  title: Organization CRD
+  description: Defines an organization in a management cluster. Organizations are used to isolate tenants or other entities.
+  annotations:
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/organization-operator/blob/main/config/crd/security.giantswarm.io_organizations.yaml
+    backstage.io/techdocs-ref: url:https://github.com/giantswarm/gitops-template/blob/main/README.md
+spec:
+  type: crd
+  lifecycle: production
+  owner: team-honeybadger
+  definition: See CRD
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: app-crd
+  title: App CRD
+  description: Defines an App to be deployed to a cluster.
+  annotations:
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/apiextensions-application/blob/main/config/crd/application.giantswarm.io_apps.yaml
+  links:
+  - url: https://docs.giantswarm.io/use-the-api/management-api/crd/apps.application.giantswarm.io/
+    title: CRD documentation
+    icon: docs
+spec:
+  type: crd
+  lifecycle: production
+  owner: team-honeybadger
+  definition: See CRD
+  system: app-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: catalog-crd
+  title: Catalog CRD
+  description: Defines a catalog to discover apps.
+  annotations:
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/apiextensions-application/blob/main/config/crd/application.giantswarm.io_catalogs.yaml
+  links:
+  - url: https://docs.giantswarm.io/use-the-api/management-api/crd/catalogs.application.giantswarm.io/
+    title: CRD documentation
+    icon: docs
+spec:
+  type: crd
+  lifecycle: production
+  owner: team-honeybadger
+  definition: See CRD
+  system: app-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: appcatalogentry-crd
+  title: AppCatalogEntry CRD
+  description: Defines an app in an app catalog.
+  annotations:
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/apiextensions-application/blob/main/config/crd/application.giantswarm.io_appcatalogentries.yaml
+  links:
+  - url: https://docs.giantswarm.io/use-the-api/management-api/crd/appcatalogentries.application.giantswarm.io/
+    title: CRD documentation
+    icon: docs
+spec:
+  type: crd
+  lifecycle: production
+  owner: team-honeybadger
+  definition: See CRD
+  system: app-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: chart-crd
+  title: Chart CRD
+  description: Defines a Helm chart to be deployed as a Helm release.
+  annotations:
+    github.com/team-slug: team-honeybadger
+    backstage.io/source-location: url:https://github.com/giantswarm/apiextensions-application/blob/main/config/crd/application.giantswarm.io_charts.yaml
+  links:
+  - url: https://docs.giantswarm.io/use-the-api/management-api/crd/charts.application.giantswarm.io/
+    title: CRD documentation
+    icon: docs
+spec:
+  type: crd
+  lifecycle: production
+  owner: team-honeybadger
+  definition: See CRD
+  system: app-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: passage-api
+  description: Restful API for handling invites and self-service user registration for the Giant Swarm Rest API.
+  annotations:
+    github.com/team-slug: team-rainbow
+spec:
+  type: other
+  lifecycle: deprecated
+  owner: team-rainbow
+  definition: See README

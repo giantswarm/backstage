@@ -1,0 +1,17 @@
+# Entities of kind: Component, spec.type: saas
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: sentry
+  title: Sentry
+  description: Collects error details and usage information
+  links:
+    - url: https://giantswarm.sentry.io/
+      title: Sentry UI (Use GitHub auth)
+      type: admin-dashboard
+spec:
+  type: saas
+  domain: kaas
+  lifecycle: production
+  owner: team-rainbow
