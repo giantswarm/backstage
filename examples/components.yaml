@@ -149,6 +149,8 @@ spec:
   domain: kaas
   lifecycle: production
   owner: team-rainbow
+  dependsOn:
+  - component:default/dex-operator
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -165,6 +167,23 @@ spec:
   lifecycle: deprecated
   owner: team-rainbow
   subcomponentOf: dex-app
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dex-operator
+  description: Creates and rotates credentials and OAuth client apps for use with Dex, running in the management cluster.
+  annotations:
+    github.com/project-slug: giantswarm/dex-operator
+    github.com/team-slug: team-rainbow
+    backstage.io/source-location: url:https://github.com/giantswarm/dex-operator
+    circleci.com/project-slug: github/giantswarm/dex-operator
+    quay.io/repository-slug: giantswarm/dex-operator
+spec:
+  type: service
+  domain: kaas
+  lifecycle: production
+  owner: team-rainbow
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
