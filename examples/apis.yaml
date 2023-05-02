@@ -70,7 +70,6 @@ metadata:
   annotations:
     github.com/team-slug: team-rainbow
     backstage.io/source-location: url:https://github.com/giantswarm/organization-operator/blob/main/config/crd/security.giantswarm.io_organizations.yaml
-    backstage.io/techdocs-ref: url:https://github.com/giantswarm/gitops-template/blob/main/README.md
 spec:
   type: crd
   lifecycle: production

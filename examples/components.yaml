@@ -297,11 +297,10 @@ metadata:
   name: organization-operator
   description: Creates namespaces based on Organization resources.
   annotations:
-    github.com/project-slug: giantswarm/gitops-template
+    github.com/project-slug: giantswarm/organization-operator
     github.com/team-slug: team-honeybadger
-    backstage.io/source-location: url:https://github.com/giantswarm/gitops-template
-    circleci.com/project-slug: github/giantswarm/gitops-template
-    backstage.io/techdocs-ref: url:https://github.com/giantswarm/gitops-template/blob/main/README.md
+    backstage.io/source-location: url:https://github.com/giantswarm/organization-operator
+    circleci.com/project-slug: github/giantswarm/organization-operator
     quay.io/repository-slug: giantswarm/organization-operator
 spec:
   type: service
