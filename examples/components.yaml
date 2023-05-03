@@ -114,7 +114,6 @@ metadata:
     github.com/project-slug: giantswarm/dex
     github.com/team-slug: team-rainbow
     backstage.io/source-location: url:https://github.com/giantswarm/dex
-    circleci.com/project-slug: github/giantswarm/dex
     quay.io/repository-slug: giantswarm/dex
   links:
     - url: https://github.com/dexidp/dex
