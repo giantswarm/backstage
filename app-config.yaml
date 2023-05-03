@@ -43,8 +43,8 @@ backend:
 
 integrations:
   github:
-    - host: github.com
-      token: ${GITHUB_TOKEN}
+    - apps:
+        - $include: github-app-development-credentials.yaml
 
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.
