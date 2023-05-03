@@ -46,10 +46,7 @@ import {
   EntityCircleCIContent,
   isCircleCIAvailable,
 } from '@backstage/plugin-circleci';
-import {
-  EntityGithubPullRequestsContent,
-  EntityGithubPullRequestsOverviewCard
-} from '@roadiehq/backstage-plugin-github-pull-requests';
+import { EntityGithubPullRequestsContent } from '@roadiehq/backstage-plugin-github-pull-requests';
 import {
   RELATION_API_CONSUMED_BY,
   RELATION_API_PROVIDED_BY,
@@ -156,9 +153,6 @@ const overviewContent = (
 
     <Grid item md={4} xs={12}>
       <EntityLinksCard />
-    </Grid>
-    <Grid item md={6}>
-      <EntityGithubPullRequestsOverviewCard />
     </Grid>
     <Grid item md={8} xs={12}>
       <EntityHasSubcomponentsCard variant="gridItem" />
