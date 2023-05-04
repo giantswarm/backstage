@@ -8,9 +8,9 @@ This is our in-progress instance of [Backstage](https://backstage.io/).
 
 Initially, run `yarn install` in the repository root directory to ensure all dependencies are installed and up-to-date. This will take a few minutes at the first time, depending on internet bandwidth.
 
-In order to interact with the development GitHub app (required fro authentication and authorization to scan repositories etc.), you have to create a local file named `github-app-development-credentials.yaml` in the repository root directory. The content of this file can be found in a LastPass secure note named **Backstage GitHub App**.
+In order to interact with the development GitHub app (required for authentication and authorization to scan repositories etc.), you have to create a local file named `github-app-development-credentials.yaml` in the repository root directory. The content of this file can be found in a LastPass secure note named **Backstage GitHub App**.
 
-In addition, you will need some environment variables to be set up. We recommend to create a faile named `.env` with the content to be found in a LastPass secure note named **Backstage Dev Environment Variables**.
+In addition, you will need some environment variables to be set up. We recommend to create a file named `.env` with the content to be found in a LastPass secure note named **Backstage Dev Environment Variables**.
 
 ### Running backstage locally
 
