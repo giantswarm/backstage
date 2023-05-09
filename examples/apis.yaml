@@ -159,8 +159,34 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
+  name: mailgun-api
+  description: Mailgun API to send emails
+  annotations:
+    github.com/team-slug: team-rainbow
+spec:
+  type: other
+  lifecycle: deprecated
+  owner: team-rainbow
+  definition: See Mailgun docs
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
   name: passage-api
   description: Restful API for handling invites and self-service user registration for the Giant Swarm Rest API.
+  annotations:
+    github.com/team-slug: team-rainbow
+spec:
+  type: other
+  lifecycle: deprecated
+  owner: team-rainbow
+  definition: See README
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: userd-api
+  description: Restful API to manage user accounts.
   annotations:
     github.com/team-slug: team-rainbow
 spec:

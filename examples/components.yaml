@@ -330,6 +330,9 @@ spec:
   subcomponentOf: api
   providesApis:
   - passage-api
+  consumesApis:
+  - mailgun-api
+  - userd-api
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -365,6 +368,8 @@ spec:
   lifecycle: deprecated
   owner: team-rainbow
   subcomponentOf: api
+  providesApis:
+  - userd-api
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
