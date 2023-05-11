@@ -14,7 +14,7 @@ spec:
   type: saas
   domain: kaas
   lifecycle: production
-  owner: team-rainbow
+  owner: team-honeybadger
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component

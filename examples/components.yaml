@@ -191,7 +191,7 @@ metadata:
   description: Deprecated Rest API. Replaced by the management API.
   annotations:
     github.com/project-slug: giantswarm/docs
-    github.com/team-slug: team-rainbow
+    github.com/team-slug: team-honeybadger
     backstage.io/source-location: url:https://github.com/giantswarm/docs
     circleci.com/project-slug: github/giantswarm/docs
     quay.io/repository-slug: giantswarm/docs
@@ -202,7 +202,7 @@ metadata:
 spec:
   type: website
   lifecycle: production
-  owner: team-rainbow
+  owner: team-honeybadger
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -227,14 +227,14 @@ metadata:
   description: Deprecated command line interface for the Giant Swarm Rest API.
   annotations:
     github.com/project-slug: giantswarm/gsctl
-    github.com/team-slug: team-rainbow
+    github.com/team-slug: team-honeybadger
     backstage.io/source-location: url:https://github.com/giantswarm/gsctl
     circleci.com/project-slug: github/giantswarm/gsctl
 spec:
   type: cli
   domain: kaas
   lifecycle: deprecated
-  owner: team-rainbow
+  owner: team-honeybadger
   consumesApis:
   - rest-api
 ---
@@ -245,7 +245,7 @@ metadata:
   description: Web UI for the management API, used by platform teams to manage organizations, clusters, and apps.
   annotations:
     github.com/project-slug: giantswarm/happa
-    github.com/team-slug: team-rainbow
+    github.com/team-slug: team-honeybadger
     backstage.io/source-location: url:https://github.com/giantswarm/happa
     sentry.io/project-slug: giantswarm/happa
     circleci.com/project-slug: github/giantswarm/happa
@@ -261,7 +261,7 @@ metadata:
 spec:
   type: service
   lifecycle: production
-  owner: team-rainbow
+  owner: team-honeybadger
   consumesApis:
   - rest-api
   - management-api
@@ -279,13 +279,13 @@ metadata:
   description: Kubectl plugin for the Giant Swarm Management API. Used by platform teams to manage clusters and apps, give access to workload clusters, and more.
   annotations:
     github.com/project-slug: giantswarm/kubectl-gs
-    github.com/team-slug: team-rainbow
+    github.com/team-slug: team-honeybadger
     backstage.io/source-location: url:https://github.com/giantswarm/kubectl-gs
     circleci.com/project-slug: github/giantswarm/kubectl-gs
 spec:
   type: cli
   lifecycle: production
-  owner: team-rainbow
+  owner: team-honeybadger
   consumesApis:
   - athena-graphql-api
   - management-api
