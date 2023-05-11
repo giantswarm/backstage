@@ -202,5 +202,6 @@ metadata:
   description: Slack chat/notification/integration API
 spec:
   type: other
+  owner: team-team
   lifecycle: production
   definition: See Slack docs
