@@ -194,3 +194,13 @@ spec:
   lifecycle: deprecated
   owner: team-rainbow
   definition: See README
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: slack-api
+  description: Slack chat/notification/integration API
+spec:
+  type: other
+  lifecycle: production
+  definition: See Slack docs

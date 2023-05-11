@@ -333,6 +333,7 @@ spec:
   consumesApis:
   - mailgun-api
   - userd-api
+  - slack-api
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component

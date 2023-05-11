@@ -33,3 +33,16 @@ spec:
   owner: team-rainbow
   providesApis:
     - mailgun-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: slack
+  title: Slack
+  description: Chat service and main communication device at Giant Swarm.
+spec:
+  type: saas
+  lifecycle: production
+  owner: team-team
+  providesApis:
+    - slack-api
