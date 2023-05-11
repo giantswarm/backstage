@@ -1,0 +1,17 @@
+name: Validate content
+on:
+  pull_request: {}
+
+jobs:
+  validate:
+    name: Example data YAML
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Validate formatting of repositories/*.yaml
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: .github/yamllint.yaml
+          file_or_dir: examples/*.yaml
