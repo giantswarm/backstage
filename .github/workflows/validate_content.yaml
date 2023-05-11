@@ -13,5 +13,5 @@ jobs:
       - name: Validate formatting of repositories/*.yaml
         uses: ibiqlik/action-yamllint@v3
         with:
-          config_file: .github/yamllint.yaml
+          config_file: .github/yamllint_conf.yaml
           file_or_dir: examples/*.yaml
