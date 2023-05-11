@@ -11,9 +11,9 @@ metadata:
     circleci.com/project-slug: github/giantswarm/api
     quay.io/repository-slug: giantswarm/api
   links:
-    - url: https://docs.giantswarm.io/api/
-      title: API docs
-      icon: docs
+  - url: https://docs.giantswarm.io/api/
+    title: API docs
+    icon: docs
 spec:
   type: service
   domain: kaas
@@ -116,15 +116,15 @@ metadata:
     backstage.io/source-location: url:https://github.com/giantswarm/dex
     quay.io/repository-slug: giantswarm/dex
   links:
-    - url: https://github.com/dexidp/dex
-      title: Upstream source
-      icon: github
-    - url: https://dexidp.io/
-      title: Documentation
-      icon: docs
-    - url: https://github.com/orgs/giantswarm/projects/270/views/4?filterQuery=is%3Aopen+-status%3ADone+component%3Adex
-      title: Issues
-      icon: github
+  - url: https://github.com/dexidp/dex
+    title: Upstream source
+    icon: github
+  - url: https://dexidp.io/
+    title: Documentation
+    icon: docs
+  - url: https://github.com/orgs/giantswarm/projects/270/views/4?filterQuery=is%3Aopen+-status%3ADone+component%3Adex
+    title: Issues
+    icon: github
 
 spec:
   type: service
@@ -196,9 +196,9 @@ metadata:
     circleci.com/project-slug: github/giantswarm/docs
     quay.io/repository-slug: giantswarm/docs
   links:
-    - url: https://docs.giantswarm.io/
-      title: Live docs
-      icon: docs
+  - url: https://docs.giantswarm.io/
+    title: Live docs
+    icon: docs
 spec:
   type: website
   lifecycle: production
@@ -251,13 +251,13 @@ metadata:
     circleci.com/project-slug: github/giantswarm/happa
     quay.io/repository-slug: giantswarm/happa
   links:
-    - url: https://fe-docs.giantswarm.io/
-      title: Storybook
-      icon: docs
-    - url: https://happa.g8s.gollum.westeurope.azure.gigantic.io/admin-login
-      title: happa on gollum (production Azure)
-    - url: https://happa.g8s.gorilla.eu-central-1.aws.gigantic.io/admin-login
-      title: happa on gorilla (production AWS)
+  - url: https://fe-docs.giantswarm.io/
+    title: Storybook
+    icon: docs
+  - url: https://happa.g8s.gollum.westeurope.azure.gigantic.io/admin-login
+    title: happa on gollum (production Azure)
+  - url: https://happa.g8s.gorilla.eu-central-1.aws.gigantic.io/admin-login
+    title: happa on gorilla (production AWS)
 spec:
   type: service
   lifecycle: production
