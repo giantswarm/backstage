@@ -7,14 +7,14 @@ metadata:
   title: Sentry
   description: Collects error details and usage information
   links:
-    - url: https://giantswarm.sentry.io/
-      title: Sentry UI (Use GitHub auth)
-      type: admin-dashboard
+  - url: https://giantswarm.sentry.io/
+    title: Sentry UI (Use GitHub auth)
+    type: admin-dashboard
 spec:
   type: saas
   domain: kaas
   lifecycle: production
-  owner: team-rainbow
+  owner: team-honeybadger
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -23,13 +23,26 @@ metadata:
   title: Mailgun
   description: Email delivery service, used to submit invite emails and password recovery to Rest API users.
   links:
-    - url: https://login.mailgun.com/login/
-      title: Mailgun Login
-      type: admin-dashboard
+  - url: https://login.mailgun.com/login/
+    title: Mailgun Login
+    type: admin-dashboard
 spec:
   type: saas
   domain: kaas
   lifecycle: deprecated
   owner: team-rainbow
   providesApis:
-    - mailgun-api
+  - mailgun-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: slack
+  title: Slack
+  description: Chat service and main communication device at Giant Swarm.
+spec:
+  type: saas
+  lifecycle: production
+  owner: team-team
+  providesApis:
+  - slack-api
