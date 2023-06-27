@@ -1,0 +1,191 @@
+version: 2.1
+
+orbs:
+  architect: giantswarm/architect@4.29.0
+
+defaults: &defaults
+  working_directory: ~/backstage
+  docker:
+    - image: cimg/node:16.20
+
+job_filters: &job_filters
+  filters:
+    tags:
+      only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+    branches:
+      only: /.*/
+
+whitelist: &whitelist
+  paths:
+    - node_modules/*
+    - packages/backend/dist/*
+    - VERSION
+
+image_name: &image_name quay.io/giantswarm/backstage
+
+workflows:
+  build:
+    jobs:
+      - checkout:
+          <<: *job_filters
+      - gather-facts:
+          requires:
+            - checkout
+          <<: *job_filters
+      - test:
+          requires:
+            - checkout
+          <<: *job_filters
+      - lint:
+          requires:
+            - checkout
+          <<: *job_filters
+      - build:
+          requires:
+            - gather-facts
+          <<: *job_filters
+      - build-container:
+          context: architect
+          requires:
+            - test
+            - lint
+            - build
+          <<: *job_filters
+
+jobs:
+  checkout:
+    <<: *defaults
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-npm-deps-{{ checksum "yarn.lock" }}
+            - v1-npm-deps-
+
+      - run:
+          name: Print version information
+          command: |
+            node --version
+            yarn --version
+
+      - run:
+          name: Install Dependencies
+          command: yarn install --frozen-lockfile
+
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-npm-deps-{{ checksum "yarn.lock" }}
+
+      - persist_to_workspace:
+          root: ~/backstage
+          <<: *whitelist
+
+  gather-facts:
+    executor: architect/architect
+
+    working_directory: ~/backstage
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: ~/backstage
+
+      - run:
+          name: Create VERSION file
+          command: |
+            echo -n "$(architect project version)" > VERSION
+            echo "$(cat VERSION)"
+
+      - persist_to_workspace:
+          root: ~/backstage
+          <<: *whitelist
+
+  lint:
+    <<: *defaults
+
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: ~/backstage
+
+      - run:
+          name: Typecheck code using the TypeScript compiler
+          command: yarn run tsc
+
+      - run:
+          name: Lint code using ESlint
+          command: yarn run lint:all
+
+      - run:
+          name: Validate code style using prettier
+          command: yarn run prettier:check
+
+  test:
+    <<: *defaults
+
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: ~/backstage
+
+      - run:
+          name: Run tests
+          command: yarn run test:all
+
+  build:
+    <<: *defaults
+
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: ~/backstage
+
+      - run:
+          name: Build application
+          command: yarn run build:backend
+          environment:
+            NODE_ENV: production
+
+      - persist_to_workspace:
+          root: ~/backstage
+          <<: *whitelist
+
+  build-container:
+    executor: architect/architect
+    environment:
+      DOCKER_BUILDKIT: "1"
+    working_directory: ~/backstage
+    steps:
+      - checkout
+
+      - setup_remote_docker
+
+      - attach_workspace:
+          at: ~/backstage
+
+      - run:
+          environment:
+            IMAGE_NAME: *image_name
+          name: Generate container image tag
+          command: |
+            echo -n "${IMAGE_NAME}:$(cat VERSION)" > .docker_image_name
+
+      - architect/push-to-docker:
+          tag-latest-branch: "main"
+          image: "docker.io/giantswarm/backstage"
+          dockerfile: 'packages/backend/Dockerfile'
+          username_envar: "DOCKER_USERNAME"
+          password_envar: "DOCKER_PASSWORD"
+
+      - architect/push-to-docker:
+          tag-latest-branch: "main"
+          image: *image_name
+          dockerfile: 'packages/backend/Dockerfile'
+          username_envar: "QUAY_USERNAME"
+          password_envar: "QUAY_PASSWORD"
