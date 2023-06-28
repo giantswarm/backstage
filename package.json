@@ -19,7 +19,9 @@
     "test:all": "backstage-cli repo test --coverage",
     "lint": "backstage-cli repo lint --since origin/main",
     "lint:all": "backstage-cli repo lint",
-    "prettier:check": "prettier --check .",
+    "prettier": "prettier \"*.{js,jsx,ts,tsx,mjs,cjs}\"",
+    "prettier:check": "yarn prettier --check",
+    "prettier:fix": "yarn prettier --write",
     "new": "backstage-cli new --scope internal"
   },
   "workspaces": {
@@ -41,7 +43,23 @@
     "@types/react": "^17",
     "@types/react-dom": "^17"
   },
-  "prettier": "@spotify/prettier-config",
+  "prettier": {
+    "printWidth": 80,
+    "singleQuote": true,
+    "jsxSingleQuote": true,
+    "trailingComma": "es5",
+    "useTabs": false,
+    "tabWidth": 2,
+    "semi": true,
+    "quoteProps": "as-needed",
+    "bracketSpacing": true,
+    "bracketSameLine": false,
+    "arrowParens": "always",
+    "parser": "typescript",
+    "proseWrap": "preserve",
+    "endOfLine": "lf",
+    "embeddedLanguageFormatting": "auto"
+  },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs}": [
       "eslint --fix",
