@@ -51,6 +51,29 @@ workflows:
             - lint
             - build
           <<: *job_filters
+      - architect/push-to-app-catalog:
+          executor: app-build-suite
+          name: push-backstage-to-operations-platform-app-catalog
+          context: architect
+          app_catalog: "giantswarm-operations-platform-catalog"
+          app_catalog_test: "giantswarm-operations-platform-test-catalog"
+          chart: "backstage"
+          persist_chart_archive: true
+          requires:
+            - build-container
+          filters:
+            tags:
+              only: /^v.*/
+      - architect/run-tests-with-ats:
+          name: execute chart tests
+          app-test-suite_version: v0.2.9
+          app-test-suite_container_tag: 0.2.9
+          filters:
+            branches:
+              ignore:
+                - main
+          requires:
+            - push-backstage-to-operations-platform-app-catalog
 
 jobs:
   checkout:

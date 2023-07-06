@@ -1,0 +1,12 @@
+name: backstage
+namespace: backstage
+image:
+  repository: giantswarm/backstage
+
+userID: 101
+groupID: 101
+
+port: 7007
+
+registry:
+  domain: quay.io
