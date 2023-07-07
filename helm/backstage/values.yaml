@@ -9,7 +9,8 @@ image:
   repository: giantswarm/backstage
 
 port: 7007
-hostnames: []
+hostnames:
+- backstage.giantswarm.io
 
 registry:
   domain: quay.io
