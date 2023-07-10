@@ -48,7 +48,7 @@ spec:
           volumeMounts:
             - name: secret-volume
               readOnly: true
-              mountPath: "/etc/secret-volume"
+              mountPath: "/app"
           securityContext:
             readOnlyRootFilesystem: true
       volumes:

@@ -170,10 +170,16 @@ jobs:
           at: ~/backstage
 
       - run:
+          name: Mock secret files
+          command: |
+            touch github-app-production-credentials.yaml
+
+      - run:
           name: Build application
-          command: yarn run build:backend
+          command: yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml
           environment:
             NODE_ENV: production
+            BACKSTAGE_ENVIRONMENT: production
 
       - persist_to_workspace:
           root: ~/backstage
