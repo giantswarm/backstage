@@ -18,7 +18,10 @@ job_filters: &job_filters
 whitelist: &whitelist
   paths:
     - node_modules/*
+    - packages/app/dist/*
+    - packages/app/node_modules/*
     - packages/backend/dist/*
+    - packages/backend/node_modules/*
     - VERSION
 
 image_name: &image_name quay.io/giantswarm/backstage
