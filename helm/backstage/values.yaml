@@ -1,8 +1,8 @@
 name: backstage
 namespace: backstage
 
-userID: 101
-groupID: 101
+userID: 1000
+groupID: 1000
 
 image:
   name: backstage

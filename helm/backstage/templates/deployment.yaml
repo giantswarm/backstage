@@ -37,20 +37,19 @@ spec:
               containerPort: {{ .Values.port }}
           resources:
             requests:
-              cpu: 30m
-              memory: 50Mi
+              cpu: 300m
+              memory: 500Mi
             limits:
-              cpu: 100m
-              memory: 100Mi
+              cpu: 1000m
+              memory: 1000Mi
           envFrom:
             - secretRef:
                 name: backstage-secrets
           volumeMounts:
             - name: secret-volume
               readOnly: true
-              mountPath: "/app"
-          securityContext:
-            readOnlyRootFilesystem: true
+              mountPath: "/app/github-app-production-credentials.yaml"
+              subPath: github-app-production-credentials.yaml
       volumes:
         - name: secret-volume
           secret:

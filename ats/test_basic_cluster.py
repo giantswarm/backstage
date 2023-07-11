@@ -5,8 +5,6 @@ import pytest
 from pytest_helm_charts.clusters import Cluster
 from pytest_helm_charts.k8s.deployment import wait_for_deployments_to_run
 
-namespace_name = "default"
-
 timeout: int = 360
 
 

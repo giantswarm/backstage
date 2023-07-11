@@ -17,11 +17,8 @@ job_filters: &job_filters
 
 whitelist: &whitelist
   paths:
+    - packages/*/dist/*
     - node_modules/*
-    - packages/app/dist/*
-    - packages/app/node_modules/*
-    - packages/backend/dist/*
-    - packages/backend/node_modules/*
     - VERSION
 
 image_name: &image_name quay.io/giantswarm/backstage
@@ -87,8 +84,8 @@ jobs:
 
       - restore_cache:
           keys:
-            - v1-npm-deps-{{ checksum "yarn.lock" }}
-            - v1-npm-deps-
+            - v2-npm-deps-{{ checksum "yarn.lock" }}
+            - v2-npm-deps-
 
       - run:
           name: Print version information
@@ -103,7 +100,7 @@ jobs:
       - save_cache:
           paths:
             - node_modules
-          key: v1-npm-deps-{{ checksum "yarn.lock" }}
+          key: v2-npm-deps-{{ checksum "yarn.lock" }}
 
       - persist_to_workspace:
           root: ~/backstage
