@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2023-07-19
+
 ### Added
 
 - Add CircleCI configuration.
@@ -15,3 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Disable anonymous access.
+
+
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/giantswarm/backstage/tag/v0.1.0
