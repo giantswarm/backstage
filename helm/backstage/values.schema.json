@@ -2,6 +2,14 @@
   "$schema": "http://json-schema.org/schema#",
   "type": "object",
   "properties": {
+    "circleci": {
+      "type": "object",
+      "properties": {
+        "apiToken": {
+          "type": "string"
+        }
+      }
+    },
     "githubAppCredentials": {
       "type": "string"
     },
