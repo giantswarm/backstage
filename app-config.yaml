@@ -45,7 +45,7 @@ integrations:
   github:
     - host: github.com
       apps:
-        - $include: github-app-development-credentials.yaml
+        - $include: github-app-${BACKSTAGE_ENVIRONMENT}-credentials.yaml
 
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.

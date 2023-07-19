@@ -1,0 +1,24 @@
+name: backstage
+namespace: backstage
+
+userID: 1000
+groupID: 1000
+
+image:
+  name: backstage
+  repository: giantswarm/backstage
+
+port: 7007
+hostnames: []
+
+registry:
+  domain: quay.io
+
+circleci:
+  apiToken: ""
+
+githubAuthCredentials:
+  clientID: ""
+  clientSecret: ""
+
+githubAppCredentials: ""

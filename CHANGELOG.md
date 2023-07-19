@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add CircleCI configuration.
+- Add Helm chart.
+
 ### Changed
 
 - Disable anonymous access.
