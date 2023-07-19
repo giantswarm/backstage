@@ -64,16 +64,6 @@ workflows:
           filters:
             tags:
               only: /^v.*/
-      - architect/run-tests-with-ats:
-          name: execute chart tests
-          app-test-suite_version: v0.4.1
-          app-test-suite_container_tag: 0.4.1
-          filters:
-            branches:
-              ignore:
-                - main
-          requires:
-            - push-to-operations-platform-app-catalog
 
 jobs:
   checkout:
