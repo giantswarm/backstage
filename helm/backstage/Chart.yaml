@@ -6,3 +6,5 @@ version: "0.1.0"
 appVersion: ""
 annotations:
   application.giantswarm.io/team: team-honeybadger
+  ui.giantswarm.io/logo: https://s.giantswarm.io/app-icons/backstage/1/logo.svg
+icon: https://s.giantswarm.io/app-icons/backstage/1/icon.svg
