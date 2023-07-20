@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix Helm values.yaml linter issue.
+- Add securityContext into oauth2-proxy deployment.
+
 ## [0.1.2] - 2023-07-20
 
 ### Fixed

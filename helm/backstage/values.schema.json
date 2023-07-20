@@ -78,6 +78,20 @@
                 "port": {
                     "type": "integer"
                 },
+                "secrets": {
+                    "type": "object",
+                    "properties": {
+                        "client_id": {
+                          "type": "string"
+                        },
+                        "client_secret": {
+                          "type": "string"
+                        },
+                        "cookie_secret": {
+                          "type": "string"
+                        }
+                    }
+                },
                 "version": {
                     "type": "string"
                 }
