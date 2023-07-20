@@ -24,3 +24,10 @@ githubAuthCredentials:
 githubAppCredentials: ""
 
 catalog: ""
+
+oauth2Proxy:
+  name: oauth2-proxy
+  port: 4180
+  version: v5.1.0
+  image:
+    repository: giantswarm/oauth2_proxy
