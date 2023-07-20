@@ -31,3 +31,11 @@ oauth2Proxy:
   version: v5.1.0
   image:
     repository: giantswarm/oauth2_proxy
+  
+  # OAuth2 proxy will use GitHub as an identity provider.
+  github:
+    # Name of the organization a user must be a member of.
+    organizationName: ""
+    # Name of a team the user must be a member of.
+    # Use the all lowercase slug spelling here.
+    teamName: ""

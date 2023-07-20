@@ -11,7 +11,8 @@ spec:
   revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app: {{ .Values.oauth2Proxy.name }}
+      app: {{ .Values.name }}
+      component: oauth2-proxy
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -20,7 +21,8 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ .Values.oauth2Proxy.name }}
+        app: {{ .Values.name }}
+        component: oauth2-proxy
     spec:
       containers:
         - name: {{ .Values.oauth2Proxy.name }}
@@ -31,27 +33,27 @@ spec:
               containerPort: {{ .Values.oauth2Proxy.port }}
           args:
             - --provider=github
-            - --github-org=giantswarm
-            - --github-team=employees
+            - --github-org={{ .Values.oauth2Proxy.github.organizationName }}
+            - --github-team={{ .Values.oauth2Proxy.github.teamName }}
             - --email-domain=*
-            - --upstream=file:///dev/null
+            - --upstream=http://{{ .Values.name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.port }}/
             - --http-address=0.0.0.0:{{ .Values.oauth2Proxy.port }}
           env:
             - name: OAUTH2_PROXY_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   key: client_id
-                  name: giantswarm-oauth
+                  name: oauth2-proxy
             - name: OAUTH2_PROXY_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   key: client_secret
-                  name: giantswarm-oauth
+                  name: oauth2-proxy
             - name: OAUTH2_PROXY_COOKIE_SECRET
               valueFrom:
                 secretKeyRef:
                   key: cookie_secret
-                  name: giantswarm-oauth
+                  name: oauth2-proxy
           resources:
             limits:
               cpu: 300m

@@ -10,10 +10,12 @@ spec:
   selector:
     matchLabels:
       app: {{ .Values.name }}
+      component: backstage
   template:
     metadata:
       labels:
         app: {{ .Values.name }}
+        component: backstage
     spec:
       affinity:
         podAntiAffinity:
