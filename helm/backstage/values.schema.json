@@ -1,71 +1,101 @@
 {
-  "$schema": "http://json-schema.org/schema#",
-  "type": "object",
-  "properties": {
-    "catalog": {
-      "type": "string"
-    },
-    "circleci": {
-      "type": "object",
-      "properties": {
-        "apiToken": {
-          "type": "string"
-        }
-      }
-    },
-    "githubAppCredentials": {
-      "type": "string"
-    },
-    "githubAuthCredentials": {
-      "type": "object",
-      "properties": {
-        "clientID": {
-          "type": "string"
+    "$schema": "http://json-schema.org/schema#",
+    "type": "object",
+    "properties": {
+        "catalog": {
+            "type": "string"
         },
-        "clientSecret": {
-          "type": "string"
-        }
-      }
-    },
-    "groupID": {
-      "type": "integer"
-    },
-    "hostnames": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "image": {
-        "type": "object",
-        "properties": {
-            "name": {
-                "type": "string"
-            },
-            "repository": {
-                "type": "string"
+        "circleci": {
+            "type": "object",
+            "properties": {
+                "apiToken": {
+                    "type": "string"
+                }
             }
-        }
-    },
-    "name": {
-        "type": "string"
-    },
-    "namespace": {
-        "type": "string"
-    },
-    "port": {
-        "type": "integer"
-    },
-    "registry": {
-        "type": "object",
-        "properties": {
-            "domain": {
-                "type": "string"
+        },
+        "githubAppCredentials": {
+            "type": "string"
+        },
+        "githubAuthCredentials": {
+            "type": "object",
+            "properties": {
+                "clientID": {
+                    "type": "string"
+                },
+                "clientSecret": {
+                    "type": "string"
+                }
             }
+        },
+        "groupID": {
+            "type": "integer"
+        },
+        "hostnames": {
+            "type": "array"
+        },
+        "image": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "repository": {
+                    "type": "string"
+                }
+            }
+        },
+        "name": {
+            "type": "string"
+        },
+        "namespace": {
+            "type": "string"
+        },
+        "oauth2Proxy": {
+            "type": "object",
+            "properties": {
+                "github": {
+                    "type": "object",
+                    "properties": {
+                        "organizationName": {
+                            "type": "string"
+                        },
+                        "teamName": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "image": {
+                    "type": "object",
+                    "properties": {
+                        "repository": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "port": {
+            "type": "integer"
+        },
+        "registry": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string"
+                }
+            }
+        },
+        "userID": {
+            "type": "integer"
         }
-    },
-    "userID": {
-      "type": "integer"
     }
-  }
 }
