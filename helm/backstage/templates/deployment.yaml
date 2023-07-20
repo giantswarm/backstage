@@ -56,7 +56,8 @@ spec:
               subPath: github-app-production-credentials.yaml
       volumes:
         - name: catalog-volume
-          configMap: catalog
+          configMap:
+            name: catalog
         - name: secret-volume
           secret:
             secretName: github-app-credentials-secret
