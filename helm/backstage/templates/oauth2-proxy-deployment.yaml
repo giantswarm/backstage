@@ -24,6 +24,9 @@ spec:
         app: {{ .Values.name }}
         component: oauth2-proxy
     spec:
+      securityContext:
+        runAsUser: 101
+        runAsGroup: 101
       containers:
         - name: {{ .Values.oauth2Proxy.name }}
           image: "{{ .Values.registry.domain }}/{{ .Values.oauth2Proxy.image.repository }}:{{ .Values.oauth2Proxy.version }}"
