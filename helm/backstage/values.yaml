@@ -32,6 +32,11 @@ oauth2Proxy:
   image:
     repository: giantswarm/oauth2_proxy
 
+  secrets:
+    client_id: ""
+    client_secret: ""
+    cookie_secret: ""
+
   # OAuth2 proxy will use GitHub as an identity provider.
   github:
     # Name of the organization a user must be a member of.
