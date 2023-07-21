@@ -44,6 +44,6 @@ auth:
 catalog:
   locations:
     - type: file
-      target: ../../catalog/catalog.yaml
+      target: /app/catalog/catalog.yaml
       rules:
-        - allow: [Component, Group]
+        - allow: [Component, Group, User]
