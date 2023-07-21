@@ -31,6 +31,7 @@ spec:
       securityContext:
         runAsUser: {{ .Values.userID }}
         runAsGroup: {{ .Values.groupID }}
+        runAsNonRoot: true
       containers:
         - name: {{ .Values.image.name }}
           image: "{{ .Values.registry.domain }}/{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
