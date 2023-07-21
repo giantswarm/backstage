@@ -23,8 +23,6 @@ githubAuthCredentials:
 
 githubAppCredentials: ""
 
-catalog: ""
-
 oauth2Proxy:
   name: oauth2-proxy
   port: 4180
