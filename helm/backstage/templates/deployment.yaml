@@ -50,11 +50,11 @@ spec:
           volumeMounts:
             - name: catalog-volume
               readOnly: true
-              mountPath: "/app/catalog/catalog.yaml"
+              mountPath: /app/catalog/catalog.yaml
               subPath: catalog.yaml
             - name: secret-volume
               readOnly: true
-              mountPath: "/app/github-app-production-credentials.yaml"
+              mountPath: /app/github-app-production-credentials.yaml
               subPath: github-app-production-credentials.yaml
       volumes:
         - name: catalog-volume
