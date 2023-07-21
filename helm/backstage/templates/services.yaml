@@ -1,0 +1,33 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Values.name }}
+    component: backstage
+  ports:
+    - name: {{ .Values.name }}
+      port: {{ .Values.port }}
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.name }}-oauth2-proxy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.name }}
+spec:
+  selector:
+    app: {{ .Values.name }}
+    component: oauth2-proxy
+  ports:
+    - name: {{ .Values.name }}-oauth2-proxy
+      port: {{ .Values.oauth2Proxy.port }}
+      targetPort: http
