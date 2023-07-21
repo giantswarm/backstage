@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: catalog
-  namespace: c68pn
-data:
-  catalog.yaml: {{- .Values.catalog | toYaml | indent 2 }}
