@@ -11,6 +11,7 @@ backend:
   baseUrl: https://devportal.giantswarm.io
   listen:
     port: 7007
+    host: 0.0.0.0
   cors:
     origin: https://devportal.giantswarm.io
 
