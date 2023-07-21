@@ -32,6 +32,8 @@ spec:
         runAsUser: {{ .Values.userID }}
         runAsGroup: {{ .Values.groupID }}
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: {{ .Values.image.name }}
           image: "{{ .Values.registry.domain }}/{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
@@ -58,6 +60,11 @@ spec:
               readOnly: true
               mountPath: /app/github-app-production-credentials.yaml
               subPath: github-app-production-credentials.yaml
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       volumes:
         - name: catalog-volume
           configMap:
@@ -96,6 +103,8 @@ spec:
       securityContext:
         runAsUser: 101
         runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: {{ .Values.oauth2Proxy.name }}
           image: "{{ .Values.registry.domain }}/{{ .Values.oauth2Proxy.image.repository }}:{{ .Values.oauth2Proxy.version }}"
@@ -135,3 +144,6 @@ spec:
               memory: 20M
           securityContext: 
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
