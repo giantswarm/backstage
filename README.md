@@ -12,6 +12,8 @@ In order to interact with the development GitHub app (required for authenticatio
 
 In addition, you will need some environment variables to be set up. We recommend to create a file named `.env` with the content to be found in a LastPass secure note named **Backstage Dev Environment Variables**.
 
+Create a file `/catalog/catalog.yaml` and use [backstage-catalog-importer](https://github.com/giantswarm/backstage-catalog-importer) utility to fill the catalog with the data. It's required to have a real user data in the catalog to be able to sign in.
+
 ### Running backstage locally
 
 #### 1. Set environment variables

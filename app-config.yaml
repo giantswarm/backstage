@@ -91,35 +91,8 @@ catalog:
   rules:
     - allow: [Component, Domain, System, API, Resource, Location]
   locations:
-    # Static example data
     # File locations are relative to the `packages/backend` folder.
     - type: file
-      target: ../../examples/domains.yaml
+      target: ../../catalog/catalog.yaml
       rules:
-        - allow: [Domain]
-    - type: file
-      target: ../../examples/systems.yaml
-      rules:
-        - allow: [System]
-    - type: file
-      target: ../../examples/apis.yaml
-      rules:
-        - allow: [API]
-    - type: file
-      target: ../../examples/components.yaml
-      rules:
-        - allow: [Component]
-    - type: file
-      target: ../../examples/components-saas.yaml
-      rules:
-        - allow: [Component]
-    - type: file
-      target: ../../examples/org.yaml
-      rules:
-        - allow: [User, Group]
-
-    # Example template
-    - type: file
-      target: ../../examples/template/template.yaml
-      rules:
-        - allow: [Template]
+        - allow: [Component, Group, User]

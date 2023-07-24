@@ -55,3 +55,5 @@ site
 
 /volumes
 /.env
+
+/catalog/*.yaml
