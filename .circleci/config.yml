@@ -26,8 +26,6 @@ workflows:
       - build-container:
           context: architect
           requires:
-            - test
-            - lint
             - build
           <<: *job_filters
       - architect/push-to-app-catalog:
