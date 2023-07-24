@@ -3,11 +3,6 @@ version: 2.1
 orbs:
   architect: giantswarm/architect@4.29.0
 
-defaults: &defaults
-  working_directory: ~/backstage
-  docker:
-    - image: cimg/node:16.20
-
 job_filters: &job_filters
   filters:
     tags:
@@ -26,23 +21,7 @@ image_name: &image_name quay.io/giantswarm/backstage
 workflows:
   build:
     jobs:
-      - checkout:
-          <<: *job_filters
-      - gather-facts:
-          requires:
-            - checkout
-          <<: *job_filters
-      - test:
-          requires:
-            - checkout
-          <<: *job_filters
-      - lint:
-          requires:
-            - checkout
-          <<: *job_filters
       - build:
-          requires:
-            - gather-facts
           <<: *job_filters
       - build-container:
           context: architect
@@ -66,64 +45,41 @@ workflows:
               only: /^v.*/
 
 jobs:
-  checkout:
-    <<: *defaults
+
+  build:
+    executor: architect/architect
+    working_directory: ~/backstage
+    docker:
+      - image: cimg/node:16.20
 
     steps:
       - checkout
-
+      
       - restore_cache:
           keys:
             - v2-npm-deps-{{ checksum "yarn.lock" }}
             - v2-npm-deps-
-
+      
       - run:
-          name: Print version information
+          name: Print node and yarn version info
           command: |
             node --version
             yarn --version
 
       - run:
-          name: Install Dependencies
+          name: Install dependencies
           command: yarn install --frozen-lockfile
-
+      
       - save_cache:
           paths:
             - node_modules
           key: v2-npm-deps-{{ checksum "yarn.lock" }}
-
-      - persist_to_workspace:
-          root: ~/backstage
-          <<: *whitelist
-
-  gather-facts:
-    executor: architect/architect
-
-    working_directory: ~/backstage
-    steps:
-      - checkout
-
-      - attach_workspace:
-          at: ~/backstage
 
       - run:
           name: Create VERSION file
           command: |
             echo -n "$(architect project version)" > VERSION
             echo "$(cat VERSION)"
-
-      - persist_to_workspace:
-          root: ~/backstage
-          <<: *whitelist
-
-  lint:
-    <<: *defaults
-
-    steps:
-      - checkout
-
-      - attach_workspace:
-          at: ~/backstage
 
       - run:
           name: Typecheck code using the TypeScript compiler
@@ -136,29 +92,11 @@ jobs:
       - run:
           name: Validate code style using prettier
           command: yarn run prettier:check
-
-  test:
-    <<: *defaults
-
-    steps:
-      - checkout
-
-      - attach_workspace:
-          at: ~/backstage
-
+      
       - run:
           name: Run tests
           command: yarn run test:all
-
-  build:
-    <<: *defaults
-
-    steps:
-      - checkout
-
-      - attach_workspace:
-          at: ~/backstage
-
+      
       - run:
           name: Mock secret files
           command: |
