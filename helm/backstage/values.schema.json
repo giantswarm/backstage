@@ -47,53 +47,6 @@
         "namespace": {
             "type": "string"
         },
-        "oauth2Proxy": {
-            "type": "object",
-            "properties": {
-                "github": {
-                    "type": "object",
-                    "properties": {
-                        "organizationName": {
-                            "type": "string"
-                        },
-                        "teamName": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "image": {
-                    "type": "object",
-                    "properties": {
-                        "repository": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "name": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "secrets": {
-                    "type": "object",
-                    "properties": {
-                        "client_id": {
-                          "type": "string"
-                        },
-                        "client_secret": {
-                          "type": "string"
-                        },
-                        "cookie_secret": {
-                          "type": "string"
-                        }
-                    }
-                },
-                "version": {
-                    "type": "string"
-                }
-            }
-        },
         "port": {
             "type": "integer"
         },
