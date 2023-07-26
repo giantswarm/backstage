@@ -1,14 +1,6 @@
 import React from 'react';
 import { Button, Grid } from '@material-ui/core';
 import {
-  EntityApiDefinitionCard,
-  EntityConsumedApisCard,
-  EntityConsumingComponentsCard,
-  EntityHasApisCard,
-  EntityProvidedApisCard,
-  EntityProvidingComponentsCard,
-} from '@backstage/plugin-api-docs';
-import {
   EntityAboutCard,
   EntityDependsOnComponentsCard,
   EntityDependsOnResourcesCard,
@@ -178,17 +170,6 @@ const serviceEntityPage = (
       {circleCIContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/api" title="API">
-      <Grid container spacing={3} alignItems="stretch">
-        <Grid item md={6}>
-          <EntityProvidedApisCard />
-        </Grid>
-        <Grid item md={6}>
-          <EntityConsumedApisCard />
-        </Grid>
-      </Grid>
-    </EntityLayout.Route>
-
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
@@ -319,22 +300,6 @@ const apiPage = (
         <Grid item md={4} xs={12}>
           <EntityLinksCard />
         </Grid>
-        <Grid container item md={12}>
-          <Grid item md={6}>
-            <EntityProvidingComponentsCard />
-          </Grid>
-          <Grid item md={6}>
-            <EntityConsumingComponentsCard />
-          </Grid>
-        </Grid>
-      </Grid>
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/definition" title="Definition">
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <EntityApiDefinitionCard />
-        </Grid>
       </Grid>
     </EntityLayout.Route>
   </EntityLayout>
@@ -391,9 +356,6 @@ const systemPage = (
         </Grid>
         <Grid item md={8}>
           <EntityHasComponentsCard variant="gridItem" />
-        </Grid>
-        <Grid item md={6}>
-          <EntityHasApisCard variant="gridItem" />
         </Grid>
         <Grid item md={6}>
           <EntityHasResourcesCard variant="gridItem" />
