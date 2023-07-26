@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove api-docs plugin.
 - Remove `APIs`, `Docs`, `Create...` from main menu.
 
-
 ## [0.1.6] - 2023-07-25
 
 ### Changed
