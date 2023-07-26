@@ -23,4 +23,6 @@ githubAuthCredentials:
 
 githubAppCredentials: ""
 
+# Can be used to assign pods to the node pool. E.g. - giantswarm.io/machine-deployment: a1b2c
+# Docs - https://docs.giantswarm.io/advanced/node-pools/#assigning-workloads
 nodeSelector: {}
