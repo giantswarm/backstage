@@ -1,19 +1,6 @@
 app:
   # Should be the same as backend.baseUrl when using the `app-backend` plugin.
   baseUrl: https://devportal.giantswarm.io
-  support:
-    url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
-    items:
-      - title: Issues
-        icon: github
-        links:
-          - url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
-            title: GitHub Issues
-      - title: Slack discussion
-        icon: chat
-        links:
-          - url: https://gigantic.slack.com/archives/C055VLMTPFE
-            title: '#wg-dev-portal'
 
 backend:
   # Note that the baseUrl should be the URL that the browser and other clients
