@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Set configuration for support button.
+
 ### Removed
 
 - Remove `APIs`, `Docs`, `Create...` from main menu.
