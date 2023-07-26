@@ -1,6 +1,5 @@
 import React from 'react';
 import { Navigate, Route } from 'react-router-dom';
-import { apiDocsPlugin, ApiExplorerPage } from '@backstage/plugin-api-docs';
 import {
   CatalogEntityPage,
   CatalogIndexPage,
@@ -58,9 +57,6 @@ const app = createApp({
       createComponent: scaffolderPlugin.routes.root,
       viewTechDoc: techdocsPlugin.routes.docRoot,
     });
-    bind(apiDocsPlugin.externalRoutes, {
-      registerApi: catalogImportPlugin.routes.importPage,
-    });
     bind(scaffolderPlugin.externalRoutes, {
       registerComponent: catalogImportPlugin.routes.importPage,
     });
@@ -90,7 +86,6 @@ const routes = (
       </TechDocsAddons>
     </Route>
     <Route path="/create" element={<ScaffolderPage />} />
-    <Route path="/api-docs" element={<ApiExplorerPage />} />
     <Route
       path="/catalog-import"
       element={

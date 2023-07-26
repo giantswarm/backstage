@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Set configuration for support button.
+- Add possibility to specify nodeSelector for the deployment
 
 ### Removed
 
+- Remove api-docs plugin.
 - Remove `APIs`, `Docs`, `Create...` from main menu.
 
 ## [0.1.6] - 2023-07-25
