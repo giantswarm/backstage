@@ -47,6 +47,9 @@
         "namespace": {
             "type": "string"
         },
+        "nodeSelector": {
+            "type": "object"
+        },
         "port": {
             "type": "integer"
         },

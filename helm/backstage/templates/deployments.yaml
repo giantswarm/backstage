@@ -74,3 +74,7 @@ spec:
         - name: secret-volume
           secret:
             secretName: github-app-credentials-secret
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
