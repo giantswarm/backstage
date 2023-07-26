@@ -1,6 +1,19 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
+  support:
+    url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
+    items:
+      - title: Issues
+        icon: github
+        links:
+          - url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
+            title: GitHub Issues
+      - title: Slack discussion
+        icon: chat
+        links:
+          - url: https://gigantic.slack.com/archives/C055VLMTPFE
+            title: '#wg-dev-portal'
 
 organization:
   name: Giant Swarm
