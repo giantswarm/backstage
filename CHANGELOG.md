@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add custom catalog page.
+
 ### Changed
 
 - Update Backstage packages to v1.16.0.
