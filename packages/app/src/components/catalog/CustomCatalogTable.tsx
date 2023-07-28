@@ -36,9 +36,9 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
 
     function createEntitySpecificColumns(): TableColumn<CatalogTableRow>[] {
       const baseColumns = [
-        columnFactories.createSystemColumn(),
+        // columnFactories.createSystemColumn(), // Hide until we have system information in the catalog
         columnFactories.createOwnerColumn(),
-        columnFactories.createSpecTypeColumn(),
+        // columnFactories.createSpecTypeColumn(), // Hide until we have more than one component type in the catalog
         columnFactories.createSpecLifecycleColumn(),
       ];
       switch (filters.kind?.value) {
