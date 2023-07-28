@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Hide unused columns/actions in catalog table.
+- Use auto width for catalog table columns.
+
 ## [0.1.8] - 2023-07-27
 
 ### Added
