@@ -24,8 +24,9 @@ import {
   EntityNamespacePicker,
   EntityOwnerPickerProps,
 } from '@backstage/plugin-catalog-react';
-import { CatalogTable, CatalogTableRow } from '@backstage/plugin-catalog';
+import { CatalogTableRow } from '@backstage/plugin-catalog';
 import React, { ReactNode } from 'react';
+import { CustomCatalogTable } from './CustomCatalogTable';
 
 /**
  * Props for root catalog pages.
@@ -73,7 +74,7 @@ export function CustomCatalogPage(props: CustomCatalogPageProps) {
               <EntityNamespacePicker />
             </CatalogFilterLayout.Filters>
             <CatalogFilterLayout.Content>
-              <CatalogTable
+              <CustomCatalogTable
                 columns={columns}
                 actions={actions}
                 tableOptions={tableOptions}
