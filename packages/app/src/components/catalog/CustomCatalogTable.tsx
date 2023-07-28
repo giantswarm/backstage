@@ -137,7 +137,12 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
     <CatalogTable
       columns={columns || defaultColumns}
       actions={actions || defaultActions}
-      tableOptions={tableOptions}
+      tableOptions={{
+        ...tableOptions,
+        actionsCellStyle: {
+          padding: "0 18px",
+        }
+      }}
       emptyContent={emptyContent}
     />
   );
