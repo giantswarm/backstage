@@ -45,9 +45,7 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
 
     function createEntitySpecificColumns(): TableColumn<CatalogTableRow>[] {
       const baseColumns = [
-        // columnFactories.createSystemColumn(), // Hide until we have system information in the catalog
         columnFactories.createOwnerColumn(),
-        // columnFactories.createSpecTypeColumn(), // Hide until we have more than one component type in the catalog
         columnFactories.createSpecLifecycleColumn(),
       ];
       switch (filters.kind?.value) {
@@ -75,44 +73,6 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
   }, [filters.kind?.value, entities]);
 
   const defaultActions: TableProps<CatalogTableRow>['actions'] = [
-    // ({ entity }) => {
-    //   const url = entity.metadata.annotations?.[ANNOTATION_VIEW_URL];
-    //   const title = 'View';
-
-    //   return {
-    //     icon: () => (
-    //       <>
-    //         <Typography variant="srOnly">{title}</Typography>
-    //         <OpenInNew fontSize="small" />
-    //       </>
-    //     ),
-    //     tooltip: title,
-    //     disabled: !url,
-    //     onClick: () => {
-    //       if (!url) return;
-    //       window.open(url, '_blank');
-    //     },
-    //   };
-    // },
-    // ({ entity }) => {
-    //   const url = entity.metadata.annotations?.[ANNOTATION_EDIT_URL];
-    //   const title = 'Edit';
-
-    //   return {
-    //     icon: () => (
-    //       <>
-    //         <Typography variant="srOnly">{title}</Typography>
-    //         <Edit fontSize="small" />
-    //       </>
-    //     ),
-    //     tooltip: title,
-    //     disabled: !url,
-    //     onClick: () => {
-    //       if (!url) return;
-    //       window.open(url, '_blank');
-    //     },
-    //   };
-    // },
     ({ entity }) => {
       const isStarred = isStarredEntity(entity);
       const title = isStarred ? 'Remove from favorites' : 'Add to favorites';
