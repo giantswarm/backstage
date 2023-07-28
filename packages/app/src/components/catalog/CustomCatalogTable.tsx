@@ -18,11 +18,6 @@ const YellowStar = withStyles({
   },
 })(Star);
 
-/**
- * Props for root catalog pages.
- *
- * @public
- */
 export interface CustomCatalogTableProps extends CatalogTableProps {}
 
 export function CustomCatalogTable(props: CustomCatalogTableProps) {
