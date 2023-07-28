@@ -43,7 +43,10 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       ...createEntitySpecificColumns(),
       columnFactories.createMetadataDescriptionColumn(),
       columnFactories.createTagsColumn(),
-    ];
+    ].map((column) => ({
+      ...column,
+      width: 'auto',
+    }));
 
     function createEntitySpecificColumns(): TableColumn<CatalogTableRow>[] {
       const baseColumns = [
