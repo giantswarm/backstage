@@ -3,10 +3,20 @@
  * It's needed to customize catalog table view, e.g. hide some columns/actions.
  */
 
-import { useEntityList } from '@backstage/plugin-catalog-react';
+import { useEntityList, useStarredEntities } from '@backstage/plugin-catalog-react';
 import { CatalogTable, CatalogTableProps, CatalogTableRow } from '@backstage/plugin-catalog';
 import React, { useMemo } from 'react';
-import { TableColumn } from '@backstage/core-components';
+import { TableColumn, TableProps } from '@backstage/core-components';
+import { Typography } from '@material-ui/core';
+import { withStyles } from '@material-ui/core/styles';
+import Star from '@material-ui/icons/Star';
+import StarBorder from '@material-ui/icons/StarBorder';
+
+const YellowStar = withStyles({
+  root: {
+    color: '#f3ba37',
+  },
+})(Star);
 
 /**
  * Props for root catalog pages.
@@ -22,6 +32,7 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
     tableOptions = {},
     emptyContent,
   } = props;
+  const { isStarredEntity, toggleStarredEntity } = useStarredEntities();
   const { entities, filters } = useEntityList();
 
   const defaultColumns: TableColumn<CatalogTableRow>[] = useMemo(() => {
@@ -65,10 +76,67 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
     }
   }, [filters.kind?.value, entities]);
 
+  const defaultActions: TableProps<CatalogTableRow>['actions'] = [
+    // ({ entity }) => {
+    //   const url = entity.metadata.annotations?.[ANNOTATION_VIEW_URL];
+    //   const title = 'View';
+
+    //   return {
+    //     icon: () => (
+    //       <>
+    //         <Typography variant="srOnly">{title}</Typography>
+    //         <OpenInNew fontSize="small" />
+    //       </>
+    //     ),
+    //     tooltip: title,
+    //     disabled: !url,
+    //     onClick: () => {
+    //       if (!url) return;
+    //       window.open(url, '_blank');
+    //     },
+    //   };
+    // },
+    // ({ entity }) => {
+    //   const url = entity.metadata.annotations?.[ANNOTATION_EDIT_URL];
+    //   const title = 'Edit';
+
+    //   return {
+    //     icon: () => (
+    //       <>
+    //         <Typography variant="srOnly">{title}</Typography>
+    //         <Edit fontSize="small" />
+    //       </>
+    //     ),
+    //     tooltip: title,
+    //     disabled: !url,
+    //     onClick: () => {
+    //       if (!url) return;
+    //       window.open(url, '_blank');
+    //     },
+    //   };
+    // },
+    ({ entity }) => {
+      const isStarred = isStarredEntity(entity);
+      const title = isStarred ? 'Remove from favorites' : 'Add to favorites';
+
+      return {
+        cellStyle: { paddingLeft: '1em' },
+        icon: () => (
+          <>
+            <Typography variant="srOnly">{title}</Typography>
+            {isStarred ? <YellowStar /> : <StarBorder />}
+          </>
+        ),
+        tooltip: title,
+        onClick: () => toggleStarredEntity(entity),
+      };
+    },
+  ];
+
   return (
     <CatalogTable
       columns={columns || defaultColumns}
-      actions={actions}
+      actions={actions || defaultActions}
       tableOptions={tableOptions}
       emptyContent={emptyContent}
     />
