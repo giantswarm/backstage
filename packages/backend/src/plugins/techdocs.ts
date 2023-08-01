@@ -9,6 +9,8 @@ import Docker from 'dockerode';
 import { Router } from 'express';
 import { PluginEnvironment } from '../types';
 
+import { DocsUrlPreparer } from '../docs-url-preparer';
+
 export default async function createPlugin(
   env: PluginEnvironment,
 ): Promise<Router> {
@@ -17,6 +19,11 @@ export default async function createPlugin(
     logger: env.logger,
     reader: env.reader,
   });
+  
+  preparers.register('url', DocsUrlPreparer.fromConfig({
+    logger: env.logger,
+    reader: env.reader,
+  }));
 
   // Docker client (conditionally) used by the generators, based on techdocs.generators config.
   const dockerClient = new Docker();
