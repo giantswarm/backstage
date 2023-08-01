@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2023-08-01
+
 ### Changed
 
 - Modify GitHub auth provider default scopes to prevent multiple sign in popups.
@@ -91,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/giantswarm/backstage/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/giantswarm/backstage/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/giantswarm/backstage/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/giantswarm/backstage/compare/v0.1.6...v0.1.7
