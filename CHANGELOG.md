@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Modify GitHub auth provider default scopes to prevent multiple sign in popups.
+
 ## [0.1.9] - 2023-07-28
 
 ### Changed
