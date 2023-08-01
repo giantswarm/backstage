@@ -7,7 +7,11 @@ import {
   AnyApiFactory,
   configApiRef,
   createApiFactory,
+  discoveryApiRef,
+  githubAuthApiRef,
+  oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
+import { GithubAuth } from '@backstage/core-app-api';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -16,4 +20,24 @@ export const apis: AnyApiFactory[] = [
     factory: ({ configApi }) => ScmIntegrationsApi.fromConfig(configApi),
   }),
   ScmAuth.createDefaultApiFactory(),
+  /**
+   * Custom GitHub API configuration to modify defaultScopes to include all the scopes that different plugins need.
+   * It's needed to prevent different plugins to request additional permissions over sign in popup.
+   * ['read:user'] is used by default.
+   * ['read:user', 'repo'] is required by @roadiehq/backstage-plugin-github-pull-requests.
+   * ['read:user', 'repo', 'read:org'] is required by @backstage/plugin-github-actions.
+   */
+  createApiFactory({
+    api: githubAuthApiRef,
+    deps: {
+      discoveryApi: discoveryApiRef,
+      oauthRequestApi: oauthRequestApiRef,
+    },
+    factory: ({ discoveryApi, oauthRequestApi }) =>
+      GithubAuth.create({
+        discoveryApi,
+        oauthRequestApi,
+        defaultScopes: ['read:user', 'repo', 'read:org'],
+      }),
+  }),
 ];
