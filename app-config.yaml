@@ -67,10 +67,6 @@ proxy:
   # '/test':
   #   target: 'https://example.com'
   #   changeOrigin: true
-  /circleci/api:
-    target: https://circleci.com/api/v1.1
-    headers:
-      Circle-Token: ${CIRCLECI_API_TOKEN}
   /quay/api:
     target: 'https://quay.io'
     changeOrigin: true

@@ -14,9 +14,6 @@ hostnames: []
 registry:
   domain: quay.io
 
-circleci:
-  apiToken: ""
-
 githubAuthCredentials:
   clientID: ""
   clientSecret: ""

@@ -2665,25 +2665,6 @@
     react-use "^17.2.4"
     zen-observable "^0.10.0"
 
-"@backstage/plugin-circleci@^0.3.20":
-  version "0.3.20"
-  resolved "https://registry.yarnpkg.com/@backstage/plugin-circleci/-/plugin-circleci-0.3.20.tgz#1a7a737f1ecb9ae34883e3bd58d4558171ff6ac5"
-  integrity sha512-CISAMdjhefQHLf681fjXOwXeYO3UjuZ94m6U1UKWsKLQWTlkmpTpBrKYs8Z4Cc72HXBCgW89IK1IuYY0ftieLg==
-  dependencies:
-    "@backstage/catalog-model" "^1.4.1"
-    "@backstage/core-components" "^0.13.3"
-    "@backstage/core-plugin-api" "^1.5.3"
-    "@backstage/plugin-catalog-react" "^1.8.0"
-    "@backstage/theme" "^0.4.1"
-    "@material-ui/core" "^4.12.2"
-    "@material-ui/icons" "^4.9.1"
-    "@material-ui/lab" "4.0.0-alpha.61"
-    circleci-api "^4.0.0"
-    humanize-duration "^3.27.0"
-    lodash "^4.17.21"
-    luxon "^3.0.0"
-    react-use "^17.2.4"
-
 "@backstage/plugin-events-node@^0.2.8":
   version "0.2.8"
   resolved "https://registry.yarnpkg.com/@backstage/plugin-events-node/-/plugin-events-node-0.2.8.tgz#beb889b5fcc3ef78a157ea96e9b95560dc151870"
@@ -8133,7 +8114,6 @@ anymatch@^3.0.3, anymatch@~3.1.2:
     "@backstage/plugin-catalog-graph" "^0.2.32"
     "@backstage/plugin-catalog-import" "^0.9.10"
     "@backstage/plugin-catalog-react" "^1.8.0"
-    "@backstage/plugin-circleci" "^0.3.20"
     "@backstage/plugin-github-actions" "^0.6.1"
     "@backstage/plugin-org" "^0.6.10"
     "@backstage/plugin-permission-react" "^0.4.14"
@@ -9246,13 +9226,6 @@ cipher-base@^1.0.0, cipher-base@^1.0.1, cipher-base@^1.0.3:
   dependencies:
     inherits "^2.0.1"
     safe-buffer "^5.0.1"
-
-circleci-api@^4.0.0:
-  version "4.1.4"
-  resolved "https://registry.yarnpkg.com/circleci-api/-/circleci-api-4.1.4.tgz#6880a28eb021879d81789b50996640dc6373c5ad"
-  integrity sha512-49F0P2mhmfqYzJR/V4+oM+1SfI/VjKPcurvkzuuawNqgW5Eo00ZufgpHgdT+qRrvRymk6yt45bWOIP/f0FKhJA==
-  dependencies:
-    axios "^0.21.1"
 
 cjs-module-lexer@^1.0.0:
   version "1.2.2"
@@ -12878,7 +12851,7 @@ human-signals@^2.1.0:
   resolved "https://registry.yarnpkg.com/human-signals/-/human-signals-2.1.0.tgz#dc91fcba42e4d06e4abaed33b3e7a3c02f514ea0"
   integrity sha512-B4FFZ6q/T2jhhksgkbEW3HBvWIfDW85snkQgawt07S7J5QXTk6BkNV+0yAeZrM5QpMAdYlocGoljn0sJ/WQkFw==
 
-humanize-duration@^3.25.1, humanize-duration@^3.27.0:
+humanize-duration@^3.25.1:
   version "3.28.0"
   resolved "https://registry.yarnpkg.com/humanize-duration/-/humanize-duration-3.28.0.tgz#f79770c0bec34d3bfd4899338cc40643bc04df72"
   integrity sha512-jMAxraOOmHuPbffLVDKkEKi/NeG8dMqP8lGRd6Tbf7JgAeG33jjgPWDbXXU7ypCI0o+oNKJFgbSB9FKVdWNI2A==

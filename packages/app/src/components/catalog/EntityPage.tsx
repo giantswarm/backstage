@@ -34,10 +34,6 @@ import {
   Direction,
   EntityCatalogGraphCard,
 } from '@backstage/plugin-catalog-graph';
-import {
-  EntityCircleCIContent,
-  isCircleCIAvailable,
-} from '@backstage/plugin-circleci';
 import { EntityGithubPullRequestsContent } from '@roadiehq/backstage-plugin-github-pull-requests';
 import {
   RELATION_API_CONSUMED_BY,
@@ -59,31 +55,6 @@ const techdocsContent = (
       <ReportIssue />
     </TechDocsAddons>
   </EntityTechdocsContent>
-);
-
-const circleCIContent = (
-  <EntitySwitch>
-    <EntitySwitch.Case if={isCircleCIAvailable}>
-      <EntityCircleCIContent />
-    </EntitySwitch.Case>
-
-    <EntitySwitch.Case>
-      <EmptyState
-        title="CircleCI not available for this entity"
-        missing="info"
-        description="You need to add the annotation 'circleci.com/project-slug' to your component if you want to show CircleCI build information for it."
-        action={
-          <Button
-            variant="contained"
-            color="primary"
-            href="https://backstage.io/docs/features/software-catalog/well-known-annotations#circlecicomproject-slug"
-          >
-            Read more
-          </Button>
-        }
-      />
-    </EntitySwitch.Case>
-  </EntitySwitch>
 );
 
 const githubActionsContent = (
@@ -166,10 +137,6 @@ const serviceEntityPage = (
       {githubActionsContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/circleci" title="CircleCI">
-      {circleCIContent}
-    </EntityLayout.Route>
-
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
@@ -199,10 +166,6 @@ const websiteEntityPage = (
 
     <EntityLayout.Route path="/github-actions" title="GitHub Actions">
       {githubActionsContent}
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/circleci" title="CircleCI">
-      {circleCIContent}
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
