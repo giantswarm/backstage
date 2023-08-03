@@ -21,8 +21,12 @@ function formatFileName(filename: string) {
   return fileName[0].toUpperCase() + fileName.substring(1).toLowerCase();
 }
 
+/**
+ * Returns a list of navigation items. It's constructed from:
+ * - a list of links to *.md files ordered alphabetically (README.md go first)
+ * - an optional link to docs subcomponent
+ */
 function getNavigationItems(mdFiles: string[], docsComponentName?: string) {
-  // Sort files alphabetically and put README.md on first position
   const sortedFilenames = mdFiles.filter((file) => file !== 'README.md').sort();
   const readme = mdFiles.find((file) => file === 'README.md');
   if (readme) {
