@@ -40,6 +40,31 @@ function getNavigationItems(mdFiles: string[], docsComponentName?: string) {
   return items;
 }
 
+/**
+ * Returns branch name from the techdocs-ref URL
+ */
+function getBranchNameFromTechDocsRef(url: string) {
+  const parts = url.split('/');
+
+  return parts.pop() || parts.pop();
+}
+
+/**
+ * Constructs edit URI for provided entity
+ */
+function getEditURI(entity: Entity) {
+  const techdocsURL = entity.metadata.annotations?.['backstage.io/techdocs-ref'];
+  const sourceLocationURL = entity.metadata.annotations?.['backstage.io/source-location'];
+  if (!techdocsURL || !sourceLocationURL) {
+    return '';
+  }
+
+  const sourceLocation = sourceLocationURL.replace(/^url:/, '');
+  const defaultBranchName = getBranchNameFromTechDocsRef(techdocsURL);
+
+  return `${sourceLocation}/edit/${defaultBranchName}`;
+}
+
 export class DocsUrlPreparer implements PreparerBase {
   private originalPreparer: UrlPreparer;
   private readonly _logger: Logger;
@@ -104,7 +129,8 @@ export class DocsUrlPreparer implements PreparerBase {
        * Create mkdocs configuration file with navigation
        */
       const mkdocs = {
-        "site_name": entity.metadata.name,
+        'site_name': entity.metadata.name,
+        'edit_uri': getEditURI(entity),
         nav: getNavigationItems(mdFiles, docsComponentName),
         plugins: ['monorepo']
       };
