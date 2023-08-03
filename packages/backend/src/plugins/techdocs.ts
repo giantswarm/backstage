@@ -9,7 +9,7 @@ import Docker from 'dockerode';
 import { Router } from 'express';
 import { PluginEnvironment } from '../types';
 
-import { DocsUrlPreparer } from '../docs-url-preparer';
+import { DocsUrlPreparer } from './techdocs/docs-url-preparer';
 
 export default async function createPlugin(
   env: PluginEnvironment,
