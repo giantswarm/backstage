@@ -67,16 +67,7 @@ const circleCIContent = (
       <EmptyState
         title="CircleCI not available for this entity"
         missing="info"
-        description="You need to add the annotation 'circleci.com/project-slug' to your component if you want to show CircleCI build information for it."
-        action={
-          <Button
-            variant="contained"
-            color="primary"
-            href="https://backstage.io/docs/features/software-catalog/well-known-annotations#circlecicomproject-slug"
-          >
-            Read more
-          </Button>
-        }
+        description="Once the repository has a '.circleci.com/config.yml' file, information on CircleCI job runs will be displayed here."
       />
     </EntitySwitch.Case>
   </EntitySwitch>
