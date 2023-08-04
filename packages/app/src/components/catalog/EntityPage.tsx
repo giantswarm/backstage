@@ -85,16 +85,7 @@ const githubActionsContent = (
       <EmptyState
         title="GitHub Actions not available for this entity"
         missing="info"
-        description="You need to add the annotation 'github.com/project-slug' to your component if you want to enable GitHub Actions for it."
-        action={
-          <Button
-            variant="contained"
-            color="primary"
-            href="https://backstage.io/docs/features/software-catalog/well-known-annotations#githubcomproject-slug"
-          >
-            Read more
-          </Button>
-        }
+        description="There appears to be no GitHub repository information for this component. That should not happen normally. Please report this problem. Thanks!"
       />
     </EntitySwitch.Case>
   </EntitySwitch>
