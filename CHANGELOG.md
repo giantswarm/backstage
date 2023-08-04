@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Update CSP (content security policy) for images.
+
 ## [0.1.11] - 2023-08-04
 
 ### Changed
