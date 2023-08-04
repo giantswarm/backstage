@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Display a repo's root *.md files content as techdocs alongside with the content from root docs folder.
+
 ## [0.1.10] - 2023-08-01
 
 ### Changed
