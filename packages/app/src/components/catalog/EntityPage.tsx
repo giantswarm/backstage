@@ -4,12 +4,8 @@ import {
   EntityAboutCard,
   EntityDependsOnComponentsCard,
   EntityDependsOnResourcesCard,
-  EntityHasComponentsCard,
-  EntityHasResourcesCard,
-  EntityHasSubcomponentsCard,
   EntityHasSystemsCard,
   EntityLayout,
-  EntityLinksCard,
   EntitySwitch,
   EntityOrphanWarning,
   EntityProcessingErrorsPanel,
@@ -141,13 +137,6 @@ const overviewContent = (
     </Grid>
     <Grid item md={6} xs={12}>
       <EntityCatalogGraphCard variant="gridItem" height={400} />
-    </Grid>
-
-    <Grid item md={4} xs={12}>
-      <EntityLinksCard />
-    </Grid>
-    <Grid item md={8} xs={12}>
-      <EntityHasSubcomponentsCard variant="gridItem" />
     </Grid>
   </Grid>
 );
@@ -297,9 +286,6 @@ const apiPage = (
         <Grid item md={6} xs={12}>
           <EntityCatalogGraphCard variant="gridItem" height={400} />
         </Grid>
-        <Grid item md={4} xs={12}>
-          <EntityLinksCard />
-        </Grid>
       </Grid>
     </EntityLayout.Route>
   </EntityLayout>
@@ -350,15 +336,6 @@ const systemPage = (
         </Grid>
         <Grid item md={6} xs={12}>
           <EntityCatalogGraphCard variant="gridItem" height={400} />
-        </Grid>
-        <Grid item md={4} xs={12}>
-          <EntityLinksCard />
-        </Grid>
-        <Grid item md={8}>
-          <EntityHasComponentsCard variant="gridItem" />
-        </Grid>
-        <Grid item md={6}>
-          <EntityHasResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
     </EntityLayout.Route>
