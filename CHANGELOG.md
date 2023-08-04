@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Remove several unused items from the catalog entity details page: Links, Subcomponents.
+
 ## [0.1.11] - 2023-08-04
 
 ### Changed
