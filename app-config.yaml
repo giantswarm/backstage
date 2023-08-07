@@ -37,6 +37,7 @@ backend:
       - 'data:'
       - 'https://avatars.githubusercontent.com'
       - 'https://circleci.com'
+      - 'https://codecov.io'
       - 'https://dl.circleci.com'
       - 'https://godoc.org'
       - 'https://goreportcard.com'
