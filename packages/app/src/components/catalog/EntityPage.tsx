@@ -1,15 +1,11 @@
 import React from 'react';
-import { Button, Grid } from '@material-ui/core';
+import { Grid } from '@material-ui/core';
 import {
   EntityAboutCard,
   EntityDependsOnComponentsCard,
   EntityDependsOnResourcesCard,
-  EntityHasComponentsCard,
-  EntityHasResourcesCard,
-  EntityHasSubcomponentsCard,
   EntityHasSystemsCard,
   EntityLayout,
-  EntityLinksCard,
   EntitySwitch,
   EntityOrphanWarning,
   EntityProcessingErrorsPanel,
@@ -71,16 +67,7 @@ const circleCIContent = (
       <EmptyState
         title="CircleCI not available for this entity"
         missing="info"
-        description="You need to add the annotation 'circleci.com/project-slug' to your component if you want to show CircleCI build information for it."
-        action={
-          <Button
-            variant="contained"
-            color="primary"
-            href="https://backstage.io/docs/features/software-catalog/well-known-annotations#circlecicomproject-slug"
-          >
-            Read more
-          </Button>
-        }
+        description="Once the repository has a '.circleci.com/config.yml' file, information on CircleCI job runs will be displayed here."
       />
     </EntitySwitch.Case>
   </EntitySwitch>
@@ -98,16 +85,7 @@ const githubActionsContent = (
       <EmptyState
         title="GitHub Actions not available for this entity"
         missing="info"
-        description="You need to add the annotation 'github.com/project-slug' to your component if you want to enable GitHub Actions for it."
-        action={
-          <Button
-            variant="contained"
-            color="primary"
-            href="https://backstage.io/docs/features/software-catalog/well-known-annotations#githubcomproject-slug"
-          >
-            Read more
-          </Button>
-        }
+        description="There appears to be no GitHub repository information for this component. That should not happen normally. Please report this problem. Thanks!"
       />
     </EntitySwitch.Case>
   </EntitySwitch>
@@ -141,13 +119,6 @@ const overviewContent = (
     </Grid>
     <Grid item md={6} xs={12}>
       <EntityCatalogGraphCard variant="gridItem" height={400} />
-    </Grid>
-
-    <Grid item md={4} xs={12}>
-      <EntityLinksCard />
-    </Grid>
-    <Grid item md={8} xs={12}>
-      <EntityHasSubcomponentsCard variant="gridItem" />
     </Grid>
   </Grid>
 );
@@ -297,9 +268,6 @@ const apiPage = (
         <Grid item md={6} xs={12}>
           <EntityCatalogGraphCard variant="gridItem" height={400} />
         </Grid>
-        <Grid item md={4} xs={12}>
-          <EntityLinksCard />
-        </Grid>
       </Grid>
     </EntityLayout.Route>
   </EntityLayout>
@@ -350,15 +318,6 @@ const systemPage = (
         </Grid>
         <Grid item md={6} xs={12}>
           <EntityCatalogGraphCard variant="gridItem" height={400} />
-        </Grid>
-        <Grid item md={4} xs={12}>
-          <EntityLinksCard />
-        </Grid>
-        <Grid item md={8}>
-          <EntityHasComponentsCard variant="gridItem" />
-        </Grid>
-        <Grid item md={6}>
-          <EntityHasResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
     </EntityLayout.Route>
