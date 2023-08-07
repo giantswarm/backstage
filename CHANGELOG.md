@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2023-08-04
+
 ### Changed
 
 - Update CSP (content security policy) for images.
@@ -108,7 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.12...HEAD
+[0.1.12]: https://github.com/giantswarm/backstage/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/giantswarm/backstage/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/giantswarm/backstage/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/giantswarm/backstage/compare/v0.1.8...v0.1.9
