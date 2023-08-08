@@ -35,6 +35,7 @@ import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/
 
 import { githubAuthApiRef } from '@backstage/core-plugin-api';
 import { SignInPage } from '@backstage/core-components';
+import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 const app = createApp({
   apis,
@@ -107,10 +108,12 @@ const routes = (
 
 export default app.createRoot(
   <>
-    <AlertDisplay />
-    <OAuthRequestDialog />
-    <AppRouter>
-      <Root>{routes}</Root>
-    </AppRouter>
+    <ErrorReporterProvider>
+      <AlertDisplay />
+      <OAuthRequestDialog />
+      <AppRouter>
+        <Root>{routes}</Root>
+      </AppRouter>
+    </ErrorReporterProvider>
   </>,
 );

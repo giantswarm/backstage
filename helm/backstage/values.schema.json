@@ -61,6 +61,27 @@
                 }
             }
         },
+        "sentry": {
+            "type": "object",
+            "properties": {
+                "app": {
+                    "type": "object",
+                    "properties": {
+                        "dsn": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "backend": {
+                    "type": "object",
+                    "properties": {
+                        "dsn": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "userID": {
             "type": "integer"
         }
