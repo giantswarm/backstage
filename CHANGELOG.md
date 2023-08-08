@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13] - 2023-08-08
+
 ### Changed
 
 - Add component type column.
@@ -116,7 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.12...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.13...HEAD
+[0.1.13]: https://github.com/giantswarm/backstage/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/giantswarm/backstage/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/giantswarm/backstage/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/giantswarm/backstage/compare/v0.1.9...v0.1.10
