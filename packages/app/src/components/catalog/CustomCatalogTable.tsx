@@ -37,7 +37,6 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       columnFactories.createNameColumn({ defaultKind: filters.kind?.value }),
       ...createEntitySpecificColumns(),
       columnFactories.createMetadataDescriptionColumn(),
-      columnFactories.createTagsColumn(),
     ].map((column) => ({
       ...column,
       width: 'auto',
