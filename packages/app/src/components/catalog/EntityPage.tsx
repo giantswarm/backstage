@@ -123,22 +123,22 @@ const overviewContent = (
   </Grid>
 );
 
-const serviceEntityPage = (
+const baseEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/pull-requests" title="Pull Requests">
-      <EntityGithubPullRequestsContent />
+    <EntityLayout.Route path="/docs" title="Docs">
+      {techdocsContent}
     </EntityLayout.Route>
+  </EntityLayout>
+);
 
-    <EntityLayout.Route path="/github-actions" title="GitHub Actions">
-      {githubActionsContent}
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/circleci" title="CircleCI">
-      {circleCIContent}
+const appcatalogEntityPage = (
+  <EntityLayout>
+    <EntityLayout.Route path="/" title="Overview">
+      {overviewContent}
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
@@ -150,53 +150,6 @@ const serviceEntityPage = (
           <EntityDependsOnResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/docs" title="Docs">
-      {techdocsContent}
-    </EntityLayout.Route>
-  </EntityLayout>
-);
-
-const websiteEntityPage = (
-  <EntityLayout>
-    <EntityLayout.Route path="/" title="Overview">
-      {overviewContent}
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/pull-requests" title="Pull Requests">
-      <EntityGithubPullRequestsContent />
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/github-actions" title="GitHub Actions">
-      {githubActionsContent}
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/circleci" title="CircleCI">
-      {circleCIContent}
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/dependencies" title="Dependencies">
-      <Grid container spacing={3} alignItems="stretch">
-        <Grid item md={6}>
-          <EntityDependsOnComponentsCard variant="gridItem" />
-        </Grid>
-        <Grid item md={6}>
-          <EntityDependsOnResourcesCard variant="gridItem" />
-        </Grid>
-      </Grid>
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/docs" title="Docs">
-      {techdocsContent}
-    </EntityLayout.Route>
-  </EntityLayout>
-);
-
-const saasEntityPage = (
-  <EntityLayout>
-    <EntityLayout.Route path="/" title="Overview">
-      {overviewContent}
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/docs" title="Docs">
@@ -218,6 +171,18 @@ const defaultEntityPage = (
       {overviewContent}
     </EntityLayout.Route>
 
+    <EntityLayout.Route path="/pull-requests" title="Pull Requests">
+      <EntityGithubPullRequestsContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/github-actions" title="GitHub Actions">
+      {githubActionsContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/circleci" title="CircleCI">
+      {circleCIContent}
+    </EntityLayout.Route>
+
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
@@ -237,20 +202,14 @@ const defaultEntityPage = (
 
 const componentPage = (
   <EntitySwitch>
-    <EntitySwitch.Case if={isComponentType('service')}>
-      {serviceEntityPage}
+    <EntitySwitch.Case if={isComponentType('customer')}>
+      {baseEntityPage}
     </EntitySwitch.Case>
-
-    <EntitySwitch.Case if={isComponentType('cli')}>
-      {serviceEntityPage}
+    <EntitySwitch.Case if={isComponentType('template')}>
+      {baseEntityPage}
     </EntitySwitch.Case>
-
-    <EntitySwitch.Case if={isComponentType('website')}>
-      {websiteEntityPage}
-    </EntitySwitch.Case>
-
-    <EntitySwitch.Case if={isComponentType('saas')}>
-      {saasEntityPage}
+    <EntitySwitch.Case if={isComponentType('appcatalog')}>
+      {appcatalogEntityPage}
     </EntitySwitch.Case>
 
     <EntitySwitch.Case>{defaultEntityPage}</EntitySwitch.Case>
