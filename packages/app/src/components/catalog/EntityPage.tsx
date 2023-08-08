@@ -123,7 +123,19 @@ const overviewContent = (
   </Grid>
 );
 
-const limitedEntityPage = (
+const baseEntityPage = (
+  <EntityLayout>
+    <EntityLayout.Route path="/" title="Overview">
+      {overviewContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/docs" title="Docs">
+      {techdocsContent}
+    </EntityLayout.Route>
+  </EntityLayout>
+);
+
+const appcatalogEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
@@ -190,14 +202,14 @@ const defaultEntityPage = (
 
 const componentPage = (
   <EntitySwitch>
-    <EntitySwitch.Case if={isComponentType('appcatalog')}>
-      {limitedEntityPage}
-    </EntitySwitch.Case>
     <EntitySwitch.Case if={isComponentType('customer')}>
-      {limitedEntityPage}
+      {baseEntityPage}
     </EntitySwitch.Case>
     <EntitySwitch.Case if={isComponentType('template')}>
-      {limitedEntityPage}
+      {baseEntityPage}
+    </EntitySwitch.Case>
+    <EntitySwitch.Case if={isComponentType('appcatalog')}>
+      {appcatalogEntityPage}
     </EntitySwitch.Case>
 
     <EntitySwitch.Case>{defaultEntityPage}</EntitySwitch.Case>
