@@ -31,6 +31,7 @@ import search from './plugins/search';
 import { PluginEnvironment } from './types';
 import { ServerPermissionClient } from '@backstage/plugin-permission-node';
 import { DefaultIdentityClient } from '@backstage/plugin-auth-node';
+import * as Sentry from '@sentry/node';
 
 function makeCreateEnv(config: Config) {
   const root = getRootLogger();
@@ -87,12 +88,41 @@ async function main() {
   const appEnv = useHotMemoize(module, () => createEnv('app'));
 
   const apiRouter = Router();
+
+  /**
+   * Init Sentry error tracking
+   */
+  const errorReporterConfig = config.getOptionalConfig('backend.errorReporter');
+  if (errorReporterConfig) {
+    const sentryErrorNotifierConfig = errorReporterConfig.getConfig('sentry');
+    Sentry.init({
+      dsn: sentryErrorNotifierConfig.getString('dsn'),
+      environment: sentryErrorNotifierConfig.getString('environment'),
+      release: sentryErrorNotifierConfig.getString('releaseVersion'),
+      tracesSampleRate: sentryErrorNotifierConfig.getNumber('tracesSampleRate'),
+      integrations: [
+        new Sentry.Integrations.Http({
+          tracing: true
+        }),
+        new Sentry.Integrations.Express({
+          router: apiRouter
+        }),
+      ],
+    });
+
+    apiRouter.use(Sentry.Handlers.requestHandler());
+  }
+
   apiRouter.use('/catalog', await catalog(catalogEnv));
   apiRouter.use('/scaffolder', await scaffolder(scaffolderEnv));
   apiRouter.use('/auth', await auth(authEnv));
   apiRouter.use('/techdocs', await techdocs(techdocsEnv));
   apiRouter.use('/proxy', await proxy(proxyEnv));
   apiRouter.use('/search', await search(searchEnv));
+
+  if (errorReporterConfig) {
+    apiRouter.use(Sentry.Handlers.errorHandler());
+  }
 
   // Add backends ABOVE this line; this 404 handler is the catch-all fallback
   apiRouter.use(notFoundHandler());

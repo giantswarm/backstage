@@ -51,6 +51,9 @@ spec:
           envFrom:
             - secretRef:
                 name: backstage-secrets
+          env:
+          - name: VERSION
+            value: "{{ .Chart.AppVersion }}"
           volumeMounts:
             - name: catalog-volume
               readOnly: true

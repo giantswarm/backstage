@@ -1,6 +1,12 @@
 app:
   # Should be the same as backend.baseUrl when using the `app-backend` plugin.
   baseUrl: https://devportal.giantswarm.io
+  errorReporter:
+    sentry:
+      dsn: ${SENTRY_DSN_APP}
+      environment: production
+      releaseVersion: ${VERSION}
+      tracesSampleRate: 0.5
 
 backend:
   # Note that the baseUrl should be the URL that the browser and other clients
@@ -31,6 +37,12 @@ backend:
       # ssl:
       #   ca: # if you have a CA file and want to verify it you can uncomment this section
       #     $file: <file-path>/ca/server.crt
+  errorReporter:
+    sentry:
+      dsn: ${SENTRY_DSN_BACKEND}
+      environment: production
+      releaseVersion: ${VERSION}
+      tracesSampleRate: 0.5
 
 # Reference documentation http://backstage.io/docs/features/techdocs/configuration
 # Note: After experimenting with basic setup, use CI/CD to generate docs
