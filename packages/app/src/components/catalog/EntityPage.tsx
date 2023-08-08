@@ -193,9 +193,6 @@ const componentPage = (
     <EntitySwitch.Case if={isComponentType('appcatalog')}>
       {limitedEntityPage}
     </EntitySwitch.Case>
-    <EntitySwitch.Case if={isComponentType('configuration')}>
-      {limitedEntityPage}
-    </EntitySwitch.Case>
     <EntitySwitch.Case if={isComponentType('customer')}>
       {limitedEntityPage}
     </EntitySwitch.Case>
