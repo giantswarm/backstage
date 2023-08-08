@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Add component type column.
+- Hide component tags column.
+- Adapt entity page for different component types.
+
 ## [0.1.12] - 2023-08-04
 
 ### Changed
