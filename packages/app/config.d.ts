@@ -25,7 +25,7 @@ export interface Config {
     /**
      * @visibility frontend
      */
-    errorReporter: {
+    errorReporter?: {
       /**
        * @visibility frontend
        */
