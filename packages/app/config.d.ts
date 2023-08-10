@@ -17,7 +17,7 @@ interface SentryConfig {
   /**
    * @visibility frontend
    */
-  sampleRate: number;
+  tracesSampleRate: number;
 }
 
 export interface Config {
