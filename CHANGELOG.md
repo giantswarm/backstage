@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Make errorReporter in app-config optional.
+
 ## [0.1.14] - 2023-08-10
 
 ### Added
