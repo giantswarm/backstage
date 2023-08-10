@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14] - 2023-08-10
+
 ### Added
 
 - Add Sentry error tracking.
@@ -122,7 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.14...HEAD
+[0.1.14]: https://github.com/giantswarm/backstage/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/giantswarm/backstage/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/giantswarm/backstage/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/giantswarm/backstage/compare/v0.1.10...v0.1.11
