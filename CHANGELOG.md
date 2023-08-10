@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2023-08-10
+
 ### Fixed
 
 - Make errorReporter in app-config optional.
@@ -128,7 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.14...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.1.15...HEAD
+[0.1.15]: https://github.com/giantswarm/backstage/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/giantswarm/backstage/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/giantswarm/backstage/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/giantswarm/backstage/compare/v0.1.11...v0.1.12
