@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix tracesSampleRate key name in config.
+
 ## [0.1.15] - 2023-08-10
 
 ### Fixed
