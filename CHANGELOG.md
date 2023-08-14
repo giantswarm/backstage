@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The catalog now shows all components by default, instead of only the owned ones. To only see you team's components, click the *Owned*  filter.
+
 ## [0.1.16] - 2023-08-10
 
 ### Fixed
