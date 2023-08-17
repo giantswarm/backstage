@@ -6,12 +6,13 @@ import {
   EntityDependsOnResourcesCard,
   EntityHasSystemsCard,
   EntityLayout,
-  EntitySwitch,
+  EntityLinksCard,
   EntityOrphanWarning,
   EntityProcessingErrorsPanel,
+  EntitySwitch,
+  hasCatalogProcessingErrors,
   isComponentType,
   isKind,
-  hasCatalogProcessingErrors,
   isOrphan,
 } from '@backstage/plugin-catalog';
 import {
@@ -120,6 +121,13 @@ const overviewContent = (
     <Grid item md={6} xs={12}>
       <EntityCatalogGraphCard variant="gridItem" height={400} />
     </Grid>
+    <EntitySwitch>
+      <EntitySwitch.Case if={isComponentType('service')}>
+        <Grid item md={4} xs={12}>
+          <EntityLinksCard />
+        </Grid> 
+      </EntitySwitch.Case>
+    </EntitySwitch>
   </Grid>
 );
 
