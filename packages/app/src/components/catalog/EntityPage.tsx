@@ -37,6 +37,7 @@ import {
 } from '@backstage/plugin-circleci';
 import { EntityGithubPullRequestsContent } from '@roadiehq/backstage-plugin-github-pull-requests';
 import {
+  Entity,
   RELATION_API_CONSUMED_BY,
   RELATION_API_PROVIDED_BY,
   RELATION_CONSUMES_API,
@@ -49,6 +50,13 @@ import {
 
 import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
 import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
+
+function isLinksAvailable(entity: Entity) {
+  if (entity?.metadata?.links?.length) {
+    return true;
+  }
+  return false;
+};
 
 const techdocsContent = (
   <EntityTechdocsContent>
@@ -122,7 +130,7 @@ const overviewContent = (
       <EntityCatalogGraphCard variant="gridItem" height={400} />
     </Grid>
     <EntitySwitch>
-      <EntitySwitch.Case if={isComponentType('service')}>
+      <EntitySwitch.Case if={isLinksAvailable}>
         <Grid item md={4} xs={12}>
           <EntityLinksCard />
         </Grid> 

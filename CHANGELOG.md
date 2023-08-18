@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Change condition for when to show links. Now links can be shown for all entity kinds.
+
 ## [0.3.0] - 2023-08-18
 
 - Show links for components of type service.
