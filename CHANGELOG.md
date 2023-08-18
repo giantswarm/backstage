@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Remove docs tab from entity page.
+
 ## [0.3.0] - 2023-08-18
 
 - Show links for components of type service.
