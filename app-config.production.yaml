@@ -66,7 +66,5 @@ auth:
 
 catalog:
   locations:
-    - type: file
-      target: /app/catalog/catalog.yaml
-      rules:
-        - allow: [Component, Group, User]
+    - type: url
+      target: ${CATALOG_LOCATION_URL}

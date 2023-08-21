@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Remove docs tab from entity page.
 - Add list of Grafana dashboards owned by the team to Group entity page.
+- Read catalog data from URL location.
 
 ## [0.3.0] - 2023-08-18
 

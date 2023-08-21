@@ -1,0 +1,13 @@
+# Uncomment the following catalog configuration to import catalog data from static locations.
+# File location can be used to import data from local file.
+# File locations are relative to the `packages/backend` folder.
+# URL location can be used to import data from a remote repository.
+# When multiple entities with the same metadata.name property are discovered,
+# one will be processed and all others will be skipped.
+
+# catalog:
+#   locations:
+#     - type: file
+#       target: ../../catalog/catalog.yaml
+#     - type: url
+#       target: https://github.com/org/example/blob/main/catalog-info.yaml
