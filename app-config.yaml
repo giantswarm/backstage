@@ -82,6 +82,10 @@ proxy:
     target: https://circleci.com/api/v1.1
     headers:
       Circle-Token: ${CIRCLECI_API_TOKEN}
+  /grafana/api:
+    target: https://giantswarm.grafana.net/
+    headers:
+      Authorization: Bearer ${GRAFANA_TOKEN}
   /quay/api:
     target: 'https://quay.io'
     changeOrigin: true
@@ -121,3 +125,6 @@ catalog:
       target: ../../catalog/catalog.yaml
       rules:
         - allow: [Component, Group, User]
+
+grafana:
+  domain: https://giantswarm.grafana.net

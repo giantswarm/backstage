@@ -24,6 +24,14 @@
                 }
             }
         },
+        "grafana": {
+            "type": "object",
+            "properties": {
+                "apiToken": {
+                    "type": "string"
+                }
+            }
+        },
         "groupID": {
             "type": "integer"
         },
