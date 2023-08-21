@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2023-08-21
+
 - Change condition for when to show links. Now links can be shown for all entity kinds.
 - Remove docs tab from entity page.
 - Add list of Grafana dashboards owned by the team to Group entity page.
@@ -150,7 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/giantswarm/backstage/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/giantswarm/backstage/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/giantswarm/backstage/compare/v0.1.16...v0.2.0
 [0.1.16]: https://github.com/giantswarm/backstage/compare/v0.1.15...v0.1.16
