@@ -4430,6 +4430,20 @@
   dependencies:
     lodash "^4.17.21"
 
+"@k-phoen/backstage-plugin-grafana@^0.1.22":
+  version "0.1.22"
+  resolved "https://registry.yarnpkg.com/@k-phoen/backstage-plugin-grafana/-/backstage-plugin-grafana-0.1.22.tgz#b4dc3b2e4f382d8de9ecfdb966175c81d27f9ad2"
+  integrity sha512-YGdfmRm559+MAQRWex2sHZn4tZVG4toSycvdkWYEMl9SNseIJgf1X9gaK7echSZppAOucDqAX8nk7FeCiAqStw==
+  dependencies:
+    "@backstage/catalog-model" "^1.2.1"
+    "@backstage/core-components" "^0.12.5"
+    "@backstage/core-plugin-api" "^1.5.0"
+    "@backstage/plugin-catalog-react" "^1.4.0"
+    "@material-ui/core" "^4.12.2"
+    "@material-ui/lab" "4.0.0-alpha.57"
+    jsep "^1.3.8"
+    react-use "^17.2.4"
+
 "@keyv/memcache@^1.3.5":
   version "1.3.7"
   resolved "https://registry.yarnpkg.com/@keyv/memcache/-/memcache-1.3.7.tgz#34d7a1a8bf1616a1175d9fe36ea8e36706330045"
@@ -7529,7 +7543,7 @@
   resolved "https://registry.yarnpkg.com/@types/range-parser/-/range-parser-1.2.4.tgz#cd667bcfdd025213aafb7ca5915a932590acdcdc"
   integrity sha512-EEhsLsD6UsDM1yFhAvy0Cjr6VwmpMWqFBCb9w07wVugF7w9nfajxLuVmngTIpgS6svCnm6Vaw+MZhoDCKnOfsw==
 
-"@types/react-dom@*", "@types/react-dom@<18.0.0":
+"@types/react-dom@*", "@types/react-dom@<18.0.0", "@types/react-dom@^17":
   version "17.0.20"
   resolved "https://registry.yarnpkg.com/@types/react-dom/-/react-dom-17.0.20.tgz#e0c8901469d732b36d8473b40b679ad899da1b53"
   integrity sha512-4pzIjSxDueZZ90F52mU3aPoogkHIoSIDG+oQ+wQK7Cy2B9S+MvOqY0uEA/qawKz381qrEDkvpwyt8Bm31I8sbA==
@@ -8270,6 +8284,7 @@ anymatch@^3.0.3, anymatch@~3.1.2:
     "@backstage/plugin-techdocs-react" "^1.1.8"
     "@backstage/plugin-user-settings" "^0.7.5"
     "@backstage/theme" "^0.4.1"
+    "@k-phoen/backstage-plugin-grafana" "^0.1.22"
     "@material-ui/core" "^4.12.2"
     "@material-ui/icons" "^4.9.1"
     "@roadiehq/backstage-plugin-github-pull-requests" "^2.5.7"
@@ -14292,6 +14307,11 @@ jsdom@^20.0.0:
     whatwg-url "^11.0.0"
     ws "^8.11.0"
     xml-name-validator "^4.0.0"
+
+jsep@^1.3.8:
+  version "1.3.8"
+  resolved "https://registry.yarnpkg.com/jsep/-/jsep-1.3.8.tgz#facb6eb908d085d71d950bd2b24b757c7b8a46d7"
+  integrity sha512-qofGylTGgYj9gZFsHuyWAN4jr35eJ66qJCK4eKDnldohuUoQFbU3iZn2zjvEbd9wOAhP9Wx5DsAAduTyE1PSWQ==
 
 jsesc@^2.5.1:
   version "2.5.2"

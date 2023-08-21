@@ -46,6 +46,14 @@ import {
   RELATION_PROVIDES_API,
 } from '@backstage/catalog-model';
 
+import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
+import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
+
+import {
+  EntityGrafanaDashboardsCard,
+  isDashboardSelectorAvailable,
+} from '@k-phoen/backstage-plugin-grafana';
+
 const circleCIContent = (
   <EntitySwitch>
     <EntitySwitch.Case if={isCircleCIAvailable}>
@@ -109,6 +117,7 @@ const overviewContent = (
     <Grid item md={6} xs={12}>
       <EntityCatalogGraphCard variant="gridItem" height={400} />
     </Grid>
+    
     <EntitySwitch>
       <EntitySwitch.Case if={isComponentType('service')}>
         <Grid item md={4} xs={12}>
@@ -237,16 +246,28 @@ const groupPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       <Grid container spacing={3}>
+
         {entityWarningContent}
+
         <Grid item xs={12} md={6}>
           <EntityGroupProfileCard variant="gridItem" />
         </Grid>
         <Grid item xs={12} md={6}>
           <EntityOwnershipCard variant="gridItem" />
         </Grid>
+        
         <Grid item xs={12}>
           <EntityMembersListCard />
         </Grid>
+
+        <EntitySwitch>
+          <EntitySwitch.Case if={e => !!isDashboardSelectorAvailable(e)}>
+            <Grid item xs={12}>
+              <EntityGrafanaDashboardsCard title="Grafana Cloud dashboards" />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+
       </Grid>
     </EntityLayout.Route>
   </EntityLayout>
