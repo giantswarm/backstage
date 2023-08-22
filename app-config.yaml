@@ -114,17 +114,16 @@ scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
 
 catalog:
-  import:
-    entityFilename: catalog-info.yaml
-    pullRequestBranchName: backstage-integration
   rules:
-    - allow: [Component, Domain, System, API, Resource, Location]
-  locations:
-    # File locations are relative to the `packages/backend` folder.
-    - type: file
-      target: ../../catalog/catalog.yaml
-      rules:
-        - allow: [Component, Group, User]
+    - allow:
+      - API
+      - Component
+      - Domain
+      - Group
+      - Location
+      - Resource
+      - System
+      - User
 
 grafana:
   domain: https://giantswarm.grafana.net
