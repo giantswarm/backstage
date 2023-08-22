@@ -116,14 +116,14 @@ scaffolder:
 catalog:
   rules:
     - allow:
-      - Component
-      - Group
-      - User
-      - System
-      - Domain
       - API
-      - Resource
+      - Component
+      - Domain
+      - Group
       - Location
+      - Resource
+      - System
+      - User
 
 grafana:
   domain: https://giantswarm.grafana.net
