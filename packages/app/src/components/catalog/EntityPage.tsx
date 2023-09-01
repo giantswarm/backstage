@@ -52,6 +52,11 @@ import {
   isDashboardSelectorAvailable,
 } from '@k-phoen/backstage-plugin-grafana';
 
+import {
+  EntityOpsgenieAlertsCard,
+  isOpsgenieAvailable
+} from '@k-phoen/backstage-plugin-opsgenie';
+
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
     return true;
@@ -130,6 +135,14 @@ const overviewContent = (
         </Grid> 
       </EntitySwitch.Case>
     </EntitySwitch>
+
+    <EntitySwitch>
+        <EntitySwitch.Case if={isOpsgenieAvailable}>
+          <Grid item md={4} xs={12}>
+            <EntityOpsgenieAlertsCard title="Alerts" />
+          </Grid>
+        </EntitySwitch.Case>
+      </EntitySwitch>
   </Grid>
 );
 
