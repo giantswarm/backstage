@@ -125,6 +125,11 @@ catalog:
       target: ../../catalog/catalog.yaml
       rules:
         - allow: [Component, Group, User]
+    - type: file
+      target: ../../catalog/templates/*.yaml
+      rules:
+        - allow:
+            - Template
 
 grafana:
   domain: https://giantswarm.grafana.net
