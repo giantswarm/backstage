@@ -22,6 +22,7 @@ import {
 } from '@backstage/core-components';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
+import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -63,6 +64,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         {/* Global nav, not org-specific */}
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
+        <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
         {/* End global nav */}
       </SidebarGroup>
       <SidebarSpace />
