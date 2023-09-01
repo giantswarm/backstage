@@ -86,6 +86,10 @@ proxy:
     target: https://giantswarm.grafana.net/
     headers:
       Authorization: Bearer ${GRAFANA_TOKEN}
+  /opsgenie/api:
+    target: https://api.opsgenie.com
+    headers:
+      Authorization: GenieKey ${OPSGENIE_API_KEY}
   /quay/api:
     target: 'https://quay.io'
     changeOrigin: true
@@ -127,3 +131,6 @@ catalog:
 
 grafana:
   domain: https://giantswarm.grafana.net
+
+opsgenie:
+  domain: https://giantswarm.app.opsgenie.com/
