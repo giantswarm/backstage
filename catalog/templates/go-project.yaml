@@ -1,0 +1,167 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: go-project
+  title: Go project
+  description: A Go project without any deployment capabilities, suited best for CLIs or libraries
+spec:
+  owner: team-honeybadger
+  type: Component
+
+  # User input parameters and form details config
+  parameters:
+    - title: Basic details
+      required:
+        - name
+        - description
+        - visibility
+        - owner
+      description: Please fill in the required details. Make sure to pick a name carefully, as it will be quite a hassle to change it later.
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Unique name of the component and repository
+          pattern: "[a-z][-a-z0-9]+"
+          minLength: 2
+          maxLength: 100
+          ui:autofocus: true
+        description:
+          title: Description
+          type: string
+          description: Please give a general description in one sentence, so everybody can understand what this project and repo is for.
+        visibility:
+          title: Repository visibility
+          type: string
+          default: public
+          enum:
+            - public
+            - private
+          ui:widget: radio
+        owner:
+          type: string
+          ui:field: OwnerPicker
+
+    - title: Integrations
+      description: Select the technical integrations you need for sure. You can always add integrations later.
+      properties:
+        circleci:
+          type: boolean
+          title: I want CircleCI checks and builds for this project
+          default: true
+          ui:autofocus: true
+        image_registry:
+          type: boolean
+          title: I want a container image repository for this project
+          default: false
+        renovate:
+          type: boolean
+          title: I want Renovate to help update dependencies in this project
+          default: true
+
+    - title: Additional options
+      description: For fine-tuning our automations you can set some additional options here. These can also be modified later.
+      properties:
+        precommit:
+          type: boolean
+          default: true
+          title: Provide pre-commit framework configuration
+          ui:autofocus: true
+        flavors:
+          type: object
+          title: Flavours
+          description: Select the type of repository features you want to enable for your project. Check [the docs](https://devportal.giantswarm.io/docs/default/component/devctl/docs/flavours/) to read more.
+          properties:
+            cli:
+              type: boolean
+              description: Check this if the project will include a CLI utility.
+            k8sapi:
+              type: boolean
+              description: Check if the project will include a Kubernetes API definition (CRD).
+
+    - title: Developer portal catalog
+      description: Specify how this project will appear in the catalog.
+      properties:
+        componentType:
+          type: string
+          title: Component type
+          description: The component type this project should be shown as here in the developer portal catalog-info.yaml
+          default: unspecified
+          ui:autofocus: true
+          enum:
+            - unspecified
+            - cli
+            - library
+            - service
+        # system:
+        #   type: string
+        #   title: System
+        #   description: Pick the system your new component belongs to (if any).
+        #   ui:field: EntityPicker
+        #   default: ""
+        #   ui:options:
+        #     catalogFilter: 
+        #       - kind: System
+
+  # Creation steps
+  steps:
+    - id: fetch-base
+      name: Fetch and adapt template
+      action: fetch:template
+      input:
+        url: https://github.com/giantswarm/template/tree/nunjucks-syntax
+        copyWithoutTemplating:
+          - .github/workflows/* # required to prevent the attempt to replace ${{ variables }}
+        values:
+          REPOSITORY_NAME: ${{ parameters.name }}
+          OWNER: ${{ parameters.owner }}
+          DESCRIPTION: ${{ parameters.description }}
+          COMPONENT_TYPE: ${{ parameters.componentType }}
+          SYSTEM: ${{ parameters.system }}
+          VISIBILITY: ${{ parameters.visibility }}
+          WANT_CIRCLECI: ${{ parameters.circleci }}
+          WANT_IMAGE_REGISTRY: ${{ parameters.image_registry }}
+          RENOVATE: ${{ parameters.renovate }}
+          FLAVOUR_CLI: ${{ parameters.flavors.cli }}
+          FLAVOUR_K8SAPI: ${{ parameters.flavors.k8sapi }}
+    
+    - id: overwrite-codeowners
+      name: Create CODEOWNERS file
+      action: github:codeowners:create
+      input:
+        organization: giantswarm
+        team: ${{ parameters.owner }}
+    
+    - id: publish
+      name: Publish new repository
+      action: publish:github
+      input:
+        repoUrl: github.com?repo=${{ parameters.name }}&owner=giantswarm
+        description: ${{ parameters.description }}
+        access: giantswarm/employees
+        repoVisibility: ${{ parameters.visibility }}
+        defaultBranch: main
+        protectDefaultBranch: true
+        protectEnforceAdmins: true
+        deleteBranchOnMerge: true
+        gitAuthorName: Developer portal
+        allowMergeCommit: false
+        allowSquashMerge: true
+        allowRebaseMerge: false
+        allowAutoMerge: true
+        collaborators:
+          - team: bots
+            access: push
+        hasProjects: false
+        hasWiki: false
+        hasIssues: false
+
+  # Results output
+  output:
+    links:
+      - title: Your new repository
+        url: ${{ steps['publish'].output.repoContentsUrl }}
+    text:
+      - title: Next steps
+        content: |
+          **Please read your new repository's README file.** There are some instructions for you regarding how to proceed.
