@@ -278,16 +278,27 @@ const groupPage = (
 
         {entityWarningContent}
 
-        <Grid item xs={12} md={6}>
+        <Grid item md={8} xs={12}>
           <EntityGroupProfileCard variant="gridItem" />
         </Grid>
-        <Grid item xs={12} md={6}>
+
+        <EntitySwitch>
+          <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
+            <Grid item md={4} xs={12}>
+              <EntityOpsgenieOnCallListCard title="Who is on-call"/>
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+
+        <Grid item xs={12}>
           <EntityOwnershipCard variant="gridItem" />
         </Grid>
         
         <Grid item xs={12}>
           <EntityMembersListCard />
         </Grid>
+
+        
 
         <EntitySwitch>
           <EntitySwitch.Case if={e => !!isDashboardSelectorAvailable(e)}>
