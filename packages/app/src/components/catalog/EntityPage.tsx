@@ -54,7 +54,9 @@ import {
 
 import {
   EntityOpsgenieAlertsCard,
-  isOpsgenieAvailable
+  isOpsgenieAvailable,
+  EntityOpsgenieOnCallListCard,
+  isOpsgenieOnCallListAvailable
 } from '@k-phoen/backstage-plugin-opsgenie';
 
 function isLinksAvailable(entity: Entity) {
@@ -137,12 +139,20 @@ const overviewContent = (
     </EntitySwitch>
 
     <EntitySwitch>
-        <EntitySwitch.Case if={isOpsgenieAvailable}>
-          <Grid item md={4} xs={12}>
-            <EntityOpsgenieAlertsCard title="Alerts" />
-          </Grid>
-        </EntitySwitch.Case>
-      </EntitySwitch>
+      <EntitySwitch.Case if={isOpsgenieAvailable}>
+        <Grid item md={4} xs={12}>
+          <EntityOpsgenieAlertsCard title="Alerts" />
+        </Grid>
+      </EntitySwitch.Case>
+    </EntitySwitch>
+
+    <EntitySwitch>
+      <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
+        <Grid item md={4} xs={12}>
+          <EntityOpsgenieOnCallListCard title="Who is on-call"/>
+        </Grid>
+      </EntitySwitch.Case>
+    </EntitySwitch>
   </Grid>
 );
 
