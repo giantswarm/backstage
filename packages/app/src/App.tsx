@@ -105,7 +105,7 @@ const routes = (
     </Route>
     <Route path="/settings" element={<UserSettingsPage />} />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
-    <Route path="/opsgenie" element={<OpsgeniePage />} />
+    <Route path="/opsgenie" element={<OpsgeniePage onCallListCardsCount={100} />} />
   </FlatRoutes>
 );
 
