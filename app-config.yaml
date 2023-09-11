@@ -133,4 +133,4 @@ grafana:
   domain: https://giantswarm.grafana.net
 
 opsgenie:
-  domain: https://giantswarm.app.opsgenie.com/
+  domain: https://giantswarm.app.opsgenie.com
