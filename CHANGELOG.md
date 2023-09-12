@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Update Backstage packages to v1.17.5.
+- Move out devportal specific configuration.
 
 ## [0.5.0] - 2023-08-22
 
