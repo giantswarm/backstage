@@ -126,27 +126,30 @@ const overviewContent = (
     <Grid item md={8}>
       <EntityAboutCard variant="gridItem" />
     </Grid>
-    
-    <EntitySwitch>
-      <EntitySwitch.Case if={isLinksAvailable}>
-        <Grid item md={4} xs={12}>
-          <EntityLinksCard />
-        </Grid> 
-      </EntitySwitch.Case>
-    </EntitySwitch>
+
+    <Grid item md={4} xs={12}>
+      <Grid container spacing={3} alignItems="stretch">
+        <EntitySwitch>
+          <EntitySwitch.Case if={isLinksAvailable}>
+            <Grid item xs={12}>
+              <EntityLinksCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        <EntitySwitch>
+          <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
+            <Grid item xs={12}>
+              <EntityOpsgenieOnCallListCard title="Who is on-call"/>
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+      </Grid>
+    </Grid>
 
     <EntitySwitch>
       <EntitySwitch.Case if={isOpsgenieAvailable}>
-        <Grid item md={8} xs={12}>
+        <Grid item xs={12}>
           <EntityOpsgenieAlertsCard title="Alerts" />
-        </Grid>
-      </EntitySwitch.Case>
-    </EntitySwitch>
-
-    <EntitySwitch>
-      <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
-        <Grid item md={4} xs={12}>
-          <EntityOpsgenieOnCallListCard title="Who is on-call"/>
         </Grid>
       </EntitySwitch.Case>
     </EntitySwitch>
