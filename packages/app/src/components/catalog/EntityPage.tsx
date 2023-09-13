@@ -149,10 +149,10 @@ const appcatalogEntityPage = (
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
-        <Grid item md={6}>
+        <Grid item md={12}>
           <EntityDependsOnComponentsCard variant="gridItem" />
         </Grid>
-        <Grid item md={6}>
+        <Grid item md={12}>
           <EntityDependsOnResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
@@ -187,10 +187,13 @@ const defaultEntityPage = (
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
-        <Grid item md={6}>
-          <EntityDependsOnComponentsCard variant="gridItem" />
+        <Grid item md={12}>
+          <p>Here we show only dependencies that are also included in the catalog. Use the GitHub dependencies page under <b>Insights</b> / <b>Dependency graph</b> for a more complete overview.</p>
         </Grid>
-        <Grid item md={6}>
+        <Grid item md={12}>
+          <EntityDependsOnComponentsCard title="Dependencies of this component" variant="gridItem" />
+        </Grid>
+        <Grid item md={12}>
           <EntityDependsOnResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
