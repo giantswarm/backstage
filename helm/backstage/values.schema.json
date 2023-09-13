@@ -61,6 +61,14 @@
         "nodeSelector": {
             "type": "object"
         },
+        "opsgenie": {
+            "type": "object",
+            "properties": {
+                "apiKey": {
+                    "type": "string"
+                }
+            }
+        },
         "port": {
             "type": "integer"
         },
