@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Improve entity dependencies page.
 - Update Backstage packages to v1.17.5.
+- The catalog now shows *owned* components by default again instead of *all*.
 
 ## [0.5.0] - 2023-08-22
 
 ### Changed
+
 - Add Docs menu item.
 - Read catalog data from URL location.
 
