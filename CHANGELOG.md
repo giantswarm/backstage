@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2023-09-14
 
+### Added
+
+- OpsGenie information regarding on-call and alerts is now shown in the context of entities and teams, as well as in an extra section.
+
 ### Changed
 
 - Improve entity dependencies page.
