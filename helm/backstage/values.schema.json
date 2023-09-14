@@ -2,6 +2,49 @@
     "$schema": "http://json-schema.org/schema#",
     "type": "object",
     "properties": {
+        "backstage": {
+            "title": "Backstage parameters",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "args": {
+                    "title": "Backstage container command arguments",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": []
+                },
+                "command": {
+                    "title": "Backstage container command",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "node",
+                        "packages/backend"
+                    ]
+                },
+                "extraAppConfig": {
+                    "title": "Extra app configuration files to inline into command arguments",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "filename": {
+                                "type": "string"
+                            },
+                            "configMapRef": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "default": []
+                }
+            }
+        },
         "catalogLocationUrl": {
             "type": "string"
         },

@@ -1,22 +1,8 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
-  support:
-    url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
-    items:
-      - title: Issues
-        icon: github
-        links:
-          - url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
-            title: GitHub Issues
-      - title: Slack discussion
-        icon: chat
-        links:
-          - url: https://gigantic.slack.com/archives/C055VLMTPFE
-            title: '#wg-dev-portal'
-
 organization:
-  name: Giant Swarm
+  name: My Company
 
 backend:
   # Used for enabling authentication, secret is shared by all backend plugins
@@ -53,18 +39,9 @@ backend:
   database:
     client: better-sqlite3
     connection: ':memory:'
-    # client: pg
-    # connection:
-    #   host: localhost
-    #   port: 5432
-    #   user: backstage
-    #   password: ${POSTGRES_PASSWORD}
   cache:
     store: memory
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
-  reading:
-    allow:
-    - host: "*.giantswarm.io"
 
 integrations:
   github:
@@ -79,22 +56,6 @@ proxy:
   #   '/test':
   #     target: 'https://example.com'
   #     changeOrigin: true
-  endpoints:
-    /circleci/api:
-      target: https://circleci.com/api/v1.1
-      headers:
-        Circle-Token: ${CIRCLECI_API_TOKEN}
-    /grafana/api:
-      target: https://giantswarm.grafana.net/
-      headers:
-        Authorization: Bearer ${GRAFANA_TOKEN}
-    /opsgenie/api:
-      target: https://api.opsgenie.com
-      headers:
-        Authorization: GenieKey ${OPSGENIE_API_KEY}
-    /quay/api:
-      target: 'https://quay.io'
-      changeOrigin: true
 
 # Reference documentation http://backstage.io/docs/features/techdocs/configuration
 # Note: After experimenting with basic setup, use CI/CD to generate docs
@@ -132,7 +93,7 @@ catalog:
       - User
 
 grafana:
-  domain: https://giantswarm.grafana.net
+  domain: ""
 
 opsgenie:
-  domain: https://giantswarm.app.opsgenie.com
+  domain: ""

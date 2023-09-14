@@ -34,6 +34,8 @@ Note that it can take a bit after launch until Backstage has processed the entir
 
 Once you make code changes, the development server will refresh the app automatically for you. No need to stop and start the server or hit the refresh button in your browser.
 
+To stop the development server, hit `Ctrl + C`.
+
 ## Running backend and frontend separately
 
 With the `yarn dev` command above, two processes -- backend and frontend -- are logging into the same terminal. If this is not what you want, you can start both processes separately.

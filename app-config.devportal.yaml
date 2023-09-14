@@ -1,0 +1,58 @@
+app:
+  title: Dev Portal
+  support:
+    url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
+    items:
+      - title: Issues
+        icon: github
+        links:
+          - url: https://github.com/giantswarm/giantswarm/labels/component%2Fdevportal
+            title: GitHub Issues
+      - title: Slack discussion
+        icon: chat
+        links:
+          - url: https://gigantic.slack.com/archives/C055VLMTPFE
+            title: '#wg-dev-portal'
+
+organization:
+  name: Giant Swarm
+
+backend:
+  reading:
+    allow:
+    - host: "*.giantswarm.io"
+
+proxy:
+  ### Example for how to add a proxy endpoint for the frontend.
+  ### A typical reason to do this is to handle HTTPS and CORS for internal services.
+  # endpoints:
+  #   '/test':
+  #     target: 'https://example.com'
+  #     changeOrigin: true
+  endpoints:
+    /circleci/api:
+      target: https://circleci.com/api/v1.1
+      headers:
+        Circle-Token: ${CIRCLECI_API_TOKEN}
+    /grafana/api:
+      target: https://giantswarm.grafana.net/
+      headers:
+        Authorization: Bearer ${GRAFANA_TOKEN}
+    /opsgenie/api:
+      target: https://api.opsgenie.com
+      headers:
+        Authorization: GenieKey ${OPSGENIE_API_KEY}
+    /quay/api:
+      target: 'https://quay.io'
+      changeOrigin: true
+
+grafana:
+  domain: https://giantswarm.grafana.net
+
+opsgenie:
+  domain: https://giantswarm.app.opsgenie.com
+
+catalog:
+  locations:
+    - type: url
+      target: ${CATALOG_LOCATION_URL}

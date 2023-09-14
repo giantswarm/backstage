@@ -41,6 +41,19 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.port }}
+          {{- if .Values.backstage.command }}
+          command: {{- .Values.backstage.command | toYaml | nindent 12 }}
+          {{- end }}
+          args:
+          {{- range .Values.backstage.args }}
+            - {{ . | quote }}
+          {{- end }}
+          {{- if .Values.backstage.extraAppConfig }}
+          {{- range .Values.backstage.extraAppConfig }}
+            - "--config"
+            - "{{ .filename }}"
+          {{- end }}
+          {{- end }}
           resources:
             requests:
               cpu: 300m
@@ -59,6 +72,13 @@ spec:
               readOnly: true
               mountPath: /app/github-app-production-credentials.yaml
               subPath: github-app-production-credentials.yaml
+            {{- if .Values.backstage.extraAppConfig }}
+            {{- range .Values.backstage.extraAppConfig }}
+            - name: {{ .configMapRef }}
+              mountPath: "/app/{{ .filename }}"
+              subPath: {{ .filename }}
+            {{- end }}
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -68,6 +88,13 @@ spec:
         - name: secret-volume
           secret:
             secretName: github-app-credentials-secret
+        {{- if .Values.backstage.extraAppConfig }}
+        {{- range .Values.backstage.extraAppConfig }}
+        - name: {{ .configMapRef }}
+          configMap:
+            name: {{ .configMapRef }}
+        {{- end }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

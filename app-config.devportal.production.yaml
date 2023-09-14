@@ -1,0 +1,58 @@
+app:
+  # Should be the same as backend.baseUrl when using the `app-backend` plugin.
+  baseUrl: https://devportal.giantswarm.io
+  errorReporter:
+    sentry:
+      dsn: ${SENTRY_DSN_APP}
+      environment: production
+      releaseVersion: ${VERSION}
+      tracesSampleRate: 0.5
+
+backend:
+  baseUrl: https://devportal.giantswarm.io
+  listen:
+    port: 7007
+    host: 0.0.0.0
+  cors:
+    origin: https://devportal.giantswarm.io
+
+  # config options: https://node-postgres.com/api/client
+  # database:
+    # client: pg
+    # connection:
+    #   host: ${POSTGRES_HOST}
+    #   port: ${POSTGRES_PORT}
+    #   user: ${POSTGRES_USER}
+    #   password: ${POSTGRES_PASSWORD}
+      # https://node-postgres.com/features/ssl
+      # you can set the sslmode configuration option via the `PGSSLMODE` environment variable
+      # see https://www.postgresql.org/docs/current/libpq-ssl.html Table 33.1. SSL Mode Descriptions (e.g. require)
+      # ssl:
+      #   ca: # if you have a CA file and want to verify it you can uncomment this section
+      #     $file: <file-path>/ca/server.crt
+  errorReporter:
+    sentry:
+      dsn: ${SENTRY_DSN_BACKEND}
+      environment: production
+      releaseVersion: ${VERSION}
+      tracesSampleRate: 0.5
+
+# Reference documentation http://backstage.io/docs/features/techdocs/configuration
+# Note: After experimenting with basic setup, use CI/CD to generate docs
+# and an external cloud storage when deploying TechDocs for production use-case.
+# https://backstage.io/docs/features/techdocs/how-to-guides#how-to-migrate-from-techdocs-basic-to-recommended-deployment-approach
+techdocs:
+  builder: 'local' # Alternatives - 'external'
+  generator:
+    runIn: 'local' # Alternatives: 'docker'
+  publisher:
+    type: 'local' # Alternatives: 'googleGcs', 'awsS3'
+
+auth:
+  # see https://backstage.io/docs/auth/ to learn about auth providers
+  environment: production
+  providers:
+    github:
+      production:
+        clientId: ${GITHUB_OAUTH_CLIENT_ID}
+        clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
