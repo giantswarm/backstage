@@ -37,6 +37,8 @@ import { githubAuthApiRef } from '@backstage/core-plugin-api';
 import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
+import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
+
 const app = createApp({
   apis,
   components: {
@@ -103,6 +105,7 @@ const routes = (
     </Route>
     <Route path="/settings" element={<UserSettingsPage />} />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
+    <Route path="/opsgenie" element={<OpsgeniePage onCallListCardsCount={100} />} />
   </FlatRoutes>
 );
 

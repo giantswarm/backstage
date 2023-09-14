@@ -9,12 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Split up devportal specific configuration.
+
+## [0.6.0] - 2023-09-14
+
+### Added
+
+- OpsGenie information regarding on-call and alerts is now shown in the context of entities and teams, as well as in an extra section.
+
+### Changed
+
+- Improve entity dependencies page.
 - Update Backstage packages to v1.17.5.
-- Move out devportal specific configuration.
+- The catalog now shows *owned* components by default again instead of *all*.
 
 ## [0.5.0] - 2023-08-22
 
 ### Changed
+
 - Add Docs menu item.
 - Read catalog data from URL location.
 
@@ -163,7 +175,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/giantswarm/backstage/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/giantswarm/backstage/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/giantswarm/backstage/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/giantswarm/backstage/compare/v0.2.0...v0.3.0

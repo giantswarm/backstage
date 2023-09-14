@@ -52,6 +52,13 @@ import {
   isDashboardSelectorAvailable,
 } from '@k-phoen/backstage-plugin-grafana';
 
+import {
+  EntityOpsgenieAlertsCard,
+  isOpsgenieAvailable,
+  EntityOpsgenieOnCallListCard,
+  isOpsgenieOnCallListAvailable
+} from '@k-phoen/backstage-plugin-opsgenie';
+
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
     return true;
@@ -116,20 +123,40 @@ const entityWarningContent = (
 const overviewContent = (
   <Grid container spacing={3} alignItems="stretch">
     {entityWarningContent}
-    <Grid item md={6}>
+    <Grid item md={8}>
       <EntityAboutCard variant="gridItem" />
     </Grid>
-    <Grid item md={6} xs={12}>
-      <EntityCatalogGraphCard variant="gridItem" height={400} />
+
+    <Grid item md={4} xs={12}>
+      <Grid container spacing={3} alignItems="stretch">
+        <EntitySwitch>
+          <EntitySwitch.Case if={isLinksAvailable}>
+            <Grid item xs={12}>
+              <EntityLinksCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        <EntitySwitch>
+          <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
+            <Grid item xs={12}>
+              <EntityOpsgenieOnCallListCard title="Who is on-call"/>
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+      </Grid>
     </Grid>
-    
+
     <EntitySwitch>
-      <EntitySwitch.Case if={isLinksAvailable}>
-        <Grid item md={4} xs={12}>
-          <EntityLinksCard />
-        </Grid> 
+      <EntitySwitch.Case if={isOpsgenieAvailable}>
+        <Grid item xs={12}>
+          <EntityOpsgenieAlertsCard title="Alerts" />
+        </Grid>
       </EntitySwitch.Case>
     </EntitySwitch>
+
+    <Grid item md={12} xs={12}>
+      <EntityCatalogGraphCard variant="gridItem" height={400} />
+    </Grid>
   </Grid>
 );
 
@@ -149,10 +176,10 @@ const appcatalogEntityPage = (
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
-        <Grid item md={6}>
+        <Grid item md={12}>
           <EntityDependsOnComponentsCard variant="gridItem" />
         </Grid>
-        <Grid item md={6}>
+        <Grid item md={12}>
           <EntityDependsOnResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
@@ -187,10 +214,13 @@ const defaultEntityPage = (
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
-        <Grid item md={6}>
-          <EntityDependsOnComponentsCard variant="gridItem" />
+        <Grid item md={12}>
+          <p>Here we show only dependencies that are also included in the catalog. Use the GitHub dependencies page under <b>Insights</b> / <b>Dependency graph</b> for a more complete overview.</p>
         </Grid>
-        <Grid item md={6}>
+        <Grid item md={12}>
+          <EntityDependsOnComponentsCard title="Dependencies of this component" variant="gridItem" />
+        </Grid>
+        <Grid item md={12}>
           <EntityDependsOnResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
@@ -254,16 +284,27 @@ const groupPage = (
 
         {entityWarningContent}
 
-        <Grid item xs={12} md={6}>
+        <Grid item md={8} xs={12}>
           <EntityGroupProfileCard variant="gridItem" />
         </Grid>
-        <Grid item xs={12} md={6}>
+
+        <EntitySwitch>
+          <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
+            <Grid item md={4} xs={12}>
+              <EntityOpsgenieOnCallListCard title="Who is on-call"/>
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+
+        <Grid item xs={12}>
           <EntityOwnershipCard variant="gridItem" />
         </Grid>
         
         <Grid item xs={12}>
           <EntityMembersListCard />
         </Grid>
+
+        
 
         <EntitySwitch>
           <EntitySwitch.Case if={e => !!isDashboardSelectorAvailable(e)}>

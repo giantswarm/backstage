@@ -94,3 +94,6 @@ catalog:
 
 grafana:
   domain: ""
+
+opsgenie:
+  domain: ""

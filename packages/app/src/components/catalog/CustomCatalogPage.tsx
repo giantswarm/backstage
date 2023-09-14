@@ -47,6 +47,7 @@ export function CustomCatalogPage(props: CustomCatalogPageProps) {
   const {
     columns,
     actions,
+    initiallySelectedFilter = 'owned',
     initialKind = 'component',
     tableOptions = {},
     emptyContent,
@@ -66,7 +67,7 @@ export function CustomCatalogPage(props: CustomCatalogPageProps) {
             <CatalogFilterLayout.Filters>
               <EntityKindPicker initialFilter={initialKind} />
               <EntityTypePicker />
-              <UserListPicker />
+              <UserListPicker initialFilter={initiallySelectedFilter} />
               <EntityOwnerPicker mode={ownerPickerMode} />
               <EntityLifecyclePicker />
               <EntityTagPicker />

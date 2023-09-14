@@ -28,6 +28,9 @@ githubAppCredentials: ""
 grafana:
   apiToken: ""
 
+opsgenie:
+  apiKey: ""
+
 sentry:
   app:
     dsn: ""
