@@ -31,6 +31,10 @@ grafana:
 opsgenie:
   apiKey: ""
 
+# Quay plugin configuration
+quay:
+  apiToken: ""
+
 sentry:
   app:
     dsn: ""
