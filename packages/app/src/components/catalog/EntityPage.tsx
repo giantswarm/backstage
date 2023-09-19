@@ -59,6 +59,8 @@ import {
   isOpsgenieOnCallListAvailable
 } from '@k-phoen/backstage-plugin-opsgenie';
 
+import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
+
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
     return true;
@@ -210,6 +212,10 @@ const defaultEntityPage = (
 
     <EntityLayout.Route path="/circleci" title="CircleCI">
       {circleCIContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route if={isQuayAvailable} path="/quay" title="Quay">
+      <QuayPage />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">

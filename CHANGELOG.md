@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added Quay.io info on docker images.
+
 ### Changed
 
 - Extended the development documentation and moved it into a separate file.

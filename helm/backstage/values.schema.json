@@ -115,6 +115,14 @@
         "port": {
             "type": "integer"
         },
+        "quay": {
+            "type": "object",
+            "properties": {
+                "apiToken": {
+                    "type": "string"
+                }
+            }
+        },
         "registry": {
             "type": "object",
             "properties": {

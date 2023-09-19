@@ -43,8 +43,12 @@ proxy:
       headers:
         Authorization: GenieKey ${OPSGENIE_API_KEY}
     /quay/api:
-      target: 'https://quay.io'
+      target: https://quay.io
+      headers:
+        X-Requested-With: XMLHttpRequest
+        Authorization: Bearer ${QUAY_TOKEN}
       changeOrigin: true
+      secure: true
 
 grafana:
   domain: https://giantswarm.grafana.net
@@ -56,3 +60,6 @@ catalog:
   locations:
     - type: url
       target: ${CATALOG_LOCATION_URL}
+
+quay:
+  uiUrl: https://quay.io
