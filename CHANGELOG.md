@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Push chart archive to control-plane app catalog.
+
 ## [0.8.0] - 2023-09-19
 
 ### Added
