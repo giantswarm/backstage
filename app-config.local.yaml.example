@@ -12,6 +12,6 @@
 catalog:
   locations:
     - type: url
-      target: https://github.com/giantswarm/github/blob/main/catalog/generated.yaml
+      target: https://github.com/giantswarm/github/blob/main/catalog/*.yaml
     # - type: file
     #   target: ../../catalog/catalog.yaml
