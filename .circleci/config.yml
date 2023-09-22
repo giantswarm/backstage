@@ -41,6 +41,19 @@ workflows:
           filters:
             tags:
               only: /^v.*/
+      - architect/push-to-app-catalog:
+          executor: app-build-suite
+          name: push-to-control-plane-app-catalog
+          context: architect
+          app_catalog: "control-plane-catalog"
+          app_catalog_test: "control-plane-test-catalog"
+          chart: "backstage"
+          persist_chart_archive: true
+          requires:
+            - build-container
+          filters:
+            tags:
+              only: /^v.*/
 
 jobs:
 
