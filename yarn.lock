@@ -7350,9 +7350,9 @@
     "@types/ssh2" "*"
 
 "@types/dockerode@^3.3.0":
-  version "3.3.16"
-  resolved "https://registry.yarnpkg.com/@types/dockerode/-/dockerode-3.3.16.tgz#3f6c90385a34af40ca8e07e20d26dea4d520eb7b"
-  integrity sha512-ZAX2VrkTjwjk1808T8m6vMr+CFXSLiDD+tkEkLThI+v83AfzlYQZEWfZKwFyk1PWopSXkdDunmIhrF7sxt+zWg==
+  version "3.3.20"
+  resolved "https://registry.yarnpkg.com/@types/dockerode/-/dockerode-3.3.20.tgz#2ddf878d85094104502119821c2951f0a9c41ef9"
+  integrity sha512-Q+1e3z6SPWXR/Sk+WIyJFVsSDg78S7MDaGcwAh1WKlveO1tVO8TF1rOzJir5GLnqzEdUbclFKlw/4rhwESxwPw==
   dependencies:
     "@types/docker-modem" "*"
     "@types/node" "*"
@@ -7707,7 +7707,7 @@
   resolved "https://registry.yarnpkg.com/@types/range-parser/-/range-parser-1.2.4.tgz#cd667bcfdd025213aafb7ca5915a932590acdcdc"
   integrity sha512-EEhsLsD6UsDM1yFhAvy0Cjr6VwmpMWqFBCb9w07wVugF7w9nfajxLuVmngTIpgS6svCnm6Vaw+MZhoDCKnOfsw==
 
-"@types/react-dom@*", "@types/react-dom@<18.0.0":
+"@types/react-dom@*", "@types/react-dom@<18.0.0", "@types/react-dom@^17":
   version "17.0.20"
   resolved "https://registry.yarnpkg.com/@types/react-dom/-/react-dom-17.0.20.tgz#e0c8901469d732b36d8473b40b679ad899da1b53"
   integrity sha512-4pzIjSxDueZZ90F52mU3aPoogkHIoSIDG+oQ+wQK7Cy2B9S+MvOqY0uEA/qawKz381qrEDkvpwyt8Bm31I8sbA==
@@ -8453,6 +8453,7 @@ anymatch@^3.0.3, anymatch@~3.1.2:
     "@backstage/plugin-techdocs-react" "^1.1.9"
     "@backstage/plugin-user-settings" "^0.7.8"
     "@backstage/theme" "^0.4.1"
+    "@janus-idp/backstage-plugin-quay" "^1.3.0"
     "@k-phoen/backstage-plugin-grafana" "^0.1.22"
     "@k-phoen/backstage-plugin-opsgenie" "^0.6.6"
     "@material-ui/core" "^4.12.2"
