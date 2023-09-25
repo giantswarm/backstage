@@ -22,5 +22,11 @@
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.*)$"
     }
+  ],
+  "packageRules": [
+    {
+      "matchPackagePrefixes": ["@backstage"],
+      "groupName": "backstage packages"
+    }
   ]
 }
