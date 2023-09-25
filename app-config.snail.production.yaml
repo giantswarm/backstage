@@ -1,0 +1,20 @@
+app:
+  # Should be the same as backend.baseUrl when using the `app-backend` plugin.
+  baseUrl: https://portal.snail.gaws.gigantic.io
+
+backend:
+  baseUrl: https://portal.snail.gaws.gigantic.io
+  listen:
+    port: 7007
+    host: 0.0.0.0
+  cors:
+    origin: https://portal.snail.gaws.gigantic.io
+
+auth:
+  # see https://backstage.io/docs/auth/ to learn about auth providers
+  environment: production
+  providers:
+    github:
+      production:
+        clientId: ${GITHUB_OAUTH_CLIENT_ID}
+        clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
