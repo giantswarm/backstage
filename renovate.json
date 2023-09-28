@@ -23,6 +23,8 @@
       "extractVersionTemplate": "^v(?<version>.*)$"
     }
   ],
+  "reviewers": ["gusevda"],
+  "reviewersFromCodeOwners": false,
   "packageRules": [
     {
       "matchPackagePrefixes": ["@backstage"],
