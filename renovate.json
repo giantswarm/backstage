@@ -29,6 +29,10 @@
     {
       "matchPackagePrefixes": ["@backstage"],
       "groupName": "backstage packages"
+    },
+    {
+      "matchPackagePrefixes": ["@testing-library"],
+      "groupName": "testing-library packages"
     }
   ]
 }
