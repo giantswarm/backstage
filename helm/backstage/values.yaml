@@ -14,10 +14,15 @@ hostnames: []
 registry:
   domain: quay.io
 
+authSessionSecret: ""
+
 catalogLocationUrl: ""
 
 circleci:
   apiToken: ""
+
+dexAuthCredentials:
+  clientID: ""
 
 githubAuthCredentials:
   clientID: ""

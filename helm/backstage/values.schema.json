@@ -2,6 +2,9 @@
     "$schema": "http://json-schema.org/schema#",
     "type": "object",
     "properties": {
+        "authSessionSecret": {
+            "type": "string"
+        },
         "backstage": {
             "title": "Backstage parameters",
             "type": "object",
@@ -52,6 +55,14 @@
             "type": "object",
             "properties": {
                 "apiToken": {
+                    "type": "string"
+                }
+            }
+        },
+        "dexAuthCredentials": {
+            "type": "object",
+            "properties": {
+                "clientID": {
                     "type": "string"
                 }
             }
