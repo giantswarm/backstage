@@ -23,6 +23,8 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
+import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
+import { ConfigurationAvailable } from '../ConfigurationAvailable/ConfigurationAvailable';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -64,7 +66,13 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         {/* Global nav, not org-specific */}
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-        <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
+        <ConfigurationAvailable configKey='opsgenie.domain'>
+          <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
+        </ConfigurationAvailable>
+        <ConfigurationAvailable configKey='gs'>
+          <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
+        </ConfigurationAvailable>
+
         {/* End global nav */}
       </SidebarGroup>
       <SidebarSpace />

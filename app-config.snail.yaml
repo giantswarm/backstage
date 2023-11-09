@@ -3,6 +3,32 @@ backend:
     allow:
     - host: "*.gigantic.io"
 
+proxy:
+  endpoints:
+    /gs/api/snail:
+      target: https://happaapi.snail.gaws.gigantic.io/
+      allowedHeaders: ['Authorization']
+
+auth:
+  environment: development
+  session:
+    secret: ${AUTH_SESSION_SECRET}
+  providers:
+    github:
+      development:
+        clientId: ${GITHUB_OAUTH_CLIENT_ID}
+        clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+    oidc:
+      development:
+        metadataUrl: https://dex.snail.gaws.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_CLIENT_ID}
+        clientSecret: none
+        tokenEndpointAuthMethod: none
+
+gs:
+  endpoints:
+    snail: https://happaapi.snail.gaws.gigantic.io
+
 catalog:
   locations:
     - type: url

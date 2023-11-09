@@ -38,6 +38,8 @@ import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
+import { GSPluginPage } from '@internal/plugin-gs';
+import { ProviderSettings } from './components/AuthProviders/ProviderSettings';
 
 const app = createApp({
   apis,
@@ -46,8 +48,7 @@ const app = createApp({
       <SignInPage
         {...props}
         auto
-        providers={[
-          {
+        providers={[{
           id: 'github-auth-provider',
           title: 'GitHub',
           message: 'Sign in using GitHub',
@@ -103,9 +104,19 @@ const routes = (
     <Route path="/search" element={<SearchPage />}>
       {searchPage}
     </Route>
-    <Route path="/settings" element={<UserSettingsPage />} />
+    <Route
+      path="/settings"
+      element={(
+        <UserSettingsPage
+          providerSettings={
+            <ProviderSettings />
+          }
+        />
+      )}
+    />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/opsgenie" element={<OpsgeniePage onCallListCardsCount={100} />} />
+    <Route path="/clusters" element={<GSPluginPage />} />
   </FlatRoutes>
 );
 

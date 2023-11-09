@@ -11,10 +11,17 @@ backend:
     origin: https://portal.snail.gaws.gigantic.io
 
 auth:
-  # see https://backstage.io/docs/auth/ to learn about auth providers
   environment: production
+  session:
+    secret: ${AUTH_SESSION_SECRET}
   providers:
     github:
       production:
         clientId: ${GITHUB_OAUTH_CLIENT_ID}
         clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+    oidc:
+      production:
+        metadataUrl: https://dex.snail.gaws.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_CLIENT_ID}
+        clientSecret: none
+        tokenEndpointAuthMethod: none

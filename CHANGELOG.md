@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Custom plugin was added that allows to list workload clusters on snail.
+- OIDC authentication with Dex was added to get access to Giant Swarm MAPI.
+
 ### Changed
 
 - Upgrade backstage to v1.18.4.
