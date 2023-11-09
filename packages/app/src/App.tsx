@@ -116,7 +116,7 @@ const routes = (
     />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/opsgenie" element={<OpsgeniePage onCallListCardsCount={100} />} />
-    <Route path="/gs" element={<GSPluginPage />} />
+    <Route path="/clusters" element={<GSPluginPage />} />
   </FlatRoutes>
 );
 

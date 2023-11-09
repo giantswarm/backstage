@@ -23,7 +23,7 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
-import { faIcon } from '../../assets/icons/CustomIcons';
+import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ConfigurationAvailable } from '../ConfigurationAvailable/ConfigurationAvailable';
 
 const useSidebarLogoStyles = makeStyles({
@@ -70,7 +70,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
         </ConfigurationAvailable>
         <ConfigurationAvailable configKey='gs'>
-          <SidebarItem icon={faIcon('kubernetes')} to="gs" text="GS" />
+          <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
         </ConfigurationAvailable>
 
         {/* End global nav */}

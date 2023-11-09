@@ -20,7 +20,7 @@ import {
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 import { GithubAuth, OAuth2 } from '@backstage/core-app-api';
-import { faIcon } from './assets/icons/CustomIcons';
+import { GiantSwarmIcon } from './assets/icons/CustomIcons';
 
 export const dexAuthApiRef: ApiRef<
   OAuthApi & OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
@@ -68,7 +68,7 @@ export const apis: AnyApiFactory[] = [
         provider: {
           id: 'oidc',
           title: 'Dex auth provider',
-          icon: faIcon('kubernetes'),
+          icon: GiantSwarmIcon,
         },
         environment: configApi.getOptionalString('auth.environment'),
         defaultScopes: ['openid', 'profile', 'email', 'groups', 'offline_access', 'audience:server:client_id:dex-k8s-authenticator'],
