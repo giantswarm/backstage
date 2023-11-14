@@ -11,10 +11,10 @@ import { ClustersTable } from '../ClustersTable';
 
 export const PluginPage = () => (
   <Page themeId="tool">
-    <Header title="Welcome to Giant Swarm plugin!" subtitle="Web user interface for Giant Swarm Kubernetes API" />
+    <Header title="Kubernetes clusters by Giant Swarm" subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters." />
     <Content>
-      <ContentHeader title="MC Kubernetes API">
-        <SupportButton>MC Kubernetes API.</SupportButton>
+      <ContentHeader title="Kubernetes clusters by Giant Swarm">
+        <SupportButton>This table shows all the clusters to which you have at least read access via the Giant Swarm management API.</SupportButton>
       </ContentHeader>
       <Grid container spacing={3} direction="column">
         <Grid item>
