@@ -81,6 +81,10 @@ export class DocsUrlPreparer implements PreparerBase {
     this._logger = logger;
   }
 
+  shouldCleanPreparedDirectory(): boolean {
+    return true;
+  }
+
   static fromConfig(config: PreparerConfig): DocsUrlPreparer {
     return new DocsUrlPreparer(UrlPreparer.fromConfig(config), config.logger);
   }

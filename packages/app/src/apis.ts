@@ -44,11 +44,13 @@ export const apis: AnyApiFactory[] = [
   createApiFactory({
     api: githubAuthApiRef,
     deps: {
+      configApi: configApiRef,
       discoveryApi: discoveryApiRef,
       oauthRequestApi: oauthRequestApiRef,
     },
-    factory: ({ discoveryApi, oauthRequestApi }) =>
+    factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
       GithubAuth.create({
+        configApi,
         discoveryApi,
         oauthRequestApi,
         defaultScopes: ['read:user', 'repo', 'read:org'],
