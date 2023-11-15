@@ -1,6 +1,6 @@
 export interface Config {
   /** @visibility frontend */
-  gs: {
+  gs?: {
     /** @visibility frontend */
     endpoints: {
       /** @visibility frontend */

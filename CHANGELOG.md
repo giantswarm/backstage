@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Wording changes in the Giant Swarm plugin
 
+### Fixed
+- Make custom gs plugin configuration not required.
+
 ## [0.10.0] - 2023-11-09
 
 ### Added
