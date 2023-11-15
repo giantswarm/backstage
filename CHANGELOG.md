@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Make custom gs plugin configuration not required.
+- Update Content Security Policy to include fortawesome.com.
 
 ## [0.10.0] - 2023-11-09
 
