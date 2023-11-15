@@ -29,6 +29,7 @@ backend:
       - 'https://goreportcard.com'
       - 'https://img.shields.io'
       - 'https://pkg.go.dev'
+      - 'https://use.fortawesome.com'
       - 'https://user-images.githubusercontent.com'
     # Content-Security-Policy directives follow the Helmet format: https://helmetjs.github.io/#reference
     # Default Helmet Content-Security-Policy values can be removed by setting the key to false
