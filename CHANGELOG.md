@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Upgrade backstage to v1.20.1.
+
+### Fixed
+
+- Fix Content Security Policy to include fortawesome.com.
+
 ## [0.10.1] - 2023-11-15
 
 ### Changed
@@ -14,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wording changes in the Giant Swarm plugin
 
 ### Fixed
+
 - Make custom gs plugin configuration not required.
 - Update Content Security Policy to include fortawesome.com.
 
