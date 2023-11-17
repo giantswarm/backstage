@@ -7167,9 +7167,9 @@
   integrity sha512-j4x4XJwZvorEUbA519VdQ5b9AOU9TSvfi8tvxMAfP8XzNLtFex7A8vFQwqOx3WACbV0KMXbACV3cZl4/gynQ7g==
 
 "@types/luxon@^3.0.0":
-  version "3.3.2"
-  resolved "https://registry.yarnpkg.com/@types/luxon/-/luxon-3.3.2.tgz#f6e3524c2486b949a4db445e85d93c8e9886dfe2"
-  integrity sha512-l5cpE57br4BIjK+9BSkFBOsWtwv6J9bJpC7gdXIzZyI0vuKvNTk0wZZrkQxMGsUAuGW9+WMNWF2IJMD7br2yeQ==
+  version "3.3.4"
+  resolved "https://registry.yarnpkg.com/@types/luxon/-/luxon-3.3.4.tgz#cda5c0709a0c4c01ba059c40e62d76610479049a"
+  integrity sha512-H9OXxv4EzJwE75aTPKpiGXJq+y4LFxjpsdgKwSmr503P5DkWc3AG7VAFYrFNVvqemT5DfgZJV9itYhqBHSGujA==
 
 "@types/markdown-it@^12.2.3":
   version "12.2.3"
