@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Update Content Security Policy to fix worker-src error.
+- Upgrade backstage to v1.20.3.
 
 ## [0.10.2] - 2023-11-16
 
