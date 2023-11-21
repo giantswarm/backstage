@@ -7,7 +7,7 @@ import {
 } from '@backstage/core-plugin-api';
 
 import { rootRouteRef } from './routes';
-import { GSClient, gsApiRef } from './api';
+import { GSClient, gsApiRef } from './apis';
 import { scmAuthApiRef } from '@backstage/integration-react';
 
 export const gsPlugin = createPlugin({

@@ -2,9 +2,12 @@ export interface Config {
   /** @visibility frontend */
   gs?: {
     /** @visibility frontend */
-    endpoints: {
+    installations: {
       /** @visibility frontend */
-      snail: string;
+      [installationName: string]: {
+        /** @visibility frontend */
+        apiEndpoint: string;
+      }
     }
   }
 }
