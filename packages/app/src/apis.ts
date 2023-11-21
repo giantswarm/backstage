@@ -6,27 +6,14 @@ import {
 } from '@backstage/integration-react';
 import {
   AnyApiFactory,
-  ApiRef,
-  BackstageIdentityApi,
-  OAuthApi,
-  OpenIdConnectApi,
-  ProfileInfoApi,
-  SessionApi,
   configApiRef,
   createApiFactory,
-  createApiRef,
   discoveryApiRef,
   githubAuthApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
-import { GithubAuth, OAuth2 } from '@backstage/core-app-api';
-import { GiantSwarmIcon } from './assets/icons/CustomIcons';
-
-export const dexAuthApiRef: ApiRef<
-  OAuthApi & OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
-> = createApiRef({
-  id: 'auth.dex-oidc',
-});
+import { GithubAuth } from '@backstage/core-app-api';
+import { createScmAuthInstances, gsAuthApiRefs, gsAuthProviderFactories } from '@internal/plugin-gs';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -56,49 +43,27 @@ export const apis: AnyApiFactory[] = [
         defaultScopes: ['read:user', 'repo', 'read:org'],
       }),
   }),
-  createApiFactory({
-    api: dexAuthApiRef,
-    deps: {
-      discoveryApi: discoveryApiRef,
-      oauthRequestApi: oauthRequestApiRef,
-      configApi: configApiRef,
-    },
-    factory: ({ discoveryApi, oauthRequestApi, configApi }) =>
-      OAuth2.create({
-        discoveryApi,
-        oauthRequestApi,
-        provider: {
-          id: 'oidc',
-          title: 'Dex auth provider',
-          icon: GiantSwarmIcon,
-        },
-        environment: configApi.getOptionalString('auth.environment'),
-        defaultScopes: ['openid', 'profile', 'email', 'groups', 'offline_access', 'audience:server:client_id:dex-k8s-authenticator'],
-        popupOptions: {
-          size: {
-            width: 600,
-            height: 600,
-          },
-        },
-      }),
-  }),
+
+  /**
+   * A set of OIDC auth provider factories for the GS plugin
+   */
+  ...gsAuthProviderFactories,
+
   createApiFactory({
     api: scmAuthApiRef,
     deps: {
+      configApi: configApiRef,
       githubAuthApi: githubAuthApiRef,
-      dexAuthApi: dexAuthApiRef,
+      ...gsAuthApiRefs,
     },
-    factory: ({ githubAuthApi, dexAuthApi }) =>
-      ScmAuth.merge(
+      factory: ({ configApi, githubAuthApi, ...gsAuthApis }) => {
+      return ScmAuth.merge(
         ScmAuth.forGithub(githubAuthApi),
-        
-        ScmAuth.forAuthApi(dexAuthApi, {
-          host: 'happaapi.snail.gaws.gigantic.io',
-          scopeMapping: {
-            default: [],
-            repoWrite: [],
-          }
-        }),
-      ),
+        /**
+         * ScmAuth instances for GS plugin auth providers
+         */
+        ...createScmAuthInstances(gsAuthApis, configApi)
+      );
+    }
   }),
 ];

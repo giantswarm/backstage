@@ -4,8 +4,6 @@ import * as k8sUrl from '../model/services/mapi/k8sUrl';
 import { ScmAuthApi } from '@backstage/integration-react';
 import { ICluster, IClusterList } from '../model/services/mapi/capiv1beta1';
 
-const MC = 'snail';
-
 /**
  * A client for interacting with Giant Swarm Management API.
  *
@@ -30,12 +28,13 @@ export class GSClient implements GSApi {
   }
 
   private async createUrl(options: {
-    kind: string;
+    installationName: string;
     apiVersion: string;
+    kind: string;
     namespace?: string;
   }) {
     const proxyBaseURL = await this.discoveryApi.getBaseUrl('proxy');
-    const proxyUrl = `${proxyBaseURL}/gs/api/${MC}/`;
+    const proxyUrl = `${proxyBaseURL}/gs/api/${options.installationName}/`;
 
     return k8sUrl.create({
       baseUrl: proxyUrl,
@@ -46,16 +45,14 @@ export class GSClient implements GSApi {
   }
 
   async listClusters(options: {
+    installationName: string;
     namespace?: string;
   }): Promise<ICluster[]> {
-    const apiEndpoints = this.configApi.getOptionalConfig('gs.endpoints');
-    if (!apiEndpoints) {
-      throw new Error('Missing API endpoints configuration for Giant Swarm plugin');
-    }
+    const installationsConfig = this.configApi.getConfig('gs.installations');
 
-    const apiEndpoint = apiEndpoints.getOptionalString(MC);
+    const apiEndpoint = installationsConfig.getOptionalString(`${options.installationName}.apiEndpoint`);
     if (!apiEndpoint) {
-      throw new Error(`Missing API endpoint for ${MC} MC`)
+      throw new Error(`Missing API endpoint for ${options.installationName} installation`)
     }
 
     const { headers } = await this.scmAuthApi.getCredentials({
@@ -63,10 +60,12 @@ export class GSClient implements GSApi {
     });
     
     const resourceUrl = await this.createUrl({
+      installationName: options.installationName,
       apiVersion: 'cluster.x-k8s.io/v1beta1',
       kind: 'clusters',
       namespace: options.namespace,
     });
+
 
     const clustersList = await this.fetch<IClusterList>(resourceUrl.toString(), { headers } );
 

@@ -24,6 +24,7 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
+    "@backstage/core-app-api": "^1.11.1",
     "@backstage/core-components": "^0.13.8",
     "@backstage/core-plugin-api": "^1.8.0",
     "@backstage/integration": "^1.7.2",
@@ -39,7 +40,6 @@
   },
   "devDependencies": {
     "@backstage/cli": "^0.24.0",
-    "@backstage/core-app-api": "^1.11.1",
     "@backstage/dev-utils": "^1.0.23",
     "@backstage/test-utils": "^1.4.5",
     "@testing-library/jest-dom": "^5.10.1",

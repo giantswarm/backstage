@@ -19,7 +19,7 @@ import {
 } from '@backstage/plugin-techdocs';
 import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
 import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
-import { UserSettingsPage } from '@backstage/plugin-user-settings';
+import { DefaultProviderSettings, UserSettingsPage } from '@backstage/plugin-user-settings';
 import { apis } from './apis';
 import { CustomCatalogPage } from './components/catalog/CustomCatalogPage';
 import { entityPage } from './components/catalog/EntityPage';
@@ -38,8 +38,7 @@ import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
-import { GSPluginPage } from '@internal/plugin-gs';
-import { ProviderSettings } from './components/AuthProviders/ProviderSettings';
+import { GSPluginPage, GSProviderSettings } from '@internal/plugin-gs';
 
 const app = createApp({
   apis,
@@ -109,7 +108,10 @@ const routes = (
       element={(
         <UserSettingsPage
           providerSettings={
-            <ProviderSettings />
+            <>
+              <DefaultProviderSettings configuredProviders={['github']} />
+              <GSProviderSettings />
+            </>
           }
         />
       )}
