@@ -3534,6 +3534,27 @@
   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
+"@bundled-es-modules/cookie@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@bundled-es-modules/cookie/-/cookie-2.0.0.tgz#c3b82703969a61cf6a46e959a012b2c257f6b164"
+  integrity sha512-Or6YHg/kamKHpxULAdSqhGqnWFneIXu1NKvvfBBzKGwpVsYuFIQ5aBPHDnnoR3ghW1nvSkALd+EF9iMtY7Vjxw==
+  dependencies:
+    cookie "^0.5.0"
+
+"@bundled-es-modules/js-levenshtein@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@bundled-es-modules/js-levenshtein/-/js-levenshtein-2.0.1.tgz#b02bbbd546358ab77080a430f0911cfc2b3779c4"
+  integrity sha512-DERMS3yfbAljKsQc0U2wcqGKUWpdFjwqWuoMugEJlqBnKO180/n+4SR/J8MRDt1AN48X1ovgoD9KrdVXcaa3Rg==
+  dependencies:
+    js-levenshtein "^1.1.6"
+
+"@bundled-es-modules/statuses@^1.0.1":
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/@bundled-es-modules/statuses/-/statuses-1.0.1.tgz#761d10f44e51a94902c4da48675b71a76cc98872"
+  integrity sha512-yn7BklA5acgcBr+7w064fGV+SGIFySjCKpqjcWgBAIfrAkY+4GQTJJHQMeT3V/sgz23VTEVV8TtOmkvJAhFVfg==
+  dependencies:
+    statuses "^2.0.1"
+
 "@changesets/types@^4.0.1":
   version "4.1.0"
   resolved "https://registry.yarnpkg.com/@changesets/types/-/types-4.1.0.tgz#fb8f7ca2324fd54954824e864f9a61a82cb78fe0"
@@ -4970,19 +4991,10 @@
     "@types/set-cookie-parser" "^2.4.0"
     set-cookie-parser "^2.4.6"
 
-"@mswjs/interceptors@^0.17.10":
-  version "0.17.10"
-  resolved "https://registry.yarnpkg.com/@mswjs/interceptors/-/interceptors-0.17.10.tgz#857b41f30e2b92345ed9a4e2b1d0a08b8b6fcad4"
-  integrity sha512-N8x7eSLGcmUFNWZRxT1vsHvypzIRgQYdG0rJey/rZCy6zT/30qDt8Joj7FxzGNLSwXbeZqJOMqDurp7ra4hgbw==
-  dependencies:
-    "@open-draft/until" "^1.0.3"
-    "@types/debug" "^4.1.7"
-    "@xmldom/xmldom" "^0.8.3"
-    debug "^4.3.3"
-    headers-polyfill "3.2.5"
-    outvariant "^1.2.1"
-    strict-event-emitter "^0.2.4"
-    web-encoding "^1.1.5"
+"@mswjs/cookies@^1.1.0":
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/@mswjs/cookies/-/cookies-1.1.0.tgz#1528eb43630caf83a1d75d5332b30e75e9bb1b5b"
+  integrity sha512-0ZcCVQxifZmhwNBoQIrystCb+2sWBY2Zw8lpfJBPCHGCA/HWqehITeCRVIv4VMy8MPlaHo2w2pTHFV2pFfqKPw==
 
 "@mswjs/interceptors@^0.17.5":
   version "0.17.9"
@@ -4997,6 +5009,18 @@
     outvariant "^1.2.1"
     strict-event-emitter "^0.2.4"
     web-encoding "^1.1.5"
+
+"@mswjs/interceptors@^0.25.11":
+  version "0.25.12"
+  resolved "https://registry.yarnpkg.com/@mswjs/interceptors/-/interceptors-0.25.12.tgz#f54d9e432aa5d3b149aa6c6356e611ac12eba5d4"
+  integrity sha512-a+zyoR01cPQeukSmaDEkE6aMwSjjfcT5ILzsyxmctEeCePnc2DMOd0X8Fn9bytq1IsAfMxJf/lu2aTfdivDbRg==
+  dependencies:
+    "@open-draft/deferred-promise" "^2.2.0"
+    "@open-draft/logger" "^0.3.0"
+    "@open-draft/until" "^2.0.0"
+    is-node-process "^1.2.0"
+    outvariant "^1.2.1"
+    strict-event-emitter "^0.5.1"
 
 "@mui/base@5.0.0-beta.8":
   version "5.0.0-beta.8"
@@ -5586,10 +5610,28 @@
     "@octokit/webhooks-types" "6.11.0"
     aggregate-error "^3.1.0"
 
+"@open-draft/deferred-promise@^2.2.0":
+  version "2.2.0"
+  resolved "https://registry.yarnpkg.com/@open-draft/deferred-promise/-/deferred-promise-2.2.0.tgz#4a822d10f6f0e316be4d67b4d4f8c9a124b073bd"
+  integrity sha512-CecwLWx3rhxVQF6V4bAgPS5t+So2sTbPgAzafKkVizyi7tlwpcFpdFqq+wqF2OwNBmqFuu6tOyouTuxgpMfzmA==
+
+"@open-draft/logger@^0.3.0":
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/@open-draft/logger/-/logger-0.3.0.tgz#2b3ab1242b360aa0adb28b85f5d7da1c133a0954"
+  integrity sha512-X2g45fzhxH238HKO4xbSr7+wBS8Fvw6ixhTDuvLd5mqh6bJJCFAPwU9mPDxbcrRtfxv4u5IHCEH77BmxvXmmxQ==
+  dependencies:
+    is-node-process "^1.2.0"
+    outvariant "^1.4.0"
+
 "@open-draft/until@^1.0.3":
   version "1.0.3"
   resolved "https://registry.yarnpkg.com/@open-draft/until/-/until-1.0.3.tgz#db9cc719191a62e7d9200f6e7bab21c5b848adca"
   integrity sha512-Aq58f5HiWdyDlFffbbSjAlv596h/cOnt2DO1w3DOC7OJ5EHs0hd/nycJfiu9RJbT6Yk6F1knnRRXNSpxoIVZ9Q==
+
+"@open-draft/until@^2.0.0", "@open-draft/until@^2.1.0":
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/@open-draft/until/-/until-2.1.0.tgz#0acf32f470af2ceaf47f095cdecd40d68666efda"
+  integrity sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==
 
 "@opentelemetry/api@^1.0.1", "@opentelemetry/api@^1.3.0":
   version "1.4.1"
@@ -7505,6 +7547,11 @@
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/@types/stack-utils/-/stack-utils-2.0.1.tgz#20f18294f797f2209b5f65c8e3b5c8e8261d127c"
   integrity sha512-Hl219/BT5fLAaz6NDkSuhzasy49dwQS/DSdu4MdggFB8zcXv7vflBI3xp7FEmkmdDkBUI2bPUNeMttp2knYdxw==
+
+"@types/statuses@^2.0.1":
+  version "2.0.4"
+  resolved "https://registry.yarnpkg.com/@types/statuses/-/statuses-2.0.4.tgz#041143ba4a918e8f080f8b0ffbe3d4cb514e2315"
+  integrity sha512-eqNDvZsCNY49OAXB0Firg/Sc2BgoWsntsLUdybGFOhAfCD6QJ2n9HXUIHGqt5qjrxmMv4wS8WLAw43ZkKcJ8Pw==
 
 "@types/styled-jsx@^2.2.8":
   version "2.2.9"
@@ -9833,7 +9880,7 @@ cookie@0.4.2, cookie@^0.4.2:
   resolved "https://registry.yarnpkg.com/cookie/-/cookie-0.4.2.tgz#0e41f24de5ecf317947c82fc789e06a884824432"
   integrity sha512-aSWTXFzaKWkvHO1Ny/s+ePFpvKsPnjc551iI41v3ny/ow6tBG5Vd+FuqGNhh1LxOmVzOlGUriIlOaokOvhaStA==
 
-cookie@0.5.0:
+cookie@0.5.0, cookie@^0.5.0:
   version "0.5.0"
   resolved "https://registry.yarnpkg.com/cookie/-/cookie-0.5.0.tgz#d1f5d71adec6558c58f389987c366aa47e994f8b"
   integrity sha512-YZ3GUyn/o8gfKJlnlX7g7xq4gyO6OSuhGPKaaGssGB2qgDUS0gPgtTvoyZLTt9Ab6dC4hfc9dV5arkvc/OCmrw==
@@ -12740,15 +12787,15 @@ he@^1.2.0:
   resolved "https://registry.yarnpkg.com/he/-/he-1.2.0.tgz#84ae65fa7eafb165fddb61566ae14baf05664f0f"
   integrity sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==
 
-headers-polyfill@3.2.5:
-  version "3.2.5"
-  resolved "https://registry.yarnpkg.com/headers-polyfill/-/headers-polyfill-3.2.5.tgz#6e67d392c9d113d37448fe45014e0afdd168faed"
-  integrity sha512-tUCGvt191vNSQgttSyJoibR+VO+I6+iCHIUdhzEMJKE+EAL8BwCN7fUOZlY4ofOelNHsK+gEjxB/B+9N3EWtdA==
-
 headers-polyfill@^3.1.0, headers-polyfill@^3.1.2:
   version "3.1.2"
   resolved "https://registry.yarnpkg.com/headers-polyfill/-/headers-polyfill-3.1.2.tgz#9a4dcb545c5b95d9569592ef7ec0708aab763fbe"
   integrity sha512-tWCK4biJ6hcLqTviLXVR9DTRfYGQMXEIUj3gwJ2rZ5wO/at3XtkI4g8mCvFdUF9l1KMBNCfmNAdnahm1cgavQA==
+
+headers-polyfill@^4.0.1:
+  version "4.0.2"
+  resolved "https://registry.yarnpkg.com/headers-polyfill/-/headers-polyfill-4.0.2.tgz#9115a76eee3ce8fbf95b6e3c6bf82d936785b44a"
+  integrity sha512-EWGTfnTqAO2L/j5HZgoM/3z82L7necsJ0pO9Tp0X1wil3PDLrkypTBRgVO2ExehEEvUycejZD3FuRaXpZZc3kw==
 
 helmet@^6.0.0:
   version "6.1.5"
@@ -16104,31 +16151,6 @@ ms@2.1.3, ms@^2.0.0, ms@^2.1.1:
   resolved "https://registry.yarnpkg.com/ms/-/ms-2.1.3.tgz#574c8138ce1d2b5861f0b44579dbadd60c6615b2"
   integrity sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==
 
-msw@^1.0.0:
-  version "1.3.2"
-  resolved "https://registry.yarnpkg.com/msw/-/msw-1.3.2.tgz#35e0271293e893fc3c55116e90aad5d955c66899"
-  integrity sha512-wKLhFPR+NitYTkQl5047pia0reNGgf0P6a1eTnA5aNlripmiz0sabMvvHcicE8kQ3/gZcI0YiPFWmYfowfm3lA==
-  dependencies:
-    "@mswjs/cookies" "^0.2.2"
-    "@mswjs/interceptors" "^0.17.10"
-    "@open-draft/until" "^1.0.3"
-    "@types/cookie" "^0.4.1"
-    "@types/js-levenshtein" "^1.1.1"
-    chalk "^4.1.1"
-    chokidar "^3.4.2"
-    cookie "^0.4.2"
-    graphql "^16.8.1"
-    headers-polyfill "3.2.5"
-    inquirer "^8.2.0"
-    is-node-process "^1.2.0"
-    js-levenshtein "^1.1.6"
-    node-fetch "^2.6.7"
-    outvariant "^1.4.0"
-    path-to-regexp "^6.2.0"
-    strict-event-emitter "^0.4.3"
-    type-fest "^2.19.0"
-    yargs "^17.3.1"
-
 msw@^1.0.1:
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/msw/-/msw-1.2.1.tgz#9dd347583eeba5e5c7f33b54be5600a899dc61bd"
@@ -16151,6 +16173,33 @@ msw@^1.0.1:
     outvariant "^1.4.0"
     path-to-regexp "^6.2.0"
     strict-event-emitter "^0.4.3"
+    type-fest "^2.19.0"
+    yargs "^17.3.1"
+
+msw@^2.0.0:
+  version "2.0.8"
+  resolved "https://registry.yarnpkg.com/msw/-/msw-2.0.8.tgz#de1153cac8030c33d19f6a1e14bb61221ec36d48"
+  integrity sha512-/5nQCotVka62lvubQ3tMfUS3TukyeBwvWyvAthcXvDlXGhkA/85HlEwZyFlJ3ZsPW45Ty+ao0S4oFvuM12R/kA==
+  dependencies:
+    "@bundled-es-modules/cookie" "^2.0.0"
+    "@bundled-es-modules/js-levenshtein" "^2.0.1"
+    "@bundled-es-modules/statuses" "^1.0.1"
+    "@mswjs/cookies" "^1.1.0"
+    "@mswjs/interceptors" "^0.25.11"
+    "@open-draft/until" "^2.1.0"
+    "@types/cookie" "^0.4.1"
+    "@types/js-levenshtein" "^1.1.1"
+    "@types/statuses" "^2.0.1"
+    chalk "^4.1.2"
+    chokidar "^3.4.2"
+    graphql "^16.8.1"
+    headers-polyfill "^4.0.1"
+    inquirer "^8.2.0"
+    is-node-process "^1.2.0"
+    js-levenshtein "^1.1.6"
+    outvariant "^1.4.0"
+    path-to-regexp "^6.2.0"
+    strict-event-emitter "^0.5.0"
     type-fest "^2.19.0"
     yargs "^17.3.1"
 
@@ -19784,7 +19833,7 @@ standard-as-callback@^2.1.0:
   resolved "https://registry.yarnpkg.com/standard-as-callback/-/standard-as-callback-2.1.0.tgz#8953fc05359868a77b5b9739a665c5977bb7df45"
   integrity sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==
 
-statuses@2.0.1:
+statuses@2.0.1, statuses@^2.0.1:
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/statuses/-/statuses-2.0.1.tgz#55cb000ccf1d48728bd23c685a063998cf1a1b63"
   integrity sha512-RwNA9Z/7PrK06rYLIzFMlaF+l73iwpzsqRIFgbMLbTcLD6cOao82TaWefPXQvB2fOC4AjuYSEndS7N/mTCbkdQ==
@@ -19866,6 +19915,11 @@ strict-event-emitter@^0.4.3:
   version "0.4.6"
   resolved "https://registry.yarnpkg.com/strict-event-emitter/-/strict-event-emitter-0.4.6.tgz#ff347c8162b3e931e3ff5f02cfce6772c3b07eb3"
   integrity sha512-12KWeb+wixJohmnwNFerbyiBrAlq5qJLwIt38etRtKtmmHyDSoGlIqFE9wx+4IwG0aDjI7GV8tc8ZccjWZZtTg==
+
+strict-event-emitter@^0.5.0, strict-event-emitter@^0.5.1:
+  version "0.5.1"
+  resolved "https://registry.yarnpkg.com/strict-event-emitter/-/strict-event-emitter-0.5.1.tgz#1602ece81c51574ca39c6815e09f1a3e8550bd93"
+  integrity sha512-vMgjE/GGEPEFnhFub6pa4FmJBRBVOLpIII2hvCZ8Kzb7K0hlHo7mQv6xYrBvCL2LtAIBwFUK8wvuJgTVSQ5MFQ==
 
 strict-uri-encode@^2.0.0:
   version "2.0.0"
