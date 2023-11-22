@@ -5713,11 +5713,6 @@
   resolved "https://registry.yarnpkg.com/@remix-run/router/-/router-1.12.0.tgz#e89b64b6fa97a8a5b740a4c38c2904b80f1f229a"
   integrity sha512-2hXv036Bux90e1GXTWSMfNzfDDK8LA8JYEWfyHxzvwdp6GyoWEovKc9cotb3KCKmkdwsIBuFGX7ScTWyiHv7Eg==
 
-"@remix-run/router@1.9.0":
-  version "1.9.0"
-  resolved "https://registry.yarnpkg.com/@remix-run/router/-/router-1.9.0.tgz#9033238b41c4cbe1e961eccb3f79e2c588328cf6"
-  integrity sha512-bV63itrKBC0zdT27qYm6SDZHlkXwFL1xMBuhkn+X7l0+IIhNaH5wuuvZKp6eKhCD4KFhujhfhCT1YxXW6esUIA==
-
 "@rjsf/core@5.13.6":
   version "5.13.6"
   resolved "https://registry.yarnpkg.com/@rjsf/core/-/core-5.13.6.tgz#10870a4bf48df65404e2526ab62f010d70f2bdcf"
@@ -18438,19 +18433,12 @@ react-router-dom@^6.3.0:
     "@remix-run/router" "1.12.0"
     react-router "6.19.0"
 
-react-router@6.19.0:
+react-router@6.19.0, react-router@^6.3.0:
   version "6.19.0"
   resolved "https://registry.yarnpkg.com/react-router/-/react-router-6.19.0.tgz#6d5062fa33495859daca98d86292ab03b037a9ca"
   integrity sha512-0W63PKCZ7+OuQd7Tm+RbkI8kCLmn4GPjDbX61tWljPxWgqTKlEpeQUwPkT1DRjYhF8KSihK0hQpmhU4uxVMcdw==
   dependencies:
     "@remix-run/router" "1.12.0"
-
-react-router@^6.3.0:
-  version "6.16.0"
-  resolved "https://registry.yarnpkg.com/react-router/-/react-router-6.16.0.tgz#abbf3d5bdc9c108c9b822a18be10ee004096fb81"
-  integrity sha512-VT4Mmc4jj5YyjpOi5jOf0I+TYzGpvzERy4ckNSvSh2RArv8LLoCxlsZ2D+tc7zgjxcY34oTz2hZaeX5RVprKqA==
-  dependencies:
-    "@remix-run/router" "1.9.0"
 
 react-side-effect@^2.1.0:
   version "2.1.2"
