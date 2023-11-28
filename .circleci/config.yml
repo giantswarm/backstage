@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  architect: giantswarm/architect@4.35.1
+  architect: giantswarm/architect@4.35.5
 
 job_filters: &job_filters
   filters:
@@ -65,12 +65,12 @@ jobs:
 
     steps:
       - checkout
-      
+
       - restore_cache:
           keys:
             - v2-npm-deps-{{ checksum "yarn.lock" }}
             - v2-npm-deps-
-      
+
       - run:
           name: Print node and yarn version info
           command: |
@@ -80,7 +80,7 @@ jobs:
       - run:
           name: Install dependencies
           command: yarn install --frozen-lockfile
-      
+
       - save_cache:
           paths:
             - node_modules
@@ -103,11 +103,11 @@ jobs:
       - run:
           name: Validate code style using prettier
           command: yarn run prettier:check
-      
+
       - run:
           name: Run tests
           command: yarn run test:all
-      
+
       - run:
           name: Mock secret files
           command: |
@@ -115,7 +115,8 @@ jobs:
 
       - run:
           name: Build application
-          command: yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml
+          command: yarn run build:backend --config ../../app-config.yaml --config
+            ../../app-config.production.yaml
           environment:
             NODE_ENV: production
             BACKSTAGE_ENVIRONMENT: production
