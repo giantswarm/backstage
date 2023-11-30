@@ -9,6 +9,13 @@ import { PluginEnvironment } from '../types';
 export default async function createPlugin(
   env: PluginEnvironment,
 ): Promise<Router> {
+  const providersConfig = env.config.getOptionalConfig('auth.providers');
+  const configuredProviders: string[] = providersConfig?.keys() || [];
+  const gsProviders = configuredProviders.filter((provider) => provider.startsWith('oidc-'));
+  const gsAuthProviderFactories = Object.fromEntries(
+    gsProviders.map((provider) => [provider, providers.oidc.create()])
+  );
+
   return await createRouter({
     logger: env.logger,
     config: env.config,
@@ -17,6 +24,7 @@ export default async function createPlugin(
     tokenManager: env.tokenManager,
     providerFactories: {
       ...defaultAuthProviderFactories,
+      ...gsAuthProviderFactories,
 
       // This replaces the default GitHub auth provider with a customized one.
       // The `signIn` option enables sign-in for this provider, using the

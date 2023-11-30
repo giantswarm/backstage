@@ -22,7 +22,15 @@ circleci:
   apiToken: ""
 
 dexAuthCredentials:
-  clientID: ""
+  glippy:
+    clientID: ""
+    clientSecret: ""
+  golem:
+    clientID: ""
+    clientSecret: ""
+  snail:
+    clientID: ""
+    clientSecret: ""
 
 githubAuthCredentials:
   clientID: ""

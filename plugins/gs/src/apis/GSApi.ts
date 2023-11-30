@@ -12,5 +12,5 @@ export const gsApiRef = createApiRef<GSApi>({
  * @public
  */
 export type GSApi = {
-  listClusters: (options: { namespace?: string; }) => Promise<ICluster[]>;
+  listClusters: (options: { installationName: string; namespace?: string; }) => Promise<ICluster[]>;
 }

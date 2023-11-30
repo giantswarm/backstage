@@ -62,8 +62,38 @@
         "dexAuthCredentials": {
             "type": "object",
             "properties": {
-                "clientID": {
-                    "type": "string"
+                "glippy": {
+                    "type": "object",
+                    "properties": {
+                        "clientID": {
+                            "type": "string"
+                        },
+                        "clientSecret": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "golem": {
+                    "type": "object",
+                    "properties": {
+                        "clientID": {
+                            "type": "string"
+                        },
+                        "clientSecret": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "snail": {
+                    "type": "object",
+                    "properties": {
+                        "clientID": {
+                            "type": "string"
+                        },
+                        "clientSecret": {
+                            "type": "string"
+                        }
+                    }
                 }
             }
         },
