@@ -35,7 +35,8 @@
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "@material-ui/lab": "^4.0.0-alpha.60",
-    "react-use": "^17.2.4"
+    "react-use": "^17.2.4",
+    "use-local-storage-state": "17"
   },
   "peerDependencies": {
     "react": "^16.13.1 || ^17.0.0",

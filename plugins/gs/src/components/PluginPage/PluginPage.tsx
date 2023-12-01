@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Grid } from '@material-ui/core';
 import {
   Header,
@@ -9,13 +9,10 @@ import {
 } from '@backstage/core-components';
 import { ClustersTable } from '../ClustersTable';
 import { InstallationsSelector } from '../InstallationsSelector';
+import { useInstallations } from '../useInstallations';
 
 export const PluginPage = () => {
-  const [installations, setInstallations] = useState<string[]>([]);
-
-  const handleInstallationsChange = (selectedInstallations: string[]) => {
-    setInstallations(selectedInstallations);
-  }
+  const [installations] = useInstallations();
 
   return (
     <Page themeId="tool">
@@ -26,7 +23,7 @@ export const PluginPage = () => {
         </ContentHeader>
         <Grid container spacing={3} direction="column">
           <Grid item>
-            <InstallationsSelector onChange={handleInstallationsChange} />
+            <InstallationsSelector />
           </Grid>
           <Grid item>
             <ClustersTable installations={installations} />

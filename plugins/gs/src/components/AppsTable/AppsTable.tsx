@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { EmptyState, Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Grid, Typography } from '@material-ui/core';
@@ -134,7 +134,6 @@ export const AppsTable = ({ installations, appName }: AppsTableProps) => {
   })));
 
   const filteredResources = appResources.filter((appResource) => appResource.spec.name === appName);
-  console.log('apps', filteredResources);
 
   return hasNoApps ? (
     <EmptyState

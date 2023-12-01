@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Grid } from '@material-ui/core';
 import {
   Content,
@@ -11,33 +11,28 @@ import {
 import { AppsTable } from '../AppsTable';
 import { InstallationsSelector } from '../InstallationsSelector';
 import { getAppNameFromEntity } from '../getAppNameFromEntity';
+import { useInstallations } from '../useInstallations';
 
 export const EntityDeployedToContent = () => {
-  const [installations, setInstallations] = useState<string[]>([]);
-
-  const handleInstallationsChange = (selectedInstallations: string[]) => {
-    setInstallations(selectedInstallations);
-  }
+  const [installations] = useInstallations();
 
   const { entity } = useEntity();
 
   const appName = getAppNameFromEntity(entity);
 
   return (
-    // <Page themeId="tool">
-      <Content>
-        <ContentHeader title={`Deployments of ${appName}`}>
-          <SupportButton>{`This table shows all the clusters where ${appName} is deployed to.`}</SupportButton>
-        </ContentHeader>
-        <Grid container spacing={3} direction="column">
-          <Grid item>
-            <InstallationsSelector onChange={handleInstallationsChange} />
-          </Grid>
-          <Grid item>
-            <AppsTable appName={appName} installations={installations} />
-          </Grid>
+    <Content>
+      <ContentHeader title={`Deployments of ${appName}`}>
+        <SupportButton>{`This table shows all the clusters where ${appName} is deployed to.`}</SupportButton>
+      </ContentHeader>
+      <Grid container spacing={3} direction="column">
+        <Grid item>
+          <InstallationsSelector />
         </Grid>
-      </Content>
-    // </Page>
+        <Grid item>
+          <AppsTable appName={appName} installations={installations} />
+        </Grid>
+      </Grid>
+    </Content>
   );
 }

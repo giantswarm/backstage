@@ -11,6 +11,7 @@ import {
   makeStyles,
 } from "@material-ui/core";
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useInstallations } from '../useInstallations';
 
 const useStyles = makeStyles((theme) => ({
   formControl: {
@@ -43,20 +44,21 @@ const MenuProps = {
 
 type MultipleSelectCheckmarksProps = {
   items: string[];
+  selectedItems: string[];
   onChange: (selectedItems: string[]) => void;
 }
 
-const MultipleSelectCheckmarks = ({ items, onChange }: MultipleSelectCheckmarksProps) => {
+const MultipleSelectCheckmarks = ({ items, selectedItems, onChange }: MultipleSelectCheckmarksProps) => {
   const classes = useStyles();
-  const [selectedItems, setSelectedItems] = React.useState<string[]>([]);
+  const [localSelectedItems, setLocalSelectedItems] = React.useState<string[]>(selectedItems);
 
   const handleChange = (event: React.ChangeEvent<{name?: string, value: unknown}>) => {
-    setSelectedItems(event.target.value as string[]);
+    setLocalSelectedItems(event.target.value as string[]);
   };
 
   const handleClose = () => {
     if (onChange) {
-      onChange(selectedItems);
+      onChange(localSelectedItems);
     }
   }
 
@@ -68,7 +70,7 @@ const MultipleSelectCheckmarks = ({ items, onChange }: MultipleSelectCheckmarksP
           labelId="demo-mutiple-checkbox-label"
           id="demo-mutiple-checkbox"
           multiple
-          value={selectedItems}
+          value={localSelectedItems}
           onChange={handleChange}
           onClose={handleClose}
           input={<Input />}
@@ -77,7 +79,7 @@ const MultipleSelectCheckmarks = ({ items, onChange }: MultipleSelectCheckmarksP
         >
           {items.map((item) => (
             <MenuItem key={item} value={item}>
-              <Checkbox checked={selectedItems.indexOf(item) > -1} />
+              <Checkbox checked={localSelectedItems.indexOf(item) > -1} />
               <ListItemText primary={item} />
             </MenuItem>
           ))}
@@ -87,11 +89,8 @@ const MultipleSelectCheckmarks = ({ items, onChange }: MultipleSelectCheckmarksP
   );
 }
 
-type InstallationsSelectorProps = {
-  onChange: (selectedInstallations: string[]) => void;
-}
-
-export const InstallationsSelector = ({ onChange }: InstallationsSelectorProps) => {
+export const InstallationsSelector = () => {
+  const [installations, setInstallations] = useInstallations();
   const configApi = useApi(configApiRef);
   const installationsConfig = configApi.getOptionalConfig('gs.installations');
   if (!installationsConfig) {
@@ -101,12 +100,16 @@ export const InstallationsSelector = ({ onChange }: InstallationsSelectorProps) 
   const installationsNames = installationsConfig.keys() || [];
 
   const handleChange = (selectedItems: string[]) => {
-    onChange(selectedItems);
+    setInstallations(selectedItems);
   };
 
   return (
     <Box>
-      <MultipleSelectCheckmarks items={installationsNames} onChange={handleChange} />
+      <MultipleSelectCheckmarks
+        items={installationsNames}
+        selectedItems={installations}
+        onChange={handleChange}
+      />
     </Box>
   );
 };
