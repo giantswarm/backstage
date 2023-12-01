@@ -60,6 +60,7 @@ import {
 } from '@k-phoen/backstage-plugin-opsgenie';
 
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
+import { EntityGSDeployedToContent, isGSDeployedToAvailable } from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
@@ -101,6 +102,22 @@ const githubActionsContent = (
     </EntitySwitch.Case>
   </EntitySwitch>
 );
+
+const deployedToContent = (
+  <EntitySwitch>
+    <EntitySwitch.Case if={isGSDeployedToAvailable}>
+      <EntityGSDeployedToContent />
+    </EntitySwitch.Case>
+
+    <EntitySwitch.Case>
+      <EmptyState
+        title="GS Deployed to not available for this entity"
+        missing="info"
+        description="There appears to be no GitHub repository information for this component. That should not happen normally. Please report this problem. Thanks!"
+      />
+    </EntitySwitch.Case>
+  </EntitySwitch>
+)
 
 const entityWarningContent = (
   <>
@@ -230,6 +247,10 @@ const defaultEntityPage = (
           <EntityDependsOnResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/deployed-to" title="Deployed To">
+      {deployedToContent}
     </EntityLayout.Route>
 
   </EntityLayout>
