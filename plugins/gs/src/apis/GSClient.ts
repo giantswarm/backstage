@@ -2,9 +2,10 @@ import { GSApi } from './GSApi';
 import { ConfigApi, DiscoveryApi } from '@backstage/core-plugin-api';
 import * as k8sUrl from '../model/services/mapi/k8sUrl';
 import { ScmAuthApi } from '@backstage/integration-react';
-import { ICluster, IClusterList } from '../model/services/mapi/capiv1beta1';
-import { IAppList } from '../model/services/mapi/applicationv1alpha1';
-import { IHelmReleaseList } from '../model/services/mapi/helmv2beta1';
+import { ICluster } from '../model/services/mapi/capiv1beta1';
+import { IApp } from '../model/services/mapi/applicationv1alpha1';
+import { IHelmRelease } from '../model/services/mapi/helmv2beta1';
+import { IList } from '../model/services/mapi/metav1';
 
 /**
  * A client for interacting with Giant Swarm Management API.
@@ -15,11 +16,24 @@ export class GSClient implements GSApi {
   private readonly configApi: ConfigApi;
   private readonly discoveryApi: DiscoveryApi;
   private readonly scmAuthApi: ScmAuthApi;
+  private readonly apiEndpoints: {[installationName: string]: string};
 
   constructor(options: { configApi: ConfigApi; discoveryApi: DiscoveryApi; scmAuthApi: ScmAuthApi }) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.scmAuthApi = options.scmAuthApi;
+
+    /**
+     * Build this.apiEndpoints map
+     */
+    const installationsConfig = this.configApi.getOptionalConfig('gs.installations');
+    if (!installationsConfig) {
+      throw new Error(`Missing gs.installations configuration`)
+    }
+    const apiEndpointsEntries = installationsConfig.keys().map((installationName) => (
+      [installationName, installationsConfig.getOptionalString(`${installationName}.apiEndpoint`)]
+    ));
+    this.apiEndpoints = Object.fromEntries(apiEndpointsEntries);
   }
 
   private async fetch<T = any>(url: string, init?: RequestInit): Promise<T> {
@@ -27,6 +41,15 @@ export class GSClient implements GSApi {
     if (!response.ok) throw new Error(response.statusText);
 
     return await response.json();
+  }
+
+  private getApiEndpoint(installationName: string) {
+    const apiEndpoint = this.apiEndpoints[installationName];
+    if (!apiEndpoint) {
+      throw new Error(`Missing API endpoint for ${installationName} installation`)
+    }
+
+    return apiEndpoint;
   }
 
   private async createUrl(options: {
@@ -46,24 +69,24 @@ export class GSClient implements GSApi {
     });
   }
 
+  private async fetchListResource<ResourceType, ListType extends IList<ResourceType>>(options: {
+    installationName: string;
+    resourceUrl: URL;
+  }): Promise<ResourceType[]> {
+    const apiEndpoint = this.getApiEndpoint(options.installationName);
+    const { headers } = await this.scmAuthApi.getCredentials({
+      url: apiEndpoint,
+    });
+
+    const list = await this.fetch<ListType>(options.resourceUrl.toString(), { headers } );
+
+    return list.items;
+  }
+
   async listClusters(options: {
     installationName: string;
     namespace?: string;
   }): Promise<ICluster[]> {
-    const installationsConfig = this.configApi.getOptionalConfig('gs.installations');
-    if (!installationsConfig) {
-      throw new Error(`Missing gs.installations configuration`)
-    }
-
-    const apiEndpoint = installationsConfig.getOptionalString(`${options.installationName}.apiEndpoint`);
-    if (!apiEndpoint) {
-      throw new Error(`Missing API endpoint for ${options.installationName} installation`)
-    }
-
-    const { headers } = await this.scmAuthApi.getCredentials({
-      url: apiEndpoint,
-    });
-    
     const resourceUrl = await this.createUrl({
       installationName: options.installationName,
       apiVersion: 'cluster.x-k8s.io/v1beta1',
@@ -71,30 +94,13 @@ export class GSClient implements GSApi {
       namespace: options.namespace,
     });
 
-
-    const list = await this.fetch<IClusterList>(resourceUrl.toString(), { headers } );
-
-    return list.items;
+    return this.fetchListResource({ resourceUrl, installationName: options.installationName });
   }
 
   async listApps(options: {
     installationName: string;
     namespace?: string;
-  }) {
-    const installationsConfig = this.configApi.getOptionalConfig('gs.installations');
-    if (!installationsConfig) {
-      throw new Error(`Missing gs.installations configuration`)
-    }
-
-    const apiEndpoint = installationsConfig.getOptionalString(`${options.installationName}.apiEndpoint`);
-    if (!apiEndpoint) {
-      throw new Error(`Missing API endpoint for ${options.installationName} installation`)
-    }
-
-    const { headers } = await this.scmAuthApi.getCredentials({
-      url: apiEndpoint,
-    });
-    
+  }): Promise<IApp[]> {
     const resourceUrl = await this.createUrl({
       installationName: options.installationName,
       apiVersion: 'application.giantswarm.io/v1alpha1',
@@ -102,30 +108,13 @@ export class GSClient implements GSApi {
       namespace: options.namespace,
     });
 
-
-    const list = await this.fetch<IAppList>(resourceUrl.toString(), { headers } );
-
-    return list.items;
+    return this.fetchListResource({ resourceUrl, installationName: options.installationName });
   }
 
   async listHelmReleases(options: {
     installationName: string;
     namespace?: string;
-  }) {
-    const installationsConfig = this.configApi.getOptionalConfig('gs.installations');
-    if (!installationsConfig) {
-      throw new Error(`Missing gs.installations configuration`)
-    }
-
-    const apiEndpoint = installationsConfig.getOptionalString(`${options.installationName}.apiEndpoint`);
-    if (!apiEndpoint) {
-      throw new Error(`Missing API endpoint for ${options.installationName} installation`)
-    }
-
-    const { headers } = await this.scmAuthApi.getCredentials({
-      url: apiEndpoint,
-    });
-    
+  }): Promise<IHelmRelease[]> {
     const resourceUrl = await this.createUrl({
       installationName: options.installationName,
       apiVersion: 'helm.toolkit.fluxcd.io/v2beta1',
@@ -133,9 +122,6 @@ export class GSClient implements GSApi {
       namespace: options.namespace,
     });
 
-
-    const list = await this.fetch<IHelmReleaseList>(resourceUrl.toString(), { headers } );
-
-    return list.items;
+    return this.fetchListResource({ resourceUrl, installationName: options.installationName });
   }
 }
