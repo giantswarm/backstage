@@ -1,35 +1,13 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { EmptyState, Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Grid, Typography } from '@material-ui/core';
 import { RejectedResults } from '../RejectedResults';
 import { FulfilledRequestResult, RejectedRequestResult, useApps } from '../useApps';
-import { IApp } from '../../model/services/mapi/applicationv1alpha1';
+import { IApp, getAppClusterName, getAppCurrentVersion, getAppStatus, getAppUpstreamVersion } from '../../model/services/mapi/applicationv1alpha1';
 
 type Resource<T> = T & {
   installationName: string;
-}
-
-const labelCluster = 'giantswarm.io/cluster';
-
-function getAppVersion(app: IApp): string {
-  if (!app.status || !app.status.version) return app.spec.version;
-
-  return app.status.version;
-}
-
-function getAppUpstreamVersion(app: IApp) {
-  if (!app.status || !app.status.appVersion) return '';
-
-  return app.status.appVersion;
-}
-
-function getAppStatus(app: IApp): string {
-  return app.status?.release?.status || '';
-}
-
-function getAppClusterName(app: IApp): string {
-  return app.metadata.labels?.[labelCluster] || '';
 }
 
 const generatedColumns: TableColumn[] = [
@@ -82,7 +60,7 @@ const AppsTableView = ({
       clusterName: getAppClusterName(app),
       installedAs: app.metadata.name,
       targetNamespace: app.spec.namespace,
-      version: getAppVersion(app),
+      version: getAppCurrentVersion(app),
       upstreamVersion: getAppUpstreamVersion(app),
       status: getAppStatus(app),
     }

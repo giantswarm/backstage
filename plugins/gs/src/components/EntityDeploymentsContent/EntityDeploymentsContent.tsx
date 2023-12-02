@@ -13,7 +13,7 @@ import { InstallationsSelector } from '../InstallationsSelector';
 import { getAppNameFromEntity } from '../getAppNameFromEntity';
 import { useInstallations } from '../useInstallations';
 
-export const EntityDeployedToContent = () => {
+export const EntityDeploymentsContent = () => {
   const [installations] = useInstallations();
 
   const { entity } = useEntity();

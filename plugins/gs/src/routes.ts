@@ -4,6 +4,6 @@ export const rootRouteRef = createRouteRef({
   id: 'gs',
 });
 
-export const entityDeployedToRouteRef = createRouteRef({
-  id: 'gs-deployed-to',
+export const entityDeploymentsRouteRef = createRouteRef({
+  id: 'gs-deployments',
 });

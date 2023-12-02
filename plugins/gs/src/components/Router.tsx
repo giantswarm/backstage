@@ -24,8 +24,7 @@ import { GS_APP_FLAVOR_LABEL } from './getAppNameFromEntity';
 // import { Routes, Route } from 'react-router-dom';
 // import { buildRouteRef } from '../routes';
 
-/** @public */
-export const isGSDeployedToAvailable = (entity: Entity) =>
+export const isGSDeploymentsAvailable = (entity: Entity) =>
   entity.metadata.labels?.[GS_APP_FLAVOR_LABEL] === 'true';
 
 // /** @public */

@@ -2,7 +2,7 @@ export {
   gsPlugin,
   gsPlugin as plugin,
   GSPluginPage,
-  EntityGSDeployedToContent,
+  EntityGSDeploymentsContent,
 } from './plugin';
 export {
   gsAuthApiRefs,
@@ -12,6 +12,5 @@ export {
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings'
 export {
   // Router,
-  isGSDeployedToAvailable,
-  isGSDeployedToAvailable as isPluginApplicableToEntity,
+  isGSDeploymentsAvailable,
 } from './components/Router';
