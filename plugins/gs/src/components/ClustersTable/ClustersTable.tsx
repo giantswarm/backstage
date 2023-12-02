@@ -77,7 +77,7 @@ type ClustersTableProps = {
 export const ClustersTable = ({ installations }: ClustersTableProps) => {
   const [{ clustersResults, ...tableProps }, { retry }] = useClusters({ installations });
 
-  const hasNoClusters =  installations.length === 0;
+  const noInstallationsSelected =  installations.length === 0;
   const fulfilledResults = clustersResults?.filter(
     (result): result is FulfilledClustersResult => result.status === 'fulfilled'
   ) || [];
@@ -85,7 +85,7 @@ export const ClustersTable = ({ installations }: ClustersTableProps) => {
     (result): result is RejectedClustersResult => result.status === 'rejected'
   ) || [];
 
-  return hasNoClusters ? (
+  return noInstallationsSelected ? (
     <EmptyState
       missing="data"
       title="No Installations Selected"

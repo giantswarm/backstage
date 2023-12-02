@@ -4,6 +4,7 @@ import * as k8sUrl from '../model/services/mapi/k8sUrl';
 import { ScmAuthApi } from '@backstage/integration-react';
 import { ICluster, IClusterList } from '../model/services/mapi/capiv1beta1';
 import { IAppList } from '../model/services/mapi/applicationv1alpha1';
+import { IHelmReleaseList } from '../model/services/mapi/helmv2beta1';
 
 /**
  * A client for interacting with Giant Swarm Management API.
@@ -71,9 +72,9 @@ export class GSClient implements GSApi {
     });
 
 
-    const clustersList = await this.fetch<IClusterList>(resourceUrl.toString(), { headers } );
+    const list = await this.fetch<IClusterList>(resourceUrl.toString(), { headers } );
 
-    return clustersList.items;
+    return list.items;
   }
 
   async listApps(options: {
@@ -102,8 +103,39 @@ export class GSClient implements GSApi {
     });
 
 
-    const appsList = await this.fetch<IAppList>(resourceUrl.toString(), { headers } );
+    const list = await this.fetch<IAppList>(resourceUrl.toString(), { headers } );
 
-    return appsList.items;
+    return list.items;
+  }
+
+  async listHelmReleases(options: {
+    installationName: string;
+    namespace?: string;
+  }) {
+    const installationsConfig = this.configApi.getOptionalConfig('gs.installations');
+    if (!installationsConfig) {
+      throw new Error(`Missing gs.installations configuration`)
+    }
+
+    const apiEndpoint = installationsConfig.getOptionalString(`${options.installationName}.apiEndpoint`);
+    if (!apiEndpoint) {
+      throw new Error(`Missing API endpoint for ${options.installationName} installation`)
+    }
+
+    const { headers } = await this.scmAuthApi.getCredentials({
+      url: apiEndpoint,
+    });
+    
+    const resourceUrl = await this.createUrl({
+      installationName: options.installationName,
+      apiVersion: 'helm.toolkit.fluxcd.io/v2beta1',
+      kind: 'helmreleases',
+      namespace: options.namespace,
+    });
+
+
+    const list = await this.fetch<IHelmReleaseList>(resourceUrl.toString(), { headers } );
+
+    return list.items;
   }
 }

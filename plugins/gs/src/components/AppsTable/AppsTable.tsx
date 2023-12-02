@@ -5,6 +5,8 @@ import { Grid, Typography } from '@material-ui/core';
 import { RejectedResults } from '../RejectedResults';
 import { FulfilledRequestResult, RejectedRequestResult, useApps } from '../useApps';
 import { IApp, getAppClusterName, getAppCurrentVersion, getAppStatus, getAppUpstreamVersion } from '../../model/services/mapi/applicationv1alpha1';
+import { useHelmReleases } from '../useHelmReleases';
+import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
 
 type Resource<T> = T & {
   installationName: string;
@@ -24,6 +26,10 @@ const generatedColumns: TableColumn[] = [
     title: 'Installed As',
     field: 'installedAs',
     highlight: true,
+  },
+  {
+    title: 'Type',
+    field: 'deploymentType',
   },
   {
     title: 'Target Namespace',
@@ -46,27 +52,34 @@ const generatedColumns: TableColumn[] = [
 type Props = {
   loading: boolean;
   retry: () => void;
-  resources: Resource<IApp>[];
+  resources: Resource<IApp | IHelmRelease>[];
 };
 
-const AppsTableView = ({
+const DeploymentsTableView = ({
   loading,
   retry,
   resources,
 }: Props) => {
-  const data = resources.map(({installationName, ...app}) => (
-    {
+  const data = resources.map(({installationName, ...resource}) => (
+    resource.kind === 'App' ? {
       installationName,
-      clusterName: getAppClusterName(app),
-      installedAs: app.metadata.name,
-      targetNamespace: app.spec.namespace,
-      version: getAppCurrentVersion(app),
-      upstreamVersion: getAppUpstreamVersion(app),
-      status: getAppStatus(app),
+      deploymentType: 'App',
+      clusterName: getAppClusterName(resource),
+      installedAs: resource.metadata.name,
+      targetNamespace: resource.spec.namespace,
+      version: getAppCurrentVersion(resource),
+      upstreamVersion: getAppUpstreamVersion(resource),
+      status: getAppStatus(resource),
+    } : {
+      installationName,
+      deploymentType: 'HelmRelease',
+      installedAs: resource.metadata.name,
+      targetNamespace: resource.spec?.targetNamespace,
+      version: resource.spec?.chart.spec.version,
     }
   ));
 
-  const title = `Apps`
+  const title = `Deployments`
 
   return (
     <Table
@@ -75,7 +88,7 @@ const AppsTableView = ({
       actions={[
         {
           icon: () => <SyncIcon />,
-          tooltip: 'Reload apps',
+          tooltip: 'Reload deployments',
           isFreeAction: true,
           onClick: () => retry(),
         },
@@ -92,28 +105,45 @@ const AppsTableView = ({
 
 type AppsTableProps = {
   installations: string[];
-  appName: string;
+  serviceName: string;
 }
 
-export const AppsTable = ({ installations, appName }: AppsTableProps) => {
-  const [{ value: results, ...tableProps }, { retry }] = useApps({ installations });
+export const AppsTable = ({ installations, serviceName }: AppsTableProps) => {
+  // const [{ value: results, ...tableProps }, { retry }] = useApps({ installations });
 
-  const hasNoApps = installations.length === 0;
+  // const noInstallationsSelected = installations.length === 0;
+  // const fulfilledResults = results?.filter(
+  //   (result): result is FulfilledRequestResult<IApp> => result.status === 'fulfilled'
+  // ) || [];
+  // const rejectedResults = results?.filter(
+  //   (result): result is RejectedRequestResult => result.status === 'rejected'
+  // ) || [];
+
+  // const resources: Resource<IApp>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
+  //   installationName: result.installationName,
+  //   ...item
+  // })));
+
+  // const filteredResources = resources.filter((resource) => resource.spec.name === appName);
+
+  const [{ value: results, ...tableProps }, { retry }] = useHelmReleases({ installations });
+
+  const noInstallationsSelected = installations.length === 0;
   const fulfilledResults = results?.filter(
-    (result): result is FulfilledRequestResult<IApp> => result.status === 'fulfilled'
+    (result): result is FulfilledRequestResult<IHelmRelease> => result.status === 'fulfilled'
   ) || [];
   const rejectedResults = results?.filter(
     (result): result is RejectedRequestResult => result.status === 'rejected'
   ) || [];
 
-  const appResources: Resource<IApp>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
+  const resources: Resource<IHelmRelease>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
     installationName: result.installationName,
     ...item
   })));
 
-  const filteredResources = appResources.filter((appResource) => appResource.spec.name === appName);
+  const filteredResources = resources.filter((resource) => resource.spec?.chart.spec.chart === serviceName);
 
-  return hasNoApps ? (
+  return noInstallationsSelected ? (
     <EmptyState
       missing="data"
       title="No Installations Selected"
@@ -127,7 +157,7 @@ export const AppsTable = ({ installations, appName }: AppsTableProps) => {
         </Grid>
       )}
       <Grid item>
-        <AppsTableView
+        <DeploymentsTableView
           {...tableProps}
           resources={filteredResources}
           retry={retry}
