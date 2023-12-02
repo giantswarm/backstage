@@ -1,9 +1,11 @@
 import React from 'react';
 import { EmptyState, Table, TableColumn } from '@backstage/core-components';
-import { FulfilledClustersResult, RejectedClustersResult, useClusters } from '../useClusters';
+import { useClusters } from '../useClusters';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Grid, Typography } from '@material-ui/core';
 import { RejectedResults } from '../RejectedResults';
+import { FulfilledRequestResult, RejectedRequestResult, Resource } from '../../apis';
+import { ICluster } from '../../model/services/mapi/capiv1beta1';
 
 const generatedColumns: TableColumn[] = [
   {
@@ -29,24 +31,22 @@ const generatedColumns: TableColumn[] = [
 type Props = {
   loading: boolean;
   retry: () => void;
-  clustersResults: FulfilledClustersResult[];
+  resources: Resource<ICluster>[];
 };
 
 const ClustersTableView = ({
   loading,
   retry,
-  clustersResults,
+  resources,
 }: Props) => {
-  const data = clustersResults.flatMap(({ installationName, value: clusters }) => clusters.map((cluster) => (
+  const data = resources.map(({installationName, ...resource}) => (
     {
       installationName,
-      name: cluster.metadata.name,
-      namespace: cluster.metadata.namespace,
-      description: cluster.metadata.annotations?.['cluster.giantswarm.io/description']
+      name: resource.metadata.name,
+      namespace: resource.metadata.namespace,
+      description: resource.metadata.annotations?.['cluster.giantswarm.io/description']
     }
-  )));
-
-  const title = `Clusters`
+  ));
 
   return (
     <Table
@@ -63,7 +63,7 @@ const ClustersTableView = ({
       data={data}
       style={{ width: '100%' }}
       title={
-        <Typography variant="h6">{title}</Typography>
+        <Typography variant="h6">Clusters</Typography>
       }
       columns={generatedColumns}
     />
@@ -75,17 +75,29 @@ type ClustersTableProps = {
 }
 
 export const ClustersTable = ({ installations }: ClustersTableProps) => {
-  const [{ clustersResults, ...tableProps }, { retry }] = useClusters({ installations });
+  const [
+    {
+      value: results = [],
+      loading
+    },
+    {
+      retry
+    },
+  ] = useClusters({ installations });
 
-  const noInstallationsSelected =  installations.length === 0;
-  const fulfilledResults = clustersResults?.filter(
-    (result): result is FulfilledClustersResult => result.status === 'fulfilled'
-  ) || [];
-  const rejectedResults = clustersResults?.filter(
-    (result): result is RejectedClustersResult => result.status === 'rejected'
-  ) || [];
+  const fulfilledResults = results.filter(
+    (result): result is FulfilledRequestResult<ICluster> => result.status === 'fulfilled'
+  );
+  const rejectedResults = results.filter(
+    (result): result is RejectedRequestResult => result.status === 'rejected'
+  );
 
-  return noInstallationsSelected ? (
+  const resources: Resource<ICluster>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
+    installationName: result.installationName,
+    ...item
+  })));
+
+  return installations.length === 0 ? (
     <EmptyState
       missing="data"
       title="No Installations Selected"
@@ -100,8 +112,8 @@ export const ClustersTable = ({ installations }: ClustersTableProps) => {
       )}
       <Grid item>
         <ClustersTableView
-          {...tableProps}
-          clustersResults={fulfilledResults}
+          loading={loading}
+          resources={resources}
           retry={retry}
         />
       </Grid>

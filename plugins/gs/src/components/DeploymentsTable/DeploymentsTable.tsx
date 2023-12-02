@@ -3,14 +3,13 @@ import { EmptyState, Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Grid, Typography } from '@material-ui/core';
 import { RejectedResults } from '../RejectedResults';
-import { FulfilledRequestResult, RejectedRequestResult, useApps } from '../useApps';
+import { useApps } from '../useApps';
 import { IApp, getAppClusterName, getAppCurrentVersion, getAppStatus, getAppUpstreamVersion } from '../../model/services/mapi/applicationv1alpha1';
 import { useHelmReleases } from '../useHelmReleases';
 import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
+import { FulfilledRequestResult, RejectedRequestResult, RequestResult, Resource } from '../../apis';
 
-type Resource<T> = T & {
-  installationName: string;
-}
+type Deployment = IApp | IHelmRelease;
 
 const generatedColumns: TableColumn[] = [
   {
@@ -52,7 +51,7 @@ const generatedColumns: TableColumn[] = [
 type Props = {
   loading: boolean;
   retry: () => void;
-  resources: Resource<IApp | IHelmRelease>[];
+  resources: Resource<Deployment>[];
 };
 
 const DeploymentsTableView = ({
@@ -79,8 +78,6 @@ const DeploymentsTableView = ({
     }
   ));
 
-  const title = `Deployments`
-
   return (
     <Table
       isLoading={loading}
@@ -96,54 +93,68 @@ const DeploymentsTableView = ({
       data={data}
       style={{ width: '100%' }}
       title={
-        <Typography variant="h6">{title}</Typography>
+        <Typography variant="h6">Deployments</Typography>
       }
       columns={generatedColumns}
     />
   );
 };
 
-type AppsTableProps = {
+type DeploymentsTableProps = {
   installations: string[];
   serviceName: string;
 }
 
-export const AppsTable = ({ installations, serviceName }: AppsTableProps) => {
-  // const [{ value: results, ...tableProps }, { retry }] = useApps({ installations });
+export const DeploymentsTable = ({ installations, serviceName }: DeploymentsTableProps) => {
+  const [
+    {
+      value: resultsApps = [],
+      loading: loadingApps,
+    },
+    {
+      retry: retryApps,
+    },
+  ] = useApps({ installations });
 
-  // const noInstallationsSelected = installations.length === 0;
-  // const fulfilledResults = results?.filter(
-  //   (result): result is FulfilledRequestResult<IApp> => result.status === 'fulfilled'
-  // ) || [];
-  // const rejectedResults = results?.filter(
-  //   (result): result is RejectedRequestResult => result.status === 'rejected'
-  // ) || [];
+  const [
+    {
+      value: resultsHelmReleases = [],
+      loading: loadingHelmReleases,
+    },
+    {
+      retry: retryHelmReleases,
+    },
+  ] = useHelmReleases({ installations });
 
-  // const resources: Resource<IApp>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
-  //   installationName: result.installationName,
-  //   ...item
-  // })));
+  const loading = loadingApps || loadingHelmReleases;
 
-  // const filteredResources = resources.filter((resource) => resource.spec.name === appName);
+  const handleRetry = () => {
+    retryApps();
+    retryHelmReleases();
+  }
 
-  const [{ value: results, ...tableProps }, { retry }] = useHelmReleases({ installations });
-
-  const noInstallationsSelected = installations.length === 0;
+  const results: RequestResult<Deployment>[] = [
+    ...resultsApps,
+    ...resultsHelmReleases,
+  ];
   const fulfilledResults = results?.filter(
-    (result): result is FulfilledRequestResult<IHelmRelease> => result.status === 'fulfilled'
-  ) || [];
+    (result): result is FulfilledRequestResult<Deployment> => result.status === 'fulfilled'
+  );
   const rejectedResults = results?.filter(
     (result): result is RejectedRequestResult => result.status === 'rejected'
-  ) || [];
+  );
 
-  const resources: Resource<IHelmRelease>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
+  const resources: Resource<Deployment>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
     installationName: result.installationName,
     ...item
   })));
 
-  const filteredResources = resources.filter((resource) => resource.spec?.chart.spec.chart === serviceName);
+  const filteredResources = resources.filter((resource) => resource.kind === 'App'
+    ? resource.spec.name === serviceName
+    : resource.spec?.chart.spec.chart === serviceName
+  );
 
-  return noInstallationsSelected ? (
+  return installations.length === 0 ? (
     <EmptyState
       missing="data"
       title="No Installations Selected"
@@ -158,9 +169,9 @@ export const AppsTable = ({ installations, serviceName }: AppsTableProps) => {
       )}
       <Grid item>
         <DeploymentsTableView
-          {...tableProps}
+          loading={loading}
           resources={filteredResources}
-          retry={retry}
+          retry={handleRetry}
         />
       </Grid>
     </Grid>

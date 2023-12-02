@@ -1,0 +1,1 @@
+export { DeploymentsTable } from './DeploymentsTable';

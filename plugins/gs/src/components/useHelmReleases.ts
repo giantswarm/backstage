@@ -1,23 +1,7 @@
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { gsApiRef } from '../apis/GSApi';
+import { gsApiRef, RequestResult } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
 import { IHelmRelease } from '../model/services/mapi/helmv2beta1';
-
-type BaseRequestResult = {
-  installationName: string;
-}
-
-export type FulfilledRequestResult<T> = BaseRequestResult & {
-  status: 'fulfilled',
-  value: T[];
-};
-
-export type RejectedRequestResult = BaseRequestResult & {
-  status: 'rejected',
-  reason: any;
-}
-
-export type RequestResult<T> = FulfilledRequestResult<T> | RejectedRequestResult;
 
 type Options = {
   installations: string[];

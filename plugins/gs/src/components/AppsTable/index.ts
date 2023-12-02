@@ -1,1 +1,0 @@
-export { AppsTable } from './AppsTable';

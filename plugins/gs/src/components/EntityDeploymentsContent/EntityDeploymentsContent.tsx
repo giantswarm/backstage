@@ -8,7 +8,7 @@ import {
 import {
   useEntity,
 } from '@backstage/plugin-catalog-react';
-import { AppsTable } from '../AppsTable';
+import { DeploymentsTable } from '../DeploymentsTable';
 import { InstallationsSelector } from '../InstallationsSelector';
 import { getServiceNameFromEntity } from '../getAppNameFromEntity';
 import { useInstallations } from '../useInstallations';
@@ -30,7 +30,7 @@ export const EntityDeploymentsContent = () => {
           <InstallationsSelector />
         </Grid>
         <Grid item>
-          <AppsTable serviceName={serviceName} installations={installations} />
+          <DeploymentsTable serviceName={serviceName} installations={installations} />
         </Grid>
       </Grid>
     </Content>
