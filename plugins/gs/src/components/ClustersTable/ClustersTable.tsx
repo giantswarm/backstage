@@ -1,5 +1,5 @@
 import React from 'react';
-import { EmptyState, Table, TableColumn } from '@backstage/core-components';
+import { EmptyState, SubvalueCell, Table, TableColumn } from '@backstage/core-components';
 import { useClusters } from '../useClusters';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Grid, Typography } from '@material-ui/core';
@@ -17,14 +17,20 @@ const generatedColumns: TableColumn[] = [
     title: 'Name',
     field: 'name',
     highlight: true,
+    render: (row: any): React.ReactNode => (
+      <SubvalueCell value={row.name} subvalue={row.description} />
+    ),
+    customFilterAndSearch: (
+      query,
+      row: any,
+    ) =>
+      `${row.name} ${row.description}`
+      .toLocaleUpperCase('en-US')
+      .includes(query.toLocaleUpperCase('en-US')),
   },
   {
     title: 'Namespace',
     field: 'namespace',
-  },
-  {
-    title: 'Description',
-    field: 'description'
   },
 ];
 
