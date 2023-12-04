@@ -100,7 +100,9 @@ export const InstallationsSelector = () => {
   const installationsNames = installationsConfig.keys() || [];
 
   const handleChange = (selectedItems: string[]) => {
-    setInstallations(selectedItems);
+    if (JSON.stringify(selectedItems) !== JSON.stringify(installations)) {
+      setInstallations(selectedItems);
+    }
   };
 
   return (
