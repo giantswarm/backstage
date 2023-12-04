@@ -19,14 +19,14 @@ whitelist: &whitelist
 image_name: &image_name quay.io/giantswarm/backstage
 
 workflows:
-  build:
+  build-workflow:
     jobs:
-      - build:
+      - build-job:
           <<: *job_filters
       - build-container:
           context: architect
           requires:
-            - build
+            - build-job
           <<: *job_filters
       - architect/push-to-app-catalog:
           executor: app-build-suite
@@ -57,7 +57,7 @@ workflows:
 
 jobs:
 
-  build:
+  build-job:
     executor: architect/architect
     working_directory: ~/backstage
     docker:
