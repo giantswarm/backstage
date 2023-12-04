@@ -1,15 +1,65 @@
 import React from 'react';
-import { EmptyState, Table, TableColumn } from '@backstage/core-components';
+import {
+  EmptyState,
+  StatusAborted,
+  StatusError,
+  StatusOK,
+  StatusWarning,
+  Table,
+  TableColumn,
+} from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Grid, Typography } from '@material-ui/core';
 import { RejectedResults } from '../RejectedResults';
 import { useApps } from '../useApps';
-import { IApp, getAppClusterName, getAppCurrentVersion, getAppStatus, getAppUpstreamVersion } from '../../model/services/mapi/applicationv1alpha1';
+import {
+  IApp,
+  getAppClusterName,
+  getAppCurrentVersion,
+  getAppStatus,
+  getAppUpstreamVersion,
+  statusDeployed,
+  statusPendingInstall,
+  statusPendingRollback,
+  statusPendingUpgrade,
+  statusSuperseded,
+  statusUninstalled,
+  statusUninstalling,
+  statusUnknown,
+} from '../../model/services/mapi/applicationv1alpha1';
 import { useHelmReleases } from '../useHelmReleases';
 import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
-import { FulfilledRequestResult, RejectedRequestResult, RequestResult, Resource } from '../../apis';
+import {
+  FulfilledRequestResult,
+  RejectedRequestResult,
+  RequestResult,
+  Resource,
+} from '../../apis';
 
 type Deployment = IApp | IHelmRelease;
+
+const formatStatus = (status: string) => {
+  const label = status.replace(/-/g, ' ');
+
+  switch (status) {
+    case statusUnknown:
+    case statusUninstalled:
+      return <StatusAborted>{label}</StatusAborted>;
+
+    case statusDeployed:
+      return <StatusOK>{label}</StatusOK>;
+
+    case statusSuperseded:
+    case statusUninstalling:
+    case statusPendingInstall:
+    case statusPendingUpgrade:
+    case statusPendingRollback:
+      return <StatusWarning>{label}</StatusWarning>;
+
+    default:
+      return <StatusError>{label}</StatusError>;
+  }
+}
 
 const generatedColumns: TableColumn[] = [
   {
@@ -68,7 +118,7 @@ const DeploymentsTableView = ({
       targetNamespace: resource.spec.namespace,
       version: getAppCurrentVersion(resource),
       upstreamVersion: getAppUpstreamVersion(resource),
-      status: getAppStatus(resource),
+      status: formatStatus(getAppStatus(resource)),
     } : {
       installationName,
       deploymentType: 'HelmRelease',
