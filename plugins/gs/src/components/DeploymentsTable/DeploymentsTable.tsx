@@ -4,6 +4,7 @@ import {
   StatusAborted,
   StatusError,
   StatusOK,
+  StatusRunning,
   StatusWarning,
   Table,
   TableColumn,
@@ -17,18 +18,26 @@ import {
   getAppClusterName,
   getAppCurrentVersion,
   getAppStatus,
-  getAppUpstreamVersion,
-  statusDeployed,
-  statusPendingInstall,
-  statusPendingRollback,
-  statusPendingUpgrade,
-  statusSuperseded,
-  statusUninstalled,
-  statusUninstalling,
-  statusUnknown,
+  isAppDeployedToMC,
+  statusDeployed as appStatusDeployed,
+  statusPendingInstall as appStatusPendingInstall,
+  statusPendingRollback as appStatusPendingRollback,
+  statusPendingUpgrade as appStatusPendingUpgrade,
+  statusSuperseded as appStatusSuperseded,
+  statusUninstalled as appStatusUninstalled,
+  statusUninstalling as appStatusUninstalling,
+  statusUnknown as appStatusUnknown,
 } from '../../model/services/mapi/applicationv1alpha1';
+import {
+  IHelmRelease,
+  getHelmReleaseStatus,
+  getHelmReleaseVersion,
+  statusUnknown as helmReleaseStatusUnknown,
+  statusReconciled as helmReleaseStatusReconciled,
+  statusReconciling as helmReleaseStatusReconciling,
+  statusStalled as helmReleaseStatusStalled,
+} from '../../model/services/mapi/helmv2beta1';
 import { useHelmReleases } from '../useHelmReleases';
-import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
 import {
   FulfilledRequestResult,
   RejectedRequestResult,
@@ -38,26 +47,53 @@ import {
 
 type Deployment = IApp | IHelmRelease;
 
-const formatStatus = (status: string) => {
+const formatAppStatus = (status: string) => {
+  if (status === '') {
+    return 'n/a';
+  }
+
   const label = status.replace(/-/g, ' ');
 
   switch (status) {
-    case statusUnknown:
-    case statusUninstalled:
+    case appStatusUnknown:
+    case appStatusUninstalled:
       return <StatusAborted>{label}</StatusAborted>;
 
-    case statusDeployed:
+    case appStatusDeployed:
       return <StatusOK>{label}</StatusOK>;
 
-    case statusSuperseded:
-    case statusUninstalling:
-    case statusPendingInstall:
-    case statusPendingUpgrade:
-    case statusPendingRollback:
+    case appStatusSuperseded:
+    case appStatusUninstalling:
+    case appStatusPendingInstall:
+    case appStatusPendingUpgrade:
+    case appStatusPendingRollback:
       return <StatusWarning>{label}</StatusWarning>;
 
     default:
       return <StatusError>{label}</StatusError>;
+  }
+}
+
+const formatHelmReleaseStatus = (status: string) => {
+  if (status === '') {
+    return 'n/a';
+  }
+
+  switch (status) {
+    case helmReleaseStatusUnknown:
+      return <StatusAborted>{status}</StatusAborted>;
+
+    case helmReleaseStatusStalled:
+      return <StatusWarning>{status}</StatusWarning>;
+
+    case helmReleaseStatusReconciling:
+      return <StatusRunning>{status}</StatusRunning>;
+
+    case helmReleaseStatusReconciled:
+      return <StatusOK>{status}</StatusOK>;
+
+    default:
+      return <StatusError>{status}</StatusError>;
   }
 }
 
@@ -72,25 +108,21 @@ const generatedColumns: TableColumn[] = [
     field: 'clusterName',
   },
   {
-    title: 'Installed As',
-    field: 'installedAs',
-    highlight: true,
-  },
-  {
     title: 'Type',
     field: 'deploymentType',
   },
   {
-    title: 'Target Namespace',
-    field: 'targetNamespace',
+    title: 'Resource Name',
+    field: 'name',
+    highlight: true,
+  },
+  {
+    title: 'Namespace',
+    field: 'namespace',
   },
   {
     title: 'Version',
     field: 'version',
-  },
-  {
-    title: 'Upstream Version',
-    field: 'upstreamVersion',
   },
   {
     title: 'Status',
@@ -113,18 +145,18 @@ const DeploymentsTableView = ({
     resource.kind === 'App' ? {
       installationName,
       deploymentType: 'App',
-      clusterName: getAppClusterName(resource),
-      installedAs: resource.metadata.name,
-      targetNamespace: resource.spec.namespace,
+      clusterName: isAppDeployedToMC(resource) ? installationName : getAppClusterName(resource),
+      name: resource.metadata.name,
+      namespace: resource.metadata.namespace,
       version: getAppCurrentVersion(resource),
-      upstreamVersion: getAppUpstreamVersion(resource),
-      status: formatStatus(getAppStatus(resource)),
+      status: formatAppStatus(getAppStatus(resource)),
     } : {
       installationName,
       deploymentType: 'HelmRelease',
-      installedAs: resource.metadata.name,
-      targetNamespace: resource.spec?.targetNamespace,
-      version: resource.spec?.chart.spec.version,
+      name: resource.metadata.name,
+      namespace: resource.metadata.namespace,
+      version: getHelmReleaseVersion(resource),
+      status: formatHelmReleaseStatus(getHelmReleaseStatus(resource)),
     }
   ));
 
