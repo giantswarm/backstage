@@ -11,7 +11,7 @@ export default async function createPlugin(
 ): Promise<Router> {
   const providersConfig = env.config.getOptionalConfig('auth.providers');
   const configuredProviders: string[] = providersConfig?.keys() || [];
-  const gsProviders = configuredProviders.filter((provider) => provider.startsWith('oidc-'));
+  const gsProviders = configuredProviders.filter((provider) => provider.startsWith('gs-'));
   const gsAuthProviderFactories = Object.fromEntries(
     gsProviders.map((provider) => [provider, providers.oidc.create()])
   );
