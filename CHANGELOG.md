@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add deployments page for service catalog entities.
+
+### Changed
+
+- Enable Giant Swarm plugin for devportal.
+- GS plugin: Persist selected installations in LocalStorage.
+
 ## [0.11.0] - 2023-11-30
 
 ### Added
