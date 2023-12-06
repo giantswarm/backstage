@@ -5,8 +5,8 @@ import MuiAccordionSummary from '@material-ui/core/AccordionSummary';
 import MuiAccordionDetails from '@material-ui/core/AccordionDetails';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
-import { RejectedClustersResult } from "../useClusters";
 import { styled } from '@material-ui/core/styles';
+import { RejectedRequestResult } from '../../apis';
 
 const StyledErrorOutlineIcon = styled(ErrorOutlineIcon)({
   marginRight: 10
@@ -26,7 +26,7 @@ const AccordionDetails = withStyles((theme) => ({
 }))(MuiAccordionDetails);
 
 type Props = {
-  results: RejectedClustersResult[];
+  results: RejectedRequestResult[]
 };
 
 export const RejectedResults = ({ results }: Props) => {
