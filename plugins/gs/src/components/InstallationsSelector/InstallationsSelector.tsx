@@ -10,7 +10,6 @@ import {
   Select,
   makeStyles,
 } from "@material-ui/core";
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { useInstallations } from '../useInstallations';
 
 const useStyles = makeStyles((theme) => ({
@@ -90,26 +89,23 @@ const MultipleSelectCheckmarks = ({ items, selectedItems, onChange }: MultipleSe
 }
 
 export const InstallationsSelector = () => {
-  const [installations, setInstallations] = useInstallations();
-  const configApi = useApi(configApiRef);
-  const installationsConfig = configApi.getOptionalConfig('gs.installations');
-  if (!installationsConfig) {
-    throw new Error(`Missing gs.installations configuration`)
-  }
-
-  const installationsNames = installationsConfig.keys() || [];
+  const {
+    installations,
+    selectedInstallations,
+    setSelectedInstallations,
+  } = useInstallations();
 
   const handleChange = (selectedItems: string[]) => {
-    if (JSON.stringify(selectedItems) !== JSON.stringify(installations)) {
-      setInstallations(selectedItems);
+    if (JSON.stringify(selectedItems.sort()) !== JSON.stringify(selectedInstallations.sort())) {
+      setSelectedInstallations(selectedItems);
     }
   };
 
   return (
     <Box>
       <MultipleSelectCheckmarks
-        items={installationsNames}
-        selectedItems={installations}
+        items={installations}
+        selectedItems={selectedInstallations}
         onChange={handleChange}
       />
     </Box>

@@ -14,7 +14,7 @@ import { getServiceNameFromEntity } from '../getAppNameFromEntity';
 import { useInstallations } from '../useInstallations';
 
 export const EntityDeploymentsContent = () => {
-  const [installations] = useInstallations();
+  const { selectedInstallations } = useInstallations();
 
   const { entity } = useEntity();
 
@@ -30,7 +30,7 @@ export const EntityDeploymentsContent = () => {
           <InstallationsSelector />
         </Grid>
         <Grid item>
-          <DeploymentsTable serviceName={serviceName} installations={installations} />
+          <DeploymentsTable serviceName={serviceName} installations={selectedInstallations} />
         </Grid>
       </Grid>
     </Content>

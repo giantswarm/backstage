@@ -12,7 +12,7 @@ import { InstallationsSelector } from '../InstallationsSelector';
 import { useInstallations } from '../useInstallations';
 
 export const PluginPage = () => {
-  const [installations] = useInstallations();
+  const { selectedInstallations } = useInstallations();
 
   return (
     <Page themeId="tool">
@@ -26,7 +26,7 @@ export const PluginPage = () => {
             <InstallationsSelector />
           </Grid>
           <Grid item>
-            <ClustersTable installations={installations} />
+            <ClustersTable installations={selectedInstallations} />
           </Grid>
         </Grid>
       </Content>
