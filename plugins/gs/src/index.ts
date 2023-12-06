@@ -10,7 +10,4 @@ export {
   createScmAuthInstances
 } from './apis';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings'
-export {
-  // Router,
-  isGSDeploymentsAvailable,
-} from './components/Router';
+export { isGSDeploymentsAvailable } from './components/Router';
