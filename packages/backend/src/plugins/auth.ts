@@ -5,16 +5,30 @@ import {
 } from '@backstage/plugin-auth-backend';
 import { Router } from 'express';
 import { PluginEnvironment } from '../types';
+import { AuthProviderFactory } from '@backstage/plugin-auth-node';
 
 export default async function createPlugin(
   env: PluginEnvironment,
 ): Promise<Router> {
-  const providersConfig = env.config.getOptionalConfig('auth.providers');
+  const providersConfig = env.config.getConfig('auth.providers');
   const configuredProviders: string[] = providersConfig?.keys() || [];
   const gsProviders = configuredProviders.filter((provider) => provider.startsWith('gs-'));
-  const gsAuthProviderFactories = Object.fromEntries(
-    gsProviders.map((provider) => [provider, providers.oidc.create()])
-  );
+  const gsAuthProviderFactories: {[s: string]: AuthProviderFactory} = {};
+  for (const providerName of gsProviders) {
+    env.logger.info(`Configuring auth provider: ${providerName}`);
+    try {
+      const providerConfig = providersConfig.getConfig(providerName).getConfig(env.config.getString('auth.environment'));
+      const metadataUrl = providerConfig.getString('metadataUrl');
+      const response = await fetch(new URL(metadataUrl));
+      if (!response.ok) {
+        throw new Error(response.statusText);
+      }
+      gsAuthProviderFactories[providerName] = providers.oidc.create();
+    } catch (err) {
+      env.logger.error(`Failed to fetch issuer metadata for ${providerName} auth provider`)
+      env.logger.error((err as Error).toString());
+    }
+  };
 
   return await createRouter({
     logger: env.logger,
