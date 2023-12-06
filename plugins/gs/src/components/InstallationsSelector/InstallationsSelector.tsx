@@ -74,7 +74,7 @@ const MultipleSelectCheckmarks = ({ items, selectedItems, onChange }: MultipleSe
           onChange={handleChange}
           onClose={handleClose}
           input={<Input />}
-          renderValue={(selected) => (selected as string[]).join(', ')}
+          renderValue={(selected) => items.filter((item) => (selected as string[]).includes(item)).join(', ')}
           MenuProps={MenuProps}
         >
           {items.map((item) => (
