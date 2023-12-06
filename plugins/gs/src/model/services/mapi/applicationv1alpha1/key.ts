@@ -62,7 +62,3 @@ export function getAppClusterName(app: IApp): string {
 export function isAppManagedByFlux(app: IApp): boolean {
   return app.metadata.labels?.[labelManagedBy] === 'flux';
 }
-
-export function isAppDeployedToMC(app: IApp): boolean {
-  return app.metadata.labels?.[labelAppOperator] === '0.0.0';
-}

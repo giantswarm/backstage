@@ -18,7 +18,6 @@ import {
   getAppClusterName,
   getAppCurrentVersion,
   getAppStatus,
-  isAppDeployedToMC,
   statusDeployed as appStatusDeployed,
   statusPendingInstall as appStatusPendingInstall,
   statusPendingRollback as appStatusPendingRollback,
@@ -36,6 +35,7 @@ import {
   statusReconciled as helmReleaseStatusReconciled,
   statusReconciling as helmReleaseStatusReconciling,
   statusStalled as helmReleaseStatusStalled,
+  getHelmReleaseClusterName,
 } from '../../model/services/mapi/helmv2beta1';
 import { useHelmReleases } from '../useHelmReleases';
 import {
@@ -145,7 +145,7 @@ const DeploymentsTableView = ({
     resource.kind === 'App' ? {
       installationName,
       deploymentType: 'App',
-      clusterName: isAppDeployedToMC(resource) ? installationName : getAppClusterName(resource),
+      clusterName: getAppClusterName(resource),
       name: resource.metadata.name,
       namespace: resource.metadata.namespace,
       version: getAppCurrentVersion(resource),
@@ -153,6 +153,7 @@ const DeploymentsTableView = ({
     } : {
       installationName,
       deploymentType: 'HelmRelease',
+      clusterName: getHelmReleaseClusterName(resource),
       name: resource.metadata.name,
       namespace: resource.metadata.namespace,
       version: getHelmReleaseVersion(resource),

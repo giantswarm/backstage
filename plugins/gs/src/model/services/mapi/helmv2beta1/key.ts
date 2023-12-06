@@ -1,5 +1,7 @@
 import { IHelmRelease } from "./types";
 
+export const labelCluster = 'giantswarm.io/cluster';
+
 export const statusUnknown = 'unknown';
 export const statusFailed = 'failed';
 export const statusStalled = 'stalled';
@@ -37,4 +39,8 @@ export function getHelmReleaseStatus(helmRelease: IHelmRelease) {
   }
 
   return statusUnknown;
+}
+
+export function getHelmReleaseClusterName(helmRelease: IHelmRelease): string {
+  return helmRelease.metadata.labels?.[labelCluster] || '';
 }
