@@ -24,19 +24,23 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
+    "@backstage/catalog-model": "^1.4.3",
     "@backstage/core-app-api": "^1.11.1",
     "@backstage/core-components": "^0.13.8",
     "@backstage/core-plugin-api": "^1.8.0",
     "@backstage/integration": "^1.7.2",
     "@backstage/integration-react": "^1.1.21",
+    "@backstage/plugin-catalog-react": "^1.9.1",
     "@backstage/theme": "^0.4.4",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "@material-ui/lab": "^4.0.0-alpha.60",
-    "react-use": "^17.2.4"
+    "react-use": "^17.2.4",
+    "use-local-storage-state": "17"
   },
   "peerDependencies": {
-    "react": "^16.13.1 || ^17.0.0"
+    "react": "^16.13.1 || ^17.0.0",
+    "react-router-dom": "^6.20.0"
   },
   "devDependencies": {
     "@backstage/cli": "^0.24.0",

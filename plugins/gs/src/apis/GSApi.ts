@@ -1,5 +1,7 @@
 import { createApiRef } from '@backstage/core-plugin-api';
 import { ICluster } from '../model/services/mapi/capiv1beta1';
+import { IApp } from '../model/services/mapi/applicationv1alpha1';
+import { IHelmRelease } from '../model/services/mapi/helmv2beta1';
 
 /** @public */
 export const gsApiRef = createApiRef<GSApi>({
@@ -13,4 +15,6 @@ export const gsApiRef = createApiRef<GSApi>({
  */
 export type GSApi = {
   listClusters: (options: { installationName: string; namespace?: string; }) => Promise<ICluster[]>;
+  listApps: (options: { installationName: string; namespace?: string; }) => Promise<IApp[]>;
+  listHelmReleases: (options: { installationName: string; namespace?: string; }) => Promise<IHelmRelease[]>;
 }

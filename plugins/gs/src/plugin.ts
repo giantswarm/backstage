@@ -6,7 +6,7 @@ import {
   discoveryApiRef,
 } from '@backstage/core-plugin-api';
 
-import { rootRouteRef } from './routes';
+import { entityDeploymentsRouteRef, rootRouteRef } from './routes';
 import { GSClient, gsApiRef } from './apis';
 import { scmAuthApiRef } from '@backstage/integration-react';
 
@@ -22,6 +22,7 @@ export const gsPlugin = createPlugin({
   ],
   routes: {
     root: rootRouteRef,
+    entityContent: entityDeploymentsRouteRef,
   },
 });
 
@@ -31,5 +32,13 @@ export const GSPluginPage = gsPlugin.provide(
     component: () =>
       import('./components/PluginPage').then(m => m.PluginPage),
     mountPoint: rootRouteRef,
+  }),
+);
+
+export const EntityGSDeploymentsContent = gsPlugin.provide(
+  createRoutableExtension({
+    name: 'EntityGSDeploymentsContent',
+    component: () => import('./components/EntityDeploymentsContent').then(m => m.EntityDeploymentsContent),
+    mountPoint: entityDeploymentsRouteRef,
   }),
 );

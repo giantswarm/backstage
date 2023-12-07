@@ -60,6 +60,7 @@ import {
 } from '@k-phoen/backstage-plugin-opsgenie';
 
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
+import { EntityGSDeploymentsContent, isGSDeploymentsAvailable } from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
@@ -101,6 +102,22 @@ const githubActionsContent = (
     </EntitySwitch.Case>
   </EntitySwitch>
 );
+
+const deploymentsContent = (
+  <EntitySwitch>
+    <EntitySwitch.Case if={isGSDeploymentsAvailable}>
+      <EntityGSDeploymentsContent />
+    </EntitySwitch.Case>
+
+    <EntitySwitch.Case>
+      <EmptyState
+        title="Deployments content is not available for this entity"
+        missing="info"
+        description="There appears to be no deployment information for this component. That should not happen normally. Please report this problem. Thanks!"
+      />
+    </EntitySwitch.Case>
+  </EntitySwitch>
+)
 
 const entityWarningContent = (
   <>
@@ -189,6 +206,48 @@ const appcatalogEntityPage = (
   </EntityLayout>
 );
 
+const serviceEntityPage = (
+  <EntityLayout>
+    <EntityLayout.Route path="/" title="Overview">
+      {overviewContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/pull-requests" title="Pull Requests">
+      <EntityGithubPullRequestsContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/github-actions" title="GitHub Actions">
+      {githubActionsContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/circleci" title="CircleCI">
+      {circleCIContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route if={isQuayAvailable} path="/quay" title="Quay">
+      <QuayPage />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/dependencies" title="Dependencies">
+      <Grid container spacing={3} alignItems="stretch">
+        <Grid item md={12}>
+          <p>Here we show only dependencies that are also included in the catalog. Use the GitHub dependencies page under <b>Insights</b> / <b>Dependency graph</b> for a more complete overview.</p>
+        </Grid>
+        <Grid item md={12}>
+          <EntityDependsOnComponentsCard title="Dependencies of this component" variant="gridItem" />
+        </Grid>
+        <Grid item md={12}>
+          <EntityDependsOnResourcesCard variant="gridItem" />
+        </Grid>
+      </Grid>
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/deployments" title="Deployments">
+      {deploymentsContent}
+    </EntityLayout.Route>
+  </EntityLayout>
+);
+
 /**
  * NOTE: This page is designed to work on small screens such as mobile devices.
  * This is based on Material UI Grid. If breakpoints are used, each grid item must set the `xs` prop to a column size or to `true`,
@@ -231,12 +290,14 @@ const defaultEntityPage = (
         </Grid>
       </Grid>
     </EntityLayout.Route>
-
   </EntityLayout>
 );
 
 const componentPage = (
   <EntitySwitch>
+    <EntitySwitch.Case if={isComponentType('service')}>
+      {serviceEntityPage}
+    </EntitySwitch.Case>
     <EntitySwitch.Case if={isComponentType('customer')}>
       {baseEntityPage}
     </EntitySwitch.Case>

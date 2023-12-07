@@ -32,7 +32,8 @@ node_modules/
 
 # dotenv environment variables file
 .env
-.env.test
+.env.*
+!.env.*.example
 
 # Build output
 dist
@@ -57,6 +58,5 @@ site
 e2e-test-report/
 
 /volumes
-/.env
 
 /catalog/*.yaml

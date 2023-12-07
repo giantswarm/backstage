@@ -22,10 +22,28 @@ circleci:
   apiToken: ""
 
 dexAuthCredentials:
+  gaggle:
+    clientID: ""
+    clientSecret: ""
+  gazelle:
+    clientID: ""
+    clientSecret: ""
   glippy:
     clientID: ""
     clientSecret: ""
+  goat:
+    clientID: ""
+    clientSecret: ""
   golem:
+    clientID: ""
+    clientSecret: ""
+  goose:
+    clientID: ""
+    clientSecret: ""
+  goten:
+    clientID: ""
+    clientSecret: ""
+  grizzly:
     clientID: ""
     clientSecret: ""
   snail:

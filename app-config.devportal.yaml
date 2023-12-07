@@ -49,12 +49,115 @@ proxy:
         Authorization: Bearer ${QUAY_TOKEN}
       changeOrigin: true
       secure: true
+    /gs/api/gaggle:
+      target: https://happaapi.gaggle.azuretest.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/gazelle:
+      target: https://happaapi.gazelle.awsprod.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/glippy:
+      target: https://happaapi.glippy.azuretest.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/goat:
+      target: https://happaapi.goat.gaws.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/golem:
+      target: https://happaapi.golem.gaws.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/goose:
+      target: https://happaapi.goose.azuretest.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/goten:
+      target: https://happaapi.goten.gaws.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/grizzly:
+      target: https://happaapi.grizzly.gaws.gigantic.io/
+      allowedHeaders: ['Authorization']
+    /gs/api/snail:
+      target: https://happaapi.snail.gaws.gigantic.io/
+      allowedHeaders: ['Authorization']
+
+auth:
+  environment: development
+  session:
+    secret: ${AUTH_SESSION_SECRET}
+  providers:
+    github:
+      development:
+        clientId: ${GITHUB_OAUTH_CLIENT_ID}
+        clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+    gs-gaggle:
+      development:
+        metadataUrl: https://dex.gaggle.azuretest.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_GAGGLE_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GAGGLE_CLIENT_SECRET}
+    gs-gazelle:
+      development:
+        metadataUrl: https://dex.gazelle.awsprod.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_GAZELLE_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GAZELLE_CLIENT_SECRET}
+    gs-glippy:
+      development:
+        metadataUrl: https://dex.glippy.azuretest.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_GLIPPY_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GLIPPY_CLIENT_SECRET}
+    # gs-goat:
+    #   development:
+    #     metadataUrl: https://dex.goat.gaws.gigantic.io/.well-known/openid-configuration
+    #     clientId: ${AUTH_DEX_GOAT_CLIENT_ID}
+    #     clientSecret: ${AUTH_DEX_GOAT_CLIENT_SECRET}
+    gs-golem:
+      development:
+        metadataUrl: https://dex.golem.gaws.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_GOLEM_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GOLEM_CLIENT_SECRET}
+    # gs-goose:
+    #   development:
+    #     metadataUrl: https://dex.goose.azuretest.gigantic.io/.well-known/openid-configuration
+    #     clientId: ${AUTH_DEX_GOOSE_CLIENT_ID}
+    #     clientSecret: ${AUTH_DEX_GOOSE_CLIENT_SECRET}
+    # gs-goten:
+    #   development:
+    #     metadataUrl: https://dex.goten.gaws.gigantic.io/.well-known/openid-configuration
+    #     clientId: ${AUTH_DEX_GOTEN_CLIENT_ID}
+    #     clientSecret: ${AUTH_DEX_GOTEN_CLIENT_SECRET}
+    gs-grizzly:
+      development:
+        metadataUrl: https://dex.grizzly.gaws.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_GRIZZLY_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GRIZZLY_CLIENT_SECRET}
+    gs-snail:
+      development:
+        metadataUrl: https://dex.snail.gaws.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_SNAIL_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_SNAIL_CLIENT_SECRET}
 
 grafana:
   domain: https://giantswarm.grafana.net
 
 opsgenie:
   domain: https://giantswarm.app.opsgenie.com
+
+gs:
+  installations:
+    gaggle:
+      apiEndpoint: https://happaapi.gaggle.azuretest.gigantic.io
+    gazelle:
+      apiEndpoint: https://happaapi.gazelle.awsprod.gigantic.io
+    glippy:
+      apiEndpoint: https://happaapi.glippy.azuretest.gigantic.io
+    # goat:
+    #   apiEndpoint: https://happaapi.goat.gaws.gigantic.io
+    golem:
+      apiEndpoint: https://happaapi.golem.gaws.gigantic.io
+    # goose:
+    #   apiEndpoint: https://happaapi.goose.azuretest.gigantic.io
+    # goten:
+    #   apiEndpoint: https://happaapi.goten.gaws.gigantic.io
+    grizzly:
+      apiEndpoint: https://happaapi.grizzly.gaws.gigantic.io
+    snail:
+      apiEndpoint: https://happaapi.snail.gaws.gigantic.io
 
 catalog:
   locations:

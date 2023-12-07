@@ -1,14 +1,14 @@
 import useAsyncRetry from 'react-use/lib/useAsyncRetry';
 import { gsApiRef, RequestResult } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
-import { ICluster } from '../model/services/mapi/capiv1beta1';
+import { IApp } from '../model/services/mapi/applicationv1alpha1';
 
 type Options = {
   installations: string[];
   namespace?: string;
 }
 
-export function useClusters({
+export function useApps({
   installations,
   namespace,
 }: Options) {
@@ -19,12 +19,12 @@ export function useClusters({
     value,
     retry,
     error,
-  } = useAsyncRetry<RequestResult<ICluster>[]>(async () => {
+  } = useAsyncRetry<RequestResult<IApp>[]>(async () => {
     const responses = await Promise.allSettled(
-      installations.map((installationName) => api.listClusters({ installationName, namespace }))
+      installations.map((installationName) => api.listApps({ installationName, namespace }))
     );
 
-    const result: RequestResult<ICluster>[] = responses.map((response, idx) => {
+    const result: RequestResult<IApp>[] = responses.map((response, idx) => {
       return {
         installationName: installations[idx],
         ...response

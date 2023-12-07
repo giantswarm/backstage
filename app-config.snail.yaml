@@ -24,17 +24,17 @@ auth:
       development:
         clientId: ${GITHUB_OAUTH_CLIENT_ID}
         clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
-    oidc-glippy:
+    gs-glippy:
       development:
         metadataUrl: https://dex.glippy.azuretest.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_GLIPPY_CLIENT_ID}
         clientSecret: ${AUTH_DEX_GLIPPY_CLIENT_SECRET}
-    oidc-golem:
+    gs-golem:
       development:
         metadataUrl: https://dex.golem.gaws.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_GOLEM_CLIENT_ID}
         clientSecret: ${AUTH_DEX_GOLEM_CLIENT_SECRET}
-    oidc-snail:
+    gs-snail:
       development:
         metadataUrl: https://dex.snail.gaws.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_SNAIL_CLIENT_ID}

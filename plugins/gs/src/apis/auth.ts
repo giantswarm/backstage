@@ -15,14 +15,20 @@ import { ScmAuth } from "@backstage/integration-react";
 import { GiantSwarmIcon } from "../assets/icons/CustomIcons";
 import { OAuth2 } from "@backstage/core-app-api";
 
-const PROVIDER_NAME_PREFIX = 'oidc-';
+const PROVIDER_NAME_PREFIX = 'gs-';
 
 type GSAuthApi = OAuthApi & OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi;
 
 export const gsAuthApiRefs = {
-  'oidc-glippy': createApiRef<GSAuthApi>({ id: 'auth.oidc-glippy' }),
-  'oidc-golem': createApiRef<GSAuthApi>({ id: 'auth.oidc-golem' }),
-  'oidc-snail': createApiRef<GSAuthApi>({ id: 'auth.oidc-snail' }),
+  'gs-gaggle': createApiRef<GSAuthApi>({ id: 'auth.gs-gaggle' }),
+  'gs-gazelle': createApiRef<GSAuthApi>({ id: 'auth.gs-gazelle' }),
+  'gs-glippy': createApiRef<GSAuthApi>({ id: 'auth.gs-glippy' }),
+  'gs-goat': createApiRef<GSAuthApi>({ id: 'auth.gs-goat' }),
+  'gs-golem': createApiRef<GSAuthApi>({ id: 'auth.gs-golem' }),
+  'gs-goose': createApiRef<GSAuthApi>({ id: 'auth.gs-goose' }),
+  'gs-goten': createApiRef<GSAuthApi>({ id: 'auth.gs-goten' }),
+  'gs-grizzly': createApiRef<GSAuthApi>({ id: 'auth.gs-grizzly' }),
+  'gs-snail': createApiRef<GSAuthApi>({ id: 'auth.gs-snail' }),
 } as const;
 
 export type ProviderName = keyof typeof gsAuthApiRefs;

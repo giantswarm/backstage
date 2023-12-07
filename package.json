@@ -24,7 +24,13 @@
     "prettier": "prettier \"*.{js,jsx,ts,tsx,mjs,cjs}\"",
     "prettier:check": "yarn prettier --check",
     "prettier:fix": "yarn prettier --write",
-    "new": "backstage-cli new --scope internal"
+    "new": "backstage-cli new --scope internal",
+    "env-cmd:snail": "env-cmd -f .env env-cmd -f .env.snail",
+    "env-cmd:devportal": "env-cmd -f .env env-cmd -f .env.devportal",
+    "start:snail": "yarn env-cmd:snail yarn start --config ../../app-config.yaml --config ../../app-config.snail.yaml",
+    "start-backend:snail": "yarn env-cmd:snail yarn start-backend --config ../../app-config.yaml --config ../../app-config.snail.yaml",
+    "start:devportal": "yarn env-cmd:devportal yarn start --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
+    "start-backend:devportal": "yarn env-cmd:devportal yarn start-backend --config ../../app-config.yaml --config ../../app-config.devportal.yaml"
   },
   "workspaces": {
     "packages": [
@@ -38,6 +44,7 @@
     "@playwright/test": "^1.32.3",
     "@spotify/prettier-config": "^12.0.0",
     "concurrently": "^8.0.0",
+    "env-cmd": "^10.1.0",
     "lerna": "^7.3.0",
     "node-gyp": "^9.0.0",
     "prettier": "^3.0.0",
