@@ -117,10 +117,6 @@ const generatedColumns: TableColumn[] = [
     highlight: true,
   },
   {
-    title: 'Namespace',
-    field: 'namespace',
-  },
-  {
     title: 'Version',
     field: 'version',
   },
