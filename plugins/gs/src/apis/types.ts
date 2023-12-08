@@ -3,16 +3,20 @@ type BaseRequestResult = {
 }
 
 export type FulfilledRequestResult<T> = BaseRequestResult & {
-  status: 'fulfilled',
+  status: 'fulfilled';
   value: T[];
 };
 
 export type RejectedRequestResult = BaseRequestResult & {
-  status: 'rejected',
+  status: 'rejected';
   reason: any;
 }
 
-export type RequestResult<T> = FulfilledRequestResult<T> | RejectedRequestResult;
+export type InProgressRequestResult = BaseRequestResult & {
+  status: 'loading';
+}
+
+export type RequestResult<T> = InProgressRequestResult | FulfilledRequestResult<T> | RejectedRequestResult;
 
 export type Resource<T> = T & {
   installationName: string;

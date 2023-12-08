@@ -1,47 +1,68 @@
-import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { gsApiRef, RequestResult } from '../apis';
+import { useQueries, UseQueryResult } from '@tanstack/react-query';
+import { gsApiRef } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
 import { ICluster } from '../model/services/mapi/capiv1beta1';
+import { useInstallations } from './useInstallations';
 
 type Options = {
-  installations: string[];
   namespace?: string;
-}
+};
 
-export function useClusters({
-  installations,
-  namespace,
-}: Options) {
+type InstallationQuery<T> = {
+  installationName: string;
+  query: UseQueryResult<T, unknown>;
+};
+
+type InstallationQueryData<T> = {
+  installationName: string;
+  data: T;
+};
+
+type InstallationQueriesResult<T> = {
+  queries: InstallationQuery<T>[];
+  installationsData: InstallationQueryData<T>[];
+  initialLoading: boolean;
+  retry: () => void;
+};
+
+export function useClusters(): InstallationQueriesResult<ICluster[]> {
+  const {
+    selectedInstallations,
+  } = useInstallations();
   const api = useApi(gsApiRef);
 
-  const {
-    loading,
-    value,
-    retry,
-    error,
-  } = useAsyncRetry<RequestResult<ICluster>[]>(async () => {
-    const responses = await Promise.allSettled(
-      installations.map((installationName) => api.listClusters({ installationName, namespace }))
-    );
-
-    const result: RequestResult<ICluster>[] = responses.map((response, idx) => {
+  const queries = useQueries({
+    queries: selectedInstallations.map(installationName => {
       return {
-        installationName: installations[idx],
-        ...response
-      };
-    });
+        queryKey: [installationName, 'clusters'],
+        queryFn: () => api.listClusters({ installationName }),
+      }
+    }),
+  });
 
-    return result;
-  }, [installations, namespace]);
+  const installationQueries = queries.map((query, idx) => {
+    return {
+      installationName: selectedInstallations[idx],
+      query,
+    }
+  });
+  const fulfilledInstallationQueries = installationQueries.filter(
+    ({ query }) => query.isSuccess
+  );
 
-  return [
-    {
-      loading,
-      value,
-      error,
-    },
-    {
-      retry,
-    },
-  ] as const;
+  const installationsData = fulfilledInstallationQueries.map(({ installationName, query }) => ({ installationName, data: query.data! }));
+
+  const initialLoading = queries.some((query) => query.isLoading) && !queries.some((query) => query.isSuccess);
+  const retry = () => {
+    for (const query of queries) {
+      query.refetch();
+    }
+  }
+
+  return {
+    queries: installationQueries,
+    installationsData,
+    initialLoading,
+    retry,
+  }
 }

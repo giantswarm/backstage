@@ -3,8 +3,7 @@ import { EmptyState, SubvalueCell, Table, TableColumn } from '@backstage/core-co
 import { useClusters } from '../useClusters';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Grid, Typography } from '@material-ui/core';
-import { RejectedResults } from '../RejectedResults';
-import { FulfilledRequestResult, RejectedRequestResult, Resource } from '../../apis';
+import { Resource } from '../../apis';
 import { ICluster } from '../../model/services/mapi/capiv1beta1';
 
 const generatedColumns: TableColumn[] = [
@@ -81,27 +80,11 @@ type ClustersTableProps = {
 }
 
 export const ClustersTable = ({ installations }: ClustersTableProps) => {
-  const [
-    {
-      value: results = [],
-      loading
-    },
-    {
-      retry
-    },
-  ] = useClusters({ installations });
+  const { installationsData, initialLoading, retry } = useClusters();
 
-  const fulfilledResults = results.filter(
-    (result): result is FulfilledRequestResult<ICluster> => result.status === 'fulfilled'
+  const resources: Resource<ICluster>[] = installationsData.flatMap(
+    ({ installationName, data }) => data.map((cluster) => ({ installationName, ...cluster }))
   );
-  const rejectedResults = results.filter(
-    (result): result is RejectedRequestResult => result.status === 'rejected'
-  );
-
-  const resources: Resource<ICluster>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
-    installationName: result.installationName,
-    ...item
-  })));
 
   return installations.length === 0 ? (
     <EmptyState
@@ -111,14 +94,14 @@ export const ClustersTable = ({ installations }: ClustersTableProps) => {
     />
   ) : (
     <Grid container spacing={3} direction="column">
-      {rejectedResults.length > 0 && (
+      {/* {rejectedResults.length > 0 && (
         <Grid item>
           <RejectedResults results={rejectedResults} />
         </Grid>
-      )}
+      )} */}
       <Grid item>
         <ClustersTableView
-          loading={loading}
+          loading={initialLoading}
           resources={resources}
           retry={retry}
         />
