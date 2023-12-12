@@ -16,15 +16,15 @@ whitelist: &whitelist
     - node_modules/*
     - VERSION
 
-image_name: &image_name quay.io/giantswarm/backstage
-
 workflows:
   build:
     jobs:
       - build:
           <<: *job_filters
-      - build-container:
+      - architect/push-to-registries:
           context: architect
+          name: push-to-registries
+          dockerfile: 'packages/backend/Dockerfile'
           requires:
             - build
           <<: *job_filters
@@ -37,7 +37,7 @@ workflows:
           chart: "backstage"
           persist_chart_archive: true
           requires:
-            - build-container
+            - push-to-registries
           filters:
             tags:
               only: /^v.*/
@@ -50,13 +50,12 @@ workflows:
           chart: "backstage"
           persist_chart_archive: true
           requires:
-            - build-container
+            - push-to-registries
           filters:
             tags:
               only: /^v.*/
 
 jobs:
-
   build:
     executor: architect/architect
     working_directory: ~/backstage
@@ -123,37 +122,3 @@ jobs:
       - persist_to_workspace:
           root: ~/backstage
           <<: *whitelist
-
-  build-container:
-    executor: architect/architect
-    environment:
-      DOCKER_BUILDKIT: "1"
-    working_directory: ~/backstage
-    steps:
-      - checkout
-
-      - setup_remote_docker
-
-      - attach_workspace:
-          at: ~/backstage
-
-      - run:
-          environment:
-            IMAGE_NAME: *image_name
-          name: Generate container image tag
-          command: |
-            echo -n "${IMAGE_NAME}:$(cat VERSION)" > .docker_image_name
-
-      - architect/push-to-docker:
-          tag-latest-branch: "main"
-          image: "docker.io/giantswarm/backstage"
-          dockerfile: 'packages/backend/Dockerfile'
-          username_envar: "DOCKER_USERNAME"
-          password_envar: "DOCKER_PASSWORD"
-
-      - architect/push-to-docker:
-          tag-latest-branch: "main"
-          image: *image_name
-          dockerfile: 'packages/backend/Dockerfile'
-          username_envar: "QUAY_USERNAME"
-          password_envar: "QUAY_PASSWORD"
