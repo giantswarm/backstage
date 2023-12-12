@@ -1,29 +1,8 @@
-import { useQueries, UseQueryResult } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { gsApiRef } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
 import { ICluster } from '../model/services/mapi/capiv1beta1';
-import { useInstallations } from './useInstallations';
-
-type Options = {
-  namespace?: string;
-};
-
-type InstallationQuery<T> = {
-  installationName: string;
-  query: UseQueryResult<T, unknown>;
-};
-
-type InstallationQueryData<T> = {
-  installationName: string;
-  data: T;
-};
-
-type InstallationQueriesResult<T> = {
-  queries: InstallationQuery<T>[];
-  installationsData: InstallationQueryData<T>[];
-  initialLoading: boolean;
-  retry: () => void;
-};
+import { InstallationQueriesResult, useInstallations } from './useInstallations';
 
 export function useClusters(): InstallationQueriesResult<ICluster[]> {
   const {
@@ -40,17 +19,17 @@ export function useClusters(): InstallationQueriesResult<ICluster[]> {
     }),
   });
 
-  const installationQueries = queries.map((query, idx) => {
+  const installationsQueries = queries.map((query, idx) => {
     return {
       installationName: selectedInstallations[idx],
       query,
     }
   });
-  const fulfilledInstallationQueries = installationQueries.filter(
+  const fulfilledInstallationsQueries = installationsQueries.filter(
     ({ query }) => query.isSuccess
   );
 
-  const installationsData = fulfilledInstallationQueries.map(({ installationName, query }) => ({ installationName, data: query.data! }));
+  const installationsData = fulfilledInstallationsQueries.map(({ installationName, query }) => ({ installationName, data: query.data! }));
 
   const initialLoading = queries.some((query) => query.isLoading) && !queries.some((query) => query.isSuccess);
   const retry = () => {
@@ -60,7 +39,7 @@ export function useClusters(): InstallationQueriesResult<ICluster[]> {
   }
 
   return {
-    queries: installationQueries,
+    queries: installationsQueries,
     installationsData,
     initialLoading,
     retry,

@@ -1,47 +1,46 @@
-import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { gsApiRef, RequestResult } from '../apis';
+import { gsApiRef } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
-import { IApp } from '../model/services/mapi/applicationv1alpha1';
+import { useInstallations } from './useInstallations';
+import { useQueries } from '@tanstack/react-query';
 
-type Options = {
-  installations: string[];
-  namespace?: string;
-}
-
-export function useApps({
-  installations,
-  namespace,
-}: Options) {
+export function useApps() {
+  const {
+    selectedInstallations,
+  } = useInstallations();
   const api = useApi(gsApiRef);
 
-  const {
-    loading,
-    value,
-    retry,
-    error,
-  } = useAsyncRetry<RequestResult<IApp>[]>(async () => {
-    const responses = await Promise.allSettled(
-      installations.map((installationName) => api.listApps({ installationName, namespace }))
-    );
-
-    const result: RequestResult<IApp>[] = responses.map((response, idx) => {
+  const queries = useQueries({
+    queries: selectedInstallations.map(installationName => {
       return {
-        installationName: installations[idx],
-        ...response
-      };
-    });
+        queryKey: [installationName, 'apps'],
+        queryFn: () => api.listApps({ installationName }),
+      }
+    }),
+  });
 
-    return result;
-  }, [installations, namespace]);
+  const installationsQueries = queries.map((query, idx) => {
+    return {
+      installationName: selectedInstallations[idx],
+      query,
+    }
+  });
+  const fulfilledInstallationsQueries = installationsQueries.filter(
+    ({ query }) => query.isSuccess
+  );
 
-  return [
-    {
-      loading,
-      value,
-      error,
-    },
-    {
-      retry,
-    },
-  ] as const;
+  const installationsData = fulfilledInstallationsQueries.map(({ installationName, query }) => ({ installationName, data: query.data! }));
+
+  const initialLoading = queries.some((query) => query.isLoading) && !queries.some((query) => query.isSuccess);
+  const retry = () => {
+    for (const query of queries) {
+      query.refetch();
+    }
+  }
+
+  return {
+    queries: installationsQueries,
+    installationsData,
+    initialLoading,
+    retry,
+  }
 }
