@@ -2,6 +2,8 @@ import { gsApiRef } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
 import { useInstallations } from './useInstallations';
 import { useQueries } from '@tanstack/react-query';
+import { IApp } from '../model/services/mapi/applicationv1alpha1';
+import { getInstallationsQueriesInfo } from './utils';
 
 export function useApps() {
   const {
@@ -18,29 +20,5 @@ export function useApps() {
     }),
   });
 
-  const installationsQueries = queries.map((query, idx) => {
-    return {
-      installationName: selectedInstallations[idx],
-      query,
-    }
-  });
-  const fulfilledInstallationsQueries = installationsQueries.filter(
-    ({ query }) => query.isSuccess
-  );
-
-  const installationsData = fulfilledInstallationsQueries.map(({ installationName, query }) => ({ installationName, data: query.data! }));
-
-  const initialLoading = queries.some((query) => query.isLoading) && !queries.some((query) => query.isSuccess);
-  const retry = () => {
-    for (const query of queries) {
-      query.refetch();
-    }
-  }
-
-  return {
-    queries: installationsQueries,
-    installationsData,
-    initialLoading,
-    retry,
-  }
+  return getInstallationsQueriesInfo<IApp[]>(selectedInstallations, queries);
 }
