@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Use new Azure CR instead of Docker Hub
+- GS plugin: Use @tanstack/react-query for data fetching.
 
 ## [0.12.0] - 2023-12-07
 
