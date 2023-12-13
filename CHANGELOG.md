@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2023-12-13
+
 ### Changed
 
 - Use new Azure CR instead of Docker Hub
@@ -265,7 +267,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/giantswarm/backstage/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/giantswarm/backstage/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/giantswarm/backstage/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/giantswarm/backstage/compare/v0.10.2...v0.10.3
