@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Box,
   Checkbox,
   FormControl,
   Input,
