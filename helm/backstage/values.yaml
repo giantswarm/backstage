@@ -12,7 +12,7 @@ port: 7007
 hostnames: []
 
 registry:
-  domain: quay.io
+  domain: gsoci.azurecr.io
 
 authSessionSecret: ""
 
