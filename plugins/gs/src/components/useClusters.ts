@@ -1,47 +1,24 @@
-import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { gsApiRef, RequestResult } from '../apis';
+import { useQueries } from '@tanstack/react-query';
+import { gsApiRef } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
 import { ICluster } from '../model/services/mapi/capiv1beta1';
+import { useInstallations } from './useInstallations';
+import { getInstallationsQueriesInfo } from './utils';
 
-type Options = {
-  installations: string[];
-  namespace?: string;
-}
-
-export function useClusters({
-  installations,
-  namespace,
-}: Options) {
+export function useClusters() {
+  const {
+    selectedInstallations,
+  } = useInstallations();
   const api = useApi(gsApiRef);
 
-  const {
-    loading,
-    value,
-    retry,
-    error,
-  } = useAsyncRetry<RequestResult<ICluster>[]>(async () => {
-    const responses = await Promise.allSettled(
-      installations.map((installationName) => api.listClusters({ installationName, namespace }))
-    );
-
-    const result: RequestResult<ICluster>[] = responses.map((response, idx) => {
+  const queries = useQueries({
+    queries: selectedInstallations.map(installationName => {
       return {
-        installationName: installations[idx],
-        ...response
-      };
-    });
+        queryKey: [installationName, 'clusters'],
+        queryFn: () => api.listClusters({ installationName }),
+      }
+    }),
+  });
 
-    return result;
-  }, [installations, namespace]);
-
-  return [
-    {
-      loading,
-      value,
-      error,
-    },
-    {
-      retry,
-    },
-  ] as const;
+  return getInstallationsQueriesInfo<ICluster[]>(selectedInstallations, queries);
 }

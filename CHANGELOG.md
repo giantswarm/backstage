@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- GS plugin: Use @tanstack/react-query for data fetching.
+
 ## [0.12.1] - 2023-12-13
 
 ### Changed

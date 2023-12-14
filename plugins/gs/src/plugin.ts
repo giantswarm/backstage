@@ -9,6 +9,7 @@ import {
 import { entityDeploymentsRouteRef, rootRouteRef } from './routes';
 import { GSClient, gsApiRef } from './apis';
 import { scmAuthApiRef } from '@backstage/integration-react';
+import { withQueryClient } from './withQueryClient';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -30,7 +31,7 @@ export const GSPluginPage = gsPlugin.provide(
   createRoutableExtension({
     name: 'GSPluginPage',
     component: () =>
-      import('./components/PluginPage').then(m => m.PluginPage),
+      import('./components/PluginPage').then(m => withQueryClient(m.PluginPage)),
     mountPoint: rootRouteRef,
   }),
 );
@@ -38,7 +39,7 @@ export const GSPluginPage = gsPlugin.provide(
 export const EntityGSDeploymentsContent = gsPlugin.provide(
   createRoutableExtension({
     name: 'EntityGSDeploymentsContent',
-    component: () => import('./components/EntityDeploymentsContent').then(m => m.EntityDeploymentsContent),
+    component: () => import('./components/EntityDeploymentsContent').then(m => withQueryClient(m.EntityDeploymentsContent)),
     mountPoint: entityDeploymentsRouteRef,
   }),
 );

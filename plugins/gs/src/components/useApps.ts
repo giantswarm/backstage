@@ -1,47 +1,24 @@
-import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { gsApiRef, RequestResult } from '../apis';
+import { gsApiRef } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
+import { useInstallations } from './useInstallations';
+import { useQueries } from '@tanstack/react-query';
 import { IApp } from '../model/services/mapi/applicationv1alpha1';
+import { getInstallationsQueriesInfo } from './utils';
 
-type Options = {
-  installations: string[];
-  namespace?: string;
-}
-
-export function useApps({
-  installations,
-  namespace,
-}: Options) {
+export function useApps() {
+  const {
+    selectedInstallations,
+  } = useInstallations();
   const api = useApi(gsApiRef);
 
-  const {
-    loading,
-    value,
-    retry,
-    error,
-  } = useAsyncRetry<RequestResult<IApp>[]>(async () => {
-    const responses = await Promise.allSettled(
-      installations.map((installationName) => api.listApps({ installationName, namespace }))
-    );
-
-    const result: RequestResult<IApp>[] = responses.map((response, idx) => {
+  const queries = useQueries({
+    queries: selectedInstallations.map(installationName => {
       return {
-        installationName: installations[idx],
-        ...response
-      };
-    });
+        queryKey: [installationName, 'apps'],
+        queryFn: () => api.listApps({ installationName }),
+      }
+    }),
+  });
 
-    return result;
-  }, [installations, namespace]);
-
-  return [
-    {
-      loading,
-      value,
-      error,
-    },
-    {
-      retry,
-    },
-  ] as const;
+  return getInstallationsQueriesInfo<IApp[]>(selectedInstallations, queries);
 }

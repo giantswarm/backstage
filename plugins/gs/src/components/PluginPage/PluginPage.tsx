@@ -1,5 +1,4 @@
 import React from 'react';
-import { Grid } from '@material-ui/core';
 import {
   Header,
   Page,
@@ -8,12 +7,9 @@ import {
   SupportButton,
 } from '@backstage/core-components';
 import { ClustersTable } from '../ClustersTable';
-import { InstallationsSelector } from '../InstallationsSelector';
-import { useInstallations } from '../useInstallations';
+import { InstallationsWrapper } from '../InstallationsWrapper';
 
 export const PluginPage = () => {
-  const { selectedInstallations } = useInstallations();
-
   return (
     <Page themeId="tool">
       <Header title="Kubernetes clusters by Giant Swarm" subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters." />
@@ -21,14 +17,9 @@ export const PluginPage = () => {
         <ContentHeader title="Kubernetes clusters by Giant Swarm">
           <SupportButton>This table shows all the clusters to which you have at least read access via the Giant Swarm management API.</SupportButton>
         </ContentHeader>
-        <Grid container spacing={3} direction="column">
-          <Grid item>
-            <InstallationsSelector />
-          </Grid>
-          <Grid item>
-            <ClustersTable installations={selectedInstallations} />
-          </Grid>
-        </Grid>
+        <InstallationsWrapper>
+          <ClustersTable />
+        </InstallationsWrapper>
       </Content>
     </Page>
   );

@@ -1,10 +1,9 @@
 import React from 'react';
-import { EmptyState, SubvalueCell, Table, TableColumn } from '@backstage/core-components';
+import { SubvalueCell, Table, TableColumn } from '@backstage/core-components';
 import { useClusters } from '../useClusters';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Grid, Typography } from '@material-ui/core';
-import { RejectedResults } from '../RejectedResults';
-import { FulfilledRequestResult, RejectedRequestResult, Resource } from '../../apis';
+import { Typography } from '@material-ui/core';
+import { Resource } from '../../apis';
 import { ICluster } from '../../model/services/mapi/capiv1beta1';
 
 const generatedColumns: TableColumn[] = [
@@ -76,53 +75,18 @@ const ClustersTableView = ({
   );
 };
 
-type ClustersTableProps = {
-  installations: string[];
-}
+export const ClustersTable = () => {
+  const { installationsData, initialLoading, retry } = useClusters();
 
-export const ClustersTable = ({ installations }: ClustersTableProps) => {
-  const [
-    {
-      value: results = [],
-      loading
-    },
-    {
-      retry
-    },
-  ] = useClusters({ installations });
-
-  const fulfilledResults = results.filter(
-    (result): result is FulfilledRequestResult<ICluster> => result.status === 'fulfilled'
-  );
-  const rejectedResults = results.filter(
-    (result): result is RejectedRequestResult => result.status === 'rejected'
+  const resources: Resource<ICluster>[] = installationsData.flatMap(
+    ({ installationName, data }) => data.map((cluster) => ({ installationName, ...cluster }))
   );
 
-  const resources: Resource<ICluster>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
-    installationName: result.installationName,
-    ...item
-  })));
-
-  return installations.length === 0 ? (
-    <EmptyState
-      missing="data"
-      title="No Installations Selected"
-      description="Please select one or more installations."
+  return (
+    <ClustersTableView
+      loading={initialLoading}
+      resources={resources}
+      retry={retry}
     />
-  ) : (
-    <Grid container spacing={3} direction="column">
-      {rejectedResults.length > 0 && (
-        <Grid item>
-          <RejectedResults results={rejectedResults} />
-        </Grid>
-      )}
-      <Grid item>
-        <ClustersTableView
-          loading={loading}
-          resources={resources}
-          retry={retry}
-        />
-      </Grid>
-    </Grid>
   );
 };

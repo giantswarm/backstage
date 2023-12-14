@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Box,
   Checkbox,
   FormControl,
   Input,
@@ -8,9 +7,11 @@ import {
   ListItemText,
   MenuItem,
   Select,
+  Typography,
   makeStyles,
 } from "@material-ui/core";
-import { useInstallations } from '../useInstallations';
+import classnames from 'classnames';
+import { InstallationStatus } from '../useInstallationsStatuses';
 
 const useStyles = makeStyles((theme) => ({
   formControl: {
@@ -28,6 +29,17 @@ const useStyles = makeStyles((theme) => ({
   noLabel: {
     marginTop: theme.spacing(3),
   },
+  '@keyframes pulsateSlightly': {
+    '0%': { opacity: '0.6' },
+    '100%': { opacity: '0.8' },
+  },
+  isLoading: {
+    opacity: 0.6,
+    animation: '1s ease-in-out 0s infinite alternate $pulsateSlightly',
+  },
+  isError: {
+    opacity: 0.6,
+  }
 }));
 
 const ITEM_HEIGHT = 48;
@@ -44,10 +56,11 @@ const MenuProps = {
 type MultipleSelectCheckmarksProps = {
   items: string[];
   selectedItems: string[];
+  renderValue: (value: unknown) => React.ReactNode;
   onChange: (selectedItems: string[]) => void;
 }
 
-const MultipleSelectCheckmarks = ({ items, selectedItems, onChange }: MultipleSelectCheckmarksProps) => {
+const MultipleSelectCheckmarks = ({ items, selectedItems, renderValue, onChange }: MultipleSelectCheckmarksProps) => {
   const classes = useStyles();
   const [localSelectedItems, setLocalSelectedItems] = React.useState<string[]>(selectedItems);
 
@@ -62,52 +75,95 @@ const MultipleSelectCheckmarks = ({ items, selectedItems, onChange }: MultipleSe
   }
 
   return (
-    <div>
-      <FormControl className={classes.formControl}>
-        <InputLabel id="demo-mutiple-checkbox-label">Installations</InputLabel>
-        <Select
-          labelId="demo-mutiple-checkbox-label"
-          id="demo-mutiple-checkbox"
-          multiple
-          value={localSelectedItems}
-          onChange={handleChange}
-          onClose={handleClose}
-          input={<Input />}
-          renderValue={(selected) => items.filter((item) => (selected as string[]).includes(item)).join(', ')}
-          MenuProps={MenuProps}
-        >
-          {items.map((item) => (
-            <MenuItem key={item} value={item}>
-              <Checkbox checked={localSelectedItems.indexOf(item) > -1} />
-              <ListItemText primary={item} />
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-    </div>
+    <FormControl className={classes.formControl}>
+      <InputLabel id="demo-mutiple-checkbox-label">Installations</InputLabel>
+      <Select
+        labelId="demo-mutiple-checkbox-label"
+        id="demo-mutiple-checkbox"
+        multiple
+        value={localSelectedItems}
+        onChange={handleChange}
+        onClose={handleClose}
+        input={<Input />}
+        renderValue={renderValue}
+        MenuProps={MenuProps}
+      >
+        {items.map((item) => (
+          <MenuItem key={item} value={item}>
+            <Checkbox checked={localSelectedItems.indexOf(item) > -1} />
+            <ListItemText primary={item} />
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
   );
 }
 
-export const InstallationsSelector = () => {
-  const {
-    installations,
-    selectedInstallations,
-    setSelectedInstallations,
-  } = useInstallations();
+type InstallationPreviewProps = {
+  installationName: string;
+  installationsStatuses?: InstallationStatus[];
+  isLastItem?: boolean;
+}
 
+const InstallationPreview = ({
+  installationName,
+  installationsStatuses,
+  isLastItem,
+}: InstallationPreviewProps) => {
+  const classes = useStyles();
+
+  const installationStatus = installationsStatuses?.find(
+    (status) => status.installationName === installationName
+  );
+
+  return (
+    <Typography
+      component='span'
+      className={classnames({
+        [classes.isLoading]: installationStatus?.isLoading,
+        [classes.isError]: installationStatus?.isError,
+      })}
+    >
+      {installationName}
+      {isLastItem ? null : ', '}
+    </Typography>
+  );
+}
+
+type InstallationsSelectorProps = {
+  installations: string[];
+  selectedInstallations: string[];
+  installationsStatuses: InstallationStatus[];
+  onChange?: (selectedInstallations: string[]) => void;
+}
+
+export const InstallationsSelector = ({
+  installations,
+  selectedInstallations,
+  installationsStatuses,
+  onChange,
+}: InstallationsSelectorProps) => {
   const handleChange = (selectedItems: string[]) => {
-    if (JSON.stringify(selectedItems.sort()) !== JSON.stringify(selectedInstallations.sort())) {
-      setSelectedInstallations(selectedItems);
+    if (onChange && JSON.stringify(selectedItems.sort()) !== JSON.stringify(selectedInstallations.sort())) {
+      onChange(selectedItems)
     }
   };
 
   return (
-    <Box>
-      <MultipleSelectCheckmarks
-        items={installations}
-        selectedItems={selectedInstallations}
-        onChange={handleChange}
-      />
-    </Box>
+    <MultipleSelectCheckmarks
+      items={installations}
+      selectedItems={selectedInstallations}
+      renderValue={() => (
+        selectedInstallations.map((item, idx) => (
+          <InstallationPreview
+            key={item}
+            installationName={item}
+            installationsStatuses={installationsStatuses}
+            isLastItem={idx === selectedInstallations.length - 1}
+          />
+        ))
+      )}
+      onChange={handleChange}
+    />
   );
 };

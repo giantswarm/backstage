@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  EmptyState,
   StatusAborted,
   StatusError,
   StatusOK,
@@ -10,8 +9,7 @@ import {
   TableColumn,
 } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Grid, Typography } from '@material-ui/core';
-import { RejectedResults } from '../RejectedResults';
+import { Typography } from '@material-ui/core';
 import { useApps } from '../useApps';
 import {
   IApp,
@@ -38,12 +36,7 @@ import {
   getHelmReleaseClusterName,
 } from '../../model/services/mapi/helmv2beta1';
 import { useHelmReleases } from '../useHelmReleases';
-import {
-  FulfilledRequestResult,
-  RejectedRequestResult,
-  RequestResult,
-  Resource,
-} from '../../apis';
+import { Resource } from '../../apis';
 
 type Deployment = IApp | IHelmRelease;
 
@@ -180,79 +173,48 @@ const DeploymentsTableView = ({
 };
 
 type DeploymentsTableProps = {
-  installations: string[];
   serviceName: string;
 }
 
-export const DeploymentsTable = ({ installations, serviceName }: DeploymentsTableProps) => {
-  const [
-    {
-      value: resultsApps = [],
-      loading: loadingApps,
-    },
-    {
-      retry: retryApps,
-    },
-  ] = useApps({ installations });
+export const DeploymentsTable = ({ serviceName }: DeploymentsTableProps) => {
+  const {
+    installationsData: installationsDataApps,
+    initialLoading: initialLoadingApps,
+    retry: retryApps,
+  } = useApps();
 
-  const [
-    {
-      value: resultsHelmReleases = [],
-      loading: loadingHelmReleases,
-    },
-    {
-      retry: retryHelmReleases,
-    },
-  ] = useHelmReleases({ installations });
+  const {
+    installationsData: installationsDataHelmReleases,
+    initialLoading: initialLoadingHelmReleases,
+    retry: retryHelmReleases,
+  } = useHelmReleases();
 
-  const loading = loadingApps || loadingHelmReleases;
+  const installationsData = [
+    ...installationsDataApps,
+    ...installationsDataHelmReleases,
+  ];
+
+  const resources: Resource<Deployment>[] = installationsData.flatMap(
+    ({ installationName, data }) => data.map((resource) => ({ installationName, ...resource }))
+  );
+
+  const loading = initialLoadingApps || initialLoadingHelmReleases;
 
   const handleRetry = () => {
     retryApps();
     retryHelmReleases();
   }
 
-  const results: RequestResult<Deployment>[] = [
-    ...resultsApps,
-    ...resultsHelmReleases,
-  ];
-  const fulfilledResults = results?.filter(
-    (result): result is FulfilledRequestResult<Deployment> => result.status === 'fulfilled'
-  );
-  const rejectedResults = results?.filter(
-    (result): result is RejectedRequestResult => result.status === 'rejected'
-  );
-
-  const resources: Resource<Deployment>[] = fulfilledResults.flatMap((result) => result.value.map((item) => ({
-    installationName: result.installationName,
-    ...item
-  })));
-
   const filteredResources = resources.filter((resource) => resource.kind === 'App'
     ? resource.spec.name === serviceName
     : resource.spec?.chart.spec.chart === serviceName
   );
 
-  return installations.length === 0 ? (
-    <EmptyState
-      missing="data"
-      title="No Installations Selected"
-      description="Please select one or more installations."
+  return (
+    <DeploymentsTableView
+      loading={loading}
+      resources={filteredResources}
+      retry={handleRetry}
     />
-  ) : (
-    <Grid container spacing={3} direction="column">
-      {rejectedResults.length > 0 && (
-        <Grid item>
-          <RejectedResults results={rejectedResults} />
-        </Grid>
-      )}
-      <Grid item>
-        <DeploymentsTableView
-          loading={loading}
-          resources={filteredResources}
-          retry={handleRetry}
-        />
-      </Grid>
-    </Grid>
   );
 };

@@ -1,47 +1,24 @@
-import useAsyncRetry from 'react-use/lib/useAsyncRetry';
-import { gsApiRef, RequestResult } from '../apis';
+import { gsApiRef } from '../apis';
 import { useApi } from '@backstage/core-plugin-api';
+import { useInstallations } from './useInstallations';
+import { useQueries } from '@tanstack/react-query';
 import { IHelmRelease } from '../model/services/mapi/helmv2beta1';
+import { getInstallationsQueriesInfo } from './utils';
 
-type Options = {
-  installations: string[];
-  namespace?: string;
-}
-
-export function useHelmReleases({
-  installations,
-  namespace,
-}: Options) {
+export function useHelmReleases() {
+  const {
+    selectedInstallations,
+  } = useInstallations();
   const api = useApi(gsApiRef);
 
-  const {
-    loading,
-    value,
-    retry,
-    error,
-  } = useAsyncRetry<RequestResult<IHelmRelease>[]>(async () => {
-    const responses = await Promise.allSettled(
-      installations.map((installationName) => api.listHelmReleases({ installationName, namespace }))
-    );
-
-    const result: RequestResult<IHelmRelease>[] = responses.map((response, idx) => {
+  const queries = useQueries({
+    queries: selectedInstallations.map(installationName => {
       return {
-        installationName: installations[idx],
-        ...response
-      };
-    });
+        queryKey: [installationName, 'helmreleases'],
+        queryFn: () => api.listHelmReleases({ installationName }),
+      }
+    }),
+  });
 
-    return result;
-  }, [installations, namespace]);
-
-  return [
-    {
-      loading,
-      value,
-      error,
-    },
-    {
-      retry,
-    },
-  ] as const;
+  return getInstallationsQueriesInfo<IHelmRelease[]>(selectedInstallations, queries);
 }
