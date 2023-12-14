@@ -13,7 +13,7 @@ import {
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 import { GithubAuth } from '@backstage/core-app-api';
-import { createScmAuthInstances, gsAuthApiRefs, gsAuthProviderFactories } from '@internal/plugin-gs';
+import { gsAuthApiRef, GSAuth } from '@internal/plugin-gs';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -44,25 +44,36 @@ export const apis: AnyApiFactory[] = [
       }),
   }),
 
-  /**
-   * A set of OIDC auth provider factories for the GS plugin
-   */
-  ...gsAuthProviderFactories,
+  createApiFactory({
+    api: gsAuthApiRef,
+    deps: {
+      configApi: configApiRef,
+      discoveryApi: discoveryApiRef,
+      oauthRequestApi: oauthRequestApiRef,
+    },
+    factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
+      GSAuth.create({
+        configApi,
+        discoveryApi,
+        oauthRequestApi,
+      }),
+  }),
 
   createApiFactory({
     api: scmAuthApiRef,
     deps: {
-      configApi: configApiRef,
       githubAuthApi: githubAuthApiRef,
-      ...gsAuthApiRefs,
+      gsAuthApi: gsAuthApiRef,
     },
-    factory: ({ configApi, githubAuthApi, ...gsAuthApis }) => {
+    factory: ({ githubAuthApi, gsAuthApi }) => {
       return ScmAuth.merge(
         ScmAuth.forGithub(githubAuthApi),
-        /**
-         * ScmAuth instances for GS plugin auth providers
-         */
-        ...createScmAuthInstances(gsAuthApis, configApi)
+        ...gsAuthApi.getProviders().map(({ providerName, apiEndpoint }) => {
+          return ScmAuth.forAuthApi(gsAuthApi.getAuthApi(providerName), {
+            host: apiEndpoint.replace('https://', ''),
+            scopeMapping: { default: [], repoWrite: [] },
+          });
+        }),
       );
     }
   }),

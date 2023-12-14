@@ -10,7 +10,6 @@ import {
   makeStyles,
 } from '@material-ui/core';
 import {
-  ApiRef,
   SessionApi,
   SessionState,
   ProfileInfoApi,
@@ -38,11 +37,10 @@ export const ProviderSettingsItem = (props: {
   title: string;
   description: string;
   icon: IconComponent;
-  apiRef: ApiRef<ProfileInfoApi & SessionApi>;
+  authApi: ProfileInfoApi & SessionApi;
 }) => {
-  const { title, description, icon: Icon, apiRef } = props;
+  const { title, description, icon: Icon, authApi } = props;
 
-  const api = useApi(apiRef);
   const errorApi = useApi(errorApiRef);
   const [signedIn, setSignedIn] = useState(false);
   const [profile, setProfile] = useState<ProfileInfo>(emptyProfile);
@@ -50,7 +48,7 @@ export const ProviderSettingsItem = (props: {
   useEffect(() => {
     let didCancel = false;
 
-    const subscription = api
+    const subscription = authApi
       .sessionState$()
       .subscribe((sessionState: SessionState) => {
         if (sessionState !== SessionState.SignedIn) {
@@ -58,7 +56,7 @@ export const ProviderSettingsItem = (props: {
           setSignedIn(false);
         }
         if (!didCancel) {
-          api
+          authApi
             .getProfile({ optional: true })
             .then((profileResponse: ProfileInfo | undefined) => {
               if (!didCancel) {
@@ -77,7 +75,7 @@ export const ProviderSettingsItem = (props: {
       didCancel = true;
       subscription.unsubscribe();
     };
-  }, [api]);
+  }, [authApi]);
 
   const classes = useStyles();
 
@@ -124,7 +122,7 @@ export const ProviderSettingsItem = (props: {
             variant="outlined"
             color="primary"
             onClick={() => {
-              const action = signedIn ? api.signOut() : api.signIn();
+              const action = signedIn ? authApi.signOut() : authApi.signIn();
               action.catch(error => errorApi.post(error));
             }}
           >

@@ -5,9 +5,8 @@ export {
   EntityGSDeploymentsContent,
 } from './plugin';
 export {
-  gsAuthApiRefs,
-  gsAuthProviderFactories,
-  createScmAuthInstances
+  gsAuthApiRef,
+  GSAuth,
 } from './apis';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings'
 export { isGSDeploymentsAvailable } from './components/Router';

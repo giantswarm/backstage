@@ -1,29 +1,24 @@
 import React from 'react';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useApi } from '@backstage/core-plugin-api';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ProviderSettingsItem } from './ProviderSettingsItem';
-import { getProviderDisplayName, getProviderInstallationName, gsAuthApiRefs, isGSProvider } from '../../apis/auth';
+import { gsAuthApiRef } from '../../apis';
 
 export const ProviderSettings = () => {
-  const configApi = useApi(configApiRef);
-  const providersConfig = configApi.getOptionalConfig('auth.providers');
-  const configuredProviders = providersConfig?.keys() || [];
-  const gsProviders = configuredProviders.filter(isGSProvider);
+  const gsAuthApi = useApi(gsAuthApiRef);
 
   return (
     <>
-      {gsProviders.map((providerName) => {
-        const displayName = getProviderDisplayName(providerName);
-        const installationName = getProviderInstallationName(providerName);
-        const apiRef = gsAuthApiRefs[providerName];
+      {gsAuthApi.getProviders().map(({providerName, providerDisplayName, installationName}) => {
+        const authApi = gsAuthApi.getAuthApi(providerName);
 
         return (
           <>
-            {apiRef && (
+            {authApi && (
               <ProviderSettingsItem
-                title={displayName}
+                title={providerDisplayName}
                 description={`Provides single sign-on authentication for the Giant Swarm installation "${installationName}"`}
-                apiRef={apiRef}
+                authApi={authApi}
                 icon={GiantSwarmIcon}
               />
             )}
