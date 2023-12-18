@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Move Deployments tab to the second position on the service entity page.
 
+### Added
+
+- GS plugin: Add deployment details pane.
+
 ## [0.12.2] - 2023-12-14
 
 ### Changed

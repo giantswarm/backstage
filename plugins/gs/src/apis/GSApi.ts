@@ -14,7 +14,30 @@ export const gsApiRef = createApiRef<GSApi>({
  * @public
  */
 export type GSApi = {
-  listClusters: (options: { installationName: string; namespace?: string; }) => Promise<ICluster[]>;
-  listApps: (options: { installationName: string; namespace?: string; }) => Promise<IApp[]>;
-  listHelmReleases: (options: { installationName: string; namespace?: string; }) => Promise<IHelmRelease[]>;
+  listClusters: (options: {
+    installationName: string;
+    namespace?: string;
+  }) => Promise<ICluster[]>;
+
+  listApps: (options: {
+    installationName: string;
+    namespace?: string;
+  }) => Promise<IApp[]>;
+
+  getApp: (options: {
+    installationName: string;
+    namespace: string;
+    name: string;
+  }) => Promise<IApp>;
+
+  listHelmReleases: (options: {
+    installationName: string;
+    namespace?: string;
+  }) => Promise<IHelmRelease[]>;
+
+  getHelmRelease: (options: {
+    installationName: string;
+    namespace: string;
+    name: string;
+  }) => Promise<IHelmRelease>;
 }

@@ -8,6 +8,14 @@ export const statusStalled = 'stalled';
 export const statusReconciling = 'reconciling';
 export const statusReconciled = 'reconciled';
 
+export function getHelmReleaseLastAppliedRevision(helmRelease: IHelmRelease) {
+  return helmRelease.status?.lastAppliedRevision;
+}
+
+export function getHelmReleaseLastAttemptedRevision(helmRelease: IHelmRelease) {
+  return helmRelease.status?.lastAttemptedRevision;
+}
+
 export function getHelmReleaseVersion(helmRelease: IHelmRelease) {
   if (!helmRelease.status || !helmRelease.status.lastAppliedRevision) {
     return helmRelease.spec?.chart.spec.version;

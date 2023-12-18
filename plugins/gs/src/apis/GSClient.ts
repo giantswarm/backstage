@@ -69,6 +69,20 @@ export class GSClient implements GSApi {
     });
   }
 
+  private async fetchResource<ResourceType>(options: {
+    installationName: string;
+    resourceUrl: URL;
+  }): Promise<ResourceType> {
+    const apiEndpoint = this.getApiEndpoint(options.installationName);
+    const { headers } = await this.scmAuthApi.getCredentials({
+      url: apiEndpoint,
+    });
+
+    const result = await this.fetch<ResourceType>(options.resourceUrl.toString(), { headers } );
+
+    return result;
+  }
+
   private async fetchListResource<ResourceType, ListType extends IList<ResourceType>>(options: {
     installationName: string;
     resourceUrl: URL;
@@ -111,6 +125,25 @@ export class GSClient implements GSApi {
     return this.fetchListResource({ resourceUrl, installationName: options.installationName });
   }
 
+  async getApp(options: {
+    installationName: string;
+    namespace: string;
+    name: string;
+  }): Promise<IApp> {
+    const proxyBaseURL = await this.discoveryApi.getBaseUrl('proxy');
+    const proxyUrl = `${proxyBaseURL}/gs/api/${options.installationName}/`;
+
+    const resourceUrl = k8sUrl.create({
+      baseUrl: proxyUrl,
+      apiVersion: 'application.giantswarm.io/v1alpha1',
+      kind: 'apps',
+      namespace: options.namespace,
+      name: options.name,
+    });
+
+    return this.fetchResource({ resourceUrl, installationName: options.installationName });
+  }
+
   async listHelmReleases(options: {
     installationName: string;
     namespace?: string;
@@ -123,5 +156,24 @@ export class GSClient implements GSApi {
     });
 
     return this.fetchListResource({ resourceUrl, installationName: options.installationName });
+  }
+
+  async getHelmRelease(options: {
+    installationName: string;
+    namespace: string;
+    name: string;
+  }): Promise<IHelmRelease> {
+    const proxyBaseURL = await this.discoveryApi.getBaseUrl('proxy');
+    const proxyUrl = `${proxyBaseURL}/gs/api/${options.installationName}/`;
+
+    const resourceUrl = k8sUrl.create({
+      baseUrl: proxyUrl,
+      apiVersion: 'helm.toolkit.fluxcd.io/v2beta1',
+      kind: 'helmreleases',
+      namespace: options.namespace,
+      name: options.name,
+    });
+
+    return this.fetchResource({ resourceUrl, installationName: options.installationName });
   }
 }

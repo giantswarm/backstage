@@ -39,7 +39,7 @@ export const GSPluginPage = gsPlugin.provide(
 export const EntityGSDeploymentsContent = gsPlugin.provide(
   createRoutableExtension({
     name: 'EntityGSDeploymentsContent',
-    component: () => import('./components/EntityDeploymentsContent').then(m => withQueryClient(m.EntityDeploymentsContent)),
+    component: () => import('./components/Router').then(m => withQueryClient(m.Router)),
     mountPoint: entityDeploymentsRouteRef,
   }),
 );
