@@ -212,6 +212,10 @@ const serviceEntityPage = (
       {overviewContent}
     </EntityLayout.Route>
 
+    <EntityLayout.Route path="/deployments" title="Deployments">
+      {deploymentsContent}
+    </EntityLayout.Route>
+
     <EntityLayout.Route path="/pull-requests" title="Pull Requests">
       <EntityGithubPullRequestsContent />
     </EntityLayout.Route>
@@ -240,10 +244,6 @@ const serviceEntityPage = (
           <EntityDependsOnResourcesCard variant="gridItem" />
         </Grid>
       </Grid>
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/deployments" title="Deployments">
-      {deploymentsContent}
     </EntityLayout.Route>
   </EntityLayout>
 );
