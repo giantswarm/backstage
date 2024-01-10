@@ -63,9 +63,10 @@ export const AppDetailsStatus = ({
           </>
         )}
         titleTypographyProps={{ variant: undefined }}
-        subheader={<DateComponent value={app.status.release.lastDeployed} relative variant="body2" />}
+        subheader={<DateComponent value={app.status.release.lastDeployed} relative />}
         subheaderTypographyProps={{
-          color: 'textPrimary'
+          variant: 'body2',
+          color: 'textPrimary',
         }}
       />
       {app.status.release.reason ? (

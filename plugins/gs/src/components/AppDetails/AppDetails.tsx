@@ -95,7 +95,6 @@ export const AppDetails = ({
                   <DateComponent
                     value={app.metadata.creationTimestamp}
                     relative
-                    variant="body2"
                   />
                 ),
               }} />

@@ -95,7 +95,6 @@ export const HelmReleaseDetails = ({
                   <DateComponent
                     value={helmrelease.metadata.creationTimestamp}
                     relative
-                    variant="body2"
                   />
                 ),
               }} />
