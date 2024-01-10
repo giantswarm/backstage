@@ -1,42 +1,148 @@
 import React from 'react';
-import { SubvalueCell, Table, TableColumn } from '@backstage/core-components';
+import {
+  StatusError,
+  StatusOK,
+  StatusWarning,
+  SubvalueCell,
+  Table,
+  TableColumn,
+} from '@backstage/core-components';
 import { useClusters } from '../hooks';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { Resource } from '../../apis';
-import { ICluster } from '../../model/services/mapi/capiv1beta1';
+import {
+  Cluster,
+  getClusterDescription,
+  getClusterOrganization,
+  getClusterCreationTimestamp,
+  isClusterCreating,
+  isClusterDeleting,
+  isManagementCluster,
+  getClusterName,
+  getClusterServicePriority,
+} from '../../model/services/mapi/generic';
+import DateComponent from '../UI/Date';
+import { toSentenceCase } from '../utils/helpers';
 
-const generatedColumns: TableColumn[] = [
+const ClusterTypes = {
+  'Management': 'management',
+  'Workload': 'workload',
+} as const;
+
+type ClusterType = (typeof ClusterTypes)[keyof typeof ClusterTypes];
+
+const ClusterStatuses = {
+  'Deleting': 'deleting',
+  'Creating': 'creating',
+  'Ready': 'ready',
+} as const;
+
+type ClusterStatus = (typeof ClusterStatuses)[keyof typeof ClusterStatuses];
+
+const calculateClusterType = (cluster: Cluster, installationName: string) => {
+  return isManagementCluster(cluster, installationName)
+    ? ClusterTypes.Management
+    : ClusterTypes.Workload;
+};
+
+const calculateClusterStatus = (cluster: Cluster) => {
+  if (isClusterDeleting(cluster)) {
+    return ClusterStatuses.Deleting;
+  }
+
+  if (isClusterCreating(cluster)) {
+    return ClusterStatuses.Creating;
+  }
+
+  return ClusterStatuses.Ready;
+}
+
+type Row = {
+  installationName: string;
+  name: string;
+  description?: string;
+  type: ClusterType;
+  organization?: string;
+  created?: string;
+  priority?: string;
+  status: ClusterStatus;
+}
+
+const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Installation',
     field: 'installationName',
-    width: '200px',
   },
   {
     title: 'Name',
     field: 'name',
     highlight: true,
-    render: (row: any): React.ReactNode => (
+    render: (row) => (
       <SubvalueCell value={row.name} subvalue={row.description} />
     ),
     customFilterAndSearch: (
       query,
-      row: any,
+      row,
     ) =>
       `${row.name} ${row.description}`
       .toLocaleUpperCase('en-US')
       .includes(query.toLocaleUpperCase('en-US')),
   },
   {
-    title: 'Namespace',
-    field: 'namespace',
+    title: 'Type',
+    field: 'type',
+    render: (row) => (
+      toSentenceCase(row.type)
+    ),
+  },
+  {
+    title: 'Organization',
+    field: 'organization',
+  },
+  {
+    title: 'Priority',
+    field: 'priority',
+    render: (row) => {
+      if (!row.priority) {
+        return 'n/a';
+      }
+
+      return toSentenceCase(row.priority);
+    },
+  },
+  {
+    title: 'Created',
+    field: 'created',
+    type: 'datetime',
+    render: (row) => (
+      <DateComponent value={row.created} relative />
+    ),
+  },
+  {
+    title: 'Status',
+    field: 'status',
+    render: (row) => {
+      const statusLabel = toSentenceCase(row.status);
+
+      switch (row.status) {
+        case ClusterStatuses.Creating:
+          return <StatusWarning>{statusLabel}</StatusWarning>;
+        
+        case ClusterStatuses.Deleting:
+          return <StatusError>{statusLabel}</StatusError>;
+        
+        default:
+          return <StatusOK>{statusLabel}</StatusOK>;
+      }
+    },
   },
 ];
 
 type Props = {
   loading: boolean;
   retry: () => void;
-  resources: Resource<ICluster>[];
+  resources: Resource<Cluster>[];
 };
 
 const ClustersTableView = ({
@@ -47,14 +153,18 @@ const ClustersTableView = ({
   const data = resources.map(({installationName, ...resource}) => (
     {
       installationName,
-      name: resource.metadata.name,
-      namespace: resource.metadata.namespace,
-      description: resource.metadata.annotations?.['cluster.giantswarm.io/description']
+      name: getClusterName(resource),
+      description: getClusterDescription(resource),
+      type: calculateClusterType(resource, installationName),
+      organization: getClusterOrganization(resource),
+      created: getClusterCreationTimestamp(resource),
+      priority: getClusterServicePriority(resource),
+      status: calculateClusterStatus(resource),
     }
   ));
 
   return (
-    <Table
+    <Table<Row>
       isLoading={loading}
       options={{ paging: false }}
       actions={[
@@ -78,7 +188,7 @@ const ClustersTableView = ({
 export const ClustersTable = () => {
   const { installationsData, initialLoading, retry } = useClusters();
 
-  const resources: Resource<ICluster>[] = installationsData.flatMap(
+  const resources: Resource<Cluster>[] = installationsData.flatMap(
     ({ installationName, data }) => data.map((cluster) => ({ installationName, ...cluster }))
   );
 
