@@ -1,5 +1,5 @@
 import React from "react";
-import { useApp } from "../useApp";
+import { useApp } from "../hooks";
 import { EmptyState, Progress, WarningPanel } from "@backstage/core-components";
 import { Box, Card, CardContent, CardHeader, Grid } from "@material-ui/core";
 import { StructuredMetadataList } from "../UI/StructuredMetadataList";

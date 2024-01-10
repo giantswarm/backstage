@@ -1,7 +1,7 @@
 import React from "react";
 import { EmptyState, Progress, WarningPanel } from "@backstage/core-components";
 import { Box, Card, CardContent, CardHeader, Grid } from "@material-ui/core";
-import { useHelmRelease } from "../useHelmRelease";
+import { useHelmRelease } from "../hooks";
 import { StructuredMetadataList } from "../UI/StructuredMetadataList";
 import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
 import { HelmReleaseDetailsStatus } from "../HelmReleaseDetailsStatus";

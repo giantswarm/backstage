@@ -1,4 +1,4 @@
-import { gsApiRef } from '../apis';
+import { gsApiRef } from '../../apis';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 

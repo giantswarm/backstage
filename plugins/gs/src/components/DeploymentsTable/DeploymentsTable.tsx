@@ -12,7 +12,7 @@ import {
 } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
-import { useApps } from '../useApps';
+import { useApps } from '../hooks';
 import {
   IApp,
   getAppClusterName,
@@ -39,7 +39,7 @@ import {
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
 } from '../../model/services/mapi/helmv2beta1';
-import { useHelmReleases } from '../useHelmReleases';
+import { useHelmReleases } from '../hooks';
 import { Resource } from '../../apis';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { entityDeploymentsRouteRef } from '../../routes';

@@ -6,7 +6,7 @@ import MuiAccordionDetails from '@material-ui/core/AccordionDetails';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
 import { styled } from '@material-ui/core/styles';
-import { InstallationStatus } from '../useInstallationsStatuses';
+import { InstallationStatus } from '../hooks';
 
 const StyledErrorOutlineIcon = styled(ErrorOutlineIcon)({
   marginRight: 10

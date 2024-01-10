@@ -1,11 +1,11 @@
-import { useQueries } from '@tanstack/react-query';
-import { gsApiRef } from '../apis';
+import { gsApiRef } from '../../apis';
 import { useApi } from '@backstage/core-plugin-api';
-import { ICluster } from '../model/services/mapi/capiv1beta1';
 import { useInstallations } from './useInstallations';
+import { useQueries } from '@tanstack/react-query';
+import { IApp } from '../../model/services/mapi/applicationv1alpha1';
 import { getInstallationsQueriesInfo } from './utils';
 
-export function useClusters() {
+export function useApps() {
   const {
     selectedInstallations,
   } = useInstallations();
@@ -14,11 +14,11 @@ export function useClusters() {
   const queries = useQueries({
     queries: selectedInstallations.map(installationName => {
       return {
-        queryKey: [installationName, 'clusters'],
-        queryFn: () => api.listClusters({ installationName }),
+        queryKey: [installationName, 'apps'],
+        queryFn: () => api.listApps({ installationName }),
       }
     }),
   });
 
-  return getInstallationsQueriesInfo<ICluster[]>(selectedInstallations, queries);
+  return getInstallationsQueriesInfo<IApp[]>(selectedInstallations, queries);
 }
