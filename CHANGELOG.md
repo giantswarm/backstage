@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - GS plugin: Add deployment details pane.
 
+### Fixed
+
+- GS plugin: Fix deployments selection for entity deployments list.
+
 ## [0.12.2] - 2023-12-14
 
 ### Changed

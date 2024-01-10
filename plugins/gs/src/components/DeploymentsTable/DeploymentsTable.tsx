@@ -27,6 +27,7 @@ import {
   statusUninstalling as appStatusUninstalling,
   statusUnknown as appStatusUnknown,
   getAppVersion,
+  getAppChartName,
 } from '../../model/services/mapi/applicationv1alpha1';
 import {
   IHelmRelease,
@@ -38,6 +39,7 @@ import {
   getHelmReleaseClusterName,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
+  getHelmReleaseChartName,
 } from '../../model/services/mapi/helmv2beta1';
 import { useHelmReleases } from '../hooks';
 import { Resource } from '../../apis';
@@ -157,6 +159,16 @@ const generatedColumns: TableColumn[] = [
   },
 ];
 
+const getServiceChartNames = (serviceName: string) => {
+  const name = serviceName.replace(/-app$/, '');
+  const nameWithAppSuffix = `${name}-app`;
+
+  return [
+    name,
+    nameWithAppSuffix,
+  ];
+}
+
 type Props = {
   loading: boolean;
   retry: () => void;
@@ -253,10 +265,15 @@ export const DeploymentsTable = ({
     retryHelmReleases();
   }
 
-  const filteredResources = resources.filter((resource) => resource.kind === 'App'
-    ? resource.spec.name === serviceName
-    : resource.spec?.chart.spec.chart === serviceName
-  );
+  const serviceChartNames = getServiceChartNames(serviceName);
+
+  const filteredResources = resources.filter((resource) => {
+    const chartName = resource.kind === 'App'
+      ? getAppChartName(resource)
+      : getHelmReleaseChartName(resource);
+
+    return chartName && serviceChartNames.includes(chartName);
+  });
 
   return (
     <DeploymentsTableView

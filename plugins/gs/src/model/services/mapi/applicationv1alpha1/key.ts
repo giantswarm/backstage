@@ -61,6 +61,10 @@ export function getAppClusterName(app: IApp): string {
   return app.metadata.labels?.[labelCluster] || '';
 }
 
+export function getAppChartName(app: IApp) {
+  return app.spec.name;
+}
+
 export function isAppManagedByFlux(app: IApp): boolean {
   return app.metadata.labels?.[labelManagedBy] === 'flux';
 }

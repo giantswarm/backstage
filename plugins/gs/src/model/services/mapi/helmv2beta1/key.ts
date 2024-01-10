@@ -52,3 +52,7 @@ export function getHelmReleaseStatus(helmRelease: IHelmRelease) {
 export function getHelmReleaseClusterName(helmRelease: IHelmRelease): string {
   return helmRelease.metadata.labels?.[labelCluster] || '';
 }
+
+export function getHelmReleaseChartName(helmRelease: IHelmRelease) {
+  return helmRelease.spec?.chart.spec.chart;
+}
