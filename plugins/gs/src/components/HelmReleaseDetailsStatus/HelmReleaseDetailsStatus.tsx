@@ -6,7 +6,7 @@ import DateComponent from "../UI/Date";
 import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import { Heading } from "../UI/Heading";
-import { compareDates } from "../helpers";
+import { compareDates } from "../utils/helpers";
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,

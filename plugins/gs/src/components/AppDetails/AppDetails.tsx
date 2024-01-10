@@ -12,7 +12,7 @@ import {
 } from "../../model/services/mapi/applicationv1alpha1";
 import { Heading } from "../UI/Heading";
 import { AppDetailsStatus } from "../AppDetailsStatus";
-import { formatVersion } from "../helpers";
+import { formatVersion } from "../utils/helpers";
 
 type AppDetailsProps = {
   installationName: string;

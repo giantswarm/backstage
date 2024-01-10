@@ -44,7 +44,7 @@ import { Resource } from '../../apis';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { entityDeploymentsRouteRef } from '../../routes';
 import { Version } from '../UI/Version';
-import { formatVersion, toSentenceCase } from '../helpers';
+import { formatVersion, toSentenceCase } from '../utils/helpers';
 
 type Deployment = IApp | IHelmRelease;
 

@@ -8,7 +8,7 @@ import {
   useEntity,
 } from '@backstage/plugin-catalog-react';
 import { DeploymentsTable } from '../DeploymentsTable';
-import { getProjectSlugFromEntity, getServiceNameFromEntity } from '../getAppNameFromEntity';
+import { getProjectSlugFromEntity, getServiceNameFromEntity } from '../utils/entity';
 import { InstallationsWrapper } from '../InstallationsWrapper';
 import { DeploymentDetails } from '../DeploymentDetails';
 import { useSearchParams } from 'react-router-dom';

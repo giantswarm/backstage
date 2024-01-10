@@ -2,9 +2,9 @@ import React, { ComponentProps, ComponentType } from "react";
 import { Box, Link, Tooltip, styled } from "@material-ui/core";
 import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
 import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
-import { getReleaseNotesURL, truncateVersion } from "../../helpers";
-import CachingColorHash from "../../cachingColorHash";
-import { VersionImpl } from "../../VersionImpl";
+import { getReleaseNotesURL, truncateVersion } from "../../utils/helpers";
+import CachingColorHash from "../../utils/cachingColorHash";
+import { VersionImpl } from "../../utils/VersionImpl";
 
 const colorHash = new CachingColorHash();
 

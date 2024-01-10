@@ -60,7 +60,7 @@ import {
 } from '@k-phoen/backstage-plugin-opsgenie';
 
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
-import { EntityGSDeploymentsContent, isGSDeploymentsAvailable } from '@internal/plugin-gs';
+import { EntityGSDeploymentsContent, isEntityGSDeploymentsAvailable } from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
@@ -105,7 +105,7 @@ const githubActionsContent = (
 
 const deploymentsContent = (
   <EntitySwitch>
-    <EntitySwitch.Case if={isGSDeploymentsAvailable}>
+    <EntitySwitch.Case if={isEntityGSDeploymentsAvailable}>
       <EntityGSDeploymentsContent />
     </EntitySwitch.Case>
 

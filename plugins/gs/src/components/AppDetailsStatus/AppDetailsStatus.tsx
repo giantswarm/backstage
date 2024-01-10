@@ -9,7 +9,7 @@ import {
   getAppStatus,
   statusDeployed,
 } from '../../model/services/mapi/applicationv1alpha1';
-import { toSentenceCase } from "../helpers";
+import { toSentenceCase } from "../utils/helpers";
 import { ContentRow } from "../UI/ContentRow";
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({

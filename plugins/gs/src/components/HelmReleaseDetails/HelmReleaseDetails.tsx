@@ -12,7 +12,7 @@ import {
   getHelmReleaseLastAttemptedRevision,
 } from "../../model/services/mapi/helmv2beta1";
 import { Heading } from "../UI/Heading";
-import { formatVersion } from "../helpers";
+import { formatVersion } from "../utils/helpers";
 
 type HelmReleaseDetailsProps = {
   installationName: string;
