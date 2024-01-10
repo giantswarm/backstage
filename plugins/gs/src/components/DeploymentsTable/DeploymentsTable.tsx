@@ -1,5 +1,7 @@
 import React from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
+  Link,
   StatusAborted,
   StatusError,
   StatusOK,
@@ -10,7 +12,7 @@ import {
 } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
-import { useApps } from '../useApps';
+import { useApps } from '../hooks';
 import {
   IApp,
   getAppClusterName,
@@ -24,71 +26,27 @@ import {
   statusUninstalled as appStatusUninstalled,
   statusUninstalling as appStatusUninstalling,
   statusUnknown as appStatusUnknown,
+  getAppVersion,
 } from '../../model/services/mapi/applicationv1alpha1';
 import {
   IHelmRelease,
   getHelmReleaseStatus,
-  getHelmReleaseVersion,
   statusUnknown as helmReleaseStatusUnknown,
   statusReconciled as helmReleaseStatusReconciled,
   statusReconciling as helmReleaseStatusReconciling,
   statusStalled as helmReleaseStatusStalled,
   getHelmReleaseClusterName,
+  getHelmReleaseLastAppliedRevision,
+  getHelmReleaseLastAttemptedRevision,
 } from '../../model/services/mapi/helmv2beta1';
-import { useHelmReleases } from '../useHelmReleases';
+import { useHelmReleases } from '../hooks';
 import { Resource } from '../../apis';
+import { useRouteRef } from '@backstage/core-plugin-api';
+import { entityDeploymentsRouteRef } from '../../routes';
+import { Version } from '../UI/Version';
+import { formatVersion, toSentenceCase } from '../utils/helpers';
 
 type Deployment = IApp | IHelmRelease;
-
-const formatAppStatus = (status: string) => {
-  if (status === '') {
-    return 'n/a';
-  }
-
-  const label = status.replace(/-/g, ' ');
-
-  switch (status) {
-    case appStatusUnknown:
-    case appStatusUninstalled:
-      return <StatusAborted>{label}</StatusAborted>;
-
-    case appStatusDeployed:
-      return <StatusOK>{label}</StatusOK>;
-
-    case appStatusSuperseded:
-    case appStatusUninstalling:
-    case appStatusPendingInstall:
-    case appStatusPendingUpgrade:
-    case appStatusPendingRollback:
-      return <StatusWarning>{label}</StatusWarning>;
-
-    default:
-      return <StatusError>{label}</StatusError>;
-  }
-}
-
-const formatHelmReleaseStatus = (status: string) => {
-  if (status === '') {
-    return 'n/a';
-  }
-
-  switch (status) {
-    case helmReleaseStatusUnknown:
-      return <StatusAborted>{status}</StatusAborted>;
-
-    case helmReleaseStatusStalled:
-      return <StatusWarning>{status}</StatusWarning>;
-
-    case helmReleaseStatusReconciling:
-      return <StatusRunning>{status}</StatusRunning>;
-
-    case helmReleaseStatusReconciled:
-      return <StatusOK>{status}</StatusOK>;
-
-    default:
-      return <StatusError>{status}</StatusError>;
-  }
-}
 
 const generatedColumns: TableColumn[] = [
   {
@@ -102,20 +60,100 @@ const generatedColumns: TableColumn[] = [
   },
   {
     title: 'Type',
-    field: 'deploymentType',
+    field: 'kind',
+    render: (row: any): React.ReactNode => {
+      return row.kind === 'app' ? 'App' : 'HelmRelease';
+    }
   },
   {
     title: 'Resource Name',
     field: 'name',
     highlight: true,
+    render: (row: any): React.ReactNode => {
+      const LinkWrapper = () => {
+        const routeLink = useRouteRef(entityDeploymentsRouteRef);
+        const searchParams = new URLSearchParams({
+          pane: 'deploymentDetails',
+          installation: row.installationName,
+          kind: row.kind,
+          namespace: row.namespace,
+          name: row.name,
+        });
+
+        const to = `${routeLink()}?${searchParams.toString()}`;
+
+        return (
+          <Link
+            component={RouterLink}
+            to={to}
+          >
+            {row.name}
+          </Link>
+        );
+      };
+
+      return <LinkWrapper />;
+    },
   },
   {
     title: 'Version',
     field: 'version',
+    render: (row: any): React.ReactNode => {
+      return (
+        <Version
+          version={row.version}
+          projectSlug={row.projectSlug}
+          highlight
+          displayWarning={row.version !== row.attemptedVersion}
+          warningMessageVersion={row.attemptedVersion}
+        />
+      );
+    },
   },
   {
     title: 'Status',
     field: 'status',
+    render: (row: any): React.ReactNode => {
+      if (row.status === '') {
+        return 'n/a';
+      }
+
+      const statusLabel = toSentenceCase(row.status.replace(/-/g, ' '));
+
+      switch (row.status) {
+        case appStatusUnknown:
+        case appStatusUninstalled:
+        case helmReleaseStatusUnknown:
+          return <StatusAborted>{statusLabel}</StatusAborted>;
+    
+        case appStatusSuperseded:
+        case appStatusUninstalling:
+        case appStatusPendingInstall:
+        case appStatusPendingUpgrade:
+        case appStatusPendingRollback:
+        case helmReleaseStatusStalled:
+          return <StatusWarning>{statusLabel}</StatusWarning>;
+    
+        case helmReleaseStatusReconciling:
+          return <StatusRunning>{statusLabel}</StatusRunning>;
+    
+        case appStatusDeployed:
+        case helmReleaseStatusReconciled:
+          return <StatusOK>{statusLabel}</StatusOK>;
+    
+        default:
+          return <StatusError>{statusLabel}</StatusError>;
+      }
+    },
+    customFilterAndSearch: (
+      query,
+      row: any,
+    ) => {
+      const statusLabel = row.status.replace(/-/g, ' ');
+      return `${row.status} ${statusLabel}`
+      .toLocaleUpperCase('en-US')
+      .includes(query.toLocaleUpperCase('en-US'));
+    }
   },
 ];
 
@@ -123,30 +161,36 @@ type Props = {
   loading: boolean;
   retry: () => void;
   resources: Resource<Deployment>[];
+  projectSlug?: string;
 };
 
 const DeploymentsTableView = ({
   loading,
   retry,
   resources,
+  projectSlug,
 }: Props) => {
   const data = resources.map(({installationName, ...resource}) => (
     resource.kind === 'App' ? {
       installationName,
-      deploymentType: 'App',
+      kind: 'app',
       clusterName: getAppClusterName(resource),
       name: resource.metadata.name,
       namespace: resource.metadata.namespace,
-      version: getAppCurrentVersion(resource),
-      status: formatAppStatus(getAppStatus(resource)),
+      version: formatVersion(getAppCurrentVersion(resource) ?? ''),
+      attemptedVersion: formatVersion(getAppVersion(resource)),
+      status: getAppStatus(resource),
+      projectSlug,
     } : {
       installationName,
-      deploymentType: 'HelmRelease',
+      kind: 'helmrelease',
       clusterName: getHelmReleaseClusterName(resource),
       name: resource.metadata.name,
       namespace: resource.metadata.namespace,
-      version: getHelmReleaseVersion(resource),
-      status: formatHelmReleaseStatus(getHelmReleaseStatus(resource)),
+      version: formatVersion(getHelmReleaseLastAppliedRevision(resource) ?? ''),
+      attemptedVersion: formatVersion(getHelmReleaseLastAttemptedRevision(resource) ?? ''),
+      status: getHelmReleaseStatus(resource),
+      projectSlug,
     }
   ));
 
@@ -174,9 +218,13 @@ const DeploymentsTableView = ({
 
 type DeploymentsTableProps = {
   serviceName: string;
+  projectSlug?: string;
 }
 
-export const DeploymentsTable = ({ serviceName }: DeploymentsTableProps) => {
+export const DeploymentsTable = ({
+  serviceName,
+  projectSlug,
+}: DeploymentsTableProps) => {
   const {
     installationsData: installationsDataApps,
     initialLoading: initialLoadingApps,
@@ -215,6 +263,7 @@ export const DeploymentsTable = ({ serviceName }: DeploymentsTableProps) => {
       loading={loading}
       resources={filteredResources}
       retry={handleRetry}
+      projectSlug={projectSlug}
     />
   );
 };

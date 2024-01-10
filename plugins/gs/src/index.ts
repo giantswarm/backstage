@@ -9,4 +9,4 @@ export {
   GSAuth,
 } from './apis';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings'
-export { isGSDeploymentsAvailable } from './components/Router';
+export { isEntityDeploymentsAvailable  as isEntityGSDeploymentsAvailable } from './components/utils/entity';

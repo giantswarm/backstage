@@ -2,8 +2,7 @@ import React from 'react';
 import {
   Grid,
 } from "@material-ui/core";
-import { useInstallations } from '../useInstallations';
-import { useInstallationsStatuses } from '../useInstallationsStatuses';
+import { useInstallations, useInstallationsStatuses } from '../hooks';
 import { InstallationsErrors } from '../InstallationsErrors';
 import { InstallationsSelector } from '../InstallationsSelector';
 import { EmptyState } from '@backstage/core-components';

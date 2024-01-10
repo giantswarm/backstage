@@ -39,10 +39,12 @@ export function isAppCatalogStable(catalog: ICatalog): boolean {
   return type === 'stable';
 }
 
-export function getAppCurrentVersion(app: IApp): string {
-  if (!app.status || !app.status.version) return app.spec.version;
+export function getAppCurrentVersion(app: IApp) {
+  return app.status?.version;
+}
 
-  return app.status.version;
+export function getAppVersion(app: IApp) {
+  return app.spec.version;
 }
 
 export function getAppUpstreamVersion(app: IApp) {

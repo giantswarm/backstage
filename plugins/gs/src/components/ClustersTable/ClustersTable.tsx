@@ -1,6 +1,6 @@
 import React from 'react';
 import { SubvalueCell, Table, TableColumn } from '@backstage/core-components';
-import { useClusters } from '../useClusters';
+import { useClusters } from '../hooks';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { Resource } from '../../apis';
