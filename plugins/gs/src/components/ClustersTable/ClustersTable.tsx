@@ -1,8 +1,5 @@
 import React from 'react';
 import {
-  StatusError,
-  StatusOK,
-  StatusWarning,
   SubvalueCell,
   Table,
   TableColumn,
@@ -24,21 +21,12 @@ import {
 } from '../../model/services/mapi/generic';
 import DateComponent from '../UI/Date';
 import { toSentenceCase } from '../utils/helpers';
+import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';
 
 const ClusterTypes = {
   'Management': 'management',
   'Workload': 'workload',
 } as const;
-
-type ClusterType = (typeof ClusterTypes)[keyof typeof ClusterTypes];
-
-const ClusterStatuses = {
-  'Deleting': 'deleting',
-  'Creating': 'creating',
-  'Ready': 'ready',
-} as const;
-
-type ClusterStatus = (typeof ClusterStatuses)[keyof typeof ClusterStatuses];
 
 const calculateClusterType = (cluster: Cluster, installationName: string) => {
   return isManagementCluster(cluster, installationName)
@@ -62,11 +50,11 @@ type Row = {
   installationName: string;
   name: string;
   description?: string;
-  type: ClusterType;
+  type: string;
   organization?: string;
   created?: string;
   priority?: string;
-  status: ClusterStatus;
+  status: string;
 }
 
 const generatedColumns: TableColumn<Row>[] = [
@@ -123,18 +111,7 @@ const generatedColumns: TableColumn<Row>[] = [
     title: 'Status',
     field: 'status',
     render: (row) => {
-      const statusLabel = toSentenceCase(row.status);
-
-      switch (row.status) {
-        case ClusterStatuses.Creating:
-          return <StatusWarning>{statusLabel}</StatusWarning>;
-        
-        case ClusterStatuses.Deleting:
-          return <StatusError>{statusLabel}</StatusError>;
-        
-        default:
-          return <StatusOK>{statusLabel}</StatusOK>;
-      }
+      return <ClusterStatus status={row.status} />
     },
   },
 ];
