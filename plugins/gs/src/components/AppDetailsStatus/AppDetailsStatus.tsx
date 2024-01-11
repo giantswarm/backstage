@@ -7,7 +7,7 @@ import { Heading } from "../UI/Heading";
 import {
   IApp,
   getAppStatus,
-  statusDeployed,
+  AppStatuses,
 } from '../../model/services/mapi/applicationv1alpha1';
 import { toSentenceCase } from "../utils/helpers";
 import { ContentRow } from "../UI/ContentRow";
@@ -47,7 +47,7 @@ export const AppDetailsStatus = ({
       <CardHeader
         title={(
           <>
-            {status === statusDeployed
+            {status === AppStatuses.Deployed
               ? (
                 <Box display='flex' alignItems="center">
                   <StyledCheckCircleOutlinedIcon />

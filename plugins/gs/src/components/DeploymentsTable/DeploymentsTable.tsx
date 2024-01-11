@@ -2,11 +2,6 @@ import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Link,
-  StatusAborted,
-  StatusError,
-  StatusOK,
-  StatusRunning,
-  StatusWarning,
   Table,
   TableColumn,
 } from '@backstage/core-components';
@@ -18,24 +13,12 @@ import {
   getAppClusterName,
   getAppCurrentVersion,
   getAppStatus,
-  statusDeployed as appStatusDeployed,
-  statusPendingInstall as appStatusPendingInstall,
-  statusPendingRollback as appStatusPendingRollback,
-  statusPendingUpgrade as appStatusPendingUpgrade,
-  statusSuperseded as appStatusSuperseded,
-  statusUninstalled as appStatusUninstalled,
-  statusUninstalling as appStatusUninstalling,
-  statusUnknown as appStatusUnknown,
   getAppVersion,
   getAppChartName,
 } from '../../model/services/mapi/applicationv1alpha1';
 import {
   IHelmRelease,
   getHelmReleaseStatus,
-  statusUnknown as helmReleaseStatusUnknown,
-  statusReconciled as helmReleaseStatusReconciled,
-  statusReconciling as helmReleaseStatusReconciling,
-  statusStalled as helmReleaseStatusStalled,
   getHelmReleaseClusterName,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
@@ -46,7 +29,8 @@ import { Resource } from '../../apis';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { entityDeploymentsRouteRef } from '../../routes';
 import { Version } from '../UI/Version';
-import { formatVersion, toSentenceCase } from '../utils/helpers';
+import { formatVersion } from '../utils/helpers';
+import { DeploymentStatus } from '../DeploymentStatus';
 
 type Deployment = IApp | IHelmRelease;
 
@@ -120,32 +104,7 @@ const generatedColumns: TableColumn[] = [
         return 'n/a';
       }
 
-      const statusLabel = toSentenceCase(row.status.replace(/-/g, ' '));
-
-      switch (row.status) {
-        case appStatusUnknown:
-        case appStatusUninstalled:
-        case helmReleaseStatusUnknown:
-          return <StatusAborted>{statusLabel}</StatusAborted>;
-    
-        case appStatusSuperseded:
-        case appStatusUninstalling:
-        case appStatusPendingInstall:
-        case appStatusPendingUpgrade:
-        case appStatusPendingRollback:
-        case helmReleaseStatusStalled:
-          return <StatusWarning>{statusLabel}</StatusWarning>;
-    
-        case helmReleaseStatusReconciling:
-          return <StatusRunning>{statusLabel}</StatusRunning>;
-    
-        case appStatusDeployed:
-        case helmReleaseStatusReconciled:
-          return <StatusOK>{statusLabel}</StatusOK>;
-    
-        default:
-          return <StatusError>{statusLabel}</StatusError>;
-      }
+      return <DeploymentStatus status={row.status} />;
     },
     customFilterAndSearch: (
       query,

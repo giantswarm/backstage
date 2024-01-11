@@ -2,11 +2,13 @@ import { IHelmRelease } from "./types";
 
 export const labelCluster = 'giantswarm.io/cluster';
 
-export const statusUnknown = 'unknown';
-export const statusFailed = 'failed';
-export const statusStalled = 'stalled';
-export const statusReconciling = 'reconciling';
-export const statusReconciled = 'reconciled';
+export const HelmReleaseStatuses = {
+  'Unknown': 'unknown',
+  'Failed': 'failed',
+  'Stalled': 'stalled',
+  'Reconciling': 'reconciling',
+  'Reconciled': 'reconciled',
+} as const;
 
 export function getHelmReleaseLastAppliedRevision(helmRelease: IHelmRelease) {
   return helmRelease.status?.lastAppliedRevision;
@@ -31,22 +33,22 @@ export function getHelmReleaseStatus(helmRelease: IHelmRelease) {
   const conditions = helmRelease.status?.conditions;
 
   if (conditions.some((c) => c.type === 'Ready' && c.status === 'False')) {
-    return statusFailed;
+    return HelmReleaseStatuses.Failed;
   }
 
   if (conditions.some((c) => c.type === 'Stalled' && c.status === 'True')) {
-    return statusStalled;
+    return HelmReleaseStatuses.Stalled;
   }
 
   if (conditions.some((c) => c.type === 'Reconciling' && c.status === 'True')) {
-    return statusReconciling
+    return HelmReleaseStatuses.Reconciling
   }
 
   if (conditions.some((c) => c.type === 'Ready' && c.status === 'True')) {
-    return statusReconciled;
+    return HelmReleaseStatuses.Reconciled;
   }
 
-  return statusUnknown;
+  return HelmReleaseStatuses.Unknown;
 }
 
 export function getHelmReleaseClusterName(helmRelease: IHelmRelease): string {
