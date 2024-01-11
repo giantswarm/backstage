@@ -89,7 +89,7 @@ const generatedColumns: TableColumn<Row>[] = [
     field: 'organization',
   },
   {
-    title: 'Priority',
+    title: 'Service Priority',
     field: 'priority',
     render: (row) => {
       if (!row.priority) {
