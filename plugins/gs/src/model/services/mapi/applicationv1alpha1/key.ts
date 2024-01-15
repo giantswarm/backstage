@@ -12,15 +12,17 @@ export const labelCatalogVisibility =
 export const labelCatalogType = 'application.giantswarm.io/catalog-type';
 export const labelCluster = 'giantswarm.io/cluster';
 
-export const statusUnknown = 'unknown';
-export const statusDeployed = 'deployed';
-export const statusUninstalled = 'uninstalled';
-export const statusSuperseded = 'superseded';
-export const statusFailed = 'failed';
-export const statusUninstalling = 'uninstalling';
-export const statusPendingInstall = 'pending-install';
-export const statusPendingUpgrade = 'pending-upgrade';
-export const statusPendingRollback = 'pending-rollback';
+export const AppStatuses = {
+  'Unknown': 'unknown',
+  'Deployed': 'deployed',
+  'Uninstalled': 'uninstalled',
+  'Superseded': 'superseded',
+  'Failed': 'failed',
+  'Uninstalling': 'uninstalling',
+  'PendingInstall': 'pending-install',
+  'PendingUpgrade': 'pending-upgrade',
+  'PendingRollback': 'pending-rollback',
+} as const;
 
 export const annotationReadme = 'application.giantswarm.io/readme';
 export const annotationValuesSchema = 'application.giantswarm.io/values-schema';

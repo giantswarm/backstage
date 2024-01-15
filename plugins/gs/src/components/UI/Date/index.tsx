@@ -16,6 +16,7 @@ const REFRESH_PERIOD = 45; // 45 minutes
 const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   value,
   relative,
+  variant = 'inherit',
   ...props
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -68,7 +69,7 @@ const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   if (relative) {
     return (
       <Tooltip title={formattedDate}>
-        <Typography component="span" {...props} key='date'>
+        <Typography component="span" variant={variant} {...props} key='date'>
           {visibleDate}
         </Typography>
       </Tooltip>
@@ -76,7 +77,7 @@ const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   }
 
   return (
-    <Typography component="span" {...props} key='date'>
+    <Typography component="span" variant={variant} {...props} key='date'>
       {visibleDate}
     </Typography>
   );

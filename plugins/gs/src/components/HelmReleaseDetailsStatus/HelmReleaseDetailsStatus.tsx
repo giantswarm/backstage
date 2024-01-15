@@ -55,9 +55,10 @@ export const HelmReleaseDetailsStatus = ({
                 </Box>
               )}
               titleTypographyProps={{ variant: undefined }}
-              subheader={<DateComponent value={condition.lastTransitionTime} relative variant="body2" />}
+              subheader={<DateComponent value={condition.lastTransitionTime} relative />}
               subheaderTypographyProps={{
-                color: 'textPrimary'
+                variant: 'body2',
+                color: 'textPrimary',
               }}
             />
             <CardContent>
