@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - GS plugin: Display additional information for clusters.
+- GS plugin: Configure deployment names via catalog entity annotation.
 
 ## [0.13.0] - 2024-01-10
 
