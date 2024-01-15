@@ -35,7 +35,7 @@ const StyledLaunchOutlinedIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
 
 type VersionProps = {
   version: string;
-  projectSlug?: string;
+  sourceLocation?: string;
   displayWarning?: boolean;
   warningMessageVersion?: string;
   highlight?: boolean;
@@ -43,14 +43,14 @@ type VersionProps = {
 
 export const Version = ({
   version,
-  projectSlug,
+  sourceLocation,
   displayWarning,
   warningMessageVersion,
   highlight,
 }: VersionProps) => {
   const semverVersion = new VersionImpl(version);
   const isPreReleaseVersion = Boolean(semverVersion.getPreRelease());
-  const displayLinkToProject = projectSlug && version !== '' && !isPreReleaseVersion;
+  const displayLinkToProject = sourceLocation && version !== '' && !isPreReleaseVersion;
 
   let versionLabel = version === '' ? 'n/a' : version;
   if (isPreReleaseVersion && highlight) {
@@ -69,7 +69,7 @@ export const Version = ({
     <Box display='flex' alignItems="center" color='primary'>
       {displayLinkToProject ? (
         <Link
-          href={getReleaseNotesURL(projectSlug, version)}
+          href={getReleaseNotesURL(sourceLocation, version)}
           target="_blank"
           rel="noopener noreferrer"
         >

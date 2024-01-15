@@ -91,10 +91,10 @@ export function parseDate(date: string | number | Date): Date {
 }
 
 export function getReleaseNotesURL(
-  projectSlug: string,
+  sourceLocation: string,
   version: string
 ): string {
-  return `https://github.com/${projectSlug}/releases/tag/v${version}`;
+  return `${sourceLocation}/releases/tag/v${version}`;
 }
 
 export function formatVersion(version: string) {

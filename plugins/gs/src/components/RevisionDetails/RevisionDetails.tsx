@@ -6,13 +6,13 @@ import { Version } from "../UI/Version";
 type RevisionDetailsProps = {
   lastAppliedRevision: string;
   lastAttemptedRevision: string;
-  projectSlug?: string;
+  sourceLocation?: string;
 };
 
 export const RevisionDetails = ({
   lastAppliedRevision,
   lastAttemptedRevision,
-  projectSlug,
+  sourceLocation,
 }: RevisionDetailsProps) => {
   return (
     <Grid container>
@@ -22,7 +22,7 @@ export const RevisionDetails = ({
             <ContentRow title="Revision last applied">
               <Version
                 version={lastAppliedRevision}
-                projectSlug={projectSlug}
+                sourceLocation={sourceLocation}
                 displayWarning={lastAppliedRevision !== lastAttemptedRevision}
               />
             </ContentRow>
@@ -33,7 +33,10 @@ export const RevisionDetails = ({
         <Card>
           <CardContent>
             <ContentRow title="Revision last attempted">
-              <Version version={lastAttemptedRevision} projectSlug={projectSlug} />
+              <Version
+                version={lastAttemptedRevision}
+                sourceLocation={sourceLocation}
+              />
             </ContentRow>
           </CardContent>
         </Card>

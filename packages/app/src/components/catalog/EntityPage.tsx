@@ -60,7 +60,7 @@ import {
 } from '@k-phoen/backstage-plugin-opsgenie';
 
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
-import { EntityGSDeploymentsContent, isEntityGSDeploymentsAvailable } from '@internal/plugin-gs';
+import { EntityGSDeploymentsContent } from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
@@ -102,22 +102,6 @@ const githubActionsContent = (
     </EntitySwitch.Case>
   </EntitySwitch>
 );
-
-const deploymentsContent = (
-  <EntitySwitch>
-    <EntitySwitch.Case if={isEntityGSDeploymentsAvailable}>
-      <EntityGSDeploymentsContent />
-    </EntitySwitch.Case>
-
-    <EntitySwitch.Case>
-      <EmptyState
-        title="Deployments content is not available for this entity"
-        missing="info"
-        description="There appears to be no deployment information for this component. That should not happen normally. Please report this problem. Thanks!"
-      />
-    </EntitySwitch.Case>
-  </EntitySwitch>
-)
 
 const entityWarningContent = (
   <>
@@ -213,7 +197,7 @@ const serviceEntityPage = (
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/deployments" title="Deployments">
-      {deploymentsContent}
+      <EntityGSDeploymentsContent />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/pull-requests" title="Pull Requests">

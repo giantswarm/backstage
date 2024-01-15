@@ -8,7 +8,7 @@ import {
   useEntity,
 } from '@backstage/plugin-catalog-react';
 import { DeploymentsTable } from '../DeploymentsTable';
-import { getProjectSlugFromEntity, getServiceNameFromEntity } from '../utils/entity';
+import { getDeploymentNamesFromEntity, getSourceLocationFromEntity } from '../utils/entity';
 import { InstallationsWrapper } from '../InstallationsWrapper';
 import { DeploymentDetails } from '../DeploymentDetails';
 import { useSearchParams } from 'react-router-dom';
@@ -19,8 +19,9 @@ export const EntityDeploymentsContent = () => {
   
   const pane = searchParams.get('pane');
 
-  const serviceName = getServiceNameFromEntity(entity);
-  const projectSlug = getProjectSlugFromEntity(entity);
+  const entityName = entity.metadata.name;
+  const deploymentNames = getDeploymentNamesFromEntity(entity) ?? [];
+  const sourceLocation = getSourceLocationFromEntity(entity);
 
   const handleDeploymentDetailsClose = () => {
     setSearchParams((params) => {
@@ -36,17 +37,17 @@ export const EntityDeploymentsContent = () => {
 
   return (
     <Content>
-      <ContentHeader title={`Deployments of ${serviceName}`}>
-        <SupportButton>{`This table shows all the clusters where ${serviceName} is deployed to.`}</SupportButton>
+      <ContentHeader title={`Deployments of ${entityName}`}>
+        <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
       </ContentHeader>
       <InstallationsWrapper>
         <DeploymentsTable
-          serviceName={serviceName}
-          projectSlug={projectSlug}
+          deploymentNames={deploymentNames}
+          sourceLocation={sourceLocation}
         />
       </InstallationsWrapper>
       <DeploymentDetails
-        projectSlug={projectSlug}
+        sourceLocation={sourceLocation}
         isOpen={pane === 'deploymentDetails'}
         onClose={handleDeploymentDetailsClose}
       />
