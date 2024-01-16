@@ -66,13 +66,13 @@ const DrawerContent = ({
 };
 
 type DeploymentDetailsProps = {
-  projectSlug?: string;
+  sourceLocation?: string;
   isOpen?: boolean;
   onClose?: () => void;
 };
 
 export const DeploymentDetails = ({
-  projectSlug,
+  sourceLocation,
   isOpen,
   onClose,
 }: DeploymentDetailsProps) => {
@@ -110,7 +110,7 @@ export const DeploymentDetails = ({
             installationName={installationName}
             name={name}
             namespace={namespace}
-            projectSlug={projectSlug}
+            sourceLocation={sourceLocation}
           />
         )}
         {kind === 'helmrelease' && (
@@ -118,7 +118,7 @@ export const DeploymentDetails = ({
             installationName={installationName}
             name={name}
             namespace={namespace}
-            projectSlug={projectSlug}
+            sourceLocation={sourceLocation}
           />
         )}
       </DrawerContent>

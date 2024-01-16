@@ -88,7 +88,7 @@ const generatedColumns: TableColumn[] = [
       return (
         <Version
           version={row.version}
-          projectSlug={row.projectSlug}
+          sourceLocation={row.sourceLocation}
           highlight
           displayWarning={row.version !== row.attemptedVersion}
           warningMessageVersion={row.attemptedVersion}
@@ -118,28 +118,18 @@ const generatedColumns: TableColumn[] = [
   },
 ];
 
-const getServiceChartNames = (serviceName: string) => {
-  const name = serviceName.replace(/-app$/, '');
-  const nameWithAppSuffix = `${name}-app`;
-
-  return [
-    name,
-    nameWithAppSuffix,
-  ];
-}
-
 type Props = {
   loading: boolean;
   retry: () => void;
   resources: Resource<Deployment>[];
-  projectSlug?: string;
+  sourceLocation?: string;
 };
 
 const DeploymentsTableView = ({
   loading,
   retry,
   resources,
-  projectSlug,
+  sourceLocation,
 }: Props) => {
   const data = resources.map(({installationName, ...resource}) => (
     resource.kind === 'App' ? {
@@ -151,7 +141,7 @@ const DeploymentsTableView = ({
       version: formatVersion(getAppCurrentVersion(resource) ?? ''),
       attemptedVersion: formatVersion(getAppVersion(resource)),
       status: getAppStatus(resource),
-      projectSlug,
+      sourceLocation,
     } : {
       installationName,
       kind: 'helmrelease',
@@ -161,7 +151,7 @@ const DeploymentsTableView = ({
       version: formatVersion(getHelmReleaseLastAppliedRevision(resource) ?? ''),
       attemptedVersion: formatVersion(getHelmReleaseLastAttemptedRevision(resource) ?? ''),
       status: getHelmReleaseStatus(resource),
-      projectSlug,
+      sourceLocation,
     }
   ));
 
@@ -188,13 +178,13 @@ const DeploymentsTableView = ({
 };
 
 type DeploymentsTableProps = {
-  serviceName: string;
-  projectSlug?: string;
+  deploymentNames: string[];
+  sourceLocation?: string;
 }
 
 export const DeploymentsTable = ({
-  serviceName,
-  projectSlug,
+  deploymentNames,
+  sourceLocation,
 }: DeploymentsTableProps) => {
   const {
     installationsData: installationsDataApps,
@@ -224,14 +214,12 @@ export const DeploymentsTable = ({
     retryHelmReleases();
   }
 
-  const serviceChartNames = getServiceChartNames(serviceName);
-
   const filteredResources = resources.filter((resource) => {
     const chartName = resource.kind === 'App'
       ? getAppChartName(resource)
       : getHelmReleaseChartName(resource);
 
-    return chartName && serviceChartNames.includes(chartName);
+    return chartName && deploymentNames.includes(chartName);
   });
 
   return (
@@ -239,7 +227,7 @@ export const DeploymentsTable = ({
       loading={loading}
       resources={filteredResources}
       retry={handleRetry}
-      projectSlug={projectSlug}
+      sourceLocation={sourceLocation}
     />
   );
 };

@@ -1,13 +1,25 @@
-import { Entity } from '@backstage/catalog-model';
+import {
+  ANNOTATION_SOURCE_LOCATION,
+  Entity,
+} from '@backstage/catalog-model';
 
-const GS_APP_FLAVOR_LABEL = 'giantswarm.io/flavor-app';
-const GITHUB_PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
+export const GS_DEPLOYMENT_NAMES = 'giantswarm.io/deployment-names';
 
-export const getServiceNameFromEntity = (entity: Entity) =>
-  entity.metadata.name;
+export const isEntityDeploymentsAvailable = (entity: Entity) => 
+  Boolean(entity.metadata.annotations?.[GS_DEPLOYMENT_NAMES]);
 
-export const getProjectSlugFromEntity = (entity: Entity) =>
-  entity.metadata.annotations?.[GITHUB_PROJECT_SLUG_ANNOTATION];
+export const getDeploymentNamesFromEntity = (entity: Entity) => {
+  const deploymentNames = entity.metadata.annotations?.[GS_DEPLOYMENT_NAMES];
 
-export const isEntityDeploymentsAvailable = (entity: Entity) =>
-  entity.metadata.labels?.[GS_APP_FLAVOR_LABEL] === 'true';
+  if (!deploymentNames) {
+    return undefined;
+  }
+
+  return deploymentNames.replace(/\s/g, '').split(',');
+}
+
+export const getSourceLocationFromEntity = (entity: Entity) => {
+  const location = entity.metadata.annotations?.[ANNOTATION_SOURCE_LOCATION];
+
+return location && location.startsWith('url:') ? location.replace(/^url:/, '') : location;
+}

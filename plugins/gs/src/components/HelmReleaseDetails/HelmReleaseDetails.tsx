@@ -18,14 +18,14 @@ type HelmReleaseDetailsProps = {
   installationName: string;
   namespace: string;
   name: string;
-  projectSlug?: string;
+  sourceLocation?: string;
 }
 
 export const HelmReleaseDetails = ({
   installationName,
   namespace,
   name,
-  projectSlug,
+  sourceLocation,
 }: HelmReleaseDetailsProps) => {
   const {
     data: helmrelease,
@@ -73,7 +73,7 @@ export const HelmReleaseDetails = ({
           <RevisionDetails
             lastAppliedRevision={lastAppliedRevision}
             lastAttemptedRevision={lastAttemptedRevision}
-            projectSlug={projectSlug}
+            sourceLocation={sourceLocation}
           />
         </Grid>
 
