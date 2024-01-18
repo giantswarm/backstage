@@ -4312,29 +4312,30 @@
   integrity sha512-ZXRY4jNvVgSVQ8DL3LTcakaAtXwTVUxE81hslsyD2AtoXW/wVob10HkOJ1X/pAlcI7D+2YoZKg5do8G/w6RYgA==
 
 "@janus-idp/backstage-plugin-quay@^1.3.0":
-  version "1.4.11"
-  resolved "https://registry.yarnpkg.com/@janus-idp/backstage-plugin-quay/-/backstage-plugin-quay-1.4.11.tgz#b36fddfa159925060a8a0ffbc6d4a534f4f8543f"
-  integrity sha512-eVhpGspGT0YCdWP0B2UzF+Fd74Z/ZO7KLsgBCDF/oBdbrcKQvfV2sT4KBdn9bmNowkUcmqDiuT5g0IJ5YzI9VQ==
+  version "1.5.0"
+  resolved "https://registry.yarnpkg.com/@janus-idp/backstage-plugin-quay/-/backstage-plugin-quay-1.5.0.tgz#c833f02c8f97d51dfa90c62618750e2fd152065e"
+  integrity sha512-EyAXbkfbqBHQVTp1i4xKZF8izMDLz/lmciWkBZYLsNJA0Z9Ufjraj2j+UVfqbvs6GiCie7WzvUBm0q+EDqKbtA==
   dependencies:
     "@backstage/catalog-model" "^1.4.3"
     "@backstage/core-components" "^0.13.6"
     "@backstage/core-plugin-api" "^1.7.0"
     "@backstage/plugin-catalog-react" "^1.8.5"
     "@backstage/theme" "^0.4.3"
-    "@janus-idp/shared-react" "2.0.0"
+    "@janus-idp/shared-react" "2.4.0"
     "@material-ui/core" "^4.12.2"
     "@material-ui/icons" "^4.11.3"
     "@material-ui/lab" "4.0.0-alpha.61"
     react-use "^17.4.0"
 
-"@janus-idp/shared-react@2.0.0":
-  version "2.0.0"
-  resolved "https://registry.yarnpkg.com/@janus-idp/shared-react/-/shared-react-2.0.0.tgz#4330f480f99bdb7c291f0db479122b2e3f94b8de"
-  integrity sha512-OHLfR4PQLxN34BW4f5GE5K0ryI4dCXWS1NNrYXYFr6WSzsBvyDtpeSLJ9yH7NWeImrZo3g4+hTsBndt3o+czpg==
+"@janus-idp/shared-react@2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@janus-idp/shared-react/-/shared-react-2.4.0.tgz#5d999aa26fb065d9322fef5b6182abc3488a922e"
+  integrity sha512-FsLvMrGsH5dNBch7k7tNYnLLofXpUVeZjdZG3hhfQyLnyH4TlTgd5Sm6162eMeSWi+TvqlcA04m06I4rMyfKNQ==
   dependencies:
     "@kubernetes/client-node" "^0.19.0"
     classnames "^2.3.2"
     date-fns "^2.30.0"
+    file-saver "^2.0.5"
     lodash "^4.17.21"
     mathjs "^11.11.2"
 
@@ -11834,6 +11835,11 @@ file-entry-cache@^6.0.1:
   integrity sha512-7Gps/XWymbLk2QLYK4NzpMOrYjMhdIxXuIvy2QBsLE6ljuodKvdkWs/cpyJJ3CVIVpH0Oi1Hvg1ovbMzLdFBBg==
   dependencies:
     flat-cache "^3.0.4"
+
+file-saver@^2.0.5:
+  version "2.0.5"
+  resolved "https://registry.yarnpkg.com/file-saver/-/file-saver-2.0.5.tgz#d61cfe2ce059f414d899e9dd6d4107ee25670c38"
+  integrity sha512-P9bmyZ3h/PRG+Nzga+rbdI4OEpNDzAVyy74uVO9ATgzLK6VtAsYybF/+TOCvrc0MO793d6+42lLyZTw7/ArVzA==
 
 file-type@^16.5.4:
   version "16.5.4"
