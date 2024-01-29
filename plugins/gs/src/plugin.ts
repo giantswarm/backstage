@@ -11,6 +11,12 @@ import { GSClient, gsApiRef } from './apis';
 import { scmAuthApiRef } from '@backstage/integration-react';
 import { withQueryClient } from './withQueryClient';
 
+// export const clustersNavItem = createNavItemExtension({
+//   title: 'Clusters',
+//   icon: GiantSwarmIcon,
+//   routeRef: rootRouteRef,
+// });
+
 export const gsPlugin = createPlugin({
   id: 'gs',
   apis: [
@@ -31,7 +37,7 @@ export const GSPluginPage = gsPlugin.provide(
   createRoutableExtension({
     name: 'GSPluginPage',
     component: () =>
-      import('./components/PluginPage').then(m => withQueryClient(m.PluginPage)),
+      import('./components/PluginPage').then(m => m.PluginPage),
     mountPoint: rootRouteRef,
   }),
 );

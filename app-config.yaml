@@ -1,6 +1,26 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
+  experimental:
+    packages: 'all'
+    # include:
+    #   - '@backstage/plugin-app-visualizer'
+  # routes:
+  #   bindings:
+  #     plugin.app-visualizer.externalRoutes.app-visualizer: plugin.app-visualizer.routes.app-visualizer
+  extensions:
+    # - apis.plugin.graphiql.browse.gitlab: true
+    # - graphiql-endpoint:graphiql/gitlab: true
+
+    - entity-card:catalog/about
+    - entity-card:catalog/labels
+    - entity-card:catalog/links:
+        config:
+          filter: kind:component has:links
+    # - entity-card:linguist/languages
+    # Entity page content
+    - entity-content:techdocs
+      
 organization:
   name: My Company
 

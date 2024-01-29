@@ -55,3 +55,8 @@ catalog:
       target: https://github.com/giantswarm/github/blob/main/catalog/groups.yaml
     - type: url
       target: https://github.com/giantswarm/github/blob/main/catalog/users.yaml
+    - type: url
+      target: https://github.com/giantswarm/github/blob/main/catalog/components.yaml
+
+opsgenie:
+  domain: 'giantswarm.io'

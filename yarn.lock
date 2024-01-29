@@ -2329,6 +2329,17 @@
     "@backstage/version-bridge" "^1.0.7"
     "@types/react" "^16.13.1 || ^17.0.0"
 
+"@backstage/core-compat-api@next":
+  version "0.1.2-next.0"
+  resolved "https://registry.yarnpkg.com/@backstage/core-compat-api/-/core-compat-api-0.1.2-next.0.tgz#1fc0736caae6ebce2a19bc900347cbb0dd214fb6"
+  integrity sha512-PD30uyniEVOzes72/biFpDBdeY/wtyt/q7116H8J2O5t/Eoxjm45YxkBRza8e3I1YvNoJ+GJVTs5+A0owpOKrg==
+  dependencies:
+    "@backstage/core-app-api" "^1.11.3"
+    "@backstage/core-plugin-api" "^1.8.2"
+    "@backstage/frontend-plugin-api" "^0.5.1-next.0"
+    "@backstage/version-bridge" "^1.0.7"
+    "@types/react" "^16.13.1 || ^17.0.0"
+
 "@backstage/core-components@^0.12.4", "@backstage/core-components@^0.12.5":
   version "0.12.5"
   resolved "https://registry.yarnpkg.com/@backstage/core-components/-/core-components-0.12.5.tgz#ea9e5d04845fb031e0f4fb4b764497ee722ad128"
@@ -2470,10 +2481,44 @@
     "@manypkg/get-packages" "^1.1.3"
     minimatch "^5.1.2"
 
+"@backstage/frontend-app-api@next":
+  version "0.6.0-next.0"
+  resolved "https://registry.yarnpkg.com/@backstage/frontend-app-api/-/frontend-app-api-0.6.0-next.0.tgz#dccc3d0555ab4b82fe86452ccab69fc13ff80044"
+  integrity sha512-UBBsQ4KzgvaT4aPittKNPYyOA1dwaFXenqt2h1+uBU3TFIPAH2C0Wq7cKtb1DCVIIRfloMO55wU6cvb56cKOLA==
+  dependencies:
+    "@backstage/config" "^1.1.1"
+    "@backstage/core-app-api" "^1.11.3"
+    "@backstage/core-components" "^0.13.10"
+    "@backstage/core-plugin-api" "^1.8.2"
+    "@backstage/errors" "^1.2.3"
+    "@backstage/frontend-plugin-api" "^0.5.1-next.0"
+    "@backstage/theme" "^0.5.0"
+    "@backstage/types" "^1.1.1"
+    "@backstage/version-bridge" "^1.0.7"
+    "@material-ui/core" "^4.12.4"
+    "@material-ui/icons" "^4.11.3"
+    "@types/react" "^16.13.1 || ^17.0.0"
+    lodash "^4.17.21"
+
 "@backstage/frontend-plugin-api@^0.5.0":
   version "0.5.0"
   resolved "https://registry.yarnpkg.com/@backstage/frontend-plugin-api/-/frontend-plugin-api-0.5.0.tgz#47d84b588cc80f1e16201fe40a7e1a783ba75fcc"
   integrity sha512-Mbkev6gy1feZTedcj7CMkaR3kdbqpwPsZNHAqDYLHaruVLTc7IBMNZegqulqINHYgjZumk9hweADbblt+quvcQ==
+  dependencies:
+    "@backstage/core-components" "^0.13.10"
+    "@backstage/core-plugin-api" "^1.8.2"
+    "@backstage/types" "^1.1.1"
+    "@backstage/version-bridge" "^1.0.7"
+    "@material-ui/core" "^4.12.4"
+    "@types/react" "^16.13.1 || ^17.0.0"
+    lodash "^4.17.21"
+    zod "^3.22.4"
+    zod-to-json-schema "^3.21.4"
+
+"@backstage/frontend-plugin-api@^0.5.1-next.0", "@backstage/frontend-plugin-api@next":
+  version "0.5.1-next.0"
+  resolved "https://registry.yarnpkg.com/@backstage/frontend-plugin-api/-/frontend-plugin-api-0.5.1-next.0.tgz#bd957c9c441daddc31a079134146b4e95685e5a0"
+  integrity sha512-9j0UFXPXprHTm4NoyR7L2f5FeG3Pois6zaFs7OkprmYlu/lqKS6Boqf199qPHDrVjkmv/43itkrQqF5NmP3jIw==
   dependencies:
     "@backstage/core-components" "^0.13.10"
     "@backstage/core-plugin-api" "^1.8.2"
@@ -2555,6 +2600,17 @@
     "@backstage/backend-plugin-api" "^0.6.9"
     "@types/express" "^4.17.6"
     express "^4.17.1"
+
+"@backstage/plugin-app-visualizer@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@backstage/plugin-app-visualizer/-/plugin-app-visualizer-0.1.0.tgz#ee2eeaf844a65c47c809b6fd6b291b116a2d1e91"
+  integrity sha512-1WIYVuuzSJz7xEPnZQ7K16npIGQRmMT3pZe90EKMbPZqY/PN0VVPqxPjI2wjYq54oivEim45dt+sjkM2ZWcFMg==
+  dependencies:
+    "@backstage/core-components" "^0.13.10"
+    "@backstage/core-plugin-api" "^1.8.2"
+    "@backstage/frontend-plugin-api" "^0.5.0"
+    "@material-ui/core" "^4.12.2"
+    "@material-ui/icons" "^4.9.1"
 
 "@backstage/plugin-auth-backend-module-atlassian-provider@^0.1.1":
   version "0.1.1"
@@ -8617,9 +8673,13 @@ anymatch@^3.0.3, anymatch@~3.1.2:
     "@backstage/catalog-model" "^1.4.3"
     "@backstage/cli" "^0.25.1"
     "@backstage/core-app-api" "^1.11.3"
+    "@backstage/core-compat-api" next
     "@backstage/core-components" "^0.13.10"
     "@backstage/core-plugin-api" "^1.8.2"
+    "@backstage/frontend-app-api" next
+    "@backstage/frontend-plugin-api" next
     "@backstage/integration-react" "^1.1.23"
+    "@backstage/plugin-app-visualizer" "^0.1.0"
     "@backstage/plugin-catalog" "^1.16.1"
     "@backstage/plugin-catalog-common" "^1.0.20"
     "@backstage/plugin-catalog-graph" "^0.3.3"
