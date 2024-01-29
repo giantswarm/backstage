@@ -21576,10 +21576,10 @@ use-immer@^0.9.0:
   resolved "https://registry.yarnpkg.com/use-immer/-/use-immer-0.9.0.tgz#66e4e8f7ab75df45e96dfd5c56337f9fd49db9fd"
   integrity sha512-/L+enLi0nvuZ6j4WlyK0US9/ECUtV5v9RUbtxnn5+WbtaXYUaOBoKHDNL9I5AETdurQ4rIFIj/s+Z5X80ATyKw==
 
-use-local-storage-state@17:
-  version "17.3.0"
-  resolved "https://registry.yarnpkg.com/use-local-storage-state/-/use-local-storage-state-17.3.0.tgz#09853c138525822f1f8a2174cddbbc59affcfe33"
-  integrity sha512-PZruqtmMkYCgcC5t+0Mbka1rN2jjhC1SMA2UD8o6HbpblZf8E9aaXF0sEwlQAWlBpKGlNYvbqueB8dlbwX7n/g==
+use-local-storage-state@^19.1.0:
+  version "19.1.0"
+  resolved "https://registry.yarnpkg.com/use-local-storage-state/-/use-local-storage-state-19.1.0.tgz#9424981fd95dd37d253aad982f0a959ef5542fe2"
+  integrity sha512-3Ea6uRtRaSwpZYD9maZPKoEEGRuHmVA7zGrV/Uh9s5NTj9K1x/MB4IOQoywjUesQyhXmJq6bqjC5cAqlsXoOTw==
 
 use-memo-one@^1.1.1:
   version "1.1.3"
