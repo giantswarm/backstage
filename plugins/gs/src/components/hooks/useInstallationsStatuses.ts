@@ -18,14 +18,14 @@ export const useInstallationsStatuses = (selectedInstallations: string[]): {
   useEffect(() => {
     const unsubscribe = queryCache.subscribe(() => {
       const statuses = selectedInstallations.map((installationName) => {
-        const queries = queryCache.findAll([installationName]);
+        const queries = queryCache.findAll({ queryKey: [installationName] });
         const errors = queries.filter(
           (query) => query.state.status === 'error'
         ).map((query) => [query.queryKey.join('/'), query.state.error as Error]);
 
         return {
           installationName,
-          isLoading: queries.some((query) => query.state.status === 'loading'),
+          isLoading: queries.some((query) => query.state.status === 'pending'),
           isError: queries.some((query) => query.state.status === 'error'),
           errors: Object.fromEntries(errors),
         };
