@@ -77,6 +77,37 @@ proxy:
       target: https://happaapi.snail.gaws.gigantic.io/
       allowedHeaders: ['Authorization']
 
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters:
+        - name: gaggle
+          url: https://happaapi.gaggle.azuretest.gigantic.io
+          authProvider: oidc
+          oidcTokenProvider: gs-gaggle
+        - name: gazelle
+          url: https://happaapi.gazelle.awsprod.gigantic.io
+          authProvider: oidc
+          oidcTokenProvider: gs-gazelle
+        - name: glippy
+          url: https://happaapi.glippy.azuretest.gigantic.io
+          authProvider: oidc
+          oidcTokenProvider: gs-glippy
+        - name: golem
+          url: https://happaapi.golem.gaws.gigantic.io
+          authProvider: oidc
+          oidcTokenProvider: gs-golem
+        - name: grizzly
+          url: https://happaapi.grizzly.gaws.gigantic.io
+          authProvider: oidc
+          oidcTokenProvider: gs-grizzly
+        - name: snail
+          url: https://happaapi.snail.gaws.gigantic.io
+          authProvider: oidc
+          oidcTokenProvider: gs-snail
+
 auth:
   environment: development
   session:

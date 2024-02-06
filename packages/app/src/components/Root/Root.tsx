@@ -23,6 +23,7 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
+import { FluxIcon } from '@weaveworksoss/backstage-plugin-flux';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ConfigurationAvailable } from '../ConfigurationAvailable/ConfigurationAvailable';
 
@@ -69,6 +70,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <ConfigurationAvailable configKey='opsgenie.domain'>
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
         </ConfigurationAvailable>
+        <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
         <ConfigurationAvailable configKey='gs'>
           <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
         </ConfigurationAvailable>
