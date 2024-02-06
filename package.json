@@ -31,7 +31,7 @@
     "start-backend:snail": "yarn env-cmd:snail yarn start-backend --config ../../app-config.yaml --config ../../app-config.snail.yaml",
     "start:devportal": "yarn env-cmd:devportal yarn start --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
     "start-backend:devportal": "yarn env-cmd:devportal yarn start-backend --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
-    "postinstall": "patch-package"
+    "postinstall": "yarn patch-package"
   },
   "workspaces": {
     "packages": [
@@ -81,5 +81,9 @@
     "*.{json,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "patch-package": "^8.0.0",
+    "postinstall-postinstall": "^2.1.0"
   }
 }
