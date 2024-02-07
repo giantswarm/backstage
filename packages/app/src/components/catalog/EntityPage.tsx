@@ -60,6 +60,11 @@ import {
 } from '@k-phoen/backstage-plugin-opsgenie';
 
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
+import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
+import {
+  EntityFluxDeploymentsCard,
+  EntityFluxSourcesCard,
+} from '@weaveworksoss/backstage-plugin-flux';
 import { EntityGSDeploymentsContent } from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -198,6 +203,18 @@ const serviceEntityPage = (
 
     <EntityLayout.Route path="/deployments" title="Deployments">
       <EntityGSDeploymentsContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/flux-deployments" title="Flux Deployments">
+      <EntityFluxDeploymentsCard />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/flux-sources" title="Flux Sources">
+      <EntityFluxSourcesCard />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route path="/kubernetes" title="Kubernetes">
+      <EntityKubernetesContent refreshIntervalMs={30000} />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/pull-requests" title="Pull Requests">

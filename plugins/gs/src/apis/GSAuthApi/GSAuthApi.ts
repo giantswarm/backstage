@@ -22,5 +22,6 @@ export type AuthProvider = {
 
 export type GSAuthApi = {
   getAuthApi: (providerName: string) => AuthApi;
+  getAuthApis: () => {[providerName: string]: AuthApi};
   getProviders: () => AuthProvider[];
 }

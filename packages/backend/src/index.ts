@@ -24,6 +24,7 @@ import { Config } from '@backstage/config';
 import app from './plugins/app';
 import auth from './plugins/auth';
 import catalog from './plugins/catalog';
+import kubernetes from './plugins/kubernetes';
 import scaffolder from './plugins/scaffolder';
 import proxy from './plugins/proxy';
 import techdocs from './plugins/techdocs';
@@ -86,6 +87,7 @@ async function main() {
   const techdocsEnv = useHotMemoize(module, () => createEnv('techdocs'));
   const searchEnv = useHotMemoize(module, () => createEnv('search'));
   const appEnv = useHotMemoize(module, () => createEnv('app'));
+  const kubernetesEnv = useHotMemoize(module, () => createEnv('kubernetes'));
 
   const apiRouter = Router();
 
@@ -119,6 +121,7 @@ async function main() {
   apiRouter.use('/techdocs', await techdocs(techdocsEnv));
   apiRouter.use('/proxy', await proxy(proxyEnv));
   apiRouter.use('/search', await search(searchEnv));
+  apiRouter.use('/kubernetes', await kubernetes(kubernetesEnv));
 
   if (errorReporterConfig) {
     apiRouter.use(Sentry.Handlers.errorHandler());

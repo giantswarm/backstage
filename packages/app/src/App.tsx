@@ -38,6 +38,7 @@ import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
+import { FluxRuntimePage } from '@weaveworksoss/backstage-plugin-flux';
 import { GSPluginPage, GSProviderSettings } from '@internal/plugin-gs';
 
 const app = createApp({
@@ -119,6 +120,7 @@ const routes = (
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/opsgenie" element={<OpsgeniePage onCallListCardsCount={100} />} />
     <Route path="/clusters" element={<GSPluginPage />} />
+    <Route path="/flux-runtime" element={<FluxRuntimePage />} />
   </FlatRoutes>
 );
 

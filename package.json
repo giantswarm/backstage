@@ -30,7 +30,8 @@
     "start:snail": "yarn env-cmd:snail yarn start --config ../../app-config.yaml --config ../../app-config.snail.yaml",
     "start-backend:snail": "yarn env-cmd:snail yarn start-backend --config ../../app-config.yaml --config ../../app-config.snail.yaml",
     "start:devportal": "yarn env-cmd:devportal yarn start --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
-    "start-backend:devportal": "yarn env-cmd:devportal yarn start-backend --config ../../app-config.yaml --config ../../app-config.devportal.yaml"
+    "start-backend:devportal": "yarn env-cmd:devportal yarn start-backend --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
+    "postinstall": "yarn patch-package"
   },
   "workspaces": {
     "packages": [
@@ -52,7 +53,8 @@
   },
   "resolutions": {
     "@types/react": "^18",
-    "@types/react-dom": "^18"
+    "@types/react-dom": "^18",
+    "@backstage/plugin-kubernetes-react": "0.3.0-next.1"
   },
   "prettier": {
     "printWidth": 80,
@@ -79,5 +81,9 @@
     "*.{json,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "patch-package": "^8.0.0",
+    "postinstall-postinstall": "^2.1.0"
   }
 }

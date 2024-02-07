@@ -89,4 +89,8 @@ export class GSAuth implements GSAuthApi {
   getAuthApi(providerName: string) {
     return this.authApis[providerName];
   }
+
+  getAuthApis() {
+    return this.authApis;
+  }
 }
