@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2024-02-19
+
 ### Changed
 
 - Enable running on K8s 1.25 with PSS
@@ -310,7 +312,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/giantswarm/backstage/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/giantswarm/backstage/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/giantswarm/backstage/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/giantswarm/backstage/compare/v0.12.2...v0.13.0
