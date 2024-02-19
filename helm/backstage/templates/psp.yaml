@@ -1,3 +1,4 @@
+{{- if not (((.Values.global).podSecurityStandards).enforced) }}
 apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
@@ -23,3 +24,4 @@ spec:
     rule: MustRunAs
   volumes:
   - secret
+{{- end }}
