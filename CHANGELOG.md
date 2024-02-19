@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Enable running on K8s 1.25 with PSS
+  - Only render PSP related resources if `.Values.global.podSecurityStandards.enforced` is not true.
+
 ## [0.15.0] - 2024-02-07
 
 ### Changed
