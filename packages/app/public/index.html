@@ -42,7 +42,7 @@
       color="#5bbad5"
     />
     <script src="https://use.fortawesome.com/b5c7b73e.js"></script>
-    <title><%= config.getString('app.title') %></title>
+    <title><%= config.getOptionalString('app.title') ?? 'Backstage' %></title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
