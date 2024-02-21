@@ -81,6 +81,9 @@ kubernetes:
           authProvider: oidc
           oidcTokenProvider: gs-snail
 
+gitops:
+  baseUrl: https://gitops.snail.gaws.gigantic.io
+
 auth:
   environment: development
   session:
