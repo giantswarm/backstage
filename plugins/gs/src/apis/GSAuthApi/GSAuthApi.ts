@@ -17,7 +17,6 @@ export type AuthProvider = {
   providerName: string;
   providerDisplayName: string;
   installationName: string;
-  apiEndpoint: string;
 }
 
 export type GSAuthApi = {

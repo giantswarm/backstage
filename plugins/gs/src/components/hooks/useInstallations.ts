@@ -11,12 +11,15 @@ export const useInstallations = (): {
     defaultValue: []
   });
   const configApi = useApi(configApiRef);
-  const installationsConfig = configApi.getOptionalConfig('gs.installations');
+  const installationsConfig = configApi.getOptional('gs.installations');
   if (!installationsConfig) {
     throw new Error(`Missing gs.installations configuration`)
   }
 
-  const installations = installationsConfig.keys() || [];
+  const installations = Array.isArray(installationsConfig)
+    ? configApi.getStringArray('gs.installations')
+    : configApi.getConfig('gs.installations').keys();
+
   const selectedInstallations = installations.filter((installation) => savedInstallations.includes(installation))
   const setSelectedInstallations = (items: string[]) => {
     setSavedInstallations(items);

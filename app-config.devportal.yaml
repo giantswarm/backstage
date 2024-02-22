@@ -144,24 +144,15 @@ opsgenie:
 
 gs:
   installations:
-    gaggle:
-      apiEndpoint: https://happaapi.gaggle.azuretest.gigantic.io
-    gazelle:
-      apiEndpoint: https://happaapi.gazelle.awsprod.gigantic.io
-    glippy:
-      apiEndpoint: https://happaapi.glippy.azuretest.gigantic.io
-    # goat:
-    #   apiEndpoint: https://happaapi.goat.gaws.gigantic.io
-    golem:
-      apiEndpoint: https://happaapi.golem.gaws.gigantic.io
-    # goose:
-    #   apiEndpoint: https://happaapi.goose.azuretest.gigantic.io
-    # goten:
-    #   apiEndpoint: https://happaapi.goten.gaws.gigantic.io
-    grizzly:
-      apiEndpoint: https://happaapi.grizzly.gaws.gigantic.io
-    snail:
-      apiEndpoint: https://happaapi.snail.gaws.gigantic.io
+    - gaggle
+    - gazelle
+    - glippy
+    # - goat
+    - golem
+    # - goose
+    # - goten
+    - grizzly
+    - snail
 
 catalog:
   locations:

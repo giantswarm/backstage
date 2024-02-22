@@ -30,12 +30,9 @@ auth:
 
 gs:
   installations:
-    glippy:
-      apiEndpoint: https://happaapi.glippy.azuretest.gigantic.io
-    golem:
-      apiEndpoint: https://happaapi.golem.gaws.gigantic.io
-    snail:
-      apiEndpoint: https://happaapi.snail.gaws.gigantic.io
+    - glippy
+    - golem
+    - snail
 
 catalog:
   locations:
