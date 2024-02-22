@@ -31,10 +31,23 @@ import { entityDeploymentsRouteRef } from '../../routes';
 import { Version } from '../UI/Version';
 import { formatVersion } from '../utils/helpers';
 import { DeploymentStatus } from '../DeploymentStatus';
+import { DeploymentActions } from '../DeploymentActions';
 
 type Deployment = IApp | IHelmRelease;
 
-const generatedColumns: TableColumn[] = [
+type Row = {
+  installationName: string;
+  kind: string;
+  clusterName?: string;
+  name: string;
+  namespace?: string;
+  version: string;
+  attemptedVersion: string;
+  status: string;
+  sourceLocation?: string;
+}
+
+const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Installation',
     field: 'installationName',
@@ -116,6 +129,20 @@ const generatedColumns: TableColumn[] = [
       .includes(query.toLocaleUpperCase('en-US'));
     }
   },
+  {
+    title: 'Actions',
+    render: (row) => {
+      return (
+        <DeploymentActions
+          installationName={row.installationName}
+          clusterName={row.clusterName}
+          kind={row.kind}
+          name={row.name}
+          namespace={row.namespace}
+        />
+      );
+    },
+  }
 ];
 
 type Props = {
@@ -156,7 +183,7 @@ const DeploymentsTableView = ({
   ));
 
   return (
-    <Table
+    <Table<Row>
       isLoading={loading}
       options={{ paging: false }}
       actions={[

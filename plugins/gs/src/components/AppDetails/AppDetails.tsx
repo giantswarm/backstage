@@ -64,7 +64,7 @@ export const AppDetails = ({
       <Box marginBottom={4}>
         <StructuredMetadataList metadata={{
           'Installation': installationName,
-          'Cluster': clusterName === '' ? 'n/a' : clusterName,
+          'Cluster': clusterName ? clusterName : 'n/a',
         }} />
       </Box>
 

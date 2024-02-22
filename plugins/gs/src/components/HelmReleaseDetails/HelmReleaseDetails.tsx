@@ -13,6 +13,7 @@ import {
 } from "../../model/services/mapi/helmv2beta1";
 import { Heading } from "../UI/Heading";
 import { formatVersion } from "../utils/helpers";
+import { GitOpsUILink } from "../UI/GitOpsUILink/GitOpsUILink";
 
 type HelmReleaseDetailsProps = {
   installationName: string;
@@ -61,10 +62,20 @@ export const HelmReleaseDetails = ({
   
   return (
     <div>
+      <Box display='flex' marginBottom={2}>
+        <GitOpsUILink
+          installationName={installationName}
+          clusterName={installationName}
+          kind='helmrelease'
+          name={name}
+          namespace={namespace}
+        />
+      </Box>
+
       <Box marginBottom={4}>
         <StructuredMetadataList metadata={{
           'Installation': installationName,
-          'Cluster': clusterName === '' ? 'n/a' : clusterName,
+          'Cluster': clusterName ? clusterName : 'n/a',
         }} />
       </Box>
       

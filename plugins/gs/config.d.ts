@@ -5,7 +5,12 @@ export interface Config {
     installations:
       | Array<string>
       | {
-          [installationName: string]: {}
+          [installationName: string]: {
+            /** @visibility frontend */
+            pipeline: string;
+            /** @visibility frontend */
+            gitopsUrl?: string;
+          }
         }
   }
 }
