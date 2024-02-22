@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Upgrade backstage to v1.23.0
 - GS plugin: Use Kubernetes plugin to access clusters' APIs.
+- Flux plugin: Add links to GitOps UI.
 
 ## [0.15.1] - 2024-02-19
 
