@@ -1,12 +1,7 @@
-import { gsApiRef } from '../../apis';
-import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import { IApp } from '../../model/services/mapi/applicationv1alpha1';
+import { appGVK } from '../../model/services/mapi/objects';
+import { useGetResource } from './useGetResource';
 
-export function useApp(installationName: string, namespace: string, name: string) {
-  const api = useApi(gsApiRef);
-
-  return useQuery({
-    queryKey: [installationName, 'apps', namespace, name],
-    queryFn: () => api.getApp({ installationName, namespace, name }),
-  });
+export function useApp(installationName: string, name: string, namespace?: string) {
+  return useGetResource<IApp>(installationName, appGVK, name, namespace);
 }

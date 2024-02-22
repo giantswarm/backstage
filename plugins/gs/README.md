@@ -4,7 +4,9 @@
 
 ### Generic Requirements
 
-1. Configure Management API endpoints for desired installations:
+1. The Kubernetes plugins including @backstage/plugin-kubernetes and @backstage/plugin-kubernetes-backend are to be installed and configured by following the installation and configuration [guides](https://backstage.io/docs/features/kubernetes/installation/#adding-the-kubernetes-frontend-plugin).
+
+2. Configure a list of desired installations:
 
   Example:
 
@@ -12,29 +14,11 @@
     # In app-config.yaml
     gs:
       installations:
-        golem:
-          apiEndpoint: https://happaapi.golem.gaws.gigantic.io
-        snail:
-          apiEndpoint: https://happaapi.snail.gaws.gigantic.io
+        - golem
+        - snail
   ```
 
-2. Set up a proxy for each Management API endpoint:
-
-  Example:
-
-  ```yaml
-    # In app-config.yaml
-    proxy:
-      endpoints:
-        /gs/api/golem:
-          target: https://happaapi.golem.gaws.gigantic.io/
-          allowedHeaders: ['Authorization']
-        /gs/api/snail:
-          target: https://happaapi.snail.gaws.gigantic.io/
-          allowedHeaders: ['Authorization']
-  ```
-
-3. Set up an auth provider for each Management API endpoint:
+3. Set up an auth provider for each installation:
 
   Example:
 
@@ -54,6 +38,28 @@
             metadataUrl: https://dex.snail.gaws.gigantic.io/.well-known/openid-configuration
             clientId: ${AUTH_DEX_SNAIL_CLIENT_ID}
             clientSecret: ${AUTH_DEX_SNAIL_CLIENT_SECRET}
+  ```
+
+4. Configure kubernetes management clusters - one for every installation:
+
+  Example:
+
+  ```yaml
+    # In app-config.yaml
+    kubernetes:
+      serviceLocatorMethod:
+        type: 'multiTenant'
+      clusterLocatorMethods:
+        - type: 'config'
+          clusters:
+            - name: golem
+              url: https://happaapi.golem.gaws.gigantic.io
+              authProvider: oidc
+              oidcTokenProvider: gs-golem
+            - name: snail
+              url: https://happaapi.snail.gaws.gigantic.io
+              authProvider: oidc
+              oidcTokenProvider: gs-snail
   ```
 
 ### To display a list of deployments for a catalog entity:

@@ -34,7 +34,7 @@ export class GSAuth implements GSAuthApi {
     return new GSAuth(options);
   }
 
-  private getAuthProvidersFromConfig() {
+  private getAuthProvidersFromConfig(): AuthProvider[] {
     const providersConfig = this.configApi?.getOptionalConfig('auth.providers');
     const configuredProviders = providersConfig?.keys() || [];
     return configuredProviders
@@ -42,14 +42,11 @@ export class GSAuth implements GSAuthApi {
       .map((providerName) => {
         const providerDisplayName = providerName.split(PROVIDER_NAME_PREFIX)[1];
         const installationName = providerName.split(PROVIDER_NAME_PREFIX)[1];
-        const installationConfig = this.configApi?.getOptionalConfig(`gs.installations.${installationName}`);
-        const apiEndpoint = installationConfig?.getString('apiEndpoint') || '';
 
         return {
           providerName,
           providerDisplayName,
           installationName,
-          apiEndpoint,
         };
       });
   }
