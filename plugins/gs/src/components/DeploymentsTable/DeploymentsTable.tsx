@@ -142,6 +142,7 @@ const generatedColumns: TableColumn<Row>[] = [
         />
       );
     },
+    width: '24px',
   }
 ];
 
