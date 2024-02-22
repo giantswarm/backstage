@@ -1,26 +1,13 @@
 import {
-  configApiRef,
-  createApiFactory,
   createPlugin,
   createRoutableExtension,
-  discoveryApiRef,
 } from '@backstage/core-plugin-api';
 
 import { entityDeploymentsRouteRef, rootRouteRef } from './routes';
-import { GSClient, gsApiRef } from './apis';
-import { scmAuthApiRef } from '@backstage/integration-react';
 import { withQueryClient } from './withQueryClient';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
-  apis: [
-    createApiFactory({
-      api: gsApiRef,
-      deps: { configApi: configApiRef, discoveryApi: discoveryApiRef, scmAuthApi: scmAuthApiRef },
-      factory: ({ configApi, discoveryApi, scmAuthApi }) =>
-        new GSClient({ configApi, discoveryApi, scmAuthApi }),
-    }),
-  ],
   routes: {
     root: rootRouteRef,
     entityContent: entityDeploymentsRouteRef,
