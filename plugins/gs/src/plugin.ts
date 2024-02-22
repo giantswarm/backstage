@@ -4,7 +4,6 @@ import {
 } from '@backstage/core-plugin-api';
 
 import { entityDeploymentsRouteRef, rootRouteRef } from './routes';
-import { withQueryClient } from './withQueryClient';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -18,7 +17,7 @@ export const GSPluginPage = gsPlugin.provide(
   createRoutableExtension({
     name: 'GSPluginPage',
     component: () =>
-      import('./components/PluginPage').then(m => withQueryClient(m.PluginPage)),
+      import('./components/PluginPage').then(m => m.PluginPage),
     mountPoint: rootRouteRef,
   }),
 );
@@ -26,7 +25,7 @@ export const GSPluginPage = gsPlugin.provide(
 export const EntityGSDeploymentsContent = gsPlugin.provide(
   createRoutableExtension({
     name: 'EntityGSDeploymentsContent',
-    component: () => import('./components/Router').then(m => withQueryClient(m.Router)),
+    component: () => import('./components/Router').then(m => m.Router),
     mountPoint: entityDeploymentsRouteRef,
   }),
 );

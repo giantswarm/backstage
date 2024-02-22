@@ -12,6 +12,7 @@ import { getDeploymentNamesFromEntity, getSourceLocationFromEntity } from '../ut
 import { InstallationsWrapper } from '../InstallationsWrapper';
 import { DeploymentDetails } from '../DeploymentDetails';
 import { useSearchParams } from 'react-router-dom';
+import { GSContext } from '../GSContext';
 
 export const EntityDeploymentsContent = () => {
   const { entity } = useEntity();
@@ -36,21 +37,23 @@ export const EntityDeploymentsContent = () => {
   }
 
   return (
-    <Content>
-      <ContentHeader title={`Deployments of ${entityName}`}>
-        <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
-      </ContentHeader>
-      <InstallationsWrapper>
-        <DeploymentsTable
-          deploymentNames={deploymentNames}
+    <GSContext>
+      <Content>
+        <ContentHeader title={`Deployments of ${entityName}`}>
+          <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
+        </ContentHeader>
+        <InstallationsWrapper>
+          <DeploymentsTable
+            deploymentNames={deploymentNames}
+            sourceLocation={sourceLocation}
+          />
+        </InstallationsWrapper>
+        <DeploymentDetails
           sourceLocation={sourceLocation}
+          isOpen={pane === 'deploymentDetails'}
+          onClose={handleDeploymentDetailsClose}
         />
-      </InstallationsWrapper>
-      <DeploymentDetails
-        sourceLocation={sourceLocation}
-        isOpen={pane === 'deploymentDetails'}
-        onClose={handleDeploymentDetailsClose}
-      />
-    </Content>
+      </Content>
+    </GSContext>
   );
 }
