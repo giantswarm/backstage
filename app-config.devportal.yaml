@@ -49,33 +49,6 @@ proxy:
         Authorization: Bearer ${QUAY_TOKEN}
       changeOrigin: true
       secure: true
-    /gs/api/gaggle:
-      target: https://happaapi.gaggle.azuretest.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/gazelle:
-      target: https://happaapi.gazelle.awsprod.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/glippy:
-      target: https://happaapi.glippy.azuretest.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/goat:
-      target: https://happaapi.goat.gaws.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/golem:
-      target: https://happaapi.golem.gaws.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/goose:
-      target: https://happaapi.goose.azuretest.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/goten:
-      target: https://happaapi.goten.gaws.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/grizzly:
-      target: https://happaapi.grizzly.gaws.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/snail:
-      target: https://happaapi.snail.gaws.gigantic.io/
-      allowedHeaders: ['Authorization']
 
 kubernetes:
   serviceLocatorMethod:

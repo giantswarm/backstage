@@ -3,18 +3,6 @@ backend:
     allow:
     - host: "*.gigantic.io"
 
-proxy:
-  endpoints:
-    /gs/api/glippy:
-      target: https://happaapi.glippy.azuretest.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/golem:
-      target: https://happaapi.golem.gaws.gigantic.io/
-      allowedHeaders: ['Authorization']
-    /gs/api/snail:
-      target: https://happaapi.snail.gaws.gigantic.io/
-      allowedHeaders: ['Authorization']
-
 auth:
   environment: development
   session:
