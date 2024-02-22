@@ -1,12 +1,7 @@
-import { gsApiRef } from '../../apis';
-import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
+import { helmReleaseGVK } from '../../model/services/mapi/objects';
+import { useGetResource } from './useGetResource';
 
-export function useHelmRelease(installationName: string, namespace: string, name: string) {
-  const api = useApi(gsApiRef);
-
-  return useQuery({
-    queryKey: [installationName, 'helmreleases', namespace, name],
-    queryFn: () => api.getHelmRelease({ installationName, namespace, name }),
-  });
+export function useHelmRelease(installationName: string, name: string, namespace?: string) {
+  return useGetResource<IHelmRelease>(installationName, helmReleaseGVK, name, namespace);
 }

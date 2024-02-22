@@ -31,7 +31,7 @@ export const AppDetails = ({
     data: app,
     isLoading,
     error,
-  } = useApp(installationName, namespace, name);
+  } = useApp(installationName, name, namespace);
 
   if (isLoading) {
     return <Progress />;

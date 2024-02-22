@@ -31,7 +31,7 @@ export const HelmReleaseDetails = ({
     data: helmrelease,
     isLoading,
     error,
-  } = useHelmRelease(installationName, namespace, name);
+  } = useHelmRelease(installationName, name, namespace);
 
   if (isLoading) {
     return <Progress />;
