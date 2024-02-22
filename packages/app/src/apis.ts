@@ -1,8 +1,6 @@
 import {
   ScmIntegrationsApi,
   scmIntegrationsApiRef,
-  ScmAuth,
-  scmAuthApiRef,
 } from '@backstage/integration-react';
 import {
   AnyApiFactory,
@@ -63,25 +61,6 @@ export const apis: AnyApiFactory[] = [
         discoveryApi,
         oauthRequestApi,
       }),
-  }),
-
-  createApiFactory({
-    api: scmAuthApiRef,
-    deps: {
-      githubAuthApi: githubAuthApiRef,
-      gsAuthApi: gsAuthApiRef,
-    },
-    factory: ({ githubAuthApi, gsAuthApi }) => {
-      return ScmAuth.merge(
-        ScmAuth.forGithub(githubAuthApi),
-        ...gsAuthApi.getProviders().map(({ providerName, apiEndpoint }) => {
-          return ScmAuth.forAuthApi(gsAuthApi.getAuthApi(providerName), {
-            host: apiEndpoint.replace('https://', ''),
-            scopeMapping: { default: [], repoWrite: [] },
-          });
-        }),
-      );
-    }
   }),
 
   createApiFactory({
