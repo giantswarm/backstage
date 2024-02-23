@@ -14,6 +14,7 @@ type GitOpsUILinkProps = {
   kind: string;
   name: string;
   namespace?: string;
+  text?: string;
 }
 
 export const GitOpsUILink = ({
@@ -22,6 +23,7 @@ export const GitOpsUILink = ({
   kind,
   name,
   namespace,
+  text,
 }: GitOpsUILinkProps) => {
   let disabledTitle = '';
   if (!clusterName) {
@@ -37,7 +39,7 @@ export const GitOpsUILink = ({
 
   const el = (
     <Box display="flex" alignItems="center">
-      GitOps UI <StyledLaunchOutlinedIcon />
+      {text ?? 'GitOps UI'} <StyledLaunchOutlinedIcon />
     </Box>
   );
 
