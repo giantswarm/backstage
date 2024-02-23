@@ -72,22 +72,24 @@ export const HelmReleaseDetails = ({
           text='Open the GitOps UI for this resource'
         />
       </Box>
-
-      <Box marginBottom={4}>
-        <StructuredMetadataList metadata={{
-          'Installation': installationName,
-          'Cluster': clusterName ? clusterName : 'n/a',
-        }} />
-      </Box>
       
       <Grid container direction="column">
         <Grid item>
-          <RevisionDetails
-            lastAppliedRevision={lastAppliedRevision}
-            lastAttemptedRevision={lastAttemptedRevision}
-            sourceLocation={sourceLocation}
-          />
+          <Card>
+            <CardContent>
+              <StructuredMetadataList metadata={{
+                'Installation': installationName,
+                'Cluster': clusterName ? clusterName : 'n/a',
+              }} />
+            </CardContent>
+          </Card>
         </Grid>
+
+        <RevisionDetails
+          lastAppliedRevision={lastAppliedRevision}
+          lastAttemptedRevision={lastAttemptedRevision}
+          sourceLocation={sourceLocation}
+        />
 
         <Grid item>
           <HelmReleaseDetailsStatus helmrelease={helmrelease} />

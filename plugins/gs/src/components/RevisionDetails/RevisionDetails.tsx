@@ -15,7 +15,7 @@ export const RevisionDetails = ({
   sourceLocation,
 }: RevisionDetailsProps) => {
   return (
-    <Grid container>
+    <Grid container item>
       <Grid item xs={12} sm>
         <Card>
           <CardContent>
