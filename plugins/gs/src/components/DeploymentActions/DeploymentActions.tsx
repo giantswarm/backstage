@@ -17,7 +17,7 @@ export const DeploymentActions = ({
   namespace,
 }: DeploymentActionsProps) => {
   return (
-    <Box display="flex" alignItems="center" justifyContent="end">
+    <Box display="flex" alignItems="center">
       {kind === 'helmrelease' && (
         <GitOpsUILink
           installationName={installationName}
