@@ -81,6 +81,9 @@ kubernetes:
           authProvider: oidc
           oidcTokenProvider: gs-snail
 
+gitops:
+  baseUrl: https://gitops.snail.gaws.gigantic.io
+
 auth:
   environment: development
   session:
@@ -144,15 +147,25 @@ opsgenie:
 
 gs:
   installations:
-    - gaggle
-    - gazelle
-    - glippy
-    # - goat
-    - golem
-    # - goose
-    # - goten
-    - grizzly
-    - snail
+    gaggle:
+      pipeline: stable-testing
+    gazelle:
+      pipeline: stable
+    glippy:
+      pipeline: testing
+    # goat:
+    #   pipeline: stable-testing
+    golem:
+      pipeline: testing
+    # goose:
+    #   pipeline: ephemeral
+    # goten:
+    #   pipeline: ephemeral
+    grizzly:
+      pipeline: stable-testing
+    snail:
+      pipeline: testing
+      gitopsUrl: https://gitops.snail.gaws.gigantic.io
 
 catalog:
   locations:

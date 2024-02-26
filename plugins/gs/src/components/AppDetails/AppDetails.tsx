@@ -1,7 +1,7 @@
 import React from "react";
 import { useApp } from "../hooks";
 import { EmptyState, Progress, WarningPanel } from "@backstage/core-components";
-import { Box, Card, CardContent, CardHeader, Grid } from "@material-ui/core";
+import { Card, CardContent, CardHeader, Grid } from "@material-ui/core";
 import { StructuredMetadataList } from "../UI/StructuredMetadataList";
 import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
 import DateComponent from "../UI/Date";
@@ -61,21 +61,23 @@ export const AppDetails = ({
   
   return (
     <div>
-      <Box marginBottom={4}>
-        <StructuredMetadataList metadata={{
-          'Installation': installationName,
-          'Cluster': clusterName === '' ? 'n/a' : clusterName,
-        }} />
-      </Box>
-
       <Grid container direction="column">
         <Grid item>
-          <RevisionDetails
-            lastAppliedRevision={lastAppliedRevision}
-            lastAttemptedRevision={lastAttemptedRevision}
-            sourceLocation={sourceLocation}
-          />
+          <Card>
+            <CardContent>
+              <StructuredMetadataList metadata={{
+                'Installation': installationName,
+                'Cluster': clusterName ? clusterName : 'n/a',
+              }} />
+            </CardContent>
+          </Card>
         </Grid>
+
+        <RevisionDetails
+          lastAppliedRevision={lastAppliedRevision}
+          lastAttemptedRevision={lastAttemptedRevision}
+          sourceLocation={sourceLocation}
+        />
 
         <Grid item>
           <AppDetailsStatus app={app} />

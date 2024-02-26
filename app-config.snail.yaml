@@ -30,9 +30,13 @@ auth:
 
 gs:
   installations:
-    - glippy
-    - golem
-    - snail
+    glippy:
+      pipeline: testing
+    golem:
+      pipeline: testing
+    snail:
+      pipeline: testing
+      gitopsUrl: https://gitops.snail.gaws.gigantic.io
 
 catalog:
   locations:
