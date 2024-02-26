@@ -4,6 +4,7 @@ import HomeIcon from '@material-ui/icons/Home';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
+import { FeatureFlagged } from '@backstage/core-app-api';
 import {
   Settings as SidebarSettings,
   UserSettingsSignInAvatar,
@@ -70,7 +71,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <ConfigurationAvailable configKey='opsgenie.domain'>
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
         </ConfigurationAvailable>
-        <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
+        <FeatureFlagged with="show-flux-runtime">
+          <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
+        </FeatureFlagged>
         <ConfigurationAvailable configKey='gs'>
           <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
         </ConfigurationAvailable>

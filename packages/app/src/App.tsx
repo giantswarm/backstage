@@ -28,7 +28,7 @@ import { Root } from './components/Root';
 
 import { AlertDisplay, OAuthRequestDialog } from '@backstage/core-components';
 import { createApp } from '@backstage/app-defaults';
-import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
+import { AppRouter, FeatureFlagged, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 import { RequirePermission } from '@backstage/plugin-permission-react';
 import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/alpha';
@@ -69,6 +69,28 @@ const app = createApp({
       catalogIndex: catalogPlugin.routes.catalogIndex,
     });
   },
+  featureFlags: [
+    {
+      pluginId: '',
+      name: 'show-kubernetes-resources',
+      description: 'Show Kubernetes resources for service components',
+    },
+    {
+      pluginId: '',
+      name: 'show-flux-deployments',
+      description: 'Show Flux deployments for service components (from weaveworks/backstage-plugin-flux)',
+    },
+    {
+      pluginId: '',
+      name: 'show-flux-sources',
+      description: 'Show Flux sources for service components (from weaveworks/backstage-plugin-flux)',
+    },
+    {
+      pluginId: '',
+      name: 'show-flux-runtime',
+      description: 'Show Flux Runtime page (from weaveworks/backstage-plugin-flux)',
+    },
+  ],
 });
 
 const routes = (
@@ -120,7 +142,9 @@ const routes = (
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/opsgenie" element={<OpsgeniePage onCallListCardsCount={100} />} />
     <Route path="/clusters" element={<GSPluginPage />} />
-    <Route path="/flux-runtime" element={<FluxRuntimePage />} />
+    <FeatureFlagged with="show-flux-runtime">
+      <Route path="/flux-runtime" element={<FluxRuntimePage />} />
+    </FeatureFlagged>
   </FlatRoutes>
 );
 

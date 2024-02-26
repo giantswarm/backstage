@@ -25,6 +25,7 @@ import {
   EntityMembersListCard,
   EntityOwnershipCard,
 } from '@backstage/plugin-org';
+import { FeatureFlagged } from '@backstage/core-app-api';
 import { EmptyState } from '@backstage/core-components';
 import {
   Direction,
@@ -205,17 +206,23 @@ const serviceEntityPage = (
       <EntityGSDeploymentsContent />
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/flux-deployments" title="Flux Deployments">
-      <EntityFluxDeploymentsCard />
-    </EntityLayout.Route>
+    <FeatureFlagged with="show-flux-deployments">
+      <EntityLayout.Route path="/flux-deployments" title="Flux Deployments">
+        <EntityFluxDeploymentsCard />
+      </EntityLayout.Route>
+    </FeatureFlagged>
 
-    <EntityLayout.Route path="/flux-sources" title="Flux Sources">
-      <EntityFluxSourcesCard />
-    </EntityLayout.Route>
+    <FeatureFlagged with="show-flux-sources">
+      <EntityLayout.Route path="/flux-sources" title="Flux Sources">
+        <EntityFluxSourcesCard />
+      </EntityLayout.Route>
+    </FeatureFlagged>
 
-    <EntityLayout.Route path="/kubernetes" title="Kubernetes">
-      <EntityKubernetesContent refreshIntervalMs={30000} />
-    </EntityLayout.Route>
+    <FeatureFlagged with="show-kubernetes-resources">
+      <EntityLayout.Route path="/kubernetes" title="Kubernetes">
+        <EntityKubernetesContent refreshIntervalMs={30000} />
+      </EntityLayout.Route>
+    </FeatureFlagged>
 
     <EntityLayout.Route path="/pull-requests" title="Pull Requests">
       <EntityGithubPullRequestsContent />
