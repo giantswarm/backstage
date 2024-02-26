@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Hide Kubernetes plugin UI behind feature flag.
+- Flux plugin: Hide plugin UIs behind feature flags.
+
 ## [0.15.3] - 2024-02-26
 
 ### Changed
