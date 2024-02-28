@@ -73,22 +73,22 @@ const app = createApp({
     {
       pluginId: '',
       name: 'show-kubernetes-resources',
-      description: 'Show Kubernetes resources for service components',
+      description: 'Show Kubernetes resources for service components. Requires matching labels on resources.',
     },
     {
       pluginId: '',
       name: 'show-flux-deployments',
-      description: 'Show Flux deployments for service components (from weaveworks/backstage-plugin-flux)',
+      description: 'Show Flux deployments for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
     },
     {
       pluginId: '',
       name: 'show-flux-sources',
-      description: 'Show Flux sources for service components (from weaveworks/backstage-plugin-flux)',
+      description: 'Show Flux sources for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
     },
     {
       pluginId: '',
       name: 'show-flux-runtime',
-      description: 'Show Flux Runtime page (from weaveworks/backstage-plugin-flux)',
+      description: 'Show Flux Runtime page (from weaveworks/backstage-plugin-flux).',
     },
   ],
 });
