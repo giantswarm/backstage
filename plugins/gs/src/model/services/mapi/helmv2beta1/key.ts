@@ -1,3 +1,4 @@
+import { compareDates } from "../../../../components/utils/helpers";
 import { IHelmRelease } from "./types";
 
 export const labelCluster = 'giantswarm.io/cluster';
@@ -57,4 +58,20 @@ export function getHelmReleaseClusterName(helmRelease: IHelmRelease) {
 
 export function getHelmReleaseChartName(helmRelease: IHelmRelease) {
   return helmRelease.spec?.chart.spec.chart;
+}
+
+export function getHelmReleaseCreatedTimestamp(helmRelease: IHelmRelease): string | undefined {
+  return helmRelease.metadata.creationTimestamp;
+}
+
+export function getHelmReleaseUpdatedTimestamp(helmRelease: IHelmRelease): string | undefined {
+  const conditions = helmRelease.status?.conditions?.sort(
+    (a, b) => compareDates(b.lastTransitionTime, a.lastTransitionTime)
+  );
+
+  return (conditions?.find(condition => condition.type === 'Ready') || {}).lastTransitionTime;
+}
+
+export function getHelmReleaseSourceName(helmRelease: IHelmRelease): string | undefined {
+  return helmRelease.spec?.chart.spec.sourceRef?.name;
 }
