@@ -2,3 +2,10 @@ name: backstage
 namespace: devportal
 backstageDiscovery:
   kubernetesId: backstage
+userID: 1000
+groupID: 1000
+image:
+  name: backstage
+  repository: giantswarm/backstage
+port: 7007
+hostnames: ["test"]
