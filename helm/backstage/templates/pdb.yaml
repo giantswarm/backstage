@@ -5,7 +5,7 @@ metadata:
   name: {{ .Values.name }}
   labels:
     app: {{ .Values.name }}
-    {{- include "labels.backstage" | nindent 4 }}
+    {{- include "labels.backstage" $ | nindent 4 }}
 spec:
   minAvailable: 1
   selector:

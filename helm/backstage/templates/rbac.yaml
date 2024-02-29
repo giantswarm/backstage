@@ -6,7 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}
-    {{- include "labels.backstage" | nindent 4 }}
+    {{- include "labels.backstage" $ | nindent 4 }}
 rules:
 - apiGroups:
   - extensions
@@ -24,7 +24,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}
-    {{- include "labels.backstage" | nindent 4 }}
+    {{- include "labels.backstage" $ | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

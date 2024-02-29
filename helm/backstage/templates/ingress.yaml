@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}
-    {{- include "labels.backstage" | nindent 4 }}
+    {{- include "labels.backstage" $ | nindent 4 }}
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-giantswarm
     kubernetes.io/tls-acme: "true"
