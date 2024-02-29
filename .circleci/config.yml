@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  architect: giantswarm/architect@4.35.5
+  architect: giantswarm/architect@5.1.0
 
 job_filters: &job_filters
   filters:
@@ -15,16 +15,16 @@ whitelist: &whitelist
     - packages/*/dist/*
 
 workflows:
-  build:
+  build-backstage:
     jobs:
-      - build:
+      - buildjob:
           <<: *job_filters
       - architect/push-to-registries:
           context: architect
           name: push-to-registries
           dockerfile: 'packages/backend/Dockerfile'
           requires:
-            - build
+            - buildjob
           <<: *job_filters
       - architect/push-to-app-catalog:
           executor: app-build-suite
@@ -54,19 +54,18 @@ workflows:
               only: /^v.*/
 
 jobs:
-  build:
+  buildjob:
     executor: architect/architect
     working_directory: ~/backstage
     docker:
-      - image: cimg/node:18.18
+      - image: cimg/node:20.11
 
     steps:
       - checkout
       
       - restore_cache:
           keys:
-            - v2-npm-deps-{{ checksum "yarn.lock" }}
-            - v2-npm-deps-
+            - v3-npm-deps-{{ checksum "yarn.lock" }}
       
       - run:
           name: Print node and yarn version info
@@ -81,7 +80,7 @@ jobs:
       - save_cache:
           paths:
             - node_modules
-          key: v2-npm-deps-{{ checksum "yarn.lock" }}
+          key: v3-npm-deps-{{ checksum "yarn.lock" }}
 
       - run:
           name: Typecheck code using the TypeScript compiler
