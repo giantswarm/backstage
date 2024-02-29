@@ -4,6 +4,9 @@ kind: Role
 metadata:
   name: {{ .Values.name }}
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.name }}
+    {{- include "labels.backstage" | nindent 4 }}
 rules:
 - apiGroups:
   - extensions
@@ -19,6 +22,9 @@ kind: RoleBinding
 metadata:
   name: {{ .Values.name }}
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.name }}
+    {{- include "labels.backstage" | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

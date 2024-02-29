@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Set the `backstage.io/kubernetes-id` label on rendered resources, for discovery in Backstage itself.
+
 ### Changed
 
 - Use full width for the members list card.
