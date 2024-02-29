@@ -6,7 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}
-      {{- include "labels.backstage" $ | nindent 6 }}
+    {{- include "labels.backstage" $ | nindent 4 }}
 spec:
   replicas: 1
   selector:
