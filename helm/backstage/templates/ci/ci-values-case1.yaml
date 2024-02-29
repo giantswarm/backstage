@@ -1,0 +1,4 @@
+name: backstage
+namespace: devportal
+backstageDiscovery:
+  kubernetesId: backstage
