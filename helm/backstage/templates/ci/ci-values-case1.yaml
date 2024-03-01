@@ -1,0 +1,40 @@
+name: backstage
+namespace: devportal
+backstageDiscovery:
+  kubernetesId: backstage
+userID: 1000
+groupID: 1000
+image:
+  name: backstage
+  repository: giantswarm/backstage
+port: 7007
+hostnames: ["test"]
+registry:
+  domain: gsoci.azurecr.io
+authSessionSecret: fooBar
+catalogLocationUrl: "https://example.com/catalog-info.yaml"
+circleci:
+  apiToken: dummyToken
+dexAuthCredentials:
+  myname:
+    clientID: dummyClientID
+    clientSecret: dummyClientSecret
+githubAuthCredentials:
+  clientID: dummyClientID
+  clientSecret: dummyClientSecret
+githubAppCredentials: dummyCredentials
+grafana:
+  apiToken: dummyToken
+opsgenie:
+  apiKey: dummyKey
+quay:
+  apiToken: dummyToken
+sentry:
+  app:
+    dsn: summySentryDSN
+  backend:
+    dsn: summySentryDSN
+backstage:
+  command: ["node", "packages/backend"]
+  args: []
+  extraAppConfig: []

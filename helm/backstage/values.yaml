@@ -1,6 +1,10 @@
 name: backstage
 namespace: backstage
 
+backstageDiscovery:
+  # Value to set for the backstage.io/kubernetes-id label in resources, for discovery in Backstage.
+  kubernetesId: backstage
+
 userID: 1000
 groupID: 1000
 

@@ -6,6 +6,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}
+    {{- include "labels.backstage" $ | nindent 4 }}
 spec:
   replicas: 1
   selector:
@@ -17,6 +18,7 @@ spec:
       labels:
         app: {{ .Values.name }}
         component: backstage
+        {{- include "labels.backstage" $ | nindent 8 }}
     spec:
       affinity:
         podAntiAffinity:

@@ -5,6 +5,15 @@
         "authSessionSecret": {
             "type": "string"
         },
+        "backstageDiscovery": {
+            "type": "object",
+            "properties": {
+                "kubernetesId": {
+                    "type": "string",
+                    "description": "Value to set for the backstage.io/kubernetes-id label in resources, for discovery in Backstage."
+                }
+            }
+        },
         "backstage": {
             "title": "Backstage parameters",
             "type": "object",
