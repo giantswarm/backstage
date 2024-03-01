@@ -23,6 +23,7 @@ workflows:
           context: architect
           name: push-to-registries
           dockerfile: 'packages/backend/Dockerfile'
+          force-public: true
           requires:
             - buildjob
           <<: *job_filters
