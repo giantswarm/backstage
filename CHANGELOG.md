@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix helm chart by moving CI values outside the templates folder.
+
 ## [0.15.6] - 2024-03-01
 
 ### Fixed
