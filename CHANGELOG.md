@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.5] - 2024-03-01
+
 ### Added
 
 - Set the `backstage.io/kubernetes-id` label on rendered resources, for discovery in Backstage itself.
@@ -342,7 +344,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.15.4...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.15.5...HEAD
+[0.15.5]: https://github.com/giantswarm/backstage/compare/v0.15.4...v0.15.5
 [0.15.4]: https://github.com/giantswarm/backstage/compare/v0.15.3...v0.15.4
 [0.15.3]: https://github.com/giantswarm/backstage/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/giantswarm/backstage/compare/v0.15.1...v0.15.2
