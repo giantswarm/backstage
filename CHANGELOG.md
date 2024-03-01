@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.7] - 2024-03-01
+
 ### Fixed
 
 - Fix helm chart by moving CI values outside the templates folder.
@@ -354,7 +356,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.15.6...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.15.7...HEAD
+[0.15.7]: https://github.com/giantswarm/backstage/compare/v0.15.6...v0.15.7
 [0.15.6]: https://github.com/giantswarm/backstage/compare/v0.15.5...v0.15.6
 [0.15.5]: https://github.com/giantswarm/backstage/compare/v0.15.4...v0.15.5
 [0.15.4]: https://github.com/giantswarm/backstage/compare/v0.15.3...v0.15.4
