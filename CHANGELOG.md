@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix CI configuration to create a public container image again.
+
 ## [0.15.5] - 2024-03-01
 
 ### Added
