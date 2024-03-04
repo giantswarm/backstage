@@ -4,7 +4,7 @@ import { Box, Card, CardContent, CardHeader, Grid } from "@material-ui/core";
 import { useHelmRelease } from "../hooks";
 import { StructuredMetadataList } from "../UI/StructuredMetadataList";
 import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
-import { HelmReleaseDetailsStatus } from "../HelmReleaseDetailsStatus";
+import { HelmReleaseDetailsStatusConditions } from "../HelmReleaseDetailsStatusConditions";
 import DateComponent from "../UI/Date";
 import {
   getHelmReleaseClusterName,
@@ -92,7 +92,7 @@ export const HelmReleaseDetails = ({
         />
 
         <Grid item>
-          <HelmReleaseDetailsStatus helmrelease={helmrelease} />
+          <HelmReleaseDetailsStatusConditions helmrelease={helmrelease} />
         </Grid>
 
         <Grid item>
