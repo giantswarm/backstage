@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- GS plugin: Align deployment status UIs in the table view and in the details pane.
+
 ## [0.15.7] - 2024-03-01
 
 ### Fixed
