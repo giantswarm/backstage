@@ -1,4 +1,4 @@
-import { StatusAborted, StatusError, StatusOK, StatusRunning, StatusWarning } from "@backstage/core-components";
+import { StatusAborted, StatusError, StatusOK, StatusWarning } from "@backstage/core-components";
 import { useTheme } from "@material-ui/core";
 import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
