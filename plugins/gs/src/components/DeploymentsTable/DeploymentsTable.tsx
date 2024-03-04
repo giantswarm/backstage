@@ -30,8 +30,9 @@ import { useRouteRef } from '@backstage/core-plugin-api';
 import { entityDeploymentsRouteRef } from '../../routes';
 import { Version } from '../UI/Version';
 import { formatVersion } from '../utils/helpers';
-import { DeploymentStatus } from '../DeploymentStatus';
 import { DeploymentActions } from '../DeploymentActions';
+import { AppStatus } from '../AppStatus';
+import { HelmReleaseStatus } from '../HelmReleaseStatus';
 
 type Deployment = IApp | IHelmRelease;
 
@@ -43,7 +44,7 @@ type Row = {
   namespace?: string;
   version: string;
   attemptedVersion: string;
-  status: string;
+  status?: string;
   sourceLocation?: string;
 }
 
@@ -60,7 +61,7 @@ const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Type',
     field: 'kind',
-    render: (row: any): React.ReactNode => {
+    render: (row) => {
       return row.kind === 'app' ? 'App' : 'HelmRelease';
     }
   },
@@ -68,14 +69,14 @@ const generatedColumns: TableColumn<Row>[] = [
     title: 'Resource Name',
     field: 'name',
     highlight: true,
-    render: (row: any): React.ReactNode => {
+    render: (row) => {
       const LinkWrapper = () => {
         const routeLink = useRouteRef(entityDeploymentsRouteRef);
         const searchParams = new URLSearchParams({
           pane: 'deploymentDetails',
           installation: row.installationName,
           kind: row.kind,
-          namespace: row.namespace,
+          namespace: row.namespace ?? '',
           name: row.name,
         });
 
@@ -97,7 +98,7 @@ const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Version',
     field: 'version',
-    render: (row: any): React.ReactNode => {
+    render: (row) => {
       return (
         <Version
           version={row.version}
@@ -112,17 +113,23 @@ const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Status',
     field: 'status',
-    render: (row: any): React.ReactNode => {
-      if (row.status === '') {
+    render: (row): React.ReactNode => {
+      if (!row.status) {
         return 'n/a';
       }
 
-      return <DeploymentStatus status={row.status} />;
+      return row.kind === 'app'
+        ? <AppStatus status={row.status} />
+        : <HelmReleaseStatus status={row.status} />;
     },
     customFilterAndSearch: (
       query,
-      row: any,
+      row,
     ) => {
+      if (!row.status) {
+        return false;
+      }
+
       const statusLabel = row.status.replace(/-/g, ' ');
       return `${row.status} ${statusLabel}`
       .toLocaleUpperCase('en-US')

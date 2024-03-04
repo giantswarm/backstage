@@ -28,7 +28,7 @@ export function getHelmReleaseVersion(helmRelease: IHelmRelease) {
 
 export function getHelmReleaseStatus(helmRelease: IHelmRelease) {
   if (!helmRelease.status || !helmRelease.status.conditions) {
-    return '';
+    return undefined;
   }
   const conditions = helmRelease.status?.conditions;
 
