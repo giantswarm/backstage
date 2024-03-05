@@ -1,5 +1,5 @@
 import React from "react";
-import { Box } from "@material-ui/core";
+import { Box, Typography } from "@material-ui/core";
 import { useAppStatusDetails } from "../hooks/useDeploymentStatusDetails";
 
 type AppStatusProps = {
@@ -17,7 +17,7 @@ export const AppStatus = ({
   return (
     <Box display="flex" alignItems="center">
       <StatusIcon />
-      {label}
+      <Typography variant='inherit' noWrap>{label}</Typography>
     </Box>
   );
 }

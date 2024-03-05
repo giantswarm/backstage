@@ -1,11 +1,15 @@
 import React from 'react';
-import {
-  Grid,
-} from "@material-ui/core";
+import { Grid, makeStyles } from "@material-ui/core";
 import { useInstallations, useInstallationsStatuses } from '../hooks';
 import { InstallationsErrors } from '../InstallationsErrors';
 import { InstallationsSelector } from '../InstallationsSelector';
 import { EmptyState } from '@backstage/core-components';
+
+export const useStyles = makeStyles({
+  fullWidth: {
+    maxWidth: '100%',
+  },
+});
 
 type InstallationsWrapperProps = {
   children: React.ReactNode;
@@ -21,6 +25,8 @@ export const InstallationsWrapper = ({ children }: InstallationsWrapperProps) =>
   const {
     installationsStatuses,
   } = useInstallationsStatuses(selectedInstallations);
+
+  const classes = useStyles();
 
   const errors = installationsStatuses.some((installationStatus) => installationStatus.isError);
 
@@ -45,7 +51,7 @@ export const InstallationsWrapper = ({ children }: InstallationsWrapperProps) =>
           />
         </Grid>
       )}
-      <Grid item>
+      <Grid item className={classes.fullWidth}>
         {selectedInstallations.length === 0 ? (
           <EmptyState
             missing="data"

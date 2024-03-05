@@ -22,6 +22,7 @@ import {
 import DateComponent from '../UI/Date';
 import { toSentenceCase } from '../utils/helpers';
 import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';
+import { sortAndFilterOptions } from '../utils/tableHelpers';
 
 const ClusterTypes = {
   'Management': 'management',
@@ -69,13 +70,7 @@ const generatedColumns: TableColumn<Row>[] = [
     render: (row) => (
       <SubvalueCell value={row.name} subvalue={row.description} />
     ),
-    customFilterAndSearch: (
-      query,
-      row,
-    ) =>
-      `${row.name} ${row.description}`
-      .toLocaleUpperCase('en-US')
-      .includes(query.toLocaleUpperCase('en-US')),
+    ...sortAndFilterOptions((row) => `${row.name} ${row.description}`),
   },
   {
     title: 'Type',

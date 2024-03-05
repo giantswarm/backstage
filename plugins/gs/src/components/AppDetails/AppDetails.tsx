@@ -7,6 +7,7 @@ import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
 import DateComponent from "../UI/Date";
 import {
   getAppClusterName,
+  getAppCreatedTimestamp,
   getAppCurrentVersion,
   getAppVersion,
 } from "../../model/services/mapi/applicationv1alpha1";
@@ -95,7 +96,7 @@ export const AppDetails = ({
                 'Name': name,
                 'Created': (
                   <DateComponent
-                    value={app.metadata.creationTimestamp}
+                    value={getAppCreatedTimestamp(app)}
                     relative
                   />
                 ),

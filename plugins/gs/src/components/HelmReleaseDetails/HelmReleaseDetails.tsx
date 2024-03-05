@@ -8,6 +8,7 @@ import { HelmReleaseDetailsStatusConditions } from "../HelmReleaseDetailsStatusC
 import DateComponent from "../UI/Date";
 import {
   getHelmReleaseClusterName,
+  getHelmReleaseCreatedTimestamp,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
 } from "../../model/services/mapi/helmv2beta1";
@@ -107,7 +108,7 @@ export const HelmReleaseDetails = ({
                 'Name': name,
                 'Created': (
                   <DateComponent
-                    value={helmrelease.metadata.creationTimestamp}
+                    value={getHelmReleaseCreatedTimestamp(helmrelease)}
                     relative
                   />
                 ),

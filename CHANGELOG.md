@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - GS plugin: Align deployment status UIs in the table view and in the details pane.
+- GS plugin: Add 'namespace', 'source' and 'updated' information to deployments list.
+- GS plugin: Add deployments list visual improvements.
 
 ## [0.15.7] - 2024-03-01
 

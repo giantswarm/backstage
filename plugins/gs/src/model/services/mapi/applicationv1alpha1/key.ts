@@ -70,3 +70,15 @@ export function getAppChartName(app: IApp) {
 export function isAppManagedByFlux(app: IApp): boolean {
   return app.metadata.labels?.[labelManagedBy] === 'flux';
 }
+
+export function getAppCreatedTimestamp(app: IApp): string | undefined {
+  return app.metadata.creationTimestamp;
+}
+
+export function getAppUpdatedTimestamp(app: IApp): string | undefined {
+  return app.status?.release.lastDeployed;
+}
+
+export function getAppCatalogName(app: IApp): string {
+  return app.spec.catalog;
+}

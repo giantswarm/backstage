@@ -121,3 +121,7 @@ export function truncateVersion(version: string) {
 
   return version;
 }
+
+export function formatAppCatalogName(name: string) {
+  return name.endsWith('-catalog') ? name : `${name}-catalog`;
+}
