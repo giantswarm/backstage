@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2024-03-05
+
 ### Changed
 
 - GS plugin: Align deployment status UIs in the table view and in the details pane.
@@ -362,7 +364,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disable anonymous access.
 
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.15.7...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/giantswarm/backstage/compare/v0.15.7...v0.16.0
 [0.15.7]: https://github.com/giantswarm/backstage/compare/v0.15.6...v0.15.7
 [0.15.6]: https://github.com/giantswarm/backstage/compare/v0.15.5...v0.15.6
 [0.15.5]: https://github.com/giantswarm/backstage/compare/v0.15.4...v0.15.5
