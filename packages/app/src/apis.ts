@@ -1,4 +1,5 @@
 import {
+  ScmAuth,
   ScmIntegrationsApi,
   scmIntegrationsApiRef,
 } from '@backstage/integration-react';
@@ -25,6 +26,7 @@ export const apis: AnyApiFactory[] = [
     deps: { configApi: configApiRef },
     factory: ({ configApi }) => ScmIntegrationsApi.fromConfig(configApi),
   }),
+  ScmAuth.createDefaultApiFactory(),
   /**
    * Custom GitHub API configuration to modify defaultScopes to include all the scopes that different plugins need.
    * It's needed to prevent different plugins to request additional permissions over sign in popup.
