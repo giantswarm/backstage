@@ -1,22 +1,38 @@
 import React from "react";
-import { Box, Card, CardContent, CardHeader, Grid, Paper, styled } from "@material-ui/core";
-import { StructuredMetadataList } from "../UI/StructuredMetadataList";
-import { IHelmRelease } from "../../model/services/mapi/helmv2beta1";
-import DateComponent from "../UI/Date";
-import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
-import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
-import { Heading } from "../UI/Heading";
+import { Box, Paper } from "@material-ui/core";
+import { IHelmRelease, getHelmReleaseStatus } from "../../model/services/mapi/helmv2beta1";
 import { compareDates } from "../utils/helpers";
+import { useHelmReleaseStatusDetails } from "../hooks/useDeploymentStatusDetails";
+import { HelmReleaseDetailsConditions } from "../HelmReleaseDetailsConditions";
+import { DeploymentStatusCard } from "../UI/DeploymentStatusCard";
+import { Heading } from "../UI/Heading";
 
-const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
-  marginRight: 10,
-  color: theme.palette.status.error
-}));
+const StatusCard = ({
+  status,
+  lastTransitionTime,
+  children,
+}: {
+  status: string;
+  lastTransitionTime?: string;
+  children?: React.ReactNode;
+}) => {
+  const {
+    icon: Icon,
+    color: iconColor,
+    label,
+  } = useHelmReleaseStatusDetails(status);
 
-const StyledCheckCircleOutlinedIcon = styled(CheckCircleOutlinedIcon)(({ theme }) => ({
-  marginRight: 10,
-  color: theme.palette.status.ok,
-}));
+  return (
+    <DeploymentStatusCard
+      label={label}
+      icon={<Icon />}
+      iconColor={iconColor}
+      lastTransitionTime={lastTransitionTime}
+    >
+      {children}
+    </DeploymentStatusCard>
+  );
+}
 
 type HelmReleaseDetailsStatusProps = {
   helmrelease: IHelmRelease;
@@ -25,7 +41,8 @@ type HelmReleaseDetailsStatusProps = {
 export const HelmReleaseDetailsStatus = ({
   helmrelease
 }: HelmReleaseDetailsStatusProps) => {
-  if (!helmrelease.status?.conditions) {
+  const status = getHelmReleaseStatus(helmrelease);
+  if (!status) {
     return (
       <Paper>
         <Box padding={2}>
@@ -35,41 +52,14 @@ export const HelmReleaseDetailsStatus = ({
     );
   }
 
-  const conditions = helmrelease.status.conditions.sort(
+  const conditions = helmrelease.status!.conditions!.sort(
     (a, b) => compareDates(b.lastTransitionTime, a.lastTransitionTime)
   );
+  const lastTransitionTime = conditions.length > 0 ? conditions[0].lastTransitionTime : undefined;
 
   return (
-    <Grid container direction="column">
-      {conditions.map((condition) => (
-        <Grid item>
-          <Card>
-            <CardHeader
-              title={(
-                <Box display='flex' alignItems="center">
-                  {condition.status !== 'Unknown' && (condition.status === 'True'
-                    ? <StyledCheckCircleOutlinedIcon />
-                    : <StyledCancelOutlinedIcon />
-                  )}
-                  <Heading>{condition.type}</Heading>
-                </Box>
-              )}
-              titleTypographyProps={{ variant: undefined }}
-              subheader={<DateComponent value={condition.lastTransitionTime} relative />}
-              subheaderTypographyProps={{
-                variant: 'body2',
-                color: 'textPrimary',
-              }}
-            />
-            <CardContent>
-              <StructuredMetadataList metadata={{
-                'Reason': condition.reason,
-                'Message': condition.message,
-              }} />
-            </CardContent>
-          </Card>
-        </Grid>
-      ))}
-    </Grid>
+    <StatusCard status={status} lastTransitionTime={lastTransitionTime}>
+      <HelmReleaseDetailsConditions conditions={conditions} />
+    </StatusCard>
   );
 }

@@ -55,8 +55,8 @@ export function getAppUpstreamVersion(app: IApp) {
   return app.status.appVersion;
 }
 
-export function getAppStatus(app: IApp): string {
-  return app.status?.release?.status || '';
+export function getAppStatus(app: IApp) {
+  return app.status?.release.status;
 }
 
 export function getAppClusterName(app: IApp) {

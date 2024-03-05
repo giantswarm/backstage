@@ -1,26 +1,40 @@
 import React from "react";
-import { Box, Card, CardContent, CardHeader, Paper, styled } from "@material-ui/core";
-import DateComponent from "../UI/Date";
-import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
-import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
-import { Heading } from "../UI/Heading";
+import { Box, Paper} from "@material-ui/core";
 import {
   IApp,
   getAppStatus,
-  AppStatuses,
 } from '../../model/services/mapi/applicationv1alpha1';
-import { toSentenceCase } from "../utils/helpers";
 import { ContentRow } from "../UI/ContentRow";
+import { DeploymentStatusCard } from "../UI/DeploymentStatusCard";
+import { Heading } from "../UI/Heading";
+import { useAppStatusDetails } from "../hooks/useDeploymentStatusDetails";
 
-const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
-  marginRight: 10,
-  color: theme.palette.status.error
-}));
+const StatusCard = ({
+  status,
+  lastTransitionTime,
+  children,
+}: {
+  status: string;
+  lastTransitionTime?: string;
+  children?: React.ReactNode;
+}) => {
+  const {
+    icon: Icon,
+    color: iconColor,
+    label,
+  } = useAppStatusDetails(status);
 
-const StyledCheckCircleOutlinedIcon = styled(CheckCircleOutlinedIcon)(({ theme }) => ({
-  marginRight: 10,
-  color: theme.palette.status.ok,
-}));
+  return (
+    <DeploymentStatusCard
+      label={label}
+      icon={<Icon />}
+      iconColor={iconColor}
+      lastTransitionTime={lastTransitionTime}
+    >
+      {children}
+    </DeploymentStatusCard>
+  );
+}
 
 type AppDetailsStatusProps = {
   app: IApp;
@@ -29,7 +43,8 @@ type AppDetailsStatusProps = {
 export const AppDetailsStatus = ({
   app
 }: AppDetailsStatusProps) => {
-  if (!app.status) {
+  const status = getAppStatus(app);
+  if (!status) {
     return (
       <Paper>
         <Box padding={2}>
@@ -39,45 +54,16 @@ export const AppDetailsStatus = ({
     );
   }
 
-  const status = getAppStatus(app);
-  const statusLabel = toSentenceCase(status.replace(/-/g, ' '));
+  const lastTransitionTime = app.status!.release.lastDeployed;
+  const reason = app.status!.release.reason;
 
   return (
-    <Card>
-      <CardHeader
-        title={(
-          <>
-            {status === AppStatuses.Deployed
-              ? (
-                <Box display='flex' alignItems="center">
-                  <StyledCheckCircleOutlinedIcon />
-                  <Heading>{statusLabel}</Heading>
-                </Box>
-              )
-              : (
-                <Box display='flex' alignItems="center">
-                  <StyledCancelOutlinedIcon />
-                  <Heading>{statusLabel}</Heading>
-                </Box>
-              )}
-          </>
-        )}
-        titleTypographyProps={{ variant: undefined }}
-        subheader={<DateComponent value={app.status.release.lastDeployed} relative />}
-        subheaderTypographyProps={{
-          variant: 'body2',
-          color: 'textPrimary',
-        }}
-      />
-      {app.status.release.reason ? (
-        <CardContent>    
-          <ContentRow title="Reason">
-            {app.status.release.reason}
-          </ContentRow>
-        </CardContent>
-      ) : (
-        <Box padding={1} />
+    <StatusCard status={status} lastTransitionTime={lastTransitionTime}>
+      {reason && (
+        <ContentRow title="Reason">
+          {reason}
+        </ContentRow>
       )}
-    </Card>
+    </StatusCard>
   );
 }
