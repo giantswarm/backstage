@@ -5,6 +5,6 @@ home: https://github.com/giantswarm/backstage
 version: "0.16.1"
 appVersion: ""
 annotations:
-  application.giantswarm.io/team: team-honeybadger
+  application.giantswarm.io/team: honeybadger
   ui.giantswarm.io/logo: https://s.giantswarm.io/app-icons/backstage/1/logo.svg
 icon: https://s.giantswarm.io/app-icons/backstage/1/icon.svg
