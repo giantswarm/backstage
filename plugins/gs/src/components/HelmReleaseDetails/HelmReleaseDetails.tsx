@@ -70,7 +70,7 @@ export const HelmReleaseDetails = ({
           kind='helmrelease'
           name={name}
           namespace={namespace}
-          text='Open the GitOps UI for this resource'
+          text='Open this application in the GitOps UI'
         />
       </Box>
       

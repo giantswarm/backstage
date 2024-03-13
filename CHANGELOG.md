@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- GS plugin: Change GitOps UI link text in the deployment details pane.
+
 ## [0.16.3] - 2024-03-13
 
 ### Changed
