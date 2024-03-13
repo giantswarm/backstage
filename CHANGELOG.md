@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.16.3] - 2024-03-13
 
+### Changed
+
+- Change PodDisruptionBudget to allow moving of the single pod.
+
 ## [0.16.2] - 2024-03-13
 
 ### Changed
