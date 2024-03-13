@@ -18,6 +18,14 @@ hostnames: []
 registry:
   domain: gsoci.azurecr.io
 
+resources:
+  requests:
+    cpu: 30m
+    memory: 300M
+  limits:
+    cpu: 500m
+    memory: 600M
+
 authSessionSecret: ""
 
 catalogLocationUrl: ""
