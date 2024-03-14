@@ -9,6 +9,7 @@ import {
   getAppClusterName,
   getAppCreatedTimestamp,
   getAppCurrentVersion,
+  getAppUpdatedTimestamp,
   getAppVersion,
 } from "../../model/services/mapi/applicationv1alpha1";
 import { Heading } from "../UI/Heading";
@@ -97,6 +98,12 @@ export const AppDetails = ({
                 'Created': (
                   <DateComponent
                     value={getAppCreatedTimestamp(app)}
+                    relative
+                  />
+                ),
+                'Updated': (
+                  <DateComponent
+                    value={getAppUpdatedTimestamp(app)}
                     relative
                   />
                 ),

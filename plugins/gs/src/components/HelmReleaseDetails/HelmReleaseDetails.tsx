@@ -11,6 +11,7 @@ import {
   getHelmReleaseCreatedTimestamp,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
+  getHelmReleaseUpdatedTimestamp,
 } from "../../model/services/mapi/helmv2beta1";
 import { Heading } from "../UI/Heading";
 import { formatVersion } from "../utils/helpers";
@@ -109,6 +110,12 @@ export const HelmReleaseDetails = ({
                 'Created': (
                   <DateComponent
                     value={getHelmReleaseCreatedTimestamp(helmrelease)}
+                    relative
+                  />
+                ),
+                'Updated': (
+                  <DateComponent
+                    value={getHelmReleaseUpdatedTimestamp(helmrelease)}
                     relative
                   />
                 ),
