@@ -1,16 +1,18 @@
 import React from "react";
 import { EmptyState, Progress, WarningPanel } from "@backstage/core-components";
-import { Box, Card, CardContent, CardHeader, Grid } from "@material-ui/core";
+import { Box, Card, CardContent, CardHeader, Grid, Typography } from "@material-ui/core";
 import { useHelmRelease } from "../hooks";
 import { StructuredMetadataList } from "../UI/StructuredMetadataList";
 import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
 import { HelmReleaseDetailsStatusConditions } from "../HelmReleaseDetailsStatusConditions";
 import DateComponent from "../UI/Date";
 import {
+  getHelmReleaseChartName,
   getHelmReleaseClusterName,
   getHelmReleaseCreatedTimestamp,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
+  getHelmReleaseSourceName,
   getHelmReleaseUpdatedTimestamp,
 } from "../../model/services/mapi/helmv2beta1";
 import { Heading } from "../UI/Heading";
@@ -61,6 +63,8 @@ export const HelmReleaseDetails = ({
   const clusterName = getHelmReleaseClusterName(helmrelease);
   const lastAppliedRevision = formatVersion(getHelmReleaseLastAppliedRevision(helmrelease) ?? '');
   const lastAttemptedRevision = formatVersion(getHelmReleaseLastAttemptedRevision(helmrelease) ?? '');
+  const sourceName = getHelmReleaseSourceName(helmrelease);
+  const chartName = getHelmReleaseChartName(helmrelease);
   
   return (
     <div>
@@ -107,6 +111,12 @@ export const HelmReleaseDetails = ({
               <StructuredMetadataList metadata={{
                 'Namespace': namespace,
                 'Name': name,
+                'Source': (
+                  <>
+                    {sourceName && (<Typography variant='inherit' noWrap>{sourceName}/</Typography>)}
+                    {chartName && (<Typography variant='inherit' noWrap>{chartName}</Typography>)}
+                  </>
+                ),
                 'Created': (
                   <DateComponent
                     value={getHelmReleaseCreatedTimestamp(helmrelease)}
