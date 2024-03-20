@@ -25,6 +25,7 @@ export const DeploymentActions = ({
           kind={kind}
           name={name}
           namespace={namespace}
+          tooltip="Open this application in the GitOps UI"
         />
       )}
     </Box>

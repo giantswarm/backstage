@@ -10,7 +10,8 @@ const useDrawerStyles = makeStyles((theme: Theme) =>
   createStyles({
     paper: {
       minWidth: '450px',
-      maxWidth: '450px',
+      maxWidth: '650px',
+      width: '30%',
       padding: theme.spacing(2.5),
       backgroundColor: theme.palette.background.default,
     },

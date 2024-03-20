@@ -15,6 +15,7 @@ type GitOpsUILinkProps = {
   name: string;
   namespace?: string;
   text?: string;
+  tooltip?: string;
 }
 
 export const GitOpsUILink = ({
@@ -24,6 +25,7 @@ export const GitOpsUILink = ({
   name,
   namespace,
   text,
+  tooltip,
 }: GitOpsUILinkProps) => {
   let disabledTitle = '';
   if (!clusterName) {
@@ -59,7 +61,11 @@ export const GitOpsUILink = ({
       target="_blank"
       rel="noopener noreferrer"
     >
-      {el}
+      {tooltip ? (
+        <Tooltip title={tooltip}>
+          {el}
+        </Tooltip>
+      ) : el}
     </Link>
   );
 }
