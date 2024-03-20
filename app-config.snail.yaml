@@ -3,6 +3,13 @@ backend:
     allow:
     - host: "*.gigantic.io"
 
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters: []
+
 auth:
   environment: development
   session:
