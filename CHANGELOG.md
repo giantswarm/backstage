@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add basic /healthcheck endpoint
+- Add liveness and readiness probes checking for the /healthcheck endpoint
+
 ### Changed
 
 - GS plugin: Display link to commit on GitHub for deployment dev versions.
