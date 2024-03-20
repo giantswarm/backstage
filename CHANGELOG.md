@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GS plugin: Make HelmRelease conditions in the deployment details pane collapsed by default.
 - GS plugin: Display source and updated timestamp in the deployment details pane.
 
+### Fixed
+
+- Add kubernetes plugin configuration to snail app-config.
+
 ## [0.16.3] - 2024-03-13
 
 ### Changed
