@@ -2,9 +2,9 @@ import React, { ComponentProps, ComponentType } from "react";
 import { Box, Link, Tooltip, styled } from "@material-ui/core";
 import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
 import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
-import { getReleaseNotesURL, truncateVersion } from "../../utils/helpers";
+import { getCommitURL, getReleaseNotesURL } from "../../utils/helpers";
 import CachingColorHash from "../../utils/cachingColorHash";
-import { VersionImpl } from "../../utils/VersionImpl";
+import semver from 'semver';
 
 const colorHash = new CachingColorHash();
 
@@ -19,6 +19,9 @@ const ColorWrapper = styled('div')(({ theme, str }) => {
     borderRadius: theme.shape.borderRadius,
     backgroundColor,
     color: theme.palette.getContrastText(backgroundColor),
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
   };
 }) as ComponentType<ComponentProps<'div'> & ColorWrapperProps>;
 
@@ -33,7 +36,47 @@ const StyledLaunchOutlinedIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
   fontSize: 'inherit',
 }));
 
-type VersionProps = {
+const COMMIT_HASH_REGEXP = /\b[0-9a-f]{40}\b/;
+const COMMIT_HASH_LENGTH_LIMIT = 5;
+const INVALID_VERSION = 'n/a';
+
+function getCommitHash(version: string) {
+  const semverVersion = semver.parse(version);
+  if (!semverVersion) {
+    return null;
+  }
+
+  if (semverVersion.prerelease.length === 1 &&
+    semverVersion.prerelease[0].toString().match(COMMIT_HASH_REGEXP)) {
+    return semverVersion.prerelease[0].toString();
+  }
+
+  return null;
+}
+
+type FormatVersionOptions = {
+  truncateCommitHash?: boolean,
+}
+
+function formatVersion(version: string, {
+  truncateCommitHash = false,
+}: FormatVersionOptions = {}) {
+  const semverVersion = semver.parse(version);
+  if (!semverVersion) {
+    return INVALID_VERSION;
+  }
+
+  const versionStr = semverVersion.toString();
+
+  const commitHash = getCommitHash(version);
+  if (truncateCommitHash && commitHash) {
+    return versionStr.slice(0, versionStr.length - commitHash.length + COMMIT_HASH_LENGTH_LIMIT);
+  }
+
+  return versionStr;
+}
+
+export type VersionProps = {
   version: string;
   sourceLocation?: string;
   displayWarning?: boolean;
@@ -48,28 +91,28 @@ export const Version = ({
   warningMessageVersion,
   highlight,
 }: VersionProps) => {
-  const semverVersion = new VersionImpl(version);
-  const isPreReleaseVersion = Boolean(semverVersion.getPreRelease());
-  const displayLinkToProject = sourceLocation && version !== '' && !isPreReleaseVersion;
+  const versionLabel = formatVersion(version, {
+    truncateCommitHash: highlight,
+  });
+  const commitHash = getCommitHash(version);
 
-  let versionLabel = version === '' ? 'n/a' : version;
-  if (isPreReleaseVersion && highlight) {
-    versionLabel = truncateVersion(version);
-  }
+  const displayLinkToProject = sourceLocation && versionLabel !== INVALID_VERSION;
 
-  const versionComponent = highlight && version !== '' ? (
-    
-      <ColorWrapper str={version}>
+  const versionComponent = highlight && versionLabel !== INVALID_VERSION ? (
+      <ColorWrapper str={versionLabel}>
         {versionLabel}
       </ColorWrapper>
-      
   ) : versionLabel;
+
+  const warningMessage = warningMessageVersion
+    ? `Last attempted version is ${warningMessageVersion}`
+    : 'Last applied version is different from the attempted version.';
 
   return (
     <Box display='flex' alignItems="center" color='primary'>
       {displayLinkToProject ? (
         <Link
-          href={getReleaseNotesURL(sourceLocation, version)}
+          href={commitHash ? getCommitURL(sourceLocation, commitHash) : getReleaseNotesURL(sourceLocation, versionLabel)}
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -81,13 +124,8 @@ export const Version = ({
       ) : versionComponent}
       
       {displayWarning && (
-        <Tooltip
-          title={warningMessageVersion
-            ? `Last attempted version is ${warningMessageVersion}`
-            : 'Last applied version is different from the attempted version.'
-          }
-        >
-          <StyledReportProblemOutlined />
+        <Tooltip title={warningMessage}>
+          <StyledReportProblemOutlined titleAccess={warningMessage} />
         </Tooltip>
       )}
     </Box>

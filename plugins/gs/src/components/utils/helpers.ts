@@ -4,8 +4,6 @@ import formatDistance from 'date-fns/fp/formatDistance';
 import parseISO from 'date-fns/fp/parseISO';
 import toDate from 'date-fns-tz/toDate';
 import utcToZonedTime from 'date-fns-tz/utcToZonedTime';
-import { VersionImpl } from './VersionImpl';
-
 
 /**
  * Format a date into a pretty way.
@@ -92,34 +90,21 @@ export function parseDate(date: string | number | Date): Date {
 
 export function getReleaseNotesURL(
   sourceLocation: string,
-  version: string
+  version: string,
 ): string {
   return `${sourceLocation}/releases/tag/v${version}`;
+}
+
+export function getCommitURL(
+  sourceLocation: string,
+  commitHash: string,
+): string {
+  return `${sourceLocation}/commit/${commitHash}`;
 }
 
 export function formatVersion(version: string) {
   // Remove the `v` prefix if it's present.
   return version.startsWith('v') ? version.slice(1) : version;
-}
-
-export function truncateVersion(version: string) {
-  if (version.length < 1) return 'VERSION';
-
-  const semverVersion = new VersionImpl(version);
-
-  if (semverVersion.getPreRelease().length > 0) {
-    return [
-      semverVersion.getMajor(),
-      '.',
-      semverVersion.getMinor(),
-      '.',
-      semverVersion.getPatch(),
-      '-',
-      semverVersion.getPreRelease().slice(0, 5),
-    ].join('');
-  }
-
-  return version;
 }
 
 export function formatAppCatalogName(name: string) {
