@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - GS plugin: Display link to commit on GitHub for deployment dev versions.
+- GS plugin: Change GitOps UI link text in the deployment details pane.
+- GS plugin: Make HelmRelease conditions in the deployment details pane collapsed by default.
+- GS plugin: Display source and updated timestamp in the deployment details pane.
 
 ## [0.16.3] - 2024-03-13
 

@@ -1,16 +1,19 @@
 import React from "react";
 import { EmptyState, Progress, WarningPanel } from "@backstage/core-components";
-import { Box, Card, CardContent, CardHeader, Grid } from "@material-ui/core";
+import { Box, Card, CardContent, CardHeader, Grid, Typography } from "@material-ui/core";
 import { useHelmRelease } from "../hooks";
 import { StructuredMetadataList } from "../UI/StructuredMetadataList";
 import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
 import { HelmReleaseDetailsStatusConditions } from "../HelmReleaseDetailsStatusConditions";
 import DateComponent from "../UI/Date";
 import {
+  getHelmReleaseChartName,
   getHelmReleaseClusterName,
   getHelmReleaseCreatedTimestamp,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
+  getHelmReleaseSourceName,
+  getHelmReleaseUpdatedTimestamp,
 } from "../../model/services/mapi/helmv2beta1";
 import { Heading } from "../UI/Heading";
 import { formatVersion } from "../utils/helpers";
@@ -60,6 +63,8 @@ export const HelmReleaseDetails = ({
   const clusterName = getHelmReleaseClusterName(helmrelease);
   const lastAppliedRevision = formatVersion(getHelmReleaseLastAppliedRevision(helmrelease) ?? '');
   const lastAttemptedRevision = formatVersion(getHelmReleaseLastAttemptedRevision(helmrelease) ?? '');
+  const sourceName = getHelmReleaseSourceName(helmrelease);
+  const chartName = getHelmReleaseChartName(helmrelease);
   
   return (
     <div>
@@ -70,7 +75,7 @@ export const HelmReleaseDetails = ({
           kind='helmrelease'
           name={name}
           namespace={namespace}
-          text='Open the GitOps UI for this resource'
+          text='Open this application in the GitOps UI'
         />
       </Box>
       
@@ -99,16 +104,28 @@ export const HelmReleaseDetails = ({
         <Grid item>
           <Card>
             <CardHeader
-              title={<Heading>HelmRelease</Heading>}
+              title={<Heading>HelmRelease details</Heading>}
               titleTypographyProps={{ variant: undefined }}
             />
             <CardContent>
               <StructuredMetadataList metadata={{
                 'Namespace': namespace,
                 'Name': name,
+                'Source': (
+                  <>
+                    {sourceName && (<Typography variant='inherit' noWrap>{sourceName}/</Typography>)}
+                    {chartName && (<Typography variant='inherit' noWrap>{chartName}</Typography>)}
+                  </>
+                ),
                 'Created': (
                   <DateComponent
                     value={getHelmReleaseCreatedTimestamp(helmrelease)}
+                    relative
+                  />
+                ),
+                'Updated': (
+                  <DateComponent
+                    value={getHelmReleaseUpdatedTimestamp(helmrelease)}
                     relative
                   />
                 ),

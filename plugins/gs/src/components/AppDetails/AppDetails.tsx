@@ -1,19 +1,22 @@
 import React from "react";
 import { useApp } from "../hooks";
 import { EmptyState, Progress, WarningPanel } from "@backstage/core-components";
-import { Card, CardContent, CardHeader, Grid } from "@material-ui/core";
+import { Card, CardContent, CardHeader, Grid, Typography } from "@material-ui/core";
 import { StructuredMetadataList } from "../UI/StructuredMetadataList";
 import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
 import DateComponent from "../UI/Date";
 import {
+  getAppCatalogName,
+  getAppChartName,
   getAppClusterName,
   getAppCreatedTimestamp,
   getAppCurrentVersion,
+  getAppUpdatedTimestamp,
   getAppVersion,
 } from "../../model/services/mapi/applicationv1alpha1";
 import { Heading } from "../UI/Heading";
 import { AppDetailsStatus } from "../AppDetailsStatus";
-import { formatVersion } from "../utils/helpers";
+import { formatAppCatalogName, formatVersion } from "../utils/helpers";
 
 type AppDetailsProps = {
   installationName: string;
@@ -59,6 +62,8 @@ export const AppDetails = ({
   const clusterName = getAppClusterName(app);
   const lastAppliedRevision = formatVersion(getAppCurrentVersion(app) ?? '');
   const lastAttemptedRevision = formatVersion(getAppVersion(app));
+  const sourceName = formatAppCatalogName(getAppCatalogName(app));
+  const chartName = getAppChartName(app);
   
   return (
     <div>
@@ -87,16 +92,28 @@ export const AppDetails = ({
         <Grid item>
           <Card>
             <CardHeader
-              title={<Heading>App CR</Heading>}
+              title={<Heading>App CR details</Heading>}
               titleTypographyProps={{ variant: undefined }}
             />
             <CardContent>
               <StructuredMetadataList metadata={{
                 'Namespace': namespace,
                 'Name': name,
+                'Source': (
+                  <>
+                    {sourceName && (<Typography variant='inherit' noWrap>{sourceName}/</Typography>)}
+                    {chartName && (<Typography variant='inherit' noWrap>{chartName}</Typography>)}
+                  </>
+                ),
                 'Created': (
                   <DateComponent
                     value={getAppCreatedTimestamp(app)}
+                    relative
+                  />
+                ),
+                'Updated': (
+                  <DateComponent
+                    value={getAppUpdatedTimestamp(app)}
                     relative
                   />
                 ),
