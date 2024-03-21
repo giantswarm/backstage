@@ -11,6 +11,12 @@ backend:
   # auth:
   #   keys:
   #     - secret: ${BACKEND_SECRET}
+
+  auth:
+    # TODO: once plugins have been migrated we can remove this, but right now it
+    # is require for the backend to work
+    dangerouslyDisableDefaultAuthPolicy: true
+
   baseUrl: http://localhost:7007
   listen:
     port: 7007
@@ -56,6 +62,9 @@ integrations:
     - host: github.com
       apps:
         - $include: github-app-${BACKSTAGE_ENVIRONMENT}-credentials.yaml
+
+permission:
+  enabled: true
 
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.

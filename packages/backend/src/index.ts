@@ -10,7 +10,7 @@ backend.add(import('@backstage/plugin-scaffolder-backend/alpha'));
 // techdocs plugin
 // TODO: Migrate to the new techdocs-backend plugin when custom preparers are supported - https://github.com/backstage/backstage/issues/21952
 // backend.add(import('@backstage/plugin-techdocs-backend/alpha'));
-backend.add(legacyPlugin('techdocs-backend', import('./plugins/techdocs')));
+backend.add(legacyPlugin('techdocs', import('./plugins/techdocs')));
 
 // healthcheck plugin
 backend.add(legacyPlugin('healthcheck', import('./plugins/healthcheck')));
