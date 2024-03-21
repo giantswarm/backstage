@@ -2259,6 +2259,14 @@
     yauzl "^3.0.0"
     yn "^4.0.0"
 
+"@backstage/backend-defaults@^0.2.14":
+  version "0.2.14"
+  resolved "https://registry.yarnpkg.com/@backstage/backend-defaults/-/backend-defaults-0.2.14.tgz#4ad79208ba2fb28e67a07b6a664e111330b2c8d2"
+  integrity sha512-IsANzF9wi+xpI3IB/BpONcbqbYHAU54SJ+WrF/eO+ISni6KtzHG14xQzXiV7nhAJKXDjKeG4x1yr1dd6bYprlA==
+  dependencies:
+    "@backstage/backend-app-api" "^0.6.0"
+    "@backstage/backend-common" "^0.21.4"
+
 "@backstage/backend-dev-utils@^0.1.4":
   version "0.1.4"
   resolved "https://registry.yarnpkg.com/@backstage/backend-dev-utils/-/backend-dev-utils-0.1.4.tgz#65d204939c49b5df6a2148e8ad4dc718ccd1df07"
@@ -3417,6 +3425,38 @@
     qs "^6.10.1"
     react-use "^17.2.4"
 
+"@backstage/plugin-permission-backend-module-allow-all-policy@^0.1.11":
+  version "0.1.11"
+  resolved "https://registry.yarnpkg.com/@backstage/plugin-permission-backend-module-allow-all-policy/-/plugin-permission-backend-module-allow-all-policy-0.1.11.tgz#ad47b83c8ff3bd0a07e0ced8b3c30d943dd6645e"
+  integrity sha512-cLHQhWYF+MCFuYdfA68yaLzBgiJ+Aebqi1sw1FY7bkzz+yBJYRwDAYYPzpKWd8yi8tVmId9srL1Biaiwg4OHbg==
+  dependencies:
+    "@backstage/backend-plugin-api" "^0.6.14"
+    "@backstage/plugin-auth-node" "^0.4.9"
+    "@backstage/plugin-permission-common" "^0.7.13"
+    "@backstage/plugin-permission-node" "^0.7.25"
+
+"@backstage/plugin-permission-backend@^0.5.37":
+  version "0.5.37"
+  resolved "https://registry.yarnpkg.com/@backstage/plugin-permission-backend/-/plugin-permission-backend-0.5.37.tgz#5a6db0ca8bfca80632d6c8e83c0ee1d2c3a2f967"
+  integrity sha512-k/jFcEQIN80ipP7O0nd90mUL7YTmyN5FDKNB0SRMYWv11OD5duZ6nDdG7Vo2/qfySeOpM+87lA2um1unisCSGg==
+  dependencies:
+    "@backstage/backend-common" "^0.21.4"
+    "@backstage/backend-plugin-api" "^0.6.14"
+    "@backstage/config" "^1.2.0"
+    "@backstage/errors" "^1.2.4"
+    "@backstage/plugin-auth-node" "^0.4.9"
+    "@backstage/plugin-permission-common" "^0.7.13"
+    "@backstage/plugin-permission-node" "^0.7.25"
+    "@types/express" "*"
+    dataloader "^2.0.0"
+    express "^4.17.1"
+    express-promise-router "^4.1.0"
+    lodash "^4.17.21"
+    node-fetch "^2.6.7"
+    winston "^3.2.1"
+    yn "^4.0.0"
+    zod "^3.22.4"
+
 "@backstage/plugin-permission-common@^0.7.13":
   version "0.7.13"
   resolved "https://registry.yarnpkg.com/@backstage/plugin-permission-common/-/plugin-permission-common-0.7.13.tgz#ea8509d2a38063309b8726ee6be8b95e1f99e5b9"
@@ -3780,21 +3820,6 @@
     "@backstage/plugin-permission-common" "^0.7.13"
     "@backstage/plugin-search-backend-node" "^1.2.18"
     "@backstage/plugin-search-common" "^1.2.11"
-
-"@backstage/plugin-search-backend-module-pg@^0.5.23":
-  version "0.5.23"
-  resolved "https://registry.yarnpkg.com/@backstage/plugin-search-backend-module-pg/-/plugin-search-backend-module-pg-0.5.23.tgz#8bc94067f0caddd29cef404b230678cafb96f99d"
-  integrity sha512-UXpEPUb3PKj/CMJ9foRdANqhwlQB4R4PjEpNye4aAKlPG8reF7YLz98d0LFAzK+92BRNRbx07xbN3bJXqjXTuA==
-  dependencies:
-    "@backstage/backend-common" "^0.21.4"
-    "@backstage/backend-plugin-api" "^0.6.14"
-    "@backstage/config" "^1.2.0"
-    "@backstage/plugin-search-backend-node" "^1.2.18"
-    "@backstage/plugin-search-common" "^1.2.11"
-    knex "^3.0.0"
-    lodash "^4.17.21"
-    uuid "^9.0.0"
-    winston "^3.2.1"
 
 "@backstage/plugin-search-backend-module-techdocs@^0.1.18":
   version "0.1.18"

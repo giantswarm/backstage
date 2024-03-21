@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Update Backstage to 1.24.0.
+- Migrate backend to the new backend system.
 
 ## [0.17.0] - 2024-03-20
 

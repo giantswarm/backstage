@@ -93,6 +93,9 @@ auth:
       development:
         clientId: ${GITHUB_OAUTH_CLIENT_ID}
         clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+        signIn:
+          resolvers:
+            - resolver: usernameMatchingUserEntityName
     gs-gaggle:
       development:
         metadataUrl: https://dex.gaggle.azuretest.gigantic.io/.well-known/openid-configuration
