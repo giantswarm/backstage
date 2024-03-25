@@ -12,8 +12,7 @@ backend.add(import('@backstage/plugin-scaffolder-backend/alpha'));
 // backend.add(import('@backstage/plugin-techdocs-backend/alpha'));
 backend.add(legacyPlugin('techdocs', import('./plugins/techdocs')));
 
-// healthcheck plugin
-backend.add(legacyPlugin('healthcheck', import('./plugins/healthcheck')));
+backend.add(import('./plugins/healthcheck'));
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
