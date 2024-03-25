@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Update Backstage to 1.24.0.
+- Update Backstage to 1.24.2.
 - Migrate backend to the new backend system.
 - Move GS auth providers configuration to a separate backend module.
 
