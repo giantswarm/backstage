@@ -1,6 +1,16 @@
-import { createStatusCheckRouter } from '@backstage/backend-common';
-import { PluginEnvironment } from '../types';
+import { statusCheckHandler } from '@backstage/backend-common';
+import {
+  coreServices,
+  createServiceFactory,
+  createServiceRef,
+} from '@backstage/backend-plugin-api';
 
-export default async function createRouter({ logger }: PluginEnvironment) {
-    return await createStatusCheckRouter({ logger, path: '/healthcheck' });
-}
+export default createServiceFactory({
+  service: createServiceRef({ id: 'internal.status-check', scope: 'root' }),
+  deps: {
+    http: coreServices.rootHttpRouter,
+  },
+  async factory({ http }) {
+    http.use('/healthcheck', await statusCheckHandler());
+  },
+});

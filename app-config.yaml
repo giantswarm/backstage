@@ -11,6 +11,12 @@ backend:
   # auth:
   #   keys:
   #     - secret: ${BACKEND_SECRET}
+
+  auth:
+    # TODO: once plugins have been migrated we can remove this, but right now it
+    # is require for the backend to work
+    dangerouslyDisableDefaultAuthPolicy: true
+
   baseUrl: http://localhost:7007
   listen:
     port: 7007
@@ -57,6 +63,9 @@ integrations:
       apps:
         - $include: github-app-${BACKSTAGE_ENVIRONMENT}-credentials.yaml
 
+permission:
+  enabled: true
+
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.
   ### A typical reason to do this is to handle HTTPS and CORS for internal services.
@@ -84,6 +93,9 @@ auth:
       development:
         clientId: ${GITHUB_OAUTH_CLIENT_ID}
         clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+        signIn:
+          resolvers:
+            - resolver: usernameMatchingUserEntityName
 
 scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options
