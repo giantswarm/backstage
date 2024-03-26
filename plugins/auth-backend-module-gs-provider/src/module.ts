@@ -8,9 +8,9 @@ import {
 } from '@backstage/plugin-auth-node';
 
 /** @public */
-export const authModuleGsProvider = createBackendModule({
+export const authModuleGsProviders = createBackendModule({
   pluginId: 'auth',
-  moduleId: 'gs-provider',
+  moduleId: 'gs-providers',
   register(reg) {
     reg.registerInit({
       deps: {

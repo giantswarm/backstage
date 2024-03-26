@@ -1,8 +1,8 @@
 /***/
 /**
- * The gs-provider backend module for the auth plugin.
+ * The gs-providers backend module for the auth plugin.
  *
  * @packageDocumentation
  */
 
-export { authModuleGsProvider as default } from './module';
+export { authModuleGsProviders as default } from './module';

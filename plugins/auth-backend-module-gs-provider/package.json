@@ -1,6 +1,6 @@
 {
-  "name": "@internal/plugin-auth-backend-module-gs-provider",
-  "description": "The gs-provider backend module for the auth plugin.",
+  "name": "@internal/plugin-auth-backend-module-gs-providers",
+  "description": "The gs-providers backend module for the auth plugin.",
   "version": "0.1.0",
   "main": "src/index.ts",
   "types": "src/index.ts",
