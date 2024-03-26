@@ -9,6 +9,9 @@ app:
       tracesSampleRate: 0.5
 
 backend:
+  auth:
+    keys:
+      - secret: ${BACKEND_SECRET}
   baseUrl: https://devportal.giantswarm.io
   listen:
     port: 7007

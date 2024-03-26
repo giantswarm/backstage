@@ -12,6 +12,7 @@ hostnames: ["test"]
 registry:
   domain: gsoci.azurecr.io
 authSessionSecret: fooBar
+backendSecret: testBackendSecret
 catalogLocationUrl: "https://example.com/catalog-info.yaml"
 circleci:
   apiToken: dummyToken

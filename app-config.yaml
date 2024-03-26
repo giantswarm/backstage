@@ -5,13 +5,6 @@ organization:
   name: My Company
 
 backend:
-  # Used for enabling authentication, secret is shared by all backend plugins
-  # See https://backstage.io/docs/auth/service-to-service-auth for
-  # information on the format
-  # auth:
-  #   keys:
-  #     - secret: ${BACKEND_SECRET}
-
   auth:
     # TODO: once plugins have been migrated we can remove this, but right now it
     # is require for the backend to work

@@ -3,6 +3,9 @@ app:
   baseUrl: https://portal.snail.gaws.gigantic.io
 
 backend:
+  auth:
+    keys:
+      - secret: ${BACKEND_SECRET}
   baseUrl: https://portal.snail.gaws.gigantic.io
   listen:
     port: 7007

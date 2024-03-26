@@ -28,6 +28,8 @@ resources:
 
 authSessionSecret: ""
 
+backendSecret: ""
+
 catalogLocationUrl: ""
 
 circleci:
