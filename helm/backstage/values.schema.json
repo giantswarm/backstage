@@ -5,6 +5,9 @@
         "authSessionSecret": {
             "type": "string"
         },
+        "backendSecret": {
+            "type": "string"
+        },
         "backstageDiscovery": {
             "type": "object",
             "properties": {
