@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Configure backend secret for production environments.
+- GS plugin: Remove unused installations configuration.
 
 ## [0.18.0] - 2024-03-26
 
