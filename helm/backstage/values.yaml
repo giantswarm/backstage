@@ -45,16 +45,7 @@ dexAuthCredentials:
   glippy:
     clientID: ""
     clientSecret: ""
-  goat:
-    clientID: ""
-    clientSecret: ""
   golem:
-    clientID: ""
-    clientSecret: ""
-  goose:
-    clientID: ""
-    clientSecret: ""
-  goten:
     clientID: ""
     clientSecret: ""
   grizzly:

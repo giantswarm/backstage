@@ -111,26 +111,11 @@ auth:
         metadataUrl: https://dex.glippy.azuretest.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_GLIPPY_CLIENT_ID}
         clientSecret: ${AUTH_DEX_GLIPPY_CLIENT_SECRET}
-    # gs-goat:
-    #   development:
-    #     metadataUrl: https://dex.goat.gaws.gigantic.io/.well-known/openid-configuration
-    #     clientId: ${AUTH_DEX_GOAT_CLIENT_ID}
-    #     clientSecret: ${AUTH_DEX_GOAT_CLIENT_SECRET}
     gs-golem:
       development:
         metadataUrl: https://dex.golem.gaws.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_GOLEM_CLIENT_ID}
         clientSecret: ${AUTH_DEX_GOLEM_CLIENT_SECRET}
-    # gs-goose:
-    #   development:
-    #     metadataUrl: https://dex.goose.azuretest.gigantic.io/.well-known/openid-configuration
-    #     clientId: ${AUTH_DEX_GOOSE_CLIENT_ID}
-    #     clientSecret: ${AUTH_DEX_GOOSE_CLIENT_SECRET}
-    # gs-goten:
-    #   development:
-    #     metadataUrl: https://dex.goten.gaws.gigantic.io/.well-known/openid-configuration
-    #     clientId: ${AUTH_DEX_GOTEN_CLIENT_ID}
-    #     clientSecret: ${AUTH_DEX_GOTEN_CLIENT_SECRET}
     gs-grizzly:
       development:
         metadataUrl: https://dex.grizzly.gaws.gigantic.io/.well-known/openid-configuration
@@ -156,14 +141,8 @@ gs:
       pipeline: stable
     glippy:
       pipeline: testing
-    # goat:
-    #   pipeline: stable-testing
     golem:
       pipeline: testing
-    # goose:
-    #   pipeline: ephemeral
-    # goten:
-    #   pipeline: ephemeral
     grizzly:
       pipeline: stable-testing
     snail:

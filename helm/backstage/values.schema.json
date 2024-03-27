@@ -107,40 +107,7 @@
                         }
                     }
                 },
-                "goat": {
-                    "type": "object",
-                    "properties": {
-                        "clientID": {
-                            "type": "string"
-                        },
-                        "clientSecret": {
-                            "type": "string"
-                        }
-                    }
-                },
                 "golem": {
-                    "type": "object",
-                    "properties": {
-                        "clientID": {
-                            "type": "string"
-                        },
-                        "clientSecret": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "goose": {
-                    "type": "object",
-                    "properties": {
-                        "clientID": {
-                            "type": "string"
-                        },
-                        "clientSecret": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "goten": {
                     "type": "object",
                     "properties": {
                         "clientID": {
