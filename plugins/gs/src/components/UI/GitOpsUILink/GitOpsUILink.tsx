@@ -1,7 +1,7 @@
-import React from "react";
-import { Box, Link, Typography, Tooltip, styled } from "@material-ui/core";
+import React from 'react';
+import { Box, Link, Typography, Tooltip, styled } from '@material-ui/core';
 import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
-import { useGitOpsUIDeepLink } from "../../hooks/useGitOpsUIDeepLink";
+import { useGitOpsUIDeepLink } from '../../hooks/useGitOpsUIDeepLink';
 
 const StyledLaunchOutlinedIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
   marginLeft: theme.spacing(0.5),
@@ -16,7 +16,7 @@ type GitOpsUILinkProps = {
   namespace?: string;
   text?: string;
   tooltip?: string;
-}
+};
 
 export const GitOpsUILink = ({
   installationName,
@@ -29,14 +29,22 @@ export const GitOpsUILink = ({
 }: GitOpsUILinkProps) => {
   let disabledTitle = '';
   if (!clusterName) {
-    disabledTitle = 'GitOps UI link is not available. Cluster name is missing for this resource.';
+    disabledTitle =
+      'GitOps UI link is not available. Cluster name is missing for this resource.';
   }
   if (!namespace) {
-    disabledTitle = 'GitOps UI link is not available. Namespace is missing for this resource.';
+    disabledTitle =
+      'GitOps UI link is not available. Namespace is missing for this resource.';
   }
-  const gitopsUrl = useGitOpsUIDeepLink(installationName, clusterName ?? '', kind, name, namespace ?? '');
+  const gitopsUrl = useGitOpsUIDeepLink(
+    installationName,
+    clusterName ?? '',
+    kind,
+    name,
+    namespace ?? '',
+  );
   if (!gitopsUrl) {
-    disabledTitle = 'GitOps UI URL is not configured for this installation.'
+    disabledTitle = 'GitOps UI URL is not configured for this installation.';
   }
 
   const el = (
@@ -56,16 +64,8 @@ export const GitOpsUILink = ({
   }
 
   return (
-    <Link
-      href={gitopsUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {tooltip ? (
-        <Tooltip title={tooltip}>
-          {el}
-        </Tooltip>
-      ) : el}
+    <Link href={gitopsUrl} target="_blank" rel="noopener noreferrer">
+      {tooltip ? <Tooltip title={tooltip}>{el}</Tooltip> : el}
     </Link>
   );
-}
+};

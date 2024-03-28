@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, makeStyles } from "@material-ui/core";
+import { Grid, makeStyles } from '@material-ui/core';
 import { useInstallations, useInstallationsStatuses } from '../hooks';
 import { InstallationsErrors } from '../InstallationsErrors';
 import { InstallationsSelector } from '../InstallationsSelector';
@@ -15,24 +15,25 @@ type InstallationsWrapperProps = {
   children: React.ReactNode;
 };
 
-export const InstallationsWrapper = ({ children }: InstallationsWrapperProps) => {
-  const {
-    installations,
-    selectedInstallations,
-    setSelectedInstallations,
-  } = useInstallations();
+export const InstallationsWrapper = ({
+  children,
+}: InstallationsWrapperProps) => {
+  const { installations, selectedInstallations, setSelectedInstallations } =
+    useInstallations();
 
-  const {
-    installationsStatuses,
-  } = useInstallationsStatuses(selectedInstallations);
+  const { installationsStatuses } = useInstallationsStatuses(
+    selectedInstallations,
+  );
 
   const classes = useStyles();
 
-  const errors = installationsStatuses.some((installationStatus) => installationStatus.isError);
+  const errors = installationsStatuses.some(
+    installationStatus => installationStatus.isError,
+  );
 
   const handleSelectedInstallationsChange = (selectedItems: string[]) => {
     setSelectedInstallations(selectedItems);
-  }
+  };
 
   return (
     <Grid container spacing={3} direction="column">
@@ -46,9 +47,7 @@ export const InstallationsWrapper = ({ children }: InstallationsWrapperProps) =>
       </Grid>
       {errors && (
         <Grid item>
-          <InstallationsErrors
-            installationsStatuses={installationsStatuses}
-          />
+          <InstallationsErrors installationsStatuses={installationsStatuses} />
         </Grid>
       )}
       <Grid item className={classes.fullWidth}>
@@ -58,7 +57,9 @@ export const InstallationsWrapper = ({ children }: InstallationsWrapperProps) =>
             title="No Installations Selected"
             description="Please select one or more installations."
           />
-        ) : children }
+        ) : (
+          children
+        )}
       </Grid>
     </Grid>
   );

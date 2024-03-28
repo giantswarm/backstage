@@ -1,9 +1,5 @@
 import React from 'react';
-import {
-  SubvalueCell,
-  Table,
-  TableColumn,
-} from '@backstage/core-components';
+import { SubvalueCell, Table, TableColumn } from '@backstage/core-components';
 import { useClusters } from '../hooks';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
@@ -25,8 +21,8 @@ import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';
 import { sortAndFilterOptions } from '../utils/tableHelpers';
 
 const ClusterTypes = {
-  'Management': 'management',
-  'Workload': 'workload',
+  Management: 'management',
+  Workload: 'workload',
 } as const;
 
 const calculateClusterType = (cluster: Cluster, installationName: string) => {
@@ -45,7 +41,7 @@ const calculateClusterStatus = (cluster: Cluster) => {
   }
 
   return ClusterStatuses.Ready;
-}
+};
 
 type Row = {
   installationName: string;
@@ -56,7 +52,7 @@ type Row = {
   created?: string;
   priority?: string;
   status: string;
-}
+};
 
 const generatedColumns: TableColumn<Row>[] = [
   {
@@ -67,17 +63,13 @@ const generatedColumns: TableColumn<Row>[] = [
     title: 'Name',
     field: 'name',
     highlight: true,
-    render: (row) => (
-      <SubvalueCell value={row.name} subvalue={row.description} />
-    ),
-    ...sortAndFilterOptions((row) => `${row.name} ${row.description}`),
+    render: row => <SubvalueCell value={row.name} subvalue={row.description} />,
+    ...sortAndFilterOptions(row => `${row.name} ${row.description}`),
   },
   {
     title: 'Type',
     field: 'type',
-    render: (row) => (
-      toSentenceCase(row.type)
-    ),
+    render: row => toSentenceCase(row.type),
   },
   {
     title: 'Organization',
@@ -86,7 +78,7 @@ const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Service Priority',
     field: 'priority',
-    render: (row) => {
+    render: row => {
       if (!row.priority) {
         return 'n/a';
       }
@@ -98,15 +90,13 @@ const generatedColumns: TableColumn<Row>[] = [
     title: 'Created',
     field: 'created',
     type: 'datetime',
-    render: (row) => (
-      <DateComponent value={row.created} relative />
-    ),
+    render: row => <DateComponent value={row.created} relative />,
   },
   {
     title: 'Status',
     field: 'status',
-    render: (row) => {
-      return <ClusterStatus status={row.status} />
+    render: row => {
+      return <ClusterStatus status={row.status} />;
     },
   },
 ];
@@ -117,23 +107,17 @@ type Props = {
   resources: Resource<Cluster>[];
 };
 
-const ClustersTableView = ({
-  loading,
-  retry,
-  resources,
-}: Props) => {
-  const data = resources.map(({installationName, ...resource}) => (
-    {
-      installationName,
-      name: getClusterName(resource),
-      description: getClusterDescription(resource),
-      type: calculateClusterType(resource, installationName),
-      organization: getClusterOrganization(resource),
-      created: getClusterCreationTimestamp(resource),
-      priority: getClusterServicePriority(resource),
-      status: calculateClusterStatus(resource),
-    }
-  ));
+const ClustersTableView = ({ loading, retry, resources }: Props) => {
+  const data = resources.map(({ installationName, ...resource }) => ({
+    installationName,
+    name: getClusterName(resource),
+    description: getClusterDescription(resource),
+    type: calculateClusterType(resource, installationName),
+    organization: getClusterOrganization(resource),
+    created: getClusterCreationTimestamp(resource),
+    priority: getClusterServicePriority(resource),
+    status: calculateClusterStatus(resource),
+  }));
 
   return (
     <Table<Row>
@@ -149,9 +133,7 @@ const ClustersTableView = ({
       ]}
       data={data}
       style={{ width: '100%' }}
-      title={
-        <Typography variant="h6">Clusters</Typography>
-      }
+      title={<Typography variant="h6">Clusters</Typography>}
       columns={generatedColumns}
     />
   );
@@ -161,7 +143,8 @@ export const ClustersTable = () => {
   const { installationsData, initialLoading, retry } = useClusters();
 
   const resources: Resource<Cluster>[] = installationsData.flatMap(
-    ({ installationName, data }) => data.map((cluster) => ({ installationName, ...cluster }))
+    ({ installationName, data }) =>
+      data.map(cluster => ({ installationName, ...cluster })),
   );
 
   return (

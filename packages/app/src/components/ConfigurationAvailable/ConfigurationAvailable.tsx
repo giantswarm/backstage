@@ -1,12 +1,9 @@
-import {
-  useApi,
-  configApiRef,
-} from '@backstage/core-plugin-api';
+import { useApi, configApiRef } from '@backstage/core-plugin-api';
 import React, { ReactNode } from 'react';
 
-export type ConfigurationAvailableProps = { children: ReactNode } & ({
-  configKey: string
-});
+export type ConfigurationAvailableProps = { children: ReactNode } & {
+  configKey: string;
+};
 
 /**
  * Enables or disables rendering of its children based on the availability of a given

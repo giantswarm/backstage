@@ -1,11 +1,14 @@
-import React from "react";
-import { Box, Paper } from "@material-ui/core";
-import { IHelmRelease, getHelmReleaseStatus } from "../../model/services/mapi/helmv2beta1";
-import { compareDates } from "../utils/helpers";
-import { useHelmReleaseStatusDetails } from "../hooks/useDeploymentStatusDetails";
-import { HelmReleaseDetailsConditions } from "../HelmReleaseDetailsConditions";
-import { DeploymentStatusCard } from "../UI/DeploymentStatusCard";
-import { Heading } from "../UI/Heading";
+import React from 'react';
+import { Box, Paper } from '@material-ui/core';
+import {
+  IHelmRelease,
+  getHelmReleaseStatus,
+} from '../../model/services/mapi/helmv2beta1';
+import { compareDates } from '../utils/helpers';
+import { useHelmReleaseStatusDetails } from '../hooks/useDeploymentStatusDetails';
+import { HelmReleaseDetailsConditions } from '../HelmReleaseDetailsConditions';
+import { DeploymentStatusCard } from '../UI/DeploymentStatusCard';
+import { Heading } from '../UI/Heading';
 
 const StatusCard = ({
   status,
@@ -32,14 +35,14 @@ const StatusCard = ({
       {children}
     </DeploymentStatusCard>
   );
-}
+};
 
 type HelmReleaseDetailsStatusProps = {
   helmrelease: IHelmRelease;
-}
+};
 
 export const HelmReleaseDetailsStatus = ({
-  helmrelease
+  helmrelease,
 }: HelmReleaseDetailsStatusProps) => {
   const status = getHelmReleaseStatus(helmrelease);
   if (!status) {
@@ -52,14 +55,15 @@ export const HelmReleaseDetailsStatus = ({
     );
   }
 
-  const conditions = helmrelease.status!.conditions!.sort(
-    (a, b) => compareDates(b.lastTransitionTime, a.lastTransitionTime)
+  const conditions = helmrelease.status!.conditions!.sort((a, b) =>
+    compareDates(b.lastTransitionTime, a.lastTransitionTime),
   );
-  const lastTransitionTime = conditions.length > 0 ? conditions[0].lastTransitionTime : undefined;
+  const lastTransitionTime =
+    conditions.length > 0 ? conditions[0].lastTransitionTime : undefined;
 
   return (
     <StatusCard status={status} lastTransitionTime={lastTransitionTime}>
       <HelmReleaseDetailsConditions conditions={conditions} />
     </StatusCard>
   );
-}
+};

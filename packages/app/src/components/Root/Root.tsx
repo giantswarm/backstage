@@ -68,13 +68,13 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         {/* Global nav, not org-specific */}
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-        <ConfigurationAvailable configKey='opsgenie.domain'>
+        <ConfigurationAvailable configKey="opsgenie.domain">
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
         </ConfigurationAvailable>
         <FeatureFlagged with="show-flux-runtime">
           <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
         </FeatureFlagged>
-        <ConfigurationAvailable configKey='gs'>
+        <ConfigurationAvailable configKey="gs">
           <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
         </ConfigurationAvailable>
 

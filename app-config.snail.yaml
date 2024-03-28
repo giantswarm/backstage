@@ -1,7 +1,7 @@
 backend:
   reading:
     allow:
-    - host: "*.gigantic.io"
+      - host: '*.gigantic.io'
 
 kubernetes:
   serviceLocatorMethod:

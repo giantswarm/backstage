@@ -7,6 +7,6 @@ createDevApp()
   .addPage({
     element: <GSPluginPage />,
     title: 'Giant Swarm plugin',
-    path: '/gs'
+    path: '/gs',
   })
   .render();

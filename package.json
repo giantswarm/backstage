@@ -21,9 +21,8 @@
     "fix": "backstage-cli repo fix",
     "lint": "backstage-cli repo lint --since origin/main",
     "lint:all": "backstage-cli repo lint",
-    "prettier": "prettier \"*.{js,jsx,ts,tsx,mjs,cjs}\"",
-    "prettier:check": "yarn prettier --check",
-    "prettier:fix": "yarn prettier --write",
+    "prettier:check": "prettier --check .",
+    "prettier:fix": "prettier --write .",
     "new": "backstage-cli new --scope internal",
     "env-cmd:snail": "env-cmd -f .env env-cmd -f .env.snail",
     "env-cmd:devportal": "env-cmd -f .env env-cmd -f .env.devportal",
@@ -55,23 +54,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18"
   },
-  "prettier": {
-    "printWidth": 80,
-    "singleQuote": true,
-    "jsxSingleQuote": true,
-    "trailingComma": "es5",
-    "useTabs": false,
-    "tabWidth": 2,
-    "semi": true,
-    "quoteProps": "as-needed",
-    "bracketSpacing": true,
-    "bracketSameLine": false,
-    "arrowParens": "always",
-    "parser": "typescript",
-    "proseWrap": "preserve",
-    "endOfLine": "lf",
-    "embeddedLanguageFormatting": "auto"
-  },
+  "prettier": "@spotify/prettier-config",
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs}": [
       "eslint --fix",

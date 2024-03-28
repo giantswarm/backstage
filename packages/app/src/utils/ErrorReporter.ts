@@ -3,7 +3,7 @@ export interface IErrorReporterNotifier {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     error: Error | string | Record<string, any>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    extraInfo?: Record<string, any>
+    extraInfo?: Record<string, any>,
   ): Promise<void>;
 }
 
@@ -42,7 +42,7 @@ class ErrorReporter {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     error: Error | string | Record<string, any>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    extraInfo?: Record<string, any>
+    extraInfo?: Record<string, any>,
   ): Promise<void> {
     await this.notifier?.notify(error, extraInfo);
   }

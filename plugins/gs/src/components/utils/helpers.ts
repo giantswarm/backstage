@@ -34,7 +34,7 @@ export function getRelativeDateFromNow(date: string | number | Date): string {
  */
 export function getRelativeDate(
   dateA: string | number | Date,
-  dateB: string | number | Date
+  dateB: string | number | Date,
 ): string {
   const baseDate = parseDate(dateA);
   const date = parseDate(dateB);
@@ -51,7 +51,7 @@ export function getRelativeDate(
 
 export function compareDates(
   dateA: Date | string | number,
-  dateB: Date | string | number
+  dateB: Date | string | number,
 ): -1 | 0 | 1 {
   const a = toDate(dateA, { timeZone: 'UTC' });
   const b = toDate(dateB, { timeZone: 'UTC' });
@@ -65,7 +65,7 @@ export function compareDates(
  * @source http://stackoverflow.com/questions/196972/convert-string-to-title-case-with-javascript
  */
 export function toTitleCase(str: string): string {
-  return str.replace(/\w\S*/g, (txt) => {
+  return str.replace(/\w\S*/g, txt => {
     return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
   });
 }

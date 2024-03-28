@@ -1,4 +1,4 @@
-import { Typography, styled } from "@material-ui/core";
+import { Typography, styled } from '@material-ui/core';
 
 export const Heading = styled(Typography)(
   ({ theme }) => ({

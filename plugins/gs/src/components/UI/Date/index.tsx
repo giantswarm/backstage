@@ -69,7 +69,7 @@ const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   if (relative) {
     return (
       <Tooltip title={formattedDate}>
-        <Typography component="span" variant={variant} {...props} key='date'>
+        <Typography component="span" variant={variant} {...props} key="date">
           {visibleDate}
         </Typography>
       </Tooltip>
@@ -77,7 +77,7 @@ const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   }
 
   return (
-    <Typography component="span" variant={variant} {...props} key='date'>
+    <Typography component="span" variant={variant} {...props} key="date">
       {visibleDate}
     </Typography>
   );

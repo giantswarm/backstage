@@ -1,6 +1,12 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 
-const typedUrl = (baseUrl: string, clusterName: string, name: string, namespace: string, type: string): string => {
+const typedUrl = (
+  baseUrl: string,
+  clusterName: string,
+  name: string,
+  namespace: string,
+  type: string,
+): string => {
   const queryStringData = {
     clusterName: clusterName,
     name: name,
@@ -23,7 +29,9 @@ export const useGitOpsUIDeepLink = (
   namespace: string,
 ): string | undefined => {
   const config = useApi(configApiRef);
-  const baseUrl = config.getOptionalString(`gs.installations.${installationName}.gitopsUrl`);
+  const baseUrl = config.getOptionalString(
+    `gs.installations.${installationName}.gitopsUrl`,
+  );
 
   if (!baseUrl) {
     return undefined;

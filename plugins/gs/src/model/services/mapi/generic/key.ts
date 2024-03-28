@@ -1,4 +1,9 @@
-import { Constants, Labels, Annotations, ClusterConditionTypes } from '../../../constants';
+import {
+  Constants,
+  Labels,
+  Annotations,
+  ClusterConditionTypes,
+} from '../../../constants';
 import { Cluster } from './types';
 import { isConditionFalse } from './utils/conditions';
 
@@ -11,7 +16,10 @@ import { isConditionFalse } from './utils/conditions';
  * @param cluster
  * @param installationName
  */
-export function isManagementCluster(cluster: Cluster, installationName: string): boolean {
+export function isManagementCluster(
+  cluster: Cluster,
+  installationName: string,
+): boolean {
   return (
     cluster.metadata.namespace === Constants.MANAGEMENT_CLUSTER_NAMESPACE &&
     cluster.metadata.name === installationName &&
@@ -25,7 +33,7 @@ export function isManagementCluster(cluster: Cluster, installationName: string):
  */
 export function hasClusterAppLabel(cluster: Cluster): boolean {
   return Boolean(
-    getClusterAppName(cluster)?.startsWith(Constants.CLUSTER_APP_NAME_PREFIX)
+    getClusterAppName(cluster)?.startsWith(Constants.CLUSTER_APP_NAME_PREFIX),
   );
 }
 
@@ -34,7 +42,9 @@ export function getClusterName(cluster: Cluster) {
 }
 
 export function getClusterDescription(cluster: Cluster) {
-  return cluster.metadata.annotations?.[Annotations.annotationClusterDescription];
+  return cluster.metadata.annotations?.[
+    Annotations.annotationClusterDescription
+  ];
 }
 
 export function getClusterAppName(cluster: Cluster) {
@@ -58,11 +68,17 @@ export function isClusterDeleting(cluster: Cluster) {
 }
 
 export function isClusterCreating(cluster: Cluster) {
-  if (typeof cluster.status === 'undefined' || typeof cluster.status.conditions === 'undefined') {
+  if (
+    typeof cluster.status === 'undefined' ||
+    typeof cluster.status.conditions === 'undefined'
+  ) {
     return true;
   }
 
-  return isConditionFalse(cluster, ClusterConditionTypes.controlPlaneInitialized);
+  return isConditionFalse(
+    cluster,
+    ClusterConditionTypes.controlPlaneInitialized,
+  );
 }
 
 export function getClusterCreationTimestamp(cluster: Cluster) {

@@ -19,7 +19,10 @@ import {
 } from '@backstage/plugin-techdocs';
 import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
 import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
-import { DefaultProviderSettings, UserSettingsPage } from '@backstage/plugin-user-settings';
+import {
+  DefaultProviderSettings,
+  UserSettingsPage,
+} from '@backstage/plugin-user-settings';
 import { apis } from './apis';
 import { CustomCatalogPage } from './components/catalog/CustomCatalogPage';
 import { entityPage } from './components/catalog/EntityPage';
@@ -48,12 +51,14 @@ const app = createApp({
       <SignInPage
         {...props}
         auto
-        providers={[{
-          id: 'github-auth-provider',
-          title: 'GitHub',
-          message: 'Sign in using GitHub',
-          apiRef: githubAuthApiRef,
-        }]}
+        providers={[
+          {
+            id: 'github-auth-provider',
+            title: 'GitHub',
+            message: 'Sign in using GitHub',
+            apiRef: githubAuthApiRef,
+          },
+        ]}
       />
     ),
   },
@@ -73,22 +78,26 @@ const app = createApp({
     {
       pluginId: '',
       name: 'show-kubernetes-resources',
-      description: 'Show Kubernetes resources for service components. Requires matching labels on resources.',
+      description:
+        'Show Kubernetes resources for service components. Requires matching labels on resources.',
     },
     {
       pluginId: '',
       name: 'show-flux-deployments',
-      description: 'Show Flux deployments for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
+      description:
+        'Show Flux deployments for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
     },
     {
       pluginId: '',
       name: 'show-flux-sources',
-      description: 'Show Flux sources for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
+      description:
+        'Show Flux sources for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
     },
     {
       pluginId: '',
       name: 'show-flux-runtime',
-      description: 'Show Flux Runtime page (from weaveworks/backstage-plugin-flux).',
+      description:
+        'Show Flux Runtime page (from weaveworks/backstage-plugin-flux).',
     },
   ],
 });
@@ -128,7 +137,7 @@ const routes = (
     </Route>
     <Route
       path="/settings"
-      element={(
+      element={
         <UserSettingsPage
           providerSettings={
             <>
@@ -137,10 +146,13 @@ const routes = (
             </>
           }
         />
-      )}
+      }
     />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
-    <Route path="/opsgenie" element={<OpsgeniePage onCallListCardsCount={100} />} />
+    <Route
+      path="/opsgenie"
+      element={<OpsgeniePage onCallListCardsCount={100} />}
+    />
     <Route path="/clusters" element={<GSPluginPage />} />
     <FeatureFlagged with="show-flux-runtime">
       <Route path="/flux-runtime" element={<FluxRuntimePage />} />

@@ -17,7 +17,10 @@ import {
   oneloginAuthApiRef,
 } from '@backstage/core-plugin-api';
 import { GithubAuth } from '@backstage/core-app-api';
-import { KubernetesAuthProviders, kubernetesAuthProvidersApiRef } from '@backstage/plugin-kubernetes';
+import {
+  KubernetesAuthProviders,
+  kubernetesAuthProvidersApiRef,
+} from '@backstage/plugin-kubernetes';
 import { gsAuthApiRef, GSAuth } from '@internal/plugin-gs';
 
 export const apis: AnyApiFactory[] = [

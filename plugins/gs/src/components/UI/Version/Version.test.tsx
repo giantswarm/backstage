@@ -1,14 +1,12 @@
-import React from "react";
+import React from 'react';
 import { renderInTestApp } from '@backstage/test-utils';
-import { cleanup } from "@testing-library/react";
-import { Version, VersionProps } from "./Version";
+import { cleanup } from '@testing-library/react';
+import { Version, VersionProps } from './Version';
 
 function renderComponent(props: VersionProps) {
   cleanup();
 
-  return renderInTestApp(
-    <Version {...props} />
-  );
+  return renderInTestApp(<Version {...props} />);
 }
 
 describe('<Version />', () => {
@@ -43,9 +41,11 @@ describe('<Version />', () => {
         expected: '0.24.2-9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca',
       },
     ];
-  
+
     for (const testCase of testCases) {
-      const { getByText, queryByRole } = await renderComponent({ version: testCase.version });
+      const { getByText, queryByRole } = await renderComponent({
+        version: testCase.version,
+      });
       expect(getByText(testCase.expected)).toBeInTheDocument();
       expect(queryByRole('link')).not.toBeInTheDocument();
     }
@@ -71,13 +71,15 @@ describe('<Version />', () => {
           expectedLink: `${sourceLocation}/commit/9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca`,
         },
       ];
-    
+
       for (const testCase of testCases) {
         const { getByRole } = await renderComponent({
           version: testCase.version,
           sourceLocation,
         });
-        expect(getByRole('link', { name: testCase.expectedText })).toHaveAttribute('href', testCase.expectedLink);
+        expect(
+          getByRole('link', { name: testCase.expectedText }),
+        ).toHaveAttribute('href', testCase.expectedLink);
       }
     });
   });
@@ -112,7 +114,9 @@ describe('<Version />', () => {
           highlight: testCase.highlight,
           sourceLocation,
         });
-        expect(getByRole('link', { name: testCase.expectedText })).toHaveAttribute('href', testCase.expectedLink);
+        expect(
+          getByRole('link', { name: testCase.expectedText }),
+        ).toHaveAttribute('href', testCase.expectedLink);
       }
     });
   });
@@ -123,7 +127,8 @@ describe('<Version />', () => {
         {
           version: '0.24.2',
           displayWarning: true,
-          expected: 'Last applied version is different from the attempted version.'
+          expected:
+            'Last applied version is different from the attempted version.',
         },
         {
           version: '0.24.2',

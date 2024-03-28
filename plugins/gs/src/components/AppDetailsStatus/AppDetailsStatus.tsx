@@ -1,13 +1,13 @@
-import React from "react";
-import { Box, Paper} from "@material-ui/core";
+import React from 'react';
+import { Box, Paper } from '@material-ui/core';
 import {
   IApp,
   getAppStatus,
 } from '../../model/services/mapi/applicationv1alpha1';
-import { ContentRow } from "../UI/ContentRow";
-import { DeploymentStatusCard } from "../UI/DeploymentStatusCard";
-import { Heading } from "../UI/Heading";
-import { useAppStatusDetails } from "../hooks/useDeploymentStatusDetails";
+import { ContentRow } from '../UI/ContentRow';
+import { DeploymentStatusCard } from '../UI/DeploymentStatusCard';
+import { Heading } from '../UI/Heading';
+import { useAppStatusDetails } from '../hooks/useDeploymentStatusDetails';
 
 const StatusCard = ({
   status,
@@ -18,11 +18,7 @@ const StatusCard = ({
   lastTransitionTime?: string;
   children?: React.ReactNode;
 }) => {
-  const {
-    icon: Icon,
-    color: iconColor,
-    label,
-  } = useAppStatusDetails(status);
+  const { icon: Icon, color: iconColor, label } = useAppStatusDetails(status);
 
   return (
     <DeploymentStatusCard
@@ -34,15 +30,13 @@ const StatusCard = ({
       {children}
     </DeploymentStatusCard>
   );
-}
+};
 
 type AppDetailsStatusProps = {
   app: IApp;
-}
+};
 
-export const AppDetailsStatus = ({
-  app
-}: AppDetailsStatusProps) => {
+export const AppDetailsStatus = ({ app }: AppDetailsStatusProps) => {
   const status = getAppStatus(app);
   if (!status) {
     return (
@@ -59,11 +53,7 @@ export const AppDetailsStatus = ({
 
   return (
     <StatusCard status={status} lastTransitionTime={lastTransitionTime}>
-      {reason && (
-        <ContentRow title="Reason">
-          {reason}
-        </ContentRow>
-      )}
+      {reason && <ContentRow title="Reason">{reason}</ContentRow>}
     </StatusCard>
   );
-}
+};

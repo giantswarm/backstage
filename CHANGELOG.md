@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix prettier configuration.
+
 ## [0.18.1] - 2024-03-27
 
 ### Fixed
@@ -261,7 +265,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Improve entity dependencies page.
 - Update Backstage packages to v1.17.5.
-- The catalog now shows *owned* components by default again instead of *all*.
+- The catalog now shows _owned_ components by default again instead of _all_.
 
 ## [0.5.0] - 2023-08-22
 
@@ -284,7 +288,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The catalog now shows all components by default, instead of only the owned ones. To only see you team's components, click the *Owned*  filter.
+- The catalog now shows all components by default, instead of only the owned ones. To only see you team's components, click the _Owned_ filter.
 
 ## [0.1.16] - 2023-08-10
 
@@ -326,7 +330,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Display a repo's root *.md files content as techdocs alongside with the content from root docs folder.
+- Display a repo's root \*.md files content as techdocs alongside with the content from root docs folder.
 - Generate docs locally on production.
 
 ## [0.1.10] - 2023-08-01
@@ -413,7 +417,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Disable anonymous access.
-
 
 [Unreleased]: https://github.com/giantswarm/backstage/compare/v0.18.1...HEAD
 [0.18.1]: https://github.com/giantswarm/backstage/compare/v0.18.0...v0.18.1

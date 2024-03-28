@@ -30,24 +30,24 @@ type ICondition = {
    * Type of condition in CamelCase or in foo.example.com/CamelCase. Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be useful (see .node.status.conditions), the ability to deconflict is important.
    */
   type: string;
-}
+};
 
 type IConditionGetter = {
   status?: {
     conditions?: ICondition[];
   };
-}
+};
 
 type CheckOption = (condition: ICondition) => boolean;
 
 export function getCondition(
   cr: IConditionGetter,
-  type: string
+  type: string,
 ): ICondition | undefined {
   const conditions = cr.status?.conditions;
   if (!conditions) return undefined;
 
-  return conditions.find((c) => c.type === type);
+  return conditions.find(c => c.type === type);
 }
 
 export function hasCondition(cr: IConditionGetter, type: string): boolean {

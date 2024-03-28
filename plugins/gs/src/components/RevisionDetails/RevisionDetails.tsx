@@ -1,7 +1,7 @@
-import React from "react";
-import { Card, CardContent, Grid } from "@material-ui/core";
-import { ContentRow } from "../UI/ContentRow";
-import { Version } from "../UI/Version";
+import React from 'react';
+import { Card, CardContent, Grid } from '@material-ui/core';
+import { ContentRow } from '../UI/ContentRow';
+import { Version } from '../UI/Version';
 
 type RevisionDetailsProps = {
   lastAppliedRevision: string;
@@ -43,4 +43,4 @@ export const RevisionDetails = ({
       </Grid>
     </Grid>
   );
-}
+};

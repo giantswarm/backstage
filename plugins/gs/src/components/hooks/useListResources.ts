@@ -8,9 +8,7 @@ import { getInstallationsQueriesInfo } from './utils';
 import { IList } from '../../model/services/mapi/metav1';
 
 export function useListResources<T>(gvk: CustomResourceMatcher) {
-  const {
-    selectedInstallations,
-  } = useInstallations();
+  const { selectedInstallations } = useInstallations();
   const kubernetesApi = useApi(kubernetesApiRef);
   const path = useK8sListPath(gvk);
   const queries = useQueries({

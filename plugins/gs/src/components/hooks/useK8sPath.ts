@@ -14,7 +14,11 @@ export function useK8sListPath(gvk: CustomResourceMatcher) {
   return url.pathname;
 }
 
-export function useK8sGetPath(gvk: CustomResourceMatcher, name: string, namespace?: string) {
+export function useK8sGetPath(
+  gvk: CustomResourceMatcher,
+  name: string,
+  namespace?: string,
+) {
   const configApi = useApi(configApiRef);
   const baseUrl = configApi.getString('app.baseUrl');
   const url = k8sUrl.create({

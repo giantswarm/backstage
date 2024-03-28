@@ -44,7 +44,7 @@ const DrawerContent = ({
   children?: React.ReactNode;
   onClose: () => void;
 }) => {
- const classes = useDrawerContentStyles();
+  const classes = useDrawerContentStyles();
 
   return (
     <>
@@ -55,13 +55,11 @@ const DrawerContent = ({
           title="Close the drawer"
           onClick={onClose}
           color="inherit"
-       >
+        >
           <Close className={classes.icon} />
         </IconButton>
       </div>
-      <div>
-        {children}
-      </div>
+      <div>{children}</div>
     </>
   );
 };
@@ -94,7 +92,7 @@ export const DeploymentDetails = ({
     if (onClose) {
       onClose();
     }
-  }
+  };
 
   return (
     <Drawer

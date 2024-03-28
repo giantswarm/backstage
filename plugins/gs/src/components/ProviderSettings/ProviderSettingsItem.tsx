@@ -19,15 +19,15 @@ import {
   IconComponent,
 } from '@backstage/core-plugin-api';
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles(theme => ({
   root: {
     paddingTop: theme.spacing(2),
     paddingBottom: theme.spacing(2),
     paddingRight: theme.spacing(16),
   },
   text: {
-    whiteSpace: "normal",
-  }
+    whiteSpace: 'normal',
+  },
 }));
 
 const emptyProfile: ProfileInfo = {};
@@ -84,33 +84,41 @@ export const ProviderSettingsItem = (props: {
       <ListItemIcon>
         <Icon />
       </ListItemIcon>
-      <ListItemText className={classes.text}
+      <ListItemText
+        className={classes.text}
         primary={
           <>
             <Typography variant="subtitle2" component="span">
               {title}
             </Typography>
             <Typography variant="body2" component="span" color="textSecondary">
-              {' - '}{description}
+              {' - '}
+              {description}
             </Typography>
           </>
         }
-        secondary={signedIn ? (
-          <>
-            <Typography
-              variant="body2"
-              component="span"
-              color="textPrimary"
-              gutterBottom
-            >
-              {profile.displayName}
-            </Typography>
-            {' - '}
-            <Typography variant="body2" component="span" color="textSecondary">
-              {profile.email}
-            </Typography>
-          </>
-        ) : null}
+        secondary={
+          signedIn ? (
+            <>
+              <Typography
+                variant="body2"
+                component="span"
+                color="textPrimary"
+                gutterBottom
+              >
+                {profile.displayName}
+              </Typography>
+              {' - '}
+              <Typography
+                variant="body2"
+                component="span"
+                color="textSecondary"
+              >
+                {profile.email}
+              </Typography>
+            </>
+          ) : null
+        }
       />
       <ListItemSecondaryAction>
         <Tooltip

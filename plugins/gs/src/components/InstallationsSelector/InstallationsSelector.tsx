@@ -9,11 +9,11 @@ import {
   Select,
   Typography,
   makeStyles,
-} from "@material-ui/core";
+} from '@material-ui/core';
 import classnames from 'classnames';
 import { InstallationStatus } from '../hooks/useInstallationsStatuses';
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles(theme => ({
   formControl: {
     margin: theme.spacing(1),
     minWidth: 300,
@@ -39,7 +39,7 @@ const useStyles = makeStyles((theme) => ({
   },
   isError: {
     opacity: 0.6,
-  }
+  },
 }));
 
 const ITEM_HEIGHT = 48;
@@ -58,13 +58,21 @@ type MultipleSelectCheckmarksProps = {
   selectedItems: string[];
   renderValue: (value: unknown) => React.ReactNode;
   onChange: (selectedItems: string[]) => void;
-}
+};
 
-const MultipleSelectCheckmarks = ({ items, selectedItems, renderValue, onChange }: MultipleSelectCheckmarksProps) => {
+const MultipleSelectCheckmarks = ({
+  items,
+  selectedItems,
+  renderValue,
+  onChange,
+}: MultipleSelectCheckmarksProps) => {
   const classes = useStyles();
-  const [localSelectedItems, setLocalSelectedItems] = React.useState<string[]>(selectedItems);
+  const [localSelectedItems, setLocalSelectedItems] =
+    React.useState<string[]>(selectedItems);
 
-  const handleChange = (event: React.ChangeEvent<{name?: string, value: unknown}>) => {
+  const handleChange = (
+    event: React.ChangeEvent<{ name?: string; value: unknown }>,
+  ) => {
     setLocalSelectedItems(event.target.value as string[]);
   };
 
@@ -72,7 +80,7 @@ const MultipleSelectCheckmarks = ({ items, selectedItems, renderValue, onChange 
     if (onChange) {
       onChange(localSelectedItems);
     }
-  }
+  };
 
   return (
     <FormControl className={classes.formControl}>
@@ -88,7 +96,7 @@ const MultipleSelectCheckmarks = ({ items, selectedItems, renderValue, onChange 
         renderValue={renderValue}
         MenuProps={MenuProps}
       >
-        {items.map((item) => (
+        {items.map(item => (
           <MenuItem key={item} value={item}>
             <Checkbox checked={localSelectedItems.indexOf(item) > -1} />
             <ListItemText primary={item} />
@@ -97,13 +105,13 @@ const MultipleSelectCheckmarks = ({ items, selectedItems, renderValue, onChange 
       </Select>
     </FormControl>
   );
-}
+};
 
 type InstallationPreviewProps = {
   installationName: string;
   installationsStatuses?: InstallationStatus[];
   isLastItem?: boolean;
-}
+};
 
 const InstallationPreview = ({
   installationName,
@@ -113,12 +121,12 @@ const InstallationPreview = ({
   const classes = useStyles();
 
   const installationStatus = installationsStatuses?.find(
-    (status) => status.installationName === installationName
+    status => status.installationName === installationName,
   );
 
   return (
     <Typography
-      component='span'
+      component="span"
       className={classnames({
         [classes.isLoading]: installationStatus?.isLoading,
         [classes.isError]: installationStatus?.isError,
@@ -128,14 +136,14 @@ const InstallationPreview = ({
       {isLastItem ? null : ', '}
     </Typography>
   );
-}
+};
 
 type InstallationsSelectorProps = {
   installations: string[];
   selectedInstallations: string[];
   installationsStatuses: InstallationStatus[];
   onChange?: (selectedInstallations: string[]) => void;
-}
+};
 
 export const InstallationsSelector = ({
   installations,
@@ -144,8 +152,12 @@ export const InstallationsSelector = ({
   onChange,
 }: InstallationsSelectorProps) => {
   const handleChange = (selectedItems: string[]) => {
-    if (onChange && JSON.stringify(selectedItems.sort()) !== JSON.stringify(selectedInstallations.sort())) {
-      onChange(selectedItems)
+    if (
+      onChange &&
+      JSON.stringify(selectedItems.sort()) !==
+        JSON.stringify(selectedInstallations.sort())
+    ) {
+      onChange(selectedItems);
     }
   };
 
@@ -153,7 +165,7 @@ export const InstallationsSelector = ({
     <MultipleSelectCheckmarks
       items={installations}
       selectedItems={selectedInstallations}
-      renderValue={() => (
+      renderValue={() =>
         selectedInstallations.map((item, idx) => (
           <InstallationPreview
             key={item}
@@ -162,7 +174,7 @@ export const InstallationsSelector = ({
             isLastItem={idx === selectedInstallations.length - 1}
           />
         ))
-      )}
+      }
       onChange={handleChange}
     />
   );

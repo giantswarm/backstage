@@ -1,1 +1,1 @@
-export { AppDetailsStatus } from "./AppDetailsStatus";
+export { AppDetailsStatus } from './AppDetailsStatus';

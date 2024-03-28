@@ -1,6 +1,7 @@
 export const Annotations = {
   annotationClusterDescription: 'cluster.giantswarm.io/description',
-  annotationImportedClusterCreationTimestamp: 'giantswarm.io/external-cluster-created',
+  annotationImportedClusterCreationTimestamp:
+    'giantswarm.io/external-cluster-created',
 } as const;
 
 export const Labels = {
@@ -34,4 +35,3 @@ export const Constants = {
   // App name for imported resources
   CAPI_IMPORTER_APP_NAME: 'crossplane-capi-import',
 } as const;
-

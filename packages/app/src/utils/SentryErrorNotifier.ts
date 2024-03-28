@@ -1,6 +1,12 @@
 import * as Sentry from '@sentry/react';
 import React from 'react';
-import { RouteProps, createRoutesFromChildren, matchRoutes, useLocation, useNavigationType } from 'react-router-dom';
+import {
+  RouteProps,
+  createRoutesFromChildren,
+  matchRoutes,
+  useLocation,
+  useNavigationType,
+} from 'react-router-dom';
 
 import { IErrorReporterNotifier } from './ErrorReporter';
 
@@ -25,10 +31,10 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
             useLocation,
             useNavigationType,
             createRoutesFromChildren,
-            matchRoutes
+            matchRoutes,
           ),
         }),
-        new Sentry.Replay()
+        new Sentry.Replay(),
       ],
       tracesSampleRate: config.tracesSampleRate,
       tracePropagationTargets: config.tracePropagationTargets,
@@ -42,7 +48,7 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     error: Error | string | Record<string, any>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    extraInfo?: Record<string, any>
+    extraInfo?: Record<string, any>,
   ): Promise<void> {
     switch (true) {
       case error instanceof Error:
@@ -64,13 +70,13 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
   }
 
   public static decorateComponent<T>(
-    component: React.FC<React.PropsWithChildren<T>>
+    component: React.FC<React.PropsWithChildren<T>>,
   ) {
     return Sentry.withProfiler(component);
   }
 
   public static decorateRoute<T extends RouteProps>(
-    routeComponent: React.FC<React.PropsWithChildren<T>>
+    routeComponent: React.FC<React.PropsWithChildren<T>>,
   ): React.FC<React.PropsWithChildren<T>> {
     return Sentry.withSentryRouting(routeComponent as never);
   }

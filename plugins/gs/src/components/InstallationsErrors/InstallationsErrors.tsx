@@ -9,7 +9,7 @@ import { styled } from '@material-ui/core/styles';
 import { InstallationStatus } from '../hooks';
 
 const StyledErrorOutlineIcon = styled(ErrorOutlineIcon)({
-  marginRight: 10
+  marginRight: 10,
 });
 
 const Accordion = withStyles(() => ({
@@ -21,7 +21,7 @@ const Accordion = withStyles(() => ({
   },
 }))(MuiAccordion);
 
-const AccordionSummary = withStyles((theme) => ({
+const AccordionSummary = withStyles(theme => ({
   root: {
     backgroundColor: theme.palette.errorBackground,
     color: theme.palette.errorText,
@@ -29,9 +29,9 @@ const AccordionSummary = withStyles((theme) => ({
   },
 }))(MuiAccordionSummary);
 
-const AccordionDetails = withStyles((theme) => ({
+const AccordionDetails = withStyles(theme => ({
   root: {
-    padding: theme.spacing(2)
+    padding: theme.spacing(2),
   },
 }))(MuiAccordionDetails);
 
@@ -42,28 +42,32 @@ type InstallationsErrorsProps = {
 export const InstallationsErrors = ({
   installationsStatuses,
 }: InstallationsErrorsProps) => {
-  const errorStatuses = installationsStatuses.filter(
-    (status) => status.isError
-  );
-  const installationNames = errorStatuses.map(
-    (status) => status.installationName
-  ).join(', ');
+  const errorStatuses = installationsStatuses.filter(status => status.isError);
+  const installationNames = errorStatuses
+    .map(status => status.installationName)
+    .join(', ');
 
   return (
     <Accordion>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Box display='flex'>
+        <Box display="flex">
           <StyledErrorOutlineIcon />
-          <Typography>Errors when trying to fetch resources from {installationNames}.</Typography>
+          <Typography>
+            Errors when trying to fetch resources from {installationNames}.
+          </Typography>
         </Box>
       </AccordionSummary>
       <AccordionDetails>
         <Grid container spacing={2} direction="column">
-          {errorStatuses.map((status) => (
+          {errorStatuses.map(status => (
             <Grid item key={status.installationName}>
-              <Typography variant='subtitle2' component='span'>{status.installationName}:</Typography>
+              <Typography variant="subtitle2" component="span">
+                {status.installationName}:
+              </Typography>
               {Object.entries(status.errors).map(([key, error]) => (
-                <Typography key={key} variant='body2'>{key}: {error.toString()}</Typography>
+                <Typography key={key} variant="body2">
+                  {key}: {error.toString()}
+                </Typography>
               ))}
             </Grid>
           ))}
@@ -71,4 +75,4 @@ export const InstallationsErrors = ({
       </AccordionDetails>
     </Accordion>
   );
-}
+};

@@ -1,6 +1,6 @@
-import React from "react";
-import { Box } from "@material-ui/core";
-import { GitOpsUILink } from "../UI/GitOpsUILink/GitOpsUILink";
+import React from 'react';
+import { Box } from '@material-ui/core';
+import { GitOpsUILink } from '../UI/GitOpsUILink/GitOpsUILink';
 
 type DeploymentActionsProps = {
   installationName: string;
@@ -8,7 +8,7 @@ type DeploymentActionsProps = {
   kind: string;
   name: string;
   namespace?: string;
-}
+};
 
 export const DeploymentActions = ({
   installationName,
@@ -30,4 +30,4 @@ export const DeploymentActions = ({
       )}
     </Box>
   );
-}
+};
