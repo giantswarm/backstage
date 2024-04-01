@@ -15,11 +15,11 @@ import {
 import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
+import type { HelmRelease } from '@internal/plugin-gs-common';
+import { compareDates } from '../utils/helpers';
 import { StructuredMetadataList } from '../UI/StructuredMetadataList';
 import DateComponent from '../UI/Date';
 import { Heading } from '../UI/Heading';
-import { compareDates } from '../utils/helpers';
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,
@@ -135,7 +135,7 @@ const ConditionCard = ({
 };
 
 type HelmReleaseDetailsStatusProps = {
-  helmrelease: IHelmRelease;
+  helmrelease: HelmRelease;
 };
 
 export const HelmReleaseDetailsStatusConditions = ({

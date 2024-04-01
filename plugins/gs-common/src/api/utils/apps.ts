@@ -1,5 +1,17 @@
-import { ICatalog } from './';
-import { IApp } from './types';
+import { Labels } from '../constants';
+import type { App, Catalog } from '../types';
+import * as applicationv1alpha1 from '../../model/applicationv1alpha1';
+
+export const appGVK = [applicationv1alpha1.appGVK];
+
+export function getAppGVK(apiVersion: string) {
+  switch (apiVersion) {
+    case applicationv1alpha1.appApiVersion:
+      return applicationv1alpha1.appGVK;
+    default:
+      return undefined;
+  }
+}
 
 export const labelAppOperator = 'app-operator.giantswarm.io/version';
 export const labelAppName = 'app.kubernetes.io/name';
@@ -10,7 +22,6 @@ export const labelLatest = 'latest';
 export const labelCatalogVisibility =
   'application.giantswarm.io/catalog-visibility';
 export const labelCatalogType = 'application.giantswarm.io/catalog-type';
-export const labelCluster = 'giantswarm.io/cluster';
 
 export const AppStatuses = {
   Unknown: 'unknown',
@@ -29,56 +40,56 @@ export const annotationValuesSchema = 'application.giantswarm.io/values-schema';
 export const annotationAppType = 'application.giantswarm.io/app-type';
 export const annotationLogo = 'ui.giantswarm.io/logo';
 
-export function isAppCatalogPublic(catalog: ICatalog): boolean {
+export function isAppCatalogPublic(catalog: Catalog): boolean {
   const visibility = catalog.metadata.labels?.[labelCatalogVisibility];
 
   return visibility === 'public';
 }
 
-export function isAppCatalogStable(catalog: ICatalog): boolean {
+export function isAppCatalogStable(catalog: Catalog): boolean {
   const type = catalog.metadata.labels?.[labelCatalogType];
 
   return type === 'stable';
 }
 
-export function getAppCurrentVersion(app: IApp) {
+export function getAppCurrentVersion(app: App) {
   return app.status?.version;
 }
 
-export function getAppVersion(app: IApp) {
+export function getAppVersion(app: App) {
   return app.spec.version;
 }
 
-export function getAppUpstreamVersion(app: IApp) {
+export function getAppUpstreamVersion(app: App) {
   if (!app.status || !app.status.appVersion) return '';
 
   return app.status.appVersion;
 }
 
-export function getAppStatus(app: IApp) {
+export function getAppStatus(app: App) {
   return app.status?.release.status;
 }
 
-export function getAppClusterName(app: IApp) {
-  return app.metadata.labels?.[labelCluster];
+export function getAppClusterName(app: App) {
+  return app.metadata.labels?.[Labels.labelCluster];
 }
 
-export function getAppChartName(app: IApp) {
+export function getAppChartName(app: App) {
   return app.spec.name;
 }
 
-export function isAppManagedByFlux(app: IApp): boolean {
+export function isAppManagedByFlux(app: App): boolean {
   return app.metadata.labels?.[labelManagedBy] === 'flux';
 }
 
-export function getAppCreatedTimestamp(app: IApp): string | undefined {
+export function getAppCreatedTimestamp(app: App): string | undefined {
   return app.metadata.creationTimestamp;
 }
 
-export function getAppUpdatedTimestamp(app: IApp): string | undefined {
+export function getAppUpdatedTimestamp(app: App): string | undefined {
   return app.status?.release.lastDeployed;
 }
 
-export function getAppCatalogName(app: IApp): string {
+export function getAppCatalogName(app: App): string {
   return app.spec.catalog;
 }

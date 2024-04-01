@@ -8,11 +8,6 @@ import {
   Grid,
   Typography,
 } from '@material-ui/core';
-import { useHelmRelease } from '../hooks';
-import { StructuredMetadataList } from '../UI/StructuredMetadataList';
-import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
-import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
-import DateComponent from '../UI/Date';
 import {
   getHelmReleaseChartName,
   getHelmReleaseClusterName,
@@ -21,13 +16,20 @@ import {
   getHelmReleaseLastAttemptedRevision,
   getHelmReleaseSourceName,
   getHelmReleaseUpdatedTimestamp,
-} from '../../model/services/mapi/helmv2beta1';
+} from '@internal/plugin-gs-common';
+import { useHelmRelease } from '../hooks';
+import { StructuredMetadataList } from '../UI/StructuredMetadataList';
+import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
+import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
+import DateComponent from '../UI/Date';
 import { Heading } from '../UI/Heading';
 import { formatVersion } from '../utils/helpers';
 import { GitOpsUILink } from '../UI/GitOpsUILink/GitOpsUILink';
+import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 
 type HelmReleaseDetailsProps = {
   installationName: string;
+  gvk: CustomResourceMatcher;
   namespace: string;
   name: string;
   sourceLocation?: string;
@@ -35,6 +37,7 @@ type HelmReleaseDetailsProps = {
 
 export const HelmReleaseDetails = ({
   installationName,
+  gvk,
   namespace,
   name,
   sourceLocation,
@@ -43,7 +46,7 @@ export const HelmReleaseDetails = ({
     data: helmrelease,
     isLoading,
     error,
-  } = useHelmRelease(installationName, name, namespace);
+  } = useHelmRelease(installationName, gvk, name, namespace);
 
   if (isLoading) {
     return <Progress />;

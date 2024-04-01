@@ -3,9 +3,8 @@ import { SubvalueCell, Table, TableColumn } from '@backstage/core-components';
 import { useClusters } from '../hooks';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
-import { Resource } from '../../apis';
+import type { Cluster, Resource } from '@internal/plugin-gs-common';
 import {
-  Cluster,
   getClusterDescription,
   getClusterOrganization,
   getClusterCreationTimestamp,
@@ -14,7 +13,7 @@ import {
   isManagementCluster,
   getClusterName,
   getClusterServicePriority,
-} from '../../model/services/mapi/generic';
+} from '@internal/plugin-gs-common';
 import DateComponent from '../UI/Date';
 import { toSentenceCase } from '../utils/helpers';
 import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';

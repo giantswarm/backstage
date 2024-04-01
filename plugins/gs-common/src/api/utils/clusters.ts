@@ -3,9 +3,13 @@ import {
   Labels,
   Annotations,
   ClusterConditionTypes,
-} from '../../../constants';
-import { Cluster } from './types';
-import { isConditionFalse } from './utils/conditions';
+} from '../constants';
+import type { Cluster } from '../types';
+import { isConditionFalse } from './conditions';
+import { isResourceImported } from './resources';
+import * as capiv1beta1 from '../../model/capiv1beta1';
+
+export const clusterGVK = [capiv1beta1.clusterGVK];
 
 /**
  * Returns whether or not a cluster is a management cluster, by
@@ -87,16 +91,4 @@ export function getClusterCreationTimestamp(cluster: Cluster) {
         Annotations.annotationImportedClusterCreationTimestamp
       ]
     : cluster.metadata.creationTimestamp;
-}
-
-export function getResourceAppName(resource: Cluster) {
-  return resource.metadata.labels?.[Labels.labelApp];
-}
-
-/**
- * Determines whether a resource is imported.
- * @param resource
- */
-export function isResourceImported(resource: Cluster) {
-  return getResourceAppName(resource) === Constants.CAPI_IMPORTER_APP_NAME;
 }

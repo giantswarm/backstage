@@ -1,10 +1,9 @@
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
-import * as k8sUrl from './utils/k8sUrl';
+import * as k8sUrl from './k8sUrl';
 
-export function useK8sListPath(gvk: CustomResourceMatcher) {
-  const configApi = useApi(configApiRef);
-  const baseUrl = configApi.getString('app.baseUrl');
+const baseUrl = 'https://base-url.io';
+
+export function getK8sListPath(gvk: CustomResourceMatcher) {
   const url = k8sUrl.create({
     baseUrl,
     apiVersion: `${gvk.group}/${gvk.apiVersion}`,
@@ -14,13 +13,11 @@ export function useK8sListPath(gvk: CustomResourceMatcher) {
   return url.pathname;
 }
 
-export function useK8sGetPath(
+export function getK8sGetPath(
   gvk: CustomResourceMatcher,
   name: string,
   namespace?: string,
 ) {
-  const configApi = useApi(configApiRef);
-  const baseUrl = configApi.getString('app.baseUrl');
   const url = k8sUrl.create({
     baseUrl,
     apiVersion: `${gvk.group}/${gvk.apiVersion}`,

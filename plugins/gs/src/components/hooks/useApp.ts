@@ -1,11 +1,12 @@
-import { IApp } from '../../model/services/mapi/applicationv1alpha1';
-import { appGVK } from '../../model/services/mapi/objects';
+import type { App } from '@internal/plugin-gs-common';
 import { useGetResource } from './useGetResource';
+import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 
 export function useApp(
   installationName: string,
+  gvk: CustomResourceMatcher,
   name: string,
   namespace?: string,
 ) {
-  return useGetResource<IApp>(installationName, appGVK, name, namespace);
+  return useGetResource<App>(installationName, gvk, name, namespace);
 }

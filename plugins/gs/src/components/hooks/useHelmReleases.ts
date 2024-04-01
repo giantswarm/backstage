@@ -1,7 +1,7 @@
-import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
-import { helmReleaseGVK } from '../../model/services/mapi/objects';
+import type { HelmRelease } from '@internal/plugin-gs-common';
+import { helmReleaseGVK } from '@internal/plugin-gs-common';
 import { useListResources } from './useListResources';
 
 export function useHelmReleases() {
-  return useListResources<IHelmRelease>(helmReleaseGVK);
+  return useListResources<HelmRelease>(helmReleaseGVK);
 }

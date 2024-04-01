@@ -1,9 +1,7 @@
 import React from 'react';
 import { Box, Paper } from '@material-ui/core';
-import {
-  IApp,
-  getAppStatus,
-} from '../../model/services/mapi/applicationv1alpha1';
+import type { App } from '@internal/plugin-gs-common';
+import { getAppStatus } from '@internal/plugin-gs-common';
 import { ContentRow } from '../UI/ContentRow';
 import { DeploymentStatusCard } from '../UI/DeploymentStatusCard';
 import { Heading } from '../UI/Heading';
@@ -33,7 +31,7 @@ const StatusCard = ({
 };
 
 type AppDetailsStatusProps = {
-  app: IApp;
+  app: App;
 };
 
 export const AppDetailsStatus = ({ app }: AppDetailsStatusProps) => {

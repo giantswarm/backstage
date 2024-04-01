@@ -4,12 +4,6 @@
 
 import * as metav1 from '../metav1';
 
-export const ApiGroup = 'helm.toolkit.fluxcd.io';
-
-export const ApiVersion = 'helm.toolkit.fluxcd.io/v2beta1';
-
-export const HelmRelease = 'HelmRelease';
-
 /**
  * HelmRelease is the Schema for the helmreleases API
  */
@@ -21,7 +15,7 @@ export interface IHelmRelease {
   /**
    * Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
    */
-  kind: typeof HelmRelease;
+  kind: 'HelmRelease';
   metadata: metav1.IObjectMeta;
   /**
    * HelmReleaseSpec defines the desired state of a Helm release.

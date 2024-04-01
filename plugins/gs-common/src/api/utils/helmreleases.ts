@@ -1,7 +1,18 @@
-import { compareDates } from '../../../../components/utils/helpers';
-import { IHelmRelease } from './types';
+import { Labels } from '../constants';
+import type { HelmRelease } from '../types';
+import { compareDates } from './helpers';
+import * as helmv2beta1 from '../../model/helmv2beta1';
 
-export const labelCluster = 'giantswarm.io/cluster';
+export const helmReleaseGVK = [helmv2beta1.helmReleaseGVK];
+
+export function getHelmReleaseGVK(apiVersion: string) {
+  switch (apiVersion) {
+    case helmv2beta1.helmReleaseApiVersion:
+      return helmv2beta1.helmReleaseGVK;
+    default:
+      return undefined;
+  }
+}
 
 export const HelmReleaseStatuses = {
   Unknown: 'unknown',
@@ -11,15 +22,15 @@ export const HelmReleaseStatuses = {
   Reconciled: 'reconciled',
 } as const;
 
-export function getHelmReleaseLastAppliedRevision(helmRelease: IHelmRelease) {
+export function getHelmReleaseLastAppliedRevision(helmRelease: HelmRelease) {
   return helmRelease.status?.lastAppliedRevision;
 }
 
-export function getHelmReleaseLastAttemptedRevision(helmRelease: IHelmRelease) {
+export function getHelmReleaseLastAttemptedRevision(helmRelease: HelmRelease) {
   return helmRelease.status?.lastAttemptedRevision;
 }
 
-export function getHelmReleaseVersion(helmRelease: IHelmRelease) {
+export function getHelmReleaseVersion(helmRelease: HelmRelease) {
   if (!helmRelease.status || !helmRelease.status.lastAppliedRevision) {
     return helmRelease.spec?.chart.spec.version;
   }
@@ -27,7 +38,7 @@ export function getHelmReleaseVersion(helmRelease: IHelmRelease) {
   return helmRelease.status.lastAppliedRevision;
 }
 
-export function getHelmReleaseStatus(helmRelease: IHelmRelease) {
+export function getHelmReleaseStatus(helmRelease: HelmRelease) {
   if (!helmRelease.status || !helmRelease.status.conditions) {
     return undefined;
   }
@@ -52,22 +63,22 @@ export function getHelmReleaseStatus(helmRelease: IHelmRelease) {
   return HelmReleaseStatuses.Unknown;
 }
 
-export function getHelmReleaseClusterName(helmRelease: IHelmRelease) {
-  return helmRelease.metadata.labels?.[labelCluster];
+export function getHelmReleaseClusterName(helmRelease: HelmRelease) {
+  return helmRelease.metadata.labels?.[Labels.labelCluster];
 }
 
-export function getHelmReleaseChartName(helmRelease: IHelmRelease) {
+export function getHelmReleaseChartName(helmRelease: HelmRelease) {
   return helmRelease.spec?.chart.spec.chart;
 }
 
 export function getHelmReleaseCreatedTimestamp(
-  helmRelease: IHelmRelease,
+  helmRelease: HelmRelease,
 ): string | undefined {
   return helmRelease.metadata.creationTimestamp;
 }
 
 export function getHelmReleaseUpdatedTimestamp(
-  helmRelease: IHelmRelease,
+  helmRelease: HelmRelease,
 ): string | undefined {
   const conditions = helmRelease.status?.conditions?.sort((a, b) =>
     compareDates(b.lastTransitionTime, a.lastTransitionTime),
@@ -78,7 +89,7 @@ export function getHelmReleaseUpdatedTimestamp(
 }
 
 export function getHelmReleaseSourceName(
-  helmRelease: IHelmRelease,
+  helmRelease: HelmRelease,
 ): string | undefined {
   return helmRelease.spec?.chart.spec.sourceRef?.name;
 }
