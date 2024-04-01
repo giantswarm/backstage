@@ -13,10 +13,11 @@ export const gsPlugin = createPlugin({
   },
 });
 
-export const GSPluginPage = gsPlugin.provide(
+export const GSClustersPage = gsPlugin.provide(
   createRoutableExtension({
-    name: 'GSPluginPage',
-    component: () => import('./components/PluginPage').then(m => m.PluginPage),
+    name: 'GSClustersPage',
+    component: () =>
+      import('./components/ClustersPage').then(m => m.ClustersPage),
     mountPoint: rootRouteRef,
   }),
 );

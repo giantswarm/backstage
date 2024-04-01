@@ -10,7 +10,7 @@ import { ClustersTable } from '../ClustersTable';
 import { InstallationsWrapper } from '../InstallationsWrapper';
 import { GSContext } from '../GSContext';
 
-export const PluginPage = () => {
+export const ClustersPage = () => {
   return (
     <GSContext>
       <Page themeId="tool">

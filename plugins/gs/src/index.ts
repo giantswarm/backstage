@@ -1,7 +1,7 @@
 export {
   gsPlugin,
   gsPlugin as plugin,
-  GSPluginPage,
+  GSClustersPage,
   EntityGSDeploymentsContent,
 } from './plugin';
 export { gsAuthApiRef, GSAuth } from './apis';
