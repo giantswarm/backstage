@@ -30,8 +30,7 @@ import {
 } from '../../hooks';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
-import { Version } from '../../UI/Version';
-import DateComponent from '../../UI/Date';
+import { DateComponent, Version } from '../../UI';
 import { DeploymentActions } from '../DeploymentActions';
 import { AppStatus } from '../AppStatus';
 import { HelmReleaseStatus } from '../HelmReleaseStatus';

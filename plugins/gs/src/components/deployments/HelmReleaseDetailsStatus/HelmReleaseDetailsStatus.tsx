@@ -3,8 +3,7 @@ import { Box, Paper } from '@material-ui/core';
 import type { HelmRelease } from '@internal/plugin-gs-common';
 import { getHelmReleaseStatus } from '@internal/plugin-gs-common';
 import { useHelmReleaseStatusDetails } from '../../hooks';
-import { DeploymentStatusCard } from '../../UI/DeploymentStatusCard';
-import { Heading } from '../../UI/Heading';
+import { DeploymentStatusCard, Heading } from '../../UI';
 import { HelmReleaseDetailsConditions } from '../HelmReleaseDetailsConditions';
 import { compareDates } from '../../utils/helpers';
 

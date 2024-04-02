@@ -26,7 +26,7 @@ import {
   useClusters,
   useDetailsPane,
 } from '../../hooks';
-import DateComponent from '../../UI/Date';
+import { DateComponent } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';

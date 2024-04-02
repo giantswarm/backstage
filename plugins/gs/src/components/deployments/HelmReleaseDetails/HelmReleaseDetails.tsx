@@ -20,10 +20,12 @@ import {
 } from '@internal/plugin-gs-common';
 import { useHelmRelease } from '../../hooks';
 import { formatVersion } from '../../utils/helpers';
-import DateComponent from '../../UI/Date';
-import { Heading } from '../../UI/Heading';
-import { GitOpsUILink } from '../../UI/GitOpsUILink/GitOpsUILink';
-import { StructuredMetadataList } from '../../UI/StructuredMetadataList';
+import {
+  DateComponent,
+  Heading,
+  GitOpsUILink,
+  StructuredMetadataList,
+} from '../../UI';
 import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
 import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
 

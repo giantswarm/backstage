@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box } from '@material-ui/core';
-import { GitOpsUILink } from '../../UI/GitOpsUILink/GitOpsUILink';
+import { GitOpsUILink } from '../../UI';
 
 type DeploymentActionsProps = {
   installationName: string;

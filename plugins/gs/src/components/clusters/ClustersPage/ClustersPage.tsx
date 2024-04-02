@@ -8,7 +8,7 @@ import {
 } from '@backstage/core-components';
 import { InstallationsWrapper } from '../../InstallationsWrapper';
 import { GSContext } from '../../GSContext';
-import { DetailsPane } from '../../UI/DetailsPane';
+import { DetailsPane } from '../../UI';
 import { CLUSTER_DETAILS_PANE_ID } from '../../hooks';
 import { ClustersTable } from '../ClustersTable';
 import { ClusterDetails } from '../ClusterDetails';

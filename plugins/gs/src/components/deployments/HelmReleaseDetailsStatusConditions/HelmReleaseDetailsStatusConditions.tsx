@@ -17,9 +17,7 @@ import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import type { HelmRelease } from '@internal/plugin-gs-common';
 import { compareDates } from '../../utils/helpers';
-import { StructuredMetadataList } from '../../UI/StructuredMetadataList';
-import DateComponent from '../../UI/Date';
-import { Heading } from '../../UI/Heading';
+import { DateComponent, Heading, StructuredMetadataList } from '../../UI';
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,

@@ -1,8 +1,7 @@
 import React from 'react';
 import { Box, Divider, makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
-import { StructuredMetadataList } from '../../UI/StructuredMetadataList';
-import DateComponent from '../../UI/Date';
+import { DateComponent, StructuredMetadataList } from '../../UI';
 
 const useStyles = makeStyles(theme => ({
   divider: {

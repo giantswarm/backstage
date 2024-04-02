@@ -4,7 +4,7 @@ import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import { Card, CardContent, Grid } from '@material-ui/core';
 import { getClusterName } from '@internal/plugin-gs-common';
 import { useCluster } from '../../hooks';
-import { StructuredMetadataList } from '../../UI/StructuredMetadataList';
+import { StructuredMetadataList } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { calculateClusterType } from '../utils';
 

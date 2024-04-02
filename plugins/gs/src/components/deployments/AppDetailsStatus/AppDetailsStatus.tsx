@@ -3,9 +3,7 @@ import { Box, Paper } from '@material-ui/core';
 import type { App } from '@internal/plugin-gs-common';
 import { getAppStatus } from '@internal/plugin-gs-common';
 import { useAppStatusDetails } from '../../hooks';
-import { ContentRow } from '../../UI/ContentRow';
-import { DeploymentStatusCard } from '../../UI/DeploymentStatusCard';
-import { Heading } from '../../UI/Heading';
+import { ContentRow, DeploymentStatusCard, Heading } from '../../UI';
 
 const StatusCard = ({
   status,

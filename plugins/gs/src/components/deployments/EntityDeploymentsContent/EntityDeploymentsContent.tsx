@@ -12,7 +12,7 @@ import {
 } from '../../utils/entity';
 import { GSContext } from '../../GSContext';
 import { InstallationsWrapper } from '../../InstallationsWrapper';
-import { DetailsPane } from '../../UI/DetailsPane';
+import { DetailsPane } from '../../UI';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { AppDetails } from '../AppDetails';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';

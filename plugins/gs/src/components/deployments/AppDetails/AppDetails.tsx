@@ -19,9 +19,7 @@ import {
 } from '@internal/plugin-gs-common';
 import { useApp } from '../../hooks';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
-import { StructuredMetadataList } from '../../UI/StructuredMetadataList';
-import DateComponent from '../../UI/Date';
-import { Heading } from '../../UI/Heading';
+import { DateComponent, Heading, StructuredMetadataList } from '../../UI';
 import { AppDetailsStatus } from '../AppDetailsStatus';
 import { RevisionDetails } from '../RevisionDetails';
 
