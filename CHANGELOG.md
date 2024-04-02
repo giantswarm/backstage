@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Update Backstage to 1.25.0.
 - Move common types and functions into separate `plugin-gs-common` package.
 - GS plugin: Refactor deployment details pane component so it can be reused in other places.
 
