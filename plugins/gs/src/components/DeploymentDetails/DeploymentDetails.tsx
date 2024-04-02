@@ -2,9 +2,9 @@ import React from 'react';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import { Drawer, IconButton, Typography } from '@material-ui/core';
 import Close from '@material-ui/icons/Close';
-import { useSearchParams } from 'react-router-dom';
 import { AppDetails } from '../AppDetails';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
+import { useDeploymentDetailsPane } from '../hooks';
 
 const useDrawerStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -66,32 +66,23 @@ const DrawerContent = ({
 
 type DeploymentDetailsProps = {
   sourceLocation?: string;
-  isOpen?: boolean;
-  onClose?: () => void;
 };
 
 export const DeploymentDetails = ({
   sourceLocation,
-  isOpen,
-  onClose,
 }: DeploymentDetailsProps) => {
   const classes = useDrawerStyles();
 
-  const [searchParams] = useSearchParams();
+  const { isOpen, getDeploymentDetails, close } = useDeploymentDetailsPane();
+  const { installationName, kind, namespace, name, gvk } =
+    getDeploymentDetails();
 
-  const installationName = searchParams.get('installation');
-  const kind = searchParams.get('kind');
-  const namespace = searchParams.get('namespace');
-  const name = searchParams.get('name');
-
-  if (!installationName || !kind || !namespace || !name) {
+  if (!installationName || !kind || !namespace || !name || !gvk) {
     return null;
   }
 
   const handleClose = () => {
-    if (onClose) {
-      onClose();
-    }
+    close();
   };
 
   return (
@@ -107,6 +98,7 @@ export const DeploymentDetails = ({
         {kind === 'app' && (
           <AppDetails
             installationName={installationName}
+            gvk={gvk}
             name={name}
             namespace={namespace}
             sourceLocation={sourceLocation}
@@ -115,6 +107,7 @@ export const DeploymentDetails = ({
         {kind === 'helmrelease' && (
           <HelmReleaseDetails
             installationName={installationName}
+            gvk={gvk}
             name={name}
             namespace={namespace}
             sourceLocation={sourceLocation}

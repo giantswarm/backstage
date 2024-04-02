@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../hooks';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
+import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import {
   Card,
   CardContent,
@@ -8,9 +9,6 @@ import {
   Grid,
   Typography,
 } from '@material-ui/core';
-import { StructuredMetadataList } from '../UI/StructuredMetadataList';
-import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
-import DateComponent from '../UI/Date';
 import {
   getAppCatalogName,
   getAppChartName,
@@ -19,13 +17,17 @@ import {
   getAppCurrentVersion,
   getAppUpdatedTimestamp,
   getAppVersion,
-} from '../../model/services/mapi/applicationv1alpha1';
+} from '@internal/plugin-gs-common';
+import { StructuredMetadataList } from '../UI/StructuredMetadataList';
+import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
+import DateComponent from '../UI/Date';
 import { Heading } from '../UI/Heading';
 import { AppDetailsStatus } from '../AppDetailsStatus';
 import { formatAppCatalogName, formatVersion } from '../utils/helpers';
 
 type AppDetailsProps = {
   installationName: string;
+  gvk: CustomResourceMatcher;
   namespace: string;
   name: string;
   sourceLocation?: string;
@@ -33,6 +35,7 @@ type AppDetailsProps = {
 
 export const AppDetails = ({
   installationName,
+  gvk,
   namespace,
   name,
   sourceLocation,
@@ -41,7 +44,7 @@ export const AppDetails = ({
     data: app,
     isLoading,
     error,
-  } = useApp(installationName, name, namespace);
+  } = useApp(installationName, gvk, name, namespace);
 
   if (isLoading) {
     return <Progress />;

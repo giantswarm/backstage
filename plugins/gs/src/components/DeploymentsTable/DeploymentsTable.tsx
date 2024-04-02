@@ -4,8 +4,8 @@ import { Link, Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { useApps } from '../hooks';
+import type { Deployment, Resource } from '@internal/plugin-gs-common';
 import {
-  IApp,
   getAppClusterName,
   getAppCurrentVersion,
   getAppStatus,
@@ -13,9 +13,6 @@ import {
   getAppChartName,
   getAppUpdatedTimestamp,
   getAppCatalogName,
-} from '../../model/services/mapi/applicationv1alpha1';
-import {
-  IHelmRelease,
   getHelmReleaseStatus,
   getHelmReleaseClusterName,
   getHelmReleaseLastAppliedRevision,
@@ -23,11 +20,8 @@ import {
   getHelmReleaseChartName,
   getHelmReleaseUpdatedTimestamp,
   getHelmReleaseSourceName,
-} from '../../model/services/mapi/helmv2beta1';
-import { useHelmReleases } from '../hooks';
-import { Resource } from '../../apis';
-import { useRouteRef } from '@backstage/core-plugin-api';
-import { entityDeploymentsRouteRef } from '../../routes';
+} from '@internal/plugin-gs-common';
+import { useDeploymentDetailsPane, useHelmReleases } from '../hooks';
 import { Version } from '../UI/Version';
 import { formatAppCatalogName, formatVersion } from '../utils/helpers';
 import { DeploymentActions } from '../DeploymentActions';
@@ -35,8 +29,6 @@ import { AppStatus } from '../AppStatus';
 import { HelmReleaseStatus } from '../HelmReleaseStatus';
 import DateComponent from '../UI/Date';
 import { sortAndFilterOptions } from '../utils/tableHelpers';
-
-type Deployment = IApp | IHelmRelease;
 
 type Row = {
   installationName: string;
@@ -51,6 +43,7 @@ type Row = {
   updated?: string;
   sourceName?: string;
   chartName?: string;
+  apiVersion: string;
 };
 
 const generatedColumns: TableColumn<Row>[] = [
@@ -60,16 +53,14 @@ const generatedColumns: TableColumn<Row>[] = [
     highlight: true,
     render: row => {
       const LinkWrapper = () => {
-        const routeLink = useRouteRef(entityDeploymentsRouteRef);
-        const searchParams = new URLSearchParams({
-          pane: 'deploymentDetails',
-          installation: row.installationName,
+        const { getRoute } = useDeploymentDetailsPane();
+        const to = getRoute({
+          installationName: row.installationName,
+          apiVersion: row.apiVersion,
           kind: row.kind,
-          namespace: row.namespace ?? '',
+          namespace: row.namespace,
           name: row.name,
         });
-
-        const to = `${routeLink()}?${searchParams.toString()}`;
 
         return (
           <Link component={RouterLink} to={to}>
@@ -213,6 +204,7 @@ const DeploymentsTableView = ({
           updated: getAppUpdatedTimestamp(resource),
           sourceName: formatAppCatalogName(getAppCatalogName(resource)),
           chartName: getAppChartName(resource),
+          apiVersion: resource.apiVersion,
         }
       : {
           installationName,
@@ -231,6 +223,7 @@ const DeploymentsTableView = ({
           updated: getHelmReleaseUpdatedTimestamp(resource),
           sourceName: getHelmReleaseSourceName(resource),
           chartName: getHelmReleaseChartName(resource),
+          apiVersion: resource.apiVersion,
         },
   );
 

@@ -1,7 +1,7 @@
-import { IApp } from '../../model/services/mapi/applicationv1alpha1';
-import { appGVK } from '../../model/services/mapi/objects';
+import type { App } from '@internal/plugin-gs-common';
+import { appGVK } from '@internal/plugin-gs-common';
 import { useListResources } from './useListResources';
 
 export function useApps() {
-  return useListResources<IApp>(appGVK);
+  return useListResources<App>(appGVK);
 }

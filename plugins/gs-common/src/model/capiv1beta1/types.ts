@@ -4,12 +4,6 @@
 
 import * as metav1 from '../metav1';
 
-export const ApiGroup = 'cluster.x-k8s.io';
-
-export const ApiVersion = 'cluster.x-k8s.io/v1beta1';
-
-export const Cluster = 'Cluster';
-
 /**
  * Cluster is the Schema for the clusters API.
  */
@@ -21,7 +15,7 @@ export interface ICluster {
   /**
    * Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
    */
-  kind: typeof Cluster;
+  kind: 'Cluster';
   metadata: metav1.IObjectMeta;
   /**
    * ClusterSpec defines the desired state of Cluster.

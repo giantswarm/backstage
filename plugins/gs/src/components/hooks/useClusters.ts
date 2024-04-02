@@ -1,7 +1,7 @@
-import { ICluster } from '../../model/services/mapi/capiv1beta1';
-import { clusterGVK } from '../../model/services/mapi/objects';
+import type { Cluster } from '@internal/plugin-gs-common';
+import { clusterGVK } from '@internal/plugin-gs-common';
 import { useListResources } from './useListResources';
 
 export function useClusters() {
-  return useListResources<ICluster>(clusterGVK);
+  return useListResources<Cluster>(clusterGVK);
 }

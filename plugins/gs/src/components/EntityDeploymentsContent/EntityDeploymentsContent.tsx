@@ -12,30 +12,14 @@ import {
 } from '../utils/entity';
 import { InstallationsWrapper } from '../InstallationsWrapper';
 import { DeploymentDetails } from '../DeploymentDetails';
-import { useSearchParams } from 'react-router-dom';
 import { GSContext } from '../GSContext';
 
 export const EntityDeploymentsContent = () => {
   const { entity } = useEntity();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const pane = searchParams.get('pane');
 
   const entityName = entity.metadata.name;
   const deploymentNames = getDeploymentNamesFromEntity(entity) ?? [];
   const sourceLocation = getSourceLocationFromEntity(entity);
-
-  const handleDeploymentDetailsClose = () => {
-    setSearchParams(params => {
-      params.delete('installation');
-      params.delete('kind');
-      params.delete('name');
-      params.delete('namespace');
-      params.delete('pane');
-
-      return params;
-    });
-  };
 
   return (
     <GSContext>
@@ -49,11 +33,7 @@ export const EntityDeploymentsContent = () => {
             sourceLocation={sourceLocation}
           />
         </InstallationsWrapper>
-        <DeploymentDetails
-          sourceLocation={sourceLocation}
-          isOpen={pane === 'deploymentDetails'}
-          onClose={handleDeploymentDetailsClose}
-        />
+        <DeploymentDetails sourceLocation={sourceLocation} />
       </Content>
     </GSContext>
   );

@@ -59,6 +59,15 @@ export function compareDates(
   return compareAsc(b)(a) as -1 | 0 | 1;
 }
 
+export function parseDate(date: string | number | Date): Date {
+  const givenDate = date instanceof Date ? date : parseISO(date);
+  if (isNaN(givenDate.getTime())) {
+    return new Date(date);
+  }
+
+  return givenDate;
+}
+
 /**
  * Convert a string to title case (e.g. `A Title Cased Example`).
  * @param str
@@ -77,15 +86,6 @@ export function toTitleCase(str: string): string {
  */
 export function toSentenceCase(str: string): string {
   return str.toLowerCase().charAt(0).toUpperCase() + str.slice(1);
-}
-
-export function parseDate(date: string | number | Date): Date {
-  const givenDate = date instanceof Date ? date : parseISO(date);
-  if (isNaN(givenDate.getTime())) {
-    return new Date(date);
-  }
-
-  return givenDate;
 }
 
 export function getReleaseNotesURL(

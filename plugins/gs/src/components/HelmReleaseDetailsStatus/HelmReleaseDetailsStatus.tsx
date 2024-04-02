@@ -1,14 +1,12 @@
 import React from 'react';
 import { Box, Paper } from '@material-ui/core';
-import {
-  IHelmRelease,
-  getHelmReleaseStatus,
-} from '../../model/services/mapi/helmv2beta1';
-import { compareDates } from '../utils/helpers';
+import type { HelmRelease } from '@internal/plugin-gs-common';
+import { getHelmReleaseStatus } from '@internal/plugin-gs-common';
 import { useHelmReleaseStatusDetails } from '../hooks/useDeploymentStatusDetails';
 import { HelmReleaseDetailsConditions } from '../HelmReleaseDetailsConditions';
 import { DeploymentStatusCard } from '../UI/DeploymentStatusCard';
 import { Heading } from '../UI/Heading';
+import { compareDates } from '../utils/helpers';
 
 const StatusCard = ({
   status,
@@ -38,7 +36,7 @@ const StatusCard = ({
 };
 
 type HelmReleaseDetailsStatusProps = {
-  helmrelease: IHelmRelease;
+  helmrelease: HelmRelease;
 };
 
 export const HelmReleaseDetailsStatus = ({
