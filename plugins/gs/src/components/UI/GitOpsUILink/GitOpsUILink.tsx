@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Link, Typography, Tooltip, styled } from '@material-ui/core';
 import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
-import { useGitOpsUIDeepLink } from '../../hooks/useGitOpsUIDeepLink';
+import { useGitOpsUIDeepLink } from '../../hooks';
 
 const StyledLaunchOutlinedIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
   marginLeft: theme.spacing(0.5),

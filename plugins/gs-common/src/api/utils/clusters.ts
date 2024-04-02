@@ -11,6 +11,15 @@ import * as capiv1beta1 from '../../model/capiv1beta1';
 
 export const clusterGVK = [capiv1beta1.clusterGVK];
 
+export function getClusterGVK(apiVersion: string) {
+  switch (apiVersion) {
+    case capiv1beta1.clusterApiVersion:
+      return capiv1beta1.clusterGVK;
+    default:
+      return undefined;
+  }
+}
+
 /**
  * Returns whether or not a cluster is a management cluster, by
  * the criteria that the cluster:
@@ -43,6 +52,10 @@ export function hasClusterAppLabel(cluster: Cluster): boolean {
 
 export function getClusterName(cluster: Cluster) {
   return cluster.metadata.name;
+}
+
+export function getClusterNamespace(cluster: Cluster) {
+  return cluster.metadata.namespace;
 }
 
 export function getClusterDescription(cluster: Cluster) {

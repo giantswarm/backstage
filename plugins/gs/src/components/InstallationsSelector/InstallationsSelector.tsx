@@ -11,7 +11,7 @@ import {
   makeStyles,
 } from '@material-ui/core';
 import classnames from 'classnames';
-import { InstallationStatus } from '../hooks/useInstallationsStatuses';
+import { InstallationStatus } from '../hooks';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
