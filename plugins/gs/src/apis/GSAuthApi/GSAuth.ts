@@ -19,13 +19,13 @@ export class GSAuth implements GSAuthApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly oauthRequestApi: OAuthRequestApi;
   private readonly authProviders: AuthProvider[];
-  private readonly authApis: {[providerName: string]: AuthApi};
+  private readonly authApis: { [providerName: string]: AuthApi };
 
   constructor(options: OAuthApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.oauthRequestApi = options.oauthRequestApi;
-    
+
     this.authProviders = this.getAuthProvidersFromConfig();
     this.authApis = this.createAuthApis();
   }
@@ -38,8 +38,8 @@ export class GSAuth implements GSAuthApi {
     const providersConfig = this.configApi?.getOptionalConfig('auth.providers');
     const configuredProviders = providersConfig?.keys() || [];
     return configuredProviders
-      .filter((providerName) => providerName.startsWith(PROVIDER_NAME_PREFIX))
-      .map((providerName) => {
+      .filter(providerName => providerName.startsWith(PROVIDER_NAME_PREFIX))
+      .map(providerName => {
         const providerDisplayName = providerName.split(PROVIDER_NAME_PREFIX)[1];
         const installationName = providerName.split(PROVIDER_NAME_PREFIX)[1];
 
@@ -52,29 +52,38 @@ export class GSAuth implements GSAuthApi {
   }
 
   private createAuthApis() {
-    const entries = this.authProviders.map(({ providerName, providerDisplayName }) => {
-      return [
-        providerName,
-        OAuth2.create({
-          configApi: this.configApi,
-          discoveryApi: this.discoveryApi,
-          oauthRequestApi: this.oauthRequestApi,
-          provider: {
-            id: providerName,
-            title: providerDisplayName,
-            icon: GiantSwarmIcon,
-          },
-          environment: this.configApi?.getOptionalString('auth.environment'),
-          defaultScopes: ['openid', 'profile', 'email', 'groups', 'offline_access', 'audience:server:client_id:dex-k8s-authenticator'],
-          popupOptions: {
-            size: {
-              width: 600,
-              height: 600,
+    const entries = this.authProviders.map(
+      ({ providerName, providerDisplayName }) => {
+        return [
+          providerName,
+          OAuth2.create({
+            configApi: this.configApi,
+            discoveryApi: this.discoveryApi,
+            oauthRequestApi: this.oauthRequestApi,
+            provider: {
+              id: providerName,
+              title: providerDisplayName,
+              icon: GiantSwarmIcon,
             },
-          },
-        }),
-      ]
-    });
+            environment: this.configApi?.getOptionalString('auth.environment'),
+            defaultScopes: [
+              'openid',
+              'profile',
+              'email',
+              'groups',
+              'offline_access',
+              'audience:server:client_id:dex-k8s-authenticator',
+            ],
+            popupOptions: {
+              size: {
+                width: 600,
+                height: 600,
+              },
+            },
+          }),
+        ];
+      },
+    );
 
     return Object.fromEntries(entries);
   }

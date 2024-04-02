@@ -5,7 +5,9 @@ import { configApiRef, useApi } from '@backstage/core-plugin-api';
 
 const ErrorReporterContext = React.createContext(ErrorReporter.getInstance());
 
-const ErrorReporterProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
+const ErrorReporterProvider: React.FC<React.PropsWithChildren<{}>> = ({
+  children,
+}) => {
   const config = useApi(configApiRef);
 
   const errorReporter = ErrorReporter.getInstance();
@@ -23,15 +25,21 @@ const ErrorReporterProvider: React.FC<React.PropsWithChildren<{}>> = ({ children
     });
   }
 
-  return <ErrorReporterContext.Provider value={errorReporter}>{children}</ErrorReporterContext.Provider>;
-}
+  return (
+    <ErrorReporterContext.Provider value={errorReporter}>
+      {children}
+    </ErrorReporterContext.Provider>
+  );
+};
 
 function useErrorReporter() {
   const context = React.useContext(ErrorReporterContext);
   if (context === undefined) {
-    throw new Error('useErrorReporter must be used within an ErrorReporterProvider');
+    throw new Error(
+      'useErrorReporter must be used within an ErrorReporterProvider',
+    );
   }
   return context;
 }
 
-export { ErrorReporterProvider, useErrorReporter }
+export { ErrorReporterProvider, useErrorReporter };

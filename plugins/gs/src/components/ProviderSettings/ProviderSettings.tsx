@@ -9,22 +9,24 @@ export const ProviderSettings = () => {
 
   return (
     <>
-      {gsAuthApi.getProviders().map(({providerName, providerDisplayName, installationName}) => {
-        const authApi = gsAuthApi.getAuthApi(providerName);
+      {gsAuthApi
+        .getProviders()
+        .map(({ providerName, providerDisplayName, installationName }) => {
+          const authApi = gsAuthApi.getAuthApi(providerName);
 
-        return (
-          <>
-            {authApi && (
-              <ProviderSettingsItem
-                title={providerDisplayName}
-                description={`Provides single sign-on authentication for the Giant Swarm installation "${installationName}"`}
-                authApi={authApi}
-                icon={GiantSwarmIcon}
-              />
-            )}
-          </>
-        );
-      })}
+          return (
+            <>
+              {authApi && (
+                <ProviderSettingsItem
+                  title={providerDisplayName}
+                  description={`Provides single sign-on authentication for the Giant Swarm installation "${installationName}"`}
+                  authApi={authApi}
+                  icon={GiantSwarmIcon}
+                />
+              )}
+            </>
+          );
+        })}
     </>
   );
 };

@@ -1,11 +1,18 @@
-import React from "react";
-import { EmptyState, Progress, WarningPanel } from "@backstage/core-components";
-import { Box, Card, CardContent, CardHeader, Grid, Typography } from "@material-ui/core";
-import { useHelmRelease } from "../hooks";
-import { StructuredMetadataList } from "../UI/StructuredMetadataList";
-import { RevisionDetails } from "../RevisionDetails/RevisionDetails";
-import { HelmReleaseDetailsStatusConditions } from "../HelmReleaseDetailsStatusConditions";
-import DateComponent from "../UI/Date";
+import React from 'react';
+import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
+import {
+  Box,
+  Card,
+  CardContent,
+  CardHeader,
+  Grid,
+  Typography,
+} from '@material-ui/core';
+import { useHelmRelease } from '../hooks';
+import { StructuredMetadataList } from '../UI/StructuredMetadataList';
+import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
+import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
+import DateComponent from '../UI/Date';
 import {
   getHelmReleaseChartName,
   getHelmReleaseClusterName,
@@ -14,17 +21,17 @@ import {
   getHelmReleaseLastAttemptedRevision,
   getHelmReleaseSourceName,
   getHelmReleaseUpdatedTimestamp,
-} from "../../model/services/mapi/helmv2beta1";
-import { Heading } from "../UI/Heading";
-import { formatVersion } from "../utils/helpers";
-import { GitOpsUILink } from "../UI/GitOpsUILink/GitOpsUILink";
+} from '../../model/services/mapi/helmv2beta1';
+import { Heading } from '../UI/Heading';
+import { formatVersion } from '../utils/helpers';
+import { GitOpsUILink } from '../UI/GitOpsUILink/GitOpsUILink';
 
 type HelmReleaseDetailsProps = {
   installationName: string;
   namespace: string;
   name: string;
   sourceLocation?: string;
-}
+};
 
 export const HelmReleaseDetails = ({
   installationName,
@@ -44,7 +51,10 @@ export const HelmReleaseDetails = ({
 
   if (error) {
     return (
-      <WarningPanel severity="error" title={`Could not load ${namespace}/${name} resource.`}>
+      <WarningPanel
+        severity="error"
+        title={`Could not load ${namespace}/${name} resource.`}
+      >
         {(error as Error).message}
       </WarningPanel>
     );
@@ -61,32 +71,38 @@ export const HelmReleaseDetails = ({
   }
 
   const clusterName = getHelmReleaseClusterName(helmrelease);
-  const lastAppliedRevision = formatVersion(getHelmReleaseLastAppliedRevision(helmrelease) ?? '');
-  const lastAttemptedRevision = formatVersion(getHelmReleaseLastAttemptedRevision(helmrelease) ?? '');
+  const lastAppliedRevision = formatVersion(
+    getHelmReleaseLastAppliedRevision(helmrelease) ?? '',
+  );
+  const lastAttemptedRevision = formatVersion(
+    getHelmReleaseLastAttemptedRevision(helmrelease) ?? '',
+  );
   const sourceName = getHelmReleaseSourceName(helmrelease);
   const chartName = getHelmReleaseChartName(helmrelease);
-  
+
   return (
     <div>
-      <Box display='flex' marginBottom={2}>
+      <Box display="flex" marginBottom={2}>
         <GitOpsUILink
           installationName={installationName}
           clusterName={installationName}
-          kind='helmrelease'
+          kind="helmrelease"
           name={name}
           namespace={namespace}
-          text='Open this application in the GitOps UI'
+          text="Open this application in the GitOps UI"
         />
       </Box>
-      
+
       <Grid container direction="column">
         <Grid item>
           <Card>
             <CardContent>
-              <StructuredMetadataList metadata={{
-                'Installation': installationName,
-                'Cluster': clusterName ? clusterName : 'n/a',
-              }} />
+              <StructuredMetadataList
+                metadata={{
+                  Installation: installationName,
+                  Cluster: clusterName ? clusterName : 'n/a',
+                }}
+              />
             </CardContent>
           </Card>
         </Grid>
@@ -108,32 +124,42 @@ export const HelmReleaseDetails = ({
               titleTypographyProps={{ variant: undefined }}
             />
             <CardContent>
-              <StructuredMetadataList metadata={{
-                'Namespace': namespace,
-                'Name': name,
-                'Source': (
-                  <>
-                    {sourceName && (<Typography variant='inherit' noWrap>{sourceName}/</Typography>)}
-                    {chartName && (<Typography variant='inherit' noWrap>{chartName}</Typography>)}
-                  </>
-                ),
-                'Created': (
-                  <DateComponent
-                    value={getHelmReleaseCreatedTimestamp(helmrelease)}
-                    relative
-                  />
-                ),
-                'Updated': (
-                  <DateComponent
-                    value={getHelmReleaseUpdatedTimestamp(helmrelease)}
-                    relative
-                  />
-                ),
-              }} />
+              <StructuredMetadataList
+                metadata={{
+                  Namespace: namespace,
+                  Name: name,
+                  Source: (
+                    <>
+                      {sourceName && (
+                        <Typography variant="inherit" noWrap>
+                          {sourceName}/
+                        </Typography>
+                      )}
+                      {chartName && (
+                        <Typography variant="inherit" noWrap>
+                          {chartName}
+                        </Typography>
+                      )}
+                    </>
+                  ),
+                  Created: (
+                    <DateComponent
+                      value={getHelmReleaseCreatedTimestamp(helmrelease)}
+                      relative
+                    />
+                  ),
+                  Updated: (
+                    <DateComponent
+                      value={getHelmReleaseUpdatedTimestamp(helmrelease)}
+                      relative
+                    />
+                  ),
+                }}
+              />
             </CardContent>
           </Card>
         </Grid>
       </Grid>
     </div>
   );
-}
+};

@@ -4,11 +4,12 @@ import {
   ContentHeader,
   SupportButton,
 } from '@backstage/core-components';
-import {
-  useEntity,
-} from '@backstage/plugin-catalog-react';
+import { useEntity } from '@backstage/plugin-catalog-react';
 import { DeploymentsTable } from '../DeploymentsTable';
-import { getDeploymentNamesFromEntity, getSourceLocationFromEntity } from '../utils/entity';
+import {
+  getDeploymentNamesFromEntity,
+  getSourceLocationFromEntity,
+} from '../utils/entity';
 import { InstallationsWrapper } from '../InstallationsWrapper';
 import { DeploymentDetails } from '../DeploymentDetails';
 import { useSearchParams } from 'react-router-dom';
@@ -17,7 +18,7 @@ import { GSContext } from '../GSContext';
 export const EntityDeploymentsContent = () => {
   const { entity } = useEntity();
   const [searchParams, setSearchParams] = useSearchParams();
-  
+
   const pane = searchParams.get('pane');
 
   const entityName = entity.metadata.name;
@@ -25,7 +26,7 @@ export const EntityDeploymentsContent = () => {
   const sourceLocation = getSourceLocationFromEntity(entity);
 
   const handleDeploymentDetailsClose = () => {
-    setSearchParams((params) => {
+    setSearchParams(params => {
       params.delete('installation');
       params.delete('kind');
       params.delete('name');
@@ -33,8 +34,8 @@ export const EntityDeploymentsContent = () => {
       params.delete('pane');
 
       return params;
-    })
-  }
+    });
+  };
 
   return (
     <GSContext>
@@ -56,4 +57,4 @@ export const EntityDeploymentsContent = () => {
       </Content>
     </GSContext>
   );
-}
+};

@@ -1,10 +1,6 @@
 import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import {
-  Link,
-  Table,
-  TableColumn,
-} from '@backstage/core-components';
+import { Link, Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { useApps } from '../hooks';
@@ -55,14 +51,14 @@ type Row = {
   updated?: string;
   sourceName?: string;
   chartName?: string;
-}
+};
 
 const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Namespace/Name',
     field: 'name',
     highlight: true,
-    render: (row) => {
+    render: row => {
       const LinkWrapper = () => {
         const routeLink = useRouteRef(entityDeploymentsRouteRef);
         const searchParams = new URLSearchParams({
@@ -76,19 +72,22 @@ const generatedColumns: TableColumn<Row>[] = [
         const to = `${routeLink()}?${searchParams.toString()}`;
 
         return (
-          <Link
-            component={RouterLink}
-            to={to}
-          >
-            {row.namespace && (<Typography variant='inherit' noWrap>{row.namespace}/</Typography>)}
-            <Typography variant='inherit' noWrap>{row.name}</Typography>
+          <Link component={RouterLink} to={to}>
+            {row.namespace && (
+              <Typography variant="inherit" noWrap>
+                {row.namespace}/
+              </Typography>
+            )}
+            <Typography variant="inherit" noWrap>
+              {row.name}
+            </Typography>
           </Link>
         );
       };
 
       return <LinkWrapper />;
     },
-    ...sortAndFilterOptions((row) => `${row.namespace} / ${row.name}`),
+    ...sortAndFilterOptions(row => `${row.namespace} / ${row.name}`),
   },
   {
     title: 'Installation',
@@ -101,29 +100,41 @@ const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Type',
     field: 'kind',
-    render: (row) => {
+    render: row => {
       const label = row.kind === 'app' ? 'App' : 'HelmRelease';
 
-      return <Typography variant='inherit' noWrap>{label}</Typography>;
+      return (
+        <Typography variant="inherit" noWrap>
+          {label}
+        </Typography>
+      );
     },
   },
   {
     title: 'Source',
     field: 'source',
-    render: (row) => {
+    render: row => {
       return (
         <>
-          {row.sourceName && (<Typography variant='inherit' noWrap>{row.sourceName}/</Typography>)}
-          {row.chartName && (<Typography variant='inherit' noWrap>{row.chartName}</Typography>)}
+          {row.sourceName && (
+            <Typography variant="inherit" noWrap>
+              {row.sourceName}/
+            </Typography>
+          )}
+          {row.chartName && (
+            <Typography variant="inherit" noWrap>
+              {row.chartName}
+            </Typography>
+          )}
         </>
       );
     },
-    ...sortAndFilterOptions((row) => `${row.sourceName} / ${row.chartName}`),
+    ...sortAndFilterOptions(row => `${row.sourceName} / ${row.chartName}`),
   },
   {
     title: 'Version',
     field: 'version',
-    render: (row) => {
+    render: row => {
       return (
         <Version
           version={row.version}
@@ -139,27 +150,27 @@ const generatedColumns: TableColumn<Row>[] = [
     title: 'Updated',
     field: 'updated',
     type: 'datetime',
-    render: (row) => (
-      <DateComponent value={row.updated} relative />
-    ),
+    render: row => <DateComponent value={row.updated} relative />,
   },
   {
     title: 'Status',
     field: 'status',
-    render: (row) => {
+    render: row => {
       if (!row.status) {
         return 'n/a';
       }
 
-      return row.kind === 'app'
-        ? <AppStatus status={row.status} />
-        : <HelmReleaseStatus status={row.status} />;
+      return row.kind === 'app' ? (
+        <AppStatus status={row.status} />
+      ) : (
+        <HelmReleaseStatus status={row.status} />
+      );
     },
-    ...sortAndFilterOptions((row) => (row.status ?? '').replace(/-/g, ' ')),
+    ...sortAndFilterOptions(row => (row.status ?? '').replace(/-/g, ' ')),
   },
   {
     title: 'Actions',
-    render: (row) => {
+    render: row => {
       return (
         <DeploymentActions
           installationName={row.installationName}
@@ -171,7 +182,7 @@ const generatedColumns: TableColumn<Row>[] = [
       );
     },
     width: '24px',
-  }
+  },
 ];
 
 type Props = {
@@ -187,35 +198,41 @@ const DeploymentsTableView = ({
   resources,
   sourceLocation,
 }: Props) => {
-  const data: Row[] = resources.map(({installationName, ...resource}) => (
-    resource.kind === 'App' ? {
-      installationName,
-      kind: 'app',
-      clusterName: getAppClusterName(resource),
-      name: resource.metadata.name,
-      namespace: resource.metadata.namespace,
-      version: formatVersion(getAppCurrentVersion(resource) ?? ''),
-      attemptedVersion: formatVersion(getAppVersion(resource)),
-      status: getAppStatus(resource),
-      sourceLocation,
-      updated: getAppUpdatedTimestamp(resource),
-      sourceName: formatAppCatalogName(getAppCatalogName(resource)),
-      chartName: getAppChartName(resource),
-    } : {
-      installationName,
-      kind: 'helmrelease',
-      clusterName: getHelmReleaseClusterName(resource),
-      name: resource.metadata.name,
-      namespace: resource.metadata.namespace,
-      version: formatVersion(getHelmReleaseLastAppliedRevision(resource) ?? ''),
-      attemptedVersion: formatVersion(getHelmReleaseLastAttemptedRevision(resource) ?? ''),
-      status: getHelmReleaseStatus(resource),
-      sourceLocation,
-      updated: getHelmReleaseUpdatedTimestamp(resource),
-      sourceName: getHelmReleaseSourceName(resource),
-      chartName: getHelmReleaseChartName(resource),
-    }
-  ));
+  const data: Row[] = resources.map(({ installationName, ...resource }) =>
+    resource.kind === 'App'
+      ? {
+          installationName,
+          kind: 'app',
+          clusterName: getAppClusterName(resource),
+          name: resource.metadata.name,
+          namespace: resource.metadata.namespace,
+          version: formatVersion(getAppCurrentVersion(resource) ?? ''),
+          attemptedVersion: formatVersion(getAppVersion(resource)),
+          status: getAppStatus(resource),
+          sourceLocation,
+          updated: getAppUpdatedTimestamp(resource),
+          sourceName: formatAppCatalogName(getAppCatalogName(resource)),
+          chartName: getAppChartName(resource),
+        }
+      : {
+          installationName,
+          kind: 'helmrelease',
+          clusterName: getHelmReleaseClusterName(resource),
+          name: resource.metadata.name,
+          namespace: resource.metadata.namespace,
+          version: formatVersion(
+            getHelmReleaseLastAppliedRevision(resource) ?? '',
+          ),
+          attemptedVersion: formatVersion(
+            getHelmReleaseLastAttemptedRevision(resource) ?? '',
+          ),
+          status: getHelmReleaseStatus(resource),
+          sourceLocation,
+          updated: getHelmReleaseUpdatedTimestamp(resource),
+          sourceName: getHelmReleaseSourceName(resource),
+          chartName: getHelmReleaseChartName(resource),
+        },
+  );
 
   return (
     <Table<Row>
@@ -235,9 +252,7 @@ const DeploymentsTableView = ({
       ]}
       data={data}
       style={{ width: '100%' }}
-      title={
-        <Typography variant="h6">Deployments</Typography>
-      }
+      title={<Typography variant="h6">Deployments</Typography>}
       columns={generatedColumns}
     />
   );
@@ -246,7 +261,7 @@ const DeploymentsTableView = ({
 type DeploymentsTableProps = {
   deploymentNames: string[];
   sourceLocation?: string;
-}
+};
 
 export const DeploymentsTable = ({
   deploymentNames,
@@ -270,7 +285,8 @@ export const DeploymentsTable = ({
   ];
 
   const resources: Resource<Deployment>[] = installationsData.flatMap(
-    ({ installationName, data }) => data.map((resource) => ({ installationName, ...resource }))
+    ({ installationName, data }) =>
+      data.map(resource => ({ installationName, ...resource })),
   );
 
   const loading = initialLoadingApps || initialLoadingHelmReleases;
@@ -278,12 +294,13 @@ export const DeploymentsTable = ({
   const handleRetry = () => {
     retryApps();
     retryHelmReleases();
-  }
+  };
 
-  const filteredResources = resources.filter((resource) => {
-    const chartName = resource.kind === 'App'
-      ? getAppChartName(resource)
-      : getHelmReleaseChartName(resource);
+  const filteredResources = resources.filter(resource => {
+    const chartName =
+      resource.kind === 'App'
+        ? getAppChartName(resource)
+        : getHelmReleaseChartName(resource);
 
     return chartName && deploymentNames.includes(chartName);
   });

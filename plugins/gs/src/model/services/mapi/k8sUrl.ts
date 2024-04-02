@@ -181,14 +181,14 @@ export function create(options: any): URL {
   if (apiVersion) {
     if (isCore) {
       throw new Error(
-        `The option 'apiVersion' cannot be set when 'isCore' is set to true.`
+        `The option 'apiVersion' cannot be set when 'isCore' is set to true.`,
       );
     }
 
     pathnameParts.push(apiVersion);
   } else if (!isCore) {
     throw new Error(
-      `The option 'apiVersion' must be set when 'isCore' is set to false.`
+      `The option 'apiVersion' must be set when 'isCore' is set to false.`,
     );
   }
 
@@ -203,20 +203,20 @@ export function create(options: any): URL {
   if (name) {
     if (labelSelector) {
       throw new Error(
-        `The option 'labelSelector' cannot be set when 'name' is present.`
+        `The option 'labelSelector' cannot be set when 'name' is present.`,
       );
     }
 
     if (fieldSelector) {
       throw new Error(
-        `The option 'fieldSelector' cannot be set when 'name' is present.`
+        `The option 'fieldSelector' cannot be set when 'name' is present.`,
       );
     }
 
     pathnameParts.push(name);
   } else if (watch) {
     throw new Error(
-      `The option 'watch' can only be set when 'name' is present.`
+      `The option 'watch' can only be set when 'name' is present.`,
     );
   }
 

@@ -31,9 +31,9 @@ workflows:
           executor: app-build-suite
           name: push-to-operations-platform-app-catalog
           context: architect
-          app_catalog: "giantswarm-operations-platform-catalog"
-          app_catalog_test: "giantswarm-operations-platform-test-catalog"
-          chart: "backstage"
+          app_catalog: 'giantswarm-operations-platform-catalog'
+          app_catalog_test: 'giantswarm-operations-platform-test-catalog'
+          chart: 'backstage'
           persist_chart_archive: true
           requires:
             - push-to-registries
@@ -44,9 +44,9 @@ workflows:
           executor: app-build-suite
           name: push-to-control-plane-app-catalog
           context: architect
-          app_catalog: "control-plane-catalog"
-          app_catalog_test: "control-plane-test-catalog"
-          chart: "backstage"
+          app_catalog: 'control-plane-catalog'
+          app_catalog_test: 'control-plane-test-catalog'
+          chart: 'backstage'
           persist_chart_archive: true
           requires:
             - push-to-registries
@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - checkout
-      
+
       - run:
           name: Print node and yarn version info
           command: |
@@ -85,11 +85,11 @@ jobs:
       - run:
           name: Validate code style using prettier
           command: yarn run prettier:check
-      
+
       - run:
           name: Run tests
           command: yarn run test:all
-      
+
       - run:
           name: Mock secret files
           command: |

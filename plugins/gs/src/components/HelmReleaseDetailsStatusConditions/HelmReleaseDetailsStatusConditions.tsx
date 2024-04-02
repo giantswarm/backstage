@@ -1,5 +1,5 @@
-import React from "react";
-import classNames from "classnames";
+import React from 'react';
+import classNames from 'classnames';
 import {
   Box,
   Card,
@@ -11,27 +11,29 @@ import {
   Paper,
   makeStyles,
   styled,
-} from "@material-ui/core";
+} from '@material-ui/core';
 import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import { IHelmRelease } from "../../model/services/mapi/helmv2beta1";
-import { StructuredMetadataList } from "../UI/StructuredMetadataList";
-import DateComponent from "../UI/Date";
-import { Heading } from "../UI/Heading";
-import { compareDates } from "../utils/helpers";
+import { IHelmRelease } from '../../model/services/mapi/helmv2beta1';
+import { StructuredMetadataList } from '../UI/StructuredMetadataList';
+import DateComponent from '../UI/Date';
+import { Heading } from '../UI/Heading';
+import { compareDates } from '../utils/helpers';
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,
-  color: theme.palette.status.error
+  color: theme.palette.status.error,
 }));
 
-const StyledCheckCircleOutlinedIcon = styled(CheckCircleOutlinedIcon)(({ theme }) => ({
-  marginRight: 10,
-  color: theme.palette.status.ok,
-}));
+const StyledCheckCircleOutlinedIcon = styled(CheckCircleOutlinedIcon)(
+  ({ theme }) => ({
+    marginRight: 10,
+    color: theme.palette.status.ok,
+  }),
+);
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles(theme => ({
   header: {
     padding: theme.spacing(2),
     alignItems: 'start',
@@ -59,13 +61,16 @@ type ConditionCardProps = {
     lastTransitionTime: string;
     message: string;
     reason: string;
-    status: "True" | "False" | "Unknown";
+    status: 'True' | 'False' | 'Unknown';
     type: string;
   };
-  defaultState?: 'expanded' | 'collapsed',
-}
+  defaultState?: 'expanded' | 'collapsed';
+};
 
-const ConditionCard = ({ condition, defaultState = 'collapsed' }: ConditionCardProps) => {
+const ConditionCard = ({
+  condition,
+  defaultState = 'collapsed',
+}: ConditionCardProps) => {
   const classes = useStyles();
   const [expanded, setExpanded] = React.useState(defaultState === 'expanded');
 
@@ -80,17 +85,23 @@ const ConditionCard = ({ condition, defaultState = 'collapsed' }: ConditionCardP
           root: classes.header,
           action: classes.action,
         }}
-        title={(
-          <Box display='flex' alignItems="center">
-            {condition.status !== 'Unknown' && (condition.status === 'True'
-              ? <StyledCheckCircleOutlinedIcon />
-              : <StyledCancelOutlinedIcon />
-            )}
+        title={
+          <Box display="flex" alignItems="center">
+            {condition.status !== 'Unknown' &&
+              (condition.status === 'True' ? (
+                <StyledCheckCircleOutlinedIcon />
+              ) : (
+                <StyledCancelOutlinedIcon />
+              ))}
             <Heading>{condition.type}</Heading>
           </Box>
-        )}
+        }
         titleTypographyProps={{ variant: undefined }}
-        subheader={expanded ? <DateComponent value={condition.lastTransitionTime} relative /> : null}
+        subheader={
+          expanded ? (
+            <DateComponent value={condition.lastTransitionTime} relative />
+          ) : null
+        }
         subheaderTypographyProps={{
           variant: 'body2',
           color: 'textPrimary',
@@ -111,22 +122,24 @@ const ConditionCard = ({ condition, defaultState = 'collapsed' }: ConditionCardP
       />
       <Collapse in={expanded} timeout="auto" unmountOnExit>
         <CardContent className={classes.content}>
-          <StructuredMetadataList metadata={{
-            'Reason': condition.reason,
-            'Message': condition.message,
-          }} />
+          <StructuredMetadataList
+            metadata={{
+              Reason: condition.reason,
+              Message: condition.message,
+            }}
+          />
         </CardContent>
       </Collapse>
     </Card>
   );
-}
+};
 
 type HelmReleaseDetailsStatusProps = {
   helmrelease: IHelmRelease;
-}
+};
 
 export const HelmReleaseDetailsStatusConditions = ({
-  helmrelease
+  helmrelease,
 }: HelmReleaseDetailsStatusProps) => {
   if (!helmrelease.status?.conditions) {
     return (
@@ -138,8 +151,8 @@ export const HelmReleaseDetailsStatusConditions = ({
     );
   }
 
-  const conditions = helmrelease.status.conditions.sort(
-    (a, b) => compareDates(b.lastTransitionTime, a.lastTransitionTime)
+  const conditions = helmrelease.status.conditions.sort((a, b) =>
+    compareDates(b.lastTransitionTime, a.lastTransitionTime),
   );
 
   return (
@@ -148,10 +161,14 @@ export const HelmReleaseDetailsStatusConditions = ({
         <Grid item key={condition.type}>
           <ConditionCard
             condition={condition}
-            defaultState={idx === 0 && condition.status === 'False' ? 'expanded' : 'collapsed'}
+            defaultState={
+              idx === 0 && condition.status === 'False'
+                ? 'expanded'
+                : 'collapsed'
+            }
           />
         </Grid>
       ))}
     </Grid>
   );
-}
+};

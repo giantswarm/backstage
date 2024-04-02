@@ -15,17 +15,15 @@ export const GSContext = ({ children }: { children: ReactNode }) => {
           if ((error as Error).name === 'RejectedError') {
             return false;
           }
-  
+
           return true;
-        }
+        },
       },
     },
   };
   const queryClient = new QueryClient(queryOptions);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {children}
-    </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 };

@@ -8,12 +8,12 @@ image:
   name: backstage
   repository: giantswarm/backstage
 port: 7007
-hostnames: ["test"]
+hostnames: ['test']
 registry:
   domain: gsoci.azurecr.io
 authSessionSecret: fooBar
 backendSecret: testBackendSecret
-catalogLocationUrl: "https://example.com/catalog-info.yaml"
+catalogLocationUrl: 'https://example.com/catalog-info.yaml'
 circleci:
   apiToken: dummyToken
 dexAuthCredentials:
@@ -36,6 +36,6 @@ sentry:
   backend:
     dsn: summySentryDSN
 backstage:
-  command: ["node", "packages/backend"]
+  command: ['node', 'packages/backend']
   args: []
   extraAppConfig: []

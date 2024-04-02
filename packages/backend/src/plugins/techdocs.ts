@@ -19,11 +19,14 @@ export default async function createPlugin(
     logger: env.logger,
     reader: env.reader,
   });
-  
-  preparers.register('url', DocsUrlPreparer.fromConfig({
-    logger: env.logger,
-    reader: env.reader,
-  }));
+
+  preparers.register(
+    'url',
+    DocsUrlPreparer.fromConfig({
+      logger: env.logger,
+      reader: env.reader,
+    }),
+  );
 
   // Docker client (conditionally) used by the generators, based on techdocs.generators config.
   const dockerClient = new Docker();

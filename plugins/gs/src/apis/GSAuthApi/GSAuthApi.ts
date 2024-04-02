@@ -11,16 +11,20 @@ export const gsAuthApiRef = createApiRef<GSAuthApi>({
   id: 'plugin.gs.auth',
 });
 
-export type AuthApi = OAuthApi & OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi;
+export type AuthApi = OAuthApi &
+  OpenIdConnectApi &
+  ProfileInfoApi &
+  BackstageIdentityApi &
+  SessionApi;
 
 export type AuthProvider = {
   providerName: string;
   providerDisplayName: string;
   installationName: string;
-}
+};
 
 export type GSAuthApi = {
   getAuthApi: (providerName: string) => AuthApi;
-  getAuthApis: () => {[providerName: string]: AuthApi};
+  getAuthApis: () => { [providerName: string]: AuthApi };
   getProviders: () => AuthProvider[];
-}
+};

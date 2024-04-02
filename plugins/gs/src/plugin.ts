@@ -16,8 +16,7 @@ export const gsPlugin = createPlugin({
 export const GSPluginPage = gsPlugin.provide(
   createRoutableExtension({
     name: 'GSPluginPage',
-    component: () =>
-      import('./components/PluginPage').then(m => m.PluginPage),
+    component: () => import('./components/PluginPage').then(m => m.PluginPage),
     mountPoint: rootRouteRef,
   }),
 );

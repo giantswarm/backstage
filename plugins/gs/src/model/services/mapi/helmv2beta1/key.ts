@@ -1,14 +1,14 @@
-import { compareDates } from "../../../../components/utils/helpers";
-import { IHelmRelease } from "./types";
+import { compareDates } from '../../../../components/utils/helpers';
+import { IHelmRelease } from './types';
 
 export const labelCluster = 'giantswarm.io/cluster';
 
 export const HelmReleaseStatuses = {
-  'Unknown': 'unknown',
-  'Failed': 'failed',
-  'Stalled': 'stalled',
-  'Reconciling': 'reconciling',
-  'Reconciled': 'reconciled',
+  Unknown: 'unknown',
+  Failed: 'failed',
+  Stalled: 'stalled',
+  Reconciling: 'reconciling',
+  Reconciled: 'reconciled',
 } as const;
 
 export function getHelmReleaseLastAppliedRevision(helmRelease: IHelmRelease) {
@@ -33,19 +33,19 @@ export function getHelmReleaseStatus(helmRelease: IHelmRelease) {
   }
   const conditions = helmRelease.status?.conditions;
 
-  if (conditions.some((c) => c.type === 'Ready' && c.status === 'False')) {
+  if (conditions.some(c => c.type === 'Ready' && c.status === 'False')) {
     return HelmReleaseStatuses.Failed;
   }
 
-  if (conditions.some((c) => c.type === 'Stalled' && c.status === 'True')) {
+  if (conditions.some(c => c.type === 'Stalled' && c.status === 'True')) {
     return HelmReleaseStatuses.Stalled;
   }
 
-  if (conditions.some((c) => c.type === 'Reconciling' && c.status === 'True')) {
-    return HelmReleaseStatuses.Reconciling
+  if (conditions.some(c => c.type === 'Reconciling' && c.status === 'True')) {
+    return HelmReleaseStatuses.Reconciling;
   }
 
-  if (conditions.some((c) => c.type === 'Ready' && c.status === 'True')) {
+  if (conditions.some(c => c.type === 'Ready' && c.status === 'True')) {
     return HelmReleaseStatuses.Reconciled;
   }
 
@@ -60,18 +60,25 @@ export function getHelmReleaseChartName(helmRelease: IHelmRelease) {
   return helmRelease.spec?.chart.spec.chart;
 }
 
-export function getHelmReleaseCreatedTimestamp(helmRelease: IHelmRelease): string | undefined {
+export function getHelmReleaseCreatedTimestamp(
+  helmRelease: IHelmRelease,
+): string | undefined {
   return helmRelease.metadata.creationTimestamp;
 }
 
-export function getHelmReleaseUpdatedTimestamp(helmRelease: IHelmRelease): string | undefined {
-  const conditions = helmRelease.status?.conditions?.sort(
-    (a, b) => compareDates(b.lastTransitionTime, a.lastTransitionTime)
+export function getHelmReleaseUpdatedTimestamp(
+  helmRelease: IHelmRelease,
+): string | undefined {
+  const conditions = helmRelease.status?.conditions?.sort((a, b) =>
+    compareDates(b.lastTransitionTime, a.lastTransitionTime),
   );
 
-  return (conditions?.find(condition => condition.type === 'Ready') || {}).lastTransitionTime;
+  return (conditions?.find(condition => condition.type === 'Ready') || {})
+    .lastTransitionTime;
 }
 
-export function getHelmReleaseSourceName(helmRelease: IHelmRelease): string | undefined {
+export function getHelmReleaseSourceName(
+  helmRelease: IHelmRelease,
+): string | undefined {
   return helmRelease.spec?.chart.spec.sourceRef?.name;
 }

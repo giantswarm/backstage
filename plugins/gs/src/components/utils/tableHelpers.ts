@@ -1,4 +1,4 @@
-import { TableColumn } from "@backstage/core-components";
+import { TableColumn } from '@backstage/core-components';
 
 export function sortAndFilterOptions<T extends object>(
   fn: (item: T) => string | undefined,

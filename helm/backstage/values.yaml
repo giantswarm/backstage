@@ -26,61 +26,60 @@ resources:
     cpu: 500m
     memory: 600M
 
-authSessionSecret: ""
+authSessionSecret: ''
 
-backendSecret: ""
+backendSecret: ''
 
-catalogLocationUrl: ""
+catalogLocationUrl: ''
 
 circleci:
-  apiToken: ""
+  apiToken: ''
 
 dexAuthCredentials:
   gaggle:
-    clientID: ""
-    clientSecret: ""
+    clientID: ''
+    clientSecret: ''
   gazelle:
-    clientID: ""
-    clientSecret: ""
+    clientID: ''
+    clientSecret: ''
   glippy:
-    clientID: ""
-    clientSecret: ""
+    clientID: ''
+    clientSecret: ''
   golem:
-    clientID: ""
-    clientSecret: ""
+    clientID: ''
+    clientSecret: ''
   grizzly:
-    clientID: ""
-    clientSecret: ""
+    clientID: ''
+    clientSecret: ''
   snail:
-    clientID: ""
-    clientSecret: ""
+    clientID: ''
+    clientSecret: ''
 
 githubAuthCredentials:
-  clientID: ""
-  clientSecret: ""
+  clientID: ''
+  clientSecret: ''
 
-githubAppCredentials: ""
+githubAppCredentials: ''
 
 grafana:
-  apiToken: ""
+  apiToken: ''
 
 opsgenie:
-  apiKey: ""
+  apiKey: ''
 
 # Quay plugin configuration
 quay:
-  apiToken: ""
+  apiToken: ''
 
 sentry:
   app:
-    dsn: ""
+    dsn: ''
   backend:
-    dsn: ""
+    dsn: ''
 
 # Can be used to assign pods to the node pool. E.g. - giantswarm.io/machine-deployment: a1b2c
 # Docs - https://docs.giantswarm.io/advanced/node-pools/#assigning-workloads
 nodeSelector: {}
-
 
 # Upstream Backstage chart configuration
 # https://github.com/backstage/charts/blob/main/charts/backstage/values.yaml
@@ -89,7 +88,7 @@ nodeSelector: {}
 # @default -- See below
 backstage:
   # -- Backstage container command
-  command: ["node", "packages/backend"]
+  command: ['node', 'packages/backend']
 
   # -- Backstage container command arguments
   args: []

@@ -5,12 +5,14 @@ This page will help you get started developing on this application.
 ## Prerequisites
 
 1. Have **NodeJS** installed in the right version. Here is how to manage this:
+
    - Look for the key `"engines"` in [/package.json](../package.json) to find out which major versions are supported.
    - You can use `nvm` to install, update, and switch NodeJS version in your system. As a homebrew user, use `brew install nvm`, then `nvm list-remote` to find available versions, `nvm install <version>` to install one and `nvm use <version>` to enable the version for the current shell session.
 
 2. Have **yarn** v1 installed for NodeJS dependency management. Use `npm install --global yarn` to install it.
 
 3. **Credentials from LastPass**:
+
    - **GitHub OAuth credentials**: You'll have to create a file `/github-app-development-credentials.yaml` in the clone repository, which for security reasons is not checked in with the repository. Find the content for this file in a LastPass secure note named `Backstage GitHub App`.
    - **Environment variables**: We recommend to create a file named `.env` in the repo root with the content you find in a LastPass secure note named `Backstage Dev Environment Variables`. In bash, the `source .env` command will help you set these variables from the file, for the current shell session only.
 

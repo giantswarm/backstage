@@ -25,26 +25,24 @@ export const DeploymentStatusCard = ({
   return (
     <Card>
       <CardHeader
-        title={(
-          <Box display='flex' alignItems="center">
-            <IconWrapper color={iconColor}>
-              {icon}
-            </IconWrapper>
+        title={
+          <Box display="flex" alignItems="center">
+            <IconWrapper color={iconColor}>{icon}</IconWrapper>
             <Heading>{label}</Heading>
           </Box>
-        )}
+        }
         titleTypographyProps={{ variant: undefined }}
-        subheader={lastTransitionTime ? <DateComponent value={lastTransitionTime} relative /> : undefined}
+        subheader={
+          lastTransitionTime ? (
+            <DateComponent value={lastTransitionTime} relative />
+          ) : undefined
+        }
         subheaderTypographyProps={{
           variant: 'body2',
           color: 'textPrimary',
         }}
       />
-      {children ? (
-        <CardContent>{children}</CardContent>
-      ) : (
-        <Box padding={1} />
-      )}
+      {children ? <CardContent>{children}</CardContent> : <Box padding={1} />}
     </Card>
   );
-}
+};

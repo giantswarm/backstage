@@ -10,7 +10,7 @@ export interface Config {
             pipeline: string;
             /** @visibility frontend */
             gitopsUrl?: string;
-          }
-        }
-  }
+          };
+        };
+  };
 }

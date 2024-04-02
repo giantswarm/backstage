@@ -1,4 +1,6 @@
 dist
 dist-types
 coverage
+helm/*/templates
 .vscode
+.github

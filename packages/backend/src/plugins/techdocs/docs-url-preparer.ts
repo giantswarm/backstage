@@ -27,18 +27,18 @@ function formatFileName(filename: string) {
  * - an optional link to docs subcomponent
  */
 function getNavigationItems(mdFiles: string[], docsComponentName?: string) {
-  const sortedFilenames = mdFiles.filter((file) => file !== 'README.md').sort();
-  const readme = mdFiles.find((file) => file === 'README.md');
+  const sortedFilenames = mdFiles.filter(file => file !== 'README.md').sort();
+  const readme = mdFiles.find(file => file === 'README.md');
   if (readme) {
     sortedFilenames.unshift(readme);
   }
 
-  const items = sortedFilenames.map((filename) => ({
-    [formatFileName(filename)]: `${filename}`
+  const items = sortedFilenames.map(filename => ({
+    [formatFileName(filename)]: `${filename}`,
   }));
-  
+
   if (docsComponentName) {
-    items.push({ "Docs": `!include ./${docsComponentName}/mkdocs.yaml` })
+    items.push({ Docs: `!include ./${docsComponentName}/mkdocs.yaml` });
   }
 
   return items;
@@ -57,8 +57,10 @@ function getBranchNameFromTechDocsRef(url: string) {
  * Constructs edit URI for provided entity
  */
 function getEditURI(entity: Entity) {
-  const techdocsURL = entity.metadata.annotations?.['backstage.io/techdocs-ref'];
-  const sourceLocationURL = entity.metadata.annotations?.['backstage.io/source-location'];
+  const techdocsURL =
+    entity.metadata.annotations?.['backstage.io/techdocs-ref'];
+  const sourceLocationURL =
+    entity.metadata.annotations?.['backstage.io/source-location'];
   if (!techdocsURL || !sourceLocationURL) {
     return '';
   }
@@ -89,10 +91,13 @@ export class DocsUrlPreparer implements PreparerBase {
     return new DocsUrlPreparer(UrlPreparer.fromConfig(config), config.logger);
   }
 
-  prepare(entity: Entity, options?: PreparerOptions | undefined): Promise<PreparerResponse> {
-    return this.originalPreparer.prepare(entity, options).then((response) => {
-      options?.logger?.info("Running preparer");
-      
+  prepare(
+    entity: Entity,
+    options?: PreparerOptions | undefined,
+  ): Promise<PreparerResponse> {
+    return this.originalPreparer.prepare(entity, options).then(response => {
+      options?.logger?.info('Running preparer');
+
       const root = response.preparedDir;
 
       /**
@@ -104,21 +109,38 @@ export class DocsUrlPreparer implements PreparerBase {
         docsComponentName = 'docs-component';
         const docsComponentPath = `${root}/${docsComponentName}`;
         fse.moveSync(`${root}/docs`, `${docsComponentPath}/docs`);
-        options?.logger?.info(`Moved ${root}/docs into ${docsComponentPath}/docs`);
+        options?.logger?.info(
+          `Moved ${root}/docs into ${docsComponentPath}/docs`,
+        );
         if (fs.existsSync(`${root}/mkdocs.yaml`)) {
-          fse.moveSync(`${root}/mkdocs.yaml`, `${docsComponentPath}/mkdocs.yaml`);
-          options?.logger?.info(`Moved ${root}/mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`);
+          fse.moveSync(
+            `${root}/mkdocs.yaml`,
+            `${docsComponentPath}/mkdocs.yaml`,
+          );
+          options?.logger?.info(
+            `Moved ${root}/mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`,
+          );
         } else if (fs.existsSync(`${root}/mkdocs.yml`)) {
-          fse.moveSync(`${root}/mkdocs.yml`, `${docsComponentPath}/mkdocs.yaml`);
-          options?.logger?.info(`Moved ${root}/mkdocs.yml into ${docsComponentPath}/mkdocs.yaml`);
+          fse.moveSync(
+            `${root}/mkdocs.yml`,
+            `${docsComponentPath}/mkdocs.yaml`,
+          );
+          options?.logger?.info(
+            `Moved ${root}/mkdocs.yml into ${docsComponentPath}/mkdocs.yaml`,
+          );
         } else {
-          fs.writeFileSync(`${docsComponentPath}/mkdocs.yaml`, yaml.dump({"site_name": "docs"}));
-          options?.logger?.info(`Wrote standard mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`);
+          fs.writeFileSync(
+            `${docsComponentPath}/mkdocs.yaml`,
+            yaml.dump({ site_name: 'docs' }),
+          );
+          options?.logger?.info(
+            `Wrote standard mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`,
+          );
         }
       }
 
       /**
-       * Create docs folder and move *.md files into it. 
+       * Create docs folder and move *.md files into it.
        */
       fs.mkdirSync(`${root}/docs`);
       options?.logger?.info(`Created docs folder`);
@@ -129,7 +151,9 @@ export class DocsUrlPreparer implements PreparerBase {
         if (file.endsWith('.md')) {
           mdFiles.push(file);
           fs.copyFileSync(`${root}/${file}`, `${root}/docs/${file}`);
-          options?.logger?.info(`Copied ${root}/${file} into ${root}/docs/${file}`);
+          options?.logger?.info(
+            `Copied ${root}/${file} into ${root}/docs/${file}`,
+          );
         }
       });
 
@@ -137,16 +161,18 @@ export class DocsUrlPreparer implements PreparerBase {
        * Create mkdocs configuration file with navigation
        */
       const mkdocs = {
-        'site_name': entity.metadata.name,
-        'edit_uri': getEditURI(entity),
+        site_name: entity.metadata.name,
+        edit_uri: getEditURI(entity),
         nav: getNavigationItems(mdFiles, docsComponentName),
-        plugins: ['monorepo']
+        plugins: ['monorepo'],
       };
 
       fs.writeFileSync(`${root}/mkdocs.yaml`, yaml.dump(mkdocs));
-      options?.logger?.info(`Wrote mkdocs.yaml with navigation into ${root}/mkdocs.yaml`);
+      options?.logger?.info(
+        `Wrote mkdocs.yaml with navigation into ${root}/mkdocs.yaml`,
+      );
 
       return response;
-    })
-  };
-};
+    });
+  }
+}

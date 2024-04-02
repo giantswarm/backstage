@@ -27,7 +27,7 @@ export interface Config {
          * @visibility frontend
          */
         tracesSampleRate: number;
-      }
-    }
-  }
+      };
+    };
+  };
 }

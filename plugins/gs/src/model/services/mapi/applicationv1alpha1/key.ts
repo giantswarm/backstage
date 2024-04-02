@@ -13,15 +13,15 @@ export const labelCatalogType = 'application.giantswarm.io/catalog-type';
 export const labelCluster = 'giantswarm.io/cluster';
 
 export const AppStatuses = {
-  'Unknown': 'unknown',
-  'Deployed': 'deployed',
-  'Uninstalled': 'uninstalled',
-  'Superseded': 'superseded',
-  'Failed': 'failed',
-  'Uninstalling': 'uninstalling',
-  'PendingInstall': 'pending-install',
-  'PendingUpgrade': 'pending-upgrade',
-  'PendingRollback': 'pending-rollback',
+  Unknown: 'unknown',
+  Deployed: 'deployed',
+  Uninstalled: 'uninstalled',
+  Superseded: 'superseded',
+  Failed: 'failed',
+  Uninstalling: 'uninstalling',
+  PendingInstall: 'pending-install',
+  PendingUpgrade: 'pending-upgrade',
+  PendingRollback: 'pending-rollback',
 } as const;
 
 export const annotationReadme = 'application.giantswarm.io/readme';

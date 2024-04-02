@@ -3,8 +3,15 @@
  * It's needed to customize catalog table view, e.g. hide some columns/actions.
  */
 
-import { useEntityList, useStarredEntities } from '@backstage/plugin-catalog-react';
-import { CatalogTable, CatalogTableProps, CatalogTableRow } from '@backstage/plugin-catalog';
+import {
+  useEntityList,
+  useStarredEntities,
+} from '@backstage/plugin-catalog-react';
+import {
+  CatalogTable,
+  CatalogTableProps,
+  CatalogTableRow,
+} from '@backstage/plugin-catalog';
 import React, { useMemo } from 'react';
 import { TableColumn, TableProps } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
@@ -21,12 +28,7 @@ const YellowStar = withStyles({
 export interface CustomCatalogTableProps extends CatalogTableProps {}
 
 export function CustomCatalogTable(props: CustomCatalogTableProps) {
-  const {
-    columns,
-    actions,
-    tableOptions = {},
-    emptyContent,
-  } = props;
+  const { columns, actions, tableOptions = {}, emptyContent } = props;
   const { isStarredEntity, toggleStarredEntity } = useStarredEntities();
   const { entities, filters } = useEntityList();
 
@@ -37,7 +39,7 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       columnFactories.createNameColumn({ defaultKind: filters.kind?.value }),
       ...createEntitySpecificColumns(),
       columnFactories.createMetadataDescriptionColumn(),
-    ].map((column) => ({
+    ].map(column => ({
       ...column,
       width: 'auto',
     }));
@@ -98,8 +100,8 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       tableOptions={{
         ...tableOptions,
         actionsCellStyle: {
-          padding: "0 18px",
-        }
+          padding: '0 18px',
+        },
       }}
       emptyContent={emptyContent}
     />

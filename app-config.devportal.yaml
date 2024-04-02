@@ -20,7 +20,7 @@ organization:
 backend:
   reading:
     allow:
-    - host: "*.giantswarm.io"
+      - host: '*.giantswarm.io'
 
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.

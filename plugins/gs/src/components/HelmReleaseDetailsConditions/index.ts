@@ -1,1 +1,1 @@
-export { HelmReleaseDetailsConditions } from "./HelmReleaseDetailsConditions";
+export { HelmReleaseDetailsConditions } from './HelmReleaseDetailsConditions';

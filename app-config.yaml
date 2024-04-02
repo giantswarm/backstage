@@ -96,17 +96,17 @@ scaffolder:
 catalog:
   rules:
     - allow:
-      - API
-      - Component
-      - Domain
-      - Group
-      - Location
-      - Resource
-      - System
-      - User
+        - API
+        - Component
+        - Domain
+        - Group
+        - Location
+        - Resource
+        - System
+        - User
 
 grafana:
-  domain: ""
+  domain: ''
 
 opsgenie:
-  domain: ""
+  domain: ''
