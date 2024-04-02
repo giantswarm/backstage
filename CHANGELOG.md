@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2024-04-02
+
 ### Added
 
 - GS plugin: Add cluster details pane with basic information.
@@ -428,7 +430,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/giantswarm/backstage/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/giantswarm/backstage/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/giantswarm/backstage/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/giantswarm/backstage/compare/v0.16.3...v0.17.0
