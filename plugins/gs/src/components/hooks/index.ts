@@ -8,4 +8,4 @@ export * from './useGitOpsUIDeepLink';
 export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
-export * from './useInstallationsStatuses';
+export { useInstallationsStatuses } from './useInstallationsStatuses';
