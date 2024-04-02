@@ -1,8 +1,11 @@
 export * from './useApp';
 export * from './useApps';
+export * from './useCluster';
 export * from './useClusters';
-export * from './useDeploymentDetailsPane';
+export * from './useDeploymentStatusDetails';
+export * from './useDetailsPane';
+export * from './useGitOpsUIDeepLink';
 export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
-export * from './useInstallationsStatuses';
+export { useInstallationsStatuses } from './useInstallationsStatuses';

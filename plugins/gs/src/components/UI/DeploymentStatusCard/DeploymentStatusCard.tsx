@@ -1,7 +1,7 @@
 import React, { ComponentProps, ComponentType } from 'react';
 import { Box, Card, CardContent, CardHeader, styled } from '@material-ui/core';
 import { Heading } from '../Heading';
-import DateComponent from '../Date';
+import { DateComponent } from '../Date';
 
 const IconWrapper = styled('div')(({ color }) => ({
   display: 'flex',

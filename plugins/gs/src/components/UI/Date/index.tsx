@@ -13,7 +13,7 @@ interface IDateProps extends React.ComponentPropsWithoutRef<typeof Typography> {
 const REFRESH_TIMEOUT = 60 * 1000; // 1 minute
 const REFRESH_PERIOD = 45; // 45 minutes
 
-const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
+export const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   value,
   relative,
   variant = 'inherit',
@@ -82,5 +82,3 @@ const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
     </Typography>
   );
 };
-
-export default DateComponent;

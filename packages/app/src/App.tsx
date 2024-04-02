@@ -42,7 +42,7 @@ import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
 import { FluxRuntimePage } from '@weaveworksoss/backstage-plugin-flux';
-import { GSPluginPage, GSProviderSettings } from '@internal/plugin-gs';
+import { GSClustersPage, GSProviderSettings } from '@internal/plugin-gs';
 
 const app = createApp({
   apis,
@@ -153,7 +153,7 @@ const routes = (
       path="/opsgenie"
       element={<OpsgeniePage onCallListCardsCount={100} />}
     />
-    <Route path="/clusters" element={<GSPluginPage />} />
+    <Route path="/clusters" element={<GSClustersPage />} />
     <FeatureFlagged with="show-flux-runtime">
       <Route path="/flux-runtime" element={<FluxRuntimePage />} />
     </FeatureFlagged>

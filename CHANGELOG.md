@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GS plugin: Add cluster details pane with basic information.
+
 ### Changed
 
 - Move common types and functions into separate `plugin-gs-common` package.
+- GS plugin: Refactor deployment details pane component so it can be reused in other places.
 
 ### Fixed
 
