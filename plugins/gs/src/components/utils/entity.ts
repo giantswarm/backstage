@@ -1,6 +1,12 @@
 import { ANNOTATION_SOURCE_LOCATION, Entity } from '@backstage/catalog-model';
+import { formatVersion } from './helpers';
 
 export const GS_DEPLOYMENT_NAMES = 'giantswarm.io/deployment-names';
+export const GS_HELMCHART_APP_VERSIONS = 'giantswarm.io/helmchart-app-versions';
+export const GS_HELMCHART_VERSIONS = 'giantswarm.io/helmchart-versions';
+export const GS_HELMCHARTS = 'giantswarm.io/helmcharts';
+export const GS_LATEST_RELEASE_DATE = 'giantswarm.io/latest-release-date';
+export const GS_LATEST_RELEASE_TAG = 'giantswarm.io/latest-release-tag';
 
 export const isEntityDeploymentsAvailable = (entity: Entity) =>
   Boolean(entity.metadata.annotations?.[GS_DEPLOYMENT_NAMES]);
@@ -21,4 +27,35 @@ export const getSourceLocationFromEntity = (entity: Entity) => {
   return location && location.startsWith('url:')
     ? location.replace(/^url:/, '')
     : location;
+};
+
+export const isEntityLatestReleaseAvailable = (entity: Entity) =>
+  Boolean(entity.metadata.annotations?.[GS_LATEST_RELEASE_TAG]);
+
+export const getLatestReleaseDateFromEntity = (entity: Entity) => {
+  const latestReleaseDate =
+    entity.metadata.annotations?.[GS_LATEST_RELEASE_DATE];
+
+  return latestReleaseDate;
+};
+
+export const getLatestReleaseTagFromEntity = (entity: Entity) => {
+  const latestReleaseTag = entity.metadata.annotations?.[GS_LATEST_RELEASE_TAG];
+
+  return latestReleaseTag ? formatVersion(latestReleaseTag) : undefined;
+};
+
+export const isEntityHelmChartsAvailable = (entity: Entity) =>
+  Boolean(entity.metadata.annotations?.[GS_HELMCHARTS]);
+
+export const getHelmChartsFromEntity = (entity: Entity) => {
+  const helmCharts = entity.metadata.annotations?.[GS_HELMCHARTS];
+
+  return helmCharts?.split(',');
+};
+
+export const getHelmChartsAppVersionsFromEntity = (entity: Entity) => {
+  const appVersions = entity.metadata.annotations?.[GS_HELMCHART_APP_VERSIONS];
+
+  return appVersions?.split(',').map(version => formatVersion(version));
 };
