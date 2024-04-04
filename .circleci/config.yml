@@ -24,6 +24,9 @@ workflows:
           name: push-to-registries
           dockerfile: 'packages/backend/Dockerfile'
           force-public: true
+          registries-data: |-
+            public gsoci.azurecr.io ACR_GSOCI_USERNAME ACR_GSOCI_PASSWORD true
+            public quay.io QUAY_USERNAME QUAY_PASSWORD true
           requires:
             - buildjob
           <<: *job_filters
