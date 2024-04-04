@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Show latest release version and age and helm chart details on catalog components.
+
 ## [0.19.0] - 2024-04-02
 
 ### Added
