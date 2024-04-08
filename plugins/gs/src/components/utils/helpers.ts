@@ -1,20 +1,20 @@
-import compareAsc from 'date-fns/fp/compareAsc';
-import format from 'date-fns/fp/format';
-import formatDistance from 'date-fns/fp/formatDistance';
-import parseISO from 'date-fns/fp/parseISO';
+import { compareAsc } from 'date-fns/fp/compareAsc';
+import { format } from 'date-fns/fp/format';
+import { formatDistance } from 'date-fns/fp/formatDistance';
+import { parseISO } from 'date-fns/fp/parseISO';
 import toDate from 'date-fns-tz/toDate';
-import utcToZonedTime from 'date-fns-tz/utcToZonedTime';
+import toZonedTime from 'date-fns-tz/toZonedTime';
 
 /**
  * Format a date into a pretty way.
  * @param date
  */
-export function formatDate(date: string | number | Date): string {
+export function formatDate(date: string | Date): string {
   const givenDate = parseDate(date);
 
   if (!isFinite(givenDate.getTime())) return date.toString();
 
-  const parsedDate = utcToZonedTime(givenDate, 'UTC');
+  const parsedDate = toZonedTime(givenDate, 'UTC');
 
   return `${format('d MMM yyyy, HH:mm')(parsedDate)} UTC`;
 }
@@ -23,7 +23,7 @@ export function formatDate(date: string | number | Date): string {
  * Get a formatted date structure, relative to now (e.g. 2 days ago, or 1 year ago).
  * @param date
  */
-export function getRelativeDateFromNow(date: string | number | Date): string {
+export function getRelativeDateFromNow(date: string | Date): string {
   return getRelativeDate(date, new Date());
 }
 
@@ -33,8 +33,8 @@ export function getRelativeDateFromNow(date: string | number | Date): string {
  * @param dateB
  */
 export function getRelativeDate(
-  dateA: string | number | Date,
-  dateB: string | number | Date,
+  dateA: string | Date,
+  dateB: string | Date,
 ): string {
   const baseDate = parseDate(dateA);
   const date = parseDate(dateB);
@@ -59,7 +59,7 @@ export function compareDates(
   return compareAsc(b)(a) as -1 | 0 | 1;
 }
 
-export function parseDate(date: string | number | Date): Date {
+export function parseDate(date: string | Date): Date {
   const givenDate = date instanceof Date ? date : parseISO(date);
   if (isNaN(givenDate.getTime())) {
     return new Date(date);

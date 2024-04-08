@@ -1,10 +1,10 @@
-import differenceInMinutes from 'date-fns/differenceInMinutes';
+import { differenceInMinutes } from 'date-fns/differenceInMinutes';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDate, getRelativeDate, parseDate } from '../../utils/helpers';
 import { Tooltip, Typography } from '@material-ui/core';
 
 interface IDateProps extends React.ComponentPropsWithoutRef<typeof Typography> {
-  value: string | number | Date | null | undefined;
+  value: string | Date | null | undefined;
   relative?: boolean;
   tooltip?: boolean;
 }
