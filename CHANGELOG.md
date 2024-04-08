@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Change the width of the catalog table columns so they evenly spread.
+
 ## [0.20.0] - 2024-04-04
 
 ### Added

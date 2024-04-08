@@ -75,7 +75,10 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       ),
       ...createEntitySpecificColumns(),
       hiddenColumn(GSColumnFactories.createDescriptionColumn()),
-    ];
+    ].map(column => ({
+      ...column,
+      width: 'auto',
+    }));
 
     function createEntitySpecificColumns(): TableColumn<CatalogTableRow>[] {
       const baseColumns = [
