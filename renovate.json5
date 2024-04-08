@@ -11,6 +11,10 @@
       matchPackagePrefixes: ['@testing-library'],
       groupName: 'testing-library packages',
     },
+    {
+      matchPackageNames: ['date-fns', 'date-fns-tz'],
+      groupName: 'date-fns packages',
+    },
   ],
   prConcurrentLimit: 1,
   schedule: [
