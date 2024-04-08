@@ -41,9 +41,19 @@ export const columnFactories = Object.freeze({
         const entity1Tag = getLatestReleaseTagFromEntity(entity1);
         const entity2Tag = getLatestReleaseTagFromEntity(entity2);
 
-        return entity1Tag && entity2Tag
-          ? semver.compare(entity1Tag, entity2Tag)
-          : 0;
+        if (!entity1Tag && !entity2Tag) {
+          return 0;
+        }
+
+        if (!entity1Tag) {
+          return -1;
+        }
+
+        if (!entity2Tag) {
+          return 1;
+        }
+
+        return semver.compare(entity1Tag, entity2Tag);
       },
       customFilterAndSearch(query: string, { entity }) {
         const entityTag = getLatestReleaseTagFromEntity(entity);

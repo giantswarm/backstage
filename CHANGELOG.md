@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Change the width of the catalog table columns so they evenly spread.
+- Fix catalog table 'Latest release' column sorting.
 
 ## [0.20.0] - 2024-04-04
 
