@@ -76,13 +76,24 @@ export const columnFactories = Object.freeze({
       title: 'Last released',
       hidden: options.hidden,
       width: 'auto',
+      filtering: false,
       customSort({ entity: entity1 }, { entity: entity2 }) {
         const entity1Date = getLatestReleaseDateFromEntity(entity1);
         const entity2Date = getLatestReleaseDateFromEntity(entity2);
 
-        return entity1Date && entity2Date
-          ? compareDates(entity2Date, entity1Date)
-          : 0;
+        if (!entity1Date && !entity2Date) {
+          return 0;
+        }
+
+        if (!entity1Date) {
+          return 1;
+        }
+
+        if (!entity2Date) {
+          return -1;
+        }
+
+        return compareDates(entity2Date, entity1Date);
       },
       render: ({ entity }) => (
         <DateComponent
