@@ -2,8 +2,7 @@ import { compareAsc } from 'date-fns/fp/compareAsc';
 import { format } from 'date-fns/fp/format';
 import { formatDistance } from 'date-fns/fp/formatDistance';
 import { parseISO } from 'date-fns/fp/parseISO';
-import toDate from 'date-fns-tz/toDate';
-import toZonedTime from 'date-fns-tz/toZonedTime';
+import { toDate, toZonedTime } from 'date-fns-tz';
 
 /**
  * Format a date into a pretty way.

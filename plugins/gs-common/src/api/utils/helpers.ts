@@ -1,6 +1,6 @@
 import { compareAsc } from 'date-fns/fp/compareAsc';
 import { parseISO } from 'date-fns/fp/parseISO';
-import toDate from 'date-fns-tz/toDate';
+import { toDate } from 'date-fns-tz';
 
 export function compareDates(
   dateA: Date | string | number,
