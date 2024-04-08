@@ -150,6 +150,7 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
           padding: '0 18px',
         },
         columnsButton: true,
+        thirdSortClick: false,
       }}
       emptyContent={emptyContent}
     />
