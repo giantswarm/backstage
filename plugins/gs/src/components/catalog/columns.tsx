@@ -112,6 +112,7 @@ export const columnFactories = Object.freeze({
       title: 'Helm charts',
       hidden: options.hidden,
       width: 'auto',
+      filtering: false,
       customSort({ entity: entity1 }, { entity: entity2 }) {
         const entity1HelmCharts = getHelmChartsFromEntity(entity1) || [];
         const entity2HelmCharts = getHelmChartsFromEntity(entity2) || [];
