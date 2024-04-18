@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Update Backstage to 1.26.0.
+- Move techdocs custom preparer to a separate backend module.
+
 ## [0.20.2] - 2024-04-08
 
 ### Changed

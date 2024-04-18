@@ -10,7 +10,7 @@ import {
   UrlPreparer,
 } from '@backstage/plugin-techdocs-node';
 import { Entity } from '@backstage/catalog-model';
-import { Logger } from 'winston';
+import { LoggerService } from '@backstage/backend-plugin-api';
 
 /**
  * Returns capitalized file name without extention, e.g. README.md -> Readme
@@ -73,12 +73,12 @@ function getEditURI(entity: Entity) {
 
 export class DocsUrlPreparer implements PreparerBase {
   private originalPreparer: UrlPreparer;
-  private readonly _logger: Logger;
-  public get logger(): Logger {
+  private readonly _logger: LoggerService;
+  public get logger(): LoggerService {
     return this._logger;
   }
 
-  private constructor(preparer: UrlPreparer, logger: Logger) {
+  private constructor(preparer: UrlPreparer, logger: LoggerService) {
     this.originalPreparer = preparer;
     this._logger = logger;
   }
