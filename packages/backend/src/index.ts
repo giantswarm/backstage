@@ -1,4 +1,3 @@
-import { legacyPlugin } from '@backstage/backend-common';
 import { createBackend } from '@backstage/backend-defaults';
 
 const backend = createBackend();
@@ -8,9 +7,8 @@ backend.add(import('@backstage/plugin-proxy-backend/alpha'));
 backend.add(import('@backstage/plugin-scaffolder-backend/alpha'));
 
 // techdocs plugin
-// TODO: Migrate to the new techdocs-backend plugin when custom preparers are supported - https://github.com/backstage/backstage/issues/21952
-// backend.add(import('@backstage/plugin-techdocs-backend/alpha'));
-backend.add(legacyPlugin('techdocs', import('./plugins/techdocs')));
+backend.add(import('@backstage/plugin-techdocs-backend/alpha'));
+backend.add(import('@internal/plugin-techdocs-backend-module-gs-preparer'));
 
 backend.add(import('./plugins/healthcheck'));
 

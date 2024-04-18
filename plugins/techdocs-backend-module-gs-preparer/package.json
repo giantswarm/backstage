@@ -1,0 +1,42 @@
+{
+  "name": "@internal/plugin-techdocs-backend-module-gs-preparer",
+  "description": "The gs-preparer backend module for the techdocs plugin.",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "license": "Apache-2.0",
+  "private": true,
+  "publishConfig": {
+    "access": "public",
+    "main": "dist/index.cjs.js",
+    "types": "dist/index.d.ts"
+  },
+  "backstage": {
+    "role": "backend-plugin-module"
+  },
+  "scripts": {
+    "start": "backstage-cli package start",
+    "build": "backstage-cli package build",
+    "lint": "backstage-cli package lint",
+    "test": "backstage-cli package test",
+    "clean": "backstage-cli package clean",
+    "prepack": "backstage-cli package prepack",
+    "postpack": "backstage-cli package postpack"
+  },
+  "dependencies": {
+    "@backstage/backend-common": "^0.21.7",
+    "@backstage/backend-plugin-api": "^0.6.17",
+    "@backstage/catalog-model": "^1.4.5",
+    "@backstage/plugin-techdocs-node": "^1.12.3",
+    "fs-extra": "^11.2.0",
+    "js-yaml": "^4.1.0",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "@backstage/backend-test-utils": "^0.3.7",
+    "@backstage/cli": "^0.26.3"
+  },
+  "files": [
+    "dist"
+  ]
+}
