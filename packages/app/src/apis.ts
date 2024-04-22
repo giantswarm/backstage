@@ -35,7 +35,7 @@ export const apis: AnyApiFactory[] = [
    * It's needed to prevent different plugins to request additional permissions over sign in popup.
    * ['read:user'] is used by default.
    * ['read:user', 'repo'] is required by @roadiehq/backstage-plugin-github-pull-requests.
-   * ['read:user', 'repo', 'read:org'] is required by @backstage/plugin-github-actions.
+   * ['read:user', 'repo', 'read:org'] is required by @backstage-community/plugin-github-actions.
    */
   createApiFactory({
     api: githubAuthApiRef,
