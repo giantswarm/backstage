@@ -169,12 +169,7 @@ const ClustersTableView = ({ loading, retry, resources }: Props) => {
 };
 
 export const ClustersTable = () => {
-  const { installationsData, initialLoading, retry } = useClusters();
-
-  const resources: Resource<Cluster>[] = installationsData.flatMap(
-    ({ installationName, data }) =>
-      data.map(cluster => ({ installationName, ...cluster })),
-  );
+  const { resources, initialLoading, retry } = useClusters();
 
   return (
     <ClustersTableView
