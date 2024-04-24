@@ -3136,9 +3136,9 @@
     zod "^3.22.4"
 
 "@backstage/core-components@^0.14.3", "@backstage/core-components@^0.14.4":
-  version "0.14.4"
-  resolved "https://registry.yarnpkg.com/@backstage/core-components/-/core-components-0.14.4.tgz#96867e77898327a4bc12a671597d0ca481d4d227"
-  integrity sha512-yPsLtXI37Ar4bcmtL1VHxlR8GZAhRiXKor+25zuu6stArkVirIJvH4CdS0S2eMQZ9HEFnzo1O+QzeKGxsm7PKw==
+  version "0.14.5"
+  resolved "https://registry.yarnpkg.com/@backstage/core-components/-/core-components-0.14.5.tgz#5fc4fe6041058b8ee750409fbe1d218b6380a061"
+  integrity sha512-r0N/UH0CBl0PmPy3aCfACPNAl7N8s6ggyCm2r1OAOjJQDZ8PLza00AAmNe35EjXkfMOS7upeRCEe9N9tXuZ6IA==
   dependencies:
     "@backstage/config" "^1.2.0"
     "@backstage/core-plugin-api" "^1.9.2"
@@ -4332,9 +4332,9 @@
     zod-to-json-schema "^3.20.4"
 
 "@backstage/plugin-search-backend-module-catalog@^0.1.22":
-  version "0.1.22"
-  resolved "https://registry.yarnpkg.com/@backstage/plugin-search-backend-module-catalog/-/plugin-search-backend-module-catalog-0.1.22.tgz#e955d26d1c3b28a2178e7d59fd12490462f8d2d8"
-  integrity sha512-e8FABQJPu+/yOrgfvA68TO9v6FEGpCQkNoOVNrpZIJMY6uEF+Edu/eYs4QGkqVz51CXHkAi4LkICb0Y112b+ZA==
+  version "0.1.23"
+  resolved "https://registry.yarnpkg.com/@backstage/plugin-search-backend-module-catalog/-/plugin-search-backend-module-catalog-0.1.23.tgz#bf763c535352d7f01797a7fa365f2add85c36a00"
+  integrity sha512-wpdqqDuosvGQZ2hB7HbSzoKJFYu9AsyIdGf2QsCFpaZBX3Igr0sgR1r5si1UZUUU2Apuy4dpfaKy/3n8QnjdjQ==
   dependencies:
     "@backstage/backend-common" "^0.21.7"
     "@backstage/backend-plugin-api" "^0.6.17"
