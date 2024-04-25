@@ -15,12 +15,19 @@ export const getInstallationsQueriesInfo = <T>(
   );
 
   const installationsData = fulfilledInstallationsQueries.map(
-    ({ installationName, query }) => ({ installationName, data: query.data! }),
+    ({ installationName, query }) => ({
+      installationName,
+      data: query.data!,
+    }),
   );
 
   const initialLoading =
     queries.some(query => query.isLoading) &&
-    !queries.some(query => query.isSuccess);
+    !queries.some(query =>
+      Array.isArray(query.data)
+        ? query.isSuccess && query.data.length > 0
+        : query.isSuccess,
+    );
   const retry = () => {
     for (const query of queries) {
       query.refetch();

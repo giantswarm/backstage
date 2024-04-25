@@ -21,9 +21,7 @@ export const InstallationsWrapper = ({
   const { installations, selectedInstallations, setSelectedInstallations } =
     useInstallations();
 
-  const { installationsStatuses } = useInstallationsStatuses(
-    selectedInstallations,
-  );
+  const { installationsStatuses } = useInstallationsStatuses();
 
   const classes = useStyles();
 
