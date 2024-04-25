@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixes
+
+- GS Auth: Fix backend startup when some OIDC issuers are not available.
+
 ## [0.22.0] - 2024-04-25
 
 ### Changed
