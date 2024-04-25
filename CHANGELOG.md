@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.1] - 2024-04-25
+
 ### Fixes
 
 - GS Auth: Fix backend startup when some OIDC issuers are not available.
@@ -475,7 +477,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.22.1...HEAD
+[0.22.1]: https://github.com/giantswarm/backstage/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/giantswarm/backstage/compare/v0.21.1...v0.22.0
 [0.21.1]: https://github.com/giantswarm/backstage/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/giantswarm/backstage/compare/v0.20.2...v0.21.0
