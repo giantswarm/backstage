@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Update Backstage to 1.26.3.
+- Update Backstage to 1.26.4.
+- Update dependencies.
 
 ## [0.21.0] - 2024-04-18
 
