@@ -36,7 +36,7 @@
     "@backstage/plugin-proxy-backend": "^0.4.15",
     "@backstage/plugin-scaffolder-backend": "^1.22.4",
     "@backstage/plugin-search-backend": "^1.5.7",
-    "@backstage/plugin-search-backend-module-catalog": "^0.1.22",
+    "@backstage/plugin-search-backend-module-catalog": "^0.1.23",
     "@backstage/plugin-search-backend-module-techdocs": "^0.1.22",
     "@backstage/plugin-search-backend-node": "^1.2.21",
     "@backstage/plugin-techdocs-backend": "^1.10.4",
