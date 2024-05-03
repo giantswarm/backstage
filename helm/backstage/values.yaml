@@ -19,6 +19,8 @@ registry:
   domain: gsoci.azurecr.io
 
 resources:
+  verticalPodAutoscaler:
+    enabled: true
   requests:
     cpu: 30m
     memory: 300M

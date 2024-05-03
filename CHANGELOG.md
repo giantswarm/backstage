@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add Vertical Pod Autoscaler configuration to the Helm chart, to get recommendations.
+- Add Vertical Pod Autoscaler configuration to the Helm chart.
 
 ## [0.22.1] - 2024-04-25
 
