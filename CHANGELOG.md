@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add Vertical Pod Autoscaler configuration to the Helm chart.
 
+### Changed
+
+- Update Backstage to 1.27.5.
+
 ## [0.22.1] - 2024-04-25
 
 ### Fixes
