@@ -7,8 +7,8 @@
   },
   "scripts": {
     "dev": "concurrently \"yarn start\" \"yarn start-backend\"",
-    "start": "yarn workspace app start",
-    "start-backend": "yarn workspace backend start",
+    "start": "yarn env-cmd yarn workspace app start",
+    "start-backend": "yarn env-cmd yarn workspace backend start",
     "build:backend": "yarn workspace backend build",
     "build:all": "backstage-cli repo build --all",
     "build-image": "yarn workspace backend build-image",
@@ -24,10 +24,7 @@
     "prettier:check": "prettier --check .",
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new --scope internal",
-    "env-cmd:snail": "env-cmd -f .env env-cmd -f .env.snail",
     "env-cmd:devportal": "env-cmd -f .env env-cmd -f .env.devportal",
-    "start:snail": "yarn env-cmd:snail yarn start --config ../../app-config.yaml --config ../../app-config.snail.yaml",
-    "start-backend:snail": "yarn env-cmd:snail yarn start-backend --config ../../app-config.yaml --config ../../app-config.snail.yaml",
     "start:devportal": "yarn env-cmd:devportal yarn start --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
     "start-backend:devportal": "yarn env-cmd:devportal yarn start-backend --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
     "postinstall": "yarn patch-package"

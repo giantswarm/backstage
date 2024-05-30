@@ -32,8 +32,6 @@ authSessionSecret: ''
 
 backendSecret: ''
 
-catalogLocationUrl: ''
-
 circleci:
   apiToken: ''
 
@@ -44,16 +42,10 @@ dexAuthCredentials:
   gazelle:
     clientID: ''
     clientSecret: ''
-  glippy:
-    clientID: ''
-    clientSecret: ''
   golem:
     clientID: ''
     clientSecret: ''
   grizzly:
-    clientID: ''
-    clientSecret: ''
-  snail:
     clientID: ''
     clientSecret: ''
 
