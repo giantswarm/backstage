@@ -39,3 +39,12 @@ backstage:
   command: ['node', 'packages/backend']
   args: []
   extraAppConfig: []
+resources:
+  verticalPodAutoscaler:
+    enabled: true
+  requests:
+    cpu: 30m
+    memory: 300M
+  limits:
+    cpu: 500m
+    memory: 600M
