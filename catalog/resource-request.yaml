@@ -1,0 +1,8 @@
+---
+apiVersion: example.promise.syntasso.io/v1
+kind: app
+metadata:
+  name: app-demo
+  namespace: default
+spec:
+  name: "test3"
