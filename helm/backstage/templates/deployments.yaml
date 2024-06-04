@@ -50,6 +50,10 @@ spec:
           {{- range .Values.backstage.args }}
             - {{ . | quote }}
           {{- end }}
+          {{- if .Values.backstage.appConfig }}
+            - "--config"
+            - "app-config-from-configmap.yaml"
+          {{- end }}
           {{- if .Values.backstage.extraAppConfig }}
           {{- range .Values.backstage.extraAppConfig }}
             - "--config"
@@ -70,10 +74,15 @@ spec:
           - name: VERSION
             value: "{{ .Chart.AppVersion }}"
           volumeMounts:
-            - name: secret-volume
+            - name: github-app-credentials
               readOnly: true
               mountPath: /app/github-app-production-credentials.yaml
               subPath: github-app-production-credentials.yaml
+            {{- if .Values.backstage.appConfig }}
+            - name: backstage-app-config
+              mountPath: "/app/app-config-from-configmap.yaml"
+              subPath: app-config.yaml
+            {{- end }}
             {{- if .Values.backstage.extraAppConfig }}
             {{- range .Values.backstage.extraAppConfig }}
             - name: {{ .configMapRef }}
@@ -99,9 +108,14 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 15
       volumes:
-        - name: secret-volume
+        - name: github-app-credentials
           secret:
             secretName: github-app-credentials-secret
+        {{- if .Values.backstage.appConfig }}
+        - name: backstage-app-config
+          configMap:
+            name: app-config-configmap
+        {{- end }}
         {{- if .Values.backstage.extraAppConfig }}
         {{- range .Values.backstage.extraAppConfig }}
         - name: {{ .configMapRef }}

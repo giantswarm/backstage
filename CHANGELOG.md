@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Update Backstage to 1.27.5.
+- Delete app configuration for snail instance.
+- Combine devportal development and production configurations.
 
 ## [0.22.1] - 2024-04-25
 
