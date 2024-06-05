@@ -73,38 +73,13 @@ auth:
         metadataUrl: https://dex.gazelle.awsprod.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_GAZELLE_CLIENT_ID}
         clientSecret: ${AUTH_DEX_GAZELLE_CLIENT_SECRET}
-    gs-glippy:
-      production:
-        metadataUrl: https://dex.glippy.azuretest.gigantic.io/.well-known/openid-configuration
-        clientId: ${AUTH_DEX_GLIPPY_CLIENT_ID}
-        clientSecret: ${AUTH_DEX_GLIPPY_CLIENT_SECRET}
-    # gs-goat:
-    #   production:
-    #     metadataUrl: https://dex.goat.gaws.gigantic.io/.well-known/openid-configuration
-    #     clientId: ${AUTH_DEX_GOAT_CLIENT_ID}
-    #     clientSecret: ${AUTH_DEX_GOAT_CLIENT_SECRET}
     gs-golem:
       production:
         metadataUrl: https://dex.golem.gaws.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_GOLEM_CLIENT_ID}
         clientSecret: ${AUTH_DEX_GOLEM_CLIENT_SECRET}
-    # gs-goose:
-    #   production:
-    #     metadataUrl: https://dex.goose.azuretest.gigantic.io/.well-known/openid-configuration
-    #     clientId: ${AUTH_DEX_GOOSE_CLIENT_ID}
-    #     clientSecret: ${AUTH_DEX_GOOSE_CLIENT_SECRET}
-    # gs-goten:
-    #   production:
-    #     metadataUrl: https://dex.goten.gaws.gigantic.io/.well-known/openid-configuration
-    #     clientId: ${AUTH_DEX_GOTEN_CLIENT_ID}
-    #     clientSecret: ${AUTH_DEX_GOTEN_CLIENT_SECRET}
     gs-grizzly:
       production:
         metadataUrl: https://dex.grizzly.gaws.gigantic.io/.well-known/openid-configuration
         clientId: ${AUTH_DEX_GRIZZLY_CLIENT_ID}
         clientSecret: ${AUTH_DEX_GRIZZLY_CLIENT_SECRET}
-    gs-snail:
-      production:
-        metadataUrl: https://dex.snail.gaws.gigantic.io/.well-known/openid-configuration
-        clientId: ${AUTH_DEX_SNAIL_CLIENT_ID}
-        clientSecret: ${AUTH_DEX_SNAIL_CLIENT_SECRET}
