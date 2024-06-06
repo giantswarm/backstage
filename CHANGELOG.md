@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixes
+
+- Delete empty configuration for GS plugin to pass validation.
+- Add empty configurations for grafana and opsgenie plugins to pass validation.
+
 ## [0.23.0] - 2024-06-06
 
 ### Removed

@@ -112,5 +112,8 @@ catalog:
         - System
         - User
 
-gs:
-  installations: []
+grafana:
+  domain: https://example.com
+
+opsgenie:
+  domain: https://example.com
