@@ -78,6 +78,13 @@ techdocs:
   publisher:
     type: 'local' # Alternatives: 'googleGcs', 'awsS3'
 
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters: []
+
 auth:
   # see https://backstage.io/docs/auth/ to learn about auth providers
   environment: development
@@ -105,8 +112,5 @@ catalog:
         - System
         - User
 
-grafana:
-  domain: ''
-
-opsgenie:
-  domain: ''
+gs:
+  installations: []

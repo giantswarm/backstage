@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Delete devportal configuration.
+
 ## [0.22.2] - 2024-06-05
 
 ### Added

@@ -1,3 +1,25 @@
+app:
+  baseUrl: http://localhost:3000
+  errorReporter: null
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  cors:
+    origin: http://localhost:3000
+  errorReporter: null
+
+auth:
+  environment: development
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'docker'
+  publisher:
+    type: 'local'
+
 # For local development purposes, you can add/change catalog sources here.
 #
 # To add a local YAML file as a source, uncomment the entry of type 'file'.
@@ -12,4 +34,4 @@
 catalog:
   locations:
     - type: file
-      target: ../../catalog/catalog.yaml
+      target: ../../catalog/*.yaml
