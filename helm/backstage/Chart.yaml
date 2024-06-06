@@ -2,7 +2,7 @@ apiVersion: v1
 name: backstage
 description: The Giant Swarm developer portal.
 home: https://github.com/giantswarm/backstage
-version: '0.22.2'
+version: '0.23.0'
 appVersion: ''
 annotations:
   application.giantswarm.io/team: honeybadger
