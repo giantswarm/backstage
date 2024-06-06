@@ -24,9 +24,6 @@
     "prettier:check": "prettier --check .",
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new --scope internal",
-    "env-cmd:devportal": "env-cmd -f .env env-cmd -f .env.devportal",
-    "start:devportal": "yarn env-cmd:devportal yarn start --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
-    "start-backend:devportal": "yarn env-cmd:devportal yarn start-backend --config ../../app-config.yaml --config ../../app-config.devportal.yaml",
     "postinstall": "yarn patch-package"
   },
   "workspaces": {

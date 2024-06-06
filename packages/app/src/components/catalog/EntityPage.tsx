@@ -232,7 +232,11 @@ const serviceEntityPage = (
       {githubActionsContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/circleci" title="CircleCI">
+    <EntityLayout.Route
+      if={isCircleCIAvailable}
+      path="/circleci"
+      title="CircleCI"
+    >
       {circleCIContent}
     </EntityLayout.Route>
 
@@ -284,7 +288,11 @@ const defaultEntityPage = (
       {githubActionsContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/circleci" title="CircleCI">
+    <EntityLayout.Route
+      if={isCircleCIAvailable}
+      path="/circleci"
+      title="CircleCI"
+    >
       {circleCIContent}
     </EntityLayout.Route>
 
@@ -372,14 +380,18 @@ const groupPage = (
       <Grid container spacing={3}>
         {entityWarningContent}
 
-        <Grid item md={8} xs={12}>
-          <EntityGroupProfileCard variant="gridItem" />
-        </Grid>
-
         <EntitySwitch>
           <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
+            <Grid item md={8} xs={12}>
+              <EntityGroupProfileCard variant="gridItem" />
+            </Grid>
             <Grid item md={4} xs={12}>
               <EntityOpsgenieOnCallListCard title="Who is on-call" />
+            </Grid>
+          </EntitySwitch.Case>
+          <EntitySwitch.Case>
+            <Grid item md={12} xs={12}>
+              <EntityGroupProfileCard variant="gridItem" />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
