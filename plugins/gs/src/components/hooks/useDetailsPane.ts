@@ -11,7 +11,7 @@ type DetailsPaneParams = {
 };
 
 export const DEPLOYMENT_DETAILS_PANE_ID = 'deploymentDetails';
-export const CLUSTER_DETAILS_PANE_ID = 'clusterDetails';
+export const CLUSTER_ACCESS_PANE_ID = 'clusterAccess';
 
 export function useDetailsPane(paneId: string) {
   const [searchParams, setSearchParams] = useSearchParams();

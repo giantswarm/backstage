@@ -8,19 +8,19 @@ import { StructuredMetadataList } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { calculateClusterType } from '../utils';
 
-type ClusterDetailsProps = {
+type ClusterAccessProps = {
   installationName: string;
   gvk: CustomResourceMatcher;
   namespace: string;
   name: string;
 };
 
-export const ClusterDetails = ({
+export const ClusterAccess = ({
   installationName,
   gvk,
   namespace,
   name,
-}: ClusterDetailsProps) => {
+}: ClusterAccessProps) => {
   const {
     data: cluster,
     isLoading,

@@ -9,9 +9,9 @@ import {
 import { InstallationsWrapper } from '../../InstallationsWrapper';
 import { GSContext } from '../../GSContext';
 import { DetailsPane } from '../../UI';
-import { CLUSTER_DETAILS_PANE_ID } from '../../hooks';
+import { CLUSTER_ACCESS_PANE_ID } from '../../hooks';
 import { ClustersTable } from '../ClustersTable';
-import { ClusterDetails } from '../ClusterDetails';
+import { ClusterAccess } from '../ClusterAccess';
 
 export const ClustersPage = () => {
   return (
@@ -32,10 +32,10 @@ export const ClustersPage = () => {
             <ClustersTable />
           </InstallationsWrapper>
           <DetailsPane
-            paneId={CLUSTER_DETAILS_PANE_ID}
-            title="Cluster details"
+            paneId={CLUSTER_ACCESS_PANE_ID}
+            title="Cluster access"
             render={({ installationName, gvk, name, namespace }) => (
-              <ClusterDetails
+              <ClusterAccess
                 installationName={installationName}
                 gvk={gvk}
                 name={name}
