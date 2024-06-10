@@ -28,7 +28,7 @@ export const DeploymentStatusCard = ({
         title={
           <Box display="flex" alignItems="center">
             <IconWrapper color={iconColor}>{icon}</IconWrapper>
-            <Heading>{label}</Heading>
+            <Heading level="h3">{label}</Heading>
           </Box>
         }
         titleTypographyProps={{ variant: undefined }}

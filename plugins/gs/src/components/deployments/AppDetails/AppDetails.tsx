@@ -104,7 +104,7 @@ export const AppDetails = ({
         <Grid item>
           <Card>
             <CardHeader
-              title={<Heading>App CR details</Heading>}
+              title={<Heading level="h3">App CR details</Heading>}
               titleTypographyProps={{ variant: undefined }}
             />
             <CardContent>

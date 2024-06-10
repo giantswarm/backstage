@@ -46,7 +46,7 @@ export const HelmReleaseDetailsStatus = ({
     return (
       <Paper>
         <Box padding={2}>
-          <Heading>No status information available</Heading>
+          <Heading level="h3">No status information available</Heading>
         </Box>
       </Paper>
     );
