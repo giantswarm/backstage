@@ -12,6 +12,24 @@ const HeadingBase = withStyles(
   { name: 'Heading' },
 )(Typography) as typeof Typography;
 
+const HeadingH1 = withStyles(
+  () => ({
+    root: {
+      fontSize: '2rem',
+    },
+  }),
+  { name: 'HeadingH1' },
+)(HeadingBase) as typeof Typography;
+
+const HeadingH2 = withStyles(
+  () => ({
+    root: {
+      fontSize: '1.5rem',
+    },
+  }),
+  { name: 'HeadingH2' },
+)(HeadingBase) as typeof Typography;
+
 const HeadingH3 = withStyles(
   () => ({
     root: {
@@ -37,6 +55,10 @@ type HeadingProps = {
 
 export const Heading = ({ level, ...props }: HeadingProps) => {
   switch (level) {
+    case 'h1':
+      return <HeadingH1 component="h1" {...props} />;
+    case 'h2':
+      return <HeadingH2 component="h2" {...props} />;
     case 'h3':
       return <HeadingH3 component="h3" {...props} />;
     case 'h4':
