@@ -125,7 +125,7 @@ export const HelmReleaseDetails = ({
         <Grid item>
           <Card>
             <CardHeader
-              title={<Heading>HelmRelease details</Heading>}
+              title={<Heading level="h3">HelmRelease details</Heading>}
               titleTypographyProps={{ variant: undefined }}
             />
             <CardContent>

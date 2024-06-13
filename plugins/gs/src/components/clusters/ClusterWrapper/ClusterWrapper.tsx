@@ -1,26 +1,24 @@
 import React from 'react';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
-import { Card, CardContent, Grid } from '@material-ui/core';
-import { getClusterName } from '@internal/plugin-gs-common';
+import { Cluster } from '@internal/plugin-gs-common';
 import { useCluster } from '../../hooks';
-import { StructuredMetadataList } from '../../UI';
-import { toSentenceCase } from '../../utils/helpers';
-import { calculateClusterType } from '../utils';
 
-type ClusterDetailsProps = {
+type ClusterWrapperProps = {
   installationName: string;
   gvk: CustomResourceMatcher;
   namespace: string;
   name: string;
+  render(cluster: Cluster): React.JSX.Element;
 };
 
-export const ClusterDetails = ({
+export const ClusterWrapper = ({
   installationName,
   gvk,
   namespace,
   name,
-}: ClusterDetailsProps) => {
+  render,
+}: ClusterWrapperProps) => {
   const {
     data: cluster,
     isLoading,
@@ -52,25 +50,5 @@ export const ClusterDetails = ({
     );
   }
 
-  const clusterType = calculateClusterType(cluster, installationName);
-
-  return (
-    <div>
-      <Grid container direction="column">
-        <Grid item>
-          <Card>
-            <CardContent>
-              <StructuredMetadataList
-                metadata={{
-                  Installation: installationName,
-                  Cluster: getClusterName(cluster),
-                  Type: toSentenceCase(clusterType),
-                }}
-              />
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </div>
-  );
+  return render(cluster);
 };

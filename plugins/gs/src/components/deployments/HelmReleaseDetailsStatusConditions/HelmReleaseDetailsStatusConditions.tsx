@@ -91,7 +91,7 @@ const ConditionCard = ({
               ) : (
                 <StyledCancelOutlinedIcon />
               ))}
-            <Heading>{condition.type}</Heading>
+            <Heading level="h3">{condition.type}</Heading>
           </Box>
         }
         titleTypographyProps={{ variant: undefined }}
@@ -143,7 +143,7 @@ export const HelmReleaseDetailsStatusConditions = ({
     return (
       <Paper>
         <Box padding={2}>
-          <Heading>No status information available</Heading>
+          <Heading level="h3">No status information available</Heading>
         </Box>
       </Paper>
     );

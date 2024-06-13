@@ -22,7 +22,7 @@ import {
 } from '@internal/plugin-gs-common';
 import { clustersRouteRef } from '../../../routes';
 import {
-  CLUSTER_DETAILS_PANE_ID,
+  CLUSTER_ACCESS_PANE_ID,
   useClusters,
   useDetailsPane,
 } from '../../hooks';
@@ -64,7 +64,7 @@ const generatedColumns: TableColumn<Row>[] = [
     highlight: true,
     render: row => {
       const LinkWrapper = () => {
-        const { getRoute } = useDetailsPane(CLUSTER_DETAILS_PANE_ID);
+        const { getRoute } = useDetailsPane(CLUSTER_ACCESS_PANE_ID);
         const baseRoute = useRouteRef(clustersRouteRef);
         const to = getRoute(baseRoute(), {
           installationName: row.installationName,
