@@ -26,11 +26,11 @@ function getInstallationOrganizationNamespaces(
   );
 }
 
-export function useClusters() {
+export function useClusters(installations?: string[]) {
+  const { selectedInstallations: savedInstallations } = useInstallations();
+  const selectedInstallations = installations ?? savedInstallations;
   const { resources: organizations, initialLoading: isLoadingOrganizations } =
-    useOrganizations();
-
-  const { selectedInstallations } = useInstallations();
+    useOrganizations(selectedInstallations);
 
   const kubernetesApi = useApi(kubernetesApiRef);
 

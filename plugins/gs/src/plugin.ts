@@ -3,11 +3,18 @@ import {
   createRoutableExtension,
 } from '@backstage/core-plugin-api';
 
+import { createScaffolderFieldExtension } from '@backstage/plugin-scaffolder-react';
+
 import {
   clustersRouteRef,
   entityDeploymentsRouteRef,
   rootRouteRef,
 } from './routes';
+import {
+  ClusterPicker,
+  ClusterPickerSchema,
+  clusterPickerValidation,
+} from './components/scaffolder/ClusterPicker';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -35,5 +42,14 @@ export const EntityGSDeploymentsContent = gsPlugin.provide(
         m => m.EntityDeploymentsContent,
       ),
     mountPoint: entityDeploymentsRouteRef,
+  }),
+);
+
+export const GSClusterPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSClusterPicker',
+    component: ClusterPicker,
+    validation: clusterPickerValidation,
+    schema: ClusterPickerSchema,
   }),
 );

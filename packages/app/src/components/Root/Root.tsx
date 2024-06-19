@@ -27,6 +27,7 @@ import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { FluxIcon } from '@weaveworksoss/backstage-plugin-flux';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ConfigurationAvailable } from '../ConfigurationAvailable/ConfigurationAvailable';
+import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -77,7 +78,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <ConfigurationAvailable configKey="gs">
           <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
         </ConfigurationAvailable>
-
+        <SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
         {/* End global nav */}
       </SidebarGroup>
       <SidebarSpace />

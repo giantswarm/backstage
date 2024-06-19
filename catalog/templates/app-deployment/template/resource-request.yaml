@@ -1,0 +1,9 @@
+---
+apiVersion: example.promise.syntasso.io/v1
+kind: app
+metadata:
+  name: app-demo
+  namespace: default
+spec:
+  component: ${{values.component | dump}}
+  cluster: ${{values.cluster | dump}}

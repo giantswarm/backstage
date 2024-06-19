@@ -41,6 +41,7 @@ export const InstallationsWrapper = ({
           selectedInstallations={selectedInstallations}
           installationsStatuses={installationsStatuses}
           onChange={handleSelectedInstallationsChange}
+          multiple
         />
       </Grid>
       {errors && (

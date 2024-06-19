@@ -111,6 +111,7 @@ catalog:
         - Resource
         - System
         - User
+        - Template
 
 grafana:
   domain: https://example.com
