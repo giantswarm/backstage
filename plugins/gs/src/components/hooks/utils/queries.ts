@@ -1,4 +1,4 @@
-import { UseQueryResult } from '@tanstack/react-query';
+import { Query, QueryCache, UseQueryResult } from '@tanstack/react-query';
 
 export const getInstallationsQueriesInfo = <T>(
   installations: string[],
@@ -41,3 +41,38 @@ export const getInstallationsQueriesInfo = <T>(
     retry,
   };
 };
+
+export function getInstallationsStatuses(queryCache: QueryCache) {
+  const queries = queryCache.findAll({ type: 'active' });
+  const queriesByInstallationName = new Map<string, Query[]>();
+  queries.forEach(item => {
+    const key = item.queryKey[0] ? (item.queryKey[0] as string) : null;
+    if (key) {
+      const collection = queriesByInstallationName.get(key);
+      if (!collection) {
+        queriesByInstallationName.set(key, [item]);
+      } else {
+        collection.push(item);
+      }
+    }
+  });
+
+  return Array.from(queriesByInstallationName).map(
+    ([installationName, installationQueries]) => {
+      const errors = installationQueries
+        .filter(query => query.state.status === 'error')
+        .map(query => [query.queryKey.join('/'), query.state.error as Error]);
+
+      return {
+        installationName,
+        isLoading: installationQueries.some(
+          query => query.state.status === 'pending',
+        ),
+        isError: installationQueries.some(
+          query => query.state.status === 'error',
+        ),
+        errors: Object.fromEntries(errors),
+      };
+    },
+  );
+}
