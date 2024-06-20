@@ -9,6 +9,9 @@ export const useStyles = makeStyles({
   fullWidth: {
     maxWidth: '100%',
   },
+  installationsSelectorContainer: {
+    maxWidth: 350,
+  },
 });
 
 type InstallationsWrapperProps = {
@@ -35,11 +38,12 @@ export const InstallationsWrapper = ({
 
   return (
     <Grid container spacing={3} direction="column">
-      <Grid item>
+      <Grid item className={classes.installationsSelectorContainer}>
         <InstallationsSelector
           installations={installations}
           selectedInstallations={selectedInstallations}
           installationsStatuses={installationsStatuses}
+          multiple
           onChange={handleSelectedInstallationsChange}
         />
       </Grid>
