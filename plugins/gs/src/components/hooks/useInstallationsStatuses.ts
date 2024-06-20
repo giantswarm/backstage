@@ -1,5 +1,7 @@
-import { Query, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import useDebounce from 'react-use/esm/useDebounce';
+import { getInstallationsStatuses } from './utils/queries';
 
 export type InstallationStatus = {
   installationName: string;
@@ -11,60 +13,30 @@ export type InstallationStatus = {
 export const useInstallationsStatuses = (): {
   installationsStatuses: InstallationStatus[];
 } => {
-  const [installationsStatuses, setInstallationsStatuses] = useState<
-    InstallationStatus[]
-  >([]);
   const queryClient = useQueryClient();
   const queryCache = queryClient.getQueryCache();
+  const [installationsStatuses, setInstallationsStatuses] = useState<
+    InstallationStatus[]
+  >(getInstallationsStatuses(queryCache));
+  const [updatedAt, setUpdatedAt] = useState(0);
 
-  const installationsStatusesHash = JSON.stringify(installationsStatuses);
   useEffect(() => {
-    const unsubscribe = queryCache.subscribe(() => {
-      const queries = queryCache.findAll({ type: 'active' });
-      const queriesByInstallationName = new Map<string, Query[]>();
-      queries.forEach(item => {
-        const key = item.queryKey[0] ? (item.queryKey[0] as string) : null;
-        if (key) {
-          const collection = queriesByInstallationName.get(key);
-          if (!collection) {
-            queriesByInstallationName.set(key, [item]);
-          } else {
-            collection.push(item);
-          }
-        }
-      });
+    return queryCache.subscribe(() => {
+      setUpdatedAt(Date.now());
+    });
+  }, [queryCache]);
 
-      const statuses = Array.from(queriesByInstallationName).map(
-        ([installationName, installationQueries]) => {
-          const errors = installationQueries
-            .filter(query => query.state.status === 'error')
-            .map(query => [
-              query.queryKey.join('/'),
-              query.state.error as Error,
-            ]);
+  useDebounce(
+    () => {
+      const statuses = getInstallationsStatuses(queryCache);
 
-          return {
-            installationName,
-            isLoading: installationQueries.some(
-              query => query.state.status === 'pending',
-            ),
-            isError: installationQueries.some(
-              query => query.state.status === 'error',
-            ),
-            errors: Object.fromEntries(errors),
-          };
-        },
-      );
-
-      if (installationsStatusesHash !== JSON.stringify(statuses)) {
+      if (JSON.stringify(installationsStatuses) !== JSON.stringify(statuses)) {
         setInstallationsStatuses(statuses);
       }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [installationsStatusesHash, queryCache]);
+    },
+    200,
+    [updatedAt],
+  );
 
   return {
     installationsStatuses,

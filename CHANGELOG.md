@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - GS plugin: Allow to select only one installation in the InstallationsSelector component.
+- GS plugin: Refactor useInstallationsStatuses hook so the state updates are debounced by 200ms.
 
 ## [0.24.0] - 2024-06-13
 
