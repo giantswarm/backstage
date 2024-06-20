@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import {
   QueryClient,
   QueryClientConfig,
@@ -6,22 +6,29 @@ import {
 } from '@tanstack/react-query';
 
 export const GSContext = ({ children }: { children: ReactNode }) => {
-  const queryOptions: QueryClientConfig = {
-    defaultOptions: {
-      queries: {
-        refetchOnWindowFocus: false,
-        refetchOnReconnect: false,
-        retry: (_failureCount, error) => {
-          if ((error as Error).name === 'RejectedError') {
-            return false;
-          }
+  const queryOptions: QueryClientConfig = useMemo(
+    () => ({
+      defaultOptions: {
+        queries: {
+          refetchOnWindowFocus: false,
+          refetchOnReconnect: false,
+          retry: (_failureCount, error) => {
+            if ((error as Error).name === 'RejectedError') {
+              return false;
+            }
 
-          return true;
+            return true;
+          },
         },
       },
-    },
-  };
-  const queryClient = new QueryClient(queryOptions);
+    }),
+    [],
+  );
+
+  const queryClient = useMemo(
+    () => new QueryClient(queryOptions),
+    [queryOptions],
+  );
 
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

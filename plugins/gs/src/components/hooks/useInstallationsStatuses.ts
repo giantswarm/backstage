@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import useDebounce from 'react-use/esm/useDebounce';
+import debounce from 'lodash/debounce';
 import { getInstallationsStatuses } from './utils/queries';
 
 export type InstallationStatus = {
@@ -18,25 +18,19 @@ export const useInstallationsStatuses = (): {
   const [installationsStatuses, setInstallationsStatuses] = useState<
     InstallationStatus[]
   >(getInstallationsStatuses(queryCache));
-  const [updatedAt, setUpdatedAt] = useState(0);
 
+  const installationsStatusesHash = JSON.stringify(installationsStatuses);
   useEffect(() => {
-    return queryCache.subscribe(() => {
-      setUpdatedAt(Date.now());
-    });
-  }, [queryCache]);
-
-  useDebounce(
-    () => {
+    const debouncedUpdate = debounce(() => {
       const statuses = getInstallationsStatuses(queryCache);
 
-      if (JSON.stringify(installationsStatuses) !== JSON.stringify(statuses)) {
+      if (installationsStatusesHash !== JSON.stringify(statuses)) {
         setInstallationsStatuses(statuses);
       }
-    },
-    200,
-    [updatedAt],
-  );
+    }, 200);
+
+    return queryCache.subscribe(debouncedUpdate);
+  }, [installationsStatusesHash, queryCache]);
 
   return {
     installationsStatuses,

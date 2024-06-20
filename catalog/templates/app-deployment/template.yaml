@@ -1,0 +1,87 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: app-deployment
+  title: App Deployment
+  description: Publish a PR with Kratix resource request to deploy an app to a cluster.
+spec:
+  owner: team-honeybadger
+  type: service deployment
+
+  parameters:
+    - title: Choose an application
+      required:
+        - component
+      properties:
+        component:
+          title: Application
+          type: string
+          description: Select application to deploy
+          ui:field: EntityPicker
+          ui:autofocus: true
+          ui:options:
+            defaultNamespace: giantswarm
+            defaultKind: Component
+            catalogFilter:
+              - kind: Component
+                metadata.namespace: giantswarm
+        # description:
+        #   title: Description
+        #   type: string
+        #   description: Description of the component
+        # targetPath:
+        #   title: Target Path in repo
+        #   type: string
+        #   description: Name of the directory to create in the repository
+    - title: Choose a cluster
+      required:
+        - cluster
+      properties:
+        cluster:
+          type: string
+          ui:field: GSClusterPicker
+    - title: Choose a location
+      required:
+        - repoUrl
+      properties:
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+            allowedOwners:
+              - giantswarm
+            allowedRepos:
+              - backstage
+            requestUserCredentials:
+              secretsKey: USER_OAUTH_TOKEN
+
+  steps:
+    - id: fetch-base
+      name: Fetch Base
+      action: fetch:template
+      input:
+        url: ./template
+        values:
+          name: ${{parameters.name}}
+
+    - id: publish
+      name: Publish
+      action: publish:github:pull-request
+      input:
+        repoUrl: ${{ parameters.repoUrl }}
+        title: 'Create new project: ${{parameters.name}}'
+        branchName: create-kratix-app-demo-${{parameters.name}}
+        description: |
+          ### Kratix App resource request: ${{parameters.name}}
+
+          ${{ parameters.description if parameters.description }}
+        targetPath: catalog
+        token: ${{ secrets.USER_OAUTH_TOKEN }}
+
+  output:
+    links:
+      - url: ${{steps.publish.output.remoteUrl}}
+        title: 'Go to PR'

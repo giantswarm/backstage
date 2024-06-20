@@ -101,8 +101,9 @@ async function checkListPermissions(
   };
 }
 
-export function useOrganizations() {
-  const { selectedInstallations } = useInstallations();
+export function useOrganizations(installations?: string[]) {
+  const { selectedInstallations: savedInstallations } = useInstallations();
+  const selectedInstallations = installations ?? savedInstallations;
   const kubernetesApi = useApi(kubernetesApiRef);
   const queries = useQueries({
     queries: selectedInstallations.flatMap(installationName => {
