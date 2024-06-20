@@ -10,6 +10,7 @@ import {
   catalogImportPlugin,
 } from '@backstage/plugin-catalog-import';
 import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
+import { ScaffolderFieldExtensions } from '@backstage/plugin-scaffolder-react';
 import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
 import {
@@ -40,7 +41,11 @@ import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
 import { FluxRuntimePage } from '@weaveworksoss/backstage-plugin-flux';
-import { GSClustersPage, GSProviderSettings } from '@internal/plugin-gs';
+import {
+  GSClusterPickerFieldExtension,
+  GSClustersPage,
+  GSProviderSettings,
+} from '@internal/plugin-gs';
 
 const app = createApp({
   apis,
@@ -117,7 +122,11 @@ const routes = (
       path="/docs/:namespace/:kind/:name/*"
       element={<TechDocsReaderPage />}
     />
-    <Route path="/create" element={<ScaffolderPage />} />
+    <Route path="/create" element={<ScaffolderPage />}>
+      <ScaffolderFieldExtensions>
+        <GSClusterPickerFieldExtension />
+      </ScaffolderFieldExtensions>
+    </Route>
     <Route
       path="/catalog-import"
       element={

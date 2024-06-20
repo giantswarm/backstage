@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GS plugin: Add scaffolder custom field extension for picking a workload cluster.
+
 ### Changed
 
 - GS plugin: Allow to select only one installation in the InstallationsSelector component.
