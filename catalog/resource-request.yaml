@@ -1,0 +1,9 @@
+---
+apiVersion: example.promise.syntasso.io/v1
+kind: app-deployment
+metadata:
+  name: app-deployment
+  namespace: default
+spec:
+  app: "backstage"
+  cluster: "gazelle/operations"
