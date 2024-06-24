@@ -59,4 +59,4 @@ e2e-test-report/
 
 /volumes
 
-/catalog/*.yaml
+/catalog
