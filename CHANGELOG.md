@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add `plugin-scaffolder-backend-module-gs` backend module with custom `parseClusterRef` filter for scaffolder plugin.
+
+### Removed
+
+- Clean up catalog templates.
+
 ## [0.25.0] - 2024-06-20
 
 ### Added
