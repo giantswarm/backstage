@@ -1,0 +1,17 @@
+---
+apiVersion: promise.platform.giantswarm.io/v1beta1
+kind: githubrepo
+metadata:
+  name: my-go-project-1
+spec:
+  destinationNamespace: default
+  repository:
+    name: "dsfsd"
+    owner: DemoTechInc
+    description: 
+    templateSource: giantswarm/devplatform-template-go-service
+    visibility: private
+  registryInfoConfigMapRef:
+    name: github-oci-registry-info
+  githubTokenSecretRef:
+    name: dev-platform-gh-access
