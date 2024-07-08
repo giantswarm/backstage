@@ -146,7 +146,11 @@ const routes = (
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route
       path="/opsgenie"
-      element={<OpsgeniePage onCallListCardsCount={100} />}
+      element={
+        <GSFeatureEnabled feature="opsgenie">
+          <OpsgeniePage onCallListCardsCount={100} />
+        </GSFeatureEnabled>
+      }
     />
     <Route path="/clusters" element={<GSClustersPage />} />
     <FeatureFlagged with="show-flux-runtime">

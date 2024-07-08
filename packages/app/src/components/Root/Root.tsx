@@ -70,9 +70,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         {/* Global nav, not org-specific */}
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-        <ConfigurationAvailable configKey="opsgenie.domain">
+        <GSFeatureEnabled feature="opsgenie">
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
-        </ConfigurationAvailable>
+        </GSFeatureEnabled>
         <FeatureFlagged with="show-flux-runtime">
           <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
         </FeatureFlagged>
