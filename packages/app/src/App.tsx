@@ -5,10 +5,6 @@ import {
   CatalogIndexPage,
   catalogPlugin,
 } from '@backstage/plugin-catalog';
-import {
-  CatalogImportPage,
-  catalogImportPlugin,
-} from '@backstage/plugin-catalog-import';
 import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
 import { ScaffolderFieldExtensions } from '@backstage/plugin-scaffolder-react';
 import { orgPlugin } from '@backstage/plugin-org';
@@ -32,8 +28,6 @@ import { AlertDisplay, OAuthRequestDialog } from '@backstage/core-components';
 import { createApp } from '@backstage/app-defaults';
 import { AppRouter, FeatureFlagged, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
-import { RequirePermission } from '@backstage/plugin-permission-react';
-import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/alpha';
 
 import { githubAuthApiRef } from '@backstage/core-plugin-api';
 import { SignInPage } from '@backstage/core-components';
@@ -44,6 +38,7 @@ import { FluxRuntimePage } from '@weaveworksoss/backstage-plugin-flux';
 import {
   GSClusterPickerFieldExtension,
   GSClustersPage,
+  GSFeatureEnabled,
   GSProviderSettings,
 } from '@internal/plugin-gs';
 
@@ -69,9 +64,6 @@ const app = createApp({
     bind(catalogPlugin.externalRoutes, {
       createComponent: scaffolderPlugin.routes.root,
       viewTechDoc: techdocsPlugin.routes.docRoot,
-    });
-    bind(scaffolderPlugin.externalRoutes, {
-      registerComponent: catalogImportPlugin.routes.importPage,
     });
     bind(orgPlugin.externalRoutes, {
       catalogIndex: catalogPlugin.routes.catalogIndex,
@@ -122,19 +114,19 @@ const routes = (
       path="/docs/:namespace/:kind/:name/*"
       element={<TechDocsReaderPage />}
     />
-    <Route path="/create" element={<ScaffolderPage />}>
+
+    <Route
+      path="/create"
+      element={
+        <GSFeatureEnabled feature="scaffolder">
+          <ScaffolderPage />
+        </GSFeatureEnabled>
+      }
+    >
       <ScaffolderFieldExtensions>
         <GSClusterPickerFieldExtension />
       </ScaffolderFieldExtensions>
     </Route>
-    <Route
-      path="/catalog-import"
-      element={
-        <RequirePermission permission={catalogEntityCreatePermission}>
-          <CatalogImportPage />
-        </RequirePermission>
-      }
-    />
     <Route path="/search" element={<SearchPage />}>
       {searchPage}
     </Route>

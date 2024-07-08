@@ -7,6 +7,7 @@ export {
 } from './plugin';
 export { gsAuthApiRef, GSAuth } from './apis';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
+export { FeatureEnabled as GSFeatureEnabled } from './components/FeatureEnabled';
 export {
   isEntityDeploymentsAvailable as isEntityGSDeploymentsAvailable,
   isEntityLatestReleaseAvailable as isEntityGSLatestReleaseAvailable,
