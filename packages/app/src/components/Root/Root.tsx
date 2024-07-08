@@ -79,7 +79,11 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
           <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
         </FeatureFlagged>
         <FeatureFlagged with="show-software-templates">
-          <SidebarItem icon={CreateComponentIcon} to="create" text="Create..." /> 
+          <SidebarItem
+            icon={CreateComponentIcon}
+            to="create"
+            text="Create..."
+          />
         </FeatureFlagged>
 
         {/* End global nav */}

@@ -114,7 +114,7 @@ const app = createApp({
 const createHeaderOptions = {
   pageTitleOverride: 'Create things',
   title: 'Create things',
-  subtitle: 'Create new things from templates',  
+  subtitle: 'Create new things from templates',
 };
 
 const routes = (
@@ -134,7 +134,10 @@ const routes = (
       path="/docs/:namespace/:kind/:name/*"
       element={<TechDocsReaderPage />}
     />
-    <Route path="/create" element={<ScaffolderPage headerOptions={createHeaderOptions} />}>
+    <Route
+      path="/create"
+      element={<ScaffolderPage headerOptions={createHeaderOptions} />}
+    >
       <ScaffolderFieldExtensions>
         <GSClusterPickerFieldExtension />
       </ScaffolderFieldExtensions>
