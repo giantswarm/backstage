@@ -80,6 +80,12 @@ const app = createApp({
   featureFlags: [
     {
       pluginId: '',
+      name: 'show-software-templates',
+      description:
+        'Show the "Create..." main menu item and allow using software templates.',
+    },
+    {
+      pluginId: '',
       name: 'show-kubernetes-resources',
       description:
         'Show Kubernetes resources for service components. Requires matching labels on resources.',
