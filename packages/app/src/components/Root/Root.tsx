@@ -67,6 +67,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
       <SidebarGroup label="Menu" icon={<MenuIcon />}>
         {/* Global nav, not org-specific */}
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
+        <ConfigurationAvailable configKey="gs">
+          <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
+        </ConfigurationAvailable>
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
         <ConfigurationAvailable configKey="opsgenie.domain">
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
@@ -74,9 +77,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <FeatureFlagged with="show-flux-runtime">
           <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
         </FeatureFlagged>
-        <ConfigurationAvailable configKey="gs">
-          <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
-        </ConfigurationAvailable>
 
         {/* End global nav */}
       </SidebarGroup>
