@@ -39,6 +39,9 @@ WORKDIR /app
 # This switches many Node.js dependencies to production mode.
 ENV NODE_ENV production
 
+# This is required by scaffolder-backend plugin.
+ENV NODE_OPTIONS --no-node-snapshot
+
 # Used in backstage configuration files
 ENV BACKSTAGE_ENVIRONMENT production
 
