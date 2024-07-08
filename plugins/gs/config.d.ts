@@ -12,5 +12,12 @@ export interface Config {
             gitopsUrl?: string;
           };
         };
+    /** @visibility frontend */
+    features?: {
+      [featureName: string]: {
+        /** @visibility frontend */
+        enabled: boolean;
+      };
+    };
   };
 }

@@ -1,5 +1,6 @@
 import React, { PropsWithChildren } from 'react';
 import { makeStyles } from '@material-ui/core';
+import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import HomeIcon from '@material-ui/icons/Home';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import LogoFull from './LogoFull';
@@ -27,6 +28,7 @@ import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { FluxIcon } from '@weaveworksoss/backstage-plugin-flux';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ConfigurationAvailable } from '../ConfigurationAvailable/ConfigurationAvailable';
+import { GSFeatureEnabled } from '@internal/plugin-gs';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -77,6 +79,13 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <ConfigurationAvailable configKey="gs">
           <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
         </ConfigurationAvailable>
+        <GSFeatureEnabled feature="scaffolder">
+          <SidebarItem
+            icon={CreateComponentIcon}
+            to="create"
+            text="Create..."
+          />
+        </GSFeatureEnabled>
 
         {/* End global nav */}
       </SidebarGroup>

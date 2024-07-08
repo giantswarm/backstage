@@ -44,6 +44,7 @@ import { FluxRuntimePage } from '@weaveworksoss/backstage-plugin-flux';
 import {
   GSClusterPickerFieldExtension,
   GSClustersPage,
+  GSFeatureEnabled,
   GSProviderSettings,
 } from '@internal/plugin-gs';
 
@@ -122,7 +123,15 @@ const routes = (
       path="/docs/:namespace/:kind/:name/*"
       element={<TechDocsReaderPage />}
     />
-    <Route path="/create" element={<ScaffolderPage />}>
+
+    <Route
+      path="/create"
+      element={
+        <GSFeatureEnabled feature="scaffolder">
+          <ScaffolderPage />
+        </GSFeatureEnabled>
+      }
+    >
       <ScaffolderFieldExtensions>
         <GSClusterPickerFieldExtension />
       </ScaffolderFieldExtensions>
