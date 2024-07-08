@@ -1,5 +1,6 @@
 import React, { PropsWithChildren } from 'react';
 import { makeStyles } from '@material-ui/core';
+import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import HomeIcon from '@material-ui/icons/Home';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import LogoFull from './LogoFull';
@@ -76,6 +77,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         </ConfigurationAvailable>
         <FeatureFlagged with="show-flux-runtime">
           <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
+        </FeatureFlagged>
+        <FeatureFlagged with="show-software-templates">
+          <SidebarItem icon={CreateComponentIcon} to="create" text="Create..." /> 
         </FeatureFlagged>
 
         {/* End global nav */}
