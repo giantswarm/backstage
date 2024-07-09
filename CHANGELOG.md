@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2024-07-09
+
 ### Removed
 
 - Remove Flux plugin and related feature flags.
@@ -551,7 +553,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/giantswarm/backstage/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/giantswarm/backstage/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/giantswarm/backstage/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/giantswarm/backstage/compare/v0.25.0...v0.26.0
