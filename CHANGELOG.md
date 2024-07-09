@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Remove Flux plugin and related feature flags.
+- Remove link to GitOps UI for deployments.
+
 ## [0.28.0] - 2024-07-08
 
 ### Added

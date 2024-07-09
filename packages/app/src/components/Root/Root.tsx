@@ -5,7 +5,6 @@ import HomeIcon from '@material-ui/icons/Home';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
-import { FeatureFlagged } from '@backstage/core-app-api';
 import {
   Settings as SidebarSettings,
   UserSettingsSignInAvatar,
@@ -25,7 +24,6 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
-import { FluxIcon } from '@weaveworksoss/backstage-plugin-flux';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ConfigurationAvailable } from '../ConfigurationAvailable/ConfigurationAvailable';
 import { GSFeatureEnabled } from '@internal/plugin-gs';
@@ -73,9 +71,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <GSFeatureEnabled feature="opsgenie">
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
         </GSFeatureEnabled>
-        <FeatureFlagged with="show-flux-runtime">
-          <SidebarItem icon={FluxIcon} to="flux-runtime" text="Flux Runtime" />
-        </FeatureFlagged>
         <ConfigurationAvailable configKey="gs">
           <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
         </ConfigurationAvailable>

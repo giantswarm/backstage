@@ -49,7 +49,6 @@
     "@material-ui/icons": "^4.9.1",
     "@roadiehq/backstage-plugin-github-pull-requests": "^2.5.15",
     "@sentry/react": "^7.61.1",
-    "@weaveworksoss/backstage-plugin-flux": "^0.8.5",
     "history": "^5.0.0",
     "react": "^18.0.2",
     "react-dom": "^18.0.2",
