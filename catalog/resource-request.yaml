@@ -1,0 +1,17 @@
+---
+apiVersion: promise.platform.giantswarm.io/v1beta1
+kind: githubrepo
+metadata:
+  name: "test-go-service"
+spec:
+  destinationNamespace: default
+  repository:
+    name: "test-go-service"
+    owner: DemoTechInc
+    description: "Go service description"
+    templateSource: giantswarm/devplatform-template-go-service
+    visibility: private
+  registryInfoConfigMapRef:
+    name: github-oci-registry-info
+  githubTokenSecretRef:
+    name: dev-platform-gh-access
