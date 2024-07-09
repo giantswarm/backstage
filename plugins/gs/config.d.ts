@@ -8,8 +8,6 @@ export interface Config {
           [installationName: string]: {
             /** @visibility frontend */
             pipeline: string;
-            /** @visibility frontend */
-            gitopsUrl?: string;
           };
         };
     /** @visibility frontend */

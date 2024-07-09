@@ -31,7 +31,6 @@ import {
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { DateComponent, Version } from '../../UI';
-import { DeploymentActions } from '../DeploymentActions';
 import { AppStatus } from '../AppStatus';
 import { HelmReleaseStatus } from '../HelmReleaseStatus';
 
@@ -164,21 +163,6 @@ const generatedColumns: TableColumn<Row>[] = [
       );
     },
     ...sortAndFilterOptions(row => (row.status ?? '').replace(/-/g, ' ')),
-  },
-  {
-    title: 'Actions',
-    render: row => {
-      return (
-        <DeploymentActions
-          installationName={row.installationName}
-          clusterName={row.clusterName}
-          kind={row.kind}
-          name={row.name}
-          namespace={row.namespace}
-        />
-      );
-    },
-    width: '24px',
   },
 ];
 

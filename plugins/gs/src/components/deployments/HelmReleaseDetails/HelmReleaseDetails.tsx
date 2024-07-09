@@ -1,7 +1,6 @@
 import React from 'react';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
 import {
-  Box,
   Card,
   CardContent,
   CardHeader,
@@ -20,12 +19,7 @@ import {
 } from '@internal/plugin-gs-common';
 import { useHelmRelease } from '../../hooks';
 import { formatVersion } from '../../utils/helpers';
-import {
-  DateComponent,
-  Heading,
-  GitOpsUILink,
-  StructuredMetadataList,
-} from '../../UI';
+import { DateComponent, Heading, StructuredMetadataList } from '../../UI';
 import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
 import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
 
@@ -87,17 +81,6 @@ export const HelmReleaseDetails = ({
 
   return (
     <div>
-      <Box display="flex" marginBottom={2}>
-        <GitOpsUILink
-          installationName={installationName}
-          clusterName={installationName}
-          kind="helmrelease"
-          name={name}
-          namespace={namespace}
-          text="Open this application in the GitOps UI"
-        />
-      </Box>
-
       <Grid container direction="column">
         <Grid item>
           <Card>

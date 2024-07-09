@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box } from '@material-ui/core';
-import { GitOpsUILink } from '../../UI';
 
 type DeploymentActionsProps = {
   installationName: string;
@@ -10,24 +9,6 @@ type DeploymentActionsProps = {
   namespace?: string;
 };
 
-export const DeploymentActions = ({
-  installationName,
-  kind,
-  name,
-  namespace,
-}: DeploymentActionsProps) => {
-  return (
-    <Box display="flex" alignItems="center">
-      {kind === 'helmrelease' && (
-        <GitOpsUILink
-          installationName={installationName}
-          clusterName={installationName}
-          kind={kind}
-          name={name}
-          namespace={namespace}
-          tooltip="Open this application in the GitOps UI"
-        />
-      )}
-    </Box>
-  );
+export const DeploymentActions = (_props: DeploymentActionsProps) => {
+  return <Box display="flex" alignItems="center" />;
 };

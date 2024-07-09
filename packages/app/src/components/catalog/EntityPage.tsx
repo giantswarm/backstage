@@ -62,10 +62,6 @@ import {
 
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
 import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
-import {
-  EntityFluxDeploymentsCard,
-  EntityFluxSourcesCard,
-} from '@weaveworksoss/backstage-plugin-flux';
 import { EntityGSDeploymentsContent } from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -205,18 +201,6 @@ const serviceEntityPage = (
     <EntityLayout.Route path="/deployments" title="Deployments">
       <EntityGSDeploymentsContent />
     </EntityLayout.Route>
-
-    <FeatureFlagged with="show-flux-deployments">
-      <EntityLayout.Route path="/flux-deployments" title="Flux Deployments">
-        <EntityFluxDeploymentsCard />
-      </EntityLayout.Route>
-    </FeatureFlagged>
-
-    <FeatureFlagged with="show-flux-sources">
-      <EntityLayout.Route path="/flux-sources" title="Flux Sources">
-        <EntityFluxSourcesCard />
-      </EntityLayout.Route>
-    </FeatureFlagged>
 
     <FeatureFlagged with="show-kubernetes-resources">
       <EntityLayout.Route path="/kubernetes" title="Kubernetes">

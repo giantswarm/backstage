@@ -26,7 +26,7 @@ import { Root } from './components/Root';
 
 import { AlertDisplay, OAuthRequestDialog } from '@backstage/core-components';
 import { createApp } from '@backstage/app-defaults';
-import { AppRouter, FeatureFlagged, FlatRoutes } from '@backstage/core-app-api';
+import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 
 import { githubAuthApiRef } from '@backstage/core-plugin-api';
@@ -34,7 +34,6 @@ import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
-import { FluxRuntimePage } from '@weaveworksoss/backstage-plugin-flux';
 import {
   GSClusterPickerFieldExtension,
   GSClustersPage,
@@ -75,24 +74,6 @@ const app = createApp({
       name: 'show-kubernetes-resources',
       description:
         'Show Kubernetes resources for service components. Requires matching labels on resources.',
-    },
-    {
-      pluginId: '',
-      name: 'show-flux-deployments',
-      description:
-        'Show Flux deployments for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
-    },
-    {
-      pluginId: '',
-      name: 'show-flux-sources',
-      description:
-        'Show Flux sources for service components (from weaveworks/backstage-plugin-flux). Requires matching labels on resources.',
-    },
-    {
-      pluginId: '',
-      name: 'show-flux-runtime',
-      description:
-        'Show Flux Runtime page (from weaveworks/backstage-plugin-flux).',
     },
   ],
 });
@@ -153,9 +134,6 @@ const routes = (
       }
     />
     <Route path="/clusters" element={<GSClustersPage />} />
-    <FeatureFlagged with="show-flux-runtime">
-      <Route path="/flux-runtime" element={<FluxRuntimePage />} />
-    </FeatureFlagged>
   </FlatRoutes>
 );
 

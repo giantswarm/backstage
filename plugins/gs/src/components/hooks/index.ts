@@ -4,7 +4,6 @@ export * from './useCluster';
 export * from './useClusters';
 export * from './useDeploymentStatusDetails';
 export * from './useDetailsPane';
-export * from './useGitOpsUIDeepLink';
 export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
