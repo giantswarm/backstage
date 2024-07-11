@@ -65,7 +65,6 @@ const providerOptions: { [key: string]: string } = {
   capv: 'CAPV',
   capz: 'CAPZ',
   aws: 'AWS vintage',
-  azure: 'Azure vintage',
   'cloud-director': 'Cloud Director vintage',
   vsphere: 'VSphere vintage',
   kvm: 'KVM',
