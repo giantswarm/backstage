@@ -145,7 +145,6 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       actions={actions || defaultActions}
       tableOptions={{
         ...tableOptions,
-        padding: 'default',
         actionsCellStyle: {
           padding: '0 18px',
         },
