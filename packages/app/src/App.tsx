@@ -20,6 +20,7 @@ import {
 } from '@backstage/plugin-user-settings';
 import { apis } from './apis';
 import { CustomCatalogPage } from './components/catalog/CustomCatalogPage';
+import { InstallationsIndexPage } from './components/catalog/InstallationsIndexPage';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
@@ -75,6 +76,12 @@ const app = createApp({
       description:
         'Show Kubernetes resources for service components. Requires matching labels on resources.',
     },
+    {
+      pluginId: '',
+      name: 'show-installations-page',
+      description:
+        'Show Giant Swarm installations page in the main menu.',
+    },
   ],
 });
 
@@ -83,6 +90,9 @@ const routes = (
     <Route path="/" element={<Navigate to="catalog" />} />
     <Route path="/catalog" element={<CatalogIndexPage />}>
       <CustomCatalogPage />
+    </Route>
+    <Route path="/installations" element={<CatalogIndexPage initialKind="Resource" tableOptions={{tableLayout: 'fixed'}}/>}>
+      <InstallationsIndexPage />
     </Route>
     <Route
       path="/catalog/:namespace/:kind/:name"
