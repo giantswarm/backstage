@@ -49,7 +49,7 @@ export function CustomCatalogPage(props: CustomCatalogPageProps) {
     actions,
     initiallySelectedFilter = 'owned',
     initialKind = 'component',
-    tableOptions = {},
+    tableOptions = {padding: 'default'},
     emptyContent,
     ownerPickerMode,
   } = props;
