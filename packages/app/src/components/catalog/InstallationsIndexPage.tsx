@@ -209,7 +209,7 @@ export function InstallationsIndexPage(props: InstallationsIndexPageProps) {
     actions,
     initialKind = 'Resource',
     initialType = 'installation',
-    tableOptions = { padding: 'dense', pageSize: 100 },
+    tableOptions = { padding: 'dense', pageSize: 50 },
     emptyContent,
   } = props;
   const orgName =
