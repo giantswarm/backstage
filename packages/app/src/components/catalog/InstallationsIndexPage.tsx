@@ -78,19 +78,17 @@ const columnsFunc: CatalogTableColumnsFunc = entityListContext => {
       {
         title: 'Customer',
         render: ({ entity }) =>
-          entity.metadata?.labels?.['giantswarm.io/customer'] ?? 'N/A',
+          entity.metadata?.labels?.['giantswarm.io/customer'] ?? '',
       },
       {
         title: 'Provider',
         render: ({ entity }) =>
-          <code>{entity.metadata?.labels?.['giantswarm.io/provider']}</code> ??
-          'N/A',
+          entity.metadata?.labels?.['giantswarm.io/provider'] ?? '',
       },
       {
         title: 'Pipeline',
         render: ({ entity }) =>
-          <code>{entity.metadata?.labels?.['giantswarm.io/pipeline']}</code> ??
-          'N/A',
+          entity.metadata?.labels?.['giantswarm.io/pipeline'] ?? '',
       },
       {
         title: 'Region',
