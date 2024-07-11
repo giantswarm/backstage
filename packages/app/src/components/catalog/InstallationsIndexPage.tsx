@@ -30,7 +30,11 @@ import {
   useEntityList,
 } from '@backstage/plugin-catalog-react';
 import { Entity } from '@backstage/catalog-model';
-import { CatalogTable, CatalogTableColumnsFunc, CatalogTableRow } from '@backstage/plugin-catalog';
+import {
+  CatalogTable,
+  CatalogTableColumnsFunc,
+  CatalogTableRow,
+} from '@backstage/plugin-catalog';
 import React, { ReactNode } from 'react';
 import { CustomCatalogTable } from './CustomCatalogTable';
 
@@ -56,33 +60,38 @@ type CustomFilters = DefaultEntityFilters & {
 };
 
 // TODO: move these into a common place, where they canb be used for the entity page, too
-const providerOptions: { [key: string]: string; } = {
-  'capa': 'CAPA',
-  'capv': 'CAPV',
-  'capz': 'CAPZ',
-  'aws': 'AWS vintage',
-  'azure': 'Azure vintage',
+const providerOptions: { [key: string]: string } = {
+  capa: 'CAPA',
+  capv: 'CAPV',
+  capz: 'CAPZ',
+  aws: 'AWS vintage',
+  azure: 'Azure vintage',
   'cloud-director': 'Cloud Director vintage',
-  'vsphere': 'VSphere vintage',
-  'kvm': 'KVM',
+  vsphere: 'VSphere vintage',
+  kvm: 'KVM',
 };
 const pipelineOptions = ['testing', 'stable', 'stable-testing', 'ephemeral'];
 
 const columnsFunc: CatalogTableColumnsFunc = entityListContext => {
   if (entityListContext.filters.kind?.value === 'Resource') {
     return [
-      CatalogTable.columns.createNameColumn({defaultKind: 'resource'}),
+      CatalogTable.columns.createNameColumn({ defaultKind: 'resource' }),
       {
         title: 'Customer',
-        render: ({ entity }) => entity.metadata?.labels?.['giantswarm.io/customer'] ?? 'N/A',
+        render: ({ entity }) =>
+          entity.metadata?.labels?.['giantswarm.io/customer'] ?? 'N/A',
       },
       {
         title: 'Provider',
-        render: ({ entity }) => <code>{entity.metadata?.labels?.['giantswarm.io/provider']}</code> ?? 'N/A',
+        render: ({ entity }) =>
+          <code>{entity.metadata?.labels?.['giantswarm.io/provider']}</code> ??
+          'N/A',
       },
       {
         title: 'Pipeline',
-        render: ({ entity }) => <code>{entity.metadata?.labels?.['giantswarm.io/pipeline']}</code> ?? 'N/A',
+        render: ({ entity }) =>
+          <code>{entity.metadata?.labels?.['giantswarm.io/pipeline']}</code> ??
+          'N/A',
       },
     ];
   }
@@ -196,7 +205,7 @@ export function InstallationsIndexPage(props: InstallationsIndexPageProps) {
     actions,
     initialKind = 'Resource',
     initialType = 'installation',
-    tableOptions = {padding: 'dense', pageSize: 100},
+    tableOptions = { padding: 'dense', pageSize: 100 },
     emptyContent,
   } = props;
   const orgName =

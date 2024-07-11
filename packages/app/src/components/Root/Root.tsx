@@ -70,7 +70,11 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
         <FeatureFlagged with="show-installations-page">
-          <SidebarItem icon={GiantSwarmIcon} to="installations" text="Installations" />
+          <SidebarItem
+            icon={GiantSwarmIcon}
+            to="installations"
+            text="Installations"
+          />
         </FeatureFlagged>
         <GSFeatureEnabled feature="opsgenie">
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />

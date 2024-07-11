@@ -79,8 +79,7 @@ const app = createApp({
     {
       pluginId: '',
       name: 'show-installations-page',
-      description:
-        'Show Giant Swarm installations page in the main menu.',
+      description: 'Show Giant Swarm installations page in the main menu.',
     },
   ],
 });
@@ -91,7 +90,15 @@ const routes = (
     <Route path="/catalog" element={<CatalogIndexPage />}>
       <CustomCatalogPage />
     </Route>
-    <Route path="/installations" element={<CatalogIndexPage initialKind="Resource" tableOptions={{tableLayout: 'fixed'}}/>}>
+    <Route
+      path="/installations"
+      element={
+        <CatalogIndexPage
+          initialKind="Resource"
+          tableOptions={{ tableLayout: 'fixed' }}
+        />
+      }
+    >
       <InstallationsIndexPage />
     </Route>
     <Route
