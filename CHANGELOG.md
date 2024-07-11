@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add experimental "Installations" page, visible with feature flag `show-installations-page`.
+
 ## [0.29.0] - 2024-07-09
 
 ### Removed
