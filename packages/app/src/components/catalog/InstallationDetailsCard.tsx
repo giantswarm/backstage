@@ -1,55 +1,48 @@
 import React from 'react';
+import { Grid } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core/styles';
 import { InfoCard, MarkdownContent } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
+import { AboutField } from '@backstage/plugin-catalog';
 
-export function RowList({ children }: { children: any }) {
-  return <div className="RowList">{children}</div>;
-}
 
-export function Row({ label, children }: { label: string; children: any }) {
-  return (
-    <div className="Row" style={{ marginTop: 15, marginBottom: 15 }}>
-      <div className="label">
-        <strong>{label}</strong>
-      </div>
-      <div>{children}</div>
-    </div>
-  );
-}
+const useStyles = makeStyles({
+  notSpecified: {
+    color: '#aaa',
+  },
+});
 
 export function InstallationDetailsCard() {
+  const classes = useStyles();
+
+  const notSpecified = <span className={classes.notSpecified}>Not specified</span>;
+
   const { entity } = useEntity();
   const sourceUrl = `https://github.com/giantswarm/installations/blob/master/${entity.metadata.name}/cluster.yaml`;
 
   return (
     <InfoCard title="Installation details">
-      <RowList>
-        <Row label="Code name">{entity.metadata.name}</Row>
-        <Row label="Customer">
-          {entity.metadata.labels?.['giantswarm.io/customer']}
-        </Row>
-        <Row label="Provider">
-          {entity.metadata.labels?.['giantswarm.io/provider']}
-        </Row>
-        <Row label="Pipeline">
-          {entity.metadata.labels?.['giantswarm.io/pipeline']}
-        </Row>
-        <Row label="Region">
-          {entity.metadata.labels?.['giantswarm.io/region'] ?? (
-            <em>not specified</em>
-          )}
-        </Row>
-        {entity.metadata.annotations?.['giantswarm.io/escalation-matrix'] && (
-          <Row label="Escalation matrix">
+      <Grid container spacing={5}>
+        <AboutField label="Codename">
+          <code>{entity.metadata.name}</code>
+        </AboutField>
+        <AboutField label="Customer" value={entity.metadata.labels?.['giantswarm.io/customer']} />
+        <AboutField label="Provider" value={entity.metadata.labels?.['giantswarm.io/provider']} />
+        <AboutField label="Pipeline" value={entity.metadata.labels?.['giantswarm.io/pipeline']} />
+        <AboutField label="Region" value={entity.metadata.labels?.['giantswarm.io/region']} />
+
+        <AboutField label="Escalation matrix">
+          <>{entity.metadata.annotations?.['giantswarm.io/escalation-matrix'] && (
             <pre>
               {entity.metadata.annotations?.['giantswarm.io/escalation-matrix']}
             </pre>
-          </Row>
-        )}
-        <Row label="Source of this information">
+          ) || notSpecified
+          }</>
+        </AboutField>
+        <AboutField label="Source">
           <MarkdownContent content={sourceUrl} dialect="gfm" />
-        </Row>
-      </RowList>
+        </AboutField>
+      </Grid>
     </InfoCard>
   );
 }
