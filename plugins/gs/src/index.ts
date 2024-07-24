@@ -4,6 +4,8 @@ export {
   GSClustersPage,
   EntityGSDeploymentsContent,
   GSClusterPickerFieldExtension,
+  GSTemplateStringInputFieldExtension,
+  GSIntegrationsLayout,
 } from './plugin';
 export { gsAuthApiRef, GSAuth } from './apis';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
