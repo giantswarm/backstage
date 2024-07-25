@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added:
+
+- Enable scaffolder backend modules (GitHub and GS).
+- GS plugin: Add scaffolder custom field extension that allows to template initial value for a string field.
+
 ## [0.29.0] - 2024-07-09
 
 ### Removed

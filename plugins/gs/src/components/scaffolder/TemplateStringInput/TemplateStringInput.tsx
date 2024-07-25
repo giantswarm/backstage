@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { TextField } from '@material-ui/core';
 import { TemplateStringInputProps } from './schema';
 import { formatInitialValue } from './utils';
@@ -28,7 +28,6 @@ export const TemplateStringInput = (props: TemplateStringInputProps) => {
       initialValueTemplate,
       (formContext.formData as Record<string, any>) ?? {},
     );
-    console.log('ON CHANGE', initialValue);
 
     onChange(initialValue);
   }, [formContext.formData, formData, initialValueTemplate, onChange]);
