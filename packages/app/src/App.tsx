@@ -6,7 +6,10 @@ import {
   catalogPlugin,
 } from '@backstage/plugin-catalog';
 import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
-import { ScaffolderFieldExtensions } from '@backstage/plugin-scaffolder-react';
+import {
+  ScaffolderFieldExtensions,
+  ScaffolderLayouts,
+} from '@backstage/plugin-scaffolder-react';
 import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
 import {
@@ -36,9 +39,11 @@ import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
 import {
   GSClusterPickerFieldExtension,
+  GSTemplateStringInputFieldExtension,
   GSClustersPage,
   GSFeatureEnabled,
   GSProviderSettings,
+  GSIntegrationsLayout,
 } from '@internal/plugin-gs';
 
 const app = createApp({
@@ -78,6 +83,12 @@ const app = createApp({
   ],
 });
 
+const createHeaderOptions = {
+  pageTitleOverride: 'Create things',
+  title: 'Create things',
+  subtitle: 'Create new things from templates',
+};
+
 const routes = (
   <FlatRoutes>
     <Route path="/" element={<Navigate to="catalog" />} />
@@ -100,13 +111,17 @@ const routes = (
       path="/create"
       element={
         <GSFeatureEnabled feature="scaffolder">
-          <ScaffolderPage />
+          <ScaffolderPage headerOptions={createHeaderOptions} />
         </GSFeatureEnabled>
       }
     >
       <ScaffolderFieldExtensions>
         <GSClusterPickerFieldExtension />
+        <GSTemplateStringInputFieldExtension />
       </ScaffolderFieldExtensions>
+      <ScaffolderLayouts>
+        <GSIntegrationsLayout />
+      </ScaffolderLayouts>
     </Route>
     <Route path="/search" element={<SearchPage />}>
       {searchPage}
