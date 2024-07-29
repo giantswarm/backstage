@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Update Backstage to 1.29.2.
+- Update liveness and readiness probes to use default endpoints.
+
+### Added:
+
+- Use new Catalog Logs module.
+
+### Removed:
+
+- Remove /healthcheck endpoint.
+
 ## [0.30.0] - 2024-07-25
 
 ### Added:
