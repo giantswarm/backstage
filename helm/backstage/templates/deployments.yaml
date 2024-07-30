@@ -97,13 +97,13 @@ spec:
                 - ALL
           readinessProbe:
             httpGet:
-              path: /healthcheck
+              path: /.backstage/health/v1/readiness
               port: {{ .Values.port }}
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /healthcheck
+              path: /.backstage/health/v1/liveness
               port: {{ .Values.port }}
             initialDelaySeconds: 10
             periodSeconds: 15
