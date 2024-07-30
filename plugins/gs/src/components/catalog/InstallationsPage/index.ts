@@ -1,0 +1,1 @@
+export { InstallationsPage } from './InstallationsPage';

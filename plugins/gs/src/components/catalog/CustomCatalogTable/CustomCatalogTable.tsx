@@ -18,47 +18,17 @@ import { Typography } from '@material-ui/core';
 import { withStyles } from '@material-ui/core/styles';
 import Star from '@material-ui/icons/Star';
 import StarBorder from '@material-ui/icons/StarBorder';
+import { columnFactories, hiddenColumn, noWrapColumn } from '../columns';
 import {
-  GSColumnFactories,
-  isEntityGSHelmChartsAvailable,
-  isEntityGSLatestReleaseAvailable,
-} from '@internal/plugin-gs';
+  isEntityHelmChartsAvailable,
+  isEntityLatestReleaseAvailable,
+} from '../../utils/entity';
 
 const YellowStar = withStyles({
   root: {
     color: '#f3ba37',
   },
 })(Star);
-
-const noWrapStyle = {
-  overflow: 'hidden',
-  whiteSpace: 'nowrap',
-  textOverflow: 'ellipsis',
-};
-
-function addCellStyle<T extends TableColumn<any>>(
-  column: T,
-  style: React.CSSProperties,
-): T {
-  return {
-    ...column,
-    cellStyle: {
-      ...column.cellStyle,
-      ...style,
-    },
-  };
-}
-
-function noWrapColumn<T extends TableColumn<any>>(column: T) {
-  return addCellStyle(column, noWrapStyle);
-}
-
-function hiddenColumn<T extends TableColumn<any>>(column: T) {
-  return {
-    ...column,
-    hidden: true,
-  };
-}
 
 export interface CustomCatalogTableProps extends CatalogTableProps {}
 
@@ -68,13 +38,14 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
   const { entities, filters } = useEntityList();
 
   const defaultColumns: TableColumn<CatalogTableRow>[] = useMemo(() => {
-    const columnFactories = CatalogTable.columns;
     return [
       noWrapColumn(
-        columnFactories.createNameColumn({ defaultKind: filters.kind?.value }),
+        CatalogTable.columns.createNameColumn({
+          defaultKind: filters.kind?.value,
+        }),
       ),
       ...createEntitySpecificColumns(),
-      hiddenColumn(GSColumnFactories.createDescriptionColumn()),
+      hiddenColumn(columnFactories.createDescriptionColumn()),
     ].map(column => ({
       ...column,
       width: 'auto',
@@ -82,21 +53,21 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
 
     function createEntitySpecificColumns(): TableColumn<CatalogTableRow>[] {
       const baseColumns = [
-        noWrapColumn(columnFactories.createOwnerColumn()),
-        noWrapColumn(columnFactories.createSpecTypeColumn()),
-        columnFactories.createSpecLifecycleColumn(),
+        noWrapColumn(CatalogTable.columns.createOwnerColumn()),
+        noWrapColumn(CatalogTable.columns.createSpecTypeColumn()),
+        CatalogTable.columns.createSpecLifecycleColumn(),
       ];
       if (entities.some(entity => entity.metadata.namespace !== 'default')) {
-        baseColumns.push(columnFactories.createNamespaceColumn());
+        baseColumns.push(CatalogTable.columns.createNamespaceColumn());
       }
-      if (entities.some(entity => isEntityGSLatestReleaseAvailable(entity))) {
-        baseColumns.push(GSColumnFactories.createLatestReleaseColumn());
-        baseColumns.push(GSColumnFactories.createLastReleasedColumn());
+      if (entities.some(entity => isEntityLatestReleaseAvailable(entity))) {
+        baseColumns.push(columnFactories.createLatestReleaseColumn());
+        baseColumns.push(columnFactories.createLastReleasedColumn());
       }
-      if (entities.some(entity => isEntityGSHelmChartsAvailable(entity))) {
-        baseColumns.push(GSColumnFactories.createHelmChartsColunm());
+      if (entities.some(entity => isEntityHelmChartsAvailable(entity))) {
+        baseColumns.push(columnFactories.createHelmChartsColunm());
         baseColumns.push(
-          noWrapColumn(GSColumnFactories.createHelmChartAppVersionColumn()),
+          noWrapColumn(columnFactories.createHelmChartAppVersionColumn()),
         );
       }
 
@@ -105,14 +76,14 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
           return [];
         case 'domain':
         case 'system':
-          return [columnFactories.createOwnerColumn()];
+          return [CatalogTable.columns.createOwnerColumn()];
         case 'group':
         case 'template':
-          return [columnFactories.createSpecTypeColumn()];
+          return [CatalogTable.columns.createSpecTypeColumn()];
         case 'location':
           return [
-            columnFactories.createSpecTypeColumn(),
-            columnFactories.createSpecTargetsColumn(),
+            CatalogTable.columns.createSpecTypeColumn(),
+            CatalogTable.columns.createSpecTargetsColumn(),
           ];
         default:
           return baseColumns;

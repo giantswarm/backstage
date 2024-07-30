@@ -26,7 +26,7 @@ import {
 } from '@backstage/plugin-catalog-react';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import React, { ReactNode } from 'react';
-import { CustomCatalogTable } from './CustomCatalogTable';
+import { CustomCatalogTable } from '../CustomCatalogTable';
 
 /**
  * Props for root catalog pages.

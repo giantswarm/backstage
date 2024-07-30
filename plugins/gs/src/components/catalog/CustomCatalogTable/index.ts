@@ -1,0 +1,1 @@
+export { CustomCatalogTable } from './CustomCatalogTable';

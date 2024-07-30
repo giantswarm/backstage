@@ -24,10 +24,7 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
-import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
-import { ConfigurationAvailable } from '../ConfigurationAvailable/ConfigurationAvailable';
-import { GSFeatureEnabled } from '@internal/plugin-gs';
-import { FeatureFlagged } from '@backstage/core-app-api';
+import { GSFeatureEnabled, GSMainMenu } from '@internal/plugin-gs';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -69,19 +66,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         {/* Global nav, not org-specific */}
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-        <FeatureFlagged with="show-installations-page">
-          <SidebarItem
-            icon={GiantSwarmIcon}
-            to="installations"
-            text="Installations"
-          />
-        </FeatureFlagged>
         <GSFeatureEnabled feature="opsgenie">
           <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
         </GSFeatureEnabled>
-        <ConfigurationAvailable configKey="gs">
-          <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
-        </ConfigurationAvailable>
         <GSFeatureEnabled feature="scaffolder">
           <SidebarItem
             icon={CreateComponentIcon}
@@ -92,6 +79,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
 
         {/* End global nav */}
       </SidebarGroup>
+      <GSMainMenu />
       <SidebarSpace />
       <SidebarDivider />
       <SidebarGroup

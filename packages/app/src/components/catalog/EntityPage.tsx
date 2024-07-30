@@ -62,19 +62,14 @@ import {
 
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
 import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
-import { EntityGSDeploymentsContent } from '@internal/plugin-gs';
-
-import { InstallationDetailsCard } from './InstallationDetailsCard';
+import {
+  EntityGSDeploymentsContent,
+  EntityGSInstallationDetailsCard,
+  isEntityGSInstallationResource,
+} from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {
-    return true;
-  }
-  return false;
-}
-
-function isInstallationResource(entity: Entity) {
-  if (isKind('resource') && entity.spec?.type === 'installation') {
     return true;
   }
   return false;
@@ -479,9 +474,9 @@ const resourcePage = (
           </EntitySwitch>
         </Grid>
         <EntitySwitch>
-          <EntitySwitch.Case if={isInstallationResource}>
-            <Grid item md={6}>
-              <InstallationDetailsCard />
+          <EntitySwitch.Case if={isEntityGSInstallationResource}>
+            <Grid item xs={12}>
+              <EntityGSInstallationDetailsCard />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>

@@ -19,8 +19,6 @@ import {
   UserSettingsPage,
 } from '@backstage/plugin-user-settings';
 import { apis } from './apis';
-import { CustomCatalogPage } from './components/catalog/CustomCatalogPage';
-import { InstallationsIndexPage } from './components/catalog/InstallationsIndexPage';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
@@ -38,6 +36,8 @@ import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
 import {
   GSClusterPickerFieldExtension,
   GSClustersPage,
+  GSCustomCatalogPage,
+  GSInstallationsPage,
   GSFeatureEnabled,
   GSProviderSettings,
 } from '@internal/plugin-gs';
@@ -88,18 +88,17 @@ const routes = (
   <FlatRoutes>
     <Route path="/" element={<Navigate to="catalog" />} />
     <Route path="/catalog" element={<CatalogIndexPage />}>
-      <CustomCatalogPage />
+      <GSCustomCatalogPage />
     </Route>
     <Route
       path="/installations"
       element={
-        <CatalogIndexPage
-          initialKind="Resource"
-          tableOptions={{ tableLayout: 'fixed' }}
-        />
+        <GSFeatureEnabled feature="installationsPage">
+          <CatalogIndexPage />
+        </GSFeatureEnabled>
       }
     >
-      <InstallationsIndexPage />
+      <GSInstallationsPage />
     </Route>
     <Route
       path="/catalog/:namespace/:kind/:name"
@@ -150,7 +149,14 @@ const routes = (
         </GSFeatureEnabled>
       }
     />
-    <Route path="/clusters" element={<GSClustersPage />} />
+    <Route
+      path="/clusters"
+      element={
+        <GSFeatureEnabled feature="clustersPage">
+          <GSClustersPage />
+        </GSFeatureEnabled>
+      }
+    />
   </FlatRoutes>
 );
 
