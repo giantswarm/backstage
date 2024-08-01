@@ -9,13 +9,21 @@ import {
   installationsRouteRef,
   rootRouteRef,
 } from './routes';
-import { createScaffolderFieldExtension } from '@backstage/plugin-scaffolder-react';
+import {
+  createScaffolderFieldExtension,
+  createScaffolderLayout,
+} from '@backstage/plugin-scaffolder-react';
 
 import {
   ClusterPicker,
   ClusterPickerSchema,
   clusterPickerValidation,
 } from './components/scaffolder/ClusterPicker';
+import { Integrations } from './components/scaffolder/Integrations';
+import {
+  TemplateStringInput,
+  TemplateStringInputSchema,
+} from './components/scaffolder/TemplateStringInput';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -63,5 +71,20 @@ export const GSClusterPickerFieldExtension = gsPlugin.provide(
     component: ClusterPicker,
     validation: clusterPickerValidation,
     schema: ClusterPickerSchema,
+  }),
+);
+
+export const GSTemplateStringInputFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSTemplateStringInput',
+    component: TemplateStringInput,
+    schema: TemplateStringInputSchema,
+  }),
+);
+
+export const GSIntegrationsLayout = gsPlugin.provide(
+  createScaffolderLayout({
+    name: 'GSIntegrations',
+    component: Integrations,
   }),
 );

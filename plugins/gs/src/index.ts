@@ -5,6 +5,8 @@ export {
   GSInstallationsPage,
   EntityGSDeploymentsContent,
   GSClusterPickerFieldExtension,
+  GSTemplateStringInputFieldExtension,
+  GSIntegrationsLayout,
 } from './plugin';
 export { gsAuthApiRef, GSAuth } from './apis';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';

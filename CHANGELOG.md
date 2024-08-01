@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add experimental "Installations" page, visible with feature flag `show-installations-page`.
 
+## [0.31.0] - 2024-07-30
+
+### Changed
+
+- Update Backstage to 1.29.2.
+- Update liveness and readiness probes to use default endpoints.
+
+### Added:
+
+- Use new Catalog Logs module.
+
+### Removed:
+
+- Remove /healthcheck endpoint.
+
+## [0.30.0] - 2024-07-25
+
+### Added:
+
+- Enable scaffolder backend modules (GitHub and GS).
+- GS plugin: Add scaffolder custom field extension that allows to template initial value for a string field.
+
 ## [0.29.0] - 2024-07-09
 
 ### Removed
@@ -557,7 +579,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/giantswarm/backstage/compare/v0.30.0...v0.31.0
+[0.30.0]: https://github.com/giantswarm/backstage/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/giantswarm/backstage/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/giantswarm/backstage/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/giantswarm/backstage/compare/v0.26.0...v0.27.0
