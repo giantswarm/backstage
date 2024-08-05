@@ -19,6 +19,10 @@ import {
   ClusterPickerSchema,
   clusterPickerValidation,
 } from './components/scaffolder/ClusterPicker';
+import {
+  DeploymentDetailsPicker,
+  DeploymentDetailsPickerSchema,
+} from './components/scaffolder/DeploymentDetailsPicker';
 import { Integrations } from './components/scaffolder/Integrations';
 import {
   TemplateStringInput,
@@ -71,6 +75,14 @@ export const GSClusterPickerFieldExtension = gsPlugin.provide(
     component: ClusterPicker,
     validation: clusterPickerValidation,
     schema: ClusterPickerSchema,
+  }),
+);
+
+export const GSDeploymentDetailsPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSDeploymentDetailsPicker',
+    component: DeploymentDetailsPicker,
+    schema: DeploymentDetailsPickerSchema,
   }),
 );
 

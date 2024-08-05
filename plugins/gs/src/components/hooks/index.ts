@@ -7,4 +7,5 @@ export * from './useDetailsPane';
 export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
+export * from './useProviderConfigs';
 export { useInstallationsStatuses } from './useInstallationsStatuses';

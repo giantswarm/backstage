@@ -5,6 +5,7 @@ export {
   GSInstallationsPage,
   EntityGSDeploymentsContent,
   GSClusterPickerFieldExtension,
+  GSDeploymentDetailsPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
   GSIntegrationsLayout,
 } from './plugin';
