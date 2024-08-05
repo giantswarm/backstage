@@ -7,8 +7,13 @@ import { useInstallations } from './useInstallations';
 import { getInstallationsQueriesInfo } from './utils/queries';
 import { getK8sListPath } from './utils/k8sPath';
 
-export function useListResources<T>(gvkArray: CustomResourceMatcher[]) {
-  const { selectedInstallations } = useInstallations();
+export function useListResources<T>(
+  gvkArray: CustomResourceMatcher[],
+  installations?: string[],
+) {
+  const { selectedInstallations: savedInstallations } = useInstallations();
+  const selectedInstallations = installations ?? savedInstallations;
+
   const kubernetesApi = useApi(kubernetesApiRef);
   const queries = useQueries({
     queries: selectedInstallations.flatMap(installationName => {
