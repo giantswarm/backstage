@@ -1,0 +1,1 @@
+export { EntityInstallationDetailsCard } from './EntityInstallationDetailsCard';

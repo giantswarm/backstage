@@ -59,3 +59,7 @@ export const getHelmChartsAppVersionsFromEntity = (entity: Entity) => {
 
   return appVersions?.split(',').map(version => formatVersion(version));
 };
+
+export const isEntityInstallationResource = (entity: Entity) => {
+  return entity.kind === 'Resource' && entity.spec?.type === 'installation';
+};

@@ -11,6 +11,44 @@ import {
 } from '../utils/entity';
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
+import { Entity } from '@backstage/catalog-model';
+
+const noWrapStyle = {
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  textOverflow: 'ellipsis',
+};
+
+function addCellStyle<T extends TableColumn<any>>(
+  column: T,
+  style: React.CSSProperties,
+): T {
+  return {
+    ...column,
+    cellStyle: {
+      ...column.cellStyle,
+      ...style,
+    },
+  };
+}
+
+export function noWrapColumn<T extends TableColumn<any>>(column: T) {
+  return addCellStyle(column, noWrapStyle);
+}
+
+export function hiddenColumn<T extends TableColumn<any>>(column: T) {
+  return {
+    ...column,
+    hidden: true,
+  };
+}
+
+export function autoWidthColumn<T extends TableColumn<any>>(column: T) {
+  return {
+    ...column,
+    width: 'auto',
+  };
+}
 
 export const columnFactories = Object.freeze({
   createDescriptionColumn(): TableColumn<CatalogTableRow> {
@@ -177,6 +215,67 @@ export const columnFactories = Object.freeze({
             ))}
           </>
         );
+      },
+    };
+  },
+  createCustomerColumn(): TableColumn<CatalogTableRow> {
+    function formatContent(entity: Entity): string {
+      return entity.metadata?.labels?.['giantswarm.io/customer'] ?? '';
+    }
+
+    return {
+      title: 'Customer',
+      width: 'auto',
+      filtering: false,
+      render: ({ entity }) =>
+        entity.metadata?.labels?.['giantswarm.io/customer'] ?? '',
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return formatContent(entity1).localeCompare(formatContent(entity2));
+      },
+    };
+  },
+  createProviderColumn(): TableColumn<CatalogTableRow> {
+    function formatContent(entity: Entity): string {
+      return entity.metadata?.labels?.['giantswarm.io/provider'] ?? '';
+    }
+
+    return {
+      title: 'Provider',
+      width: 'auto',
+      filtering: false,
+      render: ({ entity }) => formatContent(entity),
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return formatContent(entity1).localeCompare(formatContent(entity2));
+      },
+    };
+  },
+  createPipelineColumn(): TableColumn<CatalogTableRow> {
+    function formatContent(entity: Entity): string {
+      return entity.metadata?.labels?.['giantswarm.io/pipeline'] ?? '';
+    }
+
+    return {
+      title: 'Pipeline',
+      width: 'auto',
+      filtering: false,
+      render: ({ entity }) => formatContent(entity),
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return formatContent(entity1).localeCompare(formatContent(entity2));
+      },
+    };
+  },
+  createRegionColumn(): TableColumn<CatalogTableRow> {
+    function formatContent(entity: Entity): string {
+      return entity.metadata?.labels?.['giantswarm.io/region'] ?? '';
+    }
+
+    return {
+      title: 'Region',
+      width: 'auto',
+      filtering: false,
+      render: ({ entity }) => formatContent(entity),
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return formatContent(entity1).localeCompare(formatContent(entity2));
       },
     };
   },

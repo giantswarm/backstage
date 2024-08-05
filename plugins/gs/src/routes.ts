@@ -8,6 +8,10 @@ export const clustersRouteRef = createRouteRef({
   id: 'gs-clusters',
 });
 
+export const installationsRouteRef = createRouteRef({
+  id: 'gs-installations',
+});
+
 export const entityDeploymentsRouteRef = createRouteRef({
   id: 'gs-deployments',
 });

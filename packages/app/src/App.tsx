@@ -22,7 +22,6 @@ import {
   UserSettingsPage,
 } from '@backstage/plugin-user-settings';
 import { apis } from './apis';
-import { CustomCatalogPage } from './components/catalog/CustomCatalogPage';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
@@ -41,6 +40,8 @@ import {
   GSClusterPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
   GSClustersPage,
+  GSCustomCatalogPage,
+  GSInstallationsPage,
   GSFeatureEnabled,
   GSProviderSettings,
   GSIntegrationsLayout,
@@ -81,6 +82,11 @@ const app = createApp({
       description:
         'Show Kubernetes resources for service components. Requires matching labels on resources.',
     },
+    {
+      pluginId: '',
+      name: 'show-installations-page',
+      description: 'Show Giant Swarm installations page in the main menu.',
+    },
   ],
 });
 
@@ -94,7 +100,17 @@ const routes = (
   <FlatRoutes>
     <Route path="/" element={<Navigate to="catalog" />} />
     <Route path="/catalog" element={<CatalogIndexPage />}>
-      <CustomCatalogPage />
+      <GSCustomCatalogPage />
+    </Route>
+    <Route
+      path="/installations"
+      element={
+        <GSFeatureEnabled feature="installationsPage">
+          <CatalogIndexPage />
+        </GSFeatureEnabled>
+      }
+    >
+      <GSInstallationsPage />
     </Route>
     <Route
       path="/catalog/:namespace/:kind/:name"
@@ -150,7 +166,14 @@ const routes = (
         </GSFeatureEnabled>
       }
     />
-    <Route path="/clusters" element={<GSClustersPage />} />
+    <Route
+      path="/clusters"
+      element={
+        <GSFeatureEnabled feature="clustersPage">
+          <GSClustersPage />
+        </GSFeatureEnabled>
+      }
+    />
   </FlatRoutes>
 );
 

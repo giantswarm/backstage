@@ -6,6 +6,7 @@ import {
 import {
   clustersRouteRef,
   entityDeploymentsRouteRef,
+  installationsRouteRef,
   rootRouteRef,
 } from './routes';
 import {
@@ -43,6 +44,17 @@ export const GSClustersPage = gsPlugin.provide(
     component: () =>
       import('./components/clusters/ClustersPage').then(m => m.ClustersPage),
     mountPoint: clustersRouteRef,
+  }),
+);
+
+export const GSInstallationsPage = gsPlugin.provide(
+  createRoutableExtension({
+    name: 'GSInstallationsPage',
+    component: () =>
+      import('./components/catalog/InstallationsPage').then(
+        m => m.InstallationsPage,
+      ),
+    mountPoint: installationsRouteRef,
   }),
 );
 
