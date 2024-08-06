@@ -13,6 +13,9 @@ export const getInstallationsQueriesInfo = <T>(
   const fulfilledInstallationsQueries = installationsQueries.filter(
     ({ query }) => query.isSuccess,
   );
+  const failedInstallationsQueries = installationsQueries.filter(
+    ({ query }) => query.isError,
+  );
 
   const installationsData = fulfilledInstallationsQueries.map(
     ({ installationName, query }) => ({
@@ -33,12 +36,14 @@ export const getInstallationsQueriesInfo = <T>(
       query.refetch();
     }
   };
+  const errors = failedInstallationsQueries.map(({ query }) => query.error);
 
   return {
     queries: installationsQueries,
     installationsData,
     initialLoading,
     retry,
+    errors,
   };
 };
 

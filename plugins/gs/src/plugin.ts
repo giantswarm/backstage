@@ -23,6 +23,10 @@ import {
   DeploymentDetailsPicker,
   DeploymentDetailsPickerSchema,
 } from './components/scaffolder/DeploymentDetailsPicker';
+import {
+  SecretStorePicker,
+  SecretStorePickerSchema,
+} from './components/scaffolder/SecretStorePicker';
 import { Integrations } from './components/scaffolder/Integrations';
 import {
   TemplateStringInput,
@@ -83,6 +87,14 @@ export const GSDeploymentDetailsPickerFieldExtension = gsPlugin.provide(
     name: 'GSDeploymentDetailsPicker',
     component: DeploymentDetailsPicker,
     schema: DeploymentDetailsPickerSchema,
+  }),
+);
+
+export const GSSecretStorePickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSSecretStorePicker',
+    component: SecretStorePicker,
+    schema: SecretStorePickerSchema,
   }),
 );
 

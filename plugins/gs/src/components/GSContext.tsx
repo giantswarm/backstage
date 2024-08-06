@@ -12,8 +12,14 @@ export const GSContext = ({ children }: { children: ReactNode }) => {
         queries: {
           refetchOnWindowFocus: false,
           refetchOnReconnect: false,
-          retry: (_failureCount, error) => {
-            if ((error as Error).name === 'RejectedError') {
+          retry: (failureCount, error) => {
+            const name = (error as Error).name;
+
+            if (name === 'RejectedError' || name === 'NotFoundError') {
+              return false;
+            }
+
+            if (failureCount > 2) {
               return false;
             }
 

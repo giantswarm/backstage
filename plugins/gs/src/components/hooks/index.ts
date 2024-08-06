@@ -1,6 +1,7 @@
 export * from './useApp';
 export * from './useApps';
 export * from './useCluster';
+export * from './useClusterSecretStores';
 export * from './useClusters';
 export * from './useDeploymentStatusDetails';
 export * from './useDetailsPane';
@@ -8,4 +9,5 @@ export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
 export * from './useProviderConfigs';
+export * from './useSecretStores';
 export { useInstallationsStatuses } from './useInstallationsStatuses';

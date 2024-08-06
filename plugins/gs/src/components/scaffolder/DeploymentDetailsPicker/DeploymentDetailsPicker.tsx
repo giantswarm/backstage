@@ -4,6 +4,7 @@ import { GSContext } from '../../GSContext';
 import {
   Cluster,
   getClusterName,
+  getClusterNamespace,
   getProviderConfigName,
   ProviderConfig,
 } from '@internal/plugin-gs-common';
@@ -148,13 +149,19 @@ export const DeploymentDetailsPicker = ({
   schema: { title = 'Cluster', description = 'Workload cluster name' },
   idSchema,
 }: DeploymentDetailsPickerProps) => {
-  const { installationName, clusterName, wcProviderConfig, mcProviderConfig } =
-    formData ?? {};
+  const {
+    installationName,
+    clusterName,
+    clusterNamespace,
+    wcProviderConfig,
+    mcProviderConfig,
+  } = formData ?? {};
 
   const handleInstallationSelect = (selectedInstallation: string) => {
     onChange({
       installationName: selectedInstallation,
       clusterName: '',
+      clusterNamespace: '',
       wcProviderConfig: '',
       mcProviderConfig: '',
     });
@@ -167,6 +174,7 @@ export const DeploymentDetailsPicker = ({
     onChange({
       installationName: selectedInstallation,
       clusterName: getClusterName(selectedCluster),
+      clusterNamespace: getClusterNamespace(selectedCluster) ?? '',
       wcProviderConfig: wcProviderConfig ?? '',
       mcProviderConfig: mcProviderConfig ?? '',
     });
@@ -179,6 +187,7 @@ export const DeploymentDetailsPicker = ({
     onChange({
       installationName: selectedInstallation,
       clusterName: clusterName ?? '',
+      clusterNamespace: clusterNamespace ?? '',
       wcProviderConfig: getProviderConfigName(selectedProviderConfig),
       mcProviderConfig: mcProviderConfig ?? '',
     });
@@ -191,6 +200,7 @@ export const DeploymentDetailsPicker = ({
     onChange({
       installationName: selectedInstallation,
       clusterName: clusterName ?? '',
+      clusterNamespace: clusterNamespace ?? '',
       wcProviderConfig: wcProviderConfig ?? '',
       mcProviderConfig: getProviderConfigName(selectedProviderConfig),
     });

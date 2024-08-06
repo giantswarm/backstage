@@ -46,6 +46,7 @@ import {
   GSProviderSettings,
   GSIntegrationsLayout,
   GSDeploymentDetailsPickerFieldExtension,
+  GSSecretStorePickerFieldExtension,
 } from '@internal/plugin-gs';
 
 const app = createApp({
@@ -135,6 +136,7 @@ const routes = (
       <ScaffolderFieldExtensions>
         <GSClusterPickerFieldExtension />
         <GSDeploymentDetailsPickerFieldExtension />
+        <GSSecretStorePickerFieldExtension />
         <GSTemplateStringInputFieldExtension />
       </ScaffolderFieldExtensions>
       <ScaffolderLayouts>

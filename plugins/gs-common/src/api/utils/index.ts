@@ -5,3 +5,4 @@ export * from './helmreleases';
 export * from './organizations';
 export * from './providerConfigs';
 export * from './resources';
+export * from './secretStores';

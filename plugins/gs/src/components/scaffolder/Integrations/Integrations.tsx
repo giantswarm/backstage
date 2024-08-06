@@ -7,18 +7,23 @@ export const Integrations: LayoutTemplate = ({
   description,
   formData,
 }) => {
-  const clusterRef = formData.cluster;
+  const installationName = formData.deployment.installationName;
+  const clusterName = formData.deployment.clusterName;
 
   return (
     <div>
       <Box marginBottom={2}>
         <Typography variant="subtitle1">{description}</Typography>
-        {clusterRef ? (
+        {installationName && clusterName ? (
           <Typography variant="body2">
             <strong>Note: </strong>
             To help reduce costs with your infrastructure deployment, this will
             be deployed to an adjacent VPC in the same region, using the same
-            availability zones as <code>{clusterRef}</code>.
+            availability zones as{' '}
+            <code>
+              {installationName}/{clusterName}
+            </code>
+            .
           </Typography>
         ) : null}
       </Box>
