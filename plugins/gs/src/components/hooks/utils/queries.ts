@@ -16,7 +16,6 @@ export const getInstallationsQueriesInfo = <T>(
   const failedInstallationsQueries = installationsQueries.filter(
     ({ query }) => query.isError,
   );
-  // console.log('failedInstallationsQueries', queries);
 
   const installationsData = fulfilledInstallationsQueries.map(
     ({ installationName, query }) => ({
