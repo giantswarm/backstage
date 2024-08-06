@@ -24,6 +24,7 @@ backend.add(import('@backstage/plugin-events-backend/alpha'));
 // catalog plugin
 backend.add(import('@backstage/plugin-catalog-backend/alpha'));
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
+backend.add(import('@backstage/plugin-catalog-backend-module-github/alpha'));
 backend.add(
   import('@backstage/plugin-catalog-backend-module-scaffolder-entity-model'),
 );
