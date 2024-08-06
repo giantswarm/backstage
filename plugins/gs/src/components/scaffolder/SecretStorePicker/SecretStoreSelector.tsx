@@ -67,7 +67,7 @@ export const SecretStoreSelector = ({
   } else if (errors.length > 0) {
     statusText = errors.join(' ');
   } else if (resources.length === 0) {
-    statusText = 'No secret stores found for the selected installation.';
+    statusText = 'No secret stores found for the selected cluster.';
   }
 
   const handleChange = (selectedItem: string) => {
