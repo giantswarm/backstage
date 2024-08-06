@@ -3593,6 +3593,30 @@
     "@backstage/integration" "^1.13.0"
     cross-fetch "^4.0.0"
 
+"@backstage/plugin-catalog-backend-module-github@^0.6.5":
+  version "0.6.5"
+  resolved "https://registry.yarnpkg.com/@backstage/plugin-catalog-backend-module-github/-/plugin-catalog-backend-module-github-0.6.5.tgz#6e78a5b43145d17b0590b1937832e9a312887548"
+  integrity sha512-2703AQEdPvZldZmfiwcqaEsqft50n+AehO5yTyUogvBI3J1Ke/EpVL9Z0RJAzTY+1n7SD80T9i1nt9ozFpLSoA==
+  dependencies:
+    "@backstage/backend-common" "^0.23.3"
+    "@backstage/backend-plugin-api" "^0.7.0"
+    "@backstage/backend-tasks" "^0.5.27"
+    "@backstage/catalog-client" "^1.6.5"
+    "@backstage/catalog-model" "^1.5.0"
+    "@backstage/config" "^1.2.0"
+    "@backstage/integration" "^1.13.0"
+    "@backstage/plugin-catalog-backend" "^1.24.0"
+    "@backstage/plugin-catalog-common" "^1.0.25"
+    "@backstage/plugin-catalog-node" "^1.12.4"
+    "@backstage/plugin-events-node" "^0.3.8"
+    "@octokit/graphql" "^5.0.0"
+    "@octokit/rest" "^19.0.3"
+    git-url-parse "^14.0.0"
+    lodash "^4.17.21"
+    minimatch "^9.0.0"
+    node-fetch "^2.6.7"
+    uuid "^9.0.0"
+
 "@backstage/plugin-catalog-backend-module-logs@^0.0.1":
   version "0.0.1"
   resolved "https://registry.yarnpkg.com/@backstage/plugin-catalog-backend-module-logs/-/plugin-catalog-backend-module-logs-0.0.1.tgz#b0450f6d215715ccea7805882eba45660a78c696"
