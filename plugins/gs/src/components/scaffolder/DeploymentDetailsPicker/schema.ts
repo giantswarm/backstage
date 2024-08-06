@@ -5,6 +5,7 @@ export const DeploymentDetailsPickerFieldSchema = makeFieldSchemaFromZod(
   z.object({
     installationName: z.string(),
     clusterName: z.string(),
+    clusterNamespace: z.string(),
     wcProviderConfig: z.string(),
     mcProviderConfig: z.string(),
   }),
