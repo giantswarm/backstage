@@ -10,6 +10,7 @@ import { getK8sListPath } from './utils/k8sPath';
 export function useListResources<T>(
   gvkArray: CustomResourceMatcher[],
   installations?: string[],
+  namespace?: string,
 ) {
   const { selectedInstallations: savedInstallations } = useInstallations();
   const selectedInstallations = installations ?? savedInstallations;
@@ -18,7 +19,7 @@ export function useListResources<T>(
   const queries = useQueries({
     queries: selectedInstallations.flatMap(installationName => {
       return gvkArray.map(gvk => {
-        const path = getK8sListPath(gvk);
+        const path = getK8sListPath(gvk, namespace);
         return {
           queryKey: [installationName, gvk.plural],
           queryFn: async () => {
@@ -26,6 +27,16 @@ export function useListResources<T>(
               clusterName: installationName,
               path,
             });
+
+            if (!response.ok) {
+              const error = new Error(
+                `Failed to fetch resources from ${installationName} at ${path}. Reason: ${response.statusText}.`,
+              );
+              error.name =
+                response.status === 404 ? 'NotFoundError' : error.name;
+
+              throw error;
+            }
 
             const list: List<T> = await response.json();
 

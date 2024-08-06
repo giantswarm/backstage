@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add experimental "Installations" page, visible with feature flag `show-installations-page`.
 - GS plugin: Add scaffolder custom field extension for picking deployment details.
+- GS plugin: Add scaffolder custom field extension for picking secret stores.
 
 ## [0.31.0] - 2024-07-30
 
