@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Enable search for custom columns of Installations table.
+- Use Place icon instead of Giant Swarm logo for Installations page in main menu.
+
 ## [0.32.0] - 2024-08-06
 
 ### Added
