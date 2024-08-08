@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Enable search for custom columns of Installations table.
-- Use Place icon instead of Giant Swarm logo for Installations page in main menu.
-- Set page header to "Installations" for Installations page.
+- Installations:
+  - Enable search for custom columns of index table.
+  - Use place icon instead of Giant Swarm logo for in main menu.
+  - Set page header to "Installations".
+  - Add "Base domain" and "Account engineer" field to entity page.
 
 ## [0.32.0] - 2024-08-06
 
@@ -29,17 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update Backstage to 1.29.2.
 - Update liveness and readiness probes to use default endpoints.
 
-### Added:
+### Added
 
 - Use new Catalog Logs module.
 
-### Removed:
+### Removed
 
 - Remove /healthcheck endpoint.
 
 ## [0.30.0] - 2024-07-25
 
-### Added:
+### Added
 
 - Enable scaffolder backend modules (GitHub and GS).
 - GS plugin: Add scaffolder custom field extension that allows to template initial value for a string field.

@@ -43,6 +43,14 @@ export function EntityInstallationDetailsCard() {
           label="Region"
           value={entity.metadata.labels?.['giantswarm.io/region']}
         />
+        <AboutField
+          label="Base domain"
+          value={entity.metadata.labels?.['giantswarm.io/base']}
+        />
+        <AboutField
+          label="Account engineer"
+          value={entity.metadata.labels?.['giantswarm.io/account-engineer']}
+        />
         <AboutField label="Source">
           <MarkdownContent content={sourceUrl} dialect="gfm" />
         </AboutField>
