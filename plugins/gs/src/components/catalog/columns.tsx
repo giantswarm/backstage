@@ -229,6 +229,9 @@ export const columnFactories = Object.freeze({
       filtering: false,
       render: ({ entity }) =>
         entity.metadata?.labels?.['giantswarm.io/customer'] ?? '',
+      customFilterAndSearch(query: string, { entity }) {
+        return formatContent(entity).toLowerCase().includes(query.toLowerCase());
+      },
       customSort({ entity: entity1 }, { entity: entity2 }) {
         return formatContent(entity1).localeCompare(formatContent(entity2));
       },
@@ -244,6 +247,9 @@ export const columnFactories = Object.freeze({
       width: 'auto',
       filtering: false,
       render: ({ entity }) => formatContent(entity),
+      customFilterAndSearch(query: string, { entity }) {
+        return formatContent(entity).toLowerCase().includes(query.toLowerCase());
+      },
       customSort({ entity: entity1 }, { entity: entity2 }) {
         return formatContent(entity1).localeCompare(formatContent(entity2));
       },
@@ -259,6 +265,9 @@ export const columnFactories = Object.freeze({
       width: 'auto',
       filtering: false,
       render: ({ entity }) => formatContent(entity),
+      customFilterAndSearch(query: string, { entity }) {
+        return formatContent(entity).toLowerCase().includes(query.toLowerCase());
+      },
       customSort({ entity: entity1 }, { entity: entity2 }) {
         return formatContent(entity1).localeCompare(formatContent(entity2));
       },
@@ -274,6 +283,9 @@ export const columnFactories = Object.freeze({
       width: 'auto',
       filtering: false,
       render: ({ entity }) => formatContent(entity),
+      customFilterAndSearch(query: string, { entity }) {
+        return formatContent(entity).toLowerCase().includes(query.toLowerCase());
+      },
       customSort({ entity: entity1 }, { entity: entity2 }) {
         return formatContent(entity1).localeCompare(formatContent(entity2));
       },
