@@ -10,7 +10,6 @@ import {
   TableProps,
 } from '@backstage/core-components';
 
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   CatalogFilterLayout,
   EntityListProvider,
@@ -55,11 +54,9 @@ export function InstallationsPage(props: InstallationsPageProps) {
     },
     emptyContent,
   } = props;
-  const orgName =
-    useApi(configApiRef).getOptionalString('organization.name') ?? 'Backstage';
 
   return (
-    <PageWithHeader title={`${orgName} Catalog`} themeId="home">
+    <PageWithHeader title="Installations" themeId="home">
       <Content>
         <ContentHeader title="">
           <SupportButton>Installations</SupportButton>
