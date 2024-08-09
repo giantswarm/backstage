@@ -26,7 +26,7 @@ import { CustomCatalogTable } from '../CustomCatalogTable';
 import { EntityProviderPicker } from '../EntityProviderPicker';
 import { EntityPipelinePicker } from '../EntityPipelinePicker';
 import { EntityCustomerPicker } from '../EntityCustomerPicker';
-import { autoWidthColumn, columnFactories, noWrapColumn } from '../columns';
+import { autoWidthColumn, columnFactories, hiddenColumn, noWrapColumn } from '../columns';
 
 const columnsFunc: CatalogTableColumnsFunc = () => {
   return [
@@ -37,6 +37,8 @@ const columnsFunc: CatalogTableColumnsFunc = () => {
     noWrapColumn(columnFactories.createProviderColumn()),
     noWrapColumn(columnFactories.createPipelineColumn()),
     noWrapColumn(columnFactories.createRegionColumn()),
+    hiddenColumn(columnFactories.createBaseColumn()),
+    hiddenColumn(columnFactories.createAccountEngineerColumn()),
   ];
 };
 
