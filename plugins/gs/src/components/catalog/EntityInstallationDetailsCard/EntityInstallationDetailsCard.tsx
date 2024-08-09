@@ -19,7 +19,6 @@ export function EntityInstallationDetailsCard() {
   );
 
   const { entity } = useEntity();
-  const sourceUrl = `https://github.com/giantswarm/installations/blob/master/${entity.metadata.name}/cluster.yaml`;
 
   return (
     <InfoCard title="Installation details">
@@ -51,9 +50,6 @@ export function EntityInstallationDetailsCard() {
           label="Account engineer"
           value={entity.metadata.labels?.['giantswarm.io/account-engineer']}
         />
-        <AboutField label="Source">
-          <MarkdownContent content={sourceUrl} dialect="gfm" />
-        </AboutField>
       </Grid>
       <Grid container spacing={5}>
         <AboutField label="Escalation matrix">
