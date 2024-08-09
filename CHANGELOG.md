@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use place icon instead of Giant Swarm logo for in main menu.
   - Set page header to "Installations".
   - Add "Base domain" and "Account engineer" field to entity page.
+  - Add "Base domain" and "Account engineer" field to index table.
+  - Remove "Source" field from entity page, to use generic "View source" link instead.
+
+### Added
+
+- Add custom entity link icons "giantswarm" and "grafana".
 
 ## [0.32.0] - 2024-08-06
 
