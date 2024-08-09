@@ -49,6 +49,8 @@ import {
   GSSecretStorePickerFieldExtension,
 } from '@internal/plugin-gs';
 
+import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
+
 const app = createApp({
   apis,
   components: {
@@ -89,6 +91,10 @@ const app = createApp({
       description: 'Show Giant Swarm installations page in the main menu.',
     },
   ],
+  icons: {
+    giantswarm: GiantSwarmIcon,
+    grafana: GrafanaIcon,
+  },
 });
 
 const createHeaderOptions = {
