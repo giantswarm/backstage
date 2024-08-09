@@ -321,7 +321,9 @@ export const columnFactories = Object.freeze({
   },
   createAccountEngineerColumn(): TableColumn<CatalogTableRow> {
     function formatContent(entity: Entity): string {
-      return entity.metadata?.annotations?.['giantswarm.io/account-engineer'] ?? '';
+      return (
+        entity.metadata?.annotations?.['giantswarm.io/account-engineer'] ?? ''
+      );
     }
 
     return {

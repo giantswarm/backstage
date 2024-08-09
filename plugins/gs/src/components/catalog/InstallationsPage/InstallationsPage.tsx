@@ -26,7 +26,12 @@ import { CustomCatalogTable } from '../CustomCatalogTable';
 import { EntityProviderPicker } from '../EntityProviderPicker';
 import { EntityPipelinePicker } from '../EntityPipelinePicker';
 import { EntityCustomerPicker } from '../EntityCustomerPicker';
-import { autoWidthColumn, columnFactories, hiddenColumn, noWrapColumn } from '../columns';
+import {
+  autoWidthColumn,
+  columnFactories,
+  hiddenColumn,
+  noWrapColumn,
+} from '../columns';
 
 const columnsFunc: CatalogTableColumnsFunc = () => {
   return [

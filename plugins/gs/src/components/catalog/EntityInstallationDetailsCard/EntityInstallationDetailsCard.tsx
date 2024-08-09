@@ -48,7 +48,9 @@ export function EntityInstallationDetailsCard() {
         />
         <AboutField
           label="Account engineer"
-          value={entity.metadata.annotations?.['giantswarm.io/account-engineer']}
+          value={
+            entity.metadata.annotations?.['giantswarm.io/account-engineer']
+          }
         />
       </Grid>
       <Grid container spacing={5}>
