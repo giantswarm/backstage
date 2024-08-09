@@ -299,4 +299,44 @@ export const columnFactories = Object.freeze({
       },
     };
   },
+  createBaseColumn(): TableColumn<CatalogTableRow> {
+    function formatContent(entity: Entity): string {
+      return entity.metadata?.annotations?.['giantswarm.io/base'] ?? '';
+    }
+
+    return {
+      title: 'Base domain',
+      width: 'auto',
+      filtering: false,
+      render: ({ entity }) => formatContent(entity),
+      customFilterAndSearch(query: string, { entity }) {
+        return formatContent(entity)
+          .toLowerCase()
+          .includes(query.toLowerCase());
+      },
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return formatContent(entity1).localeCompare(formatContent(entity2));
+      },
+    };
+  },
+  createAccountEngineerColumn(): TableColumn<CatalogTableRow> {
+    function formatContent(entity: Entity): string {
+      return entity.metadata?.annotations?.['giantswarm.io/account-engineer'] ?? '';
+    }
+
+    return {
+      title: 'Account engineer',
+      width: 'auto',
+      filtering: false,
+      render: ({ entity }) => formatContent(entity),
+      customFilterAndSearch(query: string, { entity }) {
+        return formatContent(entity)
+          .toLowerCase()
+          .includes(query.toLowerCase());
+      },
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return formatContent(entity1).localeCompare(formatContent(entity2));
+      },
+    };
+  },
 });
