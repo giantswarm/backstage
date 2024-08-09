@@ -1,7 +1,7 @@
 import React from 'react';
 import { Grid } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
-import { InfoCard, MarkdownContent } from '@backstage/core-components';
+import { InfoCard } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { AboutField } from '@backstage/plugin-catalog';
 
@@ -19,7 +19,6 @@ export function EntityInstallationDetailsCard() {
   );
 
   const { entity } = useEntity();
-  const sourceUrl = `https://github.com/giantswarm/installations/blob/master/${entity.metadata.name}/cluster.yaml`;
 
   return (
     <InfoCard title="Installation details">
@@ -43,9 +42,16 @@ export function EntityInstallationDetailsCard() {
           label="Region"
           value={entity.metadata.labels?.['giantswarm.io/region']}
         />
-        <AboutField label="Source">
-          <MarkdownContent content={sourceUrl} dialect="gfm" />
-        </AboutField>
+        <AboutField
+          label="Base domain"
+          value={entity.metadata.annotations?.['giantswarm.io/base']}
+        />
+        <AboutField
+          label="Account engineer"
+          value={
+            entity.metadata.annotations?.['giantswarm.io/account-engineer']
+          }
+        />
       </Grid>
       <Grid container spacing={5}>
         <AboutField label="Escalation matrix">

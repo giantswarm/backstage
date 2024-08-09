@@ -10,7 +10,6 @@ import {
   TableProps,
 } from '@backstage/core-components';
 
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   CatalogFilterLayout,
   EntityListProvider,
@@ -27,7 +26,12 @@ import { CustomCatalogTable } from '../CustomCatalogTable';
 import { EntityProviderPicker } from '../EntityProviderPicker';
 import { EntityPipelinePicker } from '../EntityPipelinePicker';
 import { EntityCustomerPicker } from '../EntityCustomerPicker';
-import { autoWidthColumn, columnFactories, noWrapColumn } from '../columns';
+import {
+  autoWidthColumn,
+  columnFactories,
+  hiddenColumn,
+  noWrapColumn,
+} from '../columns';
 
 const columnsFunc: CatalogTableColumnsFunc = () => {
   return [
@@ -38,6 +42,8 @@ const columnsFunc: CatalogTableColumnsFunc = () => {
     noWrapColumn(columnFactories.createProviderColumn()),
     noWrapColumn(columnFactories.createPipelineColumn()),
     noWrapColumn(columnFactories.createRegionColumn()),
+    hiddenColumn(columnFactories.createBaseColumn()),
+    hiddenColumn(columnFactories.createAccountEngineerColumn()),
   ];
 };
 
@@ -55,11 +61,9 @@ export function InstallationsPage(props: InstallationsPageProps) {
     },
     emptyContent,
   } = props;
-  const orgName =
-    useApi(configApiRef).getOptionalString('organization.name') ?? 'Backstage';
 
   return (
-    <PageWithHeader title={`${orgName} Catalog`} themeId="home">
+    <PageWithHeader title="Installations" themeId="home">
       <Content>
         <ContentHeader title="">
           <SupportButton>Installations</SupportButton>
