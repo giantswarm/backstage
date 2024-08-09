@@ -44,11 +44,11 @@ export function EntityInstallationDetailsCard() {
         />
         <AboutField
           label="Base domain"
-          value={entity.metadata.labels?.['giantswarm.io/base']}
+          value={entity.metadata.annotations?.['giantswarm.io/base']}
         />
         <AboutField
           label="Account engineer"
-          value={entity.metadata.labels?.['giantswarm.io/account-engineer']}
+          value={entity.metadata.annotations?.['giantswarm.io/account-engineer']}
         />
       </Grid>
       <Grid container spacing={5}>
