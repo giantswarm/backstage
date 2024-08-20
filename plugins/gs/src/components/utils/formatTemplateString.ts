@@ -1,11 +1,9 @@
-import { generateUID } from '../../utils/generateUID';
+import { get } from 'lodash';
+import { generateUID } from '../utils/generateUID';
 
-export const formDataRegexp = /^[a-z]([-_\.a-z0-9]*[a-z0-9])?$/;
-
-const PLACEHOLDER_REGEXP = /\${{[\w\(\)]+}}/g;
 const GENERATE_UID_PLACEHOLDER_REGEXP =
   /\${{generateUID\((?<length>[1-9]\d*)\)}}/;
-const FORM_DATA_VALUE_PLACEHOLDER_REGEXP = /\${{(?<parameter>\w+)}}/;
+const FORM_DATA_VALUE_PLACEHOLDER_REGEXP = /\${{(?<parameter>[\w\.]+)}}/;
 
 function replaceGenerateUIDPlaceholder(template: string, placeholder: string) {
   const match = template.match(GENERATE_UID_PLACEHOLDER_REGEXP);
@@ -30,7 +28,7 @@ function replaceFormDataValuePlaceholder(
   }
 
   const parameter = match.groups.parameter;
-  const value = formData?.[parameter];
+  const value = get(formData ?? {}, parameter);
   if (!value) {
     return template;
   }
@@ -38,13 +36,20 @@ function replaceFormDataValuePlaceholder(
   return template.replace(placeholder, value);
 }
 
-export function formatInitialValue(
+export function formatTemplateString(
   template: string,
   formData?: Record<string, any>,
 ) {
   let newTemplate = template;
 
-  for (const placeholderMatch of template.matchAll(PLACEHOLDER_REGEXP)) {
+  const placeholderRegexp = new RegExp(
+    [
+      GENERATE_UID_PLACEHOLDER_REGEXP.source,
+      FORM_DATA_VALUE_PLACEHOLDER_REGEXP.source,
+    ].join('|'),
+    'g',
+  );
+  for (const placeholderMatch of template.matchAll(placeholderRegexp)) {
     const placeholder = placeholderMatch[0];
 
     if (GENERATE_UID_PLACEHOLDER_REGEXP.test(placeholder)) {
