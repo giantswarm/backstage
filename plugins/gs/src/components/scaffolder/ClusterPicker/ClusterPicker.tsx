@@ -12,7 +12,7 @@ import {
   useInstallations,
   useInstallationsStatuses,
 } from '../../hooks';
-import { Grid, makeStyles } from '@material-ui/core';
+import { Grid } from '@material-ui/core';
 import { InstallationsSelector } from '../../InstallationsSelector';
 import { InstallationsErrors } from '../../InstallationsErrors';
 import { ClusterPickerProps } from './schema';
@@ -20,12 +20,6 @@ import {
   parseClusterPickerFormData,
   serializeClusterPickerFormData,
 } from './utils';
-
-const useStyles = makeStyles(() => ({
-  selectContainer: {
-    maxWidth: 500,
-  },
-}));
 
 type ClusterSelectorProps = {
   id?: string;
@@ -135,11 +129,9 @@ const ClusterPickerField = ({
     }
   };
 
-  const classes = useStyles();
-
   return (
     <Grid container spacing={3} direction="column">
-      <Grid item className={classes.selectContainer}>
+      <Grid item>
         <InstallationsSelector
           installations={installations}
           selectedInstallations={selectedInstallations}
@@ -153,7 +145,7 @@ const ClusterPickerField = ({
           <InstallationsErrors installationsStatuses={installationsStatuses} />
         </Grid>
       )}
-      <Grid item className={classes.selectContainer}>
+      <Grid item>
         <ClusterSelector
           id={id}
           label={label}

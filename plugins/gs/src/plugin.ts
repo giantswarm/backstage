@@ -27,7 +27,7 @@ import {
   SecretStorePicker,
   SecretStorePickerSchema,
 } from './components/scaffolder/SecretStorePicker';
-import { Integrations } from './components/scaffolder/Integrations';
+import { StepLayout } from './components/scaffolder/StepLayout';
 import {
   TemplateStringInput,
   TemplateStringInputSchema,
@@ -106,9 +106,9 @@ export const GSTemplateStringInputFieldExtension = gsPlugin.provide(
   }),
 );
 
-export const GSIntegrationsLayout = gsPlugin.provide(
+export const GSStepLayout = gsPlugin.provide(
   createScaffolderLayout({
-    name: 'GSIntegrations',
-    component: Integrations,
+    name: 'GSStepLayout',
+    component: StepLayout,
   }),
 );

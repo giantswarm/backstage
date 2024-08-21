@@ -44,7 +44,7 @@ import {
   GSInstallationsPage,
   GSFeatureEnabled,
   GSProviderSettings,
-  GSIntegrationsLayout,
+  GSStepLayout,
   GSDeploymentDetailsPickerFieldExtension,
   GSSecretStorePickerFieldExtension,
 } from '@internal/plugin-gs';
@@ -146,7 +146,7 @@ const routes = (
         <GSTemplateStringInputFieldExtension />
       </ScaffolderFieldExtensions>
       <ScaffolderLayouts>
-        <GSIntegrationsLayout />
+        <GSStepLayout />
       </ScaffolderLayouts>
     </Route>
     <Route path="/search" element={<SearchPage />}>

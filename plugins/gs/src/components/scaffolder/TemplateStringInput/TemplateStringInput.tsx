@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { TextField } from '@material-ui/core';
 import { TemplateStringInputProps } from './schema';
-import { formatInitialValue } from './utils';
+import { formatTemplateString } from '../../utils/formatTemplateString';
 
 export const TemplateStringInput = (props: TemplateStringInputProps) => {
   const {
@@ -24,7 +24,7 @@ export const TemplateStringInput = (props: TemplateStringInputProps) => {
       return;
     }
 
-    const initialValue = formatInitialValue(
+    const initialValue = formatTemplateString(
       initialValueTemplate,
       (formContext.formData as Record<string, any>) ?? {},
     );
