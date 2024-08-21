@@ -109,19 +109,6 @@ const DeploymentDetailsPickerField = ({
       </Grid>
       <Grid item>
         <ProviderConfigSelector
-          id={`${id}-wc-provider-config`}
-          label="Workload cluster provider config"
-          helperText="AWS access for crossplane to provision resources in the workload cluster account."
-          required={required}
-          disabled={installationsErrors}
-          error={error}
-          installations={selectedInstallations}
-          selectedProviderConfig={wcProviderConfigValue}
-          onChange={onWCProviderConfigSelect}
-        />
-      </Grid>
-      <Grid item>
-        <ProviderConfigSelector
           id={`${id}-mc-provider-config`}
           label="Management cluster provider config"
           helperText="AWS access for crossplane to provision resources in the management cluster account."
@@ -131,6 +118,19 @@ const DeploymentDetailsPickerField = ({
           installations={selectedInstallations}
           selectedProviderConfig={mcProviderConfigValue}
           onChange={onMCProviderConfigSelect}
+        />
+      </Grid>
+      <Grid item>
+        <ProviderConfigSelector
+          id={`${id}-wc-provider-config`}
+          label="Workload cluster provider config"
+          helperText="AWS access for crossplane to provision resources in the workload cluster account."
+          required={required}
+          disabled={installationsErrors}
+          error={error}
+          installations={selectedInstallations}
+          selectedProviderConfig={wcProviderConfigValue}
+          onChange={onWCProviderConfigSelect}
         />
       </Grid>
     </Grid>
