@@ -1,8 +1,8 @@
-import { formatInitialValue } from './utils';
-import { generateUID } from '../../utils/generateUID';
+import { formatTemplateString } from './formatTemplateString';
+import { generateUID } from './generateUID';
 
-jest.mock('../../utils/generateUID', () => {
-  const originalModule = jest.requireActual('../../utils/generateUID');
+jest.mock('./generateUID', () => {
+  const originalModule = jest.requireActual('./generateUID');
 
   return {
     __esModule: true,
@@ -11,7 +11,7 @@ jest.mock('../../utils/generateUID', () => {
   };
 });
 
-describe('formatInitialValue', () => {
+describe('formatTemplateString', () => {
   it('replaces generateUID placeholders', () => {
     jest
       .mocked(generateUID)
@@ -19,7 +19,7 @@ describe('formatInitialValue', () => {
       .mockReturnValueOnce('efg');
 
     expect(
-      formatInitialValue(
+      formatTemplateString(
         'test-${{generateUID(5)}}-test-${{generateUID(3)}}-test',
       ),
     ).toEqual('test-ab1cd-test-efg-test');
@@ -27,7 +27,7 @@ describe('formatInitialValue', () => {
 
   it('ignores generateUID placeholders with incorrect arguments', () => {
     expect(
-      formatInitialValue(
+      formatTemplateString(
         'test-${{generateUID()}}-test-${{generateUID(1s2)}}-test',
       ),
     ).toEqual('test-${{generateUID()}}-test-${{generateUID(1s2)}}-test');
@@ -37,10 +37,16 @@ describe('formatInitialValue', () => {
     const formData = {
       name: 'TEST_NAME',
       description: 'TEST_DESCRIPTION',
+      deployment: {
+        clusterName: 'TEST_CLUSTER_NAME',
+      },
     };
 
     expect(
-      formatInitialValue('test-${{name}}-test-${{description}}-test', formData),
-    ).toEqual('test-TEST_NAME-test-TEST_DESCRIPTION-test');
+      formatTemplateString(
+        'test-${{name}}-test-${{description}}-test-${{deployment.clusterName}}',
+        formData,
+      ),
+    ).toEqual('test-TEST_NAME-test-TEST_DESCRIPTION-test-TEST_CLUSTER_NAME');
   });
 });

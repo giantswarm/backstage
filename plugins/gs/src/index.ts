@@ -8,7 +8,7 @@ export {
   GSDeploymentDetailsPickerFieldExtension,
   GSSecretStorePickerFieldExtension,
   GSTemplateStringInputFieldExtension,
-  GSIntegrationsLayout,
+  GSStepLayout,
 } from './plugin';
 export { gsAuthApiRef, GSAuth } from './apis';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';

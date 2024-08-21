@@ -9,18 +9,12 @@ import {
   ProviderConfig,
 } from '@internal/plugin-gs-common';
 import { useInstallations, useInstallationsStatuses } from '../../hooks';
-import { Grid, makeStyles } from '@material-ui/core';
+import { Grid } from '@material-ui/core';
 import { InstallationsSelector } from '../../InstallationsSelector';
 import { InstallationsErrors } from '../../InstallationsErrors';
 import { DeploymentDetailsPickerProps } from './schema';
 import { ClusterSelector } from './ClusterSelector';
 import { ProviderConfigSelector } from './ProviderConfigSelector';
-
-const useStyles = makeStyles(() => ({
-  selectContainer: {
-    maxWidth: 500,
-  },
-}));
 
 type DeploymentDetailsPickerFieldProps = {
   id?: string;
@@ -85,11 +79,9 @@ const DeploymentDetailsPickerField = ({
     }
   };
 
-  const classes = useStyles();
-
   return (
     <Grid container spacing={3} direction="column">
-      <Grid item className={classes.selectContainer}>
+      <Grid item>
         <InstallationsSelector
           installations={installations}
           selectedInstallations={selectedInstallations}
@@ -102,7 +94,7 @@ const DeploymentDetailsPickerField = ({
           <InstallationsErrors installationsStatuses={installationsStatuses} />
         </Grid>
       )}
-      <Grid item className={classes.selectContainer}>
+      <Grid item>
         <ClusterSelector
           id={id}
           label={label}
@@ -115,7 +107,7 @@ const DeploymentDetailsPickerField = ({
           onChange={onClusterSelect}
         />
       </Grid>
-      <Grid item className={classes.selectContainer}>
+      <Grid item>
         <ProviderConfigSelector
           id={`${id}-wc-provider-config`}
           label="Workload cluster provider config"
@@ -128,7 +120,7 @@ const DeploymentDetailsPickerField = ({
           onChange={onWCProviderConfigSelect}
         />
       </Grid>
-      <Grid item className={classes.selectContainer}>
+      <Grid item>
         <ProviderConfigSelector
           id={`${id}-mc-provider-config`}
           label="Management cluster provider config"
