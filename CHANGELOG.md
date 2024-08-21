@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - GS plugin: Add scaffolder custom step layout.
 
+### Changed
+
+- Preselect installation if only one is available in the DeploymentDetailsPicker scaffolder field.
+
 ## [0.32.1] - 2024-08-09
 
 ### Changed

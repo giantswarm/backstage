@@ -59,8 +59,13 @@ const DeploymentDetailsPickerField = ({
   const { installations } = useInstallations();
   const { installationsStatuses } = useInstallationsStatuses();
 
+  const initiallySelectedInstallations =
+    installations.length === 1 ? [installations[0]] : [];
+
   const [selectedInstallations, setSelectedInstallations] = useState<string[]>(
-    installationNameValue ? [installationNameValue] : [],
+    installationNameValue
+      ? [installationNameValue]
+      : initiallySelectedInstallations,
   );
 
   const installationsErrors = installationsStatuses.some(
@@ -81,7 +86,6 @@ const DeploymentDetailsPickerField = ({
           installations={installations}
           selectedInstallations={selectedInstallations}
           installationsStatuses={installationsStatuses}
-          multiple={false}
           onChange={handleInstallationSelect}
         />
       </Grid>
