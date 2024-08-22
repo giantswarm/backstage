@@ -9,5 +9,7 @@ export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
 export * from './useProviderConfigs';
+export * from './useResourceRequests';
+export * from './useResourceRequestStatusDetails';
 export * from './useSecretStores';
 export { useInstallationsStatuses } from './useInstallationsStatuses';

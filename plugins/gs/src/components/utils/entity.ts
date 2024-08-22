@@ -63,3 +63,7 @@ export const getHelmChartsAppVersionsFromEntity = (entity: Entity) => {
 export const isEntityInstallationResource = (entity: Entity) => {
   return entity.kind === 'Resource' && entity.spec?.type === 'installation';
 };
+
+export const isEntityKratixResource = (entity: Entity) => {
+  return entity.kind === 'Resource' && entity.spec?.type === 'kratix';
+};

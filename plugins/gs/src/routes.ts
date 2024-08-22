@@ -15,3 +15,7 @@ export const installationsRouteRef = createRouteRef({
 export const entityDeploymentsRouteRef = createRouteRef({
   id: 'gs-deployments',
 });
+
+export const entityKratixResourcesRouteRef = createRouteRef({
+  id: 'gs-kratix-resources',
+});

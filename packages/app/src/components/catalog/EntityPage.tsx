@@ -64,8 +64,11 @@ import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
 import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
 import {
   EntityGSDeploymentsContent,
+  EntityGSKratixResourcesContent,
   EntityGSInstallationDetailsCard,
+  EntityGSKratixStatusCard,
   isEntityGSInstallationResource,
+  isEntityGSKratixResource,
 } from '@internal/plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -461,15 +464,24 @@ const domainPage = (
 const resourcePage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
-      <Grid container spacing={3} alignItems="stretch">
+      <Grid container spacing={3} alignItems="flex-start">
         {entityWarningContent}
         <Grid item md={6}>
           <EntityAboutCard variant="gridItem" />
         </Grid>
-        <Grid item md={6}>
+        <Grid item container spacing={3} md={6}>
+          <EntitySwitch>
+            <EntitySwitch.Case if={isEntityGSKratixResource}>
+              <Grid item xs={12}>
+                <EntityGSKratixStatusCard />
+              </Grid>
+            </EntitySwitch.Case>
+          </EntitySwitch>
           <EntitySwitch>
             <EntitySwitch.Case if={isLinksAvailable}>
-              <EntityLinksCard />
+              <Grid item xs={12}>
+                <EntityLinksCard />
+              </Grid>
             </EntitySwitch.Case>
           </EntitySwitch>
         </Grid>
@@ -481,6 +493,13 @@ const resourcePage = (
           </EntitySwitch.Case>
         </EntitySwitch>
       </Grid>
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/kratix-resources"
+      title="Kratix Resources"
+      if={isEntityGSKratixResource}
+    >
+      <EntityGSKratixResourcesContent />
     </EntityLayout.Route>
   </EntityLayout>
 );

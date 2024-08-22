@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add AWS integration for catalog and scaffolder plugins.
+- GS plugin: Display Kratix resources in the catalog.
+
 ## [0.34.1] - 2024-09-03
 
 ### Changed

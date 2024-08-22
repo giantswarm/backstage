@@ -4,6 +4,7 @@ export {
   GSClustersPage,
   GSInstallationsPage,
   EntityGSDeploymentsContent,
+  EntityGSKratixResourcesContent,
   GSClusterPickerFieldExtension,
   GSDeploymentDetailsPickerFieldExtension,
   GSSecretStorePickerFieldExtension,
@@ -13,6 +14,8 @@ export {
 export { gsAuthApiRef, GSAuth } from './apis';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
 export { EntityInstallationDetailsCard as EntityGSInstallationDetailsCard } from './components/catalog/EntityInstallationDetailsCard';
+export { EntityKratixResourcesCard as EntityGSKratixResourcesCard } from './components/catalog/EntityKratixResourcesCard';
+export { EntityKratixStatusCard as EntityGSKratixStatusCard } from './components/catalog/EntityKratixStatusCard';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
 export { MainMenu as GSMainMenu } from './components/MainMenu';
 export { FeatureEnabled as GSFeatureEnabled } from './components/FeatureEnabled';
@@ -21,5 +24,6 @@ export {
   isEntityLatestReleaseAvailable as isEntityGSLatestReleaseAvailable,
   isEntityHelmChartsAvailable as isEntityGSHelmChartsAvailable,
   isEntityInstallationResource as isEntityGSInstallationResource,
+  isEntityKratixResource as isEntityGSKratixResource,
 } from './components/utils/entity';
 export { columnFactories as GSColumnFactories } from './components/catalog/columns';
