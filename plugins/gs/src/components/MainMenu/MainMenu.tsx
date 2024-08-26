@@ -8,11 +8,7 @@ export const MainMenu = () => {
   return (
     <SidebarGroup>
       <FeatureEnabled feature="installationsPage">
-        <SidebarItem
-          icon={PlaceIcon}
-          to="installations"
-          text="Installations"
-        />
+        <SidebarItem icon={PlaceIcon} to="installations" text="Installations" />
       </FeatureEnabled>
 
       <FeatureEnabled feature="clustersPage">
