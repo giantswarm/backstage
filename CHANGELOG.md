@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Page "Installations" is now visible to all dev portal visitors, feature flag `show-installations-page` is removed.
+
 ## [0.33.1] - 2024-08-21
+
+### Removed
+
+- Container images are no longer pushed to our Aliyun registry.
 
 ## [0.33.0] - 2024-08-21
 
