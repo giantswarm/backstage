@@ -85,11 +85,6 @@ const app = createApp({
       description:
         'Show Kubernetes resources for service components. Requires matching labels on resources.',
     },
-    {
-      pluginId: '',
-      name: 'show-installations-page',
-      description: 'Show Giant Swarm installations page in the main menu.',
-    },
   ],
   icons: {
     giantswarm: GiantSwarmIcon,
