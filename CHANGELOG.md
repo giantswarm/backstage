@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0] - 2024-08-30
+
 ### Changed
 
 - Update Backstage to 1.30.4.
@@ -631,7 +633,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.33.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/giantswarm/backstage/compare/v0.33.2...v0.34.0
 [0.33.2]: https://github.com/giantswarm/backstage/compare/v0.33.1...v0.33.2
 [0.33.1]: https://github.com/giantswarm/backstage/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/giantswarm/backstage/compare/v0.32.1...v0.33.0
