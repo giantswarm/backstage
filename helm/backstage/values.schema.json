@@ -5,6 +5,17 @@
     "authSessionSecret": {
       "type": "string"
     },
+    "aws": {
+      "type": "object",
+      "properties": {
+        "accessKeyID": {
+          "type": "string"
+        },
+        "secretAccessKey": {
+          "type": "string"
+        }
+      }
+    },
     "backendSecret": {
       "type": "string"
     },
