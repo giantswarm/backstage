@@ -12,6 +12,8 @@ type DetailsPaneParams = {
 
 export const DEPLOYMENT_DETAILS_PANE_ID = 'deploymentDetails';
 export const CLUSTER_ACCESS_PANE_ID = 'clusterAccess';
+export const KRATIX_RESOURCE_REQUEST_DETAILS_PANE_ID =
+  'kratixResourceRequestDetails';
 
 export function useDetailsPane(paneId: string) {
   const [searchParams, setSearchParams] = useSearchParams();

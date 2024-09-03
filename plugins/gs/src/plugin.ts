@@ -6,6 +6,7 @@ import {
 import {
   clustersRouteRef,
   entityDeploymentsRouteRef,
+  entityKratixResourcesRouteRef,
   installationsRouteRef,
   rootRouteRef,
 } from './routes';
@@ -39,6 +40,7 @@ export const gsPlugin = createPlugin({
     root: rootRouteRef,
     clustersPage: clustersRouteRef,
     entityContent: entityDeploymentsRouteRef,
+    entityKratixResourcesContent: entityKratixResourcesRouteRef,
   },
 });
 
@@ -70,6 +72,17 @@ export const EntityGSDeploymentsContent = gsPlugin.provide(
         m => m.EntityDeploymentsContent,
       ),
     mountPoint: entityDeploymentsRouteRef,
+  }),
+);
+
+export const EntityGSKratixResourcesContent = gsPlugin.provide(
+  createRoutableExtension({
+    name: 'EntityGSKratixResourcesContent',
+    component: () =>
+      import('./components/catalog/EntityKratixResourcesContent').then(
+        m => m.EntityKratixResourcesContent,
+      ),
+    mountPoint: entityKratixResourcesRouteRef,
   }),
 );
 

@@ -1,0 +1,1 @@
+export { EntityKratixStatusCard } from './EntityKratixStatusCard';

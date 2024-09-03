@@ -4,6 +4,7 @@ import * as awsv1beta1 from '../model/awsv1beta1';
 import * as capiv1beta1 from '../model/capiv1beta1';
 import * as helmv2beta1 from '../model/helmv2beta1';
 import * as metav1 from '../model/metav1';
+import * as promisev1beta1 from '../model/promisev1beta1';
 import * as securityv1alpha1 from '../model/securityv1alpha1';
 import * as secretsv1beta1 from '../model/secretsv1beta1';
 
@@ -25,6 +26,11 @@ export type ProviderConfig = awsv1beta1.IProviderConfig;
 
 export type SecretStore = secretsv1beta1.ISecretStore;
 export type ClusterSecretStore = secretsv1beta1.IClusterSecretStore;
+
+export type ResourceRequest =
+  | promisev1beta1.IGitHubApp
+  | promisev1beta1.IGitHubRepo
+  | promisev1beta1.IAppDeployment;
 
 export type Resource<T> = T & {
   installationName: string;
