@@ -2,10 +2,12 @@ import {
   StatusAborted,
   StatusError,
   StatusOK,
+  StatusWarning,
 } from '@backstage/core-components';
 import { useTheme } from '@material-ui/core';
 import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
+import ScheduleOutlinedIcon from '@material-ui/icons/ScheduleOutlined';
 import HelpOutlinedIcon from '@material-ui/icons/HelpOutlineOutlined';
 import { toSentenceCase } from '../utils/helpers';
 import { ResourceRequestStatuses } from '@internal/plugin-gs-common';
@@ -28,6 +30,12 @@ export function useResourceRequestStatusDetails(status: string) {
       statusIcon = StatusError;
       icon = CancelOutlinedIcon;
       color = theme.palette.status.error;
+      break;
+
+    case ResourceRequestStatuses.Pending:
+      statusIcon = StatusWarning;
+      icon = ScheduleOutlinedIcon;
+      color = theme.palette.status.warning;
       break;
 
     case ResourceRequestStatuses.Unknown:
