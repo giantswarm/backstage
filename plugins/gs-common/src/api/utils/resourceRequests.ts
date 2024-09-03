@@ -3,6 +3,7 @@ import { ResourceRequest } from '../types';
 
 export const ResourceRequestStatuses = {
   Unknown: 'unknown',
+  Pending: 'pending',
   Failed: 'failed',
   Completed: 'completed',
 } as const;
@@ -41,13 +42,23 @@ export function getResourceRequestStatus(resourceRequest: ResourceRequest) {
   const conditions = resourceRequest.status?.conditions;
 
   if (
-    conditions.some(c => c.type === 'PipelineCompleted' && c.status === 'False')
+    conditions.some(
+      c =>
+        c.type === 'PipelineCompleted' &&
+        c.reason === 'PipelineNotCompleted' &&
+        c.status === 'False',
+    )
   ) {
-    return ResourceRequestStatuses.Failed;
+    return ResourceRequestStatuses.Pending;
   }
 
   if (
-    conditions.some(c => c.type === 'PipelineCompleted' && c.status === 'True')
+    conditions.some(
+      c =>
+        c.type === 'PipelineCompleted' &&
+        c.reason === 'PipelineExecutedSuccessfully' &&
+        c.status === 'True',
+    )
   ) {
     return ResourceRequestStatuses.Completed;
   }
