@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] - 2024-09-03
+
 ### Added
 
 - Add AWS integration for catalog and scaffolder plugins.
@@ -644,7 +646,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.34.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/giantswarm/backstage/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/giantswarm/backstage/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/giantswarm/backstage/compare/v0.33.2...v0.34.0
 [0.33.2]: https://github.com/giantswarm/backstage/compare/v0.33.1...v0.33.2
