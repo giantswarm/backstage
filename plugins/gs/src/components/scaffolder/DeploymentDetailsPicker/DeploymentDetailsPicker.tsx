@@ -5,6 +5,7 @@ import {
   Cluster,
   getClusterName,
   getClusterNamespace,
+  getClusterOrganization,
   getProviderConfigName,
   ProviderConfig,
 } from '@internal/plugin-gs-common';
@@ -149,6 +150,7 @@ export const DeploymentDetailsPicker = ({
     installationName,
     clusterName,
     clusterNamespace,
+    clusterOrganization,
     wcProviderConfig,
     mcProviderConfig,
   } = formData ?? {};
@@ -158,6 +160,7 @@ export const DeploymentDetailsPicker = ({
       installationName: selectedInstallation,
       clusterName: '',
       clusterNamespace: '',
+      clusterOrganization: '',
       wcProviderConfig: '',
       mcProviderConfig: '',
     });
@@ -171,6 +174,7 @@ export const DeploymentDetailsPicker = ({
       installationName: selectedInstallation,
       clusterName: getClusterName(selectedCluster),
       clusterNamespace: getClusterNamespace(selectedCluster) ?? '',
+      clusterOrganization: getClusterOrganization(selectedCluster) ?? '',
       wcProviderConfig: wcProviderConfig ?? '',
       mcProviderConfig: mcProviderConfig ?? '',
     });
@@ -184,6 +188,7 @@ export const DeploymentDetailsPicker = ({
       installationName: selectedInstallation,
       clusterName: clusterName ?? '',
       clusterNamespace: clusterNamespace ?? '',
+      clusterOrganization: clusterOrganization ?? '',
       wcProviderConfig: getProviderConfigName(selectedProviderConfig),
       mcProviderConfig: mcProviderConfig ?? '',
     });
@@ -197,6 +202,7 @@ export const DeploymentDetailsPicker = ({
       installationName: selectedInstallation,
       clusterName: clusterName ?? '',
       clusterNamespace: clusterNamespace ?? '',
+      clusterOrganization: clusterOrganization ?? '',
       wcProviderConfig: wcProviderConfig ?? '',
       mcProviderConfig: getProviderConfigName(selectedProviderConfig),
     });
