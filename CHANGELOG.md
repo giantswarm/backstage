@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add AWS credentials to environment variables.
+
 ## [0.35.0] - 2024-09-03
 
 ### Added
