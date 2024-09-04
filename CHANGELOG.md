@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.1] - 2024-09-04
+
 ### Added
 
 - Add AWS credentials to environment variables.
@@ -650,7 +652,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.35.1...HEAD
+[0.35.1]: https://github.com/giantswarm/backstage/compare/v0.35.0...v0.35.1
 [0.35.0]: https://github.com/giantswarm/backstage/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/giantswarm/backstage/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/giantswarm/backstage/compare/v0.33.2...v0.34.0
