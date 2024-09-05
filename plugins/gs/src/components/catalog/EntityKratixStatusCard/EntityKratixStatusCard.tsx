@@ -5,16 +5,17 @@ import {
   useEntity,
 } from '@backstage/plugin-catalog-react';
 import { useApi, useRouteRef } from '@backstage/core-plugin-api';
-import { InfoCard, Link, Progress } from '@backstage/core-components';
+import { InfoCard, Progress } from '@backstage/core-components';
 import useAsync from 'react-use/esm/useAsync';
 import { Link as RouterLink } from 'react-router-dom';
 import { entityKratixResourcesRouteRef } from '../../../routes';
-import { IconButton } from '@material-ui/core';
+import { IconButton, Typography, Link } from '@material-ui/core';
 import CachedIcon from '@material-ui/icons/Cached';
-import { Entity } from '@backstage/catalog-model';
+import { Entity, getEntitySourceLocation } from '@backstage/catalog-model';
 
 export function EntityKratixStatusCard() {
   const { entity } = useEntity();
+  const entitySourceLocation = getEntitySourceLocation(entity);
 
   const catalogApi = useApi(catalogApiRef);
   const targetEntityRef = {
@@ -41,7 +42,7 @@ export function EntityKratixStatusCard() {
 
   if (loading) {
     return (
-      <InfoCard title="Target entity">
+      <InfoCard title="Creation progress">
         <Progress />
       </InfoCard>
     );
@@ -49,7 +50,7 @@ export function EntityKratixStatusCard() {
 
   return (
     <InfoCard
-      title="Target entity"
+      title="Creation progress"
       action={
         <>
           {!targetEntity && (
@@ -66,18 +67,53 @@ export function EntityKratixStatusCard() {
     >
       {targetEntity ? (
         <>
-          Target component is ready.{' '}
-          <EntityRefLink entityRef={targetEntity}>
-            Open in catalog.
-          </EntityRefLink>
+          <Typography variant="body2">
+            The{' '}
+            <Link
+              href={entitySourceLocation.target}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              pull request
+            </Link>{' '}
+            defining these resources has been merged.
+          </Typography>
+          <Typography variant="body2">
+            See resource creation details in the{' '}
+            <Link component={RouterLink} to={kratixResourcesRoute()}>
+              Kratix resources
+            </Link>{' '}
+            tab.
+          </Typography>
+          <Typography variant="body2">
+            View the{' '}
+            <EntityRefLink entityRef={targetEntity}>
+              entity page for {targetEntity.metadata.name}
+            </EntityRefLink>{' '}
+            to see more details about the component and its deployments.
+          </Typography>
         </>
       ) : (
         <>
-          Target component is not available yet. See{' '}
-          <Link component={RouterLink} to={kratixResourcesRoute()}>
-            Kratix resources
-          </Link>{' '}
-          for more information.
+          <Typography variant="body2">
+            For resources to be created,{' '}
+            <Link
+              href={entitySourceLocation.target}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              this pull request
+            </Link>{' '}
+            must be merged. After merging, it can take several minutes for
+            resource creation to start.
+          </Typography>
+          <Typography variant="body2">
+            Once resources get created, you can track creation progress in the{' '}
+            <Link component={RouterLink} to={kratixResourcesRoute()}>
+              Kratix resources
+            </Link>{' '}
+            tab.
+          </Typography>
         </>
       )}
     </InfoCard>
