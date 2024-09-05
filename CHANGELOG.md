@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- GS plugin: Kratix status card was improved to provide more information.
+
 ## [0.35.1] - 2024-09-04
 
 ### Added
