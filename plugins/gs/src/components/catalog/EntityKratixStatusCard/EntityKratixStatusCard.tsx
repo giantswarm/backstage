@@ -9,11 +9,25 @@ import { InfoCard, Progress } from '@backstage/core-components';
 import useAsync from 'react-use/esm/useAsync';
 import { Link as RouterLink } from 'react-router-dom';
 import { entityKratixResourcesRouteRef } from '../../../routes';
-import { IconButton, Typography, Link } from '@material-ui/core';
+import {
+  IconButton,
+  Typography,
+  Link,
+  makeStyles,
+  Theme,
+} from '@material-ui/core';
 import CachedIcon from '@material-ui/icons/Cached';
 import { Entity, getEntitySourceLocation } from '@backstage/catalog-model';
 
+const useStyles = makeStyles((theme: Theme) => ({
+  paragraphWithMargin: {
+    marginTop: theme.spacing(1),
+  },
+}));
+
 export function EntityKratixStatusCard() {
+  const classes = useStyles();
+
   const { entity } = useEntity();
   const entitySourceLocation = getEntitySourceLocation(entity);
 
@@ -78,14 +92,14 @@ export function EntityKratixStatusCard() {
             </Link>{' '}
             defining these resources has been merged.
           </Typography>
-          <Typography variant="body2">
+          <Typography variant="body2" className={classes.paragraphWithMargin}>
             See resource creation details in the{' '}
             <Link component={RouterLink} to={kratixResourcesRoute()}>
               Kratix resources
             </Link>{' '}
             tab.
           </Typography>
-          <Typography variant="body2">
+          <Typography variant="body2" className={classes.paragraphWithMargin}>
             View the{' '}
             <EntityRefLink entityRef={targetEntity}>
               entity page for {targetEntity.metadata.name}
@@ -107,7 +121,7 @@ export function EntityKratixStatusCard() {
             must be merged. After merging, it can take several minutes for
             resource creation to start.
           </Typography>
-          <Typography variant="body2">
+          <Typography variant="body2" className={classes.paragraphWithMargin}>
             Once resources get created, you can track creation progress in the{' '}
             <Link component={RouterLink} to={kratixResourcesRoute()}>
               Kratix resources
