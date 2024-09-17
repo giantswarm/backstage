@@ -24,6 +24,7 @@ backend:
       - 'https://circleci.com'
       - 'https://codecov.io'
       - 'https://dl.circleci.com'
+      - 'https://github.com'
       - 'https://godoc.org'
       - 'https://goreportcard.com'
       - 'https://img.shields.io'
