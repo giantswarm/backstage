@@ -91,8 +91,8 @@ export function EntityCheckboxesPicker<
   const [selectedOptions, setSelectedOptions] = useState(
     queryParameters.length
       ? queryParameters
-      : (filters[name] as unknown as { values: string[] })?.values ??
-          initialSelectedOptions,
+      : ((filters[name] as unknown as { values: string[] })?.values ??
+          initialSelectedOptions),
   );
 
   useEffect(() => {

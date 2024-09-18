@@ -59,7 +59,7 @@ export const EntityCustomerPicker = (props: EntityCustomerPickerProps) => {
   const [selectedOptions, setSelectedOptions] = useState(
     queryParameters.length
       ? queryParameters
-      : filters.customer?.getCustomers() ?? initialSelectedOptions,
+      : (filters.customer?.getCustomers() ?? initialSelectedOptions),
   );
 
   useEffect(() => {
