@@ -81,11 +81,11 @@ export const SecretStorePicker = ({
   const isClusterSecretStore =
     uiSchema['ui:options']?.isClusterSecretStore ?? false;
   const title =
-    schema.title ?? isClusterSecretStore
+    (schema.title ?? isClusterSecretStore)
       ? 'Cluster secret store'
       : 'Secret store';
   const description =
-    schema.description ?? isClusterSecretStore
+    (schema.description ?? isClusterSecretStore)
       ? 'Cluster secret store reference.'
       : 'Secret store reference.';
 
