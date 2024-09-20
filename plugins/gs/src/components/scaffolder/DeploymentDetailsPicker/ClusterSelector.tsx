@@ -17,7 +17,7 @@ type ClusterSelectorProps = {
   error?: boolean;
   installations: string[];
   selectedCluster?: string;
-  onChange: (installationName: string, cluster: Cluster) => void;
+  onChange: (cluster: Cluster) => void;
 };
 
 export const ClusterSelector = ({
@@ -54,7 +54,7 @@ export const ClusterSelector = ({
   const handleChange = (selectedItem: string) => {
     const { installationName, ...cluster } = clusterResourcesMap[selectedItem];
 
-    onChange(installationName, cluster);
+    onChange(cluster);
   };
 
   return (

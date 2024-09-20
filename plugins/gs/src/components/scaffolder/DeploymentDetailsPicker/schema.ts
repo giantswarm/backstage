@@ -7,8 +7,15 @@ export const DeploymentDetailsPickerFieldSchema = makeFieldSchemaFromZod(
     clusterName: z.string(),
     clusterNamespace: z.string(),
     clusterOrganization: z.string(),
-    wcProviderConfig: z.string(),
-    mcProviderConfig: z.string(),
+    wcProviderConfig: z.string().optional(),
+    mcProviderConfig: z.string().optional(),
+  }),
+  z.object({
+    displayProviderConfigsSelectors: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('Allow to select provider configs.'),
   }),
 );
 

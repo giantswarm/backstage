@@ -23,23 +23,15 @@ type DeploymentDetailsPickerFieldProps = {
   helperText?: string;
   required?: boolean;
   error?: boolean;
+  displayProviderConfigsSelectors?: boolean;
   installationNameValue?: string;
   clusterNameValue?: string;
   wcProviderConfigValue?: string;
   mcProviderConfigValue?: string;
   onInstallationSelect: (selectedInstallation: string) => void;
-  onClusterSelect: (
-    selectedInstallation: string,
-    selectedCluster: Cluster,
-  ) => void;
-  onWCProviderConfigSelect: (
-    selectedInstallation: string,
-    selectedProviderConfig: ProviderConfig,
-  ) => void;
-  onMCProviderConfigSelect: (
-    selectedInstallation: string,
-    selectedProviderConfig: ProviderConfig,
-  ) => void;
+  onClusterSelect: (selectedCluster: Cluster) => void;
+  onWCProviderConfigSelect: (selectedProviderConfig: ProviderConfig) => void;
+  onMCProviderConfigSelect: (selectedProviderConfig: ProviderConfig) => void;
 };
 
 const DeploymentDetailsPickerField = ({
@@ -48,6 +40,7 @@ const DeploymentDetailsPickerField = ({
   helperText,
   required,
   error,
+  displayProviderConfigsSelectors,
   installationNameValue,
   clusterNameValue,
   wcProviderConfigValue,
@@ -108,32 +101,36 @@ const DeploymentDetailsPickerField = ({
           onChange={onClusterSelect}
         />
       </Grid>
-      <Grid item>
-        <ProviderConfigSelector
-          id={`${id}-mc-provider-config`}
-          label="Management cluster provider config"
-          helperText="AWS access for crossplane to provision resources in the management cluster account."
-          required={required}
-          disabled={installationsErrors}
-          error={error}
-          installations={selectedInstallations}
-          selectedProviderConfig={mcProviderConfigValue}
-          onChange={onMCProviderConfigSelect}
-        />
-      </Grid>
-      <Grid item>
-        <ProviderConfigSelector
-          id={`${id}-wc-provider-config`}
-          label="Workload cluster provider config"
-          helperText="AWS access for crossplane to provision resources in the workload cluster account."
-          required={required}
-          disabled={installationsErrors}
-          error={error}
-          installations={selectedInstallations}
-          selectedProviderConfig={wcProviderConfigValue}
-          onChange={onWCProviderConfigSelect}
-        />
-      </Grid>
+      {displayProviderConfigsSelectors && (
+        <>
+          <Grid item>
+            <ProviderConfigSelector
+              id={`${id}-mc-provider-config`}
+              label="Management cluster provider config"
+              helperText="AWS access for crossplane to provision resources in the management cluster account."
+              required={required}
+              disabled={installationsErrors}
+              error={error}
+              installations={selectedInstallations}
+              selectedProviderConfig={mcProviderConfigValue}
+              onChange={onMCProviderConfigSelect}
+            />
+          </Grid>
+          <Grid item>
+            <ProviderConfigSelector
+              id={`${id}-wc-provider-config`}
+              label="Workload cluster provider config"
+              helperText="AWS access for crossplane to provision resources in the workload cluster account."
+              required={required}
+              disabled={installationsErrors}
+              error={error}
+              installations={selectedInstallations}
+              selectedProviderConfig={wcProviderConfigValue}
+              onChange={onWCProviderConfigSelect}
+            />
+          </Grid>
+        </>
+      )}
     </Grid>
   );
 };
@@ -144,16 +141,14 @@ export const DeploymentDetailsPicker = ({
   required,
   formData,
   schema: { title = 'Cluster', description = 'Workload cluster name' },
+  uiSchema,
   idSchema,
 }: DeploymentDetailsPickerProps) => {
-  const {
-    installationName,
-    clusterName,
-    clusterNamespace,
-    clusterOrganization,
-    wcProviderConfig,
-    mcProviderConfig,
-  } = formData ?? {};
+  const { installationName, clusterName, wcProviderConfig, mcProviderConfig } =
+    formData ?? {};
+
+  const displayProviderConfigsSelectors =
+    uiSchema['ui:options']?.displayProviderConfigsSelectors ?? false;
 
   const handleInstallationSelect = (selectedInstallation: string) => {
     onChange({
@@ -161,49 +156,50 @@ export const DeploymentDetailsPicker = ({
       clusterName: '',
       clusterNamespace: '',
       clusterOrganization: '',
-      wcProviderConfig: '',
-      mcProviderConfig: '',
+      ...(displayProviderConfigsSelectors
+        ? {
+            wcProviderConfig: '',
+            mcProviderConfig: '',
+          }
+        : {}),
     });
   };
 
-  const handleClusterSelect = (
-    selectedInstallation: string,
-    selectedCluster: Cluster,
-  ) => {
+  const handleClusterSelect = (selectedCluster: Cluster) => {
+    if (!formData) {
+      return;
+    }
+
     onChange({
-      installationName: selectedInstallation,
+      ...formData,
       clusterName: getClusterName(selectedCluster),
       clusterNamespace: getClusterNamespace(selectedCluster) ?? '',
       clusterOrganization: getClusterOrganization(selectedCluster) ?? '',
-      wcProviderConfig: wcProviderConfig ?? '',
-      mcProviderConfig: mcProviderConfig ?? '',
     });
   };
 
   const handleWCProviderConfigSelect = (
-    selectedInstallation: string,
     selectedProviderConfig: ProviderConfig,
   ) => {
+    if (!formData) {
+      return;
+    }
+
     onChange({
-      installationName: selectedInstallation,
-      clusterName: clusterName ?? '',
-      clusterNamespace: clusterNamespace ?? '',
-      clusterOrganization: clusterOrganization ?? '',
+      ...formData,
       wcProviderConfig: getProviderConfigName(selectedProviderConfig),
-      mcProviderConfig: mcProviderConfig ?? '',
     });
   };
 
   const handleMCProviderConfigSelect = (
-    selectedInstallation: string,
     selectedProviderConfig: ProviderConfig,
   ) => {
+    if (!formData) {
+      return;
+    }
+
     onChange({
-      installationName: selectedInstallation,
-      clusterName: clusterName ?? '',
-      clusterNamespace: clusterNamespace ?? '',
-      clusterOrganization: clusterOrganization ?? '',
-      wcProviderConfig: wcProviderConfig ?? '',
+      ...formData,
       mcProviderConfig: getProviderConfigName(selectedProviderConfig),
     });
   };
@@ -216,6 +212,7 @@ export const DeploymentDetailsPicker = ({
         helperText={description}
         required={required}
         error={rawErrors?.length > 0 && !formData}
+        displayProviderConfigsSelectors={displayProviderConfigsSelectors}
         installationNameValue={installationName}
         clusterNameValue={clusterName}
         wcProviderConfigValue={wcProviderConfig}
