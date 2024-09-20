@@ -17,7 +17,7 @@ type ProviderConfigSelectorProps = {
   error?: boolean;
   installations: string[];
   selectedProviderConfig?: string;
-  onChange: (installationName: string, providerConfig: ProviderConfig) => void;
+  onChange: (providerConfig: ProviderConfig) => void;
 };
 
 export const ProviderConfigSelector = ({
@@ -57,7 +57,7 @@ export const ProviderConfigSelector = ({
     const { installationName, ...providerConfig } =
       providerConfigResourcesMap[selectedItem];
 
-    onChange(installationName, providerConfig);
+    onChange(providerConfig);
   };
 
   return (
