@@ -1,6 +1,7 @@
 import React from 'react';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
 import {
+  Box,
   Card,
   CardContent,
   CardHeader,
@@ -19,7 +20,12 @@ import {
 } from '@internal/plugin-gs-common';
 import { useHelmRelease } from '../../hooks';
 import { formatVersion } from '../../utils/helpers';
-import { DateComponent, Heading, StructuredMetadataList } from '../../UI';
+import {
+  DateComponent,
+  GrafanaDashboardLink,
+  Heading,
+  StructuredMetadataList,
+} from '../../UI';
 import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
 import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
 
@@ -29,6 +35,7 @@ type HelmReleaseDetailsProps = {
   namespace: string;
   name: string;
   sourceLocation?: string;
+  grafanaDashboard?: string;
 };
 
 export const HelmReleaseDetails = ({
@@ -37,6 +44,7 @@ export const HelmReleaseDetails = ({
   namespace,
   name,
   sourceLocation,
+  grafanaDashboard,
 }: HelmReleaseDetailsProps) => {
   const {
     data: helmrelease,
@@ -81,6 +89,17 @@ export const HelmReleaseDetails = ({
 
   return (
     <div>
+      {grafanaDashboard && (
+        <Box display="flex" marginBottom={2}>
+          <GrafanaDashboardLink
+            dashboard={grafanaDashboard}
+            installationName={installationName}
+            clusterName={clusterName}
+            applicationName={name}
+            text="Open Grafana dashboard for this application"
+          />
+        </Box>
+      )}
       <Grid container direction="column">
         <Grid item>
           <Card>

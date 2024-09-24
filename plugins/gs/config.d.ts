@@ -8,6 +8,8 @@ export interface Config {
           [installationName: string]: {
             /** @visibility frontend */
             pipeline: string;
+            /** @visibility frontend */
+            grafanaUrl?: string;
           };
         };
     /** @visibility frontend */
