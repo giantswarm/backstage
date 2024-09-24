@@ -8,6 +8,7 @@ import { useEntity } from '@backstage/plugin-catalog-react';
 import { DEPLOYMENT_DETAILS_PANE_ID } from '../../hooks';
 import {
   getDeploymentNamesFromEntity,
+  getGrafanaDashboardFromEntity,
   getSourceLocationFromEntity,
 } from '../../utils/entity';
 import { GSContext } from '../../GSContext';
@@ -23,6 +24,7 @@ export const EntityDeploymentsContent = () => {
   const entityName = entity.metadata.name;
   const deploymentNames = getDeploymentNamesFromEntity(entity) ?? [];
   const sourceLocation = getSourceLocationFromEntity(entity);
+  const grafanaDashboard = getGrafanaDashboardFromEntity(entity);
 
   return (
     <GSContext>
@@ -34,6 +36,7 @@ export const EntityDeploymentsContent = () => {
           <DeploymentsTable
             deploymentNames={deploymentNames}
             sourceLocation={sourceLocation}
+            grafanaDashboard={grafanaDashboard}
           />
         </InstallationsWrapper>
         <DetailsPane
@@ -48,6 +51,7 @@ export const EntityDeploymentsContent = () => {
                   name={name}
                   namespace={namespace}
                   sourceLocation={sourceLocation}
+                  grafanaDashboard={grafanaDashboard}
                 />
               )}
               {kind === 'helmrelease' && (
@@ -57,6 +61,7 @@ export const EntityDeploymentsContent = () => {
                   name={name}
                   namespace={namespace}
                   sourceLocation={sourceLocation}
+                  grafanaDashboard={grafanaDashboard}
                 />
               )}
             </>

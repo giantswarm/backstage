@@ -2,6 +2,7 @@ import React from 'react';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import {
+  Box,
   Card,
   CardContent,
   CardHeader,
@@ -19,7 +20,12 @@ import {
 } from '@internal/plugin-gs-common';
 import { useApp } from '../../hooks';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
-import { DateComponent, Heading, StructuredMetadataList } from '../../UI';
+import {
+  DateComponent,
+  GrafanaDashboardLink,
+  Heading,
+  StructuredMetadataList,
+} from '../../UI';
 import { AppDetailsStatus } from '../AppDetailsStatus';
 import { RevisionDetails } from '../RevisionDetails';
 
@@ -29,6 +35,7 @@ type AppDetailsProps = {
   namespace: string;
   name: string;
   sourceLocation?: string;
+  grafanaDashboard?: string;
 };
 
 export const AppDetails = ({
@@ -37,6 +44,7 @@ export const AppDetails = ({
   namespace,
   name,
   sourceLocation,
+  grafanaDashboard,
 }: AppDetailsProps) => {
   const {
     data: app,
@@ -77,6 +85,17 @@ export const AppDetails = ({
 
   return (
     <div>
+      {grafanaDashboard && (
+        <Box display="flex" marginBottom={2}>
+          <GrafanaDashboardLink
+            dashboard={grafanaDashboard}
+            installationName={installationName}
+            clusterName={clusterName}
+            applicationName={name}
+            text="Open Grafana dashboard for this application"
+          />
+        </Box>
+      )}
       <Grid container direction="column">
         <Grid item>
           <Card>

@@ -2,6 +2,7 @@ import { ANNOTATION_SOURCE_LOCATION, Entity } from '@backstage/catalog-model';
 import { formatVersion } from './helpers';
 
 export const GS_DEPLOYMENT_NAMES = 'giantswarm.io/deployment-names';
+export const GS_GRAFANA_DASHBOARD = 'giantswarm.io/grafana-dashboard';
 export const GS_HELMCHART_APP_VERSIONS = 'giantswarm.io/helmchart-app-versions';
 export const GS_HELMCHART_VERSIONS = 'giantswarm.io/helmchart-versions';
 export const GS_HELMCHARTS = 'giantswarm.io/helmcharts';
@@ -27,6 +28,10 @@ export const getSourceLocationFromEntity = (entity: Entity) => {
   return location && location.startsWith('url:')
     ? location.replace(/^url:/, '')
     : location;
+};
+
+export const getGrafanaDashboardFromEntity = (entity: Entity) => {
+  return entity.metadata.annotations?.[GS_GRAFANA_DASHBOARD];
 };
 
 export const isEntityLatestReleaseAvailable = (entity: Entity) =>

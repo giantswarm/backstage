@@ -33,6 +33,7 @@ import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { DateComponent, Version } from '../../UI';
 import { AppStatus } from '../AppStatus';
 import { HelmReleaseStatus } from '../HelmReleaseStatus';
+import { DeploymentActions } from '../DeploymentActions';
 
 type Row = {
   installationName: string;
@@ -171,6 +172,7 @@ type Props = {
   retry: () => void;
   resources: Resource<Deployment>[];
   sourceLocation?: string;
+  grafanaDashboard?: string;
 };
 
 const DeploymentsTableView = ({
@@ -178,6 +180,7 @@ const DeploymentsTableView = ({
   retry,
   resources,
   sourceLocation,
+  grafanaDashboard,
 }: Props) => {
   const data: Row[] = resources.map(({ installationName, ...resource }) =>
     resource.kind === 'App'
@@ -217,6 +220,28 @@ const DeploymentsTableView = ({
         },
   );
 
+  const columns: TableColumn<Row>[] = grafanaDashboard
+    ? [
+        ...generatedColumns,
+        {
+          title: 'Actions',
+          render: row => {
+            return (
+              <DeploymentActions
+                installationName={row.installationName}
+                clusterName={row.clusterName}
+                kind={row.kind}
+                name={row.name}
+                namespace={row.namespace}
+                grafanaDashboard={grafanaDashboard}
+              />
+            );
+          },
+          width: '24px',
+        },
+      ]
+    : generatedColumns;
+
   return (
     <Table<Row>
       isLoading={loading}
@@ -236,7 +261,7 @@ const DeploymentsTableView = ({
       data={data}
       style={{ width: '100%' }}
       title={<Typography variant="h6">Deployments</Typography>}
-      columns={generatedColumns}
+      columns={columns}
     />
   );
 };
@@ -244,11 +269,13 @@ const DeploymentsTableView = ({
 type DeploymentsTableProps = {
   deploymentNames: string[];
   sourceLocation?: string;
+  grafanaDashboard?: string;
 };
 
 export const DeploymentsTable = ({
   deploymentNames,
   sourceLocation,
+  grafanaDashboard,
 }: DeploymentsTableProps) => {
   const {
     installationsData: installationsDataApps,
@@ -294,6 +321,7 @@ export const DeploymentsTable = ({
       resources={filteredResources}
       retry={handleRetry}
       sourceLocation={sourceLocation}
+      grafanaDashboard={grafanaDashboard}
     />
   );
 };

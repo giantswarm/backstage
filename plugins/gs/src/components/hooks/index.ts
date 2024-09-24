@@ -5,6 +5,7 @@ export * from './useClusterSecretStores';
 export * from './useClusters';
 export * from './useDeploymentStatusDetails';
 export * from './useDetailsPane';
+export * from './useGrafanaDashboardLink';
 export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
