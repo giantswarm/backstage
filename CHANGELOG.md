@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2024-09-24
+
 ### Added
 
 - GS plugin: Add Grafana dashboard link for deployments.
@@ -674,7 +676,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/giantswarm/backstage/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/giantswarm/backstage/compare/v0.35.3...v0.36.0
 [0.35.3]: https://github.com/giantswarm/backstage/compare/v0.35.2...v0.35.3
 [0.35.2]: https://github.com/giantswarm/backstage/compare/v0.35.1...v0.35.2
