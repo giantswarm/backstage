@@ -13,10 +13,7 @@ const typedUrl = (
 
   const searchParams = new URLSearchParams(queryStringData);
 
-  return `${baseUrl.replace(
-    /\/$/,
-    '',
-  )}/d/${dashboard}?${searchParams.toString()}`;
+  return `${baseUrl.replace(/\/$/, '')}${dashboard}?${searchParams.toString()}`;
 };
 
 export const useGrafanaDashboardLink = (

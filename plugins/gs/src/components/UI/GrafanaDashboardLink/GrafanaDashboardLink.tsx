@@ -42,7 +42,7 @@ export const GrafanaDashboardLink = ({
 
   const el = (
     <Box display="flex" alignItems="center">
-      <StyledGrafanaIcon /> {text ?? 'Grafana'}
+      <StyledGrafanaIcon /> {text ?? 'Dashboard'}
     </Box>
   );
 
