@@ -3563,18 +3563,18 @@
     to-fast-properties "^2.0.0"
 
 "@backstage-community/plugin-github-actions@^0.6.16":
-  version "0.6.21"
-  resolved "https://registry.yarnpkg.com/@backstage-community/plugin-github-actions/-/plugin-github-actions-0.6.21.tgz#beb462b2acc6b4ca094275c5b7f139e1f7552878"
-  integrity sha512-KRdyPsazHWXZs6t7TE82eJidMXs7HO+eGkHE8AyWNyP7cASh+qWcmUqrt1PTwg3K79qCkhneQ5jgkvUiRnrcOA==
+  version "0.6.22"
+  resolved "https://registry.yarnpkg.com/@backstage-community/plugin-github-actions/-/plugin-github-actions-0.6.22.tgz#9236b47da5d415c574fbb431a5a7d53e228b954f"
+  integrity sha512-xXe9aNnXkoIewh8xUje5CPTRGfF21ZLP7oqSlKrwiTOJ+RKw4MOZ+C0Id7lAcWi/JvnPOLuHMdGhk9F4Dqy0qA==
   dependencies:
-    "@backstage/catalog-model" "^1.5.0"
-    "@backstage/core-compat-api" "^0.2.7"
-    "@backstage/core-components" "^0.14.9"
+    "@backstage/catalog-model" "^1.6.0"
+    "@backstage/core-compat-api" "^0.2.8"
+    "@backstage/core-components" "^0.14.10"
     "@backstage/core-plugin-api" "^1.9.3"
-    "@backstage/frontend-plugin-api" "^0.6.7"
-    "@backstage/integration" "^1.13.0"
-    "@backstage/integration-react" "^1.1.29"
-    "@backstage/plugin-catalog-react" "^1.12.2"
+    "@backstage/frontend-plugin-api" "^0.7.0"
+    "@backstage/integration" "^1.14.0"
+    "@backstage/integration-react" "^1.1.30"
+    "@backstage/plugin-catalog-react" "^1.12.3"
     "@material-ui/core" "^4.12.2"
     "@material-ui/icons" "^4.9.1"
     "@material-ui/lab" "4.0.0-alpha.61"
@@ -4821,7 +4821,7 @@
     zen-observable "^0.10.0"
     zod "^3.22.4"
 
-"@backstage/core-compat-api@^0.2.7", "@backstage/core-compat-api@^0.2.8":
+"@backstage/core-compat-api@^0.2.8":
   version "0.2.8"
   resolved "https://registry.yarnpkg.com/@backstage/core-compat-api/-/core-compat-api-0.2.8.tgz#438ffaf8a615247d2c3b90e7bcae08f7c65d3849"
   integrity sha512-nHZmn8O2ik+H1IZxRq/giFCFUOwlvbHzqekHrgaCe8yC6n05JnOYeHtNN23s8AE5AM3v3veUkZmk0TXcKtOJlg==
