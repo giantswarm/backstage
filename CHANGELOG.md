@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.1] - 2024-09-25
+
 ### Fixes
 
 - GS plugin: Fix the error in the DeploymentDetailsPicker scaffolder field when pre-selected installation was missing in the form data.
@@ -680,7 +682,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.37.1...HEAD
+[0.37.1]: https://github.com/giantswarm/backstage/compare/v0.37.0...v0.37.1
 [0.37.0]: https://github.com/giantswarm/backstage/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/giantswarm/backstage/compare/v0.35.3...v0.36.0
 [0.35.3]: https://github.com/giantswarm/backstage/compare/v0.35.2...v0.35.3
