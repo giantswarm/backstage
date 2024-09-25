@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 
 import { GSContext } from '../../GSContext';
 import {
@@ -56,11 +56,15 @@ const DeploymentDetailsPickerField = ({
   const initiallySelectedInstallations =
     installations.length === 1 ? [installations[0]] : [];
 
-  const [selectedInstallations, setSelectedInstallations] = useState<string[]>(
-    installationNameValue
-      ? [installationNameValue]
-      : initiallySelectedInstallations,
-  );
+  const selectedInstallations = installationNameValue
+    ? [installationNameValue]
+    : initiallySelectedInstallations;
+
+  useEffect(() => {
+    if (!installationNameValue && installations.length === 1) {
+      onInstallationSelect(installations[0]);
+    }
+  });
 
   const installationsErrors = installationsStatuses.some(
     installationStatus => installationStatus.isError,
@@ -68,7 +72,6 @@ const DeploymentDetailsPickerField = ({
 
   const handleInstallationSelect = (selectedItems: string[]) => {
     if (selectedItems.length === 1) {
-      setSelectedInstallations(selectedItems);
       onInstallationSelect(selectedItems[0]);
     }
   };
