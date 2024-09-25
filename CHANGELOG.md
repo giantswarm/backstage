@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixes
+
+- GS plugin: Fix the error in the DeploymentDetailsPicker scaffolder field when pre-selected installation was missing in the form data.
+
 ## [0.37.0] - 2024-09-24
 
 ### Added
