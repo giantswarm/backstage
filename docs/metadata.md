@@ -32,6 +32,10 @@ The value is a list of names to use for looking up deployments (App or HelmRelea
 
 This annotation is used on installation resource entities to specify the escalation matrix for incidents. It is expected to contain a multi line string with human-readable information and contact details.
 
+### giantswarm.io/grafana-dashboard
+
+This annotation is used on component entities to specify the Grafana dashboard to link to. The value must be the path part of the dashboard URL, starting with `/`. The host name part will be generated based on the respective installation's base domain.
+
 ### giantswarm.io/latest-release-date
 
 Specifies the date and time of the latest release (as in a new tagged release in the revision control system) of a component entity. Value must be a string in ISO 8601 format.
