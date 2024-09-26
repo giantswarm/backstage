@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixes
+
+- GS plugin: Fix Grafana link application name.
+
 ## [0.37.1] - 2024-09-25
 
 ### Fixes
