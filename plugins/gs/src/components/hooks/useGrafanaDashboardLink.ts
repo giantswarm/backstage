@@ -8,7 +8,7 @@ const typedUrl = (
 ): string => {
   const queryStringData = {
     'var-cluster': clusterName,
-    'var-application': applicationName,
+    'var-application': `default-${applicationName}`,
   };
 
   const searchParams = new URLSearchParams(queryStringData);
