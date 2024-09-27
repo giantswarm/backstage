@@ -93,7 +93,7 @@ used to display a link to a deployment's release notes.
 
 ```tsx
 // In packages/app/src/components/catalog/EntityPage.tsx
-import { EntityGSDeploymentsContent } from '@internal/plugin-gs';
+import { EntityGSDeploymentsContent } from '@giantswarm/backstage-plugin-gs';
 
 // You can add the tab to any number of pages, the service page is shown as an
 // example here

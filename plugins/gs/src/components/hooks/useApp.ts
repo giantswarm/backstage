@@ -1,4 +1,4 @@
-import type { App } from '@internal/plugin-gs-common';
+import type { App } from '@giantswarm/backstage-plugin-gs-common';
 import { useGetResource } from './useGetResource';
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 

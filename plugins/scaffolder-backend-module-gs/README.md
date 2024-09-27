@@ -1,4 +1,4 @@
-# @internal/plugin-scaffolder-backend-module-gs
+# @giantswarm/backstage-plugin-scaffolder-backend-module-gs
 
 The GS backend module for the scaffolder plugin.
 

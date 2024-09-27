@@ -8,7 +8,7 @@ import {
   getClusterOrganization,
   getProviderConfigName,
   ProviderConfig,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { useInstallations, useInstallationsStatuses } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { InstallationsSelector } from '../../InstallationsSelector';

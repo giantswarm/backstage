@@ -4,7 +4,10 @@ import { Link, Table, TableColumn } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
-import type { Deployment, Resource } from '@internal/plugin-gs-common';
+import type {
+  Deployment,
+  Resource,
+} from '@giantswarm/backstage-plugin-gs-common';
 import {
   getAppClusterName,
   getAppCurrentVersion,
@@ -20,7 +23,7 @@ import {
   getHelmReleaseChartName,
   getHelmReleaseUpdatedTimestamp,
   getHelmReleaseSourceName,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { entityDeploymentsRouteRef } from '../../../routes';
 import {
   useApps,

@@ -4,7 +4,7 @@ import {
   Cluster,
   getClusterName,
   isManagementCluster,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useClusters } from '../../hooks';
 

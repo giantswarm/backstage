@@ -1,7 +1,7 @@
 import React from 'react';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
-import { Cluster } from '@internal/plugin-gs-common';
+import { Cluster } from '@giantswarm/backstage-plugin-gs-common';
 import { useCluster } from '../../hooks';
 
 type ClusterWrapperProps = {

@@ -23,7 +23,7 @@ import {
 } from '@backstage/core-components';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
-import { GSFeatureEnabled, GSMainMenu } from '@internal/plugin-gs';
+import { GSFeatureEnabled, GSMainMenu } from '@giantswarm/backstage-plugin-gs';
 
 const useSidebarLogoStyles = makeStyles({
   root: {

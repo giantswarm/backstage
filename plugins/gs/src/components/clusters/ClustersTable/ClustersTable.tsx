@@ -9,7 +9,7 @@ import {
 import { useRouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
-import type { Cluster, Resource } from '@internal/plugin-gs-common';
+import type { Cluster, Resource } from '@giantswarm/backstage-plugin-gs-common';
 import {
   getClusterDescription,
   getClusterOrganization,
@@ -19,7 +19,7 @@ import {
   getClusterName,
   getClusterServicePriority,
   getClusterNamespace,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { clustersRouteRef } from '../../../routes';
 import {
   CLUSTER_ACCESS_PANE_ID,

@@ -21,7 +21,7 @@ import {
   KubernetesAuthProviders,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes';
-import { gsAuthApiRef, GSAuth } from '@internal/plugin-gs';
+import { gsAuthApiRef, GSAuth } from '@giantswarm/backstage-plugin-gs';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({

@@ -1,5 +1,5 @@
-import type { App } from '@internal/plugin-gs-common';
-import { appGVK } from '@internal/plugin-gs-common';
+import type { App } from '@giantswarm/backstage-plugin-gs-common';
+import { appGVK } from '@giantswarm/backstage-plugin-gs-common';
 import { useListResources } from './useListResources';
 
 export function useApps() {

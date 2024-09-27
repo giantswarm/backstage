@@ -62,7 +62,7 @@ import {
   EntityGSKratixStatusCard,
   isEntityGSInstallationResource,
   isEntityGSKratixResource,
-} from '@internal/plugin-gs';
+} from '@giantswarm/backstage-plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
   if (entity?.metadata?.links?.length) {

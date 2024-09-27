@@ -3,8 +3,8 @@ import type {
   List,
   Organization,
   Resource,
-} from '@internal/plugin-gs-common';
-import { clusterGVK } from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
+import { clusterGVK } from '@giantswarm/backstage-plugin-gs-common';
 import { useOrganizations } from './useOrganizations';
 import { useInstallations } from './useInstallations';
 import { useApi } from '@backstage/core-plugin-api';

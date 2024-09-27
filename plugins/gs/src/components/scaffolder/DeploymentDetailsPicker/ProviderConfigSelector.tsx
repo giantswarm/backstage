@@ -4,7 +4,7 @@ import {
   ProviderConfig,
   getProviderConfigName,
   Resource,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useProviderConfigs } from '../../hooks';
 

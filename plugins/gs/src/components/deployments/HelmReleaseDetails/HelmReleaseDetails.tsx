@@ -17,7 +17,7 @@ import {
   getHelmReleaseLastAttemptedRevision,
   getHelmReleaseSourceName,
   getHelmReleaseUpdatedTimestamp,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { useHelmRelease } from '../../hooks';
 import { formatVersion } from '../../utils/helpers';
 import {
