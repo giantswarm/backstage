@@ -35,7 +35,6 @@ import { githubAuthApiRef } from '@backstage/core-plugin-api';
 import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
-import { OpsgeniePage } from '@k-phoen/backstage-plugin-opsgenie';
 import {
   GSClusterPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
@@ -161,14 +160,6 @@ const routes = (
       }
     />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
-    <Route
-      path="/opsgenie"
-      element={
-        <GSFeatureEnabled feature="opsgenie">
-          <OpsgeniePage onCallListCardsCount={100} />
-        </GSFeatureEnabled>
-      }
-    />
     <Route
       path="/clusters"
       element={
