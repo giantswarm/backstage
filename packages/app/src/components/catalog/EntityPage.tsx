@@ -53,13 +53,6 @@ import {
   isDashboardSelectorAvailable,
 } from '@k-phoen/backstage-plugin-grafana';
 
-import {
-  EntityOpsgenieAlertsCard,
-  isOpsgenieAvailable,
-  EntityOpsgenieOnCallListCard,
-  isOpsgenieOnCallListAvailable,
-} from '@k-phoen/backstage-plugin-opsgenie';
-
 import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
 import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
 import {
@@ -148,23 +141,8 @@ const overviewContent = (
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
-        <EntitySwitch>
-          <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
-            <Grid item xs={12}>
-              <EntityOpsgenieOnCallListCard title="Who is on-call" />
-            </Grid>
-          </EntitySwitch.Case>
-        </EntitySwitch>
       </Grid>
     </Grid>
-
-    <EntitySwitch>
-      <EntitySwitch.Case if={isOpsgenieAvailable}>
-        <Grid item xs={12}>
-          <EntityOpsgenieAlertsCard title="Alerts" />
-        </Grid>
-      </EntitySwitch.Case>
-    </EntitySwitch>
 
     <Grid item md={12} xs={12}>
       <EntityCatalogGraphCard variant="gridItem" height={400} />
@@ -371,21 +349,9 @@ const groupPage = (
       <Grid container spacing={3}>
         {entityWarningContent}
 
-        <EntitySwitch>
-          <EntitySwitch.Case if={isOpsgenieOnCallListAvailable}>
-            <Grid item md={8} xs={12}>
-              <EntityGroupProfileCard variant="gridItem" />
-            </Grid>
-            <Grid item md={4} xs={12}>
-              <EntityOpsgenieOnCallListCard title="Who is on-call" />
-            </Grid>
-          </EntitySwitch.Case>
-          <EntitySwitch.Case>
-            <Grid item md={12} xs={12}>
-              <EntityGroupProfileCard variant="gridItem" />
-            </Grid>
-          </EntitySwitch.Case>
-        </EntitySwitch>
+        <Grid item xs={12}>
+          <EntityGroupProfileCard variant="gridItem" />
+        </Grid>
 
         <Grid item xs={12}>
           <EntityOwnershipCard variant="gridItem" />

@@ -113,6 +113,3 @@ catalog:
 
 grafana:
   domain: https://example.com
-
-opsgenie:
-  domain: https://example.com

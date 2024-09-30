@@ -58,9 +58,6 @@ githubAppCredentials: ''
 grafana:
   apiToken: ''
 
-opsgenie:
-  apiKey: ''
-
 # Quay plugin configuration
 quay:
   apiToken: ''

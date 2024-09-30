@@ -23,7 +23,6 @@ import {
 } from '@backstage/core-components';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
-import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { GSFeatureEnabled, GSMainMenu } from '@internal/plugin-gs';
 
 const useSidebarLogoStyles = makeStyles({
@@ -66,9 +65,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         {/* Global nav, not org-specific */}
         <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-        <GSFeatureEnabled feature="opsgenie">
-          <SidebarItem icon={ReportProblemIcon} to="opsgenie" text="OpsGenie" />
-        </GSFeatureEnabled>
         <GSFeatureEnabled feature="scaffolder">
           <SidebarItem
             icon={CreateComponentIcon}
