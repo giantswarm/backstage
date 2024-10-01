@@ -24,7 +24,7 @@ export const ApplicationLink = ({
   const el = (
     <Typography variant="inherit" noWrap>
       <Box display="flex" alignItems="center">
-        <StyledIcon /> {text ?? 'Open'}
+        <StyledIcon /> {text ?? 'Endpoint'}
       </Box>
     </Typography>
   );
