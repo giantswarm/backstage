@@ -173,6 +173,7 @@ type Props = {
   resources: Resource<Deployment>[];
   sourceLocation?: string;
   grafanaDashboard?: string;
+  ingressHost?: string;
 };
 
 const DeploymentsTableView = ({
@@ -181,6 +182,7 @@ const DeploymentsTableView = ({
   resources,
   sourceLocation,
   grafanaDashboard,
+  ingressHost,
 }: Props) => {
   const data: Row[] = resources.map(({ installationName, ...resource }) =>
     resource.kind === 'App'
@@ -220,27 +222,29 @@ const DeploymentsTableView = ({
         },
   );
 
-  const columns: TableColumn<Row>[] = grafanaDashboard
-    ? [
-        ...generatedColumns,
-        {
-          title: 'Actions',
-          render: row => {
-            return (
-              <DeploymentActions
-                installationName={row.installationName}
-                clusterName={row.clusterName}
-                kind={row.kind}
-                name={row.name}
-                namespace={row.namespace}
-                grafanaDashboard={grafanaDashboard}
-              />
-            );
+  const columns: TableColumn<Row>[] =
+    ingressHost || grafanaDashboard
+      ? [
+          ...generatedColumns,
+          {
+            title: 'Actions',
+            render: row => {
+              return (
+                <DeploymentActions
+                  installationName={row.installationName}
+                  clusterName={row.clusterName}
+                  kind={row.kind}
+                  name={row.name}
+                  namespace={row.namespace}
+                  grafanaDashboard={grafanaDashboard}
+                  ingressHost={ingressHost}
+                />
+              );
+            },
+            width: '24px',
           },
-          width: '24px',
-        },
-      ]
-    : generatedColumns;
+        ]
+      : generatedColumns;
 
   return (
     <Table<Row>
@@ -270,12 +274,14 @@ type DeploymentsTableProps = {
   deploymentNames: string[];
   sourceLocation?: string;
   grafanaDashboard?: string;
+  ingressHost?: string;
 };
 
 export const DeploymentsTable = ({
   deploymentNames,
   sourceLocation,
   grafanaDashboard,
+  ingressHost,
 }: DeploymentsTableProps) => {
   const {
     installationsData: installationsDataApps,
@@ -322,6 +328,7 @@ export const DeploymentsTable = ({
       retry={handleRetry}
       sourceLocation={sourceLocation}
       grafanaDashboard={grafanaDashboard}
+      ingressHost={ingressHost}
     />
   );
 };

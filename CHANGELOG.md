@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GS plugin: Add Ingress link for deployments.
+
 ## [0.38.0] - 2024-09-30
 
 ### Removed

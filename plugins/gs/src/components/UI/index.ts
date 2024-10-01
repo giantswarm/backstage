@@ -1,3 +1,4 @@
+export { ApplicationLink } from './ApplicationLink';
 export { ContentRow } from './ContentRow';
 export { DeploymentStatusCard } from './DeploymentStatusCard';
 export { DateComponent } from './Date';
