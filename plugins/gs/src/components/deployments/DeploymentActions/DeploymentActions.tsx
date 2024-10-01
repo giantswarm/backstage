@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box } from '@material-ui/core';
-import { GrafanaDashboardLink } from '../../UI';
+import { ApplicationLink, GrafanaDashboardLink } from '../../UI';
 
 type DeploymentActionsProps = {
   installationName: string;
@@ -9,6 +9,7 @@ type DeploymentActionsProps = {
   name: string;
   namespace?: string;
   grafanaDashboard?: string;
+  ingressHost?: string;
 };
 
 export const DeploymentActions = ({
@@ -16,9 +17,13 @@ export const DeploymentActions = ({
   clusterName,
   name,
   grafanaDashboard,
+  ingressHost,
 }: DeploymentActionsProps) => {
   return (
-    <Box display="flex" alignItems="center">
+    <Box display="flex" flexDirection="column" gridGap={4}>
+      {ingressHost && (
+        <ApplicationLink ingressHost={ingressHost} tooltip="Open application" />
+      )}
       {grafanaDashboard && (
         <GrafanaDashboardLink
           dashboard={grafanaDashboard}

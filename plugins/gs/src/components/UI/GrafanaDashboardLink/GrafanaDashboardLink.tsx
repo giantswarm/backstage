@@ -1,11 +1,12 @@
 import React from 'react';
-import { Box, Link, Typography, Tooltip, styled } from '@material-ui/core';
+import { Link, Typography, Tooltip, styled, Box } from '@material-ui/core';
 import { GrafanaIcon } from '../../../assets/icons/CustomIcons';
 import { useGrafanaDashboardLink } from '../../hooks';
 
 const StyledGrafanaIcon = styled(GrafanaIcon)(({ theme }) => ({
   marginRight: theme.spacing(0.5),
   fontSize: 'inherit',
+  verticalAlign: 'top',
 }));
 
 type GrafanaDashboardLinkProps = {
@@ -41,9 +42,11 @@ export const GrafanaDashboardLink = ({
   }
 
   const el = (
-    <Box display="flex" alignItems="center">
-      <StyledGrafanaIcon /> {text ?? 'Dashboard'}
-    </Box>
+    <Typography variant="inherit" noWrap>
+      <Box display="flex" alignItems="center">
+        <StyledGrafanaIcon /> {text ?? 'Dashboard'}
+      </Box>
+    </Typography>
   );
 
   if (disabledTitle !== '') {

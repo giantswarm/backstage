@@ -21,6 +21,7 @@ import {
 import { useHelmRelease } from '../../hooks';
 import { formatVersion } from '../../utils/helpers';
 import {
+  ApplicationLink,
   DateComponent,
   GrafanaDashboardLink,
   Heading,
@@ -36,6 +37,7 @@ type HelmReleaseDetailsProps = {
   name: string;
   sourceLocation?: string;
   grafanaDashboard?: string;
+  ingressHost?: string;
 };
 
 export const HelmReleaseDetails = ({
@@ -45,6 +47,7 @@ export const HelmReleaseDetails = ({
   name,
   sourceLocation,
   grafanaDashboard,
+  ingressHost,
 }: HelmReleaseDetailsProps) => {
   const {
     data: helmrelease,
@@ -89,17 +92,25 @@ export const HelmReleaseDetails = ({
 
   return (
     <div>
-      {grafanaDashboard && (
-        <Box display="flex" marginBottom={2}>
-          <GrafanaDashboardLink
-            dashboard={grafanaDashboard}
-            installationName={installationName}
-            clusterName={clusterName}
-            applicationName={name}
-            text="Open Grafana dashboard for this application"
-          />
+      {ingressHost || grafanaDashboard ? (
+        <Box display="flex" flexDirection="column" gridGap={4} marginBottom={2}>
+          {ingressHost && (
+            <ApplicationLink
+              ingressHost={ingressHost}
+              text="Open application"
+            />
+          )}
+          {grafanaDashboard && (
+            <GrafanaDashboardLink
+              dashboard={grafanaDashboard}
+              installationName={installationName}
+              clusterName={clusterName}
+              applicationName={name}
+              text="Open Grafana dashboard for this application"
+            />
+          )}
         </Box>
-      )}
+      ) : null}
       <Grid container direction="column">
         <Grid item>
           <Card>

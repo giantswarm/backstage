@@ -8,6 +8,7 @@ import { useEntity } from '@backstage/plugin-catalog-react';
 import { DEPLOYMENT_DETAILS_PANE_ID } from '../../hooks';
 import {
   getDeploymentNamesFromEntity,
+  getIngressHostFromEntity,
   getGrafanaDashboardFromEntity,
   getSourceLocationFromEntity,
 } from '../../utils/entity';
@@ -25,6 +26,7 @@ export const EntityDeploymentsContent = () => {
   const deploymentNames = getDeploymentNamesFromEntity(entity) ?? [];
   const sourceLocation = getSourceLocationFromEntity(entity);
   const grafanaDashboard = getGrafanaDashboardFromEntity(entity);
+  const ingressHost = getIngressHostFromEntity(entity);
 
   return (
     <GSContext>
@@ -37,6 +39,7 @@ export const EntityDeploymentsContent = () => {
             deploymentNames={deploymentNames}
             sourceLocation={sourceLocation}
             grafanaDashboard={grafanaDashboard}
+            ingressHost={ingressHost}
           />
         </InstallationsWrapper>
         <DetailsPane
@@ -52,6 +55,7 @@ export const EntityDeploymentsContent = () => {
                   namespace={namespace}
                   sourceLocation={sourceLocation}
                   grafanaDashboard={grafanaDashboard}
+                  ingressHost={ingressHost}
                 />
               )}
               {kind === 'helmrelease' && (
@@ -62,6 +66,7 @@ export const EntityDeploymentsContent = () => {
                   namespace={namespace}
                   sourceLocation={sourceLocation}
                   grafanaDashboard={grafanaDashboard}
+                  ingressHost={ingressHost}
                 />
               )}
             </>
