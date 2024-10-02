@@ -16,4 +16,4 @@
 
 ### Should this change be mentioned in the release notes?
 
-- [ ] CHANGELOG.md has been updated
+- [ ] A changeset describing the change and affected packages was added. ([more info](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md))
