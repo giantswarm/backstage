@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Paper } from '@material-ui/core';
-import type { HelmRelease } from '@internal/plugin-gs-common';
-import { getHelmReleaseStatus } from '@internal/plugin-gs-common';
+import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
+import { getHelmReleaseStatus } from '@giantswarm/backstage-plugin-gs-common';
 import { useHelmReleaseStatusDetails } from '../../hooks';
 import { DeploymentStatusCard, Heading } from '../../UI';
 import { HelmReleaseDetailsConditions } from '../HelmReleaseDetailsConditions';

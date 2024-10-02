@@ -17,7 +17,7 @@ import {
   getAppCurrentVersion,
   getAppUpdatedTimestamp,
   getAppVersion,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { useApp } from '../../hooks';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 import {

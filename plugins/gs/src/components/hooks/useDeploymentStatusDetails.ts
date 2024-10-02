@@ -11,7 +11,10 @@ import HelpOutlinedIcon from '@material-ui/icons/HelpOutlineOutlined';
 import ScheduleOutlinedIcon from '@material-ui/icons/ScheduleOutlined';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import { toSentenceCase } from '../utils/helpers';
-import { AppStatuses, HelmReleaseStatuses } from '@internal/plugin-gs-common';
+import {
+  AppStatuses,
+  HelmReleaseStatuses,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 export function useAppStatusDetails(status: string) {
   const theme = useTheme();

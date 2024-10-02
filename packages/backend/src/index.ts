@@ -9,7 +9,9 @@ backend.add(import('@backstage/plugin-proxy-backend/alpha'));
 // scaffolder plugin
 backend.add(import('@backstage/plugin-scaffolder-backend/alpha'));
 backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
-backend.add(import('@internal/plugin-scaffolder-backend-module-gs'));
+backend.add(
+  import('@giantswarm/backstage-plugin-scaffolder-backend-module-gs'),
+);
 backend.add(
   import(
     '@aws/aws-core-plugin-for-backstage-scaffolder-actions'
@@ -18,11 +20,11 @@ backend.add(
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend/alpha'));
-backend.add(import('@internal/plugin-techdocs-backend-module-gs-preparer'));
+backend.add(import('@giantswarm/backstage-plugin-techdocs-backend-module-gs'));
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
-backend.add(import('@internal/plugin-auth-backend-module-gs-providers'));
+backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-gs'));
 
 // events plugin
 backend.add(import('@backstage/plugin-events-backend/alpha'));

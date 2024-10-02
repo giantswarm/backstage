@@ -5,7 +5,7 @@ import {
   getResourceRequestStatusMessage,
   Resource,
   ResourceRequest,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { useResourceRequests } from '../../hooks';

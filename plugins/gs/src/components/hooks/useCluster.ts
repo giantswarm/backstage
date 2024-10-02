@@ -1,4 +1,4 @@
-import type { Cluster } from '@internal/plugin-gs-common';
+import type { Cluster } from '@giantswarm/backstage-plugin-gs-common';
 import { useGetResource } from './useGetResource';
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 

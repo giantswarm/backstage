@@ -1,5 +1,5 @@
-import type { Cluster } from '@internal/plugin-gs-common';
-import { isManagementCluster } from '@internal/plugin-gs-common';
+import type { Cluster } from '@giantswarm/backstage-plugin-gs-common';
+import { isManagementCluster } from '@giantswarm/backstage-plugin-gs-common';
 
 const ClusterTypes = {
   Management: 'management',

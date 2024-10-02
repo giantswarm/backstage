@@ -3,7 +3,7 @@ import {
   getSecretStoreName,
   Resource,
   SecretStore,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useSecretStores } from '../../hooks';
 

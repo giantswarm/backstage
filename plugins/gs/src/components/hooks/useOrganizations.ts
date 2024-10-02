@@ -16,7 +16,7 @@ import {
   organizationGVK,
   selfSubjectAccessReviewGVK,
   selfSubjectRulesReviewGVK,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 
 async function checkListPermissions(
   installationName: string,

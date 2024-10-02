@@ -4,7 +4,7 @@ import {
   ClusterSecretStore,
   getSecretStoreName,
   SecretStore,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { Grid } from '@material-ui/core';
 import { SecretStorePickerProps } from './schema';
 import { ClusterSecretStoreSelector } from './ClusterSecretStoreSelector';

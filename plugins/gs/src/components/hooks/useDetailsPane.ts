@@ -1,5 +1,5 @@
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
-import { getResourceGVK } from '@internal/plugin-gs-common';
+import { getResourceGVK } from '@giantswarm/backstage-plugin-gs-common';
 import { useSearchParams } from 'react-router-dom';
 
 type DetailsPaneParams = {

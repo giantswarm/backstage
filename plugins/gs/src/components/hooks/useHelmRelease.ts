@@ -1,5 +1,5 @@
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
-import type { HelmRelease } from '@internal/plugin-gs-common';
+import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
 import { useGetResource } from './useGetResource';
 
 export function useHelmRelease(

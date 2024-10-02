@@ -1,6 +1,6 @@
 {
-  "name": "@internal/plugin-techdocs-backend-module-gs-preparer",
-  "description": "The gs-preparer backend module for the techdocs plugin.",
+  "name": "@giantswarm/backstage-plugin-auth-backend-module-gs",
+  "description": "The GS backend module for the auth plugin.",
   "version": "0.1.0",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -26,12 +26,9 @@
   "dependencies": {
     "@backstage/backend-common": "^0.24.1",
     "@backstage/backend-plugin-api": "^0.8.1",
-    "@backstage/catalog-model": "^1.6.0",
-    "@backstage/plugin-techdocs-node": "^1.12.10",
-    "@types/fs-extra": "^11.0.4",
-    "fs-extra": "^11.2.0",
-    "js-yaml": "^4.1.0",
-    "winston": "^3.13.0"
+    "@backstage/plugin-auth-backend": "^0.22.12",
+    "@backstage/plugin-auth-backend-module-github-provider": "^0.1.21",
+    "@backstage/plugin-auth-node": "^0.5.1"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "^0.5.1",
@@ -39,5 +36,7 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "bugs": "https://github.com/giantswarm/backstage/issues",
+  "author": "Giant Swarm"
 }

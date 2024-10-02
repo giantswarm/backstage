@@ -1,5 +1,5 @@
 {
-  "name": "@internal/plugin-gs-common",
+  "name": "@giantswarm/backstage-plugin-gs-common",
   "description": "Common functionalities for the GS plugins",
   "version": "0.1.0",
   "main": "src/index.ts",
@@ -33,5 +33,7 @@
   "dependencies": {
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.0.0"
-  }
+  },
+  "bugs": "https://github.com/giantswarm/backstage/issues",
+  "author": "Giant Swarm"
 }

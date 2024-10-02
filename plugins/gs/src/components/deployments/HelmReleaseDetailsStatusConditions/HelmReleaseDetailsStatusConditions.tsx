@@ -15,7 +15,7 @@ import {
 import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import type { HelmRelease } from '@internal/plugin-gs-common';
+import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
 import { compareDates } from '../../utils/helpers';
 import { DateComponent, Heading, StructuredMetadataList } from '../../UI';
 

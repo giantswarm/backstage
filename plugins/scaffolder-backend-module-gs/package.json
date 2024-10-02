@@ -1,5 +1,5 @@
 {
-  "name": "@internal/plugin-scaffolder-backend-module-gs",
+  "name": "@giantswarm/backstage-plugin-scaffolder-backend-module-gs",
   "description": "The GS backend module for the scaffolder plugin.",
   "version": "0.1.0",
   "main": "src/index.ts",
@@ -35,5 +35,7 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "bugs": "https://github.com/giantswarm/backstage/issues",
+  "author": "Giant Swarm"
 }

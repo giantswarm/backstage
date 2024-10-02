@@ -8,7 +8,10 @@ import {
   Link,
   Typography,
 } from '@material-ui/core';
-import { Cluster, getClusterName } from '@internal/plugin-gs-common';
+import {
+  Cluster,
+  getClusterName,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { Heading, StructuredMetadataList } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { calculateClusterType } from '../utils';

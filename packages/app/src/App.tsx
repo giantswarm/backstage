@@ -46,7 +46,7 @@ import {
   GSStepLayout,
   GSDeploymentDetailsPickerFieldExtension,
   GSSecretStorePickerFieldExtension,
-} from '@internal/plugin-gs';
+} from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 

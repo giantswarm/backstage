@@ -2,7 +2,7 @@ import {
   getResourceGVK,
   Resource,
   type ResourceRequest,
-} from '@internal/plugin-gs-common';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes';
 import { useQueries } from '@tanstack/react-query';
