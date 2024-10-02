@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.39.2] - 2024-10-02
 
+- Identical with 0.39.1. This release was made to ensure the release process works as expected.
+
 ## [0.39.1] - 2024-10-02
 
 ### Fixed
