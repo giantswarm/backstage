@@ -10,5 +10,10 @@
   "compilerOptions": {
     "outDir": "dist-types",
     "rootDir": "."
+  },
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs"
+    }
   }
 }

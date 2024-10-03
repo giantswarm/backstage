@@ -24,7 +24,8 @@
     "prettier:check": "prettier --check .",
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new --scope internal",
-    "postinstall": "yarn patch-package"
+    "postinstall": "yarn patch-package",
+    "release": "yarn changeset version && yarn install && ts-node scripts/prepare-release.ts && yarn prettier --write --log-level silent '{packages,plugins}/*/{package.json,CHANGELOG.md}' 'docs/releases/*.md' './{package.json,CHANGELOG.md}'"
   },
   "workspaces": {
     "packages": [
@@ -43,6 +44,7 @@
     "lerna": "^8.0.0",
     "node-gyp": "^10.0.0",
     "prettier": "^3.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "~5.6.0"
   },
   "resolutions": {
