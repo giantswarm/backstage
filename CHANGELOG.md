@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.40.0] - 2024-10-07
+
 ## [0.39.2] - 2024-10-02
 
 - Identical with 0.39.1. This release was made to ensure the release process works as expected.
@@ -712,7 +714,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.39.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/giantswarm/backstage/compare/v0.39.2...v0.40.0
 [0.39.2]: https://github.com/giantswarm/backstage/compare/v0.39.1...v0.39.2
 [0.39.1]: https://github.com/giantswarm/backstage/compare/v0.39.0...v0.39.1
 [0.39.0]: https://github.com/giantswarm/backstage/compare/v0.38.0...v0.39.0
