@@ -24,10 +24,10 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@backstage/backend-common": "^0.24.1",
+    "@backstage/backend-common": "^0.25.0",
     "@backstage/backend-plugin-api": "^0.8.1",
-    "@backstage/plugin-auth-backend": "^0.22.12",
-    "@backstage/plugin-auth-backend-module-github-provider": "^0.1.21",
+    "@backstage/plugin-auth-backend": "^0.23.0",
+    "@backstage/plugin-auth-backend-module-github-provider": "^0.2.0",
     "@backstage/plugin-auth-node": "^0.5.1"
   },
   "devDependencies": {
