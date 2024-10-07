@@ -4,3 +4,5 @@ coverage
 helm/*/templates
 .vscode
 .github
+.yarn
+package.json
