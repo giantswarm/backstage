@@ -55,7 +55,6 @@ import {
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 
-// TODO: populate via environment variable
 const td = createTelemetryDeck({
   appID: process.env.TELEMETRYDECK_APP_ID,
   salt: process.env.TELEMETRYDECK_SALT,
