@@ -143,7 +143,9 @@ jobs:
       - gather_facts
     if: ${{ needs.gather_facts.outputs.skip != 'true' && github.repository == 'giantswarm/backstage' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          ref: ${{ needs.gather_facts.outputs.branch }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -156,6 +158,21 @@ jobs:
           cmd: release
         env:
           RELEASE_VERSION: ${{ needs.gather_facts.outputs.version }}
+      - name: Set up git identity
+        run: |
+          git config --local user.email "dev@giantswarm.io"
+          git config --local user.name "taylorbot"
+      - name: Create commit
+        env:
+          version: "${{ needs.gather_facts.outputs.version }}"
+        run: |
+          git add -A
+          git commit -m "Prepare release v${{ env.version }}"
+      - name: Push changes
+        env:
+          remote_repo: "https://${{ github.actor }}:${{ secrets.TAYLORBOT_GITHUB_ACTION }}@github.com/${{ github.repository }}.git"
+        run: |
+          git push "${remote_repo}" HEAD:${{ needs.gather_facts.outputs.branch }}
   create_release_pr:
     name: Create release PR
     runs-on: ubuntu-22.04
