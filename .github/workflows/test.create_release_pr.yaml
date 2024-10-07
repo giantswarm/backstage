@@ -179,7 +179,7 @@ jobs:
     needs:
       - gather_facts
       - prepare_release_pr
-    if: ${{ needs.gather_facts.outputs.skip != 'true' }}
+    if: ${{ always() && needs.gather_facts.outputs.skip != 'true' }}
     env:
       architect_flags: "--organisation ${{ github.repository_owner }} --project ${{ needs.gather_facts.outputs.repo_name }}"
     steps:
