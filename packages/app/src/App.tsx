@@ -36,6 +36,11 @@ import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import {
+  TelemetryDeckProvider,
+  createTelemetryDeck,
+} from "@typedigital/telemetrydeck-react";
+
+import {
   GSClusterPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
   GSClustersPage,
@@ -49,6 +54,13 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
+
+// TODO: populate via environment variable
+const td = createTelemetryDeck({
+  appID: process.env.TELEMETRYDECK_APP_ID,
+  salt: process.env.TELEMETRYDECK_SALT,
+  clientUser: "anonymous",
+});
 
 const app = createApp({
   apis,
@@ -173,12 +185,14 @@ const routes = (
 
 export default app.createRoot(
   <>
-    <ErrorReporterProvider>
-      <AlertDisplay />
-      <OAuthRequestDialog />
-      <AppRouter>
-        <Root>{routes}</Root>
-      </AppRouter>
-    </ErrorReporterProvider>
+    <TelemetryDeckProvider telemetryDeck={td}>
+      <ErrorReporterProvider>
+        <AlertDisplay />
+        <OAuthRequestDialog />
+        <AppRouter>
+          <Root>{routes}</Root>
+        </AppRouter>
+      </ErrorReporterProvider>
+    </TelemetryDeckProvider>
   </>,
 );
