@@ -141,7 +141,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - gather_facts
-    if: ${{ needs.gather_facts.outputs.skip != 'true' && github.repository == 'giantswarm/backstage' }}
+    if: ${{ needs.gather_facts.outputs.skip != 'true' && github.repository == 'giantswarm/backstage-test' }}
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
