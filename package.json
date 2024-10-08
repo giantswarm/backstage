@@ -6,7 +6,7 @@
     "node": "18 || 20"
   },
   "scripts": {
-    "dev": "concurrently \"yarn start\" \"yarn start-backend\"",
+    "dev": "yarn workspaces foreach -A --include backend --include app --parallel -v -i run start",
     "start": "yarn env-cmd yarn workspace app start",
     "start-backend": "yarn env-cmd yarn workspace backend start",
     "build:backend": "yarn workspace backend build",
@@ -34,7 +34,7 @@
     ]
   },
   "devDependencies": {
-    "@backstage/cli": "^0.27.0",
+    "@backstage/cli": "^0.27.1",
     "@backstage/e2e-test-utils": "^0.1.1",
     "@changesets/cli": "^2.27.8",
     "@playwright/test": "^1.32.3",
