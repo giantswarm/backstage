@@ -1,6 +1,7 @@
 app:
   baseUrl: http://localhost:3000
   errorReporter: null
+  telemetrydeck: null
 
 backend:
   baseUrl: http://localhost:7007

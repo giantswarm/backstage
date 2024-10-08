@@ -1,6 +1,9 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
+  telemetrydeck:
+    appID: ${TELEMETRYDECK_APP_ID}
+    salt: ${TELEMETRYDECK_SALT}
 organization:
   name: My Company
 
