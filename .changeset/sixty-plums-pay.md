@@ -8,4 +8,4 @@
 '@giantswarm/backstage-plugin-gs': minor
 ---
 
-Update Backstage packages to v1.31.4
+Update Backstage packages to v1.31.3
