@@ -252,6 +252,14 @@
         }
       }
     },
+    "telemetrydeck": {
+      "type": "object",
+      "properties": {
+        "salt": {
+          "type": "string"
+        }
+      }
+    },
     "userID": {
       "type": "integer"
     }

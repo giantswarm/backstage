@@ -25,6 +25,7 @@ import { apis } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
+import { TelemetryProvider } from './components/TelemetryProvider';
 
 import { AlertDisplay, OAuthRequestDialog } from '@backstage/core-components';
 import { createApp } from '@backstage/app-defaults';
@@ -173,12 +174,14 @@ const routes = (
 
 export default app.createRoot(
   <>
-    <ErrorReporterProvider>
-      <AlertDisplay />
-      <OAuthRequestDialog />
-      <AppRouter>
-        <Root>{routes}</Root>
-      </AppRouter>
-    </ErrorReporterProvider>
+    <TelemetryProvider>
+      <ErrorReporterProvider>
+        <AlertDisplay />
+        <OAuthRequestDialog />
+        <AppRouter>
+          <Root>{routes}</Root>
+        </AppRouter>
+      </ErrorReporterProvider>
+    </TelemetryProvider>
   </>,
 );

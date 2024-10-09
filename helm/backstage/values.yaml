@@ -68,6 +68,9 @@ sentry:
   backend:
     dsn: ''
 
+telemetrydeck:
+  salt: ''
+
 aws:
   accessKeyID: ''
   secretAccessKey: ''

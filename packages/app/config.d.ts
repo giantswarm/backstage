@@ -1,33 +1,23 @@
 export interface Config {
   app: {
     /**
-     * @visibility frontend
+     * @deepVisibility frontend
      */
     errorReporter?: {
-      /**
-       * @visibility frontend
-       */
       sentry: {
-        /**
-         * @visibility frontend
-         */
         dsn: string;
-
-        /**
-         * @visibility frontend
-         */
         environment: string;
-
-        /**
-         * @visibility frontend
-         */
         releaseVersion: string;
-
-        /**
-         * @visibility frontend
-         */
         tracesSampleRate: number;
       };
+    };
+
+    /**
+     * @deepVisibility frontend
+     */
+    telemetrydeck?: {
+      appID: string;
+      salt: string;
     };
   };
 }
