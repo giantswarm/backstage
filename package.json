@@ -26,7 +26,7 @@
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new --scope internal",
     "postinstall": "yarn patch-package",
-    "release": "yarn changeset version && yarn install && ts-node scripts/prepare-release.ts && yarn prettier --write --log-level silent '{packages,plugins}/*/{package.json,CHANGELOG.md}' 'docs/releases/*.md' './{package.json,CHANGELOG.md}'"
+    "release": "yarn changeset version && yarn install --no-immutable && ts-node scripts/prepare-release.ts && yarn prettier --write --log-level silent '{packages,plugins}/*/{package.json,CHANGELOG.md}' 'docs/releases/*.md' './{package.json,CHANGELOG.md}'"
   },
   "workspaces": {
     "packages": [
