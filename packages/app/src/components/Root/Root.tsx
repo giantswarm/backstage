@@ -1,4 +1,4 @@
-import React, { PropsWithChildren } from 'react';
+import React, { PropsWithChildren, useEffect } from 'react';
 import { makeStyles } from '@material-ui/core';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import HomeIcon from '@material-ui/icons/Home';
@@ -24,6 +24,9 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import { GSFeatureEnabled, GSMainMenu } from '@giantswarm/backstage-plugin-gs';
+import { useTelemetryDeck } from '@typedigital/telemetrydeck-react';
+import { useLocation } from 'react-router-dom';
+import { getTelemetryPageViewPayload } from '../../utils/telemetry';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -53,39 +56,50 @@ const SidebarLogo = () => {
   );
 };
 
-export const Root = ({ children }: PropsWithChildren<{}>) => (
-  <SidebarPage>
-    <Sidebar>
-      <SidebarLogo />
-      <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
-        <SidebarSearchModal />
-      </SidebarGroup>
-      <SidebarDivider />
-      <SidebarGroup label="Menu" icon={<MenuIcon />}>
-        {/* Global nav, not org-specific */}
-        <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
-        <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-        <GSFeatureEnabled feature="scaffolder">
-          <SidebarItem
-            icon={CreateComponentIcon}
-            to="create"
-            text="Create..."
-          />
-        </GSFeatureEnabled>
+export const Root = ({ children }: PropsWithChildren<{}>) => {
+  const { signal } = useTelemetryDeck();
+  const location = useLocation();
 
-        {/* End global nav */}
-      </SidebarGroup>
-      <GSMainMenu />
-      <SidebarSpace />
-      <SidebarDivider />
-      <SidebarGroup
-        label="Settings"
-        icon={<UserSettingsSignInAvatar />}
-        to="/settings"
-      >
-        <SidebarSettings />
-      </SidebarGroup>
-    </Sidebar>
-    {children}
-  </SidebarPage>
-);
+  useEffect(() => {
+    (async () => {
+      await signal('pageview', getTelemetryPageViewPayload(location));
+    })();
+  }, [location, signal]);
+
+  return (
+    <SidebarPage>
+      <Sidebar>
+        <SidebarLogo />
+        <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
+          <SidebarSearchModal />
+        </SidebarGroup>
+        <SidebarDivider />
+        <SidebarGroup label="Menu" icon={<MenuIcon />}>
+          {/* Global nav, not org-specific */}
+          <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
+          <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
+          <GSFeatureEnabled feature="scaffolder">
+            <SidebarItem
+              icon={CreateComponentIcon}
+              to="create"
+              text="Create..."
+            />
+          </GSFeatureEnabled>
+
+          {/* End global nav */}
+        </SidebarGroup>
+        <GSMainMenu />
+        <SidebarSpace />
+        <SidebarDivider />
+        <SidebarGroup
+          label="Settings"
+          icon={<UserSettingsSignInAvatar />}
+          to="/settings"
+        >
+          <SidebarSettings />
+        </SidebarGroup>
+      </Sidebar>
+      {children}
+    </SidebarPage>
+  );
+};
