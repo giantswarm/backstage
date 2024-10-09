@@ -77,7 +77,7 @@ jobs:
 
       - run:
           name: Install dependencies
-          command: yarn install --frozen-lockfile
+          command: yarn install --immutable
 
       - run:
           name: Typecheck code using the TypeScript compiler
@@ -89,7 +89,7 @@ jobs:
 
       - run:
           name: Validate code style using prettier
-          command: yarn run prettier:check
+          command: yarn run prettier:check-ci
 
       - run:
           name: Run tests
