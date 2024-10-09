@@ -15,14 +15,15 @@ export const TelemetryProvider = ({
   const configApi = useApi(configApiRef);
   const telemetryConfig = configApi.getOptionalConfig('app.telemetrydeck');
 
-  if (!telemetryConfig || !backstageIdentity) {
-    return children;
-  }
+  const testMode = window.location.hostname === 'localhost' || !telemetryConfig;
 
   const td = createTelemetryDeck({
-    appID: telemetryConfig.getString('appID'),
-    salt: telemetryConfig.getString('salt'),
-    clientUser: backstageIdentity.userEntityRef,
+    appID: telemetryConfig ? telemetryConfig.getString('appID') : 'test',
+    salt: telemetryConfig ? telemetryConfig.getString('salt') : 'test',
+    clientUser: backstageIdentity
+      ? backstageIdentity.userEntityRef
+      : 'anonymous',
+    testMode,
   });
 
   return (
