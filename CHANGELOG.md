@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.40.0] - 2024-10-09
 
+In this release:
+
+- Usage tracking with TelemetryDeck was added.
+- GS plugins were renamed in preparation to publish them.
+- Backstage packages were updated to v1.31.3.
+
 See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md) for more information.
 
 ## [0.39.2] - 2024-10-02
