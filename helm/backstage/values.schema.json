@@ -255,9 +255,6 @@
     "telemetrydeck": {
       "type": "object",
       "properties": {
-        "appID": {
-          "type": "string"
-        },
         "salt": {
           "type": "string"
         }

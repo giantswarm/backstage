@@ -69,7 +69,6 @@ sentry:
     dsn: ''
 
 telemetrydeck:
-  appID: ''
   salt: ''
 
 aws:
