@@ -45,12 +45,11 @@ export const EntityDeploymentsContent = () => {
         <DetailsPane
           paneId={DEPLOYMENT_DETAILS_PANE_ID}
           title="Deployment details"
-          render={({ kind, installationName, gvk, name, namespace }) => (
+          render={({ kind, installationName, name, namespace }) => (
             <>
               {kind === 'app' && (
                 <AppDetails
                   installationName={installationName}
-                  gvk={gvk}
                   name={name}
                   namespace={namespace}
                   sourceLocation={sourceLocation}
@@ -61,7 +60,6 @@ export const EntityDeploymentsContent = () => {
               {kind === 'helmrelease' && (
                 <HelmReleaseDetails
                   installationName={installationName}
-                  gvk={gvk}
                   name={name}
                   namespace={namespace}
                   sourceLocation={sourceLocation}

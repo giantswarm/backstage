@@ -20,12 +20,8 @@ import {
   getClusterServicePriority,
   getClusterNamespace,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { clustersRouteRef } from '../../../routes';
-import {
-  CLUSTER_ACCESS_PANE_ID,
-  useClusters,
-  useDetailsPane,
-} from '../../hooks';
+import { clusterDetailsRouteRef } from '../../../routes';
+import { useClusters } from '../../hooks';
 import { DateComponent } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
@@ -64,21 +60,17 @@ const generatedColumns: TableColumn<Row>[] = [
     highlight: true,
     render: row => {
       const LinkWrapper = () => {
-        const { getRoute } = useDetailsPane(CLUSTER_ACCESS_PANE_ID);
-        const baseRoute = useRouteRef(clustersRouteRef);
-        const to = getRoute(baseRoute(), {
-          installationName: row.installationName,
-          apiVersion: row.apiVersion,
-          kind: 'cluster',
-          namespace: row.namespace,
-          name: row.name,
-        });
-
+        const routeLink = useRouteRef(clusterDetailsRouteRef);
         return (
-          <Link component={RouterLink} to={to}>
-            <Typography variant="inherit" noWrap>
-              {row.name}
-            </Typography>
+          <Link
+            component={RouterLink}
+            to={routeLink({
+              installationName: row.installationName,
+              namespace: row.namespace ?? 'default',
+              name: row.name,
+            })}
+          >
+            {row.name}
           </Link>
         );
       };

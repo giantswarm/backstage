@@ -1,4 +1,4 @@
-import { createRouteRef } from '@backstage/core-plugin-api';
+import { createRouteRef, createSubRouteRef } from '@backstage/core-plugin-api';
 
 export const rootRouteRef = createRouteRef({
   id: 'gs',
@@ -6,6 +6,12 @@ export const rootRouteRef = createRouteRef({
 
 export const clustersRouteRef = createRouteRef({
   id: 'gs-clusters',
+});
+
+export const clusterDetailsRouteRef = createSubRouteRef({
+  id: 'gs-clusters/cluster-details',
+  path: '/:installationName/:namespace/:name/*',
+  parent: clustersRouteRef,
 });
 
 export const installationsRouteRef = createRouteRef({

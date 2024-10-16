@@ -1,12 +1,10 @@
 import React from 'react';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import { Cluster } from '@giantswarm/backstage-plugin-gs-common';
 import { useCluster } from '../../hooks';
 
 type ClusterWrapperProps = {
   installationName: string;
-  gvk: CustomResourceMatcher;
   namespace: string;
   name: string;
   render(cluster: Cluster): React.JSX.Element;
@@ -14,7 +12,6 @@ type ClusterWrapperProps = {
 
 export const ClusterWrapper = ({
   installationName,
-  gvk,
   namespace,
   name,
   render,
@@ -23,7 +20,7 @@ export const ClusterWrapper = ({
     data: cluster,
     isLoading,
     error,
-  } = useCluster(installationName, gvk, name, namespace);
+  } = useCluster(installationName, name, namespace);
 
   if (isLoading) {
     return <Progress />;

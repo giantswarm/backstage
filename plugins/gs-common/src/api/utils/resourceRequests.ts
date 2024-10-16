@@ -1,4 +1,4 @@
-import * as promisev1beta1 from '../../model/promisev1beta1';
+import * as giantswarmPlatform from '../../model/giantswarm-platform';
 import { ResourceRequest } from '../types';
 
 export const ResourceRequestStatuses = {
@@ -8,31 +8,64 @@ export const ResourceRequestStatuses = {
   Completed: 'completed',
 } as const;
 
-export function getGitHubAppGVK(apiVersion?: string) {
-  switch (apiVersion) {
-    case promisev1beta1.githubAppApiVersion:
-      return promisev1beta1.githubAppGVK;
+export function getResourceRequestNames(singular: string) {
+  let names;
+  switch (singular) {
+    case 'githubapp':
+      names = giantswarmPlatform.GitHubAppNames;
+      break;
+    case 'githubrepo':
+      names = giantswarmPlatform.GitHubRepoNames;
+      break;
+    case 'appdeployment':
+      names = giantswarmPlatform.AppDeploymentNames;
+      break;
     default:
-      return promisev1beta1.githubAppGVK;
+      throw new Error(`${singular} is not a supported resource request kind.`);
   }
+
+  return names;
+}
+
+export function getResourceRequestGVK(singular: string, apiVersion?: string) {
+  let gvk;
+  let kind;
+  switch (singular) {
+    case 'githubapp':
+      gvk = getGitHubAppGVK(apiVersion);
+      kind = giantswarmPlatform.GitHubAppKind;
+      break;
+    case 'githubrepo':
+      gvk = getGitHubRepoGVK(apiVersion);
+      kind = giantswarmPlatform.GitHubRepoKind;
+      break;
+    case 'appdeployment':
+      gvk = getAppDeploymentGVK(apiVersion);
+      kind = giantswarmPlatform.AppDeploymentKind;
+      break;
+    default:
+      throw new Error(`${singular} is not a supported resource request kind.`);
+  }
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ${kind} resource.`,
+    );
+  }
+
+  return gvk;
+}
+
+export function getGitHubAppGVK(apiVersion?: string) {
+  return giantswarmPlatform.getGitHubAppGVK(apiVersion);
 }
 
 export function getGitHubRepoGVK(apiVersion?: string) {
-  switch (apiVersion) {
-    case promisev1beta1.githubRepoApiVersion:
-      return promisev1beta1.githubRepoGVK;
-    default:
-      return promisev1beta1.githubRepoGVK;
-  }
+  return giantswarmPlatform.getGitHubRepoGVK(apiVersion);
 }
 
 export function getAppDeploymentGVK(apiVersion?: string) {
-  switch (apiVersion) {
-    case promisev1beta1.appDeploymentApiVersion:
-      return promisev1beta1.appDeploymentGVK;
-    default:
-      return promisev1beta1.appDeploymentGVK;
-  }
+  return giantswarmPlatform.getAppDeploymentGVK(apiVersion);
 }
 
 export function getResourceRequestStatus(resourceRequest: ResourceRequest) {

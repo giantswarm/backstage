@@ -7,17 +7,23 @@ import {
 import type { Cluster } from '../types';
 import { isConditionFalse } from './conditions';
 import { isResourceImported } from './resources';
-import * as capiv1beta1 from '../../model/capiv1beta1';
+import * as capi from '../../model/capi';
 
-export const clusterGVK = [capiv1beta1.clusterGVK];
+export function getClusterNames() {
+  return capi.ClusterNames;
+}
 
-export function getClusterGVK(apiVersion: string) {
-  switch (apiVersion) {
-    case capiv1beta1.clusterApiVersion:
-      return capiv1beta1.clusterGVK;
-    default:
-      return undefined;
+export function getClusterGVK(apiVersion?: string) {
+  const gvk = capi.getClusterGVK(apiVersion);
+  const kind = capi.ClusterKind;
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ${kind} resource.`,
+    );
   }
+
+  return gvk;
 }
 
 /**
@@ -72,6 +78,10 @@ export function getClusterAppVersion(cluster: Cluster) {
   return cluster.metadata.labels?.[Labels.labelAppVersion];
 }
 
+export function getClusterReleaseVersion(cluster: Cluster) {
+  return cluster.metadata.labels?.[Labels.labelReleaseVersion];
+}
+
 export function getClusterOrganization(cluster: Cluster) {
   return cluster.metadata.labels?.[Labels.labelOrganization];
 }
@@ -104,4 +114,38 @@ export function getClusterCreationTimestamp(cluster: Cluster) {
         Annotations.annotationImportedClusterCreationTimestamp
       ]
     : cluster.metadata.creationTimestamp;
+}
+
+export function getClusterInfrastructureRef(cluster: Cluster) {
+  const infrastructureRef = cluster?.spec?.infrastructureRef;
+  if (!infrastructureRef) {
+    throw new Error('There is no infrastructure reference defined.');
+  }
+
+  const { kind, apiVersion, name, namespace } = infrastructureRef;
+
+  if (!kind || !apiVersion || !name) {
+    throw new Error(
+      'Kind or API version or name is missing in infrastructure reference.',
+    );
+  }
+
+  return { kind, apiVersion, name, namespace };
+}
+
+export function getClusterControlPlaneRef(cluster: Cluster) {
+  const controlPlaneRef = cluster?.spec?.controlPlaneRef;
+  if (!controlPlaneRef) {
+    throw new Error('There is no control plane reference defined.');
+  }
+
+  const { kind, apiVersion, name, namespace } = controlPlaneRef;
+
+  if (!kind || !apiVersion || !name) {
+    throw new Error(
+      'Kind or API version or name is missing in control plane reference.',
+    );
+  }
+
+  return { kind, apiVersion, name, namespace };
 }

@@ -1,5 +1,4 @@
 import React from 'react';
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import { Drawer, IconButton, Typography } from '@material-ui/core';
 import Close from '@material-ui/icons/Close';
@@ -71,7 +70,6 @@ type DetailsPaneProps = {
   render: (props: {
     kind: string;
     installationName: string;
-    gvk: CustomResourceMatcher;
     name: string;
     namespace: string;
   }) => React.ReactElement | null;
@@ -81,9 +79,9 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
   const classes = useDrawerStyles();
 
   const { isOpen, getParams, close } = useDetailsPane(paneId);
-  const { installationName, kind, namespace, name, gvk } = getParams();
+  const { installationName, kind, namespace, name } = getParams();
 
-  if (!installationName || !kind || !namespace || !name || !gvk) {
+  if (!installationName || !kind || !namespace || !name) {
     return null;
   }
 
@@ -101,7 +99,7 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
       onClose={handleClose}
     >
       <DrawerContent title={title} onClose={handleClose}>
-        {render({ kind, installationName, gvk, name, namespace })}
+        {render({ kind, installationName, name, namespace })}
       </DrawerContent>
     </Drawer>
   );

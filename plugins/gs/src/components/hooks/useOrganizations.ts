@@ -10,34 +10,42 @@ import {
 } from './utils/k8sPath';
 import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import {
+  createSelfSubjectAccessReview,
+  createSelfSubjectRulesReview,
+  getOrganizationGVK,
+  getOrganizationNames,
+  getSelfSubjectAccessReviewGVK,
+  getSelfSubjectAccessReviewNames,
+  getSelfSubjectRulesReviewGVK,
+  getSelfSubjectRulesReviewNames,
   List,
   Organization,
   Resource,
-  organizationGVK,
-  selfSubjectAccessReviewGVK,
-  selfSubjectRulesReviewGVK,
+  SelfSubjectAccessReview,
+  SelfSubjectRulesReview,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { useApiVersionOverrides } from './useApiVersionOverrides';
 
-async function checkListPermissions(
+async function checkListAllPermissions(
   installationName: string,
-  gvk: CustomResourceMatcher,
+  resourceGVK: CustomResourceMatcher,
   kubernetesApi: KubernetesApi,
-): Promise<{
-  canListAll: boolean;
-  availableResources: string[];
-}> {
-  const accessReviewPath = getK8sCreatePath(selfSubjectAccessReviewGVK);
-  const accessReviewRequestBody = {
-    apiVersion: 'authorization.k8s.io/v1',
-    kind: 'SelfSubjectAccessReview',
-    spec: {
-      resourceAttributes: {
-        verb: 'list',
-        group: gvk.group,
-        resource: gvk.plural,
-      },
+  apiVersionOverrides?: { [k: string]: string },
+) {
+  const apiVersion =
+    apiVersionOverrides?.[getSelfSubjectAccessReviewNames().plural];
+  const gvk = getSelfSubjectAccessReviewGVK(apiVersion);
+
+  const accessReviewPath = getK8sCreatePath(gvk);
+  const accessReviewRequestBody = createSelfSubjectAccessReview(
+    {
+      verb: 'list',
+      group: resourceGVK.group,
+      resource: resourceGVK.plural,
     },
-  };
+    apiVersion,
+  );
+
   const accessReviewResponse = await kubernetesApi.proxy({
     clusterName: installationName,
     path: accessReviewPath,
@@ -50,23 +58,24 @@ async function checkListPermissions(
     },
   });
 
-  const accessReview = await accessReviewResponse.json();
+  const accessReview: SelfSubjectAccessReview =
+    await accessReviewResponse.json();
 
-  if (accessReview.status?.allowed) {
-    return {
-      canListAll: true,
-      availableResources: [],
-    };
-  }
+  return Boolean(accessReview.status?.allowed);
+}
 
-  const rulesReviewPath = getK8sCreatePath(selfSubjectRulesReviewGVK);
-  const rulesReviewRequestBody = {
-    apiVersion: 'authorization.k8s.io/v1',
-    kind: 'SelfSubjectRulesReview',
-    spec: {
-      namespace: 'default',
-    },
-  };
+async function getAvailableResources(
+  installationName: string,
+  resourceGVK: CustomResourceMatcher,
+  kubernetesApi: KubernetesApi,
+  apiVersionOverrides?: { [k: string]: string },
+) {
+  const apiVersion =
+    apiVersionOverrides?.[getSelfSubjectRulesReviewNames().plural];
+  const gvk = getSelfSubjectRulesReviewGVK(apiVersion);
+
+  const rulesReviewPath = getK8sCreatePath(gvk);
+  const rulesReviewRequestBody = createSelfSubjectRulesReview(apiVersion);
 
   const rulesReviewResponse = await kubernetesApi.proxy({
     clusterName: installationName,
@@ -80,14 +89,14 @@ async function checkListPermissions(
     },
   });
 
-  const rulesReview = await rulesReviewResponse.json();
+  const rulesReview: SelfSubjectRulesReview = await rulesReviewResponse.json();
 
   const resourceNames = [];
   if (rulesReview.status) {
     for (const rule of rulesReview.status.resourceRules) {
       if (
         rule.verbs.includes('get') &&
-        rule.resources.includes(gvk.plural) &&
+        rule.resources.includes(resourceGVK.plural) &&
         rule.resourceNames
       ) {
         resourceNames.push(...rule.resourceNames);
@@ -95,53 +104,103 @@ async function checkListPermissions(
     }
   }
 
+  return resourceNames;
+}
+
+async function checkListPermissions(
+  installationName: string,
+  resourceGVK: CustomResourceMatcher,
+  kubernetesApi: KubernetesApi,
+  apiVersionOverrides: { [k: string]: string },
+): Promise<{
+  canListAll: boolean;
+  availableResources: string[];
+}> {
+  const canListAll = await checkListAllPermissions(
+    installationName,
+    resourceGVK,
+    kubernetesApi,
+    apiVersionOverrides,
+  );
+
+  if (canListAll) {
+    return {
+      canListAll: true,
+      availableResources: [],
+    };
+  }
+
+  const availableResources = await getAvailableResources(
+    installationName,
+    resourceGVK,
+    kubernetesApi,
+    apiVersionOverrides,
+  );
+
   return {
     canListAll: false,
-    availableResources: resourceNames,
+    availableResources,
   };
 }
 
 export function useOrganizations(installations?: string[]) {
   const { selectedInstallations: savedInstallations } = useInstallations();
   const selectedInstallations = installations ?? savedInstallations;
+
+  const apiVersionOverrides = useApiVersionOverrides(selectedInstallations);
+
+  const installationsGVKs = Object.fromEntries(
+    selectedInstallations.map(installationName => {
+      const apiVersion =
+        apiVersionOverrides[installationName]?.[getOrganizationNames().plural];
+      const gvk = getOrganizationGVK(apiVersion);
+
+      return [installationName, gvk];
+    }),
+  );
+
   const kubernetesApi = useApi(kubernetesApiRef);
   const queries = useQueries({
-    queries: selectedInstallations.flatMap(installationName => {
-      return organizationGVK.map(gvk => {
-        return {
-          queryKey: [installationName, gvk.plural],
-          queryFn: async () => {
-            const { canListAll, availableResources } =
-              await checkListPermissions(installationName, gvk, kubernetesApi);
+    queries: selectedInstallations.map(installationName => {
+      const gvk = installationsGVKs[installationName];
 
-            if (canListAll) {
-              const response = await kubernetesApi.proxy({
-                clusterName: installationName,
-                path: getK8sListPath(gvk),
-              });
+      return {
+        queryKey: [installationName, gvk.plural],
+        queryFn: async () => {
+          const { canListAll, availableResources } = await checkListPermissions(
+            installationName,
+            gvk,
+            kubernetesApi,
+            apiVersionOverrides[installationName],
+          );
 
-              const list: List<Organization> = await response.json();
+          if (canListAll) {
+            const response = await kubernetesApi.proxy({
+              clusterName: installationName,
+              path: getK8sListPath(gvk),
+            });
 
-              return list.items;
-            }
+            const list: List<Organization> = await response.json();
 
-            const getRequests = availableResources.map(resourceName =>
-              kubernetesApi.proxy({
-                clusterName: installationName,
-                path: getK8sGetPath(gvk, resourceName),
-              }),
-            );
+            return list.items;
+          }
 
-            const getResponses = await Promise.all(getRequests);
+          const getRequests = availableResources.map(resourceName =>
+            kubernetesApi.proxy({
+              clusterName: installationName,
+              path: getK8sGetPath(gvk, resourceName),
+            }),
+          );
 
-            const items: Organization[] = await Promise.all(
-              getResponses.map(response => response.json()),
-            );
+          const getResponses = await Promise.all(getRequests);
 
-            return items;
-          },
-        };
-      });
+          const items: Organization[] = await Promise.all(
+            getResponses.map(response => response.json()),
+          );
+
+          return items;
+        },
+      };
     }),
   });
 

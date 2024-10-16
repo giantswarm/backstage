@@ -22,10 +22,19 @@
     "test": "backstage-cli package test",
     "clean": "backstage-cli package clean",
     "prepack": "backstage-cli package prepack",
-    "postpack": "backstage-cli package postpack"
+    "postpack": "backstage-cli package postpack",
+    "generate-types": "ts-node scripts/generate/index.ts"
   },
   "devDependencies": {
-    "@backstage/cli": "^0.27.1"
+    "@backstage/cli": "^0.27.1",
+    "@types/js-yaml": "^4",
+    "@types/lodash": "^4.17.5",
+    "js-yaml": "^4.1.0",
+    "json-schema-to-typescript": "^15.0.2",
+    "lodash": "^4.17.21",
+    "node-fetch": "2",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.6.0"
   },
   "files": [
     "dist"

@@ -17,7 +17,7 @@ import { ClusterWrapper } from '../ClusterWrapper';
 export const ClustersPage = () => {
   return (
     <GSContext>
-      <Page themeId="tool">
+      <Page themeId="service">
         <Header
           title="Kubernetes clusters by Giant Swarm"
           subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters."
@@ -35,10 +35,9 @@ export const ClustersPage = () => {
           <DetailsPane
             paneId={CLUSTER_ACCESS_PANE_ID}
             title="Cluster access"
-            render={({ installationName, gvk, name, namespace }) => (
+            render={({ installationName, name, namespace }) => (
               <ClusterWrapper
                 installationName={installationName}
-                gvk={gvk}
                 name={name}
                 namespace={namespace}
                 render={cluster => (

@@ -47,8 +47,7 @@ export const gsPlugin = createPlugin({
 export const GSClustersPage = gsPlugin.provide(
   createRoutableExtension({
     name: 'GSClustersPage',
-    component: () =>
-      import('./components/clusters/ClustersPage').then(m => m.ClustersPage),
+    component: () => import('./components/clusters/Router').then(m => m.Router),
     mountPoint: clustersRouteRef,
   }),
 );

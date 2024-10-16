@@ -20,3 +20,7 @@ export function parseDate(date: string | Date): Date {
 
   return givenDate;
 }
+
+export function getApiGroupFromApiVersion(apiVersion: string): string {
+  return apiVersion.split('/')[0];
+}

@@ -1,9 +1,12 @@
+export { AboutFieldValue } from './AboutFieldValue';
 export { ApplicationLink } from './ApplicationLink';
+export { AsyncValue } from './AsyncValue';
 export { ContentRow } from './ContentRow';
 export { DeploymentStatusCard } from './DeploymentStatusCard';
 export { DateComponent } from './Date';
 export { DetailsPane } from './DetailsPane';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { Heading } from './Heading';
+export { NotAvailable } from './NotAvailable';
 export { StructuredMetadataList } from './StructuredMetadataList';
 export { Version } from './Version';

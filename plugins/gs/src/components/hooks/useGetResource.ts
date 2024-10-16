@@ -13,17 +13,39 @@ export function useGetResource<T>(
   const kubernetesApi = useApi(kubernetesApiRef);
   const path = useK8sGetPath(gvk, name, namespace);
 
-  return useQuery({
-    queryKey: [installationName, gvk.plural, namespace, name],
+  const queryKey = [
+    installationName,
+    'get',
+    gvk.plural,
+    namespace,
+    name,
+  ].filter(Boolean) as string[];
+
+  const query = useQuery({
+    queryKey,
     queryFn: async () => {
       const response = await kubernetesApi.proxy({
         clusterName: installationName,
         path,
       });
 
+      if (!response.ok) {
+        const error = new Error(
+          `Failed to fetch resources from ${installationName} at ${path}. Reason: ${response.statusText}.`,
+        );
+        error.name = response.status === 404 ? 'NotFoundError' : error.name;
+
+        throw error;
+      }
+
       const app: T = await response.json();
 
       return app;
     },
   });
+
+  return {
+    ...query,
+    queryKey: queryKey.join('/'),
+  };
 }

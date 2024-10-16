@@ -1,44 +1,53 @@
-import * as applicationv1alpha1 from '../model/applicationv1alpha1';
-import * as authorizationv1 from '../model/authorizationv1';
-import * as awsv1beta1 from '../model/awsv1beta1';
-import * as capiv1beta1 from '../model/capiv1beta1';
-import * as helmv2beta1 from '../model/helmv2beta1';
+import * as authorization from '../model/authorization';
+import * as capa from '../model/capa';
+import * as capi from '../model/capi';
+import * as capv from '../model/capv';
+import * as capz from '../model/capz';
+import * as crossplaneAWS from '../model/crossplane-aws';
+import * as fluxcd from '../model/fluxcd';
+import * as giantswarmApplication from '../model/giantswarm-application';
+import * as giantswarmPlatform from '../model/giantswarm-platform';
+import * as giantswarmSecurity from '../model/giantswarm-security';
 import * as metav1 from '../model/metav1';
-import * as promisev1beta1 from '../model/promisev1beta1';
-import * as securityv1alpha1 from '../model/securityv1alpha1';
-import * as secretsv1beta1 from '../model/secretsv1beta1';
+import * as externalSecrets from '../model/external-secrets';
 
-export type App = applicationv1alpha1.IApp;
+export type App = giantswarmApplication.App;
 
-export type Catalog = applicationv1alpha1.ICatalog;
+export type Catalog = giantswarmApplication.Catalog;
 
-export type Cluster = capiv1beta1.ICluster;
+export type Cluster = capi.Cluster;
+
+export type ControlPlane = capi.KubeadmControlPlane;
 
 export type Deployment = App | HelmRelease;
 
-export type HelmRelease = helmv2beta1.IHelmRelease;
+export type HelmRelease = fluxcd.HelmRelease;
 
 export type List<T> = metav1.IList<T>;
 
-export type Organization = securityv1alpha1.IOrganization;
+export type Organization = giantswarmSecurity.Organization;
 
-export type ProviderConfig = awsv1beta1.IProviderConfig;
+export type ProviderCluster =
+  | capa.AWSCluster
+  | capv.VSphereCluster
+  | capz.AzureCluster;
 
-export type SecretStore = secretsv1beta1.ISecretStore;
-export type ClusterSecretStore = secretsv1beta1.IClusterSecretStore;
+export type ProviderConfig = crossplaneAWS.ProviderConfig;
+
+export type SecretStore = externalSecrets.SecretStore;
+export type ClusterSecretStore = externalSecrets.ClusterSecretStore;
 
 export type ResourceRequest =
-  | promisev1beta1.IGitHubApp
-  | promisev1beta1.IGitHubRepo
-  | promisev1beta1.IAppDeployment;
+  | giantswarmPlatform.GitHubApp
+  | giantswarmPlatform.GitHubRepo
+  | giantswarmPlatform.AppDeployment;
 
 export type Resource<T> = T & {
   installationName: string;
 };
 
-export type LocalSubjectAccessReview =
-  authorizationv1.ILocalSubjectAccessReview;
+export type LocalSubjectAccessReview = authorization.LocalSubjectAccessReview;
 
-export type SelfSubjectAccessReview = authorizationv1.ISelfSubjectAccessReview;
+export type SelfSubjectAccessReview = authorization.SelfSubjectAccessReview;
 
-export type SelfSubjectRulesReview = authorizationv1.ISelfSubjectRulesReview;
+export type SelfSubjectRulesReview = authorization.SelfSubjectRulesReview;

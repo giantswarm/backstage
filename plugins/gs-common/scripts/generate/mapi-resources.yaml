@@ -1,0 +1,147 @@
+- group: capi
+  resources:
+    - name: Cluster
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/main/config/crd/bases/cluster.x-k8s.io_clusters.yaml
+      versions:
+        - v1beta1
+    - name: MachineDeployment
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/main/config/crd/bases/cluster.x-k8s.io_machinedeployments.yaml
+      versions:
+        - v1beta1
+    - name: Machine
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/main/config/crd/bases/cluster.x-k8s.io_machines.yaml
+      versions:
+        - v1beta1
+    - name: KubeadmControlPlane
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml
+      versions:
+        - v1beta1
+
+- group: capa
+  resources:
+    - name: AWSCluster
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsclusters.yaml
+      versions:
+        - v1beta1
+        - v1beta2
+    - name: AWSMachinePool
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsmachinepools.yaml
+      versions:
+        - v1beta1
+        - v1beta2
+    - name: AWSMachineTemplate
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsmachinetemplates.yaml
+      versions:
+        - v1beta2
+    - name: AWSManagedCluster
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsmanagedclusters.yaml
+      versions:
+        - v1beta2
+    - name: AWSManagedMachinePool
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsmanagedmachinepools.yaml
+      versions:
+        - v1beta2
+    - name: AWSManagedControlPlane
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/controlplane.cluster.x-k8s.io_awsmanagedcontrolplanes.yaml
+      versions:
+        - v1beta2
+    - name: AWSClusterRoleIdentity
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsclusterroleidentities.yaml
+      versions:
+        - v1beta2
+
+- group: capz
+  resources:
+    - name: AzureCluster
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-azure/main/config/crd/bases/infrastructure.cluster.x-k8s.io_azureclusters.yaml
+      versions:
+        - v1beta1
+    - name: AzureClusterIdentity
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-azure/main/config/crd/bases/infrastructure.cluster.x-k8s.io_azureclusteridentities.yaml
+      versions:
+        - v1beta1
+    - name: AzureMachineTemplate
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-azure/main/config/crd/bases/infrastructure.cluster.x-k8s.io_azuremachinetemplates.yaml
+      versions:
+        - v1beta1
+    - name: AzureMachine
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-azure/main/config/crd/bases/infrastructure.cluster.x-k8s.io_azuremachines.yaml
+      versions:
+        - v1beta1
+    - name: AzureMachinePool
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-azure/main/config/crd/bases/infrastructure.cluster.x-k8s.io_azuremachinepools.yaml
+      versions:
+        - v1beta1
+
+- group: capv
+  resources:
+    - name: VSphereCluster
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-vsphere/refs/heads/main/config/default/crd/bases/infrastructure.cluster.x-k8s.io_vsphereclusters.yaml
+      versions:
+        - v1beta1
+    - name: VSphereMachine
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-vsphere/refs/heads/main/config/default/crd/bases/infrastructure.cluster.x-k8s.io_vspheremachines.yaml
+      versions:
+        - v1beta1
+    - name: VSphereMachineTemplate
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-vsphere/refs/heads/main/config/default/crd/bases/infrastructure.cluster.x-k8s.io_vspheremachinetemplates.yaml
+      versions:
+        - v1beta1
+
+- group: crossplane-aws
+  resources:
+    - name: ProviderConfig
+      crdURL: https://raw.githubusercontent.com/crossplane-contrib/provider-upjet-aws/main/package/crds/aws.upbound.io_providerconfigs.yaml
+      versions:
+        - v1beta1
+
+- group: external-secrets
+  resources:
+    - name: SecretStore
+      crdURL: https://raw.githubusercontent.com/external-secrets/external-secrets/main/config/crds/bases/external-secrets.io_secretstores.yaml
+      versions:
+        - v1beta1
+    - name: ClusterSecretStore
+      crdURL: https://raw.githubusercontent.com/external-secrets/external-secrets/main/config/crds/bases/external-secrets.io_clustersecretstores.yaml
+      versions:
+        - v1beta1
+
+- group: fluxcd
+  resources:
+    - name: HelmRelease
+      crdURL: https://raw.githubusercontent.com/fluxcd/helm-controller/main/config/crd/bases/helm.toolkit.fluxcd.io_helmreleases.yaml
+      versions:
+        - v2beta1
+
+- group: giantswarm-application
+  resources:
+    - name: App
+      crdURL: https://raw.githubusercontent.com/giantswarm/apiextensions-application/main/config/crd/application.giantswarm.io_apps.yaml
+      versions:
+        - v1alpha1
+    - name: Catalog
+      crdURL: https://raw.githubusercontent.com/giantswarm/apiextensions-application/main/config/crd/application.giantswarm.io_catalogs.yaml
+      versions:
+        - v1alpha1
+
+- group: giantswarm-platform
+  resources:
+    - name: GitHubApp
+      crdURL: https://raw.githubusercontent.com/giantswarm/dev-platform-kratix-promises/main/github-app-promise/promise.yaml
+      versions:
+        - v1beta1
+    - name: GitHubRepo
+      crdURL: https://raw.githubusercontent.com/giantswarm/dev-platform-kratix-promises/main/github-template-repo-promise/promise.yaml
+      versions:
+        - v1beta1
+    - name: AppDeployment
+      crdURL: https://raw.githubusercontent.com/giantswarm/dev-platform-kratix-promises/main/app-deployment-promise/promise.yaml
+      versions:
+        - v1beta1
+
+- group: giantswarm-security
+  resources:
+    - name: Organization
+      crdURL: https://raw.githubusercontent.com/giantswarm/organization-operator/main/config/crd/bases/security.giantswarm.io_organizations.yaml
+      versions:
+        - v1alpha1

@@ -8,7 +8,6 @@ import {
   Grid,
   Typography,
 } from '@material-ui/core';
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import {
   getHelmReleaseChartName,
   getHelmReleaseClusterName,
@@ -32,7 +31,6 @@ import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusC
 
 type HelmReleaseDetailsProps = {
   installationName: string;
-  gvk: CustomResourceMatcher;
   namespace: string;
   name: string;
   sourceLocation?: string;
@@ -42,7 +40,6 @@ type HelmReleaseDetailsProps = {
 
 export const HelmReleaseDetails = ({
   installationName,
-  gvk,
   namespace,
   name,
   sourceLocation,
@@ -53,7 +50,7 @@ export const HelmReleaseDetails = ({
     data: helmrelease,
     isLoading,
     error,
-  } = useHelmRelease(installationName, gvk, name, namespace);
+  } = useHelmRelease(installationName, name, namespace);
 
   if (isLoading) {
     return <Progress />;

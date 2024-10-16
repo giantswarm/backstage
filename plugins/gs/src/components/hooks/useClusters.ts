@@ -1,10 +1,11 @@
-import type {
-  Cluster,
-  List,
-  Organization,
-  Resource,
+import {
+  getClusterGVK,
+  getClusterNames,
+  type Cluster,
+  type List,
+  type Organization,
+  type Resource,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { clusterGVK } from '@giantswarm/backstage-plugin-gs-common';
 import { useOrganizations } from './useOrganizations';
 import { useInstallations } from './useInstallations';
 import { useApi } from '@backstage/core-plugin-api';
@@ -12,6 +13,7 @@ import { kubernetesApiRef } from '@backstage/plugin-kubernetes';
 import { useQueries } from '@tanstack/react-query';
 import { getK8sListPath } from './utils/k8sPath';
 import { getInstallationsQueriesInfo } from './utils/queries';
+import { useApiVersionOverrides } from './useApiVersionOverrides';
 
 function getInstallationOrganizationNamespaces(
   installationName: string,
@@ -30,6 +32,18 @@ export function useClusters(installations?: string[]) {
   const { selectedInstallations: savedInstallations } = useInstallations();
   const selectedInstallations = installations ?? savedInstallations;
 
+  const apiVersionOverrides = useApiVersionOverrides(selectedInstallations);
+
+  const installationsGVKs = Object.fromEntries(
+    selectedInstallations.map(installationName => {
+      const apiVersion =
+        apiVersionOverrides[installationName]?.[getClusterNames().plural];
+      const gvk = getClusterGVK(apiVersion);
+
+      return [installationName, gvk];
+    }),
+  );
+
   const { resources: organizations, initialLoading: isLoadingOrganizations } =
     useOrganizations(selectedInstallations);
 
@@ -42,15 +56,15 @@ export function useClusters(installations?: string[]) {
         organizations,
       );
 
+      const gvk = installationsGVKs[installationName];
+
       return {
         queryKey: [installationName, 'clusters', namespaces.join()],
         queryFn: async () => {
-          const requests = clusterGVK.flatMap(gvk => {
-            return namespaces.map(namespace => {
-              return kubernetesApi.proxy({
-                clusterName: installationName,
-                path: getK8sListPath(gvk, namespace),
-              });
+          const requests = namespaces.map(namespace => {
+            return kubernetesApi.proxy({
+              clusterName: installationName,
+              path: getK8sListPath(gvk, namespace),
             });
           });
 
