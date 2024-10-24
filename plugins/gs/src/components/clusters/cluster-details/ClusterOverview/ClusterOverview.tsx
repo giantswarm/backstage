@@ -3,6 +3,7 @@ import { Grid } from '@material-ui/core';
 import { ClusterAboutCard } from './ClusterAboutCard';
 import { ErrorsProvider } from '../../../Errors';
 import { ClusterAccessCard } from './ClusterAccessCard';
+import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 
 export const ClusterOverview = () => {
   return (
@@ -13,6 +14,9 @@ export const ClusterOverview = () => {
         </Grid>
         <Grid item md={6} xs={12}>
           <ClusterAccessCard />
+        </Grid>
+        <Grid item md={6} xs={12}>
+          <ClusterPolicyComplianceCard />
         </Grid>
       </Grid>
     </ErrorsProvider>
