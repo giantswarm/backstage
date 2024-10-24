@@ -149,3 +149,14 @@ export function getClusterControlPlaneRef(cluster: Cluster) {
 
   return { kind, apiVersion, name, namespace };
 }
+
+export function getClusterK8sAPIUrl(cluster: Cluster) {
+  const host = cluster.spec?.controlPlaneEndpoint?.host;
+  const port = cluster.spec?.controlPlaneEndpoint?.port;
+
+  if (!host) return undefined;
+
+  const url = `${host}${port ? `:${port}` : ''}`;
+
+  return url.startsWith('https://') ? url : `https://${url}`;
+}

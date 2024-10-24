@@ -4,6 +4,7 @@ export * from './useCluster';
 export * from './useClusterSecretStores';
 export * from './useClusters';
 export * from './useControlPlane';
+export * from './useCurrentUser';
 export * from './useDeploymentStatusDetails';
 export * from './useDetailsPane';
 export * from './useGrafanaDashboardLink';

@@ -1,0 +1,1 @@
+export { SimpleAccordion } from './SimpleAccordion';
