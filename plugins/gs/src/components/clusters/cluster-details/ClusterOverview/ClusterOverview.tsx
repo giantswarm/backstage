@@ -11,16 +11,24 @@ export const ClusterOverview = () => {
     <ErrorsProvider>
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6} xs={12}>
-          <ClusterAboutCard />
+          <Grid item container spacing={3}>
+            <Grid item xs={12}>
+              <ClusterAboutCard />
+            </Grid>
+            <Grid item xs={12}>
+              <ClusterPolicyComplianceCard />
+            </Grid>
+            <Grid item xs={12}>
+              <ClusterLabelsCard />
+            </Grid>
+          </Grid>
         </Grid>
         <Grid item md={6} xs={12}>
-          <ClusterAccessCard />
-        </Grid>
-        <Grid item md={6} xs={12}>
-          <ClusterPolicyComplianceCard />
-        </Grid>
-        <Grid item md={6} xs={12}>
-          <ClusterLabelsCard />
+          <Grid item container spacing={3}>
+            <Grid item xs={12}>
+              <ClusterAccessCard />
+            </Grid>
+          </Grid>
         </Grid>
       </Grid>
     </ErrorsProvider>
