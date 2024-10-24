@@ -5,8 +5,13 @@ import { ErrorsProvider } from '../../../Errors';
 import { ClusterAccessCard } from './ClusterAccessCard';
 import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 import { ClusterLabelsCard } from './ClusterLabelsCard';
+import { ClusterInstallationCard } from './ClusterInstallationCard';
+import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
+import { isManagementCluster } from '@giantswarm/backstage-plugin-gs-common';
 
 export const ClusterOverview = () => {
+  const { cluster, installationName } = useCurrentCluster();
+
   return (
     <ErrorsProvider>
       <Grid container spacing={3} alignItems="stretch">
@@ -25,6 +30,11 @@ export const ClusterOverview = () => {
         </Grid>
         <Grid item md={6} xs={12}>
           <Grid item container spacing={3}>
+            {!isManagementCluster(cluster, installationName) && (
+              <Grid item xs={12}>
+                <ClusterInstallationCard />
+              </Grid>
+            )}
             <Grid item xs={12}>
               <ClusterAccessCard />
             </Grid>
