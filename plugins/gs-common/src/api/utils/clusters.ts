@@ -56,6 +56,10 @@ export function hasClusterAppLabel(cluster: Cluster): boolean {
   );
 }
 
+export function getClusterLabels(cluster: Cluster) {
+  return cluster.metadata.labels;
+}
+
 export function getClusterName(cluster: Cluster) {
   return cluster.metadata.name;
 }

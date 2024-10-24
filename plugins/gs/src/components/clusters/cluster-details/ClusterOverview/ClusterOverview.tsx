@@ -4,6 +4,7 @@ import { ClusterAboutCard } from './ClusterAboutCard';
 import { ErrorsProvider } from '../../../Errors';
 import { ClusterAccessCard } from './ClusterAccessCard';
 import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
+import { ClusterLabelsCard } from './ClusterLabelsCard';
 
 export const ClusterOverview = () => {
   return (
@@ -17,6 +18,9 @@ export const ClusterOverview = () => {
         </Grid>
         <Grid item md={6} xs={12}>
           <ClusterPolicyComplianceCard />
+        </Grid>
+        <Grid item md={6} xs={12}>
+          <ClusterLabelsCard />
         </Grid>
       </Grid>
     </ErrorsProvider>
