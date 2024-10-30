@@ -28,16 +28,6 @@ export function ClusterInstallationCard() {
               value={installationName}
               gridSizes={{ xs: 6, md: 4 }}
             />
-            <AboutField
-              label="Provider"
-              value="AWS"
-              gridSizes={{ xs: 6, md: 4 }}
-            />
-            <AboutField
-              label="Location"
-              value="eu-central1"
-              gridSizes={{ xs: 6, md: 4 }}
-            />
           </Grid>
         </Box>
 
