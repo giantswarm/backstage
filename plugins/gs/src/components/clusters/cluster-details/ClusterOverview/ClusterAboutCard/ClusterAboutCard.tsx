@@ -150,15 +150,6 @@ export function ClusterAboutCard() {
             </Typography>
           </AboutFieldValue>
         </AboutField>
-        <AboutField label="Location 2" gridSizes={{ xs: 6, md: 4 }}>
-          <AboutFieldValue>
-            <ClusterSwitch
-              renderAWS={() => <ProviderClusterLocation />}
-              renderAzure={() => <ProviderClusterLocation />}
-              renderVSphere={() => <NotAvailable />}
-            />
-          </AboutFieldValue>
-        </AboutField>
       </Grid>
     </InfoCard>
   );
