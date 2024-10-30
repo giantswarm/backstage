@@ -8,6 +8,7 @@ export { DateComponent } from './Date';
 export { DetailsPane } from './DetailsPane';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { Heading } from './Heading';
+export { KubernetesVersion } from './KubernetesVersion';
 export { NotAvailable } from './NotAvailable';
 export { SimpleAccordion } from './SimpleAccordion';
 export { StructuredMetadataList } from './StructuredMetadataList';

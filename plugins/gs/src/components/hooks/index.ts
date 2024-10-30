@@ -11,6 +11,7 @@ export * from './useGrafanaDashboardLink';
 export * from './useHelmRelease';
 export * from './useHelmReleases';
 export * from './useInstallations';
+export * from './useK8sVersionEOLDate';
 export * from './useProviderCluster';
 export * from './useProviderConfigs';
 export * from './useResourceRequests';

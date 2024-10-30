@@ -6,6 +6,7 @@ export * from './helmreleases';
 export * from './organizations';
 export * from './providerClusters';
 export * from './providerConfigs';
+export * from './releases';
 export * from './resources';
 export * from './resourceRequests';
 export * from './secretStores';

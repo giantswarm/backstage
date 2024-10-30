@@ -20,6 +20,7 @@ import {
   AboutFieldValue,
   AsyncValue,
   DateComponent,
+  KubernetesVersion,
   NotAvailable,
 } from '../../../../UI';
 import { formatVersion, toSentenceCase } from '../../../../utils/helpers';
@@ -106,7 +107,13 @@ export function ClusterAboutCard() {
               error={controlPlaneError}
               errorMessage={controlPlaneQueryErrorMessage}
             >
-              {value => formatVersion(value)}
+              {value => (
+                <KubernetesVersion
+                  version={formatVersion(value)}
+                  hideIcon
+                  hideLabel
+                />
+              )}
             </AsyncValue>
           </AboutFieldValue>
         </AboutField>

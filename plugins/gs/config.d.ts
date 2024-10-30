@@ -21,5 +21,12 @@ export interface Config {
         enabled: boolean;
       };
     };
+    /** @deepVisibility frontend */
+    kubernetesVersions?: {
+      [minorVersion: string]: {
+        eolDate: string;
+        minorVersion: string;
+      };
+    };
   };
 }
