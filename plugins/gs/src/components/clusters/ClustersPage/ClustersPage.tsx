@@ -8,11 +8,7 @@ import {
 } from '@backstage/core-components';
 import { InstallationsWrapper } from '../../InstallationsWrapper';
 import { GSContext } from '../../GSContext';
-import { DetailsPane } from '../../UI';
-import { CLUSTER_ACCESS_PANE_ID } from '../../hooks';
 import { ClustersTable } from '../ClustersTable';
-import { ClusterAccess } from '../ClusterAccess';
-import { ClusterWrapper } from '../ClusterWrapper';
 
 export const ClustersPage = () => {
   return (
@@ -32,23 +28,6 @@ export const ClustersPage = () => {
           <InstallationsWrapper>
             <ClustersTable />
           </InstallationsWrapper>
-          <DetailsPane
-            paneId={CLUSTER_ACCESS_PANE_ID}
-            title="Cluster access"
-            render={({ installationName, name, namespace }) => (
-              <ClusterWrapper
-                installationName={installationName}
-                name={name}
-                namespace={namespace}
-                render={cluster => (
-                  <ClusterAccess
-                    cluster={cluster}
-                    installationName={installationName}
-                  />
-                )}
-              />
-            )}
-          />
         </Content>
       </Page>
     </GSContext>
