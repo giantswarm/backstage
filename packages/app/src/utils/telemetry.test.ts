@@ -124,6 +124,36 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for cluster details page', () => {
+    const location = createLocation(
+      '/clusters/installation/org-demo/demo-cluster',
+    );
+    const result = getTelemetryPageViewPayload(location);
+    expect(result).toEqual({
+      page: 'Cluster details',
+      installation: 'installation',
+      clusterNamespace: 'org-demo',
+      clusterName: 'demo-cluster',
+      tab: 'overview',
+      path: '/clusters/installation/org-demo/demo-cluster',
+    });
+  });
+
+  it('should return correct payload for cluster details page with tab', () => {
+    const location = createLocation(
+      '/clusters/installation/org-demo/demo-cluster/ssh-access',
+    );
+    const result = getTelemetryPageViewPayload(location);
+    expect(result).toEqual({
+      page: 'Cluster details',
+      installation: 'installation',
+      clusterNamespace: 'org-demo',
+      clusterName: 'demo-cluster',
+      tab: 'ssh-access',
+      path: '/clusters/installation/org-demo/demo-cluster/ssh-access',
+    });
+  });
+
   it('should return correct payload for search page', () => {
     const location = createLocation('/search');
     const result = getTelemetryPageViewPayload(location);
