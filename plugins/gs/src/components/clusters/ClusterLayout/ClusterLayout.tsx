@@ -18,7 +18,6 @@ import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
 import {
   Cluster,
   getClusterDescription,
-  isManagementCluster,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { clusterDetailsRouteRef } from '../../../routes';
 
@@ -34,14 +33,14 @@ const dataKey = 'plugin.gs.clusterLayoutRoute';
 
 const Route: (props: ClusterLayoutRouteProps) => null = () => null;
 attachComponentData(Route, dataKey, true);
-attachComponentData(Route, 'core.gatherMountPoints', true); // This causes all mount points that are discovered within this route to use the path of the route itself
+attachComponentData(Route, 'core.gatherMountPoints', true);
 
 export interface ClusterLayoutProps {
   children?: React.ReactNode;
 }
 
 export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
-  const { installationName, name } = useRouteRefParams(clusterDetailsRouteRef);
+  const { name } = useRouteRefParams(clusterDetailsRouteRef);
   const { cluster, loading, error } = useAsyncCluster();
   const routes = useElementFilter(
     children,
@@ -72,15 +71,10 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
     [cluster],
   );
 
-  let headerTitle = `Cluster ${name}`;
-  if (cluster && !isManagementCluster(cluster, installationName)) {
-    headerTitle += ` in ${installationName}`;
-  }
-
   return (
     <Page themeId="service">
       <Header
-        title={headerTitle}
+        title={name}
         subtitle={cluster ? getClusterDescription(cluster) : undefined}
         type="resource - kubernetes cluster"
       />
