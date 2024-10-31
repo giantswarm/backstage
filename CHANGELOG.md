@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.41.0-changelog.md](./docs/releases/v0.41.0-changelog.md) for more information.
+
 ### Fixed
 
 - Add `--auth` flag to first time Teleport (tsh) login command.

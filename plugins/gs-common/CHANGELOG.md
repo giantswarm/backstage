@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.3.0
+
+### Minor Changes
+
+- 291a42f: Add script to autogenerate TypeScript types for K8s resources.
+- 291a42f: Refactor K8s resources management.
+
 ## 0.2.0
 
 ### Minor Changes
