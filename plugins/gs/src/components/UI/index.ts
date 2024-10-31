@@ -1,9 +1,15 @@
+export { AboutFieldValue } from './AboutFieldValue';
 export { ApplicationLink } from './ApplicationLink';
+export { AsyncValue } from './AsyncValue';
+export { CodeBlock } from './CodeBlock';
 export { ContentRow } from './ContentRow';
 export { DeploymentStatusCard } from './DeploymentStatusCard';
 export { DateComponent } from './Date';
 export { DetailsPane } from './DetailsPane';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { Heading } from './Heading';
+export { KubernetesVersion } from './KubernetesVersion';
+export { NotAvailable } from './NotAvailable';
+export { SimpleAccordion } from './SimpleAccordion';
 export { StructuredMetadataList } from './StructuredMetadataList';
 export { Version } from './Version';

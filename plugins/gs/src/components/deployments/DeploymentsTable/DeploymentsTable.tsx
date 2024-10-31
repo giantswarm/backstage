@@ -196,11 +196,11 @@ const DeploymentsTableView = ({
           name: resource.metadata.name,
           namespace: resource.metadata.namespace,
           version: formatVersion(getAppCurrentVersion(resource) ?? ''),
-          attemptedVersion: formatVersion(getAppVersion(resource)),
+          attemptedVersion: formatVersion(getAppVersion(resource) ?? ''),
           status: getAppStatus(resource),
           sourceLocation,
           updated: getAppUpdatedTimestamp(resource),
-          sourceName: formatAppCatalogName(getAppCatalogName(resource)),
+          sourceName: formatAppCatalogName(getAppCatalogName(resource) ?? ''),
           chartName: getAppChartName(resource),
           apiVersion: resource.apiVersion,
         }

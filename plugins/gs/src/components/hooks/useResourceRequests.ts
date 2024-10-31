@@ -1,5 +1,6 @@
 import {
-  getResourceGVK,
+  getResourceRequestGVK,
+  getResourceRequestNames,
   Resource,
   type ResourceRequest,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -8,6 +9,7 @@ import { kubernetesApiRef } from '@backstage/plugin-kubernetes';
 import { useQueries } from '@tanstack/react-query';
 import { getK8sGetPath } from './utils/k8sPath';
 import { getInstallationsQueriesInfo } from './utils/queries';
+import { useApiVersionOverrides } from './useApiVersionOverrides';
 
 export function useResourceRequests(
   kratixResources: {
@@ -17,12 +19,20 @@ export function useResourceRequests(
     namespace: string;
   }[],
 ) {
+  const apiVersionOverrides = useApiVersionOverrides(
+    kratixResources.map(item => item.installationName),
+  );
   const kubernetesApi = useApi(kubernetesApiRef);
   const queries = useQueries({
     queries: kratixResources.map(
       ({ kind, name, namespace, installationName }) => {
-        const gvk = getResourceGVK(kind);
-        const path = getK8sGetPath(gvk!, name, namespace);
+        const resourceNames = getResourceRequestNames(kind);
+        const apiVersion =
+          apiVersionOverrides[installationName]?.[resourceNames.plural];
+
+        const gvk = getResourceRequestGVK(kind, apiVersion);
+
+        const path = getK8sGetPath(gvk, name, namespace);
         return {
           queryKey: [installationName, gvk!.plural],
           queryFn: async () => {

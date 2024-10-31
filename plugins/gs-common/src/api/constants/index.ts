@@ -15,6 +15,7 @@ export const Labels = {
   labelMachinePool: 'giantswarm.io/machine-pool',
   labelOrganization: 'giantswarm.io/organization',
   labelServicePriority: 'giantswarm.io/service-priority',
+  labelReleaseVersion: 'release.giantswarm.io/version',
 
   // Cluster app labels
   labelApp: 'app',

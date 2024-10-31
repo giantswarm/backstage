@@ -5,6 +5,7 @@ import React from 'react';
 const useStyles = makeStyles(theme => ({
   flexContainer: {
     display: 'flex',
+    alignItems: 'flex-start',
     width: '100%',
 
     '& pre': {
@@ -14,12 +15,13 @@ const useStyles = makeStyles(theme => ({
   codeSnippetContainer: {
     position: 'relative',
     flex: 1,
-    minHeight: '56px',
-    paddingTop: '6px',
+    minHeight: '50px',
   },
   copyButtonContainer: {
-    width: '48px',
     marginLeft: theme.spacing(1),
+    marginTop: '-8px',
+    marginRight: '-12px',
+    marginBottom: '-12px',
   },
   codeSnippetWrapper: {
     position: 'absolute',

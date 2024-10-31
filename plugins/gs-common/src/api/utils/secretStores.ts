@@ -1,8 +1,38 @@
-import * as secretsv1beta1 from '../../model/secretsv1beta1';
+import * as externalSecrets from '../../model/external-secrets';
 import type { SecretStore, ClusterSecretStore } from '../types';
 
-export const secretStoreGVK = [secretsv1beta1.secretStoreGVK];
-export const clusterSecretStoreGVK = [secretsv1beta1.clusterSecretStoreGVK];
+export function getSecretStoreNames() {
+  return externalSecrets.SecretStoreNames;
+}
+
+export function getSecretStoreGVK(apiVersion?: string) {
+  const gvk = externalSecrets.getSecretStoreGVK(apiVersion);
+  const kind = externalSecrets.SecretStoreKind;
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ${kind} resource.`,
+    );
+  }
+
+  return gvk;
+}
+
+export function getClusterSecretStoreNames() {
+  return externalSecrets.ClusterSecretStoreNames;
+}
+
+export function getClusterSecretStoreGVK(apiVersion?: string) {
+  const gvk = externalSecrets.getClusterSecretStoreGVK(apiVersion);
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ClusterSecretStore resource.`,
+    );
+  }
+
+  return gvk;
+}
 
 export function getSecretStoreName(
   secretStore: SecretStore | ClusterSecretStore,

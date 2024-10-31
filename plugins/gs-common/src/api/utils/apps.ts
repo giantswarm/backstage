@@ -1,16 +1,22 @@
 import { Labels } from '../constants';
 import type { App, Catalog } from '../types';
-import * as applicationv1alpha1 from '../../model/applicationv1alpha1';
+import * as giantswarmApplication from '../../model/giantswarm-application';
 
-export const appGVK = [applicationv1alpha1.appGVK];
+export function getAppNames() {
+  return giantswarmApplication.AppNames;
+}
 
-export function getAppGVK(apiVersion: string) {
-  switch (apiVersion) {
-    case applicationv1alpha1.appApiVersion:
-      return applicationv1alpha1.appGVK;
-    default:
-      return undefined;
+export function getAppGVK(apiVersion?: string) {
+  const gvk = giantswarmApplication.getAppGVK(apiVersion);
+  const kind = giantswarmApplication.AppKind;
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ${kind} resource.`,
+    );
   }
+
+  return gvk;
 }
 
 export const labelAppOperator = 'app-operator.giantswarm.io/version';
@@ -40,13 +46,13 @@ export const annotationValuesSchema = 'application.giantswarm.io/values-schema';
 export const annotationAppType = 'application.giantswarm.io/app-type';
 export const annotationLogo = 'ui.giantswarm.io/logo';
 
-export function isAppCatalogPublic(catalog: Catalog): boolean {
+export function isAppCatalogPublic(catalog: Catalog) {
   const visibility = catalog.metadata.labels?.[labelCatalogVisibility];
 
   return visibility === 'public';
 }
 
-export function isAppCatalogStable(catalog: Catalog): boolean {
+export function isAppCatalogStable(catalog: Catalog) {
   const type = catalog.metadata.labels?.[labelCatalogType];
 
   return type === 'stable';
@@ -57,7 +63,7 @@ export function getAppCurrentVersion(app: App) {
 }
 
 export function getAppVersion(app: App) {
-  return app.spec.version;
+  return app.spec?.version;
 }
 
 export function getAppUpstreamVersion(app: App) {
@@ -75,21 +81,21 @@ export function getAppClusterName(app: App) {
 }
 
 export function getAppChartName(app: App) {
-  return app.spec.name;
+  return app.spec?.name;
 }
 
-export function isAppManagedByFlux(app: App): boolean {
+export function isAppManagedByFlux(app: App) {
   return app.metadata.labels?.[labelManagedBy] === 'flux';
 }
 
-export function getAppCreatedTimestamp(app: App): string | undefined {
+export function getAppCreatedTimestamp(app: App) {
   return app.metadata.creationTimestamp;
 }
 
-export function getAppUpdatedTimestamp(app: App): string | undefined {
+export function getAppUpdatedTimestamp(app: App) {
   return app.status?.release.lastDeployed;
 }
 
-export function getAppCatalogName(app: App): string {
-  return app.spec.catalog;
+export function getAppCatalogName(app: App) {
+  return app.spec?.catalog;
 }

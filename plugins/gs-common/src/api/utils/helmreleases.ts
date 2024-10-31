@@ -1,17 +1,23 @@
 import { Labels } from '../constants';
 import type { HelmRelease } from '../types';
 import { compareDates } from './helpers';
-import * as helmv2beta1 from '../../model/helmv2beta1';
+import * as fluxcd from '../../model/fluxcd';
 
-export const helmReleaseGVK = [helmv2beta1.helmReleaseGVK];
+export function getHelmReleaseNames() {
+  return fluxcd.HelmReleaseNames;
+}
 
-export function getHelmReleaseGVK(apiVersion: string) {
-  switch (apiVersion) {
-    case helmv2beta1.helmReleaseApiVersion:
-      return helmv2beta1.helmReleaseGVK;
-    default:
-      return undefined;
+export function getHelmReleaseGVK(apiVersion?: string) {
+  const gvk = fluxcd.getHelmReleaseGVK(apiVersion);
+  const kind = fluxcd.HelmReleaseKind;
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ${kind} resource.`,
+    );
   }
+
+  return gvk;
 }
 
 export const HelmReleaseStatuses = {

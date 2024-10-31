@@ -14,11 +14,11 @@ import { ResourceRequestStatus } from '../ResourceRequestStatus';
 
 function getResourceRequestDescription(resource: ResourceRequest) {
   switch (resource.kind) {
-    case 'githubapp':
+    case 'GitHubApp':
       return 'Compound resource request.';
-    case 'githubrepo':
+    case 'GitHubRepo':
       return 'Create GitHub repository.';
-    case 'appdeployment':
+    case 'AppDeployment':
       return 'Create app deployment.';
     default:
       return '';

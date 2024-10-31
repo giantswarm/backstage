@@ -1,6 +1,5 @@
 import React from 'react';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import {
   Box,
   Card,
@@ -32,7 +31,6 @@ import { RevisionDetails } from '../RevisionDetails';
 
 type AppDetailsProps = {
   installationName: string;
-  gvk: CustomResourceMatcher;
   namespace: string;
   name: string;
   sourceLocation?: string;
@@ -42,7 +40,6 @@ type AppDetailsProps = {
 
 export const AppDetails = ({
   installationName,
-  gvk,
   namespace,
   name,
   sourceLocation,
@@ -53,7 +50,7 @@ export const AppDetails = ({
     data: app,
     isLoading,
     error,
-  } = useApp(installationName, gvk, name, namespace);
+  } = useApp(installationName, name, namespace);
 
   if (isLoading) {
     return <Progress />;
@@ -82,8 +79,8 @@ export const AppDetails = ({
 
   const clusterName = getAppClusterName(app);
   const lastAppliedRevision = formatVersion(getAppCurrentVersion(app) ?? '');
-  const lastAttemptedRevision = formatVersion(getAppVersion(app));
-  const sourceName = formatAppCatalogName(getAppCatalogName(app));
+  const lastAttemptedRevision = formatVersion(getAppVersion(app) ?? '');
+  const sourceName = formatAppCatalogName(getAppCatalogName(app) ?? '');
   const chartName = getAppChartName(app);
 
   return (

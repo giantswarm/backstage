@@ -1,5 +1,3 @@
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
-import { getResourceGVK } from '@giantswarm/backstage-plugin-gs-common';
 import { useSearchParams } from 'react-router-dom';
 
 type DetailsPaneParams = {
@@ -11,7 +9,6 @@ type DetailsPaneParams = {
 };
 
 export const DEPLOYMENT_DETAILS_PANE_ID = 'deploymentDetails';
-export const CLUSTER_ACCESS_PANE_ID = 'clusterAccess';
 export const KRATIX_RESOURCE_REQUEST_DETAILS_PANE_ID =
   'kratixResourceRequestDetails';
 
@@ -49,21 +46,17 @@ export function useDetailsPane(paneId: string) {
       kind: string | null;
       namespace: string | null;
       name: string | null;
-      gvk?: CustomResourceMatcher;
     } {
       const installationName = searchParams.get('installation');
       const kind = searchParams.get('kind');
-      const apiVersion = searchParams.get('apiVersion');
       const namespace = searchParams.get('namespace');
       const name = searchParams.get('name');
-      const gvk = getResourceGVK(kind ?? '', apiVersion ?? '');
 
       return {
         installationName,
         kind,
         namespace,
         name,
-        gvk,
       };
     },
     close() {

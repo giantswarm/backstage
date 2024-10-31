@@ -64,6 +64,18 @@ export function getTelemetryPageViewPayload(location: Location): {
       payload = { page: 'Clusters index' };
       break;
 
+    case pathname.startsWith('/clusters'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Cluster details',
+        installation: parts[2],
+        clusterNamespace: parts[3],
+        clusterName: parts[4],
+        tab: parts[5] ?? 'overview',
+      };
+      break;
+    }
+
     case pathname === '/search':
       payload = { page: 'Search' };
       break;

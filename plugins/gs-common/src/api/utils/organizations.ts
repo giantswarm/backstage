@@ -1,8 +1,23 @@
 import { Organization } from '../types';
 
-import * as securityv1alpha1 from '../../model/securityv1alpha1';
+import * as giantswarmSecurity from '../../model/giantswarm-security';
 
-export const organizationGVK = [securityv1alpha1.organizationGVK];
+export function getOrganizationNames() {
+  return giantswarmSecurity.OrganizationNames;
+}
+
+export function getOrganizationGVK(apiVersion: string) {
+  const gvk = giantswarmSecurity.getOrganizationGVK(apiVersion);
+  const kind = giantswarmSecurity.OrganizationKind;
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ${kind} resource.`,
+    );
+  }
+
+  return gvk;
+}
 
 export function getOrganizationName(organization: Organization): string {
   return organization.metadata.name;
