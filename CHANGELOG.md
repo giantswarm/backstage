@@ -7,11 +7,13 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.41.0] - 2024-10-31
 
+In this release:
+
+- Cluster details page was added.
+- K8s resources management was refactored in GS plugins.
+- Auto generation of TS types and constant values for K8s resources was added in GS plugins.
+
 See [./docs/releases/v0.41.0-changelog.md](./docs/releases/v0.41.0-changelog.md) for more information.
-
-### Fixed
-
-- Add `--auth` flag to first time Teleport (tsh) login command.
 
 ## [0.40.0] - 2024-10-09
 
