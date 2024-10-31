@@ -5,9 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
-### Fixed
+## [0.41.0] - 2024-10-31
 
-- Add `--auth` flag to first time Teleport (tsh) login command.
+In this release:
+
+- Cluster details page was added.
+- K8s resources management was refactored in GS plugins.
+- Auto generation of TS types and constant values for K8s resources was added in GS plugins.
+
+See [./docs/releases/v0.41.0-changelog.md](./docs/releases/v0.41.0-changelog.md) for more information.
 
 ## [0.40.0] - 2024-10-09
 
@@ -726,7 +732,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.40.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.41.0...HEAD
+[0.41.0]: https://github.com/giantswarm/backstage/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/giantswarm/backstage/compare/v0.39.2...v0.40.0
 [0.39.2]: https://github.com/giantswarm/backstage/compare/v0.39.1...v0.39.2
 [0.39.1]: https://github.com/giantswarm/backstage/compare/v0.39.0...v0.39.1

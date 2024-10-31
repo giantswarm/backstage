@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.3.0
+
+### Minor Changes
+
+- 291a42f: Refactor K8s resources management.
+- 291a42f: Add cluster details page.
+
+### Patch Changes
+
+- e35602f: Add `--auth` flag to first time Teleport (tsh) login command
+- Updated dependencies [291a42f]
+- Updated dependencies [291a42f]
+  - @giantswarm/backstage-plugin-gs-common@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
