@@ -3,12 +3,9 @@ import { GSContext } from '../../GSContext';
 import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';
 import { ClusterOverview } from '../cluster-details/ClusterOverview';
-import { useCurrentUser } from '../../hooks';
 import { ClusterSSHAccess } from '../cluster-details/ClusterSSHAccess';
 
 export const ClusterDetailsPage = () => {
-  const { isGSUser } = useCurrentUser();
-
   return (
     <GSContext>
       <AsyncClusterProvider>
@@ -19,7 +16,7 @@ export const ClusterDetailsPage = () => {
           <ClusterLayout.Route
             path="/ssh-access"
             title="SSH access"
-            if={() => isGSUser}
+            if={({ isGSUser }) => isGSUser}
           >
             <ClusterSSHAccess />
           </ClusterLayout.Route>
