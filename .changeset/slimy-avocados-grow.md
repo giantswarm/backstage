@@ -1,4 +1,5 @@
 ---
+'app': patch
 '@giantswarm/backstage-plugin-gs': patch
 ---
 
