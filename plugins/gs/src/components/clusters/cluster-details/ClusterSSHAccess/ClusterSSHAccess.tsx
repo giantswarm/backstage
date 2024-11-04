@@ -3,9 +3,11 @@ import { Grid } from '@material-ui/core';
 import { ErrorsProvider } from '../../../Errors';
 import { useCurrentUser } from '../../../hooks';
 import { ClusterSSHAccessCard } from './ClusterSSHAccessCard';
+import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 
 export const ClusterSSHAccess = () => {
-  const { isGSUser } = useCurrentUser();
+  const { installationName } = useCurrentCluster();
+  const { isGSUser } = useCurrentUser(installationName);
 
   return (
     <ErrorsProvider>

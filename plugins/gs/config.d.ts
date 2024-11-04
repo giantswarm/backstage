@@ -28,5 +28,7 @@ export interface Config {
         minorVersion: string;
       };
     };
+    /** @visibility frontend */
+    adminGroups?: string[];
   };
 }

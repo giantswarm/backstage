@@ -20,12 +20,17 @@ import {
   getClusterDescription,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { clusterDetailsRouteRef } from '../../../routes';
+import { useCurrentUser } from '../../hooks';
 
 export type ClusterLayoutRouteProps = {
   path: string;
   title: string;
   children: JSX.Element;
-  if?: (cluster: Cluster) => boolean;
+  if?: (data: {
+    cluster: Cluster;
+    installationName: string;
+    isGSUser: boolean;
+  }) => boolean;
   tabProps?: TabProps<React.ElementType, { component?: React.ElementType }>;
 };
 
@@ -41,7 +46,18 @@ export interface ClusterLayoutProps {
 
 export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
   const { name } = useRouteRefParams(clusterDetailsRouteRef);
-  const { cluster, loading, error } = useAsyncCluster();
+  const {
+    cluster,
+    installationName,
+    loading: clusterIsLoading,
+    error: clusterError,
+  } = useAsyncCluster();
+
+  const { isGSUser, isLoading: currentUserIsLoading } =
+    useCurrentUser(installationName);
+
+  const isLoading = clusterIsLoading || currentUserIsLoading;
+
   const routes = useElementFilter(
     children,
     elements =>
@@ -53,9 +69,16 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
         })
         .getElements<ClusterLayoutRouteProps>()
         .flatMap(({ props: elementProps }) => {
-          if (!cluster) {
+          if (isLoading || !cluster) {
             return [];
-          } else if (elementProps.if && !elementProps.if(cluster)) {
+          } else if (
+            elementProps.if &&
+            !elementProps.if({
+              cluster,
+              installationName,
+              isGSUser: Boolean(isGSUser),
+            })
+          ) {
             return [];
           }
 
@@ -78,14 +101,14 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
         subtitle={cluster ? getClusterDescription(cluster) : undefined}
         type="resource - kubernetes cluster"
       />
-      {loading && <Progress />}
+      {isLoading && <Progress />}
       {cluster && <RoutedTabs routes={routes} />}
-      {error && (
+      {clusterError && (
         <Content>
-          <Alert severity="error">{error.toString()}</Alert>
+          <Alert severity="error">{clusterError.toString()}</Alert>
         </Content>
       )}
-      {!loading && !error && !cluster && (
+      {!isLoading && !clusterError && !cluster && (
         <Content>
           <WarningPanel title="Error">
             There is no cluster with the requested installation, namespace, and
