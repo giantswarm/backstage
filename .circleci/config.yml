@@ -9,112 +9,112 @@ job_filters: &job_filters
       only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
     branches:
       ignore:
-      - main
-      - master
+        - main
+        - master
 
 whitelist: &whitelist
   paths:
-  - packages/*/dist/*
+    - packages/*/dist/*
 
 workflows:
   build-backstage:
     jobs:
-    - buildjob:
-        <<: *job_filters
-    - architect/push-to-registries:
-        context: architect
-        name: push-to-registries
-        dockerfile: packages/backend/Dockerfile
-        force-public: true
-        registries-data: |-
-          public gsoci.azurecr.io ACR_GSOCI_USERNAME ACR_GSOCI_PASSWORD true
-          public quay.io QUAY_USERNAME QUAY_PASSWORD true
-        requires:
-        - buildjob
-        <<: *job_filters
-    - architect/push-to-app-catalog:
-        executor: app-build-suite
-        name: push-to-operations-platform-app-catalog
-        context: architect
-        app_catalog: giantswarm-operations-platform-catalog
-        app_catalog_test: giantswarm-operations-platform-test-catalog
-        chart: backstage
-        persist_chart_archive: true
-        requires:
-        - push-to-registries
-        filters:
-          tags:
-            only: /^v.*/
-          branches:
-            ignore:
-            - main
-            - master
-    - architect/push-to-app-catalog:
-        executor: app-build-suite
-        name: push-to-control-plane-app-catalog
-        context: architect
-        app_catalog: control-plane-catalog
-        app_catalog_test: control-plane-test-catalog
-        chart: backstage
-        persist_chart_archive: true
-        requires:
-        - push-to-registries
-        filters:
-          tags:
-            only: /^v.*/
+      - buildjob:
+          <<: *job_filters
+      - architect/push-to-registries:
+          context: architect
+          name: push-to-registries
+          dockerfile: packages/backend/Dockerfile
+          force-public: true
+          registries-data: |-
+            public gsoci.azurecr.io ACR_GSOCI_USERNAME ACR_GSOCI_PASSWORD true
+            public quay.io QUAY_USERNAME QUAY_PASSWORD true
+          requires:
+            - buildjob
+          <<: *job_filters
+      - architect/push-to-app-catalog:
+          executor: app-build-suite
+          name: push-to-operations-platform-app-catalog
+          context: architect
+          app_catalog: giantswarm-operations-platform-catalog
+          app_catalog_test: giantswarm-operations-platform-test-catalog
+          chart: backstage
+          persist_chart_archive: true
+          requires:
+            - push-to-registries
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore:
+                - main
+                - master
+      - architect/push-to-app-catalog:
+          executor: app-build-suite
+          name: push-to-control-plane-app-catalog
+          context: architect
+          app_catalog: control-plane-catalog
+          app_catalog_test: control-plane-test-catalog
+          chart: backstage
+          persist_chart_archive: true
+          requires:
+            - push-to-registries
+          filters:
+            tags:
+              only: /^v.*/
 
-          branches:
-            ignore:
-            - main
-            - master
+            branches:
+              ignore:
+                - main
+                - master
 jobs:
   buildjob:
     executor: architect/architect
     working_directory: ~/backstage
     docker:
-    - image: cimg/node:20.17
+      - image: cimg/node:20.17
 
     steps:
-    - checkout
+      - checkout
 
-    - run:
-        name: Print node and yarn version info
-        command: |
-          node --version
-          yarn --version
+      - run:
+          name: Print node and yarn version info
+          command: |
+            node --version
+            yarn --version
 
-    - run:
-        name: Install dependencies
-        command: yarn install --immutable
+      - run:
+          name: Install dependencies
+          command: yarn install --immutable
 
-    - run:
-        name: Typecheck code using the TypeScript compiler
-        command: yarn run tsc
+      - run:
+          name: Typecheck code using the TypeScript compiler
+          command: yarn run tsc
 
-    - run:
-        name: Lint code using ESlint
-        command: yarn run lint:all
+      - run:
+          name: Lint code using ESlint
+          command: yarn run lint:all
 
-    - run:
-        name: Validate code style using prettier
-        command: yarn run prettier:check-ci
+      - run:
+          name: Validate code style using prettier
+          command: yarn run prettier:check-ci
 
-    - run:
-        name: Run tests
-        command: yarn run test:all
+      - run:
+          name: Run tests
+          command: yarn run test:all
 
-    - run:
-        name: Mock secret files
-        command: |
-          touch github-app-production-credentials.yaml
+      - run:
+          name: Mock secret files
+          command: |
+            touch github-app-production-credentials.yaml
 
-    - run:
-        name: Build application
-        command: yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml
-        environment:
-          NODE_ENV: production
-          BACKSTAGE_ENVIRONMENT: production
+      - run:
+          name: Build application
+          command: yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml
+          environment:
+            NODE_ENV: production
+            BACKSTAGE_ENVIRONMENT: production
 
-    - persist_to_workspace:
-        root: ~/backstage
-        <<: *whitelist
+      - persist_to_workspace:
+          root: ~/backstage
+          <<: *whitelist
