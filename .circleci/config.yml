@@ -24,7 +24,7 @@ workflows:
       - architect/push-to-registries:
           context: architect
           name: push-to-registries
-          dockerfile: 'packages/backend/Dockerfile'
+          dockerfile: packages/backend/Dockerfile
           force-public: true
           registries-data: |-
             public gsoci.azurecr.io ACR_GSOCI_USERNAME ACR_GSOCI_PASSWORD true
@@ -36,22 +36,26 @@ workflows:
           executor: app-build-suite
           name: push-to-operations-platform-app-catalog
           context: architect
-          app_catalog: 'giantswarm-operations-platform-catalog'
-          app_catalog_test: 'giantswarm-operations-platform-test-catalog'
-          chart: 'backstage'
+          app_catalog: giantswarm-operations-platform-catalog
+          app_catalog_test: giantswarm-operations-platform-test-catalog
+          chart: backstage
           persist_chart_archive: true
           requires:
             - push-to-registries
           filters:
             tags:
               only: /^v.*/
+            branches:
+              ignore:
+                - main
+                - master
       - architect/push-to-app-catalog:
           executor: app-build-suite
           name: push-to-control-plane-app-catalog
           context: architect
-          app_catalog: 'control-plane-catalog'
-          app_catalog_test: 'control-plane-test-catalog'
-          chart: 'backstage'
+          app_catalog: control-plane-catalog
+          app_catalog_test: control-plane-test-catalog
+          chart: backstage
           persist_chart_archive: true
           requires:
             - push-to-registries
@@ -59,6 +63,10 @@ workflows:
             tags:
               only: /^v.*/
 
+            branches:
+              ignore:
+                - main
+                - master
 jobs:
   buildjob:
     executor: architect/architect
