@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.41.1] - 2024-11-04
 
+This release fixes a bug when GS users were incorrectly distinguished from customer users.
+
 See [./docs/releases/v0.41.1-changelog.md](./docs/releases/v0.41.1-changelog.md) for more information.
 
 ## [0.41.0] - 2024-10-31
