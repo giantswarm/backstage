@@ -1,5 +1,13 @@
 # app
 
+## 0.1.2
+
+### Patch Changes
+
+- 06c9efc: Fix how GS users are distinguished from customer users.
+- Updated dependencies [06c9efc]
+  - @giantswarm/backstage-plugin-gs@0.3.1
+
 ## 0.1.1
 
 ### Patch Changes
