@@ -7,7 +7,7 @@ import {
 import { AuthApi, AuthProvider, GSAuthApi, gsAuthApiRef } from './GSAuthApi';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 
-const PROVIDER_NAME_PREFIX = 'gs-';
+const PROVIDER_NAME_PREFIX = 'oidc-';
 
 /**
  * A client for authenticating towards Giant Swarm Management APIs.

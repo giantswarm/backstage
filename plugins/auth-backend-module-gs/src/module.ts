@@ -4,6 +4,10 @@ import {
 } from '@backstage/backend-plugin-api';
 import { providers } from '@backstage/plugin-auth-backend';
 import { authProvidersExtensionPoint } from '@backstage/plugin-auth-node';
+import { createAuthProviderFactory } from './auth/createAuthProviderFactory';
+
+const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
+const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
 
 /** @public */
 export const authModuleGsProviders = createBackendModule({
@@ -19,24 +23,32 @@ export const authModuleGsProviders = createBackendModule({
       async init({ providersExtensionPoint, config, logger }) {
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
-        const gsProviders = configuredProviders.filter(provider =>
-          provider.startsWith('gs-'),
+        const customProviders = configuredProviders.filter(
+          provider =>
+            provider.startsWith(OIDC_PROVIDER_NAME_PREFIX) ||
+            provider.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX),
         );
 
-        for (const providerName of gsProviders) {
+        for (const providerName of customProviders) {
           try {
             logger.info(`Configuring auth provider: ${providerName}`);
-            const providerConfig = providersConfig
-              .getConfig(providerName)
-              .getConfig(config.getString('auth.environment'));
-            const metadataUrl = providerConfig.getString('metadataUrl');
-            const response = await fetch(new URL(metadataUrl));
-            if (!response.ok) {
-              throw new Error(response.statusText);
+
+            if (providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)) {
+              const providerConfig = providersConfig
+                .getConfig(providerName)
+                .getConfig(config.getString('auth.environment'));
+              const metadataUrl = providerConfig.getString('metadataUrl');
+              const response = await fetch(new URL(metadataUrl));
+              if (!response.ok) {
+                throw new Error(response.statusText);
+              }
             }
+
             providersExtensionPoint.registerProvider({
               providerId: providerName,
-              factory: providers.oidc.create(),
+              factory: providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)
+                ? createAuthProviderFactory()
+                : providers.oidc.create(),
             });
           } catch (err) {
             logger.error(
