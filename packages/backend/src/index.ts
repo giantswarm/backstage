@@ -1,5 +1,6 @@
 import { createBackend } from '@backstage/backend-defaults';
 import { BackendFeature } from '@backstage/backend-plugin-api';
+import { githubAuthProvider } from './githubAuthProvider';
 
 const backend = createBackend();
 
@@ -25,6 +26,7 @@ backend.add(import('@giantswarm/backstage-plugin-techdocs-backend-module-gs'));
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
 backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-gs'));
+backend.add(githubAuthProvider);
 
 // events plugin
 backend.add(import('@backstage/plugin-events-backend/alpha'));

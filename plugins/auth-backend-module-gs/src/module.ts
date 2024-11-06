@@ -3,11 +3,7 @@ import {
   createBackendModule,
 } from '@backstage/backend-plugin-api';
 import { providers } from '@backstage/plugin-auth-backend';
-import {
-  authProvidersExtensionPoint,
-  createOAuthProviderFactory,
-} from '@backstage/plugin-auth-node';
-import { githubAuthenticator } from '@backstage/plugin-auth-backend-module-github-provider';
+import { authProvidersExtensionPoint } from '@backstage/plugin-auth-node';
 
 /** @public */
 export const authModuleGsProviders = createBackendModule({
@@ -49,31 +45,6 @@ export const authModuleGsProviders = createBackendModule({
             logger.error((err as Error).toString());
           }
         }
-
-        /**
-         * Custom sign-in resolver for GitHub auth provider that looks up the user
-         * by matching their GitHub username to the entity metadata.name
-         */
-        providersExtensionPoint.registerProvider({
-          providerId: 'github',
-          factory: createOAuthProviderFactory({
-            authenticator: githubAuthenticator,
-            async signInResolver(info, ctx) {
-              const { fullProfile } = info.result;
-
-              const userId = fullProfile.username;
-              if (!userId) {
-                throw new Error(
-                  `GitHub user profile does not contain a username`,
-                );
-              }
-
-              return ctx.signInWithCatalogUser({
-                filter: { 'metadata.name': userId },
-              });
-            },
-          }),
-        });
       },
     });
   },
