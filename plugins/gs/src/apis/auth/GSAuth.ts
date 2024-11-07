@@ -4,7 +4,7 @@ import {
   DiscoveryApi,
   OAuthRequestApi,
 } from '@backstage/core-plugin-api';
-import { AuthApi, AuthProvider, GSAuthApi, gsAuthApiRef } from './GSAuthApi';
+import { AuthApi, AuthProvider, GSAuthApi, gsAuthApiRef } from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 
 const PROVIDER_NAME_PREFIX = 'oidc-';

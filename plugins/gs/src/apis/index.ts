@@ -1,1 +1,1 @@
-export * from './GSAuthApi';
+export * from './auth';
