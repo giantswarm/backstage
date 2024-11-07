@@ -20,7 +20,6 @@ export type AuthApi = OAuthApi &
 export type AuthProvider = {
   providerName: string;
   providerDisplayName: string;
-  installationName: string;
 };
 
 export type GSAuthApi = {

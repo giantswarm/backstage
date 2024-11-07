@@ -1,4 +1,5 @@
 import { OAuth2, OAuthApiCreateOptions } from '@backstage/core-app-api';
+import { default as CustomOAuth2 } from './overrides/oauth2/OAuth2';
 import {
   ConfigApi,
   DiscoveryApi,
@@ -7,7 +8,8 @@ import {
 import { AuthApi, AuthProvider, GSAuthApi, gsAuthApiRef } from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 
-const PROVIDER_NAME_PREFIX = 'oidc-';
+const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
+const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
 
 /**
  * A client for authenticating towards Giant Swarm Management APIs.
@@ -38,15 +40,26 @@ export class GSAuth implements GSAuthApi {
     const providersConfig = this.configApi?.getOptionalConfig('auth.providers');
     const configuredProviders = providersConfig?.keys() || [];
     return configuredProviders
-      .filter(providerName => providerName.startsWith(PROVIDER_NAME_PREFIX))
+      .filter(
+        providerName =>
+          providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX) ||
+          providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX),
+      )
       .map(providerName => {
-        const providerDisplayName = providerName.split(PROVIDER_NAME_PREFIX)[1];
-        const installationName = providerName.split(PROVIDER_NAME_PREFIX)[1];
+        let providerDisplayName = providerName;
+        if (providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)) {
+          providerDisplayName = providerName.split(
+            OIDC_PROVIDER_NAME_PREFIX,
+          )[1];
+        } else if (providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)) {
+          providerDisplayName = providerName.split(
+            CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
+          )[1];
+        }
 
         return {
           providerName,
           providerDisplayName,
-          installationName,
         };
       });
   }
@@ -54,9 +67,15 @@ export class GSAuth implements GSAuthApi {
   private createAuthApis() {
     const entries = this.authProviders.map(
       ({ providerName, providerDisplayName }) => {
+        const OAuth2Impl = providerName.startsWith(
+          CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
+        )
+          ? CustomOAuth2
+          : OAuth2;
+
         return [
           providerName,
-          OAuth2.create({
+          OAuth2Impl.create({
             configApi: this.configApi,
             discoveryApi: this.discoveryApi,
             oauthRequestApi: this.oauthRequestApi,

@@ -31,4 +31,19 @@ export interface Config {
     /** @visibility frontend */
     adminGroups?: string[];
   };
+
+  auth?: {
+    providers?: {
+      [provider: string]: {
+        [authEnv: string]: {
+          /** @visibility frontend */
+          dexClientId?: string;
+          /** @visibility frontend */
+          dexClientSecret?: string;
+          /** @visibility frontend */
+          dexMetadataUrl?: string;
+        };
+      };
+    };
+  };
 }
