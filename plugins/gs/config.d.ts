@@ -42,6 +42,10 @@ export interface Config {
           dexClientSecret?: string;
           /** @visibility frontend */
           dexMetadataUrl?: string;
+          /** @visibility frontend */
+          dexTokenEndpoint?: string;
+          /** @visibility frontend */
+          dexUserinfoEndpoint?: string;
         };
       };
     };

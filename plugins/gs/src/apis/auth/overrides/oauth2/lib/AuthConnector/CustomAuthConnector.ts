@@ -60,6 +60,8 @@ export class CustomAuthConnector<AuthSession>
   private readonly clientId: string;
   private readonly clientSecret: string;
   private readonly metadataUrl: string;
+  private readonly tokenEndpoint?: string;
+  private readonly userinfoEndpoint?: string;
   private readonly refreshTokenLocalStorageKey: string;
   private readonly refreshTokenLockName: string;
   constructor(options: Options<AuthSession>) {
@@ -106,15 +108,17 @@ export class CustomAuthConnector<AuthSession>
     this.clientId = providerConfig.getString('dexClientId');
     this.clientSecret = providerConfig.getString('dexClientSecret');
     this.metadataUrl = providerConfig.getString('dexMetadataUrl');
+    this.tokenEndpoint = providerConfig.getOptionalString('dexTokenEndpoint');
+    this.userinfoEndpoint = providerConfig.getOptionalString(
+      'dexUserinfoEndpoint',
+    );
 
     this.initializePromise = this.initialize();
   }
 
   async initialize() {
-    const metadataUrl = await this.getMetadataUrl();
-
     return client
-      .discovery(new URL(metadataUrl), this.clientId, this.clientSecret)
+      .discovery(new URL(this.metadataUrl), this.clientId, this.clientSecret)
       .catch(error => {
         // eslint-disable-next-line no-console
         console.error(
@@ -322,16 +326,6 @@ export class CustomAuthConnector<AuthSession>
       throw new Error('Auth provider is not available');
     }
 
-    if (this.environment === 'development') {
-      return this.getDevelopmentIssuerConfig(config);
-    }
-
-    return config;
-  }
-
-  private async getDevelopmentIssuerConfig(
-    config: client.Configuration,
-  ): Promise<client.Configuration> {
     const {
       issuer,
       authorization_endpoint,
@@ -349,9 +343,6 @@ export class CustomAuthConnector<AuthSession>
       claims_supported,
     } = config.serverMetadata();
 
-    const proxyBaseURL = await this.discoveryApi.getBaseUrl('proxy');
-    const proxyUrl = `${proxyBaseURL}/gs/auth/${this.provider.id}`;
-
     return new client.Configuration(
       {
         issuer,
@@ -364,27 +355,14 @@ export class CustomAuthConnector<AuthSession>
         scopes_supported,
         token_endpoint_auth_methods_supported,
         claims_supported,
-        token_endpoint: token_endpoint?.replace(issuer, proxyUrl),
-        jwks_uri: jwks_uri?.replace(issuer, proxyUrl),
-        userinfo_endpoint: userinfo_endpoint?.replace(issuer, proxyUrl),
-        device_authorization_endpoint: device_authorization_endpoint?.replace(
-          issuer,
-          proxyUrl,
-        ),
+        jwks_uri: jwks_uri,
+        device_authorization_endpoint,
+        token_endpoint: this.tokenEndpoint ?? token_endpoint,
+        userinfo_endpoint: this.userinfoEndpoint ?? userinfo_endpoint,
       },
       this.clientId,
       this.clientSecret,
     );
-  }
-
-  private async getMetadataUrl(): Promise<string> {
-    if (this.environment === 'development') {
-      const proxyBaseURL = await this.discoveryApi.getBaseUrl('proxy');
-      const proxyUrl = `${proxyBaseURL}/gs/auth/${this.provider.id}`;
-      return `${proxyUrl}/.well-known/openid-configuration`;
-    }
-
-    return this.metadataUrl;
   }
 
   private getAuthInfo(
