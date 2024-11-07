@@ -1,14 +1,14 @@
 export interface Config {
   /** @visibility frontend */
   gs?: {
-    /** @visibility frontend */
+    /** @deepVisibility frontend */
     installations: {
       [installationName: string]: {
-        /** @visibility frontend */
         pipeline: string;
-        /** @visibility frontend */
+        apiEndpoint: string;
+        authProvider: string;
+        oidcTokenProvider?: string;
         grafanaUrl?: string;
-        /** @deepVisibility frontend */
         apiVersionOverrides?: {
           [pluralKind: string]: string;
         };

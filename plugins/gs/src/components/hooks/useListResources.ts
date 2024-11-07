@@ -1,17 +1,19 @@
-import { kubernetesApiRef } from '@backstage/plugin-kubernetes';
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries } from '@tanstack/react-query';
 import type { List } from '@giantswarm/backstage-plugin-gs-common';
 import { getInstallationsQueriesInfo } from './utils/queries';
 import { getK8sListPath } from './utils/k8sPath';
+import {
+  gsKubernetesApiRef,
+  CustomResourceMatcher,
+} from '../../apis/kubernetes';
 
 export function useListResources<T>(
   installations: string[],
   installationsGVKs: { [installationName: string]: CustomResourceMatcher },
   namespace?: string,
 ) {
-  const kubernetesApi = useApi(kubernetesApiRef);
+  const kubernetesApi = useApi(gsKubernetesApiRef);
   const queries = useQueries({
     queries: installations.map(installationName => {
       const gvk = installationsGVKs[installationName];

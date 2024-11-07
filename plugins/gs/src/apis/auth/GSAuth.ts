@@ -60,6 +60,7 @@ export class GSAuth implements GSAuthApi {
         return {
           providerName,
           providerDisplayName,
+          installationName: providerDisplayName,
         };
       });
   }

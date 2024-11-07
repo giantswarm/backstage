@@ -2,7 +2,7 @@ import React from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ProviderSettingsItem } from './ProviderSettingsItem';
-import { gsAuthApiRef } from '../../apis';
+import { gsAuthApiRef } from '../../apis/auth';
 
 export const ProviderSettings = () => {
   const gsAuthApi = useApi(gsAuthApiRef);

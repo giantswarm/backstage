@@ -1,6 +1,11 @@
 import {
+  configApiRef,
+  createApiFactory,
   createPlugin,
   createRoutableExtension,
+  discoveryApiRef,
+  fetchApiRef,
+  oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 
 import {
@@ -33,9 +38,60 @@ import {
   TemplateStringInput,
   TemplateStringInputSchema,
 } from './components/scaffolder/TemplateStringInput';
+import { gsAuthApiRef, GSAuth } from './apis/auth';
+import { gsKubernetesApiRef, KubernetesClient } from './apis/kubernetes';
+import {
+  gsKubernetesAuthProvidersApiRef,
+  KubernetesAuthProviders,
+} from './apis/kubernetes-auth-providers';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
+  apis: [
+    createApiFactory({
+      api: gsAuthApiRef,
+      deps: {
+        configApi: configApiRef,
+        discoveryApi: discoveryApiRef,
+        oauthRequestApi: oauthRequestApiRef,
+      },
+      factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
+        GSAuth.create({
+          configApi,
+          discoveryApi,
+          oauthRequestApi,
+        }),
+    }),
+    createApiFactory({
+      api: gsKubernetesAuthProvidersApiRef,
+      deps: {
+        gsAuthApi: gsAuthApiRef,
+      },
+      factory: ({ gsAuthApi }) => {
+        const oidcProviders = {
+          ...gsAuthApi.getAuthApis(),
+        };
+
+        return new KubernetesAuthProviders({
+          oidcProviders,
+        });
+      },
+    }),
+    createApiFactory({
+      api: gsKubernetesApiRef,
+      deps: {
+        configApi: configApiRef,
+        fetchApi: fetchApiRef,
+        kubernetesAuthProvidersApi: gsKubernetesAuthProvidersApiRef,
+      },
+      factory: ({ configApi, fetchApi, kubernetesAuthProvidersApi }) =>
+        new KubernetesClient({
+          configApi,
+          fetchApi,
+          kubernetesAuthProvidersApi,
+        }),
+    }),
+  ],
   routes: {
     root: rootRouteRef,
     clustersPage: clustersRouteRef,
