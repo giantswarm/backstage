@@ -14,11 +14,58 @@ This page will help you get started developing on this application.
 3. **Credentials from LastPass**:
 
    - **GitHub OAuth credentials**: You'll have to create a file `/github-app-development-credentials.yaml` in the clone repository, which for security reasons is not checked in with the repository. Find the content for this file in a LastPass secure note named `Backstage GitHub App`.
-   - **Environment variables**: We recommend to create a file named `.env` in the repo root with the content you find in a LastPass secure note named `Backstage Dev Environment Variables`. In bash, the `source .env` command will help you set these variables from the file, for the current shell session only.
+   - **Environment variables**: You need to create a file named `.env` in the repo root with the content you find in a LastPass secure note named `Backstage Dev Environment Variables`. To this file, you must also add `BACKSTAGE_ENVIRONMENT=development`, otherwise backstage cannot find the correct file to add overrides for.
 
 4. A **local configuration file** named `/app-config.local.yaml`. Please copy `/app-config.local.yaml.example` for that purpose.
 
+## Building the catalog
+
+Before `backstage` is ready, you may need to build the catalog:
+
+First, `go install` our `backstage-catalog-importer` tool:
+
+```bash
+go install github.com/giantswarm/backstage-catalog-importer@latest`
+```
+
+Next, you need to run this to create the components catalog and groups catalog. You should run this from the `/catalogs` directory.
+
+```bash
+cd catalogs
+backstage-catalog-importer
+```
+
+This will create the default catalogs but it does not build the users catalog which is required to log in, nor will it
+create the installations catalog. Both of these must be run separately
+
+```bash
+backstage-catalog-importer users
+backstage-catalog-importer installations
+```
+
 ## Running the app locally
+
+### Loading `.env`
+
+Backstage requires a number of variables that are defined in the `.env` file which should have been created in the first steps using details loaded from `lastpass`.
+
+These must be loaded into the environment before backstage can be started. Depending on your environment, this may or may not be done for you.
+
+If they are not loaded, or backstage fails with an error such as:
+
+```nohighlight
+Error: Failed to read config file at "/.../backstage/app-config.yaml", error at .integrations.github[0].apps[0], $include substitution value was undefined
+```
+
+make sure that the `.env` variables are exported by running
+
+```bash
+[ ! -f .env ] || export $(sed 's/#.*//g' .env | xargs)
+```
+
+Simply running `source .env` will not work for sub-commands as the variables are not exported.
+
+### Executing `yarn`
 
 Make sure you have all the prerequisites mentioned above in place.
 
@@ -31,6 +78,8 @@ before each attempt to run the app locally. This ensures that you have all depen
 To start both backend and frontent at the same time, execute
 
     yarn dev
+
+> If using `yarn dev` you must load the environment variables from the `.env` file separately.
 
 Note that it can take a bit after launch until Backstage has processed the entire catalog data.
 
