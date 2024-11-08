@@ -2,4 +2,4 @@
 '@giantswarm/backstage-plugin-gs': patch
 ---
 
-Fix dashboard link for deployment
+Fix Grafana dashboard link for deployment by removing "default-" prefix from application name and adding a namespace variable.
