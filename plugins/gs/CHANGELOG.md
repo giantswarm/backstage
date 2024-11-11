@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.3.3
+
+### Patch Changes
+
+- e1446d5: Fix Grafana dashboard link for deployment by using "default" for namespace variable.
+
 ## 0.3.2
 
 ### Patch Changes
