@@ -98,7 +98,6 @@ export const AppDetails = ({
               dashboard={grafanaDashboard}
               installationName={installationName}
               clusterName={clusterName}
-              namespace={namespace}
               applicationName={name}
               text="Open Grafana dashboard for this application"
             />
