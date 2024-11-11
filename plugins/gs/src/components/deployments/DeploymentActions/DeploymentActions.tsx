@@ -16,7 +16,6 @@ export const DeploymentActions = ({
   installationName,
   clusterName,
   name,
-  namespace,
   grafanaDashboard,
   ingressHost,
 }: DeploymentActionsProps) => {
@@ -30,7 +29,6 @@ export const DeploymentActions = ({
           dashboard={grafanaDashboard}
           installationName={installationName}
           clusterName={clusterName}
-          namespace={namespace}
           applicationName={name}
           tooltip="Open Grafana dashboard for this application"
         />

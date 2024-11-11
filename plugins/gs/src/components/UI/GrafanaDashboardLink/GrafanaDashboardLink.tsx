@@ -37,7 +37,7 @@ export const GrafanaDashboardLink = ({
     dashboard,
     installationName,
     clusterName ?? '',
-    namespace ?? '',
+    namespace ?? 'default',
     applicationName,
   );
   if (!linkUrl) {
