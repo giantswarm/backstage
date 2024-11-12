@@ -62,6 +62,16 @@ export interface Config {
     };
     /** @visibility frontend */
     adminGroups?: string[];
+
+    /** @deepVisibility frontend */
+    wellKnownLabels?: {
+      label: string;
+      key?: string;
+      valueMap?: {
+        [v: string]: string;
+      };
+      variant?: string;
+    }[];
   };
 
   auth?: {
