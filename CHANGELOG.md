@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.41.3] - 2024-11-11
+
+This release fixes a bug when Grafana links for component deployments had incorrect namespace variable.
+
+See [./docs/releases/v0.41.3-changelog.md](./docs/releases/v0.41.3-changelog.md) for more information.
+
+## [0.41.2] - 2024-11-11
+
+See [./docs/releases/v0.41.2-changelog.md](./docs/releases/v0.41.2-changelog.md) for more information.
+
 ## [0.41.1] - 2024-11-04
 
 This release fixes a bug when GS users were incorrectly distinguished from customer users.
@@ -738,7 +748,9 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.41.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.41.3...HEAD
+[0.41.3]: https://github.com/giantswarm/backstage/compare/v0.41.2...v0.41.3
+[0.41.2]: https://github.com/giantswarm/backstage/compare/v0.41.1...v0.41.2
 [0.41.1]: https://github.com/giantswarm/backstage/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/giantswarm/backstage/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/giantswarm/backstage/compare/v0.39.2...v0.40.0
