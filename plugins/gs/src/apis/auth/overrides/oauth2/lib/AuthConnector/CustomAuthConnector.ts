@@ -56,7 +56,6 @@ export class CustomAuthConnector<AuthSession>
   private readonly authRequester: OAuthRequester<AuthSession>;
   private readonly sessionTransform: (response: any) => Promise<AuthSession>;
   private readonly popupOptions: PopupOptions | undefined;
-  private readonly initializePromise: Promise<client.Configuration | null>;
   private readonly clientId: string;
   private readonly clientSecret: string;
   private readonly metadataUrl: string;
@@ -64,6 +63,10 @@ export class CustomAuthConnector<AuthSession>
   private readonly userinfoEndpoint?: string;
   private readonly refreshTokenLocalStorageKey: string;
   private readonly refreshTokenLockName: string;
+
+  private initializePromise?: Promise<client.Configuration | null>;
+  private config: client.Configuration | null = null;
+
   constructor(options: Options<AuthSession>) {
     const {
       configApi,
@@ -113,20 +116,28 @@ export class CustomAuthConnector<AuthSession>
       'dexUserinfoEndpoint',
     );
 
-    this.initializePromise = this.initialize();
+    this.initialize();
   }
 
   async initialize() {
-    return client
-      .discovery(new URL(this.metadataUrl), this.clientId, this.clientSecret)
-      .catch(error => {
-        // eslint-disable-next-line no-console
-        console.error(
-          `Failed to discover ${this.provider.id} auth provider`,
-          error,
-        );
-        return null;
-      });
+    if (this.initializePromise) {
+      return this.initializePromise;
+    }
+
+    try {
+      this.initializePromise = client.discovery(
+        new URL(this.metadataUrl),
+        this.clientId,
+        this.clientSecret,
+      );
+      this.config = await this.initializePromise;
+    } catch (error) {
+      this.config = null;
+    } finally {
+      delete this.initializePromise;
+    }
+
+    return this.config;
   }
 
   async createSession(options: { scopes: Set<string> }): Promise<AuthSession> {
@@ -321,9 +332,12 @@ export class CustomAuthConnector<AuthSession>
   }
 
   private async getIssuerConfig(): Promise<client.Configuration> {
-    const config = await this.initializePromise;
+    const config = this.config ?? (await this.initialize());
+
     if (!config) {
-      throw new Error('Auth provider is not available');
+      throw new Error(
+        'Auth provider is not available. Check if you connected to VPN.',
+      );
     }
 
     const {
