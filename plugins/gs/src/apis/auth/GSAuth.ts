@@ -74,6 +74,10 @@ export class GSAuth implements GSAuthApi {
           ? CustomOAuth2
           : OAuth2;
 
+        const title = providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)
+          ? `${providerDisplayName} (VPN required)`
+          : providerDisplayName;
+
         return [
           providerName,
           OAuth2Impl.create({
@@ -82,7 +86,7 @@ export class GSAuth implements GSAuthApi {
             oauthRequestApi: this.oauthRequestApi,
             provider: {
               id: providerName,
-              title: providerDisplayName,
+              title,
               icon: GiantSwarmIcon,
             },
             environment: this.configApi?.getOptionalString('auth.environment'),
