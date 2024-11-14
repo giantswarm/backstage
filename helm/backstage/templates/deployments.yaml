@@ -70,9 +70,24 @@ spec:
           envFrom:
             - secretRef:
                 name: backstage-secrets
+            {{- if .Values.dexAuthCredentials }}
+            - secretRef:
+                name: dex-auth-credentials-secret
+            {{- end }}
+            {{- range .Values.backstage.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ . }}
+            {{- end }}
+            {{- range .Values.backstage.extraEnvVarsSecrets }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
           env:
           - name: VERSION
             value: "{{ .Chart.AppVersion }}"
+          {{- if .Values.backstage.extraEnvVars }}
+          {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 10 }}
+          {{- end }}
           volumeMounts:
             - name: github-app-credentials
               readOnly: true
@@ -89,6 +104,9 @@ spec:
               mountPath: "/app/{{ .filename }}"
               subPath: {{ .filename }}
             {{- end }}
+            {{- end }}
+            {{- if .Values.backstage.extraVolumeMounts }}
+              {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraVolumeMounts "context" $ ) | nindent 12 }}
             {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
@@ -122,6 +140,9 @@ spec:
           configMap:
             name: {{ .configMapRef }}
         {{- end }}
+        {{- end }}
+        {{- if .Values.backstage.extraVolumes }}
+          {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraVolumes "context" $ ) | nindent 8 }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
