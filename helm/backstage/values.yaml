@@ -35,28 +35,22 @@ backendSecret: ''
 circleci:
   apiToken: ''
 
-dexAuthCredentials:
-  gaggle:
-    clientID: ''
-    clientSecret: ''
-  gazelle:
-    clientID: ''
-    clientSecret: ''
-  gcapeverde:
-    clientID: ''
-    clientSecret: ''
-  golem:
-    clientID: ''
-    clientSecret: ''
-  grizzly:
-    clientID: ''
-    clientSecret: ''
+dexAuthCredentials: {}
+#  example:
+#    clientID: "example"
+#    clientSecret: "example"
 
 githubAuthCredentials:
   clientID: ''
   clientSecret: ''
 
-githubAppCredentials: ''
+githubAppCredentials:
+  appId: 0
+  webhookUrl: ''
+  clientId: ''
+  clientSecret: ''
+  webhookSecret: ''
+  privateKey: ''
 
 grafana:
   apiToken: ''
@@ -106,3 +100,18 @@ backstage:
   #     baseUrl: https://somedomain.tld
   # -- Generates ConfigMap and configures it in the Backstage pods
   appConfig: {}
+
+  # -- Backstage container environment variables
+  extraEnvVars: []
+
+  # -- Backstage container environment variables from existing ConfigMaps
+  extraEnvVarsCM: []
+
+  # -- Backstage container environment variables from existing Secrets
+  extraEnvVarsSecrets: []
+
+  # -- Backstage container additional volume mounts
+  extraVolumeMounts: []
+
+  # -- Backstage container additional volumes
+  extraVolumes: []
