@@ -38,7 +38,7 @@ import {
   TemplateStringInput,
   TemplateStringInputSchema,
 } from './components/scaffolder/TemplateStringInput';
-import { gsAuthApiRef, GSAuth } from './apis/auth';
+import { gsAuthProvidersApiRef, GSAuthProviders } from './apis/auth';
 import { gsKubernetesApiRef, KubernetesClient } from './apis/kubernetes';
 import {
   gsKubernetesAuthProvidersApiRef,
@@ -49,14 +49,14 @@ export const gsPlugin = createPlugin({
   id: 'gs',
   apis: [
     createApiFactory({
-      api: gsAuthApiRef,
+      api: gsAuthProvidersApiRef,
       deps: {
         configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         oauthRequestApi: oauthRequestApiRef,
       },
       factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
-        GSAuth.create({
+        GSAuthProviders.create({
           configApi,
           discoveryApi,
           oauthRequestApi,
@@ -65,11 +65,11 @@ export const gsPlugin = createPlugin({
     createApiFactory({
       api: gsKubernetesAuthProvidersApiRef,
       deps: {
-        gsAuthApi: gsAuthApiRef,
+        gsAuthProvidersApi: gsAuthProvidersApiRef,
       },
-      factory: ({ gsAuthApi }) => {
+      factory: ({ gsAuthProvidersApi }) => {
         const oidcProviders = {
-          ...gsAuthApi.getAuthApis(),
+          ...gsAuthProvidersApi.getAuthApis(),
         };
 
         return new KubernetesAuthProviders({

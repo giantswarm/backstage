@@ -5,7 +5,12 @@ import {
   DiscoveryApi,
   OAuthRequestApi,
 } from '@backstage/core-plugin-api';
-import { AuthApi, AuthProvider, GSAuthApi, gsAuthApiRef } from './types';
+import {
+  AuthApi,
+  AuthProvider,
+  GSAuthProvidersApi,
+  gsAuthProvidersApiRef,
+} from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
@@ -16,7 +21,7 @@ const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
  *
  * @public
  */
-export class GSAuth implements GSAuthApi {
+export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly configApi?: ConfigApi;
   private readonly discoveryApi: DiscoveryApi;
   private readonly oauthRequestApi: OAuthRequestApi;
@@ -32,8 +37,10 @@ export class GSAuth implements GSAuthApi {
     this.authApis = this.createAuthApis();
   }
 
-  static create(options: OAuthApiCreateOptions): typeof gsAuthApiRef.T {
-    return new GSAuth(options);
+  static create(
+    options: OAuthApiCreateOptions,
+  ): typeof gsAuthProvidersApiRef.T {
+    return new GSAuthProviders(options);
   }
 
   private getAuthProvidersFromConfig(): AuthProvider[] {

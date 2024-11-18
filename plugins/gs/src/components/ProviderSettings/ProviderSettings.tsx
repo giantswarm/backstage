@@ -2,17 +2,17 @@ import React from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ProviderSettingsItem } from './ProviderSettingsItem';
-import { gsAuthApiRef } from '../../apis/auth';
+import { gsAuthProvidersApiRef } from '../../apis/auth';
 
 export const ProviderSettings = () => {
-  const gsAuthApi = useApi(gsAuthApiRef);
+  const gsAuthProvidersApi = useApi(gsAuthProvidersApiRef);
 
   return (
     <>
-      {gsAuthApi
+      {gsAuthProvidersApi
         .getProviders()
         .map(({ providerName, providerDisplayName, installationName }) => {
-          const authApi = gsAuthApi.getAuthApi(providerName);
+          const authApi = gsAuthProvidersApi.getAuthApi(providerName);
 
           return (
             <>
