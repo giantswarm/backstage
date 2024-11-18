@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.42.0-changelog.md](./docs/releases/v0.42.0-changelog.md) for more information.
+
 ## [0.41.3] - 2024-11-11
 
 This release fixes a bug when Grafana links for component deployments had incorrect namespace variable.
