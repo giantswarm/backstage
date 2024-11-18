@@ -49,7 +49,7 @@ ENV NODE_ENV=production
 
 # This is required by scaffolder-backend plugin.
 # This disables node snapshot for Node 20 to work with the Scaffolder
-ENV NODE_OPTIONS "--no-node-snapshot"
+ENV NODE_OPTIONS="--no-node-snapshot"
 
 # Used in backstage configuration files
 ENV BACKSTAGE_ENVIRONMENT production
