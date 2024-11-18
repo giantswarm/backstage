@@ -1,5 +1,5 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
+import { CustomResourceMatcher } from '../../apis/kubernetes';
 import * as k8sUrl from './utils/k8sUrl';
 
 export function useK8sListPath(gvk: CustomResourceMatcher) {

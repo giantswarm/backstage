@@ -113,6 +113,17 @@
             }
           }
         },
+        "gcapeverde": {
+          "type": "object",
+          "properties": {
+            "clientID": {
+              "type": "string"
+            },
+            "clientSecret": {
+              "type": "string"
+            }
+          }
+        },
         "golem": {
           "type": "object",
           "properties": {

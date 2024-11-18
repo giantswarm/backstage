@@ -7360,9 +7360,13 @@
         "@backstage/backend-plugin-api": "npm:^1.0.1"
         "@backstage/backend-test-utils": "npm:^1.0.2"
         "@backstage/cli": "npm:^0.28.2"
+        "@backstage/config": "npm:^1.2.0"
+        "@backstage/errors": "npm:^1.2.4"
         "@backstage/plugin-auth-backend": "npm:^0.23.1"
         "@backstage/plugin-auth-backend-module-github-provider": "npm:^0.2.1"
         "@backstage/plugin-auth-node": "npm:^0.5.3"
+        "@types/express": "npm:^4"
+        express: "npm:^4.21.1"
       languageName: unknown
       linkType: soft
     
@@ -7398,13 +7402,12 @@
         "@backstage/integration-react": "npm:^1.2.0"
         "@backstage/plugin-catalog": "npm:^1.24.0"
         "@backstage/plugin-catalog-react": "npm:^1.14.0"
-        "@backstage/plugin-kubernetes": "npm:^0.11.16"
-        "@backstage/plugin-kubernetes-common": "npm:^0.8.3"
         "@backstage/plugin-scaffolder": "npm:^1.26.2"
         "@backstage/plugin-scaffolder-react": "npm:^1.13.2"
         "@backstage/plugin-user-settings": "npm:^0.8.14"
         "@backstage/test-utils": "npm:^1.7.0"
         "@backstage/theme": "npm:^0.6.0"
+        "@backstage/types": "npm:^1.1.1"
         "@giantswarm/backstage-plugin-gs-common": "npm:^0.3.0"
         "@material-ui/core": "npm:^4.12.2"
         "@material-ui/icons": "npm:^4.9.1"
@@ -7415,6 +7418,7 @@
         "@testing-library/user-event": "npm:^14.5.2"
         "@types/color-hash": "npm:^1.0.5"
         "@types/lodash": "npm:^4.17.5"
+        "@types/zen-observable": "npm:^0"
         classnames: "npm:^2.3.2"
         color-hash: "npm:^2.0.2"
         date-fns: "npm:^3.6.0"
@@ -7422,9 +7426,11 @@
         jwt-decode: "npm:^4.0.0"
         lodash: "npm:^4.17.21"
         msw: "npm:^2.0.0"
+        openid-client: "npm:^6.1.3"
         react-use: "npm:^17.2.4"
         semver: "npm:^7.6.0"
         use-local-storage-state: "npm:^19.1.0"
+        zen-observable: "npm:^0.10.0"
         zod: "npm:^3.22.4"
       peerDependencies:
         react: ^18.0.2
@@ -12442,7 +12448,7 @@
       languageName: node
       linkType: hard
     
-    "@types/express@npm:^4.17.21, @types/express@npm:^4.17.6":
+    "@types/express@npm:^4, @types/express@npm:^4.17.21, @types/express@npm:^4.17.6":
       version: 4.17.21
       resolution: "@types/express@npm:4.17.21"
       dependencies:
@@ -13141,6 +13147,13 @@
       dependencies:
         "@types/yargs-parser": "npm:*"
       checksum: 10c0/d16937d7ac30dff697801c3d6f235be2166df42e4a88bf730fa6dc09201de3727c0a9500c59a672122313341de5f24e45ee0ff579c08ce91928e519090b7906b
+      languageName: node
+      linkType: hard
+    
+    "@types/zen-observable@npm:^0":
+      version: 0.8.7
+      resolution: "@types/zen-observable@npm:0.8.7"
+      checksum: 10c0/c6c5ef1d759e1dae5bc598f9ef40a10a9535fd85d65cd7e236ad28fca627866d30b1db6b430d213161e946c5001799caf8293e7831de6841d8ac2e65400ff48f
       languageName: node
       linkType: hard
     
@@ -19164,7 +19177,7 @@
       languageName: node
       linkType: hard
     
-    "express@npm:^4.14.0":
+    "express@npm:^4.14.0, express@npm:^4.21.1":
       version: 4.21.1
       resolution: "express@npm:4.21.1"
       dependencies:

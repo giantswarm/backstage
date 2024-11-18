@@ -42,6 +42,9 @@ dexAuthCredentials:
   gazelle:
     clientID: ''
     clientSecret: ''
+  gcapeverde:
+    clientID: ''
+    clientSecret: ''
   golem:
     clientID: ''
     clientSecret: ''
