@@ -336,7 +336,7 @@ export class CustomAuthConnector<AuthSession>
 
     if (!config) {
       throw new Error(
-        'Auth provider is not available. Check if you connected to VPN.',
+        'Auth provider is not available. Please check your network connection, VPN etc.',
       );
     }
 
