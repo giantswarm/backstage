@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.42.0] - 2024-11-18
 
+In this release:
+
+- Backstage was updated to v1.32.5
+- Custom Kubernetes and KubernetesAuthProviders APIs were added to communicate with Kubernetes clusters from client side.
+- Custom GitHub auth provider was moved from GS backend module to backend package.
+
 See [./docs/releases/v0.42.0-changelog.md](./docs/releases/v0.42.0-changelog.md) for more information.
 
 ## [0.41.3] - 2024-11-11
