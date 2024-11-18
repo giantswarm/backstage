@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.42.0] - 2024-11-18
+
+In this release:
+
+- Backstage was updated to v1.32.5
+- Custom Kubernetes and KubernetesAuthProviders APIs were added to communicate with Kubernetes clusters from client side.
+- Custom GitHub auth provider was moved from GS backend module to backend package.
+
+See [./docs/releases/v0.42.0-changelog.md](./docs/releases/v0.42.0-changelog.md) for more information.
+
 ## [0.41.3] - 2024-11-11
 
 This release fixes a bug when Grafana links for component deployments had incorrect namespace variable.
@@ -748,7 +758,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.41.3...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.42.0...HEAD
+[0.42.0]: https://github.com/giantswarm/backstage/compare/v0.41.3...v0.42.0
 [0.41.3]: https://github.com/giantswarm/backstage/compare/v0.41.2...v0.41.3
 [0.41.2]: https://github.com/giantswarm/backstage/compare/v0.41.1...v0.41.2
 [0.41.1]: https://github.com/giantswarm/backstage/compare/v0.41.0...v0.41.1
