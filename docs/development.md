@@ -54,3 +54,26 @@ The `/app-config.local.yaml.example` file imports our production catalog data fr
 If you need different catalog data, we recommended that you can add a static file with more entities. Check out the instruction in the file.
 
 If you want to experiment with modifications on lots of entities, it's probably best to clone [backstage-catalog-importer](https://github.com/giantswarm/backstage-catalog-importer) (our catalog data utility) and modify it for your purpose. Using that tool, you can generate your own catalog YAML file. Make sure to place it in a location that is enabled in your `/app-config.local.yaml` file.
+
+## Running app locally with HTTPS
+
+To use HTTPS with your local development site and access https://localhost, you need a [TLS certificate](https://en.wikipedia.org/wiki/Public_key_certificate#TLS/SSL_server_certificate) signed by an entity your device and browser trust, called a trusted [certificate authority (CA)](https://en.wikipedia.org/wiki/Certificate_authority). The browser checks whether your development server's certificate is signed by a trusted CA before creating an HTTPS connection.
+
+We recommend using [mkcert](https://github.com/FiloSottile/mkcert), a cross-platform CA, to create and sign your certificate.
+
+1. [Generate a certificate.](https://web.dev/articles/how-to-use-local-https#setup)
+2. Put certificate data into `certificate.yaml` file in root of the project. See [certificate.yaml.example](../certificate.yaml.example) for example.
+3. Add certificate configuration to `app` and `backend` packages. Use `https` instead of `http` in URLs:
+
+```yaml
+app:
+  baseUrl: https://localhost:3000
+  https:
+    $include: certificate.yaml
+backend:
+  baseUrl: https://localhost:7007
+  cors:
+    origin: https://localhost:3000
+  https:
+    $include: certificate.yaml
+```

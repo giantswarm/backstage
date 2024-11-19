@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.3.0
+
+### Minor Changes
+
+- 06092e9: Change GS auth backend module to support client side OIDC provider.
+- f508faf: Update Backstage packages to v1.32.5.
+
+### Patch Changes
+
+- 06092e9: Move custom GitHub auth provider from GS backend module to backend package.
+
 ## 0.2.0
 
 ### Minor Changes

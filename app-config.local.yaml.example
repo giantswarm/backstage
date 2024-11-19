@@ -1,14 +1,18 @@
 app:
-  baseUrl: http://localhost:3000
+  baseUrl: https://localhost:3000
+  https:
+    $include: certificate.yaml
   errorReporter: null
   telemetrydeck: null
 
 backend:
-  baseUrl: http://localhost:7007
+  baseUrl: https://localhost:7007
   listen:
     port: 7007
   cors:
-    origin: http://localhost:3000
+    origin: https://localhost:3000
+  https:
+    $include: certificate.yaml
   errorReporter: null
 
 auth:

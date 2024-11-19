@@ -1,6 +1,6 @@
 {
   "name": "root",
-  "version": "0.41.3",
+  "version": "0.42.0",
   "private": true,
   "engines": {
     "node": "18 || 20"
@@ -35,7 +35,7 @@
     ]
   },
   "devDependencies": {
-    "@backstage/cli": "^0.27.1",
+    "@backstage/cli": "^0.28.2",
     "@backstage/e2e-test-utils": "^0.1.1",
     "@changesets/cli": "^2.27.8",
     "@playwright/test": "^1.32.3",

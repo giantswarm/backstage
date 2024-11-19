@@ -1,20 +1,27 @@
 import { OAuth2, OAuthApiCreateOptions } from '@backstage/core-app-api';
+import { default as CustomOAuth2 } from './overrides/oauth2/OAuth2';
 import {
   ConfigApi,
   DiscoveryApi,
   OAuthRequestApi,
 } from '@backstage/core-plugin-api';
-import { AuthApi, AuthProvider, GSAuthApi, gsAuthApiRef } from './GSAuthApi';
+import {
+  AuthApi,
+  AuthProvider,
+  GSAuthProvidersApi,
+  gsAuthProvidersApiRef,
+} from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 
-const PROVIDER_NAME_PREFIX = 'gs-';
+const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
+const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
 
 /**
  * A client for authenticating towards Giant Swarm Management APIs.
  *
  * @public
  */
-export class GSAuth implements GSAuthApi {
+export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly configApi?: ConfigApi;
   private readonly discoveryApi: DiscoveryApi;
   private readonly oauthRequestApi: OAuthRequestApi;
@@ -30,23 +37,37 @@ export class GSAuth implements GSAuthApi {
     this.authApis = this.createAuthApis();
   }
 
-  static create(options: OAuthApiCreateOptions): typeof gsAuthApiRef.T {
-    return new GSAuth(options);
+  static create(
+    options: OAuthApiCreateOptions,
+  ): typeof gsAuthProvidersApiRef.T {
+    return new GSAuthProviders(options);
   }
 
   private getAuthProvidersFromConfig(): AuthProvider[] {
     const providersConfig = this.configApi?.getOptionalConfig('auth.providers');
     const configuredProviders = providersConfig?.keys() || [];
     return configuredProviders
-      .filter(providerName => providerName.startsWith(PROVIDER_NAME_PREFIX))
+      .filter(
+        providerName =>
+          providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX) ||
+          providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX),
+      )
       .map(providerName => {
-        const providerDisplayName = providerName.split(PROVIDER_NAME_PREFIX)[1];
-        const installationName = providerName.split(PROVIDER_NAME_PREFIX)[1];
+        let providerDisplayName = providerName;
+        if (providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)) {
+          providerDisplayName = providerName.split(
+            OIDC_PROVIDER_NAME_PREFIX,
+          )[1];
+        } else if (providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)) {
+          providerDisplayName = providerName.split(
+            CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
+          )[1];
+        }
 
         return {
           providerName,
           providerDisplayName,
-          installationName,
+          installationName: providerDisplayName,
         };
       });
   }
@@ -54,9 +75,15 @@ export class GSAuth implements GSAuthApi {
   private createAuthApis() {
     const entries = this.authProviders.map(
       ({ providerName, providerDisplayName }) => {
+        const OAuth2Impl = providerName.startsWith(
+          CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
+        )
+          ? CustomOAuth2
+          : OAuth2;
+
         return [
           providerName,
-          OAuth2.create({
+          OAuth2Impl.create({
             configApi: this.configApi,
             discoveryApi: this.discoveryApi,
             oauthRequestApi: this.oauthRequestApi,

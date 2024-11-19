@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.4.0
+
+### Minor Changes
+
+- f508faf: Update Backstage packages to v1.32.5.
+
 ## 0.3.0
 
 ### Minor Changes

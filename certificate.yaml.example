@@ -1,0 +1,9 @@
+certificate:
+  key: |
+    -----BEGIN PRIVATE KEY-----
+    # Private key data
+    -----END PRIVATE KEY-----
+  cert: |
+    -----BEGIN CERTIFICATE-----
+    # Certificate data
+    -----END CERTIFICATE-----
