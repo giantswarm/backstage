@@ -7,7 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.42.1] - 2024-11-19
 
-See [./docs/releases/v0.42.1-changelog.md](./docs/releases/v0.42.1-changelog.md) for more information.
+In this release:
+
+- Helm chart secrets were restructured;
+- PSP support was removed;
+- support for extra env vars and volumes was added.
 
 ## [0.42.0] - 2024-11-18
 
