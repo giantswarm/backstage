@@ -16,13 +16,25 @@ backendSecret: testBackendSecret
 circleci:
   apiToken: dummyToken
 dexAuthCredentials:
-  myname:
-    clientID: dummyClientID
-    clientSecret: dummyClientSecret
+  example-1:
+    clientID: exampleOneDummyClientID
+    clientSecret: exampleOneDummyClientSecret
+  example-2:
+    clientID: exampleTwoDummyClientID
+    clientSecret: exampleTwoDummyClientSecret
 githubAuthCredentials:
   clientID: dummyClientID
   clientSecret: dummyClientSecret
-githubAppCredentials: dummyCredentials
+githubAppCredentials:
+  appId: 42
+  webhookUrl: 'dummyWehbookUrl'
+  webhookSecret: 'dummyWebhookSecret'
+  clientId: 'dummyClientID'
+  clientSecret: 'dummyClientSecret'
+  privateKey: |
+    dummy
+    private
+    key
 grafana:
   apiToken: dummyToken
 quay:

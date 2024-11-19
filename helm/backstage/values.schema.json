@@ -77,6 +77,58 @@
             }
           },
           "default": []
+        },
+        "extraEnvVars": {
+          "title": "Backstage container environment variables",
+          "type": "array",
+          "items": {
+            "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.EnvVar"
+          },
+          "default": [],
+          "examples": [
+            [
+              {
+                "name": "APP_CONFIG_backend_cache_store",
+                "value": "memory"
+              }
+            ]
+          ]
+        },
+        "extraEnvVarsCM": {
+          "title": "Backstage container environment variables from existing ConfigMaps",
+          "type": "array",
+          "description": "Translates into array of `envFrom.[].configMapRef.name`",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": [["my-backstage-configmap"]]
+        },
+        "extraEnvVarsSecrets": {
+          "title": "Backstage container environment variables from existing Secrets",
+          "type": "array",
+          "description": "Translates into array of `envFrom.[].secretRef.name`",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "examples": [["my-backstage-secrets"]]
+        },
+        "extraVolumeMounts": {
+          "title": "Backstage container additional volume mounts",
+          "type": "array",
+          "items": {
+            "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.VolumeMount"
+          },
+          "default": []
+        },
+        "extraVolumes": {
+          "title": "Backstage container additional volumes",
+          "type": "array",
+          "items": {
+            "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Volume"
+          },
+          "default": []
         }
       }
     },
@@ -90,66 +142,41 @@
     },
     "dexAuthCredentials": {
       "type": "object",
-      "properties": {
-        "gaggle": {
-          "type": "object",
-          "properties": {
-            "clientID": {
-              "type": "string"
-            },
-            "clientSecret": {
-              "type": "string"
-            }
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "clientID": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
           }
         },
-        "gazelle": {
-          "type": "object",
-          "properties": {
-            "clientID": {
-              "type": "string"
-            },
-            "clientSecret": {
-              "type": "string"
-            }
-          }
-        },
-        "gcapeverde": {
-          "type": "object",
-          "properties": {
-            "clientID": {
-              "type": "string"
-            },
-            "clientSecret": {
-              "type": "string"
-            }
-          }
-        },
-        "golem": {
-          "type": "object",
-          "properties": {
-            "clientID": {
-              "type": "string"
-            },
-            "clientSecret": {
-              "type": "string"
-            }
-          }
-        },
-        "grizzly": {
-          "type": "object",
-          "properties": {
-            "clientID": {
-              "type": "string"
-            },
-            "clientSecret": {
-              "type": "string"
-            }
-          }
-        }
+        "required": ["clientID", "clientSecret"]
       }
     },
     "githubAppCredentials": {
-      "type": "string"
+      "type": "object",
+      "properties": {
+        "appId": {
+          "type": "integer"
+        },
+        "webhookUrl": {
+          "type": "string"
+        },
+        "clientId": {
+          "type": "string"
+        },
+        "clientSecret": {
+          "type": "string"
+        },
+        "webhookSecret": {
+          "type": "string"
+        },
+        "privateKey": {
+          "type": "string"
+        }
+      }
     },
     "githubAuthCredentials": {
       "type": "object",
