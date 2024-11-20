@@ -172,3 +172,32 @@ backstage-catalog-importer installations
 ```
 
 Once built, remember to add these locations to your `app-config.local.yaml`
+
+## Running app locally with HTTPS
+
+To use HTTPS with your local development site and access https://localhost, 
+you need a [TLS certificate](https://en.wikipedia.org/wiki/Public_key_certificate#TLS/SSL_server_certificate)
+signed by an entity your device and browser trust, called a trusted
+[certificate authority (CA)](https://en.wikipedia.org/wiki/Certificate_authority).
+The browser checks whether your development server's certificate is signed 
+by a trusted CA before creating an HTTPS connection.
+
+We recommend using [mkcert](https://github.com/FiloSottile/mkcert),
+a cross-platform CA, to create and sign your certificate.
+
+1. [Generate a certificate.](https://web.dev/articles/how-to-use-local-https#setup)
+2. Put certificate data into `certificate.yaml` file in root of the project. See [certificate.yaml.example](../certificate.yaml.example) for example.
+3. Add certificate configuration to `app` and `backend` packages. Use `https` instead of `http` in URLs:
+
+```yaml
+app:
+  baseUrl: https://localhost:3000
+  https:
+    $include: certificate.yaml
+backend:
+  baseUrl: https://localhost:7007
+  cors:
+    origin: https://localhost:3000
+  https:
+    $include: certificate.yaml
+```

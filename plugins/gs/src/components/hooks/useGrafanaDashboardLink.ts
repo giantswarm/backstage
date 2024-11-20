@@ -4,11 +4,13 @@ const typedUrl = (
   baseUrl: string,
   dashboard: string,
   clusterName: string,
+  namespace: string,
   applicationName: string,
 ): string => {
   const queryStringData = {
     'var-cluster': clusterName,
-    'var-application': `default-${applicationName}`,
+    'var-namespace': namespace,
+    'var-application': applicationName,
   };
 
   const searchParams = new URLSearchParams(queryStringData);
@@ -20,6 +22,7 @@ export const useGrafanaDashboardLink = (
   dashboard: string,
   installationName: string,
   clusterName: string,
+  namespace: string,
   applicationName: string,
 ): string | undefined => {
   const config = useApi(configApiRef);
@@ -31,5 +34,5 @@ export const useGrafanaDashboardLink = (
     return undefined;
   }
 
-  return typedUrl(baseUrl, dashboard, clusterName, applicationName);
+  return typedUrl(baseUrl, dashboard, clusterName, namespace, applicationName);
 };

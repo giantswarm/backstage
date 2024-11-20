@@ -1,5 +1,30 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.4.0
+
+### Minor Changes
+
+- f508faf: Update Backstage packages to v1.32.5.
+- 06092e9: Add custom Kubernetes and KubernetesAuthProviders APIs to communicate with Kubernetes clusters from client side.
+- 06092e9: Add custom OAuth2 implementation for client side OIDC auth providers.
+
+### Patch Changes
+
+- Updated dependencies [f508faf]
+  - @giantswarm/backstage-plugin-gs-common@0.4.0
+
+## 0.3.3
+
+### Patch Changes
+
+- e1446d5: Fix Grafana dashboard link for deployment by using "default" for namespace variable.
+
+## 0.3.2
+
+### Patch Changes
+
+- 607bb9a: Fix Grafana dashboard link for deployment by removing "default-" prefix from application name and adding a namespace variable.
+
 ## 0.3.1
 
 ### Patch Changes

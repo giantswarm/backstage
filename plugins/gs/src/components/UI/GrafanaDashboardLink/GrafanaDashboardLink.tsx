@@ -13,6 +13,7 @@ type GrafanaDashboardLinkProps = {
   dashboard: string;
   installationName: string;
   clusterName?: string;
+  namespace?: string;
   applicationName: string;
   text?: string;
   tooltip?: string;
@@ -22,6 +23,7 @@ export const GrafanaDashboardLink = ({
   dashboard,
   installationName,
   clusterName,
+  namespace,
   applicationName,
   text,
   tooltip,
@@ -35,6 +37,7 @@ export const GrafanaDashboardLink = ({
     dashboard,
     installationName,
     clusterName ?? '',
+    namespace ?? 'default',
     applicationName,
   );
   if (!linkUrl) {

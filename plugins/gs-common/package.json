@@ -1,7 +1,7 @@
 {
   "name": "@giantswarm/backstage-plugin-gs-common",
   "description": "Common functionalities for the GS plugins",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "license": "Apache-2.0",
@@ -26,7 +26,7 @@
     "generate-types": "ts-node scripts/generate/index.ts"
   },
   "devDependencies": {
-    "@backstage/cli": "^0.27.1",
+    "@backstage/cli": "^0.28.2",
     "@types/js-yaml": "^4",
     "@types/lodash": "^4.17.5",
     "js-yaml": "^4.1.0",

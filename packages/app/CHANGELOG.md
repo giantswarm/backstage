@@ -1,5 +1,20 @@
 # app
 
+## 0.2.0
+
+### Minor Changes
+
+- f508faf: Update Backstage packages to v1.32.5.
+- 06092e9: Add custom Kubernetes and KubernetesAuthProviders APIs to communicate with Kubernetes clusters from client side.
+- 06092e9: Add custom OAuth2 implementation for client side OIDC auth providers.
+
+### Patch Changes
+
+- Updated dependencies [f508faf]
+- Updated dependencies [06092e9]
+- Updated dependencies [06092e9]
+  - @giantswarm/backstage-plugin-gs@0.4.0
+
 ## 0.1.2
 
 ### Patch Changes

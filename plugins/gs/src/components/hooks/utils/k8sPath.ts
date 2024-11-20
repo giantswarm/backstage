@@ -1,4 +1,4 @@
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
+import { CustomResourceMatcher } from '../../../apis/kubernetes';
 import * as k8sUrl from './k8sUrl';
 
 const baseUrl = 'https://base-url.io';

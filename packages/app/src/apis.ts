@@ -9,19 +9,9 @@ import {
   createApiFactory,
   discoveryApiRef,
   githubAuthApiRef,
-  gitlabAuthApiRef,
-  googleAuthApiRef,
-  microsoftAuthApiRef,
   oauthRequestApiRef,
-  oktaAuthApiRef,
-  oneloginAuthApiRef,
 } from '@backstage/core-plugin-api';
 import { GithubAuth } from '@backstage/core-app-api';
-import {
-  KubernetesAuthProviders,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes';
-import { gsAuthApiRef, GSAuth } from '@giantswarm/backstage-plugin-gs';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -51,55 +41,5 @@ export const apis: AnyApiFactory[] = [
         oauthRequestApi,
         defaultScopes: ['read:user', 'repo', 'read:org'],
       }),
-  }),
-
-  createApiFactory({
-    api: gsAuthApiRef,
-    deps: {
-      configApi: configApiRef,
-      discoveryApi: discoveryApiRef,
-      oauthRequestApi: oauthRequestApiRef,
-    },
-    factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
-      GSAuth.create({
-        configApi,
-        discoveryApi,
-        oauthRequestApi,
-      }),
-  }),
-
-  createApiFactory({
-    api: kubernetesAuthProvidersApiRef,
-    deps: {
-      gitlabAuthApi: gitlabAuthApiRef,
-      googleAuthApi: googleAuthApiRef,
-      microsoftAuthApi: microsoftAuthApiRef,
-      oktaAuthApi: oktaAuthApiRef,
-      oneloginAuthApi: oneloginAuthApiRef,
-      gsAuthApi: gsAuthApiRef,
-    },
-    factory: ({
-      gitlabAuthApi,
-      googleAuthApi,
-      microsoftAuthApi,
-      oktaAuthApi,
-      oneloginAuthApi,
-      gsAuthApi,
-    }) => {
-      const oidcProviders = {
-        gitlab: gitlabAuthApi,
-        google: googleAuthApi,
-        microsoft: microsoftAuthApi,
-        okta: oktaAuthApi,
-        onelogin: oneloginAuthApi,
-        ...gsAuthApi.getAuthApis(),
-      };
-
-      return new KubernetesAuthProviders({
-        microsoftAuthApi,
-        googleAuthApi,
-        oidcProviders,
-      });
-    },
   }),
 ];

@@ -1,4 +1,3 @@
-import { KubernetesApi, kubernetesApiRef } from '@backstage/plugin-kubernetes';
 import { useInstallations } from './useInstallations';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries } from '@tanstack/react-query';
@@ -8,7 +7,6 @@ import {
   getK8sGetPath,
   getK8sListPath,
 } from './utils/k8sPath';
-import { CustomResourceMatcher } from '@backstage/plugin-kubernetes-common';
 import {
   createSelfSubjectAccessReview,
   createSelfSubjectRulesReview,
@@ -25,6 +23,11 @@ import {
   SelfSubjectRulesReview,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
+import {
+  gsKubernetesApiRef,
+  KubernetesApi,
+  CustomResourceMatcher,
+} from '../../apis/kubernetes';
 
 async function checkListAllPermissions(
   installationName: string,
@@ -159,7 +162,7 @@ export function useOrganizations(installations?: string[]) {
     }),
   );
 
-  const kubernetesApi = useApi(kubernetesApiRef);
+  const kubernetesApi = useApi(gsKubernetesApiRef);
   const queries = useQueries({
     queries: selectedInstallations.map(installationName => {
       const gvk = installationsGVKs[installationName];

@@ -62,7 +62,12 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 
   useEffect(() => {
     (async () => {
-      await signal('pageview', getTelemetryPageViewPayload(location));
+      try {
+        await signal('pageview', getTelemetryPageViewPayload(location));
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.log('Error sending telemetry signal', error);
+      }
     })();
   }, [location, signal]);
 

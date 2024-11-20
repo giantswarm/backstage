@@ -50,6 +50,7 @@ site
 
 # Sensitive credentials
 *-credentials.yaml
+certificate.yaml
 
 # vscode database functionality support files
 *.session.sql
@@ -60,3 +61,7 @@ e2e-test-report/
 /volumes
 
 /catalog
+
+# helm chart dependencies
+charts/*/charts/
+**/charts/*.tgz
