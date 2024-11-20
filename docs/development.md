@@ -21,7 +21,7 @@ This page will help you get started developing on this application.
    - **GitHub OAuth credentials**: You'll have to create a file
      `/github-app-development-credentials.yaml` in the clone repository, which
      for security reasons is not checked in with the repository. Find the
-     content for this file in a LastPass secure note named `Backstage GitHub App`.
+     content for this file in a LastPass secure note named `Backstage Dev GitHub App`.
    - **Environment variables**: Backstage requires a number of environment
      variables to be set in order to work successfully. Please see the section
      on [Loading `.env`](#loading-env) for details on how to create this file.
