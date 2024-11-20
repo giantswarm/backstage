@@ -175,11 +175,11 @@ Once built, remember to add these locations to your `app-config.local.yaml`
 
 ## Running app locally with HTTPS
 
-To use HTTPS with your local development site and access https://localhost, 
+To use HTTPS with your local development site and access https://localhost,
 you need a [TLS certificate](https://en.wikipedia.org/wiki/Public_key_certificate#TLS/SSL_server_certificate)
 signed by an entity your device and browser trust, called a trusted
 [certificate authority (CA)](https://en.wikipedia.org/wiki/Certificate_authority).
-The browser checks whether your development server's certificate is signed 
+The browser checks whether your development server's certificate is signed
 by a trusted CA before creating an HTTPS connection.
 
 We recommend using [mkcert](https://github.com/FiloSottile/mkcert),
