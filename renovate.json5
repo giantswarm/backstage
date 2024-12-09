@@ -12,7 +12,7 @@
       matchPackageNames: ['@testing-library{/,}**'],
     },
     {
-      groupName: 'date-fns packages',      
+      groupName: 'date-fns packages',
       matchPackageNames: ['date-fns', 'date-fns-tz'],
     },
   ],
