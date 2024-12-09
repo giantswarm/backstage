@@ -7937,7 +7937,7 @@
         "@testing-library/jest-dom": "npm:^6.4.2"
         "@testing-library/react": "npm:^16.0.0"
         "@testing-library/user-event": "npm:^14.5.2"
-        "@types/color-hash": "npm:^1.0.5"
+        "@types/color-hash": "npm:^2.0.0"
         "@types/lodash": "npm:^4.17.5"
         "@types/zen-observable": "npm:^0"
         classnames: "npm:^2.3.2"
@@ -12396,10 +12396,10 @@
       languageName: node
       linkType: hard
     
-    "@types/color-hash@npm:^1.0.5":
-      version: 1.0.5
-      resolution: "@types/color-hash@npm:1.0.5"
-      checksum: 10c0/bb5b045d1b10e0c3b4483a12cd662b9d6ea2b92157996d93c3ac35f11704245602ffe731ebd6004773cd2fd947610fb7221e5677d6c35ba8d42b99ee6d9e5c81
+    "@types/color-hash@npm:^2.0.0":
+      version: 2.0.0
+      resolution: "@types/color-hash@npm:2.0.0"
+      checksum: 10c0/62a2fce95a380bba9679368f9db9c84d05e31e29454c58d41b07c979ae10d73fc494c81ef5c0d6fe1261c4b876f78ddca2f01a374808a41a30e825e8d97fba0e
       languageName: node
       linkType: hard
     
