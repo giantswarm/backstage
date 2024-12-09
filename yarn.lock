@@ -1302,35 +1302,35 @@
       languageName: node
       linkType: hard
     
-    "@aws/aws-core-plugin-for-backstage-common@npm:^0.5.0":
-      version: 0.5.0
-      resolution: "@aws/aws-core-plugin-for-backstage-common@npm:0.5.0"
+    "@aws/aws-core-plugin-for-backstage-common@npm:^0.6.0":
+      version: 0.6.0
+      resolution: "@aws/aws-core-plugin-for-backstage-common@npm:0.6.0"
       dependencies:
-        "@backstage/catalog-model": "npm:^1.6.0"
-        "@backstage/config": "npm:^1.2.0"
-      checksum: 10c0/57e55d6507e3b82e6db49fbaaa66ed7a63da3675892bd1ea9290dce5d8e023981e9984c53af742b566ab127e87f2e7641ea5b3684cc0b1ef29585fcebc3ae3c9
+        "@backstage/catalog-model": "npm:^1.7.1"
+        "@backstage/config": "npm:^1.3.0"
+      checksum: 10c0/d08fc56ca09788fb948f876e62bf2e5cacb6d7b3d246e2352cb0492a6e6fe70fcdaab42f9bac730f3fe3c334963908bcf7e9a06ecf5c1160661123ae39cbf6a5
       languageName: node
       linkType: hard
     
-    "@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:^0.2.6":
-      version: 0.2.10
-      resolution: "@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:0.2.10"
+    "@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:^0.3.0":
+      version: 0.3.1
+      resolution: "@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:0.3.1"
       dependencies:
         "@aws-sdk/client-cloudcontrol": "npm:^3.511.0"
         "@aws-sdk/client-codecommit": "npm:^3.511.0"
         "@aws-sdk/client-eventbridge": "npm:^3.511.0"
         "@aws-sdk/client-s3": "npm:^3.511.0"
         "@aws-sdk/types": "npm:^3.511.0"
-        "@aws/aws-core-plugin-for-backstage-common": "npm:^0.5.0"
-        "@backstage/backend-common": "npm:^0.24.0"
-        "@backstage/backend-plugin-api": "npm:^0.8.0"
-        "@backstage/errors": "npm:^1.2.4"
-        "@backstage/integration-aws-node": "npm:^0.1.12"
-        "@backstage/plugin-scaffolder-node": "npm:^0.4.9"
+        "@aws/aws-core-plugin-for-backstage-common": "npm:^0.6.0"
+        "@backstage/backend-common": "npm:^0.25.0"
+        "@backstage/backend-plugin-api": "npm:^1.0.2"
+        "@backstage/errors": "npm:^1.2.5"
+        "@backstage/integration-aws-node": "npm:^0.1.13"
+        "@backstage/plugin-scaffolder-node": "npm:^0.6.0"
         fs-extra: "npm:^11.2.0"
         glob: "npm:^11.0.0"
         zod: "npm:^3.22.4"
-      checksum: 10c0/7cbbfc2dde7bd621ad0c348617dbbef60b4aeff9e3a24136fcf30440c7eeabde6ba6492e3c66df62fc2c7d93da4b5e97ab4dc5771a1aeec581aa77b1204acbee
+      checksum: 10c0/b521976ca6e1d57da341e1c5355f08ad74b62241e09b4f95cace781eb58136d6ef828e292ec12554a0fea77b748c91ba22a282a6521c88a5548786411a7bf5f2
       languageName: node
       linkType: hard
     
@@ -3071,7 +3071,7 @@
       languageName: node
       linkType: hard
     
-    "@backstage/backend-common@npm:^0.24.0, @backstage/backend-common@npm:^0.24.1":
+    "@backstage/backend-common@npm:^0.24.1":
       version: 0.24.1
       resolution: "@backstage/backend-common@npm:0.24.1"
       dependencies:
@@ -3352,7 +3352,7 @@
       languageName: node
       linkType: hard
     
-    "@backstage/backend-plugin-api@npm:^0.8.0, @backstage/backend-plugin-api@npm:^0.8.1":
+    "@backstage/backend-plugin-api@npm:^0.8.1":
       version: 0.8.1
       resolution: "@backstage/backend-plugin-api@npm:0.8.1"
       dependencies:
@@ -6130,17 +6130,6 @@
       languageName: node
       linkType: hard
     
-    "@backstage/plugin-scaffolder-common@npm:^1.5.6":
-      version: 1.5.6
-      resolution: "@backstage/plugin-scaffolder-common@npm:1.5.6"
-      dependencies:
-        "@backstage/catalog-model": "npm:^1.7.0"
-        "@backstage/plugin-permission-common": "npm:^0.8.1"
-        "@backstage/types": "npm:^1.1.1"
-      checksum: 10c0/fd969976c04ade4d9da63e8e0c687d28f52ee39b2ad81f338bb0c9d9903c849f650b25c5796c568455fe083df2d7d21be30f5423045e5d9f58490d3e77a1bdb3
-      languageName: node
-      linkType: hard
-    
     "@backstage/plugin-scaffolder-common@npm:^1.5.7":
       version: 1.5.7
       resolution: "@backstage/plugin-scaffolder-common@npm:1.5.7"
@@ -6152,7 +6141,7 @@
       languageName: node
       linkType: hard
     
-    "@backstage/plugin-scaffolder-node@backstage:1.33.5, @backstage/plugin-scaffolder-node@npm:^0.6.1":
+    "@backstage/plugin-scaffolder-node@backstage:1.33.5, @backstage/plugin-scaffolder-node@npm:^0.6.0, @backstage/plugin-scaffolder-node@npm:^0.6.1":
       version: 0.6.1
       resolution: "@backstage/plugin-scaffolder-node@npm:0.6.1"
       dependencies:
@@ -6174,31 +6163,6 @@
         zod: "npm:^3.22.4"
         zod-to-json-schema: "npm:^3.20.4"
       checksum: 10c0/2a68b4b54df5dcdb5629e747d1a0049a537fa3ac326b2de3f3b3ae61f2ca84b720e7464a6399b46ce0f7a8926d2e8ea6cace124feb8b5a0cd8c77498b0657d65
-      languageName: node
-      linkType: hard
-    
-    "@backstage/plugin-scaffolder-node@npm:^0.4.9":
-      version: 0.4.12
-      resolution: "@backstage/plugin-scaffolder-node@npm:0.4.12"
-      dependencies:
-        "@backstage/backend-common": "npm:^0.25.0"
-        "@backstage/backend-plugin-api": "npm:^1.0.0"
-        "@backstage/catalog-model": "npm:^1.7.0"
-        "@backstage/errors": "npm:^1.2.4"
-        "@backstage/integration": "npm:^1.15.0"
-        "@backstage/plugin-scaffolder-common": "npm:^1.5.6"
-        "@backstage/types": "npm:^1.1.1"
-        concat-stream: "npm:^2.0.0"
-        fs-extra: "npm:^11.2.0"
-        globby: "npm:^11.0.0"
-        isomorphic-git: "npm:^1.23.0"
-        jsonschema: "npm:^1.2.6"
-        p-limit: "npm:^3.1.0"
-        tar: "npm:^6.1.12"
-        winston: "npm:^3.2.1"
-        zod: "npm:^3.22.4"
-        zod-to-json-schema: "npm:^3.20.4"
-      checksum: 10c0/1c8a58897b1a536a152364444e66efa345da8050cff328e89cd43d309704538ae9a0d1e158bf6160047f6ea8b75acec1dcb99d8bd3df2be307a0651de45ed9bd
       languageName: node
       linkType: hard
     
@@ -14725,7 +14689,7 @@
       version: 0.0.0-use.local
       resolution: "backend@workspace:packages/backend"
       dependencies:
-        "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.2.6"
+        "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.3.0"
         "@backstage/backend-defaults": "backstage:^"
         "@backstage/backend-plugin-api": "backstage:^"
         "@backstage/backend-tasks": "npm:^0.6.1"
