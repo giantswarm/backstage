@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "^0.2.6",
-    "@backstage/backend-common": "^0.25.0",
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/backend-tasks": "^0.6.1",

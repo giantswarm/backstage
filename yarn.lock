@@ -7942,7 +7942,6 @@
       version: 0.0.0-use.local
       resolution: "@giantswarm/backstage-plugin-auth-backend-module-gs@workspace:plugins/auth-backend-module-gs"
       dependencies:
-        "@backstage/backend-common": "npm:^0.25.0"
         "@backstage/backend-plugin-api": "backstage:^"
         "@backstage/backend-test-utils": "backstage:^"
         "@backstage/cli": "backstage:^"
@@ -8028,7 +8027,6 @@
       version: 0.0.0-use.local
       resolution: "@giantswarm/backstage-plugin-scaffolder-backend-module-gs@workspace:plugins/scaffolder-backend-module-gs"
       dependencies:
-        "@backstage/backend-common": "npm:^0.25.0"
         "@backstage/backend-plugin-api": "backstage:^"
         "@backstage/backend-test-utils": "backstage:^"
         "@backstage/cli": "backstage:^"
@@ -8041,7 +8039,6 @@
       version: 0.0.0-use.local
       resolution: "@giantswarm/backstage-plugin-techdocs-backend-module-gs@workspace:plugins/techdocs-backend-module-gs"
       dependencies:
-        "@backstage/backend-common": "npm:^0.25.0"
         "@backstage/backend-plugin-api": "backstage:^"
         "@backstage/backend-test-utils": "backstage:^"
         "@backstage/catalog-model": "backstage:^"
@@ -15408,7 +15405,6 @@
       resolution: "backend@workspace:packages/backend"
       dependencies:
         "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.2.6"
-        "@backstage/backend-common": "npm:^0.25.0"
         "@backstage/backend-defaults": "backstage:^"
         "@backstage/backend-plugin-api": "backstage:^"
         "@backstage/backend-tasks": "npm:^0.6.1"
