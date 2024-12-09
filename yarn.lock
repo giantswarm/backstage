@@ -12850,7 +12850,7 @@
       languageName: node
       linkType: hard
     
-    "@types/node@npm:*, @types/node@npm:>=13.7.0, @types/node@npm:^22.5.5":
+    "@types/node@npm:*, @types/node@npm:>=13.7.0, @types/node@npm:^22.0.0, @types/node@npm:^22.5.5":
       version: 22.10.1
       resolution: "@types/node@npm:22.10.1"
       dependencies:
@@ -12881,15 +12881,6 @@
       dependencies:
         undici-types: "npm:~6.19.2"
       checksum: 10c0/1c37c3618407d56b76301578edabcb4c6a7ef093d0811c50fc4df8df68fc546797a294cafac0e50789f4e0e485cd1d6871964d8e6222fd420658bdae89c1fb4a
-      languageName: node
-      linkType: hard
-    
-    "@types/node@npm:^22.0.0":
-      version: 22.10.1
-      resolution: "@types/node@npm:22.10.1"
-      dependencies:
-        undici-types: "npm:~6.20.0"
-      checksum: 10c0/0fbb6d29fa35d807f0223a4db709c598ac08d66820240a2cd6a8a69b8f0bc921d65b339d850a666b43b4e779f967e6ed6cf6f0fca3575e08241e6b900364c234
       languageName: node
       linkType: hard
     
@@ -19886,7 +19877,7 @@
       languageName: node
       linkType: hard
     
-    "glob@npm:^10.0.0, glob@npm:^10.2.2, glob@npm:^10.3.10, glob@npm:^10.3.12, glob@npm:^10.3.7, glob@npm:^10.4.1":
+    "glob@npm:^10.0.0, glob@npm:^10.2.2, glob@npm:^10.3.10, glob@npm:^10.3.7, glob@npm:^10.4.1":
       version: 10.4.5
       resolution: "glob@npm:10.4.5"
       dependencies:
@@ -22494,21 +22485,21 @@
       linkType: hard
     
     "json-schema-to-typescript@npm:^15.0.2":
-      version: 15.0.2
-      resolution: "json-schema-to-typescript@npm:15.0.2"
+      version: 15.0.3
+      resolution: "json-schema-to-typescript@npm:15.0.3"
       dependencies:
         "@apidevtools/json-schema-ref-parser": "npm:^11.5.5"
         "@types/json-schema": "npm:^7.0.15"
         "@types/lodash": "npm:^4.17.7"
-        glob: "npm:^10.3.12"
         is-glob: "npm:^4.0.3"
         js-yaml: "npm:^4.1.0"
         lodash: "npm:^4.17.21"
         minimist: "npm:^1.2.8"
         prettier: "npm:^3.2.5"
+        tinyglobby: "npm:^0.2.9"
       bin:
         json2ts: dist/src/cli.js
-      checksum: 10c0/cad5f9f525bef3171253d5029be094c1db3fd948aa35a2f7303e9223c86fa16e5123697ae9599201c19da0d728110e77972ddefb6aa69b9b887971120ac73168
+      checksum: 10c0/b972ceb85c9491a08964669ba878b2f12ba27ef14d4ac0444dac6c9479f91e635b1a6a3bf491a8b36cba6409edbdb2730a8f30db6106305e344f5bce0bf1a76d
       languageName: node
       linkType: hard
     
