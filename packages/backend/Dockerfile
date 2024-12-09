@@ -52,7 +52,7 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS="--no-node-snapshot"
 
 # Used in backstage configuration files
-ENV BACKSTAGE_ENVIRONMENT production
+ENV BACKSTAGE_ENVIRONMENT=production
 
 # Copy repo skeleton first, to avoid unnecessary docker cache invalidation.
 # The skeleton contains the package.json of each package in the monorepo,
