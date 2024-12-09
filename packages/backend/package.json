@@ -16,7 +16,7 @@
     "build-image": "docker build ../.. -f Dockerfile --tag backstage"
   },
   "dependencies": {
-    "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "^0.2.6",
+    "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "^0.3.0",
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/backend-tasks": "^0.6.1",
