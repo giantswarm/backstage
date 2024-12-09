@@ -43,6 +43,7 @@ WORKDIR /app
 # Copy files needed by Yarn
 COPY --chown=node:node .yarn ./.yarn
 COPY --chown=node:node .yarnrc.yml ./
+COPY --chown=node:node backstage.json ./
 
 # This switches many Node.js dependencies to production mode.
 ENV NODE_ENV=production
@@ -52,7 +53,7 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS="--no-node-snapshot"
 
 # Used in backstage configuration files
-ENV BACKSTAGE_ENVIRONMENT production
+ENV BACKSTAGE_ENVIRONMENT=production
 
 # Copy repo skeleton first, to avoid unnecessary docker cache invalidation.
 # The skeleton contains the package.json of each package in the monorepo,

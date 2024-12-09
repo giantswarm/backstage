@@ -25,17 +25,17 @@
   },
   "dependencies": {
     "@backstage/backend-common": "^0.25.0",
-    "@backstage/backend-plugin-api": "^1.0.1",
-    "@backstage/catalog-model": "^1.7.0",
-    "@backstage/plugin-techdocs-node": "^1.12.12",
+    "@backstage/backend-plugin-api": "backstage:^",
+    "@backstage/catalog-model": "backstage:^",
+    "@backstage/plugin-techdocs-node": "backstage:^",
     "@types/fs-extra": "^11.0.4",
     "fs-extra": "^11.2.0",
     "js-yaml": "^4.1.0",
     "winston": "^3.13.0"
   },
   "devDependencies": {
-    "@backstage/backend-test-utils": "^1.0.2",
-    "@backstage/cli": "^0.28.2"
+    "@backstage/backend-test-utils": "backstage:^",
+    "@backstage/cli": "backstage:^"
   },
   "files": [
     "dist"
