@@ -1,25 +1,25 @@
 {
-  extends: ["github>giantswarm/renovate-presets:default.json5"],
-  reviewers: ["gusevda"],
+  extends: ['github>giantswarm/renovate-presets:default.json5'],
+  reviewers: ['gusevda'],
   reviewersFromCodeOwners: false,
   packageRules: [
     {
-      groupName: "backstage packages",
-      matchPackageNames: ["@backstage{/,}**"],
+      groupName: 'backstage packages',
+      matchPackageNames: ['@backstage{/,}**'],
     },
     {
-      groupName: "testing-library packages",
-      matchPackageNames: ["@testing-library{/,}**"],
+      groupName: 'testing-library packages',
+      matchPackageNames: ['@testing-library{/,}**'],
     },
     {
-      matchPackageNames: ["date-fns", "date-fns-tz"],
-      groupName: "date-fns packages",
+      groupName: 'date-fns packages',      
+      matchPackageNames: ['date-fns', 'date-fns-tz'],
     },
   ],
   prConcurrentLimit: 1,
   schedule: [
-    "every weekend",
-    "every weekday after 6pm",
-    "every weekday before 6am",
+    'every weekend',
+    'every weekday after 6pm',
+    'every weekday before 6am',
   ],
 }
