@@ -4,16 +4,16 @@
   reviewersFromCodeOwners: false,
   packageRules: [
     {
-      matchPackagePrefixes: ['@backstage'],
       groupName: 'backstage packages',
+      matchPackageNames: ['@backstage{/,}**'],
     },
     {
-      matchPackagePrefixes: ['@testing-library'],
       groupName: 'testing-library packages',
+      matchPackageNames: ['@testing-library{/,}**'],
     },
     {
-      matchPackageNames: ['date-fns', 'date-fns-tz'],
       groupName: 'date-fns packages',
+      matchPackageNames: ['date-fns', 'date-fns-tz'],
     },
   ],
   prConcurrentLimit: 1,
