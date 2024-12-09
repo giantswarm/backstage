@@ -47,7 +47,7 @@
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "@roadiehq/backstage-plugin-github-pull-requests": "^2.5.15",
-    "@sentry/react": "^7.61.1",
+    "@sentry/react": "^8.0.0",
     "@typedigital/telemetrydeck-react": "^0.2.0",
     "history": "^5.0.0",
     "react": "^18.0.2",
