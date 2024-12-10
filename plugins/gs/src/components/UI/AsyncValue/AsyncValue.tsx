@@ -14,7 +14,7 @@ interface AsyncValueProps<T> {
   height?: number;
 }
 
-export const AsyncValue = <T,>({
+export const AsyncValue = <T extends React.ReactNode>({
   value,
   children,
   isLoading,
