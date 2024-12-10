@@ -7862,7 +7862,7 @@
         "@backstage/cli": "backstage:^"
         "@types/js-yaml": "npm:^4"
         "@types/lodash": "npm:^4.17.5"
-        date-fns: "npm:^3.6.0"
+        date-fns: "npm:^4.0.0"
         date-fns-tz: "npm:^3.0.0"
         js-yaml: "npm:^4.1.0"
         json-schema-to-typescript: "npm:^15.0.2"
@@ -7906,7 +7906,7 @@
         "@types/zen-observable": "npm:^0"
         classnames: "npm:^2.3.2"
         color-hash: "npm:^2.0.2"
-        date-fns: "npm:^3.6.0"
+        date-fns: "npm:^4.0.0"
         date-fns-tz: "npm:^3.0.0"
         jwt-decode: "npm:^4.0.0"
         lodash: "npm:^4.17.21"
@@ -17531,10 +17531,10 @@
       languageName: node
       linkType: hard
     
-    "date-fns@npm:^3.6.0":
-      version: 3.6.0
-      resolution: "date-fns@npm:3.6.0"
-      checksum: 10c0/0b5fb981590ef2f8e5a3ba6cd6d77faece0ea7f7158948f2eaae7bbb7c80a8f63ae30b01236c2923cf89bb3719c33aeb150c715ea4fe4e86e37dcf06bed42fb6
+    "date-fns@npm:^4.0.0":
+      version: 4.1.0
+      resolution: "date-fns@npm:4.1.0"
+      checksum: 10c0/b79ff32830e6b7faa009590af6ae0fb8c3fd9ffad46d930548fbb5acf473773b4712ae887e156ba91a7b3dc30591ce0f517d69fd83bd9c38650fdc03b4e0bac8
       languageName: node
       linkType: hard
     
