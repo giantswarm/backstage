@@ -40,7 +40,7 @@
     "dist"
   ],
   "dependencies": {
-    "date-fns": "^3.6.0",
+    "date-fns": "^4.0.0",
     "date-fns-tz": "^3.0.0"
   },
   "bugs": "https://github.com/giantswarm/backstage/issues",
