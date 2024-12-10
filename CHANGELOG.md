@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.43.0] - 2024-12-10
+
+In this release:
+
+- Backstage was updated to v1.33.5;
+- Other project dependencies were updated.
+
+See [./docs/releases/v0.43.0-changelog.md](./docs/releases/v0.43.0-changelog.md) for more information.
+
 ## [0.42.1] - 2024-11-19
 
 In this release:
@@ -766,7 +775,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.42.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.43.0...HEAD
+[0.43.0]: https://github.com/giantswarm/backstage/compare/v0.42.1...v0.43.0
 [0.42.1]: https://github.com/giantswarm/backstage/compare/v0.42.0...v0.42.1
 [0.42.0]: https://github.com/giantswarm/backstage/compare/v0.41.3...v0.42.0
 [0.41.3]: https://github.com/giantswarm/backstage/compare/v0.41.2...v0.41.3

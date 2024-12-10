@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.5.0
+
+### Minor Changes
+
+- 3cd9851: Update dependencies.
+- cebd404: Update Backstage to v1.33.5.
+
 ## 0.4.0
 
 ### Minor Changes

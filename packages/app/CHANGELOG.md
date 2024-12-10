@@ -1,5 +1,18 @@
 # app
 
+## 0.3.0
+
+### Minor Changes
+
+- 3cd9851: Update dependencies.
+- cebd404: Update Backstage to v1.33.5.
+
+### Patch Changes
+
+- Updated dependencies [3cd9851]
+- Updated dependencies [cebd404]
+  - @giantswarm/backstage-plugin-gs@0.5.0
+
 ## 0.2.0
 
 ### Minor Changes
