@@ -32,7 +32,7 @@
     "js-yaml": "^4.1.0",
     "json-schema-to-typescript": "^15.0.2",
     "lodash": "^4.17.21",
-    "node-fetch": "2",
+    "node-fetch": "3",
     "ts-node": "^10.9.2",
     "typescript": "~5.7.0"
   },
