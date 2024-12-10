@@ -1,6 +1,7 @@
 import { createBackend } from '@backstage/backend-defaults';
 import { BackendFeature } from '@backstage/backend-plugin-api';
 import { githubAuthProvider } from './githubAuthProvider';
+import { rootLogger } from './rootLogger';
 
 const backend = createBackend();
 
@@ -45,6 +46,9 @@ backend.add(import('@backstage/plugin-permission-backend'));
 backend.add(
   import('@backstage/plugin-permission-backend-module-allow-all-policy'),
 );
+
+// custom root logger service
+backend.add(rootLogger);
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
