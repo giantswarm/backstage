@@ -49,13 +49,14 @@
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.4.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.4.0",
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "^0.4.0",
-    "@sentry/node": "^8.0.0",
     "app": "link:../app",
     "better-sqlite3": "^11.0.0",
     "express": "^4.17.1",
     "express-promise-router": "^4.1.0",
     "node-gyp": "^11.0.0",
-    "pg": "^8.10.0"
+    "pg": "^8.10.0",
+    "winston": "^3.17.0",
+    "winston-sentry-log": "^1.0.26"
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^"
