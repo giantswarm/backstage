@@ -25,16 +25,13 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
       release: config.releaseVersion,
       environment: config.environment,
       integrations: [
-        new Sentry.BrowserTracing({
-          routingInstrumentation: Sentry.reactRouterV6Instrumentation(
-            React.useEffect,
-            useLocation,
-            useNavigationType,
-            createRoutesFromChildren,
-            matchRoutes,
-          ),
+        Sentry.reactRouterV6BrowserTracingIntegration({
+          useEffect: React.useEffect,
+          useLocation,
+          useNavigationType,
+          createRoutesFromChildren,
+          matchRoutes,
         }),
-        new Sentry.Replay(),
       ],
       tracesSampleRate: config.tracesSampleRate,
       tracePropagationTargets: config.tracePropagationTargets,
@@ -78,6 +75,6 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
   public static decorateRoute<T extends RouteProps>(
     routeComponent: React.FC<React.PropsWithChildren<T>>,
   ): React.FC<React.PropsWithChildren<T>> {
-    return Sentry.withSentryRouting(routeComponent as never);
+    return Sentry.withSentryReactRouterV6Routing(routeComponent as never);
   }
 }
