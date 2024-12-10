@@ -1,5 +1,11 @@
 # backend
 
+## 0.4.0
+
+### Minor Changes
+
+- b833a2b: Add custom root logger service that reports errors to Sentry.
+
 ## 0.3.0
 
 ### Minor Changes
