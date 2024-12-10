@@ -31821,12 +31821,12 @@
       linkType: hard
     
     "use-local-storage-state@npm:^19.1.0":
-      version: 19.4.0
-      resolution: "use-local-storage-state@npm:19.4.0"
+      version: 19.5.0
+      resolution: "use-local-storage-state@npm:19.5.0"
       peerDependencies:
         react: ">=18"
         react-dom: ">=18"
-      checksum: 10c0/6318f44c24aff401865d6a65966c3bcd30eb05cc50aa52eb428e4c6808e28efad56c234595200bb6b49ed1cf7fd04df45206c8d20ccf8e63ea6c246d45a25806
+      checksum: 10c0/0e3651fbd7892573cb26f7335071acca1de04448db8559ccfe8595dc530a65a938ca128abbd50a85fb13b33b0c3f0f84ff7b9b3418766fec413576b92c43c3a6
       languageName: node
       linkType: hard
     
