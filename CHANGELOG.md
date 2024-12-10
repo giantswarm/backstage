@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.44.0] - 2024-12-10
 
+This release adds a custom logger service that reports errors to Sentry to the backend package.
+
 See [./docs/releases/v0.44.0-changelog.md](./docs/releases/v0.44.0-changelog.md) for more information.
 
 ## [0.43.0] - 2024-12-10
