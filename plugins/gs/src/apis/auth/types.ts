@@ -7,6 +7,10 @@ import {
   createApiRef,
 } from '@backstage/core-plugin-api';
 
+export const gsAuthApiRef = createApiRef<AuthApi>({
+  id: 'plugin.gs.auth',
+});
+
 export const gsAuthProvidersApiRef = createApiRef<GSAuthProvidersApi>({
   id: 'plugin.gs.auth-providers',
 });
@@ -25,6 +29,7 @@ export type AuthProvider = {
 
 export type GSAuthProvidersApi = {
   getAuthApi: (providerName: string) => AuthApi | undefined;
+  getMainAuthApi: () => AuthApi;
   getAuthApis: () => { [providerName: string]: AuthApi };
   getProviders: () => AuthProvider[];
 };

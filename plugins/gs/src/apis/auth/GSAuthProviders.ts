@@ -99,6 +99,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
               'email',
               'groups',
               'offline_access',
+              'federated:id',
               'audience:server:client_id:dex-k8s-authenticator',
             ],
             popupOptions: {
@@ -121,6 +122,27 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
   getAuthApi(providerName: string) {
     return this.authApis[providerName];
+  }
+
+  getMainAuthApi() {
+    const authProviderName =
+      this.configApi?.getOptionalString('gs.authProvider');
+
+    if (!authProviderName) {
+      throw new Error(
+        'No main auth provider configured. "gs.authProvider" configuration is missing.',
+      );
+    }
+
+    const authApi = this.getAuthApi(authProviderName);
+
+    if (!authApi) {
+      throw new Error(
+        `Auth provider with name "${authProviderName}" is not configured.`,
+      );
+    }
+
+    return authApi;
   }
 
   getAuthApis() {

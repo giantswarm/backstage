@@ -32,7 +32,6 @@ import { createApp } from '@backstage/app-defaults';
 import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 
-import { githubAuthApiRef } from '@backstage/core-plugin-api';
 import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
@@ -47,6 +46,7 @@ import {
   GSStepLayout,
   GSDeploymentDetailsPickerFieldExtension,
   GSSecretStorePickerFieldExtension,
+  gsAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
@@ -60,10 +60,10 @@ const app = createApp({
         auto
         providers={[
           {
-            id: 'github-auth-provider',
-            title: 'GitHub',
-            message: 'Sign in using GitHub',
-            apiRef: githubAuthApiRef,
+            id: 'dex-auth-provider',
+            title: 'Dex',
+            message: 'Sign in using Dex',
+            apiRef: gsAuthApiRef,
           },
         ]}
       />
