@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.45.0] - 2024-12-11
 
+This release changes main site authentication from GitHub to Dex.
+
 See [./docs/releases/v0.45.0-changelog.md](./docs/releases/v0.45.0-changelog.md) for more information.
 
 ## [0.44.0] - 2024-12-10
