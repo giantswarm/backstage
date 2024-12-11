@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "main": "dist/index.cjs.js",
   "types": "src/index.ts",
   "private": true,
@@ -46,7 +46,7 @@
     "@backstage/plugin-search-backend-module-techdocs": "backstage:^",
     "@backstage/plugin-search-backend-node": "backstage:^",
     "@backstage/plugin-techdocs-backend": "backstage:^",
-    "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.4.0",
+    "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.5.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.4.0",
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "^0.4.0",
     "app": "link:../app",

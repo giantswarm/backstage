@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.6.0
+
+### Minor Changes
+
+- 3d05628: Use Dex authentication provider for user sign-in.
+
 ## 0.5.0
 
 ### Minor Changes
