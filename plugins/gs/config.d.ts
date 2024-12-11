@@ -1,6 +1,9 @@
 export interface Config {
   /** @visibility frontend */
   gs?: {
+    /** @visibility frontend */
+    authProvider: string;
+
     /** @deepVisibility frontend */
     installations: {
       [installationName: string]: {

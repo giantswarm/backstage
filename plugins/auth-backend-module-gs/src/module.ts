@@ -2,12 +2,64 @@ import {
   coreServices,
   createBackendModule,
 } from '@backstage/backend-plugin-api';
-import { providers } from '@backstage/plugin-auth-backend';
-import { authProvidersExtensionPoint } from '@backstage/plugin-auth-node';
+import { OidcAuthResult, providers } from '@backstage/plugin-auth-backend';
+import {
+  authProvidersExtensionPoint,
+  AuthResolverContext,
+  SignInResolver,
+} from '@backstage/plugin-auth-node';
 import { createAuthProviderFactory } from './auth/createAuthProviderFactory';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
+
+type IdPClaim = {
+  connector_id: string;
+  user_id: string;
+};
+
+function signInWithGuestUser(ctx: AuthResolverContext) {
+  const guestUserRef = 'user:default/guest';
+
+  return ctx.issueToken({
+    claims: {
+      sub: guestUserRef,
+      ent: [guestUserRef],
+    },
+  });
+}
+
+const customSignInResolver: SignInResolver<OidcAuthResult> = async (
+  info,
+  ctx,
+) => {
+  const userInfo = info.result.userinfo;
+
+  const idpClaim = info.result.userinfo.federated_claims as IdPClaim;
+  const connectorId = idpClaim.connector_id;
+
+  try {
+    if (connectorId === 'giantswarm-ad' && userInfo.email) {
+      return await ctx.signInWithCatalogUser({
+        filter: {
+          'metadata.dex-user-ids.giantswarm-ad': userInfo.email,
+        },
+      });
+    }
+
+    if (connectorId === 'giantswarm-github' && userInfo.preferred_username) {
+      return await ctx.signInWithCatalogUser({
+        filter: {
+          'metadata.name': userInfo.preferred_username,
+        },
+      });
+    }
+  } catch (err) {
+    return signInWithGuestUser(ctx);
+  }
+
+  return signInWithGuestUser(ctx);
+};
 
 /** @public */
 export const authModuleGsProviders = createBackendModule({
@@ -48,7 +100,11 @@ export const authModuleGsProviders = createBackendModule({
               providerId: providerName,
               factory: providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)
                 ? createAuthProviderFactory()
-                : providers.oidc.create(),
+                : providers.oidc.create({
+                    signIn: {
+                      resolver: customSignInResolver,
+                    },
+                  }),
             });
           } catch (err) {
             logger.error(

@@ -32,7 +32,6 @@ import { createApp } from '@backstage/app-defaults';
 import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 
-import { githubAuthApiRef } from '@backstage/core-plugin-api';
 import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
@@ -47,27 +46,28 @@ import {
   GSStepLayout,
   GSDeploymentDetailsPickerFieldExtension,
   GSSecretStorePickerFieldExtension,
+  gsAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
 
 const app = createApp({
   apis,
   components: {
-    SignInPage: props => (
-      <SignInPage
-        {...props}
-        auto
-        providers={[
-          {
-            id: 'github-auth-provider',
-            title: 'GitHub',
-            message: 'Sign in using GitHub',
-            apiRef: githubAuthApiRef,
-          },
-        ]}
-      />
-    ),
+    SignInPage: props => {
+      const providers = [];
+      const configApi = useApi(configApiRef);
+      if (configApi.has('gs.authProvider')) {
+        providers.push({
+          id: 'dex-auth-provider',
+          title: 'Dex',
+          message: 'Sign in using Dex',
+          apiRef: gsAuthApiRef,
+        });
+      }
+      return <SignInPage {...props} auto providers={providers} />;
+    },
   },
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
