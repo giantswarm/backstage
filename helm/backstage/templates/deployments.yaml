@@ -89,10 +89,12 @@ spec:
           {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 10 }}
           {{- end }}
           volumeMounts:
+            {{- if .Values.githubAppCredentials }}
             - name: github-app-credentials
               readOnly: true
-              mountPath: /app/github-app-production-credentials.yaml
-              subPath: github-app-production-credentials.yaml
+              mountPath: /app/github-app-credentials.yaml
+              subPath: github-app-credentials.yaml
+            {{- end }}
             {{- if .Values.backstage.appConfig }}
             - name: backstage-app-config
               mountPath: "/app/app-config-from-configmap.yaml"
@@ -126,9 +128,11 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 15
       volumes:
+        {{- if .Values.githubAppCredentials }}
         - name: github-app-credentials
           secret:
             secretName: github-app-credentials-secret
+        {{- end }}
         {{- if .Values.backstage.appConfig }}
         - name: backstage-app-config
           configMap:

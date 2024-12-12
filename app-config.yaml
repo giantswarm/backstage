@@ -58,7 +58,7 @@ integrations:
   github:
     - host: github.com
       apps:
-        - $include: github-app-${BACKSTAGE_ENVIRONMENT}-credentials.yaml
+        - $include: github-app-credentials.yaml
 
 permission:
   enabled: true

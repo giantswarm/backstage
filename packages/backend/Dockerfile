@@ -52,9 +52,6 @@ ENV NODE_ENV=production
 # This disables node snapshot for Node 20 to work with the Scaffolder
 ENV NODE_OPTIONS="--no-node-snapshot"
 
-# Used in backstage configuration files
-ENV BACKSTAGE_ENVIRONMENT=production
-
 # Copy repo skeleton first, to avoid unnecessary docker cache invalidation.
 # The skeleton contains the package.json of each package in the monorepo,
 # and along with yarn.lock and the root package.json, that's enough to run yarn install.
