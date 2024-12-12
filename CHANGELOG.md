@@ -7,7 +7,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.45.1] - 2024-12-12
 
-See [./docs/releases/v0.45.1-changelog.md](./docs/releases/v0.45.1-changelog.md) for more information.
+In this release `BACKEND_SECRET` environment variable was removed.
 
 ## [0.45.0] - 2024-12-11
 
