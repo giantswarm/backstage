@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.45.1] - 2024-12-12
+
+In this release `BACKEND_SECRET` environment variable was removed.
+
 ## [0.45.0] - 2024-12-11
 
 This release changes main site authentication from GitHub to Dex.
@@ -787,7 +791,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.45.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.45.1...HEAD
+[0.45.1]: https://github.com/giantswarm/backstage/compare/v0.45.0...v0.45.1
 [0.45.0]: https://github.com/giantswarm/backstage/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/giantswarm/backstage/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/giantswarm/backstage/compare/v0.42.1...v0.43.0
