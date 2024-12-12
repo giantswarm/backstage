@@ -30,8 +30,6 @@ resources:
 
 authSessionSecret: ''
 
-backendSecret: ''
-
 circleci:
   apiToken: ''
 
