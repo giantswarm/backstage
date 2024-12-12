@@ -7,7 +7,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.45.2] - 2024-12-12
 
-See [./docs/releases/v0.45.2-changelog.md](./docs/releases/v0.45.2-changelog.md) for more information.
+In this release GitHub app credentials were made optional. `BACKSTAGE_ENVIRONMENT` environment variable was removed.
 
 ## [0.45.1] - 2024-12-12
 
