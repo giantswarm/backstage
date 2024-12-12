@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.45.1-changelog.md](./docs/releases/v0.45.1-changelog.md) for more information.
+
 ## [0.45.0] - 2024-12-11
 
 This release changes main site authentication from GitHub to Dex.
