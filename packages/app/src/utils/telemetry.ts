@@ -1,4 +1,5 @@
 import { Location } from 'react-router';
+import sha256 from 'crypto-js/sha256';
 
 export function getTelemetryPageViewPayload(location: Location): {
   [key: string]: string;
@@ -88,4 +89,15 @@ export function getTelemetryPageViewPayload(location: Location): {
     ...payload,
     path: location.pathname,
   };
+}
+
+export function getGuestUserEntityRef(profile: {
+  email?: string;
+  displayName?: string;
+}): string {
+  const userHash = sha256(
+    profile.email ?? profile.displayName ?? '',
+  ).toString();
+
+  return `user:default/guest#${userHash}`;
 }
