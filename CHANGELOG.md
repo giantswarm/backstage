@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.45.3] - 2024-12-16
 
+In this release:
+
+- GS OIDC auth provider sign-in resolver was changed to correctly handle Azure AD identity provider;
+- user reference used in telemetry signals now contains unique hash for guest users.
+
 See [./docs/releases/v0.45.3-changelog.md](./docs/releases/v0.45.3-changelog.md) for more information.
 
 ## [0.45.2] - 2024-12-12
