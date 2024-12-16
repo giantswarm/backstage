@@ -42,7 +42,7 @@ const customSignInResolver: SignInResolver<OidcAuthResult> = async (
     if (connectorId === 'giantswarm-ad' && userInfo.email) {
       return await ctx.signInWithCatalogUser({
         filter: {
-          'metadata.dex-user-ids.giantswarm-ad': userInfo.email,
+          'spec.profile.email': userInfo.email,
         },
       });
     }

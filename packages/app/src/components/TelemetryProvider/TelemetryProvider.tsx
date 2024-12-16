@@ -1,17 +1,34 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   TelemetryDeckProvider,
   createTelemetryDeck,
 } from '@typedigital/telemetrydeck-react';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { useUserProfile } from '@backstage/plugin-user-settings';
+import { getGuestUserEntityRef } from '../../utils/telemetry';
+
+function useClientUser() {
+  const { backstageIdentity, profile } = useUserProfile();
+
+  return useMemo(() => {
+    if (!backstageIdentity) {
+      return 'anonymous';
+    }
+
+    if (backstageIdentity?.userEntityRef === 'user:default/guest') {
+      return getGuestUserEntityRef(profile);
+    }
+
+    return backstageIdentity.userEntityRef;
+  }, [backstageIdentity, profile]);
+}
 
 export const TelemetryProvider = ({
   children,
 }: {
   children: React.ReactNode;
 }) => {
-  const { backstageIdentity } = useUserProfile();
+  const clientUser = useClientUser();
   const configApi = useApi(configApiRef);
   const telemetryConfig = configApi.getOptionalConfig('app.telemetrydeck');
 
@@ -20,9 +37,7 @@ export const TelemetryProvider = ({
   const td = createTelemetryDeck({
     appID: telemetryConfig ? telemetryConfig.getString('appID') : 'test',
     salt: telemetryConfig ? telemetryConfig.getString('salt') : 'test',
-    clientUser: backstageIdentity
-      ? backstageIdentity.userEntityRef
-      : 'anonymous',
+    clientUser,
     testMode,
   });
 

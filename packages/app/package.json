@@ -49,6 +49,7 @@
     "@roadiehq/backstage-plugin-github-pull-requests": "^2.5.15",
     "@sentry/react": "^8.0.0",
     "@typedigital/telemetrydeck-react": "^0.2.0",
+    "crypto-js": "^4.2.0",
     "history": "^5.0.0",
     "react": "^18.0.2",
     "react-dom": "^18.0.2",
@@ -62,6 +63,7 @@
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",
+    "@types/crypto-js": "^4",
     "@types/node": "^22.0.0",
     "@types/react-dom": "*",
     "cross-env": "^7.0.0"
