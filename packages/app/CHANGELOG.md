@@ -1,5 +1,11 @@
 # app
 
+## 0.4.1
+
+### Patch Changes
+
+- 5939854: Fix telemetry user reference for guest users.
+
 ## 0.4.0
 
 ### Minor Changes

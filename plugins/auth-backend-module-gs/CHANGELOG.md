@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.5.1
+
+### Patch Changes
+
+- 5939854: Fix GS auth provider sign-in resolver to correctly handle Azure AD IdP.
+
 ## 0.5.0
 
 ### Minor Changes

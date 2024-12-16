@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.45.3-changelog.md](./docs/releases/v0.45.3-changelog.md) for more information.
+
 ## [0.45.2] - 2024-12-12
 
 In this release GitHub app credentials were made optional. `BACKSTAGE_ENVIRONMENT` environment variable was removed.
