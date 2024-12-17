@@ -1,5 +1,11 @@
 # backend
 
+## 0.4.2
+
+### Patch Changes
+
+- 7f3d6af: Allow to configure HTTP proxy for backend.
+
 ## 0.4.1
 
 ### Patch Changes
