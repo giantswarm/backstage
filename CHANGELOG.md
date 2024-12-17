@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.45.4] - 2024-12-17
 
+This release allows to configure HTTP proxy for Backstage backend.
+
 See [./docs/releases/v0.45.4-changelog.md](./docs/releases/v0.45.4-changelog.md) for more information.
 
 ## [0.45.3] - 2024-12-16
