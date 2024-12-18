@@ -1,5 +1,11 @@
 # backend
 
+## 0.4.3
+
+### Patch Changes
+
+- 0d25e63: Remove undici proxy configuration for Backstage backend.
+
 ## 0.4.2
 
 ### Patch Changes

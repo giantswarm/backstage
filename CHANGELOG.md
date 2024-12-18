@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.45.5] - 2024-12-18
+
+This release removes `undici` proxy configuration for Backstage backend.
+
+See [./docs/releases/v0.45.5-changelog.md](./docs/releases/v0.45.5-changelog.md) for more information.
+
 ## [0.45.4] - 2024-12-17
 
 This release allows to configure HTTP proxy for Backstage backend.
@@ -810,7 +816,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.45.4...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.45.5...HEAD
+[0.45.5]: https://github.com/giantswarm/backstage/compare/v0.45.4...v0.45.5
 [0.45.4]: https://github.com/giantswarm/backstage/compare/v0.45.3...v0.45.4
 [0.45.3]: https://github.com/giantswarm/backstage/compare/v0.45.2...v0.45.3
 [0.45.2]: https://github.com/giantswarm/backstage/compare/v0.45.1...v0.45.2
