@@ -4,6 +4,8 @@ import { BackendFeature } from '@backstage/backend-plugin-api';
 import { githubAuthProvider } from './githubAuthProvider';
 import { rootLogger } from './rootLogger';
 
+console.log('ENV VARIABLES', process.env);
+
 const backend = createBackend();
 
 backend.add(import('@backstage/plugin-app-backend'));
