@@ -7,7 +7,7 @@ const providerLabels: Record<string, string> = {
   capv: 'CAPV',
   capz: 'CAPZ',
   aws: 'AWS vintage',
-  'cloud-director': 'Cloud Director vintage',
+  'cloud-director': 'Cloud Director',
   vsphere: 'VSphere',
   kvm: 'KVM',
 };
