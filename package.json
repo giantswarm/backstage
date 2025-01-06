@@ -39,7 +39,6 @@
     "@backstage/e2e-test-utils": "backstage:^",
     "@changesets/cli": "^2.27.8",
     "@playwright/test": "^1.32.3",
-    "@spotify/prettier-config": "^15.0.0",
     "concurrently": "^9.0.0",
     "env-cmd": "^10.1.0",
     "node-gyp": "^11.0.0",
@@ -51,7 +50,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18"
   },
-  "prettier": "@spotify/prettier-config",
+  "prettier": "@backstage/cli/config/prettier",
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs}": [
       "eslint --fix",
