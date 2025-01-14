@@ -12,6 +12,7 @@ export interface Config {
         authProvider: string;
         oidcTokenProvider?: string;
         grafanaUrl?: string;
+        baseDomain?: string;
         apiVersionOverrides?: {
           [pluralKind: string]: string;
         };
