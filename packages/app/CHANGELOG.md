@@ -1,5 +1,18 @@
 # app
 
+## 0.5.0
+
+### Minor Changes
+
+- ca553ba: Update Backstage packages to v1.34.2
+
+### Patch Changes
+
+- Updated dependencies [ca553ba]
+- Updated dependencies [5b4002d]
+- Updated dependencies [85e6de9]
+  - @giantswarm/backstage-plugin-gs@0.7.0
+
 ## 0.4.1
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.6.0
+
+### Minor Changes
+
+- ca553ba: Update Backstage packages to v1.34.2
+
 ## 0.5.0
 
 ### Minor Changes

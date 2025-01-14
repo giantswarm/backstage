@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.46.0-changelog.md](./docs/releases/v0.46.0-changelog.md) for more information.
+
 ## [0.45.5] - 2024-12-18
 
 This release removes `undici` proxy configuration for Backstage backend.

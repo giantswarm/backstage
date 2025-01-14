@@ -1,5 +1,18 @@
 # backend
 
+## 0.5.0
+
+### Minor Changes
+
+- ca553ba: Update Backstage packages to v1.34.2
+
+### Patch Changes
+
+- Updated dependencies [ca553ba]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.6.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.5.0
+  - @giantswarm/backstage-plugin-techdocs-backend-module-gs@0.5.0
+
 ## 0.4.3
 
 ### Patch Changes
