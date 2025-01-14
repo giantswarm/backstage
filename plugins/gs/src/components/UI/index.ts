@@ -12,4 +12,5 @@ export { KubernetesVersion } from './KubernetesVersion';
 export { NotAvailable } from './NotAvailable';
 export { SimpleAccordion } from './SimpleAccordion';
 export { StructuredMetadataList } from './StructuredMetadataList';
+export { Toolkit } from './Toolkit';
 export { Version } from './Version';

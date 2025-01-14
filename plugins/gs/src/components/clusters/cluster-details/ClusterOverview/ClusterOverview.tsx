@@ -8,6 +8,7 @@ import { ClusterLabelsCard } from './ClusterLabelsCard';
 import { ClusterInstallationCard } from './ClusterInstallationCard';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import { isManagementCluster } from '@giantswarm/backstage-plugin-gs-common';
+import { ClusterToolsCard } from './ClusterToolsCard';
 
 export const ClusterOverview = () => {
   const { cluster, installationName } = useCurrentCluster();
@@ -35,6 +36,9 @@ export const ClusterOverview = () => {
                 <ClusterInstallationCard />
               </Grid>
             )}
+            <Grid item xs={12}>
+              <ClusterToolsCard />
+            </Grid>
             <Grid item xs={12}>
               <ClusterAccessCard />
             </Grid>
