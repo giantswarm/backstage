@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.46.0] - 2025-01-14
 
+In this release:
+
+- links to Grafana and Web UI were added to cluster details page;
+- Backstage was updated to v1.34.2.
+
 See [./docs/releases/v0.46.0-changelog.md](./docs/releases/v0.46.0-changelog.md) for more information.
 
 ## [0.45.5] - 2024-12-18
