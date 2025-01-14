@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.46.0] - 2025-01-14
+
+In this release:
+
+- links to Grafana and Web UI were added to cluster details page;
+- Backstage was updated to v1.34.2.
+
+See [./docs/releases/v0.46.0-changelog.md](./docs/releases/v0.46.0-changelog.md) for more information.
+
 ## [0.45.5] - 2024-12-18
 
 This release removes `undici` proxy configuration for Backstage backend.
@@ -816,7 +825,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.45.5...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.46.0...HEAD
+[0.46.0]: https://github.com/giantswarm/backstage/compare/v0.45.5...v0.46.0
 [0.45.5]: https://github.com/giantswarm/backstage/compare/v0.45.4...v0.45.5
 [0.45.4]: https://github.com/giantswarm/backstage/compare/v0.45.3...v0.45.4
 [0.45.3]: https://github.com/giantswarm/backstage/compare/v0.45.2...v0.45.3

@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.7.0
+
+### Minor Changes
+
+- ca553ba: Update Backstage packages to v1.34.2
+- 85e6de9: Add links to Grafana and Web UI to cluster details page.
+
+### Patch Changes
+
+- 5b4002d: Remove 'vintage' from 'Cloud Director vintage' provider label
+- Updated dependencies [ca553ba]
+  - @giantswarm/backstage-plugin-gs-common@0.6.0
+
 ## 0.6.0
 
 ### Minor Changes
