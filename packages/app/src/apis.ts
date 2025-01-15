@@ -8,10 +8,13 @@ import {
   configApiRef,
   createApiFactory,
   discoveryApiRef,
+  errorApiRef,
   githubAuthApiRef,
+  identityApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 import { GithubAuth } from '@backstage/core-app-api';
+import { visitsApiRef, VisitsWebStorageApi } from '@backstage/plugin-home';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -41,5 +44,14 @@ export const apis: AnyApiFactory[] = [
         oauthRequestApi,
         defaultScopes: ['read:user', 'repo', 'read:org'],
       }),
+  }),
+  createApiFactory({
+    api: visitsApiRef,
+    deps: {
+      identityApi: identityApiRef,
+      errorApi: errorApiRef,
+    },
+    factory: ({ identityApi, errorApi }) =>
+      VisitsWebStorageApi.create({ identityApi, errorApi }),
   }),
 ];

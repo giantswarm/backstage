@@ -1,5 +1,6 @@
 import React, { PropsWithChildren, useEffect } from 'react';
 import { makeStyles } from '@material-ui/core';
+import FolderIcon from '@material-ui/icons/Folder';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import HomeIcon from '@material-ui/icons/Home';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
@@ -81,7 +82,8 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         <SidebarDivider />
         <SidebarGroup label="Menu" icon={<MenuIcon />}>
           {/* Global nav, not org-specific */}
-          <SidebarItem icon={HomeIcon} to="catalog" text="Home" />
+          <SidebarItem icon={HomeIcon} to="/" text="Home" />
+          <SidebarItem icon={FolderIcon} to="catalog" text="Catalog" />
           <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
           <GSFeatureEnabled feature="scaffolder">
             <SidebarItem

@@ -16,6 +16,7 @@ export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/C
 export { EntityInstallationDetailsCard as EntityGSInstallationDetailsCard } from './components/catalog/EntityInstallationDetailsCard';
 export { EntityKratixResourcesCard as EntityGSKratixResourcesCard } from './components/catalog/EntityKratixResourcesCard';
 export { EntityKratixStatusCard as EntityGSKratixStatusCard } from './components/catalog/EntityKratixStatusCard';
+export { ResourcesCard as GSHomePageResources } from './components/home/ResourcesCard';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
 export { MainMenu as GSMainMenu } from './components/MainMenu';
 export { FeatureEnabled as GSFeatureEnabled } from './components/FeatureEnabled';
