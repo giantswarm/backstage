@@ -1,12 +1,16 @@
 import React, { useEffect } from 'react';
-import { InfoCard } from '@backstage/core-components';
-import { Grid, Typography } from '@material-ui/core';
+import { Link as RouterLink } from 'react-router-dom';
+import { InfoCard, Link } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/core-plugin-api';
+import { Grid, Tooltip, Typography } from '@material-ui/core';
 import {
   getClusterCreationTimestamp,
   getClusterOrganization,
   getClusterReleaseVersion,
   getClusterServicePriority,
   getControlPlaneK8sVersion,
+  Constants,
+  isManagementCluster,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { AboutField } from '@backstage/plugin-catalog';
 import {
@@ -28,6 +32,7 @@ import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { useErrors } from '../../../../Errors';
+import { clusterDetailsRouteRef } from '../../../../../routes';
 
 function formatClusterType(clusterType: 'management' | 'workload') {
   switch (clusterType) {
@@ -59,6 +64,8 @@ function formatServicePriority(servicePriority: string) {
 
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();
+
+  const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
   const {
     data: controlPlane,
@@ -150,6 +157,28 @@ export function ClusterAboutCard() {
             />
           </AboutFieldValue>
         </AboutField>
+        {!isManagementCluster(cluster, installationName) && (
+          <AboutField
+            label="Installation"
+            value={installationName}
+            gridSizes={{ xs: 6, md: 4 }}
+          >
+            <AboutFieldValue>
+              <Tooltip title="Open management cluster">
+                <Link
+                  component={RouterLink}
+                  to={managementClusterRouteLink({
+                    installationName: installationName,
+                    namespace: Constants.MANAGEMENT_CLUSTER_NAMESPACE,
+                    name: installationName,
+                  })}
+                >
+                  {installationName}
+                </Link>
+              </Tooltip>
+            </AboutFieldValue>
+          </AboutField>
+        )}
         <AboutField label="Created" gridSizes={{ xs: 6, md: 4 }}>
           <AboutFieldValue>
             <Typography variant="inherit">
