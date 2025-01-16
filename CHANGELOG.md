@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.47.0] - 2025-01-16
 
+In this release:
+
+- configurable home page was added;
+- on the cluster details page, information about the installation was moved from a dedicated widget into the About widget.
+
 See [./docs/releases/v0.47.0-changelog.md](./docs/releases/v0.47.0-changelog.md) for more information.
 
 ## [0.46.0] - 2025-01-14
