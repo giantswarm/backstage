@@ -38,7 +38,8 @@ const useStyles = makeStyles(theme => ({
   },
   label: {
     marginTop: theme.spacing(1),
-    width: '72px',
+    minWidth: '72px',
+    maxWidth: '82px',
     fontSize: '0.9em',
     lineHeight: '1.25',
     overflowWrap: 'break-word',

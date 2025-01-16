@@ -1,0 +1,1 @@
+export { ResourcesCard } from './ResourcesCard';

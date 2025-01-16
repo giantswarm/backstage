@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, Route } from 'react-router-dom';
+import { Route } from 'react-router-dom';
 import {
   CatalogEntityPage,
   CatalogIndexPage,
@@ -34,6 +34,9 @@ import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 
 import { SignInPage } from '@backstage/core-components';
 import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
+
+import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
+import { HomePage } from './components/home/HomePage';
 
 import {
   GSClusterPickerFieldExtension,
@@ -100,7 +103,9 @@ const createHeaderOptions = {
 
 const routes = (
   <FlatRoutes>
-    <Route path="/" element={<Navigate to="catalog" />} />
+    <Route path="/" element={<HomepageCompositionRoot />}>
+      <HomePage />
+    </Route>
     <Route path="/catalog" element={<CatalogIndexPage />}>
       <GSCustomCatalogPage />
     </Route>
@@ -179,6 +184,7 @@ export default app.createRoot(
         <AlertDisplay />
         <OAuthRequestDialog />
         <AppRouter>
+          <VisitListener />
           <Root>{routes}</Root>
         </AppRouter>
       </ErrorReporterProvider>
