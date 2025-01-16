@@ -1,5 +1,17 @@
 # app
 
+## 0.6.0
+
+### Minor Changes
+
+- d9b40c8: Add configurable home page.
+
+### Patch Changes
+
+- Updated dependencies [3306938]
+- Updated dependencies [d9b40c8]
+  - @giantswarm/backstage-plugin-gs@0.8.0
+
 ## 0.5.0
 
 ### Minor Changes

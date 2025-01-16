@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.8.0
+
+### Minor Changes
+
+- d9b40c8: Add configurable home page.
+
+### Patch Changes
+
+- 3306938: On the cluster details page, move the information about the installation from a dedicated widget into the About widget.
+
 ## 0.7.0
 
 ### Minor Changes
