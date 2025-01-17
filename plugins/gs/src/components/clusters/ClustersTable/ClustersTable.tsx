@@ -88,20 +88,6 @@ const generatedColumns: TableColumn<Row>[] = [
     field: 'installationName',
   },
   {
-    title: 'Cluster App',
-    field: 'appVersion',
-    render: row => {
-      return (
-        <Version
-          version={row.appVersion || ''}
-          highlight
-          sourceLocation="https://github.com/giantswarm/cluster"
-          displayWarning={false}
-        />
-      );
-    },
-  },
-  {
     title: 'Type',
     field: 'type',
     render: row => toSentenceCase(row.type),
@@ -119,6 +105,20 @@ const generatedColumns: TableColumn<Row>[] = [
       }
 
       return toSentenceCase(row.priority);
+    },
+  },
+  {
+    title: 'Cluster App',
+    field: 'appVersion',
+    render: row => {
+      return (
+        <Version
+          version={row.appVersion || ''}
+          highlight
+          sourceLocation="https://github.com/giantswarm/cluster"
+          displayWarning={false}
+        />
+      );
     },
   },
   {
