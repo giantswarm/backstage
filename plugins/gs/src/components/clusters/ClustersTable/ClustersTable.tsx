@@ -52,7 +52,7 @@ type Row = {
   priority?: string;
   status: string;
   apiVersion: string;
-  appVersion: string;
+  appVersion?: string;
 };
 
 const generatedColumns: TableColumn<Row>[] = [
@@ -93,7 +93,7 @@ const generatedColumns: TableColumn<Row>[] = [
     render: row => {
       return (
         <Version
-          version={row.appVersion}
+          version={row.appVersion || ''}
           sourceLocation="https://github.com/giantswarm/cluster"
           highlight={true}
           displayWarning={false}
