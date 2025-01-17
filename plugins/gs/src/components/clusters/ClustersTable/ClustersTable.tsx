@@ -94,8 +94,8 @@ const generatedColumns: TableColumn<Row>[] = [
       return (
         <Version
           version={row.appVersion || ''}
+          highlight
           sourceLocation="https://github.com/giantswarm/cluster"
-          highlight={true}
           displayWarning={false}
         />
       );
