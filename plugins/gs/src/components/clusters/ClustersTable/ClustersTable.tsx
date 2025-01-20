@@ -11,18 +11,19 @@ import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import type { Cluster, Resource } from '@giantswarm/backstage-plugin-gs-common';
 import {
-  getClusterDescription,
-  getClusterOrganization,
+  getClusterAppVersion,
   getClusterCreationTimestamp,
+  getClusterDescription,
+  getClusterName,
+  getClusterNamespace,
+  getClusterOrganization,
+  getClusterServicePriority,
   isClusterCreating,
   isClusterDeleting,
-  getClusterName,
-  getClusterServicePriority,
-  getClusterNamespace,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { useClusters } from '../../hooks';
-import { DateComponent } from '../../UI';
+import { DateComponent, Version } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';
@@ -51,6 +52,7 @@ type Row = {
   priority?: string;
   status: string;
   apiVersion: string;
+  appVersion?: string;
 };
 
 const generatedColumns: TableColumn<Row>[] = [
@@ -106,6 +108,20 @@ const generatedColumns: TableColumn<Row>[] = [
     },
   },
   {
+    title: 'Cluster App',
+    field: 'appVersion',
+    render: row => {
+      return (
+        <Version
+          version={row.appVersion || ''}
+          highlight
+          sourceLocation="https://github.com/giantswarm/cluster"
+          displayWarning={false}
+        />
+      );
+    },
+  },
+  {
     title: 'Created',
     field: 'created',
     type: 'datetime',
@@ -138,6 +154,7 @@ const ClustersTableView = ({ loading, retry, resources }: Props) => {
     priority: getClusterServicePriority(resource),
     status: calculateClusterStatus(resource),
     apiVersion: resource.apiVersion,
+    appVersion: getClusterAppVersion(resource),
   }));
 
   return (
