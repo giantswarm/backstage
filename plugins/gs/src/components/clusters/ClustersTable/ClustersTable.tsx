@@ -72,13 +72,12 @@ const generatedColumns: TableColumn<Row>[] = [
             <ClusterTypeManagementIcon />
           </Tooltip>
         );
-      } else {
-        return (
-          <Tooltip title="Workload cluster">
-            <ClusterTypeWorkloadIcon />
-          </Tooltip>
-        );
       }
+      return (
+        <Tooltip title="Workload cluster">
+          <ClusterTypeWorkloadIcon />
+        </Tooltip>
+      );
     },
   },
   {
