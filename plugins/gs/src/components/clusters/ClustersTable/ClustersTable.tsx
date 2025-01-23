@@ -27,7 +27,7 @@ import { DateComponent, Version } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';
-import { calculateClusterType } from '../utils';
+import { calculateClusterType, ClusterTypes } from '../utils';
 
 import {
   ClusterTypeManagementIcon,
@@ -66,7 +66,7 @@ const generatedColumns: TableColumn<Row>[] = [
     field: 'type',
     width: '3%',
     render: row => {
-      if (row.type === 'management') {
+      if (row.type === ClusterTypes.Management) {
         return (
           <Tooltip title="Management cluster">
             <Box display="inline-block">
