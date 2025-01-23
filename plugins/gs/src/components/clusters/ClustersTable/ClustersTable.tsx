@@ -8,7 +8,7 @@ import {
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Tooltip, Typography } from '@material-ui/core';
+import { Box, Tooltip, Typography } from '@material-ui/core';
 import type { Cluster, Resource } from '@giantswarm/backstage-plugin-gs-common';
 import {
   getClusterAppVersion,
@@ -69,13 +69,17 @@ const generatedColumns: TableColumn<Row>[] = [
       if (row.type == 'management') {
         return (
           <Tooltip title="Management cluster">
-            <ClusterTypeManagementIcon />
+            <Box display="inline-block">
+              <ClusterTypeManagementIcon />
+            </Box>
           </Tooltip>
         );
       }
       return (
         <Tooltip title="Workload cluster">
-          <ClusterTypeWorkloadIcon />
+          <Box display="inline-block">
+            <ClusterTypeWorkloadIcon />
+          </Box>
         </Tooltip>
       );
     },
