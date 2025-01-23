@@ -136,12 +136,7 @@ const generatedColumns: TableColumn<Row>[] = [
     title: 'Release',
     field: 'releaseVersion',
     render: row => {
-      return (
-        <Version
-          version={row.releaseVersion || ''}
-          highlight
-        />
-      );
+      return <Version version={row.releaseVersion || ''} highlight />;
     },
   },
   {

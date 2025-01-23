@@ -84,7 +84,6 @@ function formatVersion(
   return versionStr;
 }
 
-
 export type VersionProps = {
   /**
    * The version string to display
