@@ -8,7 +8,7 @@ import {
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Typography } from '@material-ui/core';
+import { Box, Tooltip, Typography } from '@material-ui/core';
 import type { Cluster, Resource } from '@giantswarm/backstage-plugin-gs-common';
 import {
   getClusterAppVersion,
@@ -27,7 +27,12 @@ import { DateComponent, Version } from '../../UI';
 import { toSentenceCase } from '../../utils/helpers';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { ClusterStatus, ClusterStatuses } from '../ClusterStatus';
-import { calculateClusterType } from '../utils';
+import { calculateClusterType, ClusterTypes } from '../utils';
+
+import {
+  ClusterTypeManagementIcon,
+  ClusterTypeWorkloadIcon,
+} from '../../../assets/icons/CustomIcons';
 
 const calculateClusterStatus = (cluster: Cluster) => {
   if (isClusterDeleting(cluster)) {
@@ -56,6 +61,29 @@ type Row = {
 };
 
 const generatedColumns: TableColumn<Row>[] = [
+  {
+    title: 'Type',
+    field: 'type',
+    width: 'auto',
+    render: row => {
+      if (row.type === ClusterTypes.Management) {
+        return (
+          <Tooltip title="Management cluster">
+            <Box display="inline-block">
+              <ClusterTypeManagementIcon />
+            </Box>
+          </Tooltip>
+        );
+      }
+      return (
+        <Tooltip title="Workload cluster">
+          <Box display="inline-block">
+            <ClusterTypeWorkloadIcon />
+          </Box>
+        </Tooltip>
+      );
+    },
+  },
   {
     title: 'Name',
     field: 'name',
@@ -86,11 +114,6 @@ const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Installation',
     field: 'installationName',
-  },
-  {
-    title: 'Type',
-    field: 'type',
-    render: row => toSentenceCase(row.type),
   },
   {
     title: 'Organization',
