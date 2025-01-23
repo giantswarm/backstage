@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.48.0] - 2025-01-23
 
+In this release:
+
+- `TYPE` column in clusters list view was changed to show management/workload cluster icon;
+- `CLUSTER APP` column was added to clusters list.
+
 See [./docs/releases/v0.48.0-changelog.md](./docs/releases/v0.48.0-changelog.md) for more information.
 
 ## [0.47.0] - 2025-01-16
