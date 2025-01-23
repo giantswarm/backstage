@@ -64,7 +64,7 @@ const generatedColumns: TableColumn<Row>[] = [
   {
     title: 'Type',
     field: 'type',
-    width: '3%',
+    width: 'auto',
     render: row => {
       if (row.type === ClusterTypes.Management) {
         return (
