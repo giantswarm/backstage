@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.9.0
+
+### Minor Changes
+
+- 0bfc102: Change TYPE column in clusters list view to show management/workload cluster icon
+- 9c0d7ac: Added column CLUSTER APP to clusters list
+
 ## 0.8.0
 
 ### Minor Changes

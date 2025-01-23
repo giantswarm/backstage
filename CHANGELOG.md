@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.48.0] - 2025-01-23
+
+In this release:
+
+- `TYPE` column in clusters list view was changed to show management/workload cluster icon;
+- `CLUSTER APP` column was added to clusters list.
+
+See [./docs/releases/v0.48.0-changelog.md](./docs/releases/v0.48.0-changelog.md) for more information.
+
 ## [0.47.0] - 2025-01-16
 
 In this release:
@@ -834,7 +843,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.47.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.48.0...HEAD
+[0.48.0]: https://github.com/giantswarm/backstage/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/giantswarm/backstage/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/giantswarm/backstage/compare/v0.45.5...v0.46.0
 [0.45.5]: https://github.com/giantswarm/backstage/compare/v0.45.4...v0.45.5
