@@ -85,10 +85,29 @@ function formatVersion(
 }
 
 export type VersionProps = {
+  /**
+   * The version string to display
+   */
   version: string;
+
+  /**
+   * Optional source location. If given, a link icon will be shown with a URL generated from the sourceLocation plus the version string.
+   */
   sourceLocation?: string;
+
+  /**
+   * If set, a warning is displayed to indicate that the current version is not equal to the last attempted version (specified by `warningMessageVersion`).
+   */
   displayWarning?: boolean;
+
+  /**
+   * The last version attempted (e. g. for a deployment). Must be different from version.
+   */
   warningMessageVersion?: string;
+
+  /**
+   * If true, the version will be displayed in a colored box, where the color is unique for the version.
+   */
   highlight?: boolean;
 };
 

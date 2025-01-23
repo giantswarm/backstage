@@ -17,6 +17,7 @@ import {
   getClusterName,
   getClusterNamespace,
   getClusterOrganization,
+  getClusterReleaseVersion,
   getClusterServicePriority,
   isClusterCreating,
   isClusterDeleting,
@@ -58,6 +59,7 @@ type Row = {
   status: string;
   apiVersion: string;
   appVersion?: string;
+  releaseVersion?: string;
 };
 
 const generatedColumns: TableColumn<Row>[] = [
@@ -131,6 +133,13 @@ const generatedColumns: TableColumn<Row>[] = [
     },
   },
   {
+    title: 'Release',
+    field: 'releaseVersion',
+    render: row => {
+      return <Version version={row.releaseVersion || ''} highlight />;
+    },
+  },
+  {
     title: 'Cluster App',
     field: 'appVersion',
     render: row => {
@@ -178,6 +187,7 @@ const ClustersTableView = ({ loading, retry, resources }: Props) => {
     status: calculateClusterStatus(resource),
     apiVersion: resource.apiVersion,
     appVersion: getClusterAppVersion(resource),
+    releaseVersion: getClusterReleaseVersion(resource),
   }));
 
   return (
