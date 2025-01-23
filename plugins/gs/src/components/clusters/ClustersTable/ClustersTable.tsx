@@ -66,7 +66,7 @@ const generatedColumns: TableColumn<Row>[] = [
     field: 'type',
     width: '3%',
     render: row => {
-      if (row.type == 'management') {
+      if (row.type === 'management') {
         return (
           <Tooltip title="Management cluster">
             <Box display="inline-block">
