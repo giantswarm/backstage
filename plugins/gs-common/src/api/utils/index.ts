@@ -10,3 +10,5 @@ export * from './releases';
 export * from './resources';
 export * from './resourceRequests';
 export * from './secretStores';
+
+export { findResourceByRef } from './helpers';
