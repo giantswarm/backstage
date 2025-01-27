@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Table } from '@backstage/core-components';
+import React, { useCallback, useMemo } from 'react';
+import { Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import type {
@@ -52,14 +52,20 @@ type ClusterData = {
 };
 
 type Props = {
+  columns: TableColumn<Row>[];
   loading: boolean;
   retry: () => void;
   clustersData: ClusterData[];
+  onChangeColumnHidden: (field: string, hidden: boolean) => void;
 };
 
-const ClustersTableView = ({ loading, retry, clustersData }: Props) => {
-  const columns = getInitialColumns();
-
+const ClustersTableView = ({
+  columns,
+  loading,
+  clustersData,
+  retry,
+  onChangeColumnHidden,
+}: Props) => {
   const data = clustersData.map(
     ({
       installationName,
@@ -97,7 +103,10 @@ const ClustersTableView = ({ loading, retry, clustersData }: Props) => {
   return (
     <Table<Row>
       isLoading={loading}
-      options={{ paging: false }}
+      options={{
+        paging: false,
+        columnsButton: true,
+      }}
       actions={[
         {
           icon: () => <SyncIcon />,
@@ -110,11 +119,21 @@ const ClustersTableView = ({ loading, retry, clustersData }: Props) => {
       style={{ width: '100%' }}
       title={<Typography variant="h6">Clusters</Typography>}
       columns={columns}
+      onChangeColumnHidden={(column, hidden) => {
+        if (column.field) {
+          onChangeColumnHidden(column.field, hidden);
+        }
+      }}
     />
   );
 };
 
 export const ClustersTable = () => {
+  const [columns, setColumns] = React.useState(getInitialColumns());
+  const visibleColumns = columns
+    .filter(column => !Boolean(column.hidden))
+    .map(column => column.field);
+
   const {
     resources: clusterResources,
     isLoading: isLoadingClusters,
@@ -128,11 +147,17 @@ export const ClustersTable = () => {
     enabled: !isLoadingClusters && clusterResources.length > 0,
   });
 
+  const providerClusterIdentitiesRequired =
+    visibleColumns.includes('awsAccountId');
+
   const {
     resources: providerClusterIdentityResources,
     isLoading: isLoadingProviderClusterIdentities,
   } = useProviderClustersIdentities(providerClusterResources, {
-    enabled: !isLoadingProviderClusters && providerClusterResources.length > 0,
+    enabled:
+      providerClusterIdentitiesRequired &&
+      !isLoadingProviderClusters &&
+      providerClusterResources.length > 0,
   });
 
   const isLoading =
@@ -186,11 +211,31 @@ export const ClustersTable = () => {
     providerClusterIdentityResources,
   ]);
 
+  const handleChangeColumnHidden = useCallback(
+    (field: string, hidden: boolean) => {
+      setColumns(prev =>
+        prev.map(column => {
+          if (column.field === field) {
+            return {
+              ...column,
+              hidden,
+            };
+          }
+
+          return column;
+        }),
+      );
+    },
+    [],
+  );
+
   return (
     <ClustersTableView
+      columns={columns}
       loading={isLoading}
       retry={retry}
       clustersData={clustersData}
+      onChangeColumnHidden={handleChangeColumnHidden}
     />
   );
 };

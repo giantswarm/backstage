@@ -70,6 +70,7 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
   {
     title: 'AWS account ID',
     field: 'awsAccountId',
+    hidden: true,
   },
   {
     title: 'Service Priority',
