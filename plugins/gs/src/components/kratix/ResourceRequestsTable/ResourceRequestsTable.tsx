@@ -169,12 +169,11 @@ export const ResourceRequestsTable = ({
   kratixResources,
   baseRoute,
 }: ResourceRequestsTableProps) => {
-  const { resources, initialLoading, retry } =
-    useResourceRequests(kratixResources);
+  const { resources, isLoading, retry } = useResourceRequests(kratixResources);
 
   return (
     <ResourceRequestsTableView
-      loading={initialLoading}
+      loading={isLoading}
       resources={resources}
       baseRoute={baseRoute}
       retry={retry}

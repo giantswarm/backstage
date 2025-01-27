@@ -74,6 +74,6 @@ export function useResourceRequests(
   return {
     ...queriesInfo,
     resources,
-    initialLoading: queriesInfo.initialLoading,
+    isLoading: queriesInfo.isLoading,
   };
 }

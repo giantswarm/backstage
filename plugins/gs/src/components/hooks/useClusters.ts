@@ -44,7 +44,7 @@ export function useClusters(installations?: string[]) {
     }),
   );
 
-  const { resources: organizations, initialLoading: isLoadingOrganizations } =
+  const { resources: organizations, isLoading: isLoadingOrganizations } =
     useOrganizations(selectedInstallations);
 
   const kubernetesApi = useApi(gsKubernetesApiRef);
@@ -94,6 +94,6 @@ export function useClusters(installations?: string[]) {
   return {
     ...queriesInfo,
     resources,
-    initialLoading: queriesInfo.initialLoading || isLoadingOrganizations,
+    isLoading: queriesInfo.isLoading || isLoadingOrganizations,
   };
 }

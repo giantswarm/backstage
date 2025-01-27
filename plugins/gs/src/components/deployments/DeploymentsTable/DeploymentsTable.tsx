@@ -288,13 +288,13 @@ export const DeploymentsTable = ({
 }: DeploymentsTableProps) => {
   const {
     installationsData: installationsDataApps,
-    initialLoading: initialLoadingApps,
+    isLoading: isLoadingApps,
     retry: retryApps,
   } = useApps();
 
   const {
     installationsData: installationsDataHelmReleases,
-    initialLoading: initialLoadingHelmReleases,
+    isLoading: isLoadingHelmReleases,
     retry: retryHelmReleases,
   } = useHelmReleases();
 
@@ -308,7 +308,7 @@ export const DeploymentsTable = ({
       data.map(resource => ({ installationName, ...resource })),
   );
 
-  const loading = initialLoadingApps || initialLoadingHelmReleases;
+  const loading = isLoadingApps || isLoadingHelmReleases;
 
   const handleRetry = () => {
     retryApps();

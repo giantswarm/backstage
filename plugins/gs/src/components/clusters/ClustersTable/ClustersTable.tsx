@@ -211,11 +211,11 @@ const ClustersTableView = ({ loading, retry, resources }: Props) => {
 };
 
 export const ClustersTable = () => {
-  const { resources, initialLoading, retry } = useClusters();
+  const { resources, isLoading, retry } = useClusters();
 
   return (
     <ClustersTableView
-      loading={initialLoading}
+      loading={isLoading}
       resources={resources}
       retry={retry}
     />

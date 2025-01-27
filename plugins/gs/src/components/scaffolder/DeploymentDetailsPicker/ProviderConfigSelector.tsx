@@ -31,8 +31,7 @@ export const ProviderConfigSelector = ({
   selectedProviderConfig,
   onChange,
 }: ProviderConfigSelectorProps) => {
-  const { installationsData, initialLoading } =
-    useProviderConfigs(installations);
+  const { installationsData, isLoading } = useProviderConfigs(installations);
 
   const resources: Resource<ProviderConfig>[] = installationsData.flatMap(
     ({ installationName, data }) =>
@@ -51,7 +50,7 @@ export const ProviderConfigSelector = ({
 
   const providerConfigRefs = Object.keys(providerConfigResourcesMap);
 
-  const isDisabled = disabled || installations.length === 0 || initialLoading;
+  const isDisabled = disabled || installations.length === 0 || isLoading;
 
   const handleChange = (selectedItem: string) => {
     const { installationName, ...providerConfig } =
@@ -65,7 +64,7 @@ export const ProviderConfigSelector = ({
       id={id}
       label={label}
       helperText={
-        initialLoading ? 'Loading list of provider configs...' : helperText
+        isLoading ? 'Loading list of provider configs...' : helperText
       }
       required={required}
       disabled={isDisabled}

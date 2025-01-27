@@ -32,7 +32,7 @@ export const SecretStoreSelector = ({
   selectedSecretStore,
   onChange,
 }: SecretStoreSelectorProps) => {
-  const { installationsData, initialLoading, errors } = useSecretStores(
+  const { installationsData, isLoading, errors } = useSecretStores(
     installations,
     namespace,
   );
@@ -56,13 +56,13 @@ export const SecretStoreSelector = ({
   const isDisabled =
     disabled ||
     installations.length === 0 ||
-    initialLoading ||
+    isLoading ||
     resources.length === 0;
 
   let statusText = '';
   if (installations.length === 0) {
     statusText = 'Please select an installation first.';
-  } else if (initialLoading) {
+  } else if (isLoading) {
     statusText = 'Loading list of secret stores...';
   } else if (errors.length > 0) {
     statusText = errors.join(' ');
