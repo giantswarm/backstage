@@ -1,4 +1,3 @@
-import * as v1beta1 from './v1beta1';
 import * as v1beta2 from './v1beta2';
 
 export const AWSClusterKind = 'AWSCluster';
@@ -14,8 +13,6 @@ export function getAWSClusterGVK(apiVersion?: string) {
   }
 
   switch (apiVersion) {
-    case v1beta1.AWSClusterApiVersion:
-      return v1beta1.AWSClusterGVK;
     case v1beta2.AWSClusterApiVersion:
       return v1beta2.AWSClusterGVK;
     default:
