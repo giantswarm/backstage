@@ -19,3 +19,18 @@ export function getAzureClusterGVK(apiVersion?: string) {
       return undefined;
   }
 }
+
+export const AzureClusterIdentityKind = 'AzureClusterIdentity';
+
+export function getAzureClusterIdentityGVK(apiVersion?: string) {
+  if (!apiVersion) {
+    return v1beta1.AzureClusterIdentityGVK;
+  }
+
+  switch (apiVersion) {
+    case v1beta1.AzureClusterIdentityApiVersion:
+      return v1beta1.AzureClusterIdentityGVK;
+    default:
+      return undefined;
+  }
+}

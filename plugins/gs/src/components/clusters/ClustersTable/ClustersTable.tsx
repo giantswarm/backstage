@@ -5,6 +5,7 @@ import { Typography } from '@material-ui/core';
 import type {
   Cluster,
   ProviderCluster,
+  ProviderClusterIdentity,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   findResourceByRef,
@@ -17,6 +18,8 @@ import {
   getClusterOrganization,
   getClusterReleaseVersion,
   getClusterServicePriority,
+  getProviderClusterIdentityAWSAccountId,
+  getProviderClusterIdentityRef,
   getProviderClusterLocation,
   isClusterCreating,
   isClusterDeleting,
@@ -26,6 +29,7 @@ import { ClusterStatuses } from '../ClusterStatus';
 import { calculateClusterType } from '../utils';
 
 import { useProviderClusters } from '../../hooks/useProviderClusters';
+import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { getInitialColumns, Row } from './columns';
 
 const calculateClusterStatus = (cluster: Cluster) => {
@@ -44,6 +48,7 @@ type ClusterData = {
   installationName: string;
   cluster: Cluster;
   providerCluster?: ProviderCluster | null;
+  providerClusterIdentity?: ProviderClusterIdentity | null;
 };
 
 type Props = {
@@ -56,9 +61,18 @@ const ClustersTableView = ({ loading, retry, clustersData }: Props) => {
   const columns = getInitialColumns();
 
   const data = clustersData.map(
-    ({ installationName, cluster, providerCluster }) => {
+    ({
+      installationName,
+      cluster,
+      providerCluster,
+      providerClusterIdentity,
+    }) => {
       const location = providerCluster
         ? getProviderClusterLocation(providerCluster)
+        : undefined;
+
+      const awsAccountId = providerClusterIdentity
+        ? getProviderClusterIdentityAWSAccountId(providerClusterIdentity)
         : undefined;
 
       return {
@@ -75,6 +89,7 @@ const ClustersTableView = ({ loading, retry, clustersData }: Props) => {
         appVersion: getClusterAppVersion(cluster),
         releaseVersion: getClusterReleaseVersion(cluster),
         location,
+        awsAccountId,
       };
     },
   );
@@ -113,7 +128,17 @@ export const ClustersTable = () => {
     enabled: !isLoadingClusters && clusterResources.length > 0,
   });
 
-  const isLoading = isLoadingClusters || isLoadingProviderClusters;
+  const {
+    resources: providerClusterIdentityResources,
+    isLoading: isLoadingProviderClusterIdentities,
+  } = useProviderClustersIdentities(providerClusterResources, {
+    enabled: !isLoadingProviderClusters && providerClusterResources.length > 0,
+  });
+
+  const isLoading =
+    isLoadingClusters ||
+    isLoadingProviderClusters ||
+    isLoadingProviderClusterIdentities;
 
   const clustersData = useMemo(() => {
     if (isLoading) {
@@ -137,11 +162,29 @@ export const ClustersTable = () => {
         }
       }
 
+      let providerClusterIdentity = null;
+      if (providerCluster && providerClusterIdentityResources.length) {
+        const providerClusterIdentityRef =
+          getProviderClusterIdentityRef(providerCluster);
+        if (providerClusterIdentityRef) {
+          providerClusterIdentity = findResourceByRef(
+            providerClusterIdentityResources,
+            { installationName, ...providerClusterIdentityRef },
+          );
+        }
+      }
+
       data.providerCluster = providerCluster;
+      data.providerClusterIdentity = providerClusterIdentity;
 
       return data;
     });
-  }, [isLoading, clusterResources, providerClusterResources]);
+  }, [
+    isLoading,
+    clusterResources,
+    providerClusterResources,
+    providerClusterIdentityResources,
+  ]);
 
   return (
     <ClustersTableView

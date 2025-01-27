@@ -32,6 +32,11 @@ export type ProviderCluster =
   | capv.VSphereCluster
   | capz.AzureCluster;
 
+export type ProviderClusterIdentity =
+  | capa.AWSClusterRoleIdentity
+  | capv.VSphereClusterIdentity
+  | capz.AzureClusterIdentity;
+
 export type ProviderConfig = crossplaneAWS.ProviderConfig;
 
 export type SecretStore = externalSecrets.SecretStore;

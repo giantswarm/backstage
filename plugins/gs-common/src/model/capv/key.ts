@@ -19,3 +19,18 @@ export function getVSphereClusterGVK(apiVersion?: string) {
       return undefined;
   }
 }
+
+export const VSphereClusterIdentityKind = 'VSphereClusterIdentity';
+
+export function getVSphereClusterIdentityGVK(apiVersion?: string) {
+  if (!apiVersion) {
+    return v1beta1.VSphereClusterIdentityGVK;
+  }
+
+  switch (apiVersion) {
+    case v1beta1.VSphereClusterIdentityApiVersion:
+      return v1beta1.VSphereClusterIdentityGVK;
+    default:
+      return undefined;
+  }
+}

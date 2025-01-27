@@ -19,3 +19,18 @@ export function getAWSClusterGVK(apiVersion?: string) {
       return undefined;
   }
 }
+
+export const AWSClusterRoleIdentityKind = 'AWSClusterRoleIdentity';
+
+export function getAWSClusterRoleIdentityGVK(apiVersion?: string) {
+  if (!apiVersion) {
+    return v1beta2.AWSClusterRoleIdentityGVK;
+  }
+
+  switch (apiVersion) {
+    case v1beta2.AWSClusterRoleIdentityApiVersion:
+      return v1beta2.AWSClusterRoleIdentityGVK;
+    default:
+      return undefined;
+  }
+}
