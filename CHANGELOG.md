@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.49.0] - 2025-01-28
 
+In this release:
+
+- `RELEASE` column was added to clusters list;
+- `LOCATION` column was added to clusters list;
+- `AWS ACCOUNT ID` column was added to clusters list.
+
 See [./docs/releases/v0.49.0-changelog.md](./docs/releases/v0.49.0-changelog.md) for more information.
 
 ## [0.48.0] - 2025-01-23
