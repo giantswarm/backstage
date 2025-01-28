@@ -8071,7 +8071,7 @@
       languageName: unknown
       linkType: soft
     
-    "@giantswarm/backstage-plugin-gs-common@npm:^0.7.1, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
+    "@giantswarm/backstage-plugin-gs-common@npm:^0.7.2, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
       version: 0.0.0-use.local
       resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
       dependencies:
@@ -8109,7 +8109,7 @@
         "@backstage/test-utils": "backstage:^"
         "@backstage/theme": "backstage:^"
         "@backstage/types": "backstage:^"
-        "@giantswarm/backstage-plugin-gs-common": "npm:^0.7.1"
+        "@giantswarm/backstage-plugin-gs-common": "npm:^0.7.2"
         "@material-ui/core": "npm:^4.12.2"
         "@material-ui/icons": "npm:^4.9.1"
         "@material-ui/lab": "npm:^4.0.0-alpha.60"

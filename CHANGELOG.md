@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.49.2-changelog.md](./docs/releases/v0.49.2-changelog.md) for more information.
+
 ## [0.49.1] - 2025-01-28
 
 This release fixes clusters fetching for unsupported providers.

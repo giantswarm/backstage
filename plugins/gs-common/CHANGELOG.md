@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.7.2
+
+### Patch Changes
+
+- e671231: Fetch only supported infrastructure cluster identity resources.
+
 ## 0.7.1
 
 ### Patch Changes
