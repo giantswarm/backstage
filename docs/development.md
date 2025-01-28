@@ -77,8 +77,11 @@ the LastPass secure note `Backstage Dev Environment Variables`.
 Once done, load the environment variables with:
 
 ```bash
-[ ! -f .env ] || export $(sed 's/#.*//g' .env | xargs)
+set -a; source .env; set +a
 ```
+
+(Simply running `source .env` will not work for sub-commands as the variables are
+not exported.)
 
 If the environment variables are not loaded, yarn may fail to start with the
 following error:
@@ -86,9 +89,6 @@ following error:
 ```nohighlight
 Error: Failed to read config file at "/.../backstage/app-config.yaml", error at .integrations.github[0].apps[0], $include substitution value was undefined
 ```
-
-Simply running `source .env` will not work for sub-commands as the variables are
-not exported.
 
 ### Executing `yarn`
 
