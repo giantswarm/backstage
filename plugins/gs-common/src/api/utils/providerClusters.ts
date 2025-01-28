@@ -2,7 +2,7 @@ import * as capa from '../../model/capa';
 import * as capv from '../../model/capv';
 import * as capz from '../../model/capz';
 import { ProviderCluster, ProviderClusterIdentity } from '../types';
-import { getApiGroupFromApiVersion } from './helpers';
+import { extractIDFromARN, getApiGroupFromApiVersion } from './helpers';
 
 export function getProviderClusterNames(kind: string) {
   let names;
@@ -155,5 +155,7 @@ export function getProviderClusterIdentityAWSAccountId(
     return undefined;
   }
 
-  return providerClusterIdentity.spec?.roleARN;
+  const roleARN = providerClusterIdentity.spec?.roleARN;
+
+  return roleARN ? extractIDFromARN(roleARN) : undefined;
 }
