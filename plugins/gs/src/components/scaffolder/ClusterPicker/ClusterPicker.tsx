@@ -44,7 +44,7 @@ const ClusterSelector = ({
   selectedCluster,
   onChange,
 }: ClusterSelectorProps) => {
-  const { resources, initialLoading } = useClusters(installations);
+  const { resources, isLoading } = useClusters(installations);
 
   const clusterResourcesMap = useMemo(() => {
     const clusterResources = resources.filter(
@@ -62,7 +62,7 @@ const ClusterSelector = ({
   }, [resources]);
   const clusterNames = Object.keys(clusterResourcesMap);
 
-  const isDisabled = disabled || installations.length === 0 || initialLoading;
+  const isDisabled = disabled || installations.length === 0 || isLoading;
 
   const handleChange = (selectedItem: string) => {
     const { installationName, ...cluster } = clusterResourcesMap[selectedItem];

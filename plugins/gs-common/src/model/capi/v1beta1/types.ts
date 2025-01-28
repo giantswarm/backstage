@@ -44,46 +44,46 @@ export interface ICluster {
       conditionType: string;
     }[];
     /**
-     * Cluster network configuration.
+     * clusterNetwork represents the cluster network configuration.
      */
     clusterNetwork?: {
       /**
-       * APIServerPort specifies the port the API Server should bind to.
+       * apiServerPort specifies the port the API Server should bind to.
        * Defaults to 6443.
        */
       apiServerPort?: number;
       /**
-       * The network ranges from which Pod networks are allocated.
+       * pods is the network ranges from which Pod networks are allocated.
        */
       pods?: {
         cidrBlocks: string[];
       };
       /**
-       * Domain name for services.
+       * serviceDomain is the domain name for services.
        */
       serviceDomain?: string;
       /**
-       * The network ranges from which service VIPs are allocated.
+       * services is the network ranges from which service VIPs are allocated.
        */
       services?: {
         cidrBlocks: string[];
       };
     };
     /**
-     * ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
+     * controlPlaneEndpoint represents the endpoint used to communicate with the control plane.
      */
     controlPlaneEndpoint?: {
       /**
-       * The hostname on which the API server is serving.
+       * host is the hostname on which the API server is serving.
        */
       host: string;
       /**
-       * The port on which the API server is serving.
+       * port is the port on which the API server is serving.
        */
       port: number;
     };
     /**
-     * ControlPlaneRef is an optional reference to a provider-specific resource that holds
+     * controlPlaneRef is an optional reference to a provider-specific resource that holds
      * the details for provisioning the Control Plane for a Cluster.
      */
     controlPlaneRef?: {
@@ -128,7 +128,7 @@ export interface ICluster {
       uid?: string;
     };
     /**
-     * InfrastructureRef is a reference to a provider-specific resource that holds the details
+     * infrastructureRef is a reference to a provider-specific resource that holds the details
      * for provisioning infrastructure for a cluster in said provider.
      */
     infrastructureRef?: {
@@ -173,7 +173,7 @@ export interface ICluster {
       uid?: string;
     };
     /**
-     * Paused can be used to prevent controllers from processing the Cluster and all its associated objects.
+     * paused can be used to prevent controllers from processing the Cluster and all its associated objects.
      */
     paused?: boolean;
     /**
@@ -184,20 +184,26 @@ export interface ICluster {
      */
     topology?: {
       /**
-       * The name of the ClusterClass object to create the topology.
+       * class is the name of the ClusterClass object to create the topology.
        */
       class: string;
       /**
-       * ControlPlane describes the cluster control plane.
+       * classNamespace is the namespace of the ClusterClass object to create the topology.
+       * If the namespace is empty or not set, it is defaulted to the namespace of the cluster object.
+       * Value must follow the DNS1123Subdomain syntax.
+       */
+      classNamespace?: string;
+      /**
+       * controlPlane describes the cluster control plane.
        */
       controlPlane?: {
         /**
-         * MachineHealthCheck allows to enable, disable and override
+         * machineHealthCheck allows to enable, disable and override
          * the MachineHealthCheck configuration in the ClusterClass for this control plane.
          */
         machineHealthCheck?: {
           /**
-           * Enable controls if a MachineHealthCheck should be created for the target machines.
+           * enable controls if a MachineHealthCheck should be created for the target machines.
            *
            * If false: No MachineHealthCheck will be created.
            *
@@ -214,7 +220,7 @@ export interface ICluster {
            */
           maxUnhealthy?: number | string;
           /**
-           * NodeStartupTimeout allows to set the maximum time for MachineHealthCheck
+           * nodeStartupTimeout allows to set the maximum time for MachineHealthCheck
            * to consider a Machine unhealthy if a corresponding Node isn't associated
            * through a `Spec.ProviderID` field.
            *
@@ -229,7 +235,7 @@ export interface ICluster {
            */
           nodeStartupTimeout?: string;
           /**
-           * RemediationTemplate is a reference to a remediation template
+           * remediationTemplate is a reference to a remediation template
            * provided by an infrastructure provider.
            *
            * This field is completely optional, when filled, the MachineHealthCheck controller
@@ -278,7 +284,7 @@ export interface ICluster {
             uid?: string;
           };
           /**
-           * UnhealthyConditions contains a list of the conditions that determine
+           * unhealthyConditions contains a list of the conditions that determine
            * whether a node is considered unhealthy. The conditions are combined in a
            * logical OR, i.e. if any of the conditions is met, the node is unhealthy.
            */
@@ -297,14 +303,14 @@ export interface ICluster {
           unhealthyRange?: string;
         };
         /**
-         * Metadata is the metadata applied to the ControlPlane and the Machines of the ControlPlane
+         * metadata is the metadata applied to the ControlPlane and the Machines of the ControlPlane
          * if the ControlPlaneTemplate referenced by the ClusterClass is machine based. If not, it
          * is applied only to the ControlPlane.
          * At runtime this metadata is merged with the corresponding metadata from the ClusterClass.
          */
         metadata?: {
           /**
-           * Annotations is an unstructured key value map stored with a resource that may be
+           * annotations is an unstructured key value map stored with a resource that may be
            * set by external tools to store and retrieve arbitrary metadata. They are not
            * queryable and should be preserved when modifying objects.
            * More info: http://kubernetes.io/docs/user-guide/annotations
@@ -313,7 +319,7 @@ export interface ICluster {
             [k: string]: string;
           };
           /**
-           * Map of string keys and values that can be used to organize and categorize
+           * labels is a map of string keys and values that can be used to organize and categorize
            * (scope and select) objects. May match selectors of replication controllers
            * and services.
            * More info: http://kubernetes.io/docs/user-guide/labels
@@ -323,49 +329,49 @@ export interface ICluster {
           };
         };
         /**
-         * NodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
+         * nodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
          * hosts after the Machine is marked for deletion. A duration of 0 will retry deletion indefinitely.
          * Defaults to 10 seconds.
          */
         nodeDeletionTimeout?: string;
         /**
-         * NodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
+         * nodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
          * The default value is 0, meaning that the node can be drained without any time limitations.
          * NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
          */
         nodeDrainTimeout?: string;
         /**
-         * NodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
+         * nodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
          * to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
          */
         nodeVolumeDetachTimeout?: string;
         /**
-         * Replicas is the number of control plane nodes.
+         * replicas is the number of control plane nodes.
          * If the value is nil, the ControlPlane object is created without the number of Replicas
          * and it's assumed that the control plane controller does not implement support for this field.
          * When specified against a control plane provider that lacks support for this field, this value will be ignored.
          */
         replicas?: number;
         /**
-         * Variables can be used to customize the ControlPlane through patches.
+         * variables can be used to customize the ControlPlane through patches.
          */
         variables?: {
           /**
-           * Overrides can be used to override Cluster level variables.
+           * overrides can be used to override Cluster level variables.
            */
           overrides?: {
             /**
-             * DefinitionFrom specifies where the definition of this Variable is from.
+             * definitionFrom specifies where the definition of this Variable is from.
              *
              * Deprecated: This field is deprecated, must not be set anymore and is going to be removed in the next apiVersion.
              */
             definitionFrom?: string;
             /**
-             * Name of the variable.
+             * name of the variable.
              */
             name: string;
             /**
-             * Value of the variable.
+             * value of the variable.
              * Note: the value will be validated against the schema of the corresponding ClusterClassVariable
              * from the ClusterClass.
              * Note: We have to use apiextensionsv1.JSON instead of a custom JSON type, because controller-tools has a
@@ -380,30 +386,30 @@ export interface ICluster {
         };
       };
       /**
-       * RolloutAfter performs a rollout of the entire cluster one component at a time,
+       * rolloutAfter performs a rollout of the entire cluster one component at a time,
        * control plane first and then machine deployments.
        *
        * Deprecated: This field has no function and is going to be removed in the next apiVersion.
        */
       rolloutAfter?: string;
       /**
-       * Variables can be used to customize the Cluster through
+       * variables can be used to customize the Cluster through
        * patches. They must comply to the corresponding
        * VariableClasses defined in the ClusterClass.
        */
       variables?: {
         /**
-         * DefinitionFrom specifies where the definition of this Variable is from.
+         * definitionFrom specifies where the definition of this Variable is from.
          *
          * Deprecated: This field is deprecated, must not be set anymore and is going to be removed in the next apiVersion.
          */
         definitionFrom?: string;
         /**
-         * Name of the variable.
+         * name of the variable.
          */
         name: string;
         /**
-         * Value of the variable.
+         * value of the variable.
          * Note: the value will be validated against the schema of the corresponding ClusterClassVariable
          * from the ClusterClass.
          * Note: We have to use apiextensionsv1.JSON instead of a custom JSON type, because controller-tools has a
@@ -416,36 +422,36 @@ export interface ICluster {
         };
       }[];
       /**
-       * The Kubernetes version of the cluster.
+       * version is the Kubernetes version of the cluster.
        */
       version: string;
       /**
-       * Workers encapsulates the different constructs that form the worker nodes
+       * workers encapsulates the different constructs that form the worker nodes
        * for the cluster.
        */
       workers?: {
         /**
-         * MachineDeployments is a list of machine deployments in the cluster.
+         * machineDeployments is a list of machine deployments in the cluster.
          */
         machineDeployments?: {
           /**
-           * Class is the name of the MachineDeploymentClass used to create the set of worker nodes.
+           * class is the name of the MachineDeploymentClass used to create the set of worker nodes.
            * This should match one of the deployment classes defined in the ClusterClass object
            * mentioned in the `Cluster.Spec.Class` field.
            */
           class: string;
           /**
-           * FailureDomain is the failure domain the machines will be created in.
+           * failureDomain is the failure domain the machines will be created in.
            * Must match a key in the FailureDomains map stored on the cluster object.
            */
           failureDomain?: string;
           /**
-           * MachineHealthCheck allows to enable, disable and override
+           * machineHealthCheck allows to enable, disable and override
            * the MachineHealthCheck configuration in the ClusterClass for this MachineDeployment.
            */
           machineHealthCheck?: {
             /**
-             * Enable controls if a MachineHealthCheck should be created for the target machines.
+             * enable controls if a MachineHealthCheck should be created for the target machines.
              *
              * If false: No MachineHealthCheck will be created.
              *
@@ -462,7 +468,7 @@ export interface ICluster {
              */
             maxUnhealthy?: number | string;
             /**
-             * NodeStartupTimeout allows to set the maximum time for MachineHealthCheck
+             * nodeStartupTimeout allows to set the maximum time for MachineHealthCheck
              * to consider a Machine unhealthy if a corresponding Node isn't associated
              * through a `Spec.ProviderID` field.
              *
@@ -477,7 +483,7 @@ export interface ICluster {
              */
             nodeStartupTimeout?: string;
             /**
-             * RemediationTemplate is a reference to a remediation template
+             * remediationTemplate is a reference to a remediation template
              * provided by an infrastructure provider.
              *
              * This field is completely optional, when filled, the MachineHealthCheck controller
@@ -526,7 +532,7 @@ export interface ICluster {
               uid?: string;
             };
             /**
-             * UnhealthyConditions contains a list of the conditions that determine
+             * unhealthyConditions contains a list of the conditions that determine
              * whether a node is considered unhealthy. The conditions are combined in a
              * logical OR, i.e. if any of the conditions is met, the node is unhealthy.
              */
@@ -545,12 +551,12 @@ export interface ICluster {
             unhealthyRange?: string;
           };
           /**
-           * Metadata is the metadata applied to the MachineDeployment and the machines of the MachineDeployment.
+           * metadata is the metadata applied to the MachineDeployment and the machines of the MachineDeployment.
            * At runtime this metadata is merged with the corresponding metadata from the ClusterClass.
            */
           metadata?: {
             /**
-             * Annotations is an unstructured key value map stored with a resource that may be
+             * annotations is an unstructured key value map stored with a resource that may be
              * set by external tools to store and retrieve arbitrary metadata. They are not
              * queryable and should be preserved when modifying objects.
              * More info: http://kubernetes.io/docs/user-guide/annotations
@@ -559,7 +565,7 @@ export interface ICluster {
               [k: string]: string;
             };
             /**
-             * Map of string keys and values that can be used to organize and categorize
+             * labels is a map of string keys and values that can be used to organize and categorize
              * (scope and select) objects. May match selectors of replication controllers
              * and services.
              * More info: http://kubernetes.io/docs/user-guide/labels
@@ -569,55 +575,55 @@ export interface ICluster {
             };
           };
           /**
-           * Minimum number of seconds for which a newly created machine should
+           * minReadySeconds is the minimum number of seconds for which a newly created machine should
            * be ready.
            * Defaults to 0 (machine will be considered available as soon as it
            * is ready)
            */
           minReadySeconds?: number;
           /**
-           * Name is the unique identifier for this MachineDeploymentTopology.
+           * name is the unique identifier for this MachineDeploymentTopology.
            * The value is used with other unique identifiers to create a MachineDeployment's Name
            * (e.g. cluster's name, etc). In case the name is greater than the allowed maximum length,
            * the values are hashed together.
            */
           name: string;
           /**
-           * NodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
+           * nodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
            * hosts after the Machine is marked for deletion. A duration of 0 will retry deletion indefinitely.
            * Defaults to 10 seconds.
            */
           nodeDeletionTimeout?: string;
           /**
-           * NodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
+           * nodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
            * The default value is 0, meaning that the node can be drained without any time limitations.
            * NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
            */
           nodeDrainTimeout?: string;
           /**
-           * NodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
+           * nodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
            * to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
            */
           nodeVolumeDetachTimeout?: string;
           /**
-           * Replicas is the number of worker nodes belonging to this set.
+           * replicas is the number of worker nodes belonging to this set.
            * If the value is nil, the MachineDeployment is created without the number of Replicas (defaulting to 1)
            * and it's assumed that an external entity (like cluster autoscaler) is responsible for the management
            * of this value.
            */
           replicas?: number;
           /**
-           * The deployment strategy to use to replace existing machines with
+           * strategy is the deployment strategy to use to replace existing machines with
            * new ones.
            */
           strategy?: {
             /**
-             * Remediation controls the strategy of remediating unhealthy machines
+             * remediation controls the strategy of remediating unhealthy machines
              * and how remediating operations should occur during the lifecycle of the dependant MachineSets.
              */
             remediation?: {
               /**
-               * MaxInFlight determines how many in flight remediations should happen at the same time.
+               * maxInFlight determines how many in flight remediations should happen at the same time.
                *
                * Remediation only happens on the MachineSet with the most current revision, while
                * older MachineSets (usually present during rollout operations) aren't allowed to remediate.
@@ -635,18 +641,18 @@ export interface ICluster {
               maxInFlight?: number | string;
             };
             /**
-             * Rolling update config params. Present only if
+             * rollingUpdate is the rolling update config params. Present only if
              * MachineDeploymentStrategyType = RollingUpdate.
              */
             rollingUpdate?: {
               /**
-               * DeletePolicy defines the policy used by the MachineDeployment to identify nodes to delete when downscaling.
+               * deletePolicy defines the policy used by the MachineDeployment to identify nodes to delete when downscaling.
                * Valid values are "Random, "Newest", "Oldest"
                * When no value is supplied, the default DeletePolicy of MachineSet is used
                */
               deletePolicy?: 'Random' | 'Newest' | 'Oldest';
               /**
-               * The maximum number of machines that can be scheduled above the
+               * maxSurge is the maximum number of machines that can be scheduled above the
                * desired number of machines.
                * Value can be an absolute number (ex: 5) or a percentage of
                * desired machines (ex: 10%).
@@ -662,7 +668,7 @@ export interface ICluster {
                */
               maxSurge?: number | string;
               /**
-               * The maximum number of machines that can be unavailable during the update.
+               * maxUnavailable is the maximum number of machines that can be unavailable during the update.
                * Value can be an absolute number (ex: 5) or a percentage of desired
                * machines (ex: 10%).
                * Absolute number is calculated from percentage by rounding down.
@@ -678,31 +684,31 @@ export interface ICluster {
               maxUnavailable?: number | string;
             };
             /**
-             * Type of deployment. Allowed values are RollingUpdate and OnDelete.
+             * type of deployment. Allowed values are RollingUpdate and OnDelete.
              * The default is RollingUpdate.
              */
             type?: 'RollingUpdate' | 'OnDelete';
           };
           /**
-           * Variables can be used to customize the MachineDeployment through patches.
+           * variables can be used to customize the MachineDeployment through patches.
            */
           variables?: {
             /**
-             * Overrides can be used to override Cluster level variables.
+             * overrides can be used to override Cluster level variables.
              */
             overrides?: {
               /**
-               * DefinitionFrom specifies where the definition of this Variable is from.
+               * definitionFrom specifies where the definition of this Variable is from.
                *
                * Deprecated: This field is deprecated, must not be set anymore and is going to be removed in the next apiVersion.
                */
               definitionFrom?: string;
               /**
-               * Name of the variable.
+               * name of the variable.
                */
               name: string;
               /**
-               * Value of the variable.
+               * value of the variable.
                * Note: the value will be validated against the schema of the corresponding ClusterClassVariable
                * from the ClusterClass.
                * Note: We have to use apiextensionsv1.JSON instead of a custom JSON type, because controller-tools has a
@@ -717,27 +723,27 @@ export interface ICluster {
           };
         }[];
         /**
-         * MachinePools is a list of machine pools in the cluster.
+         * machinePools is a list of machine pools in the cluster.
          */
         machinePools?: {
           /**
-           * Class is the name of the MachinePoolClass used to create the pool of worker nodes.
+           * class is the name of the MachinePoolClass used to create the pool of worker nodes.
            * This should match one of the deployment classes defined in the ClusterClass object
            * mentioned in the `Cluster.Spec.Class` field.
            */
           class: string;
           /**
-           * FailureDomains is the list of failure domains the machine pool will be created in.
+           * failureDomains is the list of failure domains the machine pool will be created in.
            * Must match a key in the FailureDomains map stored on the cluster object.
            */
           failureDomains?: string[];
           /**
-           * Metadata is the metadata applied to the MachinePool.
+           * metadata is the metadata applied to the MachinePool.
            * At runtime this metadata is merged with the corresponding metadata from the ClusterClass.
            */
           metadata?: {
             /**
-             * Annotations is an unstructured key value map stored with a resource that may be
+             * annotations is an unstructured key value map stored with a resource that may be
              * set by external tools to store and retrieve arbitrary metadata. They are not
              * queryable and should be preserved when modifying objects.
              * More info: http://kubernetes.io/docs/user-guide/annotations
@@ -746,7 +752,7 @@ export interface ICluster {
               [k: string]: string;
             };
             /**
-             * Map of string keys and values that can be used to organize and categorize
+             * labels is a map of string keys and values that can be used to organize and categorize
              * (scope and select) objects. May match selectors of replication controllers
              * and services.
              * More info: http://kubernetes.io/docs/user-guide/labels
@@ -756,63 +762,63 @@ export interface ICluster {
             };
           };
           /**
-           * Minimum number of seconds for which a newly created machine pool should
+           * minReadySeconds is the minimum number of seconds for which a newly created machine pool should
            * be ready.
            * Defaults to 0 (machine will be considered available as soon as it
            * is ready)
            */
           minReadySeconds?: number;
           /**
-           * Name is the unique identifier for this MachinePoolTopology.
+           * name is the unique identifier for this MachinePoolTopology.
            * The value is used with other unique identifiers to create a MachinePool's Name
            * (e.g. cluster's name, etc). In case the name is greater than the allowed maximum length,
            * the values are hashed together.
            */
           name: string;
           /**
-           * NodeDeletionTimeout defines how long the controller will attempt to delete the Node that the MachinePool
+           * nodeDeletionTimeout defines how long the controller will attempt to delete the Node that the MachinePool
            * hosts after the MachinePool is marked for deletion. A duration of 0 will retry deletion indefinitely.
            * Defaults to 10 seconds.
            */
           nodeDeletionTimeout?: string;
           /**
-           * NodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
+           * nodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
            * The default value is 0, meaning that the node can be drained without any time limitations.
            * NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
            */
           nodeDrainTimeout?: string;
           /**
-           * NodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
+           * nodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
            * to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
            */
           nodeVolumeDetachTimeout?: string;
           /**
-           * Replicas is the number of nodes belonging to this pool.
+           * replicas is the number of nodes belonging to this pool.
            * If the value is nil, the MachinePool is created without the number of Replicas (defaulting to 1)
            * and it's assumed that an external entity (like cluster autoscaler) is responsible for the management
            * of this value.
            */
           replicas?: number;
           /**
-           * Variables can be used to customize the MachinePool through patches.
+           * variables can be used to customize the MachinePool through patches.
            */
           variables?: {
             /**
-             * Overrides can be used to override Cluster level variables.
+             * overrides can be used to override Cluster level variables.
              */
             overrides?: {
               /**
-               * DefinitionFrom specifies where the definition of this Variable is from.
+               * definitionFrom specifies where the definition of this Variable is from.
                *
                * Deprecated: This field is deprecated, must not be set anymore and is going to be removed in the next apiVersion.
                */
               definitionFrom?: string;
               /**
-               * Name of the variable.
+               * name of the variable.
                */
               name: string;
               /**
-               * Value of the variable.
+               * value of the variable.
                * Note: the value will be validated against the schema of the corresponding ClusterClassVariable
                * from the ClusterClass.
                * Note: We have to use apiextensionsv1.JSON instead of a custom JSON type, because controller-tools has a
@@ -834,45 +840,45 @@ export interface ICluster {
    */
   status?: {
     /**
-     * Conditions defines current service state of the cluster.
+     * conditions defines current service state of the cluster.
      */
     conditions?: {
       /**
-       * Last time the condition transitioned from one status to another.
+       * lastTransitionTime is the last time the condition transitioned from one status to another.
        * This should be when the underlying condition changed. If that is not known, then using the time when
        * the API field changed is acceptable.
        */
       lastTransitionTime: string;
       /**
-       * A human readable message indicating details about the transition.
+       * message is a human readable message indicating details about the transition.
        * This field may be empty.
        */
       message?: string;
       /**
-       * The reason for the condition's last transition in CamelCase.
+       * reason is the reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
        * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
       type: string;
     }[];
     /**
-     * ControlPlaneReady denotes if the control plane became ready during initial provisioning
+     * controlPlaneReady denotes if the control plane became ready during initial provisioning
      * to receive requests.
      * NOTE: this field is part of the Cluster API contract and it is used to orchestrate provisioning.
      * The value of this field is never updated after provisioning is completed. Please use conditions
@@ -880,7 +886,7 @@ export interface ICluster {
      */
     controlPlaneReady?: boolean;
     /**
-     * FailureDomains is a slice of failure domain objects synced from the infrastructure provider.
+     * failureDomains is a slice of failure domain objects synced from the infrastructure provider.
      */
     failureDomains?: {
       /**
@@ -889,26 +895,26 @@ export interface ICluster {
        */
       [k: string]: {
         /**
-         * Attributes is a free form map of attributes an infrastructure provider might use or require.
+         * attributes is a free form map of attributes an infrastructure provider might use or require.
          */
         attributes?: {
           [k: string]: string;
         };
         /**
-         * ControlPlane determines if this failure domain is suitable for use by control plane machines.
+         * controlPlane determines if this failure domain is suitable for use by control plane machines.
          */
         controlPlane?: boolean;
       };
     };
     /**
-     * FailureMessage indicates that there is a fatal problem reconciling the
+     * failureMessage indicates that there is a fatal problem reconciling the
      * state, and will be set to a descriptive error message.
      *
      * Deprecated: This field is deprecated and is going to be removed in the next apiVersion. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
      */
     failureMessage?: string;
     /**
-     * FailureReason indicates that there is a fatal problem reconciling the
+     * failureReason indicates that there is a fatal problem reconciling the
      * state, and will be set to a token value suitable for
      * programmatic interpretation.
      *
@@ -916,15 +922,15 @@ export interface ICluster {
      */
     failureReason?: string;
     /**
-     * InfrastructureReady is the state of the infrastructure provider.
+     * infrastructureReady is the state of the infrastructure provider.
      */
     infrastructureReady?: boolean;
     /**
-     * ObservedGeneration is the latest generation observed by the controller.
+     * observedGeneration is the latest generation observed by the controller.
      */
     observedGeneration?: number;
     /**
-     * Phase represents the current phase of cluster actuation.
+     * phase represents the current phase of cluster actuation.
      * E.g. Pending, Running, Terminating, Failed etc.
      */
     phase?: string;
@@ -1055,28 +1061,55 @@ export interface IMachineDeployment {
    */
   spec?: {
     /**
-     * ClusterName is the name of the Cluster this object belongs to.
+     * clusterName is the name of the Cluster this object belongs to.
      */
     clusterName: string;
     /**
-     * MinReadySeconds is the minimum number of seconds for which a Node for a newly created machine should be ready before considering the replica available.
+     * machineNamingStrategy allows changing the naming pattern used when creating Machines.
+     * Note: InfraMachines & BootstrapConfigs will use the same name as the corresponding Machines.
+     */
+    machineNamingStrategy?: {
+      /**
+       * template defines the template to use for generating the names of the
+       * Machine objects.
+       * If not defined, it will fallback to `{{ .machineSet.name }}-{{ .random }}`.
+       * If the generated name string exceeds 63 characters, it will be trimmed to
+       * 58 characters and will
+       * get concatenated with a random suffix of length 5.
+       * Length of the template string must not exceed 256 characters.
+       * The template allows the following variables `.cluster.name`,
+       * `.machineSet.name` and `.random`.
+       * The variable `.cluster.name` retrieves the name of the cluster object
+       * that owns the Machines being created.
+       * The variable `.machineSet.name` retrieves the name of the MachineSet
+       * object that owns the Machines being created.
+       * The variable `.random` is substituted with random alphanumeric string,
+       * without vowels, of length 5. This variable is required part of the
+       * template. If not provided, validation will fail.
+       */
+      template?: string;
+    };
+    /**
+     * minReadySeconds is the minimum number of seconds for which a Node for a newly created machine should be ready before considering the replica available.
      * Defaults to 0 (machine will be considered available as soon as the Node is ready)
      */
     minReadySeconds?: number;
     /**
-     * Indicates that the deployment is paused.
+     * paused indicates that the deployment is paused.
      */
     paused?: boolean;
     /**
-     * The maximum time in seconds for a deployment to make progress before it
+     * progressDeadlineSeconds is the maximum time in seconds for a deployment to make progress before it
      * is considered to be failed. The deployment controller will continue to
      * process failed deployments and a condition with a ProgressDeadlineExceeded
      * reason will be surfaced in the deployment status. Note that progress will
      * not be estimated during the time a deployment is paused. Defaults to 600s.
+     *
+     * Deprecated: This field is deprecated and is going to be removed in the next apiVersion. Please see https://github.com/kubernetes-sigs/cluster-api/issues/11470 for more details.
      */
     progressDeadlineSeconds?: number;
     /**
-     * Number of desired machines.
+     * replicas is the number of desired machines.
      * This is a pointer to distinguish between explicit zero and not specified.
      *
      * Defaults to:
@@ -1096,7 +1129,7 @@ export interface IMachineDeployment {
      */
     replicas?: number;
     /**
-     * The number of old MachineSets to retain to allow rollback.
+     * revisionHistoryLimit is the number of old MachineSets to retain to allow rollback.
      * This is a pointer to distinguish between explicit zero and not specified.
      * Defaults to 1.
      *
@@ -1104,7 +1137,7 @@ export interface IMachineDeployment {
      */
     revisionHistoryLimit?: number;
     /**
-     * RolloutAfter is a field to indicate a rollout should be performed
+     * rolloutAfter is a field to indicate a rollout should be performed
      * after the specified time even if no changes have been made to the
      * MachineDeployment.
      * Example: In the YAML the time can be specified in the RFC3339 format.
@@ -1113,7 +1146,7 @@ export interface IMachineDeployment {
      */
     rolloutAfter?: string;
     /**
-     * Label selector for machines. Existing MachineSets whose machines are
+     * selector is the label selector for machines. Existing MachineSets whose machines are
      * selected by this will be the ones affected by this deployment.
      * It must match the machine template's labels.
      */
@@ -1149,17 +1182,17 @@ export interface IMachineDeployment {
       };
     };
     /**
-     * The deployment strategy to use to replace existing machines with
+     * strategy is the deployment strategy to use to replace existing machines with
      * new ones.
      */
     strategy?: {
       /**
-       * Remediation controls the strategy of remediating unhealthy machines
+       * remediation controls the strategy of remediating unhealthy machines
        * and how remediating operations should occur during the lifecycle of the dependant MachineSets.
        */
       remediation?: {
         /**
-         * MaxInFlight determines how many in flight remediations should happen at the same time.
+         * maxInFlight determines how many in flight remediations should happen at the same time.
          *
          * Remediation only happens on the MachineSet with the most current revision, while
          * older MachineSets (usually present during rollout operations) aren't allowed to remediate.
@@ -1177,18 +1210,18 @@ export interface IMachineDeployment {
         maxInFlight?: number | string;
       };
       /**
-       * Rolling update config params. Present only if
+       * rollingUpdate is the rolling update config params. Present only if
        * MachineDeploymentStrategyType = RollingUpdate.
        */
       rollingUpdate?: {
         /**
-         * DeletePolicy defines the policy used by the MachineDeployment to identify nodes to delete when downscaling.
+         * deletePolicy defines the policy used by the MachineDeployment to identify nodes to delete when downscaling.
          * Valid values are "Random, "Newest", "Oldest"
          * When no value is supplied, the default DeletePolicy of MachineSet is used
          */
         deletePolicy?: 'Random' | 'Newest' | 'Oldest';
         /**
-         * The maximum number of machines that can be scheduled above the
+         * maxSurge is the maximum number of machines that can be scheduled above the
          * desired number of machines.
          * Value can be an absolute number (ex: 5) or a percentage of
          * desired machines (ex: 10%).
@@ -1204,7 +1237,7 @@ export interface IMachineDeployment {
          */
         maxSurge?: number | string;
         /**
-         * The maximum number of machines that can be unavailable during the update.
+         * maxUnavailable is the maximum number of machines that can be unavailable during the update.
          * Value can be an absolute number (ex: 5) or a percentage of desired
          * machines (ex: 10%).
          * Absolute number is calculated from percentage by rounding down.
@@ -1220,13 +1253,13 @@ export interface IMachineDeployment {
         maxUnavailable?: number | string;
       };
       /**
-       * Type of deployment. Allowed values are RollingUpdate and OnDelete.
+       * type of deployment. Allowed values are RollingUpdate and OnDelete.
        * The default is RollingUpdate.
        */
       type?: 'RollingUpdate' | 'OnDelete';
     };
     /**
-     * Template describes the machines that will be created.
+     * template describes the machines that will be created.
      */
     template: {
       /**
@@ -1235,7 +1268,7 @@ export interface IMachineDeployment {
        */
       metadata?: {
         /**
-         * Annotations is an unstructured key value map stored with a resource that may be
+         * annotations is an unstructured key value map stored with a resource that may be
          * set by external tools to store and retrieve arbitrary metadata. They are not
          * queryable and should be preserved when modifying objects.
          * More info: http://kubernetes.io/docs/user-guide/annotations
@@ -1244,7 +1277,7 @@ export interface IMachineDeployment {
           [k: string]: string;
         };
         /**
-         * Map of string keys and values that can be used to organize and categorize
+         * labels is a map of string keys and values that can be used to organize and categorize
          * (scope and select) objects. May match selectors of replication controllers
          * and services.
          * More info: http://kubernetes.io/docs/user-guide/labels
@@ -1254,17 +1287,17 @@ export interface IMachineDeployment {
         };
       };
       /**
-       * Specification of the desired behavior of the machine.
+       * spec is the specification of the desired behavior of the machine.
        * More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
        */
       spec?: {
         /**
-         * Bootstrap is a reference to a local struct which encapsulates
+         * bootstrap is a reference to a local struct which encapsulates
          * fields to configure the Machine’s bootstrapping mechanism.
          */
         bootstrap: {
           /**
-           * ConfigRef is a reference to a bootstrap provider-specific resource
+           * configRef is a reference to a bootstrap provider-specific resource
            * that holds configuration details. The reference is optional to
            * allow users/operators to specify Bootstrap.DataSecretName without
            * the need of a controller.
@@ -1311,22 +1344,22 @@ export interface IMachineDeployment {
             uid?: string;
           };
           /**
-           * DataSecretName is the name of the secret that stores the bootstrap data script.
+           * dataSecretName is the name of the secret that stores the bootstrap data script.
            * If nil, the Machine should remain in the Pending state.
            */
           dataSecretName?: string;
         };
         /**
-         * ClusterName is the name of the Cluster this object belongs to.
+         * clusterName is the name of the Cluster this object belongs to.
          */
         clusterName: string;
         /**
-         * FailureDomain is the failure domain the machine will be created in.
+         * failureDomain is the failure domain the machine will be created in.
          * Must match a key in the FailureDomains map stored on the cluster object.
          */
         failureDomain?: string;
         /**
-         * InfrastructureRef is a required reference to a custom resource
+         * infrastructureRef is a required reference to a custom resource
          * offered by an infrastructure provider.
          */
         infrastructureRef: {
@@ -1371,24 +1404,24 @@ export interface IMachineDeployment {
           uid?: string;
         };
         /**
-         * NodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
+         * nodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
          * hosts after the Machine is marked for deletion. A duration of 0 will retry deletion indefinitely.
          * Defaults to 10 seconds.
          */
         nodeDeletionTimeout?: string;
         /**
-         * NodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
+         * nodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
          * The default value is 0, meaning that the node can be drained without any time limitations.
          * NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
          */
         nodeDrainTimeout?: string;
         /**
-         * NodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
+         * nodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
          * to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
          */
         nodeVolumeDetachTimeout?: string;
         /**
-         * ProviderID is the identification ID of the machine provided by the provider.
+         * providerID is the identification ID of the machine provided by the provider.
          * This field must match the provider ID as seen on the node object corresponding to this machine.
          * This field is required by higher level consumers of cluster-api. Example use case is cluster autoscaler
          * with cluster-api as provider. Clean-up logic in the autoscaler compares machines to nodes to find out
@@ -1410,7 +1443,11 @@ export interface IMachineDeployment {
          * Another example are external controllers, e.g. responsible to install special software/hardware on the Machines;
          * they can include the status of those components with a new condition and add this condition to ReadinessGates.
          *
-         * NOTE: this field is considered only for computing v1beta2 conditions.
+         * NOTE: This field is considered only for computing v1beta2 conditions.
+         * NOTE: In case readinessGates conditions start with the APIServer, ControllerManager, Scheduler prefix, and all those
+         * readiness gates condition are reporting the same message, when computing the Machine's Ready condition those
+         * readinessGates will be replaced by a single entry reporting "Control plane components: " + message.
+         * This helps to improve readability of conditions bubbling up to the Machine's owner resource / to the Cluster).
          *
          * @maxItems 32
          */
@@ -1423,7 +1460,7 @@ export interface IMachineDeployment {
           conditionType: string;
         }[];
         /**
-         * Version defines the desired Kubernetes version.
+         * version defines the desired Kubernetes version.
          * This field is meant to be optionally used by bootstrap providers.
          */
         version?: string;
@@ -1435,81 +1472,83 @@ export interface IMachineDeployment {
    */
   status?: {
     /**
-     * Total number of available machines (ready for at least minReadySeconds)
+     * availableReplicas is the total number of available machines (ready for at least minReadySeconds)
      * targeted by this deployment.
      */
     availableReplicas?: number;
     /**
-     * Conditions defines current service state of the MachineDeployment.
+     * conditions defines current service state of the MachineDeployment.
      */
     conditions?: {
       /**
-       * Last time the condition transitioned from one status to another.
+       * lastTransitionTime is the last time the condition transitioned from one status to another.
        * This should be when the underlying condition changed. If that is not known, then using the time when
        * the API field changed is acceptable.
        */
       lastTransitionTime: string;
       /**
-       * A human readable message indicating details about the transition.
+       * message is a human readable message indicating details about the transition.
        * This field may be empty.
        */
       message?: string;
       /**
-       * The reason for the condition's last transition in CamelCase.
+       * reason is the reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
        * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
       type: string;
     }[];
     /**
-     * The generation observed by the deployment controller.
+     * observedGeneration is the generation observed by the deployment controller.
      */
     observedGeneration?: number;
     /**
-     * Phase represents the current phase of a MachineDeployment (ScalingUp, ScalingDown, Running, Failed, or Unknown).
+     * phase represents the current phase of a MachineDeployment (ScalingUp, ScalingDown, Running, Failed, or Unknown).
      */
     phase?: string;
     /**
-     * Total number of ready machines targeted by this deployment.
+     * readyReplicas is the total number of ready machines targeted by this deployment.
      */
     readyReplicas?: number;
     /**
-     * Total number of non-terminated machines targeted by this deployment
+     * replicas is the total number of non-terminated machines targeted by this deployment
      * (their labels match the selector).
      */
     replicas?: number;
     /**
-     * Selector is the same as the label selector but in the string format to avoid introspection
+     * selector is the same as the label selector but in the string format to avoid introspection
      * by clients. The string will be in the same format as the query-param syntax.
      * More info about label selectors: http://kubernetes.io/docs/user-guide/labels#label-selectors
      */
     selector?: string;
     /**
-     * Total number of unavailable machines targeted by this deployment.
+     * unavailableReplicas is the total number of unavailable machines targeted by this deployment.
      * This is the total number of machines that are still required for
      * the deployment to have 100% available capacity. They may either
      * be machines that are running but not yet available or machines
      * that still have not been created.
+     *
+     * Deprecated: This field is deprecated and is going to be removed in the next apiVersion. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
      */
     unavailableReplicas?: number;
     /**
-     * Total number of non-terminated machines targeted by this deployment
+     * updatedReplicas is the total number of non-terminated machines targeted by this deployment
      * that have the desired template spec.
      */
     updatedReplicas?: number;
@@ -1598,12 +1637,12 @@ export interface IMachine {
    */
   spec?: {
     /**
-     * Bootstrap is a reference to a local struct which encapsulates
+     * bootstrap is a reference to a local struct which encapsulates
      * fields to configure the Machine’s bootstrapping mechanism.
      */
     bootstrap: {
       /**
-       * ConfigRef is a reference to a bootstrap provider-specific resource
+       * configRef is a reference to a bootstrap provider-specific resource
        * that holds configuration details. The reference is optional to
        * allow users/operators to specify Bootstrap.DataSecretName without
        * the need of a controller.
@@ -1650,22 +1689,22 @@ export interface IMachine {
         uid?: string;
       };
       /**
-       * DataSecretName is the name of the secret that stores the bootstrap data script.
+       * dataSecretName is the name of the secret that stores the bootstrap data script.
        * If nil, the Machine should remain in the Pending state.
        */
       dataSecretName?: string;
     };
     /**
-     * ClusterName is the name of the Cluster this object belongs to.
+     * clusterName is the name of the Cluster this object belongs to.
      */
     clusterName: string;
     /**
-     * FailureDomain is the failure domain the machine will be created in.
+     * failureDomain is the failure domain the machine will be created in.
      * Must match a key in the FailureDomains map stored on the cluster object.
      */
     failureDomain?: string;
     /**
-     * InfrastructureRef is a required reference to a custom resource
+     * infrastructureRef is a required reference to a custom resource
      * offered by an infrastructure provider.
      */
     infrastructureRef: {
@@ -1710,24 +1749,24 @@ export interface IMachine {
       uid?: string;
     };
     /**
-     * NodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
+     * nodeDeletionTimeout defines how long the controller will attempt to delete the Node that the Machine
      * hosts after the Machine is marked for deletion. A duration of 0 will retry deletion indefinitely.
      * Defaults to 10 seconds.
      */
     nodeDeletionTimeout?: string;
     /**
-     * NodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
+     * nodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
      * The default value is 0, meaning that the node can be drained without any time limitations.
      * NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
      */
     nodeDrainTimeout?: string;
     /**
-     * NodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
+     * nodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
      * to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
      */
     nodeVolumeDetachTimeout?: string;
     /**
-     * ProviderID is the identification ID of the machine provided by the provider.
+     * providerID is the identification ID of the machine provided by the provider.
      * This field must match the provider ID as seen on the node object corresponding to this machine.
      * This field is required by higher level consumers of cluster-api. Example use case is cluster autoscaler
      * with cluster-api as provider. Clean-up logic in the autoscaler compares machines to nodes to find out
@@ -1749,7 +1788,11 @@ export interface IMachine {
      * Another example are external controllers, e.g. responsible to install special software/hardware on the Machines;
      * they can include the status of those components with a new condition and add this condition to ReadinessGates.
      *
-     * NOTE: this field is considered only for computing v1beta2 conditions.
+     * NOTE: This field is considered only for computing v1beta2 conditions.
+     * NOTE: In case readinessGates conditions start with the APIServer, ControllerManager, Scheduler prefix, and all those
+     * readiness gates condition are reporting the same message, when computing the Machine's Ready condition those
+     * readinessGates will be replaced by a single entry reporting "Control plane components: " + message.
+     * This helps to improve readability of conditions bubbling up to the Machine's owner resource / to the Cluster).
      *
      * @maxItems 32
      */
@@ -1762,7 +1805,7 @@ export interface IMachine {
       conditionType: string;
     }[];
     /**
-     * Version defines the desired Kubernetes version.
+     * version defines the desired Kubernetes version.
      * This field is meant to be optionally used by bootstrap providers.
      */
     version?: string;
@@ -1772,61 +1815,61 @@ export interface IMachine {
    */
   status?: {
     /**
-     * Addresses is a list of addresses assigned to the machine.
+     * addresses is a list of addresses assigned to the machine.
      * This field is copied from the infrastructure provider reference.
      */
     addresses?: {
       /**
-       * The machine address.
+       * address is the machine address.
        */
       address: string;
       /**
-       * Machine address type, one of Hostname, ExternalIP, InternalIP, ExternalDNS or InternalDNS.
+       * type is the machine address type, one of Hostname, ExternalIP, InternalIP, ExternalDNS or InternalDNS.
        */
       type: string;
     }[];
     /**
-     * BootstrapReady is the state of the bootstrap provider.
+     * bootstrapReady is the state of the bootstrap provider.
      */
     bootstrapReady?: boolean;
     /**
-     * CertificatesExpiryDate is the expiry date of the machine certificates.
+     * certificatesExpiryDate is the expiry date of the machine certificates.
      * This value is only set for control plane machines.
      */
     certificatesExpiryDate?: string;
     /**
-     * Conditions defines current service state of the Machine.
+     * conditions defines current service state of the Machine.
      */
     conditions?: {
       /**
-       * Last time the condition transitioned from one status to another.
+       * lastTransitionTime is the last time the condition transitioned from one status to another.
        * This should be when the underlying condition changed. If that is not known, then using the time when
        * the API field changed is acceptable.
        */
       lastTransitionTime: string;
       /**
-       * A human readable message indicating details about the transition.
+       * message is a human readable message indicating details about the transition.
        * This field may be empty.
        */
       message?: string;
       /**
-       * The reason for the condition's last transition in CamelCase.
+       * reason is the reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
        * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
@@ -1853,7 +1896,7 @@ export interface IMachine {
       waitForNodeVolumeDetachStartTime?: string;
     };
     /**
-     * FailureMessage will be set in the event that there is a terminal problem
+     * failureMessage will be set in the event that there is a terminal problem
      * reconciling the Machine and will contain a more verbose string suitable
      * for logging and human consumption.
      *
@@ -1874,7 +1917,7 @@ export interface IMachine {
      */
     failureMessage?: string;
     /**
-     * FailureReason will be set in the event that there is a terminal problem
+     * failureReason will be set in the event that there is a terminal problem
      * reconciling the Machine and will contain a succinct value suitable
      * for machine interpretation.
      *
@@ -1895,15 +1938,15 @@ export interface IMachine {
      */
     failureReason?: string;
     /**
-     * InfrastructureReady is the state of the infrastructure provider.
+     * infrastructureReady is the state of the infrastructure provider.
      */
     infrastructureReady?: boolean;
     /**
-     * LastUpdated identifies when the phase of the Machine last transitioned.
+     * lastUpdated identifies when the phase of the Machine last transitioned.
      */
     lastUpdated?: string;
     /**
-     * NodeInfo is a set of ids/uuids to uniquely identify the node.
+     * nodeInfo is a set of ids/uuids to uniquely identify the node.
      * More info: https://kubernetes.io/docs/concepts/nodes/node/#info
      */
     nodeInfo?: {
@@ -1953,7 +1996,7 @@ export interface IMachine {
       systemUUID: string;
     };
     /**
-     * NodeRef will point to the corresponding Node if it exists.
+     * nodeRef will point to the corresponding Node if it exists.
      */
     nodeRef?: {
       /**
@@ -1997,11 +2040,11 @@ export interface IMachine {
       uid?: string;
     };
     /**
-     * ObservedGeneration is the latest generation observed by the controller.
+     * observedGeneration is the latest generation observed by the controller.
      */
     observedGeneration?: number;
     /**
-     * Phase represents the current phase of machine actuation.
+     * phase represents the current phase of machine actuation.
      * E.g. Pending, Running, Terminating, Failed etc.
      */
     phase?: string;
@@ -2082,30 +2125,30 @@ export interface IKubeadmControlPlane {
    */
   spec?: {
     /**
-     * KubeadmConfigSpec is a KubeadmConfigSpec
+     * kubeadmConfigSpec is a KubeadmConfigSpec
      * to use for initializing and joining machines to the control plane.
      */
     kubeadmConfigSpec: {
       /**
-       * ClusterConfiguration along with InitConfiguration are the configurations necessary for the init command
+       * clusterConfiguration along with InitConfiguration are the configurations necessary for the init command
        */
       clusterConfiguration?: {
         /**
-         * APIServer contains extra settings for the API server control plane component
+         * apiServer contains extra settings for the API server control plane component
          */
         apiServer?: {
           /**
-           * CertSANs sets extra Subject Alternative Names for the API Server signing cert.
+           * certSANs sets extra Subject Alternative Names for the API Server signing cert.
            */
           certSANs?: string[];
           /**
-           * ExtraArgs is an extra set of flags to pass to the control plane component.
+           * extraArgs is an extra set of flags to pass to the control plane component.
            */
           extraArgs?: {
             [k: string]: string;
           };
           /**
-           * ExtraEnvs is an extra set of environment variables to pass to the control plane component.
+           * extraEnvs is an extra set of environment variables to pass to the control plane component.
            * Environment variables passed using ExtraEnvs will override any existing environment variables, or *_proxy environment variables that kubeadm adds by default.
            * This option takes effect only on Kubernetes >=1.31.0.
            */
@@ -2207,33 +2250,33 @@ export interface IKubeadmControlPlane {
             };
           }[];
           /**
-           * ExtraVolumes is an extra set of host volumes, mounted to the control plane component.
+           * extraVolumes is an extra set of host volumes, mounted to the control plane component.
            */
           extraVolumes?: {
             /**
-             * HostPath is the path in the host that will be mounted inside
+             * hostPath is the path in the host that will be mounted inside
              * the pod.
              */
             hostPath: string;
             /**
-             * MountPath is the path inside the pod where hostPath will be mounted.
+             * mountPath is the path inside the pod where hostPath will be mounted.
              */
             mountPath: string;
             /**
-             * Name of the volume inside the pod template.
+             * name of the volume inside the pod template.
              */
             name: string;
             /**
-             * PathType is the type of the HostPath.
+             * pathType is the type of the HostPath.
              */
             pathType?: string;
             /**
-             * ReadOnly controls write access to the volume
+             * readOnly controls write access to the volume
              */
             readOnly?: boolean;
           }[];
           /**
-           * TimeoutForControlPlane controls the timeout that we use for API server to appear
+           * timeoutForControlPlane controls the timeout that we use for API server to appear
            */
           timeoutForControlPlane?: string;
         };
@@ -2245,16 +2288,16 @@ export interface IKubeadmControlPlane {
          */
         apiVersion?: string;
         /**
-         * CertificatesDir specifies where to store or look for all required certificates.
+         * certificatesDir specifies where to store or look for all required certificates.
          * NB: if not provided, this will default to `/etc/kubernetes/pki`
          */
         certificatesDir?: string;
         /**
-         * The cluster name
+         * clusterName is the cluster name
          */
         clusterName?: string;
         /**
-         * ControlPlaneEndpoint sets a stable IP address or DNS name for the control plane; it
+         * controlPlaneEndpoint sets a stable IP address or DNS name for the control plane; it
          * can be a valid IP address or a RFC-1123 DNS subdomain, both with optional TCP port.
          * In case the ControlPlaneEndpoint is not specified, the AdvertiseAddress + BindPort
          * are used; in case the ControlPlaneEndpoint is specified but without a TCP port,
@@ -2269,17 +2312,17 @@ export interface IKubeadmControlPlane {
          */
         controlPlaneEndpoint?: string;
         /**
-         * ControllerManager contains extra settings for the controller manager control plane component
+         * controllerManager contains extra settings for the controller manager control plane component
          */
         controllerManager?: {
           /**
-           * ExtraArgs is an extra set of flags to pass to the control plane component.
+           * extraArgs is an extra set of flags to pass to the control plane component.
            */
           extraArgs?: {
             [k: string]: string;
           };
           /**
-           * ExtraEnvs is an extra set of environment variables to pass to the control plane component.
+           * extraEnvs is an extra set of environment variables to pass to the control plane component.
            * Environment variables passed using ExtraEnvs will override any existing environment variables, or *_proxy environment variables that kubeadm adds by default.
            * This option takes effect only on Kubernetes >=1.31.0.
            */
@@ -2381,96 +2424,96 @@ export interface IKubeadmControlPlane {
             };
           }[];
           /**
-           * ExtraVolumes is an extra set of host volumes, mounted to the control plane component.
+           * extraVolumes is an extra set of host volumes, mounted to the control plane component.
            */
           extraVolumes?: {
             /**
-             * HostPath is the path in the host that will be mounted inside
+             * hostPath is the path in the host that will be mounted inside
              * the pod.
              */
             hostPath: string;
             /**
-             * MountPath is the path inside the pod where hostPath will be mounted.
+             * mountPath is the path inside the pod where hostPath will be mounted.
              */
             mountPath: string;
             /**
-             * Name of the volume inside the pod template.
+             * name of the volume inside the pod template.
              */
             name: string;
             /**
-             * PathType is the type of the HostPath.
+             * pathType is the type of the HostPath.
              */
             pathType?: string;
             /**
-             * ReadOnly controls write access to the volume
+             * readOnly controls write access to the volume
              */
             readOnly?: boolean;
           }[];
         };
         /**
-         * DNS defines the options for the DNS add-on installed in the cluster.
+         * dns defines the options for the DNS add-on installed in the cluster.
          */
         dns?: {
           /**
-           * ImageRepository sets the container registry to pull images from.
+           * imageRepository sets the container registry to pull images from.
            * if not set, the ImageRepository defined in ClusterConfiguration will be used instead.
            */
           imageRepository?: string;
           /**
-           * ImageTag allows to specify a tag for the image.
+           * imageTag allows to specify a tag for the image.
            * In case this value is set, kubeadm does not change automatically the version of the above components during upgrades.
            */
           imageTag?: string;
         };
         /**
-         * Etcd holds configuration for etcd.
+         * etcd holds configuration for etcd.
          * NB: This value defaults to a Local (stacked) etcd
          */
         etcd?: {
           /**
-           * External describes how to connect to an external etcd cluster
+           * external describes how to connect to an external etcd cluster
            * Local and External are mutually exclusive
            */
           external?: {
             /**
-             * CAFile is an SSL Certificate Authority file used to secure etcd communication.
+             * caFile is an SSL Certificate Authority file used to secure etcd communication.
              * Required if using a TLS connection.
              */
             caFile: string;
             /**
-             * CertFile is an SSL certification file used to secure etcd communication.
+             * certFile is an SSL certification file used to secure etcd communication.
              * Required if using a TLS connection.
              */
             certFile: string;
             /**
-             * Endpoints of etcd members. Required for ExternalEtcd.
+             * endpoints of etcd members. Required for ExternalEtcd.
              */
             endpoints: string[];
             /**
-             * KeyFile is an SSL key file used to secure etcd communication.
+             * keyFile is an SSL key file used to secure etcd communication.
              * Required if using a TLS connection.
              */
             keyFile: string;
           };
           /**
-           * Local provides configuration knobs for configuring the local etcd instance
+           * local provides configuration knobs for configuring the local etcd instance
            * Local and External are mutually exclusive
            */
           local?: {
             /**
-             * DataDir is the directory etcd will place its data.
+             * dataDir is the directory etcd will place its data.
              * Defaults to "/var/lib/etcd".
              */
             dataDir?: string;
             /**
-             * ExtraArgs are extra arguments provided to the etcd binary
+             * extraArgs are extra arguments provided to the etcd binary
              * when run inside a static pod.
              */
             extraArgs?: {
               [k: string]: string;
             };
             /**
-             * ExtraEnvs is an extra set of environment variables to pass to the control plane component.
+             * extraEnvs is an extra set of environment variables to pass to the control plane component.
              * Environment variables passed using ExtraEnvs will override any existing environment variables, or *_proxy environment variables that kubeadm adds by default.
              * This option takes effect only on Kubernetes >=1.31.0.
              */
@@ -2572,33 +2615,33 @@ export interface IKubeadmControlPlane {
               };
             }[];
             /**
-             * ImageRepository sets the container registry to pull images from.
+             * imageRepository sets the container registry to pull images from.
              * if not set, the ImageRepository defined in ClusterConfiguration will be used instead.
              */
             imageRepository?: string;
             /**
-             * ImageTag allows to specify a tag for the image.
+             * imageTag allows to specify a tag for the image.
              * In case this value is set, kubeadm does not change automatically the version of the above components during upgrades.
              */
             imageTag?: string;
             /**
-             * PeerCertSANs sets extra Subject Alternative Names for the etcd peer signing cert.
+             * peerCertSANs sets extra Subject Alternative Names for the etcd peer signing cert.
              */
             peerCertSANs?: string[];
             /**
-             * ServerCertSANs sets extra Subject Alternative Names for the etcd server signing cert.
+             * serverCertSANs sets extra Subject Alternative Names for the etcd server signing cert.
              */
             serverCertSANs?: string[];
           };
         };
         /**
-         * FeatureGates enabled by the user.
+         * featureGates enabled by the user.
          */
         featureGates?: {
           [k: string]: boolean;
         };
         /**
-         * ImageRepository sets the container registry to pull images from.
+         * imageRepository sets the container registry to pull images from.
          * * If not set, the default registry of kubeadm will be used, i.e.
          *   * registry.k8s.io (new registry): >= v1.22.17, >= v1.23.15, >= v1.24.9, >= v1.25.0
          *   * k8s.gcr.io (old registry): all older versions
@@ -2620,44 +2663,44 @@ export interface IKubeadmControlPlane {
          */
         kind?: string;
         /**
-         * KubernetesVersion is the target version of the control plane.
+         * kubernetesVersion is the target version of the control plane.
          * NB: This value defaults to the Machine object spec.version
          */
         kubernetesVersion?: string;
         /**
-         * Networking holds configuration for the networking topology of the cluster.
+         * networking holds configuration for the networking topology of the cluster.
          * NB: This value defaults to the Cluster object spec.clusterNetwork.
          */
         networking?: {
           /**
-           * DNSDomain is the dns domain used by k8s services. Defaults to "cluster.local".
+           * dnsDomain is the dns domain used by k8s services. Defaults to "cluster.local".
            */
           dnsDomain?: string;
           /**
-           * PodSubnet is the subnet used by pods.
+           * podSubnet is the subnet used by pods.
            * If unset, the API server will not allocate CIDR ranges for every node.
            * Defaults to a comma-delimited string of the Cluster object's spec.clusterNetwork.services.cidrBlocks if that is set
            */
           podSubnet?: string;
           /**
-           * ServiceSubnet is the subnet used by k8s services.
+           * serviceSubnet is the subnet used by k8s services.
            * Defaults to a comma-delimited string of the Cluster object's spec.clusterNetwork.pods.cidrBlocks, or
            * to "10.96.0.0/12" if that's unset.
            */
           serviceSubnet?: string;
         };
         /**
-         * Scheduler contains extra settings for the scheduler control plane component
+         * scheduler contains extra settings for the scheduler control plane component
          */
         scheduler?: {
           /**
-           * ExtraArgs is an extra set of flags to pass to the control plane component.
+           * extraArgs is an extra set of flags to pass to the control plane component.
            */
           extraArgs?: {
             [k: string]: string;
           };
           /**
-           * ExtraEnvs is an extra set of environment variables to pass to the control plane component.
+           * extraEnvs is an extra set of environment variables to pass to the control plane component.
            * Environment variables passed using ExtraEnvs will override any existing environment variables, or *_proxy environment variables that kubeadm adds by default.
            * This option takes effect only on Kubernetes >=1.31.0.
            */
@@ -2759,93 +2802,93 @@ export interface IKubeadmControlPlane {
             };
           }[];
           /**
-           * ExtraVolumes is an extra set of host volumes, mounted to the control plane component.
+           * extraVolumes is an extra set of host volumes, mounted to the control plane component.
            */
           extraVolumes?: {
             /**
-             * HostPath is the path in the host that will be mounted inside
+             * hostPath is the path in the host that will be mounted inside
              * the pod.
              */
             hostPath: string;
             /**
-             * MountPath is the path inside the pod where hostPath will be mounted.
+             * mountPath is the path inside the pod where hostPath will be mounted.
              */
             mountPath: string;
             /**
-             * Name of the volume inside the pod template.
+             * name of the volume inside the pod template.
              */
             name: string;
             /**
-             * PathType is the type of the HostPath.
+             * pathType is the type of the HostPath.
              */
             pathType?: string;
             /**
-             * ReadOnly controls write access to the volume
+             * readOnly controls write access to the volume
              */
             readOnly?: boolean;
           }[];
         };
       };
       /**
-       * DiskSetup specifies options for the creation of partition tables and file systems on devices.
+       * diskSetup specifies options for the creation of partition tables and file systems on devices.
        */
       diskSetup?: {
         /**
-         * Filesystems specifies the list of file systems to setup.
+         * filesystems specifies the list of file systems to setup.
          */
         filesystems?: {
           /**
-           * Device specifies the device name
+           * device specifies the device name
            */
           device: string;
           /**
-           * ExtraOpts defined extra options to add to the command for creating the file system.
+           * extraOpts defined extra options to add to the command for creating the file system.
            */
           extraOpts?: string[];
           /**
-           * Filesystem specifies the file system type.
+           * filesystem specifies the file system type.
            */
           filesystem: string;
           /**
-           * Label specifies the file system label to be used. If set to None, no label is used.
+           * label specifies the file system label to be used. If set to None, no label is used.
            */
           label: string;
           /**
-           * Overwrite defines whether or not to overwrite any existing filesystem.
+           * overwrite defines whether or not to overwrite any existing filesystem.
            * If true, any pre-existing file system will be destroyed. Use with Caution.
            */
           overwrite?: boolean;
           /**
-           * Partition specifies the partition to use. The valid options are: "auto|any", "auto", "any", "none", and <NUM>, where NUM is the actual partition number.
+           * partition specifies the partition to use. The valid options are: "auto|any", "auto", "any", "none", and <NUM>, where NUM is the actual partition number.
            */
           partition?: string;
           /**
-           * ReplaceFS is a special directive, used for Microsoft Azure that instructs cloud-init to replace a file system of <FS_TYPE>.
+           * replaceFS is a special directive, used for Microsoft Azure that instructs cloud-init to replace a file system of <FS_TYPE>.
            * NOTE: unless you define a label, this requires the use of the 'any' partition directive.
            */
           replaceFS?: string;
         }[];
         /**
-         * Partitions specifies the list of the partitions to setup.
+         * partitions specifies the list of the partitions to setup.
          */
         partitions?: {
           /**
-           * Device is the name of the device.
+           * device is the name of the device.
            */
           device: string;
           /**
-           * Layout specifies the device layout.
+           * layout specifies the device layout.
            * If it is true, a single partition will be created for the entire device.
            * When layout is false, it means don't partition or ignore existing partitioning.
            */
           layout: boolean;
           /**
-           * Overwrite describes whether to skip checks and create the partition if a partition or filesystem is found on the device.
+           * overwrite describes whether to skip checks and create the partition if a partition or filesystem is found on the device.
            * Use with caution. Default is 'false'.
            */
           overwrite?: boolean;
           /**
-           * TableType specifies the tupe of partition table. The following are supported:
+           * tableType specifies the tupe of partition table. The following are supported:
            * 'mbr': default and setups a MS-DOS partition table
            * 'gpt': setups a GPT partition table
            */
@@ -2853,79 +2896,79 @@ export interface IKubeadmControlPlane {
         }[];
       };
       /**
-       * Files specifies extra files to be passed to user_data upon creation.
+       * files specifies extra files to be passed to user_data upon creation.
        */
       files?: {
         /**
-         * Append specifies whether to append Content to existing file if Path exists.
+         * append specifies whether to append Content to existing file if Path exists.
          */
         append?: boolean;
         /**
-         * Content is the actual content of the file.
+         * content is the actual content of the file.
          */
         content?: string;
         /**
-         * ContentFrom is a referenced source of content to populate the file.
+         * contentFrom is a referenced source of content to populate the file.
          */
         contentFrom?: {
           /**
-           * Secret represents a secret that should populate this file.
+           * secret represents a secret that should populate this file.
            */
           secret: {
             /**
-             * Key is the key in the secret's data map for this value.
+             * key is the key in the secret's data map for this value.
              */
             key: string;
             /**
-             * Name of the secret in the KubeadmBootstrapConfig's namespace to use.
+             * name of the secret in the KubeadmBootstrapConfig's namespace to use.
              */
             name: string;
           };
         };
         /**
-         * Encoding specifies the encoding of the file contents.
+         * encoding specifies the encoding of the file contents.
          */
         encoding?: 'base64' | 'gzip' | 'gzip+base64';
         /**
-         * Owner specifies the ownership of the file, e.g. "root:root".
+         * owner specifies the ownership of the file, e.g. "root:root".
          */
         owner?: string;
         /**
-         * Path specifies the full path on disk where to store the file.
+         * path specifies the full path on disk where to store the file.
          */
         path: string;
         /**
-         * Permissions specifies the permissions to assign to the file, e.g. "0640".
+         * permissions specifies the permissions to assign to the file, e.g. "0640".
          */
         permissions?: string;
       }[];
       /**
-       * Format specifies the output format of the bootstrap data
+       * format specifies the output format of the bootstrap data
        */
       format?: 'cloud-config' | 'ignition';
       /**
-       * Ignition contains Ignition specific configuration.
+       * ignition contains Ignition specific configuration.
        */
       ignition?: {
         /**
-         * ContainerLinuxConfig contains CLC specific configuration.
+         * containerLinuxConfig contains CLC specific configuration.
          */
         containerLinuxConfig?: {
           /**
-           * AdditionalConfig contains additional configuration to be merged with the Ignition
+           * additionalConfig contains additional configuration to be merged with the Ignition
            * configuration generated by the bootstrapper controller. More info: https://coreos.github.io/ignition/operator-notes/#config-merging
            *
            * The data format is documented here: https://kinvolk.io/docs/flatcar-container-linux/latest/provisioning/cl-config/
            */
           additionalConfig?: string;
           /**
-           * Strict controls if AdditionalConfig should be strictly parsed. If so, warnings are treated as errors.
+           * strict controls if AdditionalConfig should be strictly parsed. If so, warnings are treated as errors.
            */
           strict?: boolean;
         };
       };
       /**
-       * InitConfiguration along with ClusterConfiguration are the configurations necessary for the init command
+       * initConfiguration along with ClusterConfiguration are the configurations necessary for the init command
        */
       initConfiguration?: {
         /**
@@ -2936,37 +2979,37 @@ export interface IKubeadmControlPlane {
          */
         apiVersion?: string;
         /**
-         * BootstrapTokens is respected at `kubeadm init` time and describes a set of Bootstrap Tokens to create.
+         * bootstrapTokens is respected at `kubeadm init` time and describes a set of Bootstrap Tokens to create.
          * This information IS NOT uploaded to the kubeadm cluster configmap, partly because of its sensitive nature
          */
         bootstrapTokens?: {
           /**
-           * Description sets a human-friendly message why this token exists and what it's used
+           * description sets a human-friendly message why this token exists and what it's used
            * for, so other administrators can know its purpose.
            */
           description?: string;
           /**
-           * Expires specifies the timestamp when this token expires. Defaults to being set
+           * expires specifies the timestamp when this token expires. Defaults to being set
            * dynamically at runtime based on the TTL. Expires and TTL are mutually exclusive.
            */
           expires?: string;
           /**
-           * Groups specifies the extra groups that this token will authenticate as when/if
+           * groups specifies the extra groups that this token will authenticate as when/if
            * used for authentication
            */
           groups?: string[];
           /**
-           * Token is used for establishing bidirectional trust between nodes and control-planes.
+           * token is used for establishing bidirectional trust between nodes and control-planes.
            * Used for joining nodes in the cluster.
            */
           token: string;
           /**
-           * TTL defines the time to live for this token. Defaults to 24h.
+           * ttl defines the time to live for this token. Defaults to 24h.
            * Expires and TTL are mutually exclusive.
            */
           ttl?: string;
           /**
-           * Usages describes the ways in which this token can be used. Can by default be used
+           * usages describes the ways in which this token can be used. Can by default be used
            * for establishing bidirectional trust, but that can be changed here.
            */
           usages?: string[];
@@ -2980,7 +3023,7 @@ export interface IKubeadmControlPlane {
          */
         kind?: string;
         /**
-         * LocalAPIEndpoint represents the endpoint of the API server instance that's deployed on this control plane node
+         * localAPIEndpoint represents the endpoint of the API server instance that's deployed on this control plane node
          * In HA setups, this differs from ClusterConfiguration.ControlPlaneEndpoint in the sense that ControlPlaneEndpoint
          * is the global endpoint for the cluster, which then loadbalances the requests to each individual API server. This
          * configuration object lets you customize what IP/DNS name and port the local API server advertises it's accessible
@@ -2989,31 +3032,31 @@ export interface IKubeadmControlPlane {
          */
         localAPIEndpoint?: {
           /**
-           * AdvertiseAddress sets the IP address for the API server to advertise.
+           * advertiseAddress sets the IP address for the API server to advertise.
            */
           advertiseAddress?: string;
           /**
-           * BindPort sets the secure port for the API Server to bind to.
+           * bindPort sets the secure port for the API Server to bind to.
            * Defaults to 6443.
            */
           bindPort?: number;
         };
         /**
-         * NodeRegistration holds fields that relate to registering the new control-plane node to the cluster.
+         * nodeRegistration holds fields that relate to registering the new control-plane node to the cluster.
          * When used in the context of control plane nodes, NodeRegistration should remain consistent
          * across both InitConfiguration and JoinConfiguration
          */
         nodeRegistration?: {
           /**
-           * CRISocket is used to retrieve container runtime info. This information will be annotated to the Node API object, for later re-use
+           * criSocket is used to retrieve container runtime info. This information will be annotated to the Node API object, for later re-use
            */
           criSocket?: string;
           /**
-           * IgnorePreflightErrors provides a slice of pre-flight errors to be ignored when the current node is registered.
+           * ignorePreflightErrors provides a slice of pre-flight errors to be ignored when the current node is registered.
            */
           ignorePreflightErrors?: string[];
           /**
-           * ImagePullPolicy specifies the policy for image pulling
+           * imagePullPolicy specifies the policy for image pulling
            * during kubeadm "init" and "join" operations. The value of
            * this field must be one of "Always", "IfNotPresent" or
            * "Never". Defaults to "IfNotPresent". This can be used only
@@ -3021,13 +3064,13 @@ export interface IKubeadmControlPlane {
            */
           imagePullPolicy?: 'Always' | 'IfNotPresent' | 'Never';
           /**
-           * ImagePullSerial specifies if image pulling performed by kubeadm must be done serially or in parallel.
+           * imagePullSerial specifies if image pulling performed by kubeadm must be done serially or in parallel.
            * This option takes effect only on Kubernetes >=1.31.0.
            * Default: true (defaulted in kubeadm)
            */
           imagePullSerial?: boolean;
           /**
-           * KubeletExtraArgs passes through extra arguments to the kubelet. The arguments here are passed to the kubelet command line via the environment file
+           * kubeletExtraArgs passes through extra arguments to the kubelet. The arguments here are passed to the kubelet command line via the environment file
            * kubeadm writes at runtime for the kubelet to source. This overrides the generic base-level configuration in the kubelet-config-1.X ConfigMap
            * Flags have higher priority when parsing. These values are local and specific to the node kubeadm is executing on.
            */
@@ -3035,13 +3078,13 @@ export interface IKubeadmControlPlane {
             [k: string]: string;
           };
           /**
-           * Name is the `.Metadata.Name` field of the Node API object that will be created in this `kubeadm init` or `kubeadm join` operation.
+           * name is the `.Metadata.Name` field of the Node API object that will be created in this `kubeadm init` or `kubeadm join` operation.
            * This field is also used in the CommonName field of the kubelet's client certificate to the API server.
            * Defaults to the hostname of the node if not provided.
            */
           name?: string;
           /**
-           * Taints specifies the taints the Node API object should be registered with. If this field is unset, i.e. nil, in the `kubeadm init` process
+           * taints specifies the taints the Node API object should be registered with. If this field is unset, i.e. nil, in the `kubeadm init` process
            * it will be defaulted to []v1.Taint{'node-role.kubernetes.io/master=""'}. If you don't want to taint your control-plane node, set this field to an
            * empty slice, i.e. `taints: []` in the YAML file. This field is solely used for Node registration.
            */
@@ -3068,12 +3111,12 @@ export interface IKubeadmControlPlane {
           }[];
         };
         /**
-         * Patches contains options related to applying patches to components deployed by kubeadm during
+         * patches contains options related to applying patches to components deployed by kubeadm during
          * "kubeadm init". The minimum kubernetes version needed to support Patches is v1.22
          */
         patches?: {
           /**
-           * Directory is a path to a directory that contains files named "target[suffix][+patchtype].extension".
+           * directory is a path to a directory that contains files named "target[suffix][+patchtype].extension".
            * For example, "kube-apiserver0+merge.yaml" or just "etcd.json". "target" can be one of
            * "kube-apiserver", "kube-controller-manager", "kube-scheduler", "etcd". "patchtype" can be one
            * of "strategic" "merge" or "json" and they match the patch formats supported by kubectl.
@@ -3087,14 +3130,14 @@ export interface IKubeadmControlPlane {
           directory?: string;
         };
         /**
-         * SkipPhases is a list of phases to skip during command execution.
+         * skipPhases is a list of phases to skip during command execution.
          * The list of phases can be obtained with the "kubeadm init --help" command.
          * This option takes effect only on Kubernetes >=1.22.0.
          */
         skipPhases?: string[];
       };
       /**
-       * JoinConfiguration is the kubeadm configuration for the join command
+       * joinConfiguration is the kubeadm configuration for the join command
        */
       joinConfiguration?: {
         /**
@@ -3105,46 +3148,46 @@ export interface IKubeadmControlPlane {
          */
         apiVersion?: string;
         /**
-         * CACertPath is the path to the SSL certificate authority used to
+         * caCertPath is the path to the SSL certificate authority used to
          * secure comunications between node and control-plane.
          * Defaults to "/etc/kubernetes/pki/ca.crt".
          */
         caCertPath?: string;
         /**
-         * ControlPlane defines the additional control plane instance to be deployed on the joining node.
+         * controlPlane defines the additional control plane instance to be deployed on the joining node.
          * If nil, no additional control plane instance will be deployed.
          */
         controlPlane?: {
           /**
-           * LocalAPIEndpoint represents the endpoint of the API server instance to be deployed on this node.
+           * localAPIEndpoint represents the endpoint of the API server instance to be deployed on this node.
            */
           localAPIEndpoint?: {
             /**
-             * AdvertiseAddress sets the IP address for the API server to advertise.
+             * advertiseAddress sets the IP address for the API server to advertise.
              */
             advertiseAddress?: string;
             /**
-             * BindPort sets the secure port for the API Server to bind to.
+             * bindPort sets the secure port for the API Server to bind to.
              * Defaults to 6443.
              */
             bindPort?: number;
           };
         };
         /**
-         * Discovery specifies the options for the kubelet to use during the TLS Bootstrap process
+         * discovery specifies the options for the kubelet to use during the TLS Bootstrap process
          */
         discovery?: {
           /**
-           * BootstrapToken is used to set the options for bootstrap token based discovery
+           * bootstrapToken is used to set the options for bootstrap token based discovery
            * BootstrapToken and File are mutually exclusive
            */
           bootstrapToken?: {
             /**
-             * APIServerEndpoint is an IP or domain name to the API server from which info will be fetched.
+             * apiServerEndpoint is an IP or domain name to the API server from which info will be fetched.
              */
             apiServerEndpoint?: string;
             /**
-             * CACertHashes specifies a set of public key pins to verify
+             * caCertHashes specifies a set of public key pins to verify
              * when token-based discovery is used. The root CA found during discovery
              * must match one of these values. Specifying an empty set disables root CA
              * pinning, which can be unsafe. Each hash is specified as "<type>:<value>",
@@ -3155,24 +3198,24 @@ export interface IKubeadmControlPlane {
              */
             caCertHashes?: string[];
             /**
-             * Token is a token used to validate cluster information
+             * token is a token used to validate cluster information
              * fetched from the control-plane.
              */
             token: string;
             /**
-             * UnsafeSkipCAVerification allows token-based discovery
+             * unsafeSkipCAVerification allows token-based discovery
              * without CA verification via CACertHashes. This can weaken
              * the security of kubeadm since other nodes can impersonate the control-plane.
              */
             unsafeSkipCAVerification?: boolean;
           };
           /**
-           * File is used to specify a file or URL to a kubeconfig file from which to load cluster information
+           * file is used to specify a file or URL to a kubeconfig file from which to load cluster information
            * BootstrapToken and File are mutually exclusive
            */
           file?: {
             /**
-             * KubeConfig is used (optionally) to generate a KubeConfig based on the KubeadmConfig's information.
+             * kubeConfig is used (optionally) to generate a KubeConfig based on the KubeadmConfig's information.
              * The file is generated at the path specified in KubeConfigPath.
              *
              * Host address (server field) information is automatically populated based on the Cluster's ControlPlaneEndpoint.
@@ -3180,7 +3223,7 @@ export interface IKubeadmControlPlane {
              */
             kubeConfig?: {
               /**
-               * Cluster contains information about how to communicate with the kubernetes cluster.
+               * cluster contains information about how to communicate with the kubernetes cluster.
                *
                * By default the following fields are automatically populated:
                * - Server with the Cluster's ControlPlaneEndpoint.
@@ -3188,17 +3231,17 @@ export interface IKubeadmControlPlane {
                */
               cluster?: {
                 /**
-                 * CertificateAuthorityData contains PEM-encoded certificate authority certificates.
+                 * certificateAuthorityData contains PEM-encoded certificate authority certificates.
                  *
                  * Defaults to the Cluster's CA certificate if empty.
                  */
                 certificateAuthorityData?: string;
                 /**
-                 * InsecureSkipTLSVerify skips the validity check for the server's certificate. This will make your HTTPS connections insecure.
+                 * insecureSkipTLSVerify skips the validity check for the server's certificate. This will make your HTTPS connections insecure.
                  */
                 insecureSkipTLSVerify?: boolean;
                 /**
-                 * ProxyURL is the URL to the proxy to be used for all requests made by this
+                 * proxyURL is the URL to the proxy to be used for all requests made by this
                  * client. URLs with "http", "https", and "socks5" schemes are supported.  If
                  * this configuration is not provided or the empty string, the client
                  * attempts to construct a proxy configuration from http_proxy and
@@ -3210,56 +3253,56 @@ export interface IKubeadmControlPlane {
                  */
                 proxyURL?: string;
                 /**
-                 * Server is the address of the kubernetes cluster (https://hostname:port).
+                 * server is the address of the kubernetes cluster (https://hostname:port).
                  *
                  * Defaults to https:// + Cluster.Spec.ControlPlaneEndpoint.
                  */
                 server?: string;
                 /**
-                 * TLSServerName is used to check server certificate. If TLSServerName is empty, the hostname used to contact the server is used.
+                 * tlsServerName is used to check server certificate. If TLSServerName is empty, the hostname used to contact the server is used.
                  */
                 tlsServerName?: string;
               };
               /**
-               * User contains information that describes identity information.
+               * user contains information that describes identity information.
                * This is used to tell the kubernetes cluster who you are.
                */
               user: {
                 /**
-                 * AuthProvider specifies a custom authentication plugin for the kubernetes cluster.
+                 * authProvider specifies a custom authentication plugin for the kubernetes cluster.
                  */
                 authProvider?: {
                   /**
-                   * Config holds the parameters for the authentication plugin.
+                   * config holds the parameters for the authentication plugin.
                    */
                   config?: {
                     [k: string]: string;
                   };
                   /**
-                   * Name is the name of the authentication plugin.
+                   * name is the name of the authentication plugin.
                    */
                   name: string;
                 };
                 /**
-                 * Exec specifies a custom exec-based authentication plugin for the kubernetes cluster.
+                 * exec specifies a custom exec-based authentication plugin for the kubernetes cluster.
                  */
                 exec?: {
                   /**
-                   * Preferred input version of the ExecInfo. The returned ExecCredentials MUST use
+                   * apiVersion is preferred input version of the ExecInfo. The returned ExecCredentials MUST use
                    * the same encoding version as the input.
                    * Defaults to client.authentication.k8s.io/v1 if not set.
                    */
                   apiVersion?: string;
                   /**
-                   * Arguments to pass to the command when executing it.
+                   * args is the arguments to pass to the command when executing it.
                    */
                   args?: string[];
                   /**
-                   * Command to execute.
+                   * command to execute.
                    */
                   command: string;
                   /**
-                   * Env defines additional environment variables to expose to the process. These
+                   * env defines additional environment variables to expose to the process. These
                    * are unioned with the host's environment, as well as variables client-go uses
                    * to pass argument to the plugin.
                    */
@@ -3268,7 +3311,7 @@ export interface IKubeadmControlPlane {
                     value: string;
                   }[];
                   /**
-                   * ProvideClusterInfo determines whether or not to provide cluster information,
+                   * provideClusterInfo determines whether or not to provide cluster information,
                    * which could potentially contain very large CA data, to this exec plugin as a
                    * part of the KUBERNETES_EXEC_INFO environment variable. By default, it is set
                    * to false. Package k8s.io/client-go/tools/auth/exec provides helper methods for
@@ -3279,16 +3322,16 @@ export interface IKubeadmControlPlane {
               };
             };
             /**
-             * KubeConfigPath is used to specify the actual file path or URL to the kubeconfig file from which to load cluster information
+             * kubeConfigPath is used to specify the actual file path or URL to the kubeconfig file from which to load cluster information
              */
             kubeConfigPath: string;
           };
           /**
-           * Timeout modifies the discovery timeout
+           * timeout modifies the discovery timeout
            */
           timeout?: string;
           /**
-           * TLSBootstrapToken is a token used for TLS bootstrapping.
+           * tlsBootstrapToken is a token used for TLS bootstrapping.
            * If .BootstrapToken is set, this field is defaulted to .BootstrapToken.Token, but can be overridden.
            * If .File is set, this field **must be set** in case the KubeConfigFile does not contain any other authentication information
            */
@@ -3303,21 +3346,21 @@ export interface IKubeadmControlPlane {
          */
         kind?: string;
         /**
-         * NodeRegistration holds fields that relate to registering the new control-plane node to the cluster.
+         * nodeRegistration holds fields that relate to registering the new control-plane node to the cluster.
          * When used in the context of control plane nodes, NodeRegistration should remain consistent
          * across both InitConfiguration and JoinConfiguration
          */
         nodeRegistration?: {
           /**
-           * CRISocket is used to retrieve container runtime info. This information will be annotated to the Node API object, for later re-use
+           * criSocket is used to retrieve container runtime info. This information will be annotated to the Node API object, for later re-use
            */
           criSocket?: string;
           /**
-           * IgnorePreflightErrors provides a slice of pre-flight errors to be ignored when the current node is registered.
+           * ignorePreflightErrors provides a slice of pre-flight errors to be ignored when the current node is registered.
            */
           ignorePreflightErrors?: string[];
           /**
-           * ImagePullPolicy specifies the policy for image pulling
+           * imagePullPolicy specifies the policy for image pulling
            * during kubeadm "init" and "join" operations. The value of
            * this field must be one of "Always", "IfNotPresent" or
            * "Never". Defaults to "IfNotPresent". This can be used only
@@ -3325,13 +3368,13 @@ export interface IKubeadmControlPlane {
            */
           imagePullPolicy?: 'Always' | 'IfNotPresent' | 'Never';
           /**
-           * ImagePullSerial specifies if image pulling performed by kubeadm must be done serially or in parallel.
+           * imagePullSerial specifies if image pulling performed by kubeadm must be done serially or in parallel.
            * This option takes effect only on Kubernetes >=1.31.0.
            * Default: true (defaulted in kubeadm)
            */
           imagePullSerial?: boolean;
           /**
-           * KubeletExtraArgs passes through extra arguments to the kubelet. The arguments here are passed to the kubelet command line via the environment file
+           * kubeletExtraArgs passes through extra arguments to the kubelet. The arguments here are passed to the kubelet command line via the environment file
            * kubeadm writes at runtime for the kubelet to source. This overrides the generic base-level configuration in the kubelet-config-1.X ConfigMap
            * Flags have higher priority when parsing. These values are local and specific to the node kubeadm is executing on.
            */
@@ -3339,13 +3382,13 @@ export interface IKubeadmControlPlane {
             [k: string]: string;
           };
           /**
-           * Name is the `.Metadata.Name` field of the Node API object that will be created in this `kubeadm init` or `kubeadm join` operation.
+           * name is the `.Metadata.Name` field of the Node API object that will be created in this `kubeadm init` or `kubeadm join` operation.
            * This field is also used in the CommonName field of the kubelet's client certificate to the API server.
            * Defaults to the hostname of the node if not provided.
            */
           name?: string;
           /**
-           * Taints specifies the taints the Node API object should be registered with. If this field is unset, i.e. nil, in the `kubeadm init` process
+           * taints specifies the taints the Node API object should be registered with. If this field is unset, i.e. nil, in the `kubeadm init` process
            * it will be defaulted to []v1.Taint{'node-role.kubernetes.io/master=""'}. If you don't want to taint your control-plane node, set this field to an
            * empty slice, i.e. `taints: []` in the YAML file. This field is solely used for Node registration.
            */
@@ -3372,12 +3415,12 @@ export interface IKubeadmControlPlane {
           }[];
         };
         /**
-         * Patches contains options related to applying patches to components deployed by kubeadm during
+         * patches contains options related to applying patches to components deployed by kubeadm during
          * "kubeadm join". The minimum kubernetes version needed to support Patches is v1.22
          */
         patches?: {
           /**
-           * Directory is a path to a directory that contains files named "target[suffix][+patchtype].extension".
+           * directory is a path to a directory that contains files named "target[suffix][+patchtype].extension".
            * For example, "kube-apiserver0+merge.yaml" or just "etcd.json". "target" can be one of
            * "kube-apiserver", "kube-controller-manager", "kube-scheduler", "etcd". "patchtype" can be one
            * of "strategic" "merge" or "json" and they match the patch formats supported by kubectl.
@@ -3391,39 +3434,39 @@ export interface IKubeadmControlPlane {
           directory?: string;
         };
         /**
-         * SkipPhases is a list of phases to skip during command execution.
+         * skipPhases is a list of phases to skip during command execution.
          * The list of phases can be obtained with the "kubeadm init --help" command.
          * This option takes effect only on Kubernetes >=1.22.0.
          */
         skipPhases?: string[];
       };
       /**
-       * Mounts specifies a list of mount points to be setup.
+       * mounts specifies a list of mount points to be setup.
        */
       mounts?: string[][];
       /**
-       * NTP specifies NTP configuration
+       * ntp specifies NTP configuration
        */
       ntp?: {
         /**
-         * Enabled specifies whether NTP should be enabled
+         * enabled specifies whether NTP should be enabled
          */
         enabled?: boolean;
         /**
-         * Servers specifies which NTP servers to use
+         * servers specifies which NTP servers to use
          */
         servers?: string[];
       };
       /**
-       * PostKubeadmCommands specifies extra commands to run after kubeadm runs
+       * postKubeadmCommands specifies extra commands to run after kubeadm runs
        */
       postKubeadmCommands?: string[];
       /**
-       * PreKubeadmCommands specifies extra commands to run before kubeadm runs
+       * preKubeadmCommands specifies extra commands to run before kubeadm runs
        */
       preKubeadmCommands?: string[];
       /**
-       * UseExperimentalRetryJoin replaces a basic kubeadm command with a shell
+       * useExperimentalRetryJoin replaces a basic kubeadm command with a shell
        * script with retries for joins.
        *
        * This is meant to be an experimental temporary workaround on some environments
@@ -3439,85 +3482,104 @@ export interface IKubeadmControlPlane {
        */
       useExperimentalRetryJoin?: boolean;
       /**
-       * Users specifies extra users to add
+       * users specifies extra users to add
        */
       users?: {
         /**
-         * Gecos specifies the gecos to use for the user
+         * gecos specifies the gecos to use for the user
          */
         gecos?: string;
         /**
-         * Groups specifies the additional groups for the user
+         * groups specifies the additional groups for the user
          */
         groups?: string;
         /**
-         * HomeDir specifies the home directory to use for the user
+         * homeDir specifies the home directory to use for the user
          */
         homeDir?: string;
         /**
-         * Inactive specifies whether to mark the user as inactive
+         * inactive specifies whether to mark the user as inactive
          */
         inactive?: boolean;
         /**
-         * LockPassword specifies if password login should be disabled
+         * lockPassword specifies if password login should be disabled
          */
         lockPassword?: boolean;
         /**
-         * Name specifies the user name
+         * name specifies the user name
          */
         name: string;
         /**
-         * Passwd specifies a hashed password for the user
+         * passwd specifies a hashed password for the user
          */
         passwd?: string;
         /**
-         * PasswdFrom is a referenced source of passwd to populate the passwd.
+         * passwdFrom is a referenced source of passwd to populate the passwd.
          */
         passwdFrom?: {
           /**
-           * Secret represents a secret that should populate this password.
+           * secret represents a secret that should populate this password.
            */
           secret: {
             /**
-             * Key is the key in the secret's data map for this value.
+             * key is the key in the secret's data map for this value.
              */
             key: string;
             /**
-             * Name of the secret in the KubeadmBootstrapConfig's namespace to use.
+             * name of the secret in the KubeadmBootstrapConfig's namespace to use.
              */
             name: string;
           };
         };
         /**
-         * PrimaryGroup specifies the primary group for the user
+         * primaryGroup specifies the primary group for the user
          */
         primaryGroup?: string;
         /**
-         * Shell specifies the user's shell
+         * shell specifies the user's shell
          */
         shell?: string;
         /**
-         * SSHAuthorizedKeys specifies a list of ssh authorized keys for the user
+         * sshAuthorizedKeys specifies a list of ssh authorized keys for the user
          */
         sshAuthorizedKeys?: string[];
         /**
-         * Sudo specifies a sudo role for the user
+         * sudo specifies a sudo role for the user
          */
         sudo?: string;
       }[];
       /**
-       * Verbosity is the number for the kubeadm log level verbosity.
+       * verbosity is the number for the kubeadm log level verbosity.
        * It overrides the `--v` flag in kubeadm commands.
        */
       verbosity?: number;
     };
     /**
-     * MachineTemplate contains information about how machines
+     * machineNamingStrategy allows changing the naming pattern used when creating Machines.
+     * InfraMachines & KubeadmConfigs will use the same name as the corresponding Machines.
+     */
+    machineNamingStrategy?: {
+      /**
+       * template defines the template to use for generating the names of the Machine objects.
+       * If not defined, it will fallback to `{{ .kubeadmControlPlane.name }}-{{ .random }}`.
+       * If the generated name string exceeds 63 characters, it will be trimmed to 58 characters and will
+       * get concatenated with a random suffix of length 5.
+       * Length of the template string must not exceed 256 characters.
+       * The template allows the following variables `.cluster.name`, `.kubeadmControlPlane.name` and `.random`.
+       * The variable `.cluster.name` retrieves the name of the cluster object that owns the Machines being created.
+       * The variable `.kubeadmControlPlane.name` retrieves the name of the KubeadmControlPlane object that owns the Machines being created.
+       * The variable `.random` is substituted with random alphanumeric string, without vowels, of length 5. This variable is required
+       * part of the template. If not provided, validation will fail.
+       */
+      template?: string;
+    };
+    /**
+     * machineTemplate contains information about how machines
      * should be shaped when creating or updating a control plane.
      */
     machineTemplate: {
       /**
-       * InfrastructureRef is a required reference to a custom resource
+       * infrastructureRef is a required reference to a custom resource
        * offered by an infrastructure provider.
        */
       infrastructureRef: {
@@ -3562,12 +3624,12 @@ export interface IKubeadmControlPlane {
         uid?: string;
       };
       /**
-       * Standard object's metadata.
+       * metadata is the standard object's metadata.
        * More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
        */
       metadata?: {
         /**
-         * Annotations is an unstructured key value map stored with a resource that may be
+         * annotations is an unstructured key value map stored with a resource that may be
          * set by external tools to store and retrieve arbitrary metadata. They are not
          * queryable and should be preserved when modifying objects.
          * More info: http://kubernetes.io/docs/user-guide/annotations
@@ -3576,7 +3638,7 @@ export interface IKubeadmControlPlane {
           [k: string]: string;
         };
         /**
-         * Map of string keys and values that can be used to organize and categorize
+         * labels is a map of string keys and values that can be used to organize and categorize
          * (scope and select) objects. May match selectors of replication controllers
          * and services.
          * More info: http://kubernetes.io/docs/user-guide/labels
@@ -3586,29 +3648,29 @@ export interface IKubeadmControlPlane {
         };
       };
       /**
-       * NodeDeletionTimeout defines how long the machine controller will attempt to delete the Node that the Machine
+       * nodeDeletionTimeout defines how long the machine controller will attempt to delete the Node that the Machine
        * hosts after the Machine is marked for deletion. A duration of 0 will retry deletion indefinitely.
        * If no value is provided, the default value for this property of the Machine resource will be used.
        */
       nodeDeletionTimeout?: string;
       /**
-       * NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
+       * nodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
        * The default value is 0, meaning that the node can be drained without any time limitations.
        * NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
        */
       nodeDrainTimeout?: string;
       /**
-       * NodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
+       * nodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
        * to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
        */
       nodeVolumeDetachTimeout?: string;
     };
     /**
-     * The RemediationStrategy that controls how control plane machine remediation happens.
+     * remediationStrategy is the RemediationStrategy that controls how control plane machine remediation happens.
      */
     remediationStrategy?: {
       /**
-       * MaxRetry is the Max number of retries while attempting to remediate an unhealthy machine.
+       * maxRetry is the Max number of retries while attempting to remediate an unhealthy machine.
        * A retry happens when a machine that was created as a replacement for an unhealthy machine also fails.
        * For example, given a control plane with three machines M1, M2, M3:
        *
@@ -3625,7 +3687,7 @@ export interface IKubeadmControlPlane {
        */
       maxRetry?: number;
       /**
-       * MinHealthyPeriod defines the duration after which KCP will consider any failure to a machine unrelated
+       * minHealthyPeriod defines the duration after which KCP will consider any failure to a machine unrelated
        * from the previous one. In this case the remediation is not considered a retry anymore, and thus the retry
        * counter restarts from 0. For example, assuming MinHealthyPeriod is set to 1h (default)
        *
@@ -3642,7 +3704,7 @@ export interface IKubeadmControlPlane {
        */
       minHealthyPeriod?: string;
       /**
-       * RetryPeriod is the duration that KCP should wait before remediating a machine being created as a replacement
+       * retryPeriod is the duration that KCP should wait before remediating a machine being created as a replacement
        * for an unhealthy machine (a retry).
        *
        * If not set, a retry will happen immediately.
@@ -3650,13 +3712,13 @@ export interface IKubeadmControlPlane {
       retryPeriod?: string;
     };
     /**
-     * Number of desired machines. Defaults to 1. When stacked etcd is used only
+     * replicas is the number of desired machines. Defaults to 1. When stacked etcd is used only
      * odd numbers are permitted, as per [etcd best practice](https://etcd.io/docs/v3.3.12/faq/#why-an-odd-number-of-cluster-members).
      * This is a pointer to distinguish between explicit zero and not specified.
      */
     replicas?: number;
     /**
-     * RolloutAfter is a field to indicate a rollout should be performed
+     * rolloutAfter is a field to indicate a rollout should be performed
      * after the specified time even if no changes have been made to the
      * KubeadmControlPlane.
      * Example: In the YAML the time can be specified in the RFC3339 format.
@@ -3665,28 +3727,28 @@ export interface IKubeadmControlPlane {
      */
     rolloutAfter?: string;
     /**
-     * RolloutBefore is a field to indicate a rollout should be performed
+     * rolloutBefore is a field to indicate a rollout should be performed
      * if the specified criteria is met.
      */
     rolloutBefore?: {
       /**
-       * CertificatesExpiryDays indicates a rollout needs to be performed if the
+       * certificatesExpiryDays indicates a rollout needs to be performed if the
        * certificates of the machine will expire within the specified days.
        */
       certificatesExpiryDays?: number;
     };
     /**
-     * The RolloutStrategy to use to replace control plane machines with
+     * rolloutStrategy is the RolloutStrategy to use to replace control plane machines with
      * new ones.
      */
     rolloutStrategy?: {
       /**
-       * Rolling update config params. Present only if
+       * rollingUpdate is the rolling update config params. Present only if
        * RolloutStrategyType = RollingUpdate.
        */
       rollingUpdate?: {
         /**
-         * The maximum number of control planes that can be scheduled above or under the
+         * maxSurge is the maximum number of control planes that can be scheduled above or under the
          * desired number of control planes.
          * Value can be an absolute number 1 or 0.
          * Defaults to 1.
@@ -3696,14 +3758,14 @@ export interface IKubeadmControlPlane {
         maxSurge?: number | string;
       };
       /**
-       * Type of rollout. Currently the only supported strategy is
+       * type of rollout. Currently the only supported strategy is
        * "RollingUpdate".
        * Default is RollingUpdate.
        */
       type?: string;
     };
     /**
-     * Version defines the desired Kubernetes version.
+     * version defines the desired Kubernetes version.
      * Please note that if kubeadmConfigSpec.ClusterConfiguration.imageRepository is not set
      * we don't allow upgrades to versions >= v1.22.0 for which kubeadm uses the old registry (k8s.gcr.io).
      * Please use a newer patch version with the new registry instead. The default registries of kubeadm are:
@@ -3717,52 +3779,52 @@ export interface IKubeadmControlPlane {
    */
   status?: {
     /**
-     * Conditions defines current service state of the KubeadmControlPlane.
+     * conditions defines current service state of the KubeadmControlPlane.
      */
     conditions?: {
       /**
-       * Last time the condition transitioned from one status to another.
+       * lastTransitionTime is the last time the condition transitioned from one status to another.
        * This should be when the underlying condition changed. If that is not known, then using the time when
        * the API field changed is acceptable.
        */
       lastTransitionTime: string;
       /**
-       * A human readable message indicating details about the transition.
+       * message is a human readable message indicating details about the transition.
        * This field may be empty.
        */
       message?: string;
       /**
-       * The reason for the condition's last transition in CamelCase.
+       * reason is the reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
        * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
       type: string;
     }[];
     /**
-     * ErrorMessage indicates that there is a terminal problem reconciling the
+     * failureMessage indicates that there is a terminal problem reconciling the
      * state, and will be set to a descriptive error message.
      *
      * Deprecated: This field is deprecated and is going to be removed in the next apiVersion. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
      */
     failureMessage?: string;
     /**
-     * FailureReason indicates that there is a terminal problem reconciling the
+     * failureReason indicates that there is a terminal problem reconciling the
      * state, and will be set to a token value suitable for
      * programmatic interpretation.
      *
@@ -3770,7 +3832,7 @@ export interface IKubeadmControlPlane {
      */
     failureReason?: string;
     /**
-     * Initialized denotes that the KubeadmControlPlane API Server is initialized and thus
+     * initialized denotes that the KubeadmControlPlane API Server is initialized and thus
      * it can accept requests.
      * NOTE: this field is part of the Cluster API contract and it is used to orchestrate provisioning.
      * The value of this field is never updated after provisioning is completed. Please use conditions
@@ -3778,29 +3840,29 @@ export interface IKubeadmControlPlane {
      */
     initialized?: boolean;
     /**
-     * LastRemediation stores info about last remediation performed.
+     * lastRemediation stores info about last remediation performed.
      */
     lastRemediation?: {
       /**
-       * Machine is the machine name of the latest machine being remediated.
+       * machine is the machine name of the latest machine being remediated.
        */
       machine: string;
       /**
-       * RetryCount used to keep track of remediation retry for the last remediated machine.
+       * retryCount used to keep track of remediation retry for the last remediated machine.
        * A retry happens when a machine that was created as a replacement for an unhealthy machine also fails.
        */
       retryCount: number;
       /**
-       * Timestamp is when last remediation happened. It is represented in RFC3339 form and is in UTC.
+       * timestamp is when last remediation happened. It is represented in RFC3339 form and is in UTC.
        */
       timestamp: string;
     };
     /**
-     * ObservedGeneration is the latest generation observed by the controller.
+     * observedGeneration is the latest generation observed by the controller.
      */
     observedGeneration?: number;
     /**
-     * Ready denotes that the KubeadmControlPlane API Server became ready during initial provisioning
+     * ready denotes that the KubeadmControlPlane API Server became ready during initial provisioning
      * to receive requests.
      * NOTE: this field is part of the Cluster API contract and it is used to orchestrate provisioning.
      * The value of this field is never updated after provisioning is completed. Please use conditions
@@ -3808,16 +3870,16 @@ export interface IKubeadmControlPlane {
      */
     ready?: boolean;
     /**
-     * Total number of fully running and ready control plane machines.
+     * readyReplicas is the total number of fully running and ready control plane machines.
      */
     readyReplicas?: number;
     /**
-     * Total number of non-terminated machines targeted by this control plane
+     * replicas is the total number of non-terminated machines targeted by this control plane
      * (their labels match the selector).
      */
     replicas?: number;
     /**
-     * Selector is the label selector in string format to avoid introspection
+     * selector is the label selector in string format to avoid introspection
      * by clients, and is used to provide the CRD-based integration for the
      * scale subresource and additional integrations for things like kubectl
      * describe.. The string will be in the same format as the query-param syntax.
@@ -3825,15 +3887,17 @@ export interface IKubeadmControlPlane {
      */
     selector?: string;
     /**
-     * Total number of unavailable machines targeted by this control plane.
+     * unavailableReplicas is the total number of unavailable machines targeted by this control plane.
      * This is the total number of machines that are still required for
      * the deployment to have 100% available capacity. They may either
      * be machines that are running but not yet ready or machines
      * that still have not been created.
+     *
+     * Deprecated: This field is deprecated and is going to be removed in the next apiVersion. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
      */
     unavailableReplicas?: number;
     /**
-     * Total number of non-terminated machines targeted by this control plane
+     * updatedReplicas is the total number of non-terminated machines targeted by this control plane
      * that have the desired template spec.
      */
     updatedReplicas?: number;
@@ -3896,7 +3960,7 @@ export interface IKubeadmControlPlane {
       upToDateReplicas?: number;
     };
     /**
-     * Version represents the minimum Kubernetes version for the control plane machines
+     * version represents the minimum Kubernetes version for the control plane machines
      * in the cluster.
      */
     version?: string;

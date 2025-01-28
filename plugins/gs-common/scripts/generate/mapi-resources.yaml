@@ -22,12 +22,10 @@
     - name: AWSCluster
       crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsclusters.yaml
       versions:
-        - v1beta1
         - v1beta2
     - name: AWSMachinePool
       crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsmachinepools.yaml
       versions:
-        - v1beta1
         - v1beta2
     - name: AWSMachineTemplate
       crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-aws/main/config/crd/bases/infrastructure.cluster.x-k8s.io_awsmachinetemplates.yaml
@@ -77,6 +75,10 @@
   resources:
     - name: VSphereCluster
       crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-vsphere/refs/heads/main/config/default/crd/bases/infrastructure.cluster.x-k8s.io_vsphereclusters.yaml
+      versions:
+        - v1beta1
+    - name: VSphereClusterIdentity
+      crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-vsphere/refs/heads/main/config/default/crd/bases/infrastructure.cluster.x-k8s.io_vsphereclusteridentities.yaml
       versions:
         - v1beta1
     - name: VSphereMachine

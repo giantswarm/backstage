@@ -30,7 +30,7 @@ export const ClusterSecretStoreSelector = ({
   selectedSecretStore,
   onChange,
 }: ClusterSecretStoreSelectorProps) => {
-  const { installationsData, initialLoading, errors } =
+  const { installationsData, isLoading, errors } =
     useClusterSecretStores(installations);
 
   const resources: Resource<ClusterSecretStore>[] = installationsData.flatMap(
@@ -52,13 +52,13 @@ export const ClusterSecretStoreSelector = ({
   const isDisabled =
     disabled ||
     installations.length === 0 ||
-    initialLoading ||
+    isLoading ||
     resources.length === 0;
 
   let statusText = '';
   if (installations.length === 0) {
     statusText = 'Please select an installation first.';
-  } else if (initialLoading) {
+  } else if (isLoading) {
     statusText = 'Loading list of cluster secret stores...';
   } else if (errors.length > 0) {
     statusText = errors.join(' ');

@@ -1,4 +1,3 @@
-import * as v1beta1 from './v1beta1';
 import * as v1beta2 from './v1beta2';
 
 export const AWSClusterKind = 'AWSCluster';
@@ -14,10 +13,23 @@ export function getAWSClusterGVK(apiVersion?: string) {
   }
 
   switch (apiVersion) {
-    case v1beta1.AWSClusterApiVersion:
-      return v1beta1.AWSClusterGVK;
     case v1beta2.AWSClusterApiVersion:
       return v1beta2.AWSClusterGVK;
+    default:
+      return undefined;
+  }
+}
+
+export const AWSClusterRoleIdentityKind = 'AWSClusterRoleIdentity';
+
+export function getAWSClusterRoleIdentityGVK(apiVersion?: string) {
+  if (!apiVersion) {
+    return v1beta2.AWSClusterRoleIdentityGVK;
+  }
+
+  switch (apiVersion) {
+    case v1beta2.AWSClusterRoleIdentityApiVersion:
+      return v1beta2.AWSClusterRoleIdentityGVK;
     default:
       return undefined;
   }

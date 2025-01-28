@@ -24,13 +24,7 @@ export const getInstallationsQueriesInfo = <T>(
     }),
   );
 
-  const initialLoading =
-    queries.some(query => query.isLoading) &&
-    !queries.some(query =>
-      Array.isArray(query.data)
-        ? query.isSuccess && query.data.length > 0
-        : query.isSuccess,
-    );
+  const isLoading = queries.some(query => query.isLoading);
   const retry = () => {
     for (const query of queries) {
       query.refetch();
@@ -41,7 +35,7 @@ export const getInstallationsQueriesInfo = <T>(
   return {
     queries: installationsQueries,
     installationsData,
-    initialLoading,
+    isLoading,
     retry,
     errors,
   };

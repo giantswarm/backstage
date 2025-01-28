@@ -32,6 +32,11 @@ export type ProviderCluster =
   | capv.VSphereCluster
   | capz.AzureCluster;
 
+export type ProviderClusterIdentity =
+  | capa.AWSClusterRoleIdentity
+  | capv.VSphereClusterIdentity
+  | capz.AzureClusterIdentity;
+
 export type ProviderConfig = crossplaneAWS.ProviderConfig;
 
 export type SecretStore = externalSecrets.SecretStore;
@@ -42,8 +47,22 @@ export type ResourceRequest =
   | giantswarmPlatform.GitHubRepo
   | giantswarmPlatform.AppDeployment;
 
-export type Resource<T> = T & {
+export type ResourceObject = {
+  apiVersion: string;
+  kind: string;
+  metadata: metav1.IObjectMeta;
+};
+
+export type Resource<T extends ResourceObject> = T & {
   installationName: string;
+};
+
+export type InstallationObjectRef = {
+  installationName: string;
+  apiVersion?: string;
+  kind: string;
+  name: string;
+  namespace?: string;
 };
 
 export type LocalSubjectAccessReview = authorization.LocalSubjectAccessReview;

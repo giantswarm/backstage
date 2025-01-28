@@ -11,6 +11,15 @@ export const VSphereClusterGVK = {
   plural: 'vsphereclusters',
 };
 
+export const VSphereClusterIdentityApiVersion =
+  'infrastructure.cluster.x-k8s.io/v1beta1';
+
+export const VSphereClusterIdentityGVK = {
+  apiVersion: 'v1beta1',
+  group: 'infrastructure.cluster.x-k8s.io',
+  plural: 'vsphereclusteridentities',
+};
+
 export const VSphereMachineApiVersion =
   'infrastructure.cluster.x-k8s.io/v1beta1';
 

@@ -1,8 +1,8 @@
 import * as capa from '../../model/capa';
 import * as capv from '../../model/capv';
 import * as capz from '../../model/capz';
-import { ProviderCluster } from '../types';
-import { getApiGroupFromApiVersion } from './helpers';
+import { ProviderCluster, ProviderClusterIdentity } from '../types';
+import { extractIDFromARN, getApiGroupFromApiVersion } from './helpers';
 
 export function getProviderClusterNames(kind: string) {
   let names;
@@ -37,6 +37,36 @@ export function getProviderClusterGVK(kind: string, apiVersion?: string) {
       break;
     default:
       throw new Error(`${kind} is not a supported provider cluster kind.`);
+  }
+
+  if (!gvk) {
+    throw new Error(
+      `${apiVersion} API version is not supported for ${kind} resource.`,
+    );
+  }
+
+  return gvk;
+}
+
+export function getProviderClusterIdentityGVK(
+  kind: string,
+  apiVersion?: string,
+) {
+  let gvk;
+  switch (kind) {
+    case capa.AWSClusterRoleIdentityKind:
+      gvk = capa.getAWSClusterRoleIdentityGVK(apiVersion);
+      break;
+    case capv.VSphereClusterIdentityKind:
+      gvk = capv.getVSphereClusterIdentityGVK(apiVersion);
+      break;
+    case capz.AzureClusterIdentityKind:
+      gvk = capz.getAzureClusterIdentityGVK(apiVersion);
+      break;
+    default:
+      throw new Error(
+        `${kind} is not a supported provider cluster identity kind.`,
+      );
   }
 
   if (!gvk) {
@@ -87,4 +117,45 @@ export function getProviderClusterLocation(providerCluster: ProviderCluster) {
     default:
       return undefined;
   }
+}
+
+export function getProviderClusterIdentityRef(
+  providerCluster: ProviderCluster,
+) {
+  const identityRef = providerCluster?.spec?.identityRef;
+  if (!identityRef) {
+    return undefined;
+  }
+
+  const { kind, name } = identityRef;
+
+  if (!kind || !name) {
+    throw new Error('Kind or name is missing in infrastructure reference.');
+  }
+
+  let apiVersion;
+  let namespace;
+  if (identityRef.kind === 'AzureClusterIdentity') {
+    apiVersion = identityRef.apiVersion;
+    namespace = identityRef.namespace;
+  }
+
+  return {
+    apiVersion,
+    kind,
+    name,
+    namespace,
+  };
+}
+
+export function getProviderClusterIdentityAWSAccountId(
+  providerClusterIdentity: ProviderClusterIdentity,
+) {
+  if (providerClusterIdentity.kind !== 'AWSClusterRoleIdentity') {
+    return undefined;
+  }
+
+  const roleARN = providerClusterIdentity.spec?.roleARN;
+
+  return roleARN ? extractIDFromARN(roleARN) : undefined;
 }

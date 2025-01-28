@@ -146,12 +146,10 @@ export interface IAWSCluster {
       /**
        * CrossZoneLoadBalancing enables the classic ELB cross availability zone balancing.
        *
-       *
        * With cross-zone load balancing, each load balancer node for your Classic Load Balancer
        * distributes requests evenly across the registered instances in all enabled Availability Zones.
        * If cross-zone load balancing is disabled, each load balancer node distributes requests evenly across
        * the registered instances in its Availability Zone only.
-       *
        *
        * Defaults to false.
        */
@@ -409,7 +407,6 @@ export interface IAWSCluster {
          * ID defines a unique identifier to reference this resource.
          * If you're bringing your subnet, set the AWS subnet-id here, it must start with `subnet-`.
          *
-         *
          * When the VPC is managed by CAPA, and you'd like the provider to create a subnet for you,
          * the id can be set to any placeholder value that does not start with `subnet-`;
          * upon creation, the subnet AWS identifier will be populated in the `ResourceID` field and
@@ -441,7 +438,6 @@ export interface IAWSCluster {
          * ParentZoneName is the zone name where the current subnet's zone is tied when
          * the zone is a Local Zone.
          *
-         *
          * The subnets in Local Zone or Wavelength Zone locations consume the ParentZoneName
          * to select the correct private route table to egress traffic to the internet.
          */
@@ -464,29 +460,22 @@ export interface IAWSCluster {
         /**
          * ZoneType defines the type of the zone where the subnet is created.
          *
-         *
          * The valid values are availability-zone, local-zone, and wavelength-zone.
-         *
          *
          * Subnet with zone type availability-zone (regular) is always selected to create cluster
          * resources, like Load Balancers, NAT Gateways, Contol Plane nodes, etc.
          *
-         *
          * Subnet with zone type local-zone or wavelength-zone is not eligible to automatically create
          * regular cluster resources.
-         *
          *
          * The public subnet in availability-zone or local-zone is associated with regular public
          * route table with default route entry to a Internet Gateway.
          *
-         *
          * The public subnet in wavelength-zone is associated with a carrier public
          * route table with default route entry to a Carrier Gateway.
          *
-         *
          * The private subnet in the availability-zone is associated with a private route table with
          * the default route entry to a NAT Gateway created in that zone.
-         *
          *
          * The private subnet in the local-zone or wavelength-zone is associated with a private route table with
          * the default route entry re-using the NAT Gateway in the Region (preferred from the
@@ -541,10 +530,8 @@ export interface IAWSCluster {
            * PublicIpv4PoolFallBackOrder defines the fallback action when the Public IPv4 Pool has been exhausted,
            * no more IPv4 address available in the pool.
            *
-           *
            * When set to 'amazon-pool', the controller check if the pool has available IPv4 address, when pool has reached the
            * IPv4 limit, the address will be claimed from Amazon-pool (default).
-           *
            *
            * When set to 'none', the controller will fail the Elastic IP allocation when the publicIpv4Pool is exhausted.
            */
@@ -554,11 +541,9 @@ export interface IAWSCluster {
          * EmptyRoutesDefaultVPCSecurityGroup specifies whether the default VPC security group ingress
          * and egress rules should be removed.
          *
-         *
          * By default, when creating a VPC, AWS creates a security group called `default` with ingress and egress
          * rules that allow traffic from anywhere. The group could be used as a potential surface attack and
          * it's generally suggested that the group rules are removed or modified appropriately.
-         *
          *
          * NOTE: This only applies when the VPC is managed by the Cluster API AWS controller.
          */
@@ -701,10 +686,8 @@ export interface IAWSCluster {
       /**
        * PresignedURLDuration defines the duration for which presigned URLs are valid.
        *
-       *
        * This is used to generate presigned URLs for S3 Bucket objects, which are used by
        * control-plane and worker nodes to fetch bootstrap data.
-       *
        *
        * When enabled, the IAM instance profiles specified are not used.
        */
@@ -712,7 +695,6 @@ export interface IAWSCluster {
     };
     /**
      * SecondaryControlPlaneLoadBalancer is an additional load balancer that can be used for the control plane.
-     *
      *
      * An example use case is to have a separate internal load balancer for internal traffic,
      * and a separate external load balancer for external traffic.
@@ -781,12 +763,10 @@ export interface IAWSCluster {
       /**
        * CrossZoneLoadBalancing enables the classic ELB cross availability zone balancing.
        *
-       *
        * With cross-zone load balancing, each load balancer node for your Classic Load Balancer
        * distributes requests evenly across the registered instances in all enabled Availability Zones.
        * If cross-zone load balancing is disabled, each load balancer node distributes requests evenly across
        * the registered instances in its Availability Zone only.
-       *
        *
        * Defaults to false.
        */
@@ -958,9 +938,7 @@ export interface IAWSCluster {
         /**
          * Enables or disables the HTTP metadata endpoint on your instances.
          *
-         *
          * If you specify a value of disabled, you cannot access your instance metadata.
-         *
          *
          * Default: enabled
          */
@@ -969,13 +947,11 @@ export interface IAWSCluster {
          * The desired HTTP PUT response hop limit for instance metadata requests. The
          * larger the number, the further instance metadata requests can travel.
          *
-         *
          * Default: 1
          */
         httpPutResponseHopLimit?: number;
         /**
          * The state of token usage for your instance metadata requests.
-         *
          *
          * If the state is optional, you can choose to retrieve instance metadata with
          * or without a session token on your request. If you retrieve the IAM role
@@ -983,12 +959,10 @@ export interface IAWSCluster {
          * If you retrieve the IAM role credentials using a valid session token, the
          * version 2.0 role credentials are returned.
          *
-         *
          * If the state is required, you must send a session token with any instance
          * metadata retrieval requests. In this state, retrieving the IAM role credentials
          * always returns the version 2.0 credentials; the version 1.0 credentials are
          * not available.
-         *
          *
          * Default: optional
          */
@@ -999,7 +973,6 @@ export interface IAWSCluster {
          * For more information, see Work with instance tags using the instance metadata
          * (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#work-with-tags-in-IMDS).
          *
-         *
          * Default: disabled
          */
         instanceMetadataTags?: 'enabled' | 'disabled';
@@ -1008,6 +981,15 @@ export interface IAWSCluster {
        * The current state of the instance.
        */
       instanceState?: string;
+      /**
+       * MarketType specifies the type of market for the EC2 instance. Valid values include:
+       * "OnDemand" (default): The instance runs as a standard OnDemand instance.
+       * "Spot": The instance runs as a Spot instance. When SpotMarketOptions is provided, the marketType defaults to "Spot".
+       * "CapacityBlock": The instance utilizes pre-purchased compute capacity (capacity blocks) with AWS Capacity Reservations.
+       *  If this value is selected, CapacityReservationID must be specified to identify the target reservation.
+       * If marketType is not specified and spotMarketOptions is provided, the marketType defaults to "Spot".
+       */
+      marketType?: 'OnDemand' | 'Spot' | 'CapacityBlock';
       /**
        * Specifies ENIs attached to instance
        */
@@ -1678,6 +1660,10 @@ export interface IAWSMachinePool {
         id?: string;
       };
       /**
+       * CapacityReservationID specifies the target Capacity Reservation into which the instance should be launched.
+       */
+      capacityReservationId?: string;
+      /**
        * The name or the Amazon Resource Name (ARN) of the instance profile associated
        * with the IAM role for the instance. The instance profile contains the IAM
        * role.
@@ -1713,9 +1699,7 @@ export interface IAWSMachinePool {
         /**
          * Enables or disables the HTTP metadata endpoint on your instances.
          *
-         *
          * If you specify a value of disabled, you cannot access your instance metadata.
-         *
          *
          * Default: enabled
          */
@@ -1724,13 +1708,11 @@ export interface IAWSMachinePool {
          * The desired HTTP PUT response hop limit for instance metadata requests. The
          * larger the number, the further instance metadata requests can travel.
          *
-         *
          * Default: 1
          */
         httpPutResponseHopLimit?: number;
         /**
          * The state of token usage for your instance metadata requests.
-         *
          *
          * If the state is optional, you can choose to retrieve instance metadata with
          * or without a session token on your request. If you retrieve the IAM role
@@ -1738,12 +1720,10 @@ export interface IAWSMachinePool {
          * If you retrieve the IAM role credentials using a valid session token, the
          * version 2.0 role credentials are returned.
          *
-         *
          * If the state is required, you must send a session token with any instance
          * metadata retrieval requests. In this state, retrieving the IAM role credentials
          * always returns the version 2.0 credentials; the version 1.0 credentials are
          * not available.
-         *
          *
          * Default: optional
          */
@@ -1754,7 +1734,6 @@ export interface IAWSMachinePool {
          * For more information, see Work with instance tags using the instance metadata
          * (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#work-with-tags-in-IMDS).
          *
-         *
          * Default: disabled
          */
         instanceMetadataTags?: 'enabled' | 'disabled';
@@ -1763,6 +1742,15 @@ export interface IAWSMachinePool {
        * InstanceType is the type of instance to create. Example: m4.xlarge
        */
       instanceType?: string;
+      /**
+       * MarketType specifies the type of market for the EC2 instance. Valid values include:
+       * "OnDemand" (default): The instance runs as a standard OnDemand instance.
+       * "Spot": The instance runs as a Spot instance. When SpotMarketOptions is provided, the marketType defaults to "Spot".
+       * "CapacityBlock": The instance utilizes pre-purchased compute capacity (capacity blocks) with AWS Capacity Reservations.
+       *  If this value is selected, CapacityReservationID must be specified to identify the target reservation.
+       * If marketType is not specified and spotMarketOptions is provided, the marketType defaults to "Spot".
+       */
+      marketType?: 'OnDemand' | 'Spot' | 'CapacityBlock';
       /**
        * The name of the launch template.
        */
@@ -2072,7 +2060,6 @@ export interface IAWSMachinePool {
      * reconciling the Machine and will contain a more verbose string suitable
      * for logging and human consumption.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -2081,7 +2068,6 @@ export interface IAWSMachinePool {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of Machines
      * can be added as events to the Machine object and/or logged in the
@@ -2093,7 +2079,6 @@ export interface IAWSMachinePool {
      * reconciling the Machine and will contain a succinct value suitable
      * for machine interpretation.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -2102,7 +2087,6 @@ export interface IAWSMachinePool {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of Machines
      * can be added as events to the Machine object and/or logged in the
@@ -2293,10 +2277,8 @@ export interface IAWSMachineTemplate {
            * PublicIpv4PoolFallBackOrder defines the fallback action when the Public IPv4 Pool has been exhausted,
            * no more IPv4 address available in the pool.
            *
-           *
            * When set to 'amazon-pool', the controller check if the pool has available IPv4 address, when pool has reached the
            * IPv4 limit, the address will be claimed from Amazon-pool (default).
-           *
            *
            * When set to 'none', the controller will fail the Elastic IP allocation when the publicIpv4Pool is exhausted.
            */
@@ -2331,7 +2313,6 @@ export interface IAWSMachineTemplate {
              * NoProxy is the list of domains to not proxy for Ignition.
              * Specifies a list of strings to hosts that should be excluded from proxying.
              *
-             *
              * Each value is represented by:
              * - An IP address prefix (1.2.3.4)
              * - An IP address prefix in CIDR notation (1.2.3.4/8)
@@ -2339,7 +2320,6 @@ export interface IAWSMachineTemplate {
              *   - A domain name matches that name and all subdomains
              *   - A domain name with a leading . matches subdomains only
              * - A special DNS label (*), indicates that no proxying should be done
-             *
              *
              * An IP address prefix and domain name can also include a literal port number (1.2.3.4:80).
              *
@@ -2351,14 +2331,11 @@ export interface IAWSMachineTemplate {
            * StorageType defines how to store the boostrap user data for Ignition.
            * This can be used to instruct Ignition from where to fetch the user data to bootstrap an instance.
            *
-           *
            * When omitted, the storage option will default to ClusterObjectStore.
-           *
            *
            * When set to "ClusterObjectStore", if the capability is available and a Cluster ObjectStore configuration
            * is correctly provided in the Cluster object (under .spec.s3Bucket),
            * an object store will be used to store bootstrap user data.
-           *
            *
            * When set to "UnencryptedUserData", EC2 Instance User Data will be used to store the machine bootstrap user data, unencrypted.
            * This option is considered less secure than others as user data may contain sensitive informations (keys, certificates, etc.)
@@ -2420,9 +2397,7 @@ export interface IAWSMachineTemplate {
           /**
            * Enables or disables the HTTP metadata endpoint on your instances.
            *
-           *
            * If you specify a value of disabled, you cannot access your instance metadata.
-           *
            *
            * Default: enabled
            */
@@ -2431,13 +2406,11 @@ export interface IAWSMachineTemplate {
            * The desired HTTP PUT response hop limit for instance metadata requests. The
            * larger the number, the further instance metadata requests can travel.
            *
-           *
            * Default: 1
            */
           httpPutResponseHopLimit?: number;
           /**
            * The state of token usage for your instance metadata requests.
-           *
            *
            * If the state is optional, you can choose to retrieve instance metadata with
            * or without a session token on your request. If you retrieve the IAM role
@@ -2445,12 +2418,10 @@ export interface IAWSMachineTemplate {
            * If you retrieve the IAM role credentials using a valid session token, the
            * version 2.0 role credentials are returned.
            *
-           *
            * If the state is required, you must send a session token with any instance
            * metadata retrieval requests. In this state, retrieving the IAM role credentials
            * always returns the version 2.0 credentials; the version 1.0 credentials are
            * not available.
-           *
            *
            * Default: optional
            */
@@ -2461,7 +2432,6 @@ export interface IAWSMachineTemplate {
            * For more information, see Work with instance tags using the instance metadata
            * (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#work-with-tags-in-IMDS).
            *
-           *
            * Default: disabled
            */
           instanceMetadataTags?: 'enabled' | 'disabled';
@@ -2470,6 +2440,15 @@ export interface IAWSMachineTemplate {
          * InstanceType is the type of instance to create. Example: m4.xlarge
          */
         instanceType: string;
+        /**
+         * MarketType specifies the type of market for the EC2 instance. Valid values include:
+         * "OnDemand" (default): The instance runs as a standard OnDemand instance.
+         * "Spot": The instance runs as a Spot instance. When SpotMarketOptions is provided, the marketType defaults to "Spot".
+         * "CapacityBlock": The instance utilizes pre-purchased compute capacity (capacity blocks) with AWS Capacity Reservations.
+         *  If this value is selected, CapacityReservationID must be specified to identify the target reservation.
+         * If marketType is not specified and spotMarketOptions is provided, the marketType defaults to "Spot".
+         */
+        marketType?: 'OnDemand' | 'Spot' | 'CapacityBlock';
         /**
          * NetworkInterfaces is a list of ENIs to associate with the instance.
          * A maximum of 2 may be specified.
@@ -2832,6 +2811,10 @@ export interface IAWSManagedMachinePool {
         id?: string;
       };
       /**
+       * CapacityReservationID specifies the target Capacity Reservation into which the instance should be launched.
+       */
+      capacityReservationId?: string;
+      /**
        * The name or the Amazon Resource Name (ARN) of the instance profile associated
        * with the IAM role for the instance. The instance profile contains the IAM
        * role.
@@ -2867,9 +2850,7 @@ export interface IAWSManagedMachinePool {
         /**
          * Enables or disables the HTTP metadata endpoint on your instances.
          *
-         *
          * If you specify a value of disabled, you cannot access your instance metadata.
-         *
          *
          * Default: enabled
          */
@@ -2878,13 +2859,11 @@ export interface IAWSManagedMachinePool {
          * The desired HTTP PUT response hop limit for instance metadata requests. The
          * larger the number, the further instance metadata requests can travel.
          *
-         *
          * Default: 1
          */
         httpPutResponseHopLimit?: number;
         /**
          * The state of token usage for your instance metadata requests.
-         *
          *
          * If the state is optional, you can choose to retrieve instance metadata with
          * or without a session token on your request. If you retrieve the IAM role
@@ -2892,12 +2871,10 @@ export interface IAWSManagedMachinePool {
          * If you retrieve the IAM role credentials using a valid session token, the
          * version 2.0 role credentials are returned.
          *
-         *
          * If the state is required, you must send a session token with any instance
          * metadata retrieval requests. In this state, retrieving the IAM role credentials
          * always returns the version 2.0 credentials; the version 1.0 credentials are
          * not available.
-         *
          *
          * Default: optional
          */
@@ -2908,7 +2885,6 @@ export interface IAWSManagedMachinePool {
          * For more information, see Work with instance tags using the instance metadata
          * (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#work-with-tags-in-IMDS).
          *
-         *
          * Default: disabled
          */
         instanceMetadataTags?: 'enabled' | 'disabled';
@@ -2917,6 +2893,15 @@ export interface IAWSManagedMachinePool {
        * InstanceType is the type of instance to create. Example: m4.xlarge
        */
       instanceType?: string;
+      /**
+       * MarketType specifies the type of market for the EC2 instance. Valid values include:
+       * "OnDemand" (default): The instance runs as a standard OnDemand instance.
+       * "Spot": The instance runs as a Spot instance. When SpotMarketOptions is provided, the marketType defaults to "Spot".
+       * "CapacityBlock": The instance utilizes pre-purchased compute capacity (capacity blocks) with AWS Capacity Reservations.
+       *  If this value is selected, CapacityReservationID must be specified to identify the target reservation.
+       * If marketType is not specified and spotMarketOptions is provided, the marketType defaults to "Spot".
+       */
+      marketType?: 'OnDemand' | 'Spot' | 'CapacityBlock';
       /**
        * The name of the launch template.
        */
@@ -3188,7 +3173,6 @@ export interface IAWSManagedMachinePool {
      * reconciling the MachinePool and will contain a more verbose string suitable
      * for logging and human consumption.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -3197,7 +3181,6 @@ export interface IAWSManagedMachinePool {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of MachinePools
      * can be added as events to the MachinePool object and/or logged in the
@@ -3209,7 +3192,6 @@ export interface IAWSManagedMachinePool {
      * reconciling the MachinePool and will contain a succinct value suitable
      * for machine interpretation.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -3218,7 +3200,6 @@ export interface IAWSManagedMachinePool {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of MachinePools
      * can be added as events to the MachinePool object and/or logged in the
@@ -3611,7 +3592,6 @@ export interface IAWSManagedControlPlane {
          * ID defines a unique identifier to reference this resource.
          * If you're bringing your subnet, set the AWS subnet-id here, it must start with `subnet-`.
          *
-         *
          * When the VPC is managed by CAPA, and you'd like the provider to create a subnet for you,
          * the id can be set to any placeholder value that does not start with `subnet-`;
          * upon creation, the subnet AWS identifier will be populated in the `ResourceID` field and
@@ -3643,7 +3623,6 @@ export interface IAWSManagedControlPlane {
          * ParentZoneName is the zone name where the current subnet's zone is tied when
          * the zone is a Local Zone.
          *
-         *
          * The subnets in Local Zone or Wavelength Zone locations consume the ParentZoneName
          * to select the correct private route table to egress traffic to the internet.
          */
@@ -3666,29 +3645,22 @@ export interface IAWSManagedControlPlane {
         /**
          * ZoneType defines the type of the zone where the subnet is created.
          *
-         *
          * The valid values are availability-zone, local-zone, and wavelength-zone.
-         *
          *
          * Subnet with zone type availability-zone (regular) is always selected to create cluster
          * resources, like Load Balancers, NAT Gateways, Contol Plane nodes, etc.
          *
-         *
          * Subnet with zone type local-zone or wavelength-zone is not eligible to automatically create
          * regular cluster resources.
-         *
          *
          * The public subnet in availability-zone or local-zone is associated with regular public
          * route table with default route entry to a Internet Gateway.
          *
-         *
          * The public subnet in wavelength-zone is associated with a carrier public
          * route table with default route entry to a Carrier Gateway.
          *
-         *
          * The private subnet in the availability-zone is associated with a private route table with
          * the default route entry to a NAT Gateway created in that zone.
-         *
          *
          * The private subnet in the local-zone or wavelength-zone is associated with a private route table with
          * the default route entry re-using the NAT Gateway in the Region (preferred from the
@@ -3743,10 +3715,8 @@ export interface IAWSManagedControlPlane {
            * PublicIpv4PoolFallBackOrder defines the fallback action when the Public IPv4 Pool has been exhausted,
            * no more IPv4 address available in the pool.
            *
-           *
            * When set to 'amazon-pool', the controller check if the pool has available IPv4 address, when pool has reached the
            * IPv4 limit, the address will be claimed from Amazon-pool (default).
-           *
            *
            * When set to 'none', the controller will fail the Elastic IP allocation when the publicIpv4Pool is exhausted.
            */
@@ -3756,11 +3726,9 @@ export interface IAWSManagedControlPlane {
          * EmptyRoutesDefaultVPCSecurityGroup specifies whether the default VPC security group ingress
          * and egress rules should be removed.
          *
-         *
          * By default, when creating a VPC, AWS creates a security group called `default` with ingress and egress
          * rules that allow traffic from anywhere. The group could be used as a potential surface attack and
          * it's generally suggested that the group rules are removed or modified appropriately.
-         *
          *
          * NOTE: This only applies when the VPC is managed by the Cluster API AWS controller.
          */
@@ -3876,7 +3844,7 @@ export interface IAWSManagedControlPlane {
        * This is also known as audience. The ID for the client application that makes
        * authentication requests to the OpenID identity provider.
        */
-      clientId?: string;
+      clientId: string;
       /**
        * The JWT claim that the provider uses to return your groups.
        */
@@ -3890,10 +3858,9 @@ export interface IAWSManagedControlPlane {
       /**
        * The name of the OIDC provider configuration.
        *
-       *
        * IdentityProviderConfigName is a required field
        */
-      identityProviderConfigName?: string;
+      identityProviderConfigName: string;
       /**
        * The URL of the OpenID identity provider that allows the API server to discover
        * public signing keys for verifying tokens. The URL must begin with https://
@@ -3903,7 +3870,7 @@ export interface IAWSManagedControlPlane {
        * or https://example.com. This URL should point to the level below .well-known/openid-configuration
        * and must be publicly accessible over the internet.
        */
-      issuerUrl?: string;
+      issuerUrl: string;
       /**
        * The key value pairs that describe required claims in the identity token.
        * If set, each claim is verified to be present in the token with a matching
@@ -4033,9 +4000,7 @@ export interface IAWSManagedControlPlane {
              * This field is effectively required, but due to backwards compatibility is
              * allowed to be empty. Instances of this type with an empty value here are
              * almost certainly wrong.
-             * TODO: Add other useful fields. apiVersion, kind, uid?
              * More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-             * TODO: Drop `kubebuilder:default` when controller-gen doesn't need it https://github.com/kubernetes-sigs/kubebuilder/issues/3896.
              */
             name?: string;
             /**
@@ -4088,9 +4053,7 @@ export interface IAWSManagedControlPlane {
              * This field is effectively required, but due to backwards compatibility is
              * allowed to be empty. Instances of this type with an empty value here are
              * almost certainly wrong.
-             * TODO: Add other useful fields. apiVersion, kind, uid?
              * More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-             * TODO: Drop `kubebuilder:default` when controller-gen doesn't need it https://github.com/kubernetes-sigs/kubebuilder/issues/3896.
              */
             name?: string;
             /**
@@ -4205,9 +4168,7 @@ export interface IAWSManagedControlPlane {
         /**
          * Enables or disables the HTTP metadata endpoint on your instances.
          *
-         *
          * If you specify a value of disabled, you cannot access your instance metadata.
-         *
          *
          * Default: enabled
          */
@@ -4216,13 +4177,11 @@ export interface IAWSManagedControlPlane {
          * The desired HTTP PUT response hop limit for instance metadata requests. The
          * larger the number, the further instance metadata requests can travel.
          *
-         *
          * Default: 1
          */
         httpPutResponseHopLimit?: number;
         /**
          * The state of token usage for your instance metadata requests.
-         *
          *
          * If the state is optional, you can choose to retrieve instance metadata with
          * or without a session token on your request. If you retrieve the IAM role
@@ -4230,12 +4189,10 @@ export interface IAWSManagedControlPlane {
          * If you retrieve the IAM role credentials using a valid session token, the
          * version 2.0 role credentials are returned.
          *
-         *
          * If the state is required, you must send a session token with any instance
          * metadata retrieval requests. In this state, retrieving the IAM role credentials
          * always returns the version 2.0 credentials; the version 1.0 credentials are
          * not available.
-         *
          *
          * Default: optional
          */
@@ -4246,7 +4203,6 @@ export interface IAWSManagedControlPlane {
          * For more information, see Work with instance tags using the instance metadata
          * (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#work-with-tags-in-IMDS).
          *
-         *
          * Default: disabled
          */
         instanceMetadataTags?: 'enabled' | 'disabled';
@@ -4255,6 +4211,15 @@ export interface IAWSManagedControlPlane {
        * The current state of the instance.
        */
       instanceState?: string;
+      /**
+       * MarketType specifies the type of market for the EC2 instance. Valid values include:
+       * "OnDemand" (default): The instance runs as a standard OnDemand instance.
+       * "Spot": The instance runs as a Spot instance. When SpotMarketOptions is provided, the marketType defaults to "Spot".
+       * "CapacityBlock": The instance utilizes pre-purchased compute capacity (capacity blocks) with AWS Capacity Reservations.
+       *  If this value is selected, CapacityReservationID must be specified to identify the target reservation.
+       * If marketType is not specified and spotMarketOptions is provided, the marketType defaults to "Spot".
+       */
+      marketType?: 'OnDemand' | 'Spot' | 'CapacityBlock';
       /**
        * Specifies ENIs attached to instance
        */

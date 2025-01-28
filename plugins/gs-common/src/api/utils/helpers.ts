@@ -2,6 +2,7 @@ import { compareAsc } from 'date-fns/fp/compareAsc';
 import { parseISO } from 'date-fns/fp/parseISO';
 import { formatDistance } from 'date-fns/fp/formatDistance';
 import { toDate } from 'date-fns-tz';
+import { InstallationObjectRef, Resource, ResourceObject } from '../types';
 
 /**
  * Get a formatted date structure, relative to now (e.g. 2 days ago, or 1 year ago).
@@ -54,4 +55,42 @@ export function parseDate(date: string | Date): Date {
 
 export function getApiGroupFromApiVersion(apiVersion: string): string {
   return apiVersion.split('/')[0];
+}
+
+export function findResourceByRef<T extends ResourceObject>(
+  resources: Resource<T>[],
+  ref: InstallationObjectRef,
+) {
+  const { installationName, apiVersion, kind, name, namespace } = ref;
+  const r = resources.find(resource => {
+    const installationNameMatch =
+      resource.installationName === installationName;
+    const apiVersionMatch = apiVersion
+      ? resource.apiVersion === apiVersion
+      : true;
+    const kindMatch = resource.kind === kind;
+    const nameMatch = resource.metadata.name === name;
+    const namespaceMatch = namespace
+      ? resource.metadata.namespace === namespace
+      : true;
+
+    return (
+      installationNameMatch &&
+      apiVersionMatch &&
+      kindMatch &&
+      nameMatch &&
+      namespaceMatch
+    );
+  });
+
+  return r;
+}
+
+export function extractIDFromARN(arn?: string) {
+  if (!arn) return undefined;
+
+  const parts = arn.split(':');
+  if (parts.length < 4) return '';
+
+  return parts[4];
 }

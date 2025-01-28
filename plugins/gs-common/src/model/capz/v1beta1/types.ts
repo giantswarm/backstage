@@ -333,6 +333,10 @@ export interface IAzureCluster {
       }[];
     };
     /**
+     * ControlPlaneEnabled enables control plane components in the cluster.
+     */
+    controlPlaneEnabled?: boolean;
+    /**
      * ControlPlaneEndpoint represents the endpoint used to communicate with the control plane. It is not recommended to set
      * this when creating an AzureCluster as CAPZ will set this for you. However, if it is set, CAPZ will not change it.
      */
@@ -1083,6 +1087,10 @@ export interface IAzureClusterIdentity {
       };
     };
     /**
+     * CertPath is the path where certificates exist. When set, it takes precedence over ClientSecret for types that use certs like ServicePrincipalCertificate.
+     */
+    certPath?: string;
+    /**
      * ClientID is the service principal client ID.
      * Both User Assigned MSI and SP can use this field.
      */
@@ -1413,8 +1421,8 @@ export interface IAzureMachineTemplate {
         identity?: 'None' | 'SystemAssigned' | 'UserAssigned';
         /**
          * Image is used to provide details of an image to use during VM creation.
-         * If image details are omitted the image will default the Azure Marketplace "capi" offer,
-         * which is based on Ubuntu.
+         * If image details are omitted, the default is to use an Azure Compute Gallery Image
+         * from CAPZ's community gallery.
          */
         image?: {
           /**
@@ -1969,8 +1977,8 @@ export interface IAzureMachine {
     identity?: 'None' | 'SystemAssigned' | 'UserAssigned';
     /**
      * Image is used to provide details of an image to use during VM creation.
-     * If image details are omitted the image will default the Azure Marketplace "capi" offer,
-     * which is based on Ubuntu.
+     * If image details are omitted, the default is to use an Azure Compute Gallery Image
+     * from CAPZ's community gallery.
      */
     image?: {
       /**

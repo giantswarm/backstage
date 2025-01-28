@@ -117,8 +117,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -126,8 +126,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -149,8 +149,8 @@ export interface ISecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -165,8 +165,8 @@ export interface ISecretStore {
              */
             accessID?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -174,19 +174,19 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             accessType?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -194,19 +194,19 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             accessTypeParam?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -214,8 +214,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -276,8 +276,8 @@ export interface ISecretStore {
              */
             accessKeyIDSecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -285,8 +285,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -295,8 +295,8 @@ export interface ISecretStore {
              */
             accessKeySecretSecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -304,8 +304,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -349,8 +349,8 @@ export interface ISecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -365,8 +365,8 @@ export interface ISecretStore {
              */
             accessKeyIDSecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -374,8 +374,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -384,8 +384,8 @@ export interface ISecretStore {
              */
             secretAccessKeySecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -393,8 +393,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -405,8 +405,8 @@ export interface ISecretStore {
              */
             sessionTokenSecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -414,8 +414,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -487,8 +487,8 @@ export interface ISecretStore {
            */
           clientCertificate?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -496,8 +496,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -506,8 +506,8 @@ export interface ISecretStore {
            */
           clientId?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -515,8 +515,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -525,8 +525,8 @@ export interface ISecretStore {
            */
           clientSecret?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -534,8 +534,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -544,8 +544,8 @@ export interface ISecretStore {
            */
           tenantId?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -553,8 +553,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -597,8 +597,8 @@ export interface ISecretStore {
            */
           name: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * Namespace of the resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -620,16 +620,16 @@ export interface ISecretStore {
          */
         auth: {
           /**
-           * Content of the certificate (cert.pem) for use when authenticating with an OAuth client Id using a Client Certificate.
+           * APIKey If not provided then ClientID/ClientSecret become required.
            */
-          certificate?: {
+          apiKey?: {
             /**
              * SecretRef references a key in a secret that will be used as value.
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -637,8 +637,36 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
+               */
+              namespace?: string;
+            };
+            /**
+             * Value can be specified directly to set a value without using a secret.
+             */
+            value?: string;
+          };
+          /**
+           * Certificate (cert.pem) for use when authenticating with an OAuth client Id using a Client Certificate.
+           */
+          certificate?: {
+            /**
+             * SecretRef references a key in a secret that will be used as value.
+             */
+            secretRef?: {
+              /**
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
+               */
+              key?: string;
+              /**
+               * The name of the Secret resource being referred to.
+               */
+              name?: string;
+              /**
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -656,8 +684,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -665,8 +693,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -675,14 +703,17 @@ export interface ISecretStore {
              */
             value?: string;
           };
-          clientId: {
+          /**
+           * ClientID is the API OAuth Client ID.
+           */
+          clientId?: {
             /**
              * SecretRef references a key in a secret that will be used as value.
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -690,8 +721,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -700,14 +731,17 @@ export interface ISecretStore {
              */
             value?: string;
           };
-          clientSecret: {
+          /**
+           * ClientSecret is the API OAuth Client Secret.
+           */
+          clientSecret?: {
             /**
              * SecretRef references a key in a secret that will be used as value.
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -715,8 +749,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -765,8 +799,8 @@ export interface ISecretStore {
              */
             credentials: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -774,8 +808,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -836,8 +870,8 @@ export interface ISecretStore {
              */
             privateKeySecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -845,8 +879,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -869,13 +903,13 @@ export interface ISecretStore {
           apikey?: {
             account: string;
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             apiKeyRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -883,19 +917,19 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             userRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -903,8 +937,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -922,8 +956,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -931,8 +965,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -952,8 +986,8 @@ export interface ISecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1004,8 +1038,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1013,8 +1047,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -1032,8 +1066,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1041,8 +1075,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -1080,8 +1114,8 @@ export interface ISecretStore {
              */
             credentials?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1089,8 +1123,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1117,8 +1151,8 @@ export interface ISecretStore {
              */
             dopplerToken: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1126,8 +1160,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1185,8 +1219,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1194,8 +1228,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -1219,8 +1253,8 @@ export interface ISecretStore {
              */
             secretAccessKeySecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1228,8 +1262,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1253,8 +1287,8 @@ export interface ISecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1283,8 +1317,8 @@ export interface ISecretStore {
              */
             accessToken?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1292,8 +1326,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1348,8 +1382,8 @@ export interface ISecretStore {
              */
             secretApiKeySecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1357,8 +1391,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1379,13 +1413,13 @@ export interface ISecretStore {
         auth: {
           universalAuthCredentials?: {
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientId: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1393,19 +1427,19 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientSecret: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1413,8 +1447,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1433,13 +1467,13 @@ export interface ISecretStore {
        */
       keepersecurity?: {
         /**
-         * A reference to a specific 'key' within a Secret resource,
+         * A reference to a specific 'key' within a Secret resource.
          * In some instances, `key` is a required field.
          */
         authRef: {
           /**
-           * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-           * defaulted, in others it may be required.
+           * A key in the referenced Secret.
+           * Some instances of this field may be defaulted, in others it may be required.
            */
           key?: string;
           /**
@@ -1447,8 +1481,8 @@ export interface ISecretStore {
            */
           name?: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * The namespace of the Secret resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -1467,13 +1501,13 @@ export interface ISecretStore {
            */
           cert?: {
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientCert?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1481,19 +1515,19 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientKey?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1501,8 +1535,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1522,8 +1556,8 @@ export interface ISecretStore {
              */
             name: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * Namespace of the resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -1532,13 +1566,13 @@ export interface ISecretStore {
            */
           token?: {
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             bearerToken?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1546,8 +1580,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1558,8 +1592,8 @@ export interface ISecretStore {
          */
         authRef?: {
           /**
-           * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-           * defaulted, in others it may be required.
+           * A key in the referenced Secret.
+           * Some instances of this field may be defaulted, in others it may be required.
            */
           key?: string;
           /**
@@ -1567,8 +1601,8 @@ export interface ISecretStore {
            */
           name?: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * The namespace of the Secret resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -1630,8 +1664,8 @@ export interface ISecretStore {
            */
           apiKeyRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1639,8 +1673,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -1649,8 +1683,8 @@ export interface ISecretStore {
            */
           passcodeRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1658,8 +1692,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -1690,8 +1724,8 @@ export interface ISecretStore {
              */
             connectTokenSecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1699,8 +1733,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1735,8 +1769,8 @@ export interface ISecretStore {
              */
             fingerprint: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1744,8 +1778,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1754,8 +1788,8 @@ export interface ISecretStore {
              */
             privatekey: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1763,8 +1797,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1814,8 +1848,8 @@ export interface ISecretStore {
            */
           name: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * Namespace of the resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -1830,13 +1864,13 @@ export interface ISecretStore {
          */
         auth: {
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           passwordSecretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1844,19 +1878,19 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           privateKeySecretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1864,8 +1898,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -1889,8 +1923,8 @@ export interface ISecretStore {
              */
             credentials?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1898,8 +1932,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1931,8 +1965,8 @@ export interface ISecretStore {
              */
             accessToken: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -1940,8 +1974,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -1962,8 +1996,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -1971,8 +2005,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2011,8 +2045,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2020,8 +2054,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2051,8 +2085,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2060,8 +2094,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2085,8 +2119,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2094,8 +2128,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2118,8 +2152,8 @@ export interface ISecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2127,8 +2161,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2148,13 +2182,13 @@ export interface ISecretStore {
         auth: {
           clientId: string;
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           clientSecretSecretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2162,8 +2196,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2212,8 +2246,8 @@ export interface ISecretStore {
              */
             roleRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2221,8 +2255,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2234,8 +2268,8 @@ export interface ISecretStore {
              */
             secretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2243,8 +2277,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2260,8 +2294,8 @@ export interface ISecretStore {
              */
             clientCert?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2269,8 +2303,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2280,8 +2314,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2289,8 +2323,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2323,8 +2357,8 @@ export interface ISecretStore {
                  */
                 name: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * Namespace of the resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -2350,8 +2384,8 @@ export interface ISecretStore {
                */
               accessKeyIDSecretRef?: {
                 /**
-                 * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-                 * defaulted, in others it may be required.
+                 * A key in the referenced Secret.
+                 * Some instances of this field may be defaulted, in others it may be required.
                  */
                 key?: string;
                 /**
@@ -2359,8 +2393,8 @@ export interface ISecretStore {
                  */
                 name?: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * The namespace of the Secret resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -2369,8 +2403,8 @@ export interface ISecretStore {
                */
               secretAccessKeySecretRef?: {
                 /**
-                 * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-                 * defaulted, in others it may be required.
+                 * A key in the referenced Secret.
+                 * Some instances of this field may be defaulted, in others it may be required.
                  */
                 key?: string;
                 /**
@@ -2378,8 +2412,8 @@ export interface ISecretStore {
                  */
                 name?: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * The namespace of the Secret resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -2390,8 +2424,8 @@ export interface ISecretStore {
                */
               sessionTokenSecretRef?: {
                 /**
-                 * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-                 * defaulted, in others it may be required.
+                 * A key in the referenced Secret.
+                 * Some instances of this field may be defaulted, in others it may be required.
                  */
                 key?: string;
                 /**
@@ -2399,8 +2433,8 @@ export interface ISecretStore {
                  */
                 name?: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * The namespace of the Secret resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -2454,8 +2488,8 @@ export interface ISecretStore {
                  */
                 name: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * Namespace of the resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -2476,8 +2510,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2485,8 +2519,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2514,8 +2548,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2523,8 +2557,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2546,8 +2580,8 @@ export interface ISecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2569,8 +2603,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2578,8 +2612,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2602,8 +2636,8 @@ export interface ISecretStore {
            */
           tokenSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2611,8 +2645,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2632,8 +2666,8 @@ export interface ISecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -2641,8 +2675,8 @@ export interface ISecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -2734,8 +2768,8 @@ export interface ISecretStore {
            */
           certSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2743,8 +2777,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2755,8 +2789,8 @@ export interface ISecretStore {
            */
           keySecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2764,8 +2798,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2796,7 +2830,7 @@ export interface ISecretStore {
          */
         caProvider?: {
           /**
-           * The key the value inside of the provider type to use, only used with "Secret" type
+           * The key where the CA certificate can be found in the Secret or ConfigMap.
            */
           key?: string;
           /**
@@ -2845,8 +2879,8 @@ export interface ISecretStore {
            */
           secretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2854,8 +2888,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2886,8 +2920,8 @@ export interface ISecretStore {
            */
           authorizedKeySecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2895,8 +2929,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2906,13 +2940,13 @@ export interface ISecretStore {
          */
         caProvider?: {
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           certSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2920,8 +2954,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2944,8 +2978,8 @@ export interface ISecretStore {
            */
           authorizedKeySecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2953,8 +2987,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -2964,13 +2998,13 @@ export interface ISecretStore {
          */
         caProvider?: {
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           certSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -2978,8 +3012,8 @@ export interface ISecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -3129,8 +3163,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3138,8 +3172,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3161,8 +3195,8 @@ export interface IClusterSecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3177,8 +3211,8 @@ export interface IClusterSecretStore {
              */
             accessID?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3186,19 +3220,19 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             accessType?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3206,19 +3240,19 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             accessTypeParam?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3226,8 +3260,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3288,8 +3322,8 @@ export interface IClusterSecretStore {
              */
             accessKeyIDSecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3297,8 +3331,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3307,8 +3341,8 @@ export interface IClusterSecretStore {
              */
             accessKeySecretSecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3316,8 +3350,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3361,8 +3395,8 @@ export interface IClusterSecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3377,8 +3411,8 @@ export interface IClusterSecretStore {
              */
             accessKeyIDSecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3386,8 +3420,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3396,8 +3430,8 @@ export interface IClusterSecretStore {
              */
             secretAccessKeySecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3405,8 +3439,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3417,8 +3451,8 @@ export interface IClusterSecretStore {
              */
             sessionTokenSecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3426,8 +3460,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3499,8 +3533,8 @@ export interface IClusterSecretStore {
            */
           clientCertificate?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -3508,8 +3542,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -3518,8 +3552,8 @@ export interface IClusterSecretStore {
            */
           clientId?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -3527,8 +3561,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -3537,8 +3571,8 @@ export interface IClusterSecretStore {
            */
           clientSecret?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -3546,8 +3580,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -3556,8 +3590,8 @@ export interface IClusterSecretStore {
            */
           tenantId?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -3565,8 +3599,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -3609,8 +3643,8 @@ export interface IClusterSecretStore {
            */
           name: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * Namespace of the resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -3632,16 +3666,16 @@ export interface IClusterSecretStore {
          */
         auth: {
           /**
-           * Content of the certificate (cert.pem) for use when authenticating with an OAuth client Id using a Client Certificate.
+           * APIKey If not provided then ClientID/ClientSecret become required.
            */
-          certificate?: {
+          apiKey?: {
             /**
              * SecretRef references a key in a secret that will be used as value.
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3649,8 +3683,36 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
+               */
+              namespace?: string;
+            };
+            /**
+             * Value can be specified directly to set a value without using a secret.
+             */
+            value?: string;
+          };
+          /**
+           * Certificate (cert.pem) for use when authenticating with an OAuth client Id using a Client Certificate.
+           */
+          certificate?: {
+            /**
+             * SecretRef references a key in a secret that will be used as value.
+             */
+            secretRef?: {
+              /**
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
+               */
+              key?: string;
+              /**
+               * The name of the Secret resource being referred to.
+               */
+              name?: string;
+              /**
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3668,8 +3730,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3677,8 +3739,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3687,14 +3749,17 @@ export interface IClusterSecretStore {
              */
             value?: string;
           };
-          clientId: {
+          /**
+           * ClientID is the API OAuth Client ID.
+           */
+          clientId?: {
             /**
              * SecretRef references a key in a secret that will be used as value.
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3702,8 +3767,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3712,14 +3777,17 @@ export interface IClusterSecretStore {
              */
             value?: string;
           };
-          clientSecret: {
+          /**
+           * ClientSecret is the API OAuth Client Secret.
+           */
+          clientSecret?: {
             /**
              * SecretRef references a key in a secret that will be used as value.
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3727,8 +3795,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3777,8 +3845,8 @@ export interface IClusterSecretStore {
              */
             credentials: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3786,8 +3854,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3848,8 +3916,8 @@ export interface IClusterSecretStore {
              */
             privateKeySecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3857,8 +3925,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3881,13 +3949,13 @@ export interface IClusterSecretStore {
           apikey?: {
             account: string;
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             apiKeyRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3895,19 +3963,19 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             userRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3915,8 +3983,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3934,8 +4002,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -3943,8 +4011,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -3964,8 +4032,8 @@ export interface IClusterSecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4016,8 +4084,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4025,8 +4093,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -4044,8 +4112,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4053,8 +4121,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -4092,8 +4160,8 @@ export interface IClusterSecretStore {
              */
             credentials?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4101,8 +4169,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4129,8 +4197,8 @@ export interface IClusterSecretStore {
              */
             dopplerToken: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4138,8 +4206,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4197,8 +4265,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4206,8 +4274,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -4231,8 +4299,8 @@ export interface IClusterSecretStore {
              */
             secretAccessKeySecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4240,8 +4308,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4265,8 +4333,8 @@ export interface IClusterSecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4295,8 +4363,8 @@ export interface IClusterSecretStore {
              */
             accessToken?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4304,8 +4372,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4360,8 +4428,8 @@ export interface IClusterSecretStore {
              */
             secretApiKeySecretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4369,8 +4437,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4391,13 +4459,13 @@ export interface IClusterSecretStore {
         auth: {
           universalAuthCredentials?: {
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientId: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4405,19 +4473,19 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientSecret: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4425,8 +4493,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4445,13 +4513,13 @@ export interface IClusterSecretStore {
        */
       keepersecurity?: {
         /**
-         * A reference to a specific 'key' within a Secret resource,
+         * A reference to a specific 'key' within a Secret resource.
          * In some instances, `key` is a required field.
          */
         authRef: {
           /**
-           * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-           * defaulted, in others it may be required.
+           * A key in the referenced Secret.
+           * Some instances of this field may be defaulted, in others it may be required.
            */
           key?: string;
           /**
@@ -4459,8 +4527,8 @@ export interface IClusterSecretStore {
            */
           name?: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * The namespace of the Secret resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -4479,13 +4547,13 @@ export interface IClusterSecretStore {
            */
           cert?: {
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientCert?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4493,19 +4561,19 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             clientKey?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4513,8 +4581,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4534,8 +4602,8 @@ export interface IClusterSecretStore {
              */
             name: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * Namespace of the resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -4544,13 +4612,13 @@ export interface IClusterSecretStore {
            */
           token?: {
             /**
-             * A reference to a specific 'key' within a Secret resource,
+             * A reference to a specific 'key' within a Secret resource.
              * In some instances, `key` is a required field.
              */
             bearerToken?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4558,8 +4626,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4570,8 +4638,8 @@ export interface IClusterSecretStore {
          */
         authRef?: {
           /**
-           * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-           * defaulted, in others it may be required.
+           * A key in the referenced Secret.
+           * Some instances of this field may be defaulted, in others it may be required.
            */
           key?: string;
           /**
@@ -4579,8 +4647,8 @@ export interface IClusterSecretStore {
            */
           name?: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * The namespace of the Secret resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -4642,8 +4710,8 @@ export interface IClusterSecretStore {
            */
           apiKeyRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4651,8 +4719,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -4661,8 +4729,8 @@ export interface IClusterSecretStore {
            */
           passcodeRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4670,8 +4738,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -4702,8 +4770,8 @@ export interface IClusterSecretStore {
              */
             connectTokenSecretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4711,8 +4779,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4747,8 +4815,8 @@ export interface IClusterSecretStore {
              */
             fingerprint: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4756,8 +4824,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4766,8 +4834,8 @@ export interface IClusterSecretStore {
              */
             privatekey: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4775,8 +4843,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4826,8 +4894,8 @@ export interface IClusterSecretStore {
            */
           name: string;
           /**
-           * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-           * to the namespace of the referent.
+           * Namespace of the resource being referred to.
+           * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
            */
           namespace?: string;
         };
@@ -4842,13 +4910,13 @@ export interface IClusterSecretStore {
          */
         auth: {
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           passwordSecretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4856,19 +4924,19 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           privateKeySecretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4876,8 +4944,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -4901,8 +4969,8 @@ export interface IClusterSecretStore {
              */
             credentials?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4910,8 +4978,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4943,8 +5011,8 @@ export interface IClusterSecretStore {
              */
             accessToken: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -4952,8 +5020,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -4974,8 +5042,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -4983,8 +5051,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5023,8 +5091,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5032,8 +5100,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5063,8 +5131,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5072,8 +5140,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5097,8 +5165,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5106,8 +5174,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5130,8 +5198,8 @@ export interface IClusterSecretStore {
            */
           secretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5139,8 +5207,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5160,13 +5228,13 @@ export interface IClusterSecretStore {
         auth: {
           clientId: string;
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           clientSecretSecretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5174,8 +5242,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5224,8 +5292,8 @@ export interface IClusterSecretStore {
              */
             roleRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5233,8 +5301,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5246,8 +5314,8 @@ export interface IClusterSecretStore {
              */
             secretRef: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5255,8 +5323,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5272,8 +5340,8 @@ export interface IClusterSecretStore {
              */
             clientCert?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5281,8 +5349,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5292,8 +5360,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5301,8 +5369,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5335,8 +5403,8 @@ export interface IClusterSecretStore {
                  */
                 name: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * Namespace of the resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -5362,8 +5430,8 @@ export interface IClusterSecretStore {
                */
               accessKeyIDSecretRef?: {
                 /**
-                 * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-                 * defaulted, in others it may be required.
+                 * A key in the referenced Secret.
+                 * Some instances of this field may be defaulted, in others it may be required.
                  */
                 key?: string;
                 /**
@@ -5371,8 +5439,8 @@ export interface IClusterSecretStore {
                  */
                 name?: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * The namespace of the Secret resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -5381,8 +5449,8 @@ export interface IClusterSecretStore {
                */
               secretAccessKeySecretRef?: {
                 /**
-                 * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-                 * defaulted, in others it may be required.
+                 * A key in the referenced Secret.
+                 * Some instances of this field may be defaulted, in others it may be required.
                  */
                 key?: string;
                 /**
@@ -5390,8 +5458,8 @@ export interface IClusterSecretStore {
                  */
                 name?: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * The namespace of the Secret resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -5402,8 +5470,8 @@ export interface IClusterSecretStore {
                */
               sessionTokenSecretRef?: {
                 /**
-                 * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-                 * defaulted, in others it may be required.
+                 * A key in the referenced Secret.
+                 * Some instances of this field may be defaulted, in others it may be required.
                  */
                 key?: string;
                 /**
@@ -5411,8 +5479,8 @@ export interface IClusterSecretStore {
                  */
                 name?: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * The namespace of the Secret resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -5466,8 +5534,8 @@ export interface IClusterSecretStore {
                  */
                 name: string;
                 /**
-                 * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-                 * to the namespace of the referent.
+                 * Namespace of the resource being referred to.
+                 * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                  */
                 namespace?: string;
               };
@@ -5488,8 +5556,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5497,8 +5565,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5526,8 +5594,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5535,8 +5603,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5558,8 +5626,8 @@ export interface IClusterSecretStore {
                */
               name: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * Namespace of the resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5581,8 +5649,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5590,8 +5658,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5614,8 +5682,8 @@ export interface IClusterSecretStore {
            */
           tokenSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5623,8 +5691,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5644,8 +5712,8 @@ export interface IClusterSecretStore {
              */
             secretRef?: {
               /**
-               * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-               * defaulted, in others it may be required.
+               * A key in the referenced Secret.
+               * Some instances of this field may be defaulted, in others it may be required.
                */
               key?: string;
               /**
@@ -5653,8 +5721,8 @@ export interface IClusterSecretStore {
                */
               name?: string;
               /**
-               * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-               * to the namespace of the referent.
+               * The namespace of the Secret resource being referred to.
+               * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
                */
               namespace?: string;
             };
@@ -5746,8 +5814,8 @@ export interface IClusterSecretStore {
            */
           certSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5755,8 +5823,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5767,8 +5835,8 @@ export interface IClusterSecretStore {
            */
           keySecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5776,8 +5844,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5808,7 +5876,7 @@ export interface IClusterSecretStore {
          */
         caProvider?: {
           /**
-           * The key the value inside of the provider type to use, only used with "Secret" type
+           * The key where the CA certificate can be found in the Secret or ConfigMap.
            */
           key?: string;
           /**
@@ -5857,8 +5925,8 @@ export interface IClusterSecretStore {
            */
           secretRef: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5866,8 +5934,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5898,8 +5966,8 @@ export interface IClusterSecretStore {
            */
           authorizedKeySecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5907,8 +5975,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5918,13 +5986,13 @@ export interface IClusterSecretStore {
          */
         caProvider?: {
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           certSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5932,8 +6000,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5956,8 +6024,8 @@ export interface IClusterSecretStore {
            */
           authorizedKeySecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5965,8 +6033,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };
@@ -5976,13 +6044,13 @@ export interface IClusterSecretStore {
          */
         caProvider?: {
           /**
-           * A reference to a specific 'key' within a Secret resource,
+           * A reference to a specific 'key' within a Secret resource.
            * In some instances, `key` is a required field.
            */
           certSecretRef?: {
             /**
-             * The key of the entry in the Secret resource's `data` field to be used. Some instances of this field may be
-             * defaulted, in others it may be required.
+             * A key in the referenced Secret.
+             * Some instances of this field may be defaulted, in others it may be required.
              */
             key?: string;
             /**
@@ -5990,8 +6058,8 @@ export interface IClusterSecretStore {
              */
             name?: string;
             /**
-             * Namespace of the resource being referred to. Ignored if referent is not cluster-scoped. cluster-scoped defaults
-             * to the namespace of the referent.
+             * The namespace of the Secret resource being referred to.
+             * Ignored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.
              */
             namespace?: string;
           };

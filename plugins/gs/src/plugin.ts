@@ -111,6 +111,11 @@ export const gsPlugin = createPlugin({
     entityContent: entityDeploymentsRouteRef,
     entityKratixResourcesContent: entityKratixResourcesRouteRef,
   },
+  featureFlags: [
+    {
+      name: 'experimental-data-fetching',
+    },
+  ],
 });
 
 export const GSClustersPage = gsPlugin.provide(
