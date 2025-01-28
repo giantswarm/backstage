@@ -22,6 +22,10 @@ See [upstream documentation](https://backstage.io/docs/features/software-catalog
 
 Base domain of a Giant Swarm installation.
 
+### giantswarm.io/custom-ca
+
+This annotation should be set on an installation resource if the installation uses a custom certificate authority (CA) to sign TLS certificates, instead of a well-known one. The value is a URL where users can find the CA certificate to install.
+
 ### giantswarm.io/deployment-names
 
 This annotation is used on component entities, to find related deployments in Kubernetes clusters.
