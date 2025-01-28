@@ -159,3 +159,11 @@ export function getProviderClusterIdentityAWSAccountId(
 
   return roleARN ? extractIDFromARN(roleARN) : undefined;
 }
+
+export function isSupportedProviderCluster(kind: string) {
+  return [
+    capa.AWSClusterKind,
+    capv.VSphereClusterKind,
+    capz.AzureClusterKind,
+  ].includes(kind);
+}
