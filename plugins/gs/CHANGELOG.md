@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.10.1
+
+### Patch Changes
+
+- 9243e49: Fetch infrastructure cluster resources only for supported providers.
+- Updated dependencies [9243e49]
+  - @giantswarm/backstage-plugin-gs-common@0.7.1
+
 ## 0.10.0
 
 ### Minor Changes
