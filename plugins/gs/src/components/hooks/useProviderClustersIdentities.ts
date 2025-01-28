@@ -8,6 +8,7 @@ import {
   type ProviderClusterIdentity,
   type List,
   type InstallationObjectRef,
+  isSupportedProviderClusterIdentity,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { gsKubernetesApiRef, KubernetesApi } from '../../apis/kubernetes';
 import { getK8sGetPath, getK8sListPath } from './utils/k8sPath';
@@ -104,7 +105,9 @@ export function useProviderClustersIdentities(
   const identityRefs = providerClusterResources
     .map(({ installationName, ...providerCluster }) => {
       const identityRef = getProviderClusterIdentityRef(providerCluster);
-      return identityRef ? { installationName, ...identityRef } : undefined;
+      return identityRef && isSupportedProviderClusterIdentity(identityRef.kind)
+        ? { installationName, ...identityRef }
+        : undefined;
     })
     .filter(Boolean) as InstallationObjectRef[];
   const refs = isExperimentalDataFetchingEnabled
