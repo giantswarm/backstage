@@ -7,6 +7,12 @@ import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { toSentenceCase } from '../../utils/helpers';
 import { DateComponent, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
+import { ClusterTypes } from '../utils';
+import { Box, Tooltip } from '@material-ui/core';
+import {
+  ClusterTypeManagementIcon,
+  ClusterTypeWorkloadIcon,
+} from '../../../assets/icons/CustomIcons';
 
 export type Row = {
   installationName: string;
@@ -26,6 +32,29 @@ export type Row = {
 };
 
 export const getInitialColumns = (): TableColumn<Row>[] => [
+  {
+    title: 'Type',
+    field: 'type',
+    width: 'auto',
+    render: row => {
+      if (row.type === ClusterTypes.Management) {
+        return (
+          <Tooltip title="Management cluster">
+            <Box display="inline-block">
+              <ClusterTypeManagementIcon />
+            </Box>
+          </Tooltip>
+        );
+      }
+      return (
+        <Tooltip title="Workload cluster">
+          <Box display="inline-block">
+            <ClusterTypeWorkloadIcon />
+          </Box>
+        </Tooltip>
+      );
+    },
+  },
   {
     title: 'Name',
     field: 'name',
@@ -56,11 +85,6 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
   {
     title: 'Installation',
     field: 'installationName',
-  },
-  {
-    title: 'Type',
-    field: 'type',
-    render: row => toSentenceCase(row.type),
   },
   {
     title: 'Organization',
