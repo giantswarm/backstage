@@ -160,10 +160,34 @@ export function getProviderClusterIdentityAWSAccountId(
   return roleARN ? extractIDFromARN(roleARN) : undefined;
 }
 
+/**
+ * Checks if the given provider cluster kind is supported by the plugin.
+ *
+ * @param kind - The provider cluster kind to check.
+ * @returns `true` if the `kind` is a supported provider cluster kind, otherwise `false`.
+ */
 export function isSupportedProviderCluster(kind: string) {
   return [
     capa.AWSClusterKind,
     capv.VSphereClusterKind,
     capz.AzureClusterKind,
+  ].includes(kind);
+}
+
+/**
+ * Checks if the given provider cluster identity kind is supported by the plugin.
+ *
+ * For AWS clusters only the `AWSClusterRoleIdentity` kind is supported.
+ * For Azure clusters only the `AzureClusterIdentity` kind is supported.
+ * For vSphere clusters only the `VSphereClusterIdentity` kind is supported.
+ *
+ * @param kind - The cluster identity kind to check.
+ * @returns `true` if the `kind` is a supported provider cluster identity kind, otherwise `false`.
+ */
+export function isSupportedProviderClusterIdentity(kind: string) {
+  return [
+    capa.AWSClusterRoleIdentityKind,
+    capv.VSphereClusterIdentityKind,
+    capz.AzureClusterIdentityKind,
   ].includes(kind);
 }
