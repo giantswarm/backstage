@@ -8,6 +8,7 @@ import {
   type Cluster,
   type ProviderCluster,
   InstallationObjectRef,
+  isSupportedProviderCluster,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { gsKubernetesApiRef, KubernetesApi } from '../../apis/kubernetes';
 import { getK8sGetPath, getK8sListPath } from './utils/k8sPath';
@@ -106,7 +107,9 @@ export function useProviderClusters(
   const infrastructureRefs = clusterResources
     .map(({ installationName, ...cluster }) => {
       const infrastructureRef = getClusterInfrastructureRef(cluster);
-      return infrastructureRef
+
+      return infrastructureRef &&
+        isSupportedProviderCluster(infrastructureRef.kind)
         ? { installationName, ...infrastructureRef }
         : undefined;
     })
