@@ -15,13 +15,14 @@ type ColorWrapperProps = {
 const ColorWrapper = styled('div')(({ theme, str }) => {
   const backgroundColor = colorHash.calculateColor(str);
   return {
-    padding: '4px 6px',
+    padding: `0 ${theme.spacing(1)}px`,
     borderRadius: theme.shape.borderRadius,
     backgroundColor,
     color: theme.palette.getContrastText(backgroundColor),
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     textOverflow: 'ellipsis',
+    lineHeight: '24px',
   };
 }) as ComponentType<ComponentProps<'div'> & ColorWrapperProps>;
 
