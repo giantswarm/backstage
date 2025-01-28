@@ -5,7 +5,7 @@ import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { toSentenceCase } from '../../utils/helpers';
-import { DateComponent } from '../../UI';
+import { DateComponent, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 
 export type Row = {
@@ -19,7 +19,10 @@ export type Row = {
   priority?: string;
   status: string;
   apiVersion: string;
+  appVersion?: string;
+  releaseVersion?: string;
   location?: string;
+  awsAccountId?: string;
 };
 
 export const getInitialColumns = (): TableColumn<Row>[] => [
@@ -64,15 +67,6 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
     field: 'organization',
   },
   {
-    title: 'Location',
-    field: 'location',
-  },
-  {
-    title: 'AWS account ID',
-    field: 'awsAccountId',
-    hidden: true,
-  },
-  {
     title: 'Service Priority',
     field: 'priority',
     render: row => {
@@ -82,6 +76,36 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
 
       return toSentenceCase(row.priority);
     },
+  },
+  {
+    title: 'Release',
+    field: 'releaseVersion',
+    render: row => {
+      return <Version version={row.releaseVersion || ''} highlight />;
+    },
+  },
+  {
+    title: 'Cluster App',
+    field: 'appVersion',
+    render: row => {
+      return (
+        <Version
+          version={row.appVersion || ''}
+          highlight
+          sourceLocation="https://github.com/giantswarm/cluster"
+          displayWarning={false}
+        />
+      );
+    },
+  },
+  {
+    title: 'Location',
+    field: 'location',
+  },
+  {
+    title: 'AWS account ID',
+    field: 'awsAccountId',
+    hidden: true,
   },
   {
     title: 'Created',

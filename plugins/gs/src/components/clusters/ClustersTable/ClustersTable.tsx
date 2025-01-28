@@ -66,7 +66,7 @@ const ClustersTableView = ({
   retry,
   onChangeColumnHidden,
 }: Props) => {
-  const data = clustersData.map(
+  const data: Row[] = clustersData.map(
     ({
       installationName,
       cluster,
