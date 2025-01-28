@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.7.0
+
+### Minor Changes
+
+- 20eab6a: Added column AWS ACCOUNT ID to clusters list
+- 20eab6a: Added column LOCATION to clusters list
+
 ## 0.6.0
 
 ### Minor Changes
