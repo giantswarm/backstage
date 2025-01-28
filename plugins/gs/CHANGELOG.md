@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.10.0
+
+### Minor Changes
+
+- 219004e: Add RELEASE column to clusters list
+- 20eab6a: Added column AWS ACCOUNT ID to clusters list
+- 20eab6a: Added column LOCATION to clusters list
+
+### Patch Changes
+
+- Updated dependencies [20eab6a]
+- Updated dependencies [20eab6a]
+  - @giantswarm/backstage-plugin-gs-common@0.7.0
+
 ## 0.9.0
 
 ### Minor Changes
