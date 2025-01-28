@@ -140,11 +140,18 @@ export const ClustersTable = () => {
     retry,
   } = useClusters();
 
+  const providerClustersRequired =
+    visibleColumns.includes('location') ||
+    visibleColumns.includes('awsAccountId');
+
   const {
     resources: providerClusterResources,
     isLoading: isLoadingProviderClusters,
   } = useProviderClusters(clusterResources, {
-    enabled: !isLoadingClusters && clusterResources.length > 0,
+    enabled:
+      providerClustersRequired &&
+      !isLoadingClusters &&
+      clusterResources.length > 0,
   });
 
   const providerClusterIdentitiesRequired =

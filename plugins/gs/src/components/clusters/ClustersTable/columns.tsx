@@ -125,6 +125,7 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
   {
     title: 'Location',
     field: 'location',
+    hidden: true,
   },
   {
     title: 'AWS account ID',
