@@ -111,6 +111,7 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
   {
     title: 'Cluster App',
     field: 'appVersion',
+    hidden: true,
     render: row => {
       return (
         <Version
