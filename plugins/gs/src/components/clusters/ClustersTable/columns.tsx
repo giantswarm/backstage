@@ -4,8 +4,8 @@ import { useRouteRef } from '@backstage/core-plugin-api';
 import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
-import { toSentenceCase } from '../../utils/helpers';
-import { DateComponent, Version } from '../../UI';
+import { formatVersion, toSentenceCase } from '../../utils/helpers';
+import { DateComponent, KubernetesVersion, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 import { ClusterTypes } from '../utils';
 import { Box, Tooltip } from '@material-ui/core';
@@ -27,6 +27,7 @@ export type Row = {
   apiVersion: string;
   appVersion?: string;
   releaseVersion?: string;
+  kubernetesVersion?: string;
   location?: string;
   awsAccountId?: string;
 };
@@ -120,6 +121,22 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
           sourceLocation="https://github.com/giantswarm/cluster"
           displayWarning={false}
         />
+      );
+    },
+  },
+  {
+    title: 'Kubernetes Version',
+    field: 'kubernetesVersion',
+    hidden: true,
+    render: row => {
+      return (
+        row.kubernetesVersion && (
+          <KubernetesVersion
+            version={formatVersion(row.kubernetesVersion)}
+            hideIcon
+            hideLabel
+          />
+        )
       );
     },
   },
