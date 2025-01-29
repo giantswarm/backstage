@@ -26,6 +26,7 @@ export type Row = {
   status: string;
   apiVersion: string;
   appVersion?: string;
+  appSourceLocation?: string;
   releaseVersion?: string;
   kubernetesVersion?: string;
   location?: string;
@@ -118,7 +119,7 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
         <Version
           version={row.appVersion || ''}
           highlight
-          sourceLocation="https://github.com/giantswarm/cluster"
+          sourceLocation={row.appSourceLocation}
           displayWarning={false}
         />
       );

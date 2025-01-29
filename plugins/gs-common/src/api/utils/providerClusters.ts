@@ -1,6 +1,7 @@
 import * as capa from '../../model/capa';
 import * as capv from '../../model/capv';
 import * as capz from '../../model/capz';
+import { Labels } from '../constants';
 import { ProviderCluster, ProviderClusterIdentity } from '../types';
 import { extractIDFromARN, getApiGroupFromApiVersion } from './helpers';
 
@@ -98,6 +99,27 @@ export function isVSphereCluster(kind: string, apiVersion: string) {
   return (
     kind === capv.VSphereClusterKind && apiGroup === capv.VSphereClusterApiGroup
   );
+}
+
+export function getProviderClusterAppVersion(providerCluster: ProviderCluster) {
+  return providerCluster.metadata.labels?.[Labels.labelAppVersion];
+}
+
+export function getProviderClusterAppSourceLocation(
+  providerCluster: ProviderCluster,
+) {
+  const { kind, apiVersion } = providerCluster;
+
+  switch (true) {
+    case isAWSCluster(kind, apiVersion):
+      return 'https://github.com/giantswarm/cluster-aws';
+    case isAzureCluster(kind, apiVersion):
+      return 'https://github.com/giantswarm/cluster-azure';
+    case isVSphereCluster(kind, apiVersion):
+      return 'https://github.com/giantswarm/cluster-vsphere';
+    default:
+      return undefined;
+  }
 }
 
 export function getProviderClusterLocation(providerCluster: ProviderCluster) {
