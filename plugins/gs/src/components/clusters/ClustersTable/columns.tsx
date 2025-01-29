@@ -5,7 +5,13 @@ import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
-import { DateComponent, KubernetesVersion, Version } from '../../UI';
+import {
+  ColorWrapper,
+  DateComponent,
+  ExternalLink,
+  KubernetesVersion,
+  Version,
+} from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 import { ClusterTypes } from '../utils';
 import { Box, Tooltip } from '@material-ui/core';
@@ -31,6 +37,7 @@ export type Row = {
   kubernetesVersion?: string;
   location?: string;
   awsAccountId?: string;
+  awsAccountUrl?: string;
 };
 
 export const getInitialColumns = (): TableColumn<Row>[] => [
@@ -150,6 +157,19 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
     title: 'AWS account ID',
     field: 'awsAccountId',
     hidden: true,
+    render: row => {
+      if (!row.awsAccountId) {
+        return undefined;
+      }
+
+      return row.awsAccountUrl ? (
+        <ExternalLink href={row.awsAccountUrl}>
+          <ColorWrapper str={row.awsAccountId}>{row.awsAccountId}</ColorWrapper>
+        </ExternalLink>
+      ) : (
+        <ColorWrapper str={row.awsAccountId}>{row.awsAccountId}</ColorWrapper>
+      );
+    },
   },
   {
     title: 'Created',

@@ -1,30 +1,10 @@
-import React, { ComponentProps, ComponentType } from 'react';
-import { Box, Link, Tooltip, styled } from '@material-ui/core';
-import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
-import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
-import { getCommitURL, getReleaseNotesURL } from '../../utils/helpers';
-import CachingColorHash from '../../utils/cachingColorHash';
+import React from 'react';
 import semver from 'semver';
-
-const colorHash = new CachingColorHash();
-
-type ColorWrapperProps = {
-  str: string;
-};
-
-const ColorWrapper = styled('div')(({ theme, str }) => {
-  const backgroundColor = colorHash.calculateColor(str);
-  return {
-    padding: `0 ${theme.spacing(1)}px`,
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor,
-    color: theme.palette.getContrastText(backgroundColor),
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    textOverflow: 'ellipsis',
-    lineHeight: '24px',
-  };
-}) as ComponentType<ComponentProps<'div'> & ColorWrapperProps>;
+import { Box, Tooltip, styled } from '@material-ui/core';
+import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
+import { getCommitURL, getReleaseNotesURL } from '../../utils/helpers';
+import { ColorWrapper } from '../ColorWrapper';
+import { ExternalLink } from '../ExternalLink';
 
 const StyledReportProblemOutlined = styled(ReportProblemOutlined)(
   ({ theme }) => ({
@@ -33,11 +13,6 @@ const StyledReportProblemOutlined = styled(ReportProblemOutlined)(
     color: theme.palette.status.warning,
   }),
 );
-
-const StyledLaunchOutlinedIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
-  marginLeft: theme.spacing(0.5),
-  fontSize: 'inherit',
-}));
 
 const COMMIT_HASH_REGEXP = /\b[0-9a-f]{40}\b/;
 const COMMIT_HASH_LENGTH_LIMIT = 5;
@@ -141,20 +116,15 @@ export const Version = ({
   return (
     <Box display="flex" alignItems="center" color="primary">
       {displayLinkToProject ? (
-        <Link
+        <ExternalLink
           href={
             commitHash
               ? getCommitURL(sourceLocation, commitHash)
               : getReleaseNotesURL(sourceLocation, versionLabel)
           }
-          target="_blank"
-          rel="noopener noreferrer"
         >
-          <Box display="flex" alignItems="center">
-            {versionComponent}
-            <StyledLaunchOutlinedIcon />
-          </Box>
-        </Link>
+          {versionComponent}
+        </ExternalLink>
       ) : (
         versionComponent
       )}
