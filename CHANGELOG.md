@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.50.0] - 2025-01-29
+
+In this PR:
+
+- KUBERNETES VERSION column was added to clusters list;
+- AWS ACCOUNT ID column in clusters list was changed to display value with color hashing and link to AWS account;
+- CLUSTER APP column in clusters list was changed to display provider specific cluster app version.
+
+See [./docs/releases/v0.50.0-changelog.md](./docs/releases/v0.50.0-changelog.md) for more information.
+
 ## [0.49.2] - 2025-01-28
 
 This release fixes fetching of unsupported infrastructure cluster identity resources.
@@ -865,7 +875,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.49.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.50.0...HEAD
+[0.50.0]: https://github.com/giantswarm/backstage/compare/v0.49.2...v0.50.0
 [0.49.2]: https://github.com/giantswarm/backstage/compare/v0.49.1...v0.49.2
 [0.49.1]: https://github.com/giantswarm/backstage/compare/v0.49.0...v0.49.1
 [0.49.0]: https://github.com/giantswarm/backstage/compare/v0.48.0...v0.49.0
