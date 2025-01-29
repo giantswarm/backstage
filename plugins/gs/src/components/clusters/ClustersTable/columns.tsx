@@ -5,7 +5,7 @@ import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
-import { DateComponent, KubernetesVersion, Version } from '../../UI';
+import { Account, DateComponent, KubernetesVersion, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 import { ClusterTypes } from '../utils';
 import { Box, Tooltip } from '@material-ui/core';
@@ -31,6 +31,7 @@ export type Row = {
   kubernetesVersion?: string;
   location?: string;
   awsAccountId?: string;
+  awsAccountUrl?: string;
 };
 
 export const getInitialColumns = (): TableColumn<Row>[] => [
@@ -150,6 +151,16 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
     title: 'AWS account ID',
     field: 'awsAccountId',
     hidden: true,
+    render: row => {
+      return (
+        row.awsAccountId && (
+          <Account
+            accountId={row.awsAccountId}
+            accountUrl={row.awsAccountUrl}
+          />
+        )
+      );
+    },
   },
   {
     title: 'Created',

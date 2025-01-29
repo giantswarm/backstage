@@ -22,6 +22,7 @@ import {
   getControlPlaneK8sVersion,
   getProviderClusterAppSourceLocation,
   getProviderClusterAppVersion,
+  getProviderClusterIdentityAWSAccountUrl,
   getProviderClusterIdentityAWSAccountId,
   getProviderClusterIdentityRef,
   getProviderClusterLocation,
@@ -100,6 +101,10 @@ const ClustersTableView = ({
         ? getProviderClusterIdentityAWSAccountId(providerClusterIdentity)
         : undefined;
 
+      const awsAccountUrl = providerClusterIdentity
+        ? getProviderClusterIdentityAWSAccountUrl(providerClusterIdentity)
+        : undefined;
+
       return {
         installationName,
         name: getClusterName(cluster),
@@ -117,6 +122,7 @@ const ClustersTableView = ({
         releaseVersion: getClusterReleaseVersion(cluster),
         location,
         awsAccountId,
+        awsAccountUrl,
       };
     },
   );

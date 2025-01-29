@@ -182,6 +182,22 @@ export function getProviderClusterIdentityAWSAccountId(
   return roleARN ? extractIDFromARN(roleARN) : undefined;
 }
 
+export function getProviderClusterIdentityAWSAccountUrl(
+  providerClusterIdentity: ProviderClusterIdentity,
+) {
+  if (providerClusterIdentity.kind !== 'AWSClusterRoleIdentity') {
+    return undefined;
+  }
+
+  const awsAccountId = getProviderClusterIdentityAWSAccountId(
+    providerClusterIdentity,
+  );
+
+  return awsAccountId
+    ? `https://${awsAccountId}.signin.aws.amazon.com/console`
+    : undefined;
+}
+
 /**
  * Checks if the given provider cluster kind is supported by the plugin.
  *
