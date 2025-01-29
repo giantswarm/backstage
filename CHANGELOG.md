@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.50.0] - 2025-01-29
 
+In this PR:
+
+- KUBERNETES VERSION column was added to clusters list;
+- AWS ACCOUNT ID column in clusters list was changed to display value with color hashing and link to AWS account;
+- CLUSTER APP column in clusters list was changed to display provider specific cluster app version.
+
 See [./docs/releases/v0.50.0-changelog.md](./docs/releases/v0.50.0-changelog.md) for more information.
 
 ## [0.49.2] - 2025-01-28
