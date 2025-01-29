@@ -5,13 +5,7 @@ import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { sortAndFilterOptions } from '../../utils/tableHelpers';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
-import {
-  ColorWrapper,
-  DateComponent,
-  ExternalLink,
-  KubernetesVersion,
-  Version,
-} from '../../UI';
+import { Account, DateComponent, KubernetesVersion, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 import { ClusterTypes } from '../utils';
 import { Box, Tooltip } from '@material-ui/core';
@@ -158,16 +152,13 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
     field: 'awsAccountId',
     hidden: true,
     render: row => {
-      if (!row.awsAccountId) {
-        return undefined;
-      }
-
-      return row.awsAccountUrl ? (
-        <ExternalLink href={row.awsAccountUrl}>
-          <ColorWrapper str={row.awsAccountId}>{row.awsAccountId}</ColorWrapper>
-        </ExternalLink>
-      ) : (
-        <ColorWrapper str={row.awsAccountId}>{row.awsAccountId}</ColorWrapper>
+      return (
+        row.awsAccountId && (
+          <Account
+            accountId={row.awsAccountId}
+            accountUrl={row.awsAccountUrl}
+          />
+        )
       );
     },
   },

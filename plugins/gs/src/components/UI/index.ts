@@ -1,4 +1,5 @@
 export { AboutFieldValue } from './AboutFieldValue';
+export { Account } from './Account';
 export { ApplicationLink } from './ApplicationLink';
 export { AsyncValue } from './AsyncValue';
 export { CodeBlock } from './CodeBlock';
