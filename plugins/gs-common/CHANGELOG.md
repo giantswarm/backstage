@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.7.3
+
+### Patch Changes
+
+- b5f0dcb: Changed AWS ACCOUNT ID column in clusters list to display value with color hashing and link to AWS account.
+- 055dcb4: Changed CLUSTER APP column in clusters list to display provider specific cluster app version.
+
 ## 0.7.2
 
 ### Patch Changes

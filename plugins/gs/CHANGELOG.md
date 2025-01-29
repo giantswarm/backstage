@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.11.0
+
+### Minor Changes
+
+- 46fdee2: Added column KUBERNETES VERSION to clusters list.
+
+### Patch Changes
+
+- b5f0dcb: Changed AWS ACCOUNT ID column in clusters list to display value with color hashing and link to AWS account.
+- 055dcb4: Changed CLUSTER APP column in clusters list to display provider specific cluster app version.
+- Updated dependencies [b5f0dcb]
+- Updated dependencies [055dcb4]
+  - @giantswarm/backstage-plugin-gs-common@0.7.3
+
 ## 0.10.2
 
 ### Patch Changes
