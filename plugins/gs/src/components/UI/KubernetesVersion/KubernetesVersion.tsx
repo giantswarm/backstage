@@ -6,12 +6,16 @@ import { getKubernetesReleaseEOLStatus } from '@giantswarm/backstage-plugin-gs-c
 
 const EolLabel = styled(Box)(({ theme }) => ({
   display: 'inline-block',
-  background: theme.palette.grey[300],
+  background:
+    theme.palette.type === 'dark'
+      ? theme.palette.grey[600]
+      : theme.palette.grey[300],
   color: theme.palette.text.primary,
   padding: `0 ${theme.spacing(1)}px`,
   borderRadius: '3px',
   marginLeft: '5px',
   fontWeight: 400,
+  lineHeight: '24px',
 }));
 
 type KubernetesVersionProps = {

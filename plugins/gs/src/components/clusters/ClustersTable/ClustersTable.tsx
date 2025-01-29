@@ -4,12 +4,14 @@ import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import type {
   Cluster,
+  ControlPlane,
   ProviderCluster,
   ProviderClusterIdentity,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   findResourceByRef,
   getClusterAppVersion,
+  getClusterControlPlaneRef,
   getClusterCreationTimestamp,
   getClusterDescription,
   getClusterInfrastructureRef,
@@ -18,6 +20,7 @@ import {
   getClusterOrganization,
   getClusterReleaseVersion,
   getClusterServicePriority,
+  getControlPlaneK8sVersion,
   getProviderClusterIdentityAWSAccountId,
   getProviderClusterIdentityRef,
   getProviderClusterLocation,
@@ -31,6 +34,7 @@ import { calculateClusterType } from '../utils';
 import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { getInitialColumns, Row } from './columns';
+import { useControlPlanes } from '../../hooks/useControlPlanes';
 
 const calculateClusterStatus = (cluster: Cluster) => {
   if (isClusterDeleting(cluster)) {
@@ -47,6 +51,7 @@ const calculateClusterStatus = (cluster: Cluster) => {
 type ClusterData = {
   installationName: string;
   cluster: Cluster;
+  controlPlane?: ControlPlane | null;
   providerCluster?: ProviderCluster | null;
   providerClusterIdentity?: ProviderClusterIdentity | null;
 };
@@ -70,9 +75,14 @@ const ClustersTableView = ({
     ({
       installationName,
       cluster,
+      controlPlane,
       providerCluster,
       providerClusterIdentity,
     }) => {
+      const kubernetesVersion = controlPlane
+        ? getControlPlaneK8sVersion(controlPlane)
+        : undefined;
+
       const location = providerCluster
         ? getProviderClusterLocation(providerCluster)
         : undefined;
@@ -93,6 +103,7 @@ const ClustersTableView = ({
         status: calculateClusterStatus(cluster),
         apiVersion: cluster.apiVersion,
         appVersion: getClusterAppVersion(cluster),
+        kubernetesVersion,
         releaseVersion: getClusterReleaseVersion(cluster),
         location,
         awsAccountId,
@@ -140,6 +151,18 @@ export const ClustersTable = () => {
     retry,
   } = useClusters();
 
+  const controlPlanesRequired = visibleColumns.includes('kubernetesVersion');
+
+  const {
+    resources: controlPlaneResources,
+    isLoading: isLoadingControlPlanes,
+  } = useControlPlanes(clusterResources, {
+    enabled:
+      controlPlanesRequired &&
+      !isLoadingClusters &&
+      clusterResources.length > 0,
+  });
+
   const providerClustersRequired =
     visibleColumns.includes('location') ||
     visibleColumns.includes('awsAccountId');
@@ -169,6 +192,7 @@ export const ClustersTable = () => {
 
   const isLoading =
     isLoadingClusters ||
+    isLoadingControlPlanes ||
     isLoadingProviderClusters ||
     isLoadingProviderClusterIdentities;
 
@@ -182,6 +206,17 @@ export const ClustersTable = () => {
         installationName,
         cluster,
       };
+
+      let controlPlane = null;
+      if (controlPlaneResources.length) {
+        const controlPlaneRef = getClusterControlPlaneRef(cluster);
+        if (controlPlaneRef) {
+          controlPlane = findResourceByRef(controlPlaneResources, {
+            installationName,
+            ...controlPlaneRef,
+          });
+        }
+      }
 
       let providerCluster = null;
       if (providerClusterResources.length) {
@@ -206,6 +241,7 @@ export const ClustersTable = () => {
         }
       }
 
+      data.controlPlane = controlPlane;
       data.providerCluster = providerCluster;
       data.providerClusterIdentity = providerClusterIdentity;
 
@@ -214,6 +250,7 @@ export const ClustersTable = () => {
   }, [
     isLoading,
     clusterResources,
+    controlPlaneResources,
     providerClusterResources,
     providerClusterIdentityResources,
   ]);
