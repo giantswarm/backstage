@@ -10,7 +10,6 @@ import type {
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   findResourceByRef,
-  getClusterAppVersion,
   getClusterControlPlaneRef,
   getClusterCreationTimestamp,
   getClusterDescription,
@@ -21,6 +20,8 @@ import {
   getClusterReleaseVersion,
   getClusterServicePriority,
   getControlPlaneK8sVersion,
+  getProviderClusterAppSourceLocation,
+  getProviderClusterAppVersion,
   getProviderClusterIdentityAWSAccountId,
   getProviderClusterIdentityRef,
   getProviderClusterLocation,
@@ -79,6 +80,14 @@ const ClustersTableView = ({
       providerCluster,
       providerClusterIdentity,
     }) => {
+      const appVersion = providerCluster
+        ? getProviderClusterAppVersion(providerCluster)
+        : undefined;
+
+      const appSourceLocation = providerCluster
+        ? getProviderClusterAppSourceLocation(providerCluster)
+        : undefined;
+
       const kubernetesVersion = controlPlane
         ? getControlPlaneK8sVersion(controlPlane)
         : undefined;
@@ -102,7 +111,8 @@ const ClustersTableView = ({
         priority: getClusterServicePriority(cluster),
         status: calculateClusterStatus(cluster),
         apiVersion: cluster.apiVersion,
-        appVersion: getClusterAppVersion(cluster),
+        appVersion,
+        appSourceLocation,
         kubernetesVersion,
         releaseVersion: getClusterReleaseVersion(cluster),
         location,
@@ -164,6 +174,7 @@ export const ClustersTable = () => {
   });
 
   const providerClustersRequired =
+    visibleColumns.includes('appVersion') ||
     visibleColumns.includes('location') ||
     visibleColumns.includes('awsAccountId');
 
