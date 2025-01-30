@@ -50,6 +50,7 @@ import {
   GSDeploymentDetailsPickerFieldExtension,
   GSSecretStorePickerFieldExtension,
   gsAuthApiRef,
+  GSDeploymentsPage,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
@@ -171,6 +172,14 @@ const routes = (
       element={
         <GSFeatureEnabled feature="clustersPage">
           <GSClustersPage />
+        </GSFeatureEnabled>
+      }
+    />
+    <Route
+      path="/deployments"
+      element={
+        <GSFeatureEnabled feature="deploymentsPage">
+          <GSDeploymentsPage />
         </GSFeatureEnabled>
       }
     />

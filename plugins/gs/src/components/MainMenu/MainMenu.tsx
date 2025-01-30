@@ -7,12 +7,20 @@ import PlaceIcon from '@material-ui/icons/Place';
 export const MainMenu = () => {
   return (
     <SidebarGroup>
-      <FeatureEnabled feature="installationsPage">
-        <SidebarItem icon={PlaceIcon} to="installations" text="Installations" />
+      <FeatureEnabled feature="deploymentsPage">
+        <SidebarItem
+          icon={GiantSwarmIcon}
+          to="deployments"
+          text="Deployments"
+        />
       </FeatureEnabled>
 
       <FeatureEnabled feature="clustersPage">
         <SidebarItem icon={GiantSwarmIcon} to="clusters" text="Clusters" />
+      </FeatureEnabled>
+
+      <FeatureEnabled feature="installationsPage">
+        <SidebarItem icon={PlaceIcon} to="installations" text="Installations" />
       </FeatureEnabled>
     </SidebarGroup>
   );

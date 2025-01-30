@@ -3,6 +3,7 @@ export {
   gsPlugin as plugin,
   GSClustersPage,
   GSInstallationsPage,
+  GSDeploymentsPage,
   EntityGSDeploymentsContent,
   EntityGSKratixResourcesContent,
   GSClusterPickerFieldExtension,

@@ -1,4 +1,4 @@
-import type { App } from '@giantswarm/backstage-plugin-gs-common';
+import type { App, Resource } from '@giantswarm/backstage-plugin-gs-common';
 import { getAppGVK, getAppNames } from '@giantswarm/backstage-plugin-gs-common';
 import { useListResources } from './useListResources';
 import { useInstallations } from './useInstallations';
@@ -20,5 +20,18 @@ export function useApps(installations?: string[]) {
     }),
   );
 
-  return useListResources<App>(selectedInstallations, installationsGVKs);
+  const queriesInfo = useListResources<App>(
+    selectedInstallations,
+    installationsGVKs,
+  );
+
+  const resources: Resource<App>[] = queriesInfo.installationsData.flatMap(
+    ({ installationName, data }) =>
+      data.map(resource => ({ installationName, ...resource })),
+  );
+
+  return {
+    ...queriesInfo,
+    resources,
+  };
 }

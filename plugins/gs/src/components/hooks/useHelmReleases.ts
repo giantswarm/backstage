@@ -1,4 +1,7 @@
-import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
+import type {
+  HelmRelease,
+  Resource,
+} from '@giantswarm/backstage-plugin-gs-common';
 import {
   getHelmReleaseGVK,
   getHelmReleaseNames,
@@ -23,8 +26,18 @@ export function useHelmReleases(installations?: string[]) {
     }),
   );
 
-  return useListResources<HelmRelease>(
+  const queriesInfo = useListResources<HelmRelease>(
     selectedInstallations,
     installationsGVKs,
   );
+
+  const resources: Resource<HelmRelease>[] =
+    queriesInfo.installationsData.flatMap(({ installationName, data }) =>
+      data.map(resource => ({ installationName, ...resource })),
+    );
+
+  return {
+    ...queriesInfo,
+    resources,
+  };
 }
