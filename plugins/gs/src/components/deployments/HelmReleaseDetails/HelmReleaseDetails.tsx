@@ -77,7 +77,7 @@ export const HelmReleaseDetails = ({
     );
   }
 
-  const clusterName = getHelmReleaseClusterName(helmrelease);
+  const clusterName = getHelmReleaseClusterName(helmrelease, installationName);
   const lastAppliedRevision = formatVersion(
     getHelmReleaseLastAppliedRevision(helmrelease) ?? '',
   );

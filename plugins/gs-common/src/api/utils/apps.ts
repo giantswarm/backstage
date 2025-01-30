@@ -76,8 +76,18 @@ export function getAppStatus(app: App) {
   return app.status?.release.status;
 }
 
-export function getAppClusterName(app: App) {
-  return app.metadata.labels?.[Labels.labelCluster];
+export function getAppClusterName(app: App, installationName: string) {
+  const clusterLabel = app.metadata.labels?.[Labels.labelCluster];
+
+  if (clusterLabel) {
+    return clusterLabel;
+  }
+
+  if (app.spec?.kubeConfig.inCluster) {
+    return installationName;
+  }
+
+  return undefined;
 }
 
 export function getAppChartName(app: App) {

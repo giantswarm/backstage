@@ -69,8 +69,21 @@ export function getHelmReleaseStatus(helmRelease: HelmRelease) {
   return HelmReleaseStatuses.Unknown;
 }
 
-export function getHelmReleaseClusterName(helmRelease: HelmRelease) {
-  return helmRelease.metadata.labels?.[Labels.labelCluster];
+export function getHelmReleaseClusterName(
+  helmRelease: HelmRelease,
+  installationName: string,
+) {
+  const clusterLabel = helmRelease.metadata.labels?.[Labels.labelCluster];
+
+  if (clusterLabel) {
+    return clusterLabel;
+  }
+
+  if (!Boolean(helmRelease.spec?.kubeConfig)) {
+    return installationName;
+  }
+
+  return undefined;
 }
 
 export function getHelmReleaseChartName(helmRelease: HelmRelease) {

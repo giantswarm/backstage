@@ -77,7 +77,7 @@ export const AppDetails = ({
     );
   }
 
-  const clusterName = getAppClusterName(app);
+  const clusterName = getAppClusterName(app, installationName);
   const lastAppliedRevision = formatVersion(getAppCurrentVersion(app) ?? '');
   const lastAttemptedRevision = formatVersion(getAppVersion(app) ?? '');
   const sourceName = formatAppCatalogName(getAppCatalogName(app) ?? '');

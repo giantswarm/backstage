@@ -46,7 +46,7 @@ const DeploymentsTableView = ({
       ? {
           installationName,
           kind: 'app',
-          clusterName: getAppClusterName(deployment),
+          clusterName: getAppClusterName(deployment, installationName),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(getAppCurrentVersion(deployment) ?? ''),
@@ -61,7 +61,7 @@ const DeploymentsTableView = ({
       : {
           installationName,
           kind: 'helmrelease',
-          clusterName: getHelmReleaseClusterName(deployment),
+          clusterName: getHelmReleaseClusterName(deployment, installationName),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(
@@ -121,6 +121,8 @@ export const DeploymentsTable = ({
   }, [baseRouteRef, grafanaDashboard, ingressHost]);
 
   const { data: deploymentsData, isLoading, retry } = useDeploymentsData();
+
+  console.log('deploymentsData', deploymentsData);
 
   return (
     <DeploymentsTableView
