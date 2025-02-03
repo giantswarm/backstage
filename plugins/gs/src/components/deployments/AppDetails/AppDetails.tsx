@@ -161,8 +161,8 @@ export const AppDetails = ({
             <CardContent>
               <StructuredMetadataList
                 metadata={{
-                  Namespace: namespace,
                   Name: name,
+                  Namespace: namespace,
                   Source: (
                     <>
                       {sourceName && (

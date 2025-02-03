@@ -35,7 +35,7 @@ export const getInitialColumns = (
 ): TableColumn<Row>[] => {
   const columns: TableColumn<Row>[] = [
     {
-      title: 'Namespace/Name',
+      title: 'Name',
       field: 'name',
       highlight: true,
       render: row => {
@@ -52,11 +52,6 @@ export const getInitialColumns = (
 
           return (
             <Link component={RouterLink} to={to}>
-              {row.namespace && (
-                <Typography variant="inherit" noWrap>
-                  {row.namespace}/
-                </Typography>
-              )}
               <Typography variant="inherit" noWrap>
                 {row.name}
               </Typography>
@@ -66,7 +61,6 @@ export const getInitialColumns = (
 
         return <LinkWrapper />;
       },
-      ...sortAndFilterOptions(row => `${row.namespace} / ${row.name}`),
     },
     {
       title: 'Installation',
@@ -99,6 +93,10 @@ export const getInitialColumns = (
 
         return row.clusterName;
       },
+    },
+    {
+      title: 'Namespace',
+      field: 'namespace',
     },
     {
       title: 'Type',

@@ -168,8 +168,8 @@ export const HelmReleaseDetails = ({
             <CardContent>
               <StructuredMetadataList
                 metadata={{
-                  Namespace: namespace,
                   Name: name,
+                  Namespace: namespace,
                   Source: (
                     <>
                       {sourceName && (
