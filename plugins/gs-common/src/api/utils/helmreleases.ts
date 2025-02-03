@@ -1,4 +1,4 @@
-import { Labels } from '../constants';
+import { Constants, Labels } from '../constants';
 import type { HelmRelease } from '../types';
 import { compareDates } from './helpers';
 import * as fluxcd from '../../model/fluxcd';
@@ -69,21 +69,27 @@ export function getHelmReleaseStatus(helmRelease: HelmRelease) {
   return HelmReleaseStatuses.Unknown;
 }
 
-export function getHelmReleaseClusterName(
+function isHelmReleaseTargetClusterManagementCluster(helmRelease: HelmRelease) {
+  return !Boolean(helmRelease.spec?.kubeConfig);
+}
+
+export function getHelmReleaseTargetClusterName(
   helmRelease: HelmRelease,
   installationName: string,
 ) {
-  const clusterLabel = helmRelease.metadata.labels?.[Labels.labelCluster];
-
-  if (clusterLabel) {
-    return clusterLabel;
-  }
-
-  if (!Boolean(helmRelease.spec?.kubeConfig)) {
+  if (isHelmReleaseTargetClusterManagementCluster(helmRelease)) {
     return installationName;
   }
 
-  return undefined;
+  return helmRelease.metadata.labels?.[Labels.labelCluster];
+}
+
+export function getHelmReleaseTargetClusterNamespace(helmRelease: HelmRelease) {
+  if (isHelmReleaseTargetClusterManagementCluster(helmRelease)) {
+    return Constants.MANAGEMENT_CLUSTER_NAMESPACE;
+  }
+
+  return helmRelease.metadata.namespace;
 }
 
 export function getHelmReleaseChartName(helmRelease: HelmRelease) {

@@ -9,11 +9,13 @@ import { AppStatus } from '../AppStatus';
 import { HelmReleaseStatus } from '../HelmReleaseStatus';
 import { Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
+import { clusterDetailsRouteRef } from '../../../routes';
 
 export type Row = {
   installationName: string;
   kind: string;
   clusterName?: string;
+  clusterNamespace?: string;
   name: string;
   namespace?: string;
   version: string;
@@ -73,6 +75,30 @@ export const getInitialColumns = (
     {
       title: 'Cluster',
       field: 'clusterName',
+      render: row => {
+        if (row.clusterName && row.clusterNamespace) {
+          const LinkWrapper = () => {
+            const routeLink = useRouteRef(clusterDetailsRouteRef);
+
+            return (
+              <Link
+                component={RouterLink}
+                to={routeLink({
+                  installationName: row.installationName,
+                  namespace: row.clusterNamespace!,
+                  name: row.clusterName!,
+                })}
+              >
+                {row.clusterName}
+              </Link>
+            );
+          };
+
+          return <LinkWrapper />;
+        }
+
+        return row.clusterName;
+      },
     },
     {
       title: 'Type',

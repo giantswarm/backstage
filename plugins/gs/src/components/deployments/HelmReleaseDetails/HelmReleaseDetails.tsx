@@ -1,21 +1,25 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/core-plugin-api';
 import {
   Box,
   Card,
   CardContent,
   CardHeader,
   Grid,
+  Link,
   Typography,
 } from '@material-ui/core';
 import {
   getHelmReleaseChartName,
-  getHelmReleaseClusterName,
+  getHelmReleaseTargetClusterName,
   getHelmReleaseCreatedTimestamp,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
   getHelmReleaseSourceName,
   getHelmReleaseUpdatedTimestamp,
+  getHelmReleaseTargetClusterNamespace,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useHelmRelease } from '../../hooks';
 import { formatVersion } from '../../utils/helpers';
@@ -28,6 +32,7 @@ import {
 } from '../../UI';
 import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
 import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
+import { clusterDetailsRouteRef } from '../../../routes';
 
 type HelmReleaseDetailsProps = {
   installationName: string;
@@ -51,6 +56,8 @@ export const HelmReleaseDetails = ({
     isLoading,
     error,
   } = useHelmRelease(installationName, name, namespace);
+
+  const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
   if (isLoading) {
     return <Progress />;
@@ -77,7 +84,11 @@ export const HelmReleaseDetails = ({
     );
   }
 
-  const clusterName = getHelmReleaseClusterName(helmrelease, installationName);
+  const clusterName = getHelmReleaseTargetClusterName(
+    helmrelease,
+    installationName,
+  );
+  const clusterNamespace = getHelmReleaseTargetClusterNamespace(helmrelease);
   const lastAppliedRevision = formatVersion(
     getHelmReleaseLastAppliedRevision(helmrelease) ?? '',
   );
@@ -86,6 +97,22 @@ export const HelmReleaseDetails = ({
   );
   const sourceName = getHelmReleaseSourceName(helmrelease);
   const chartName = getHelmReleaseChartName(helmrelease);
+
+  let clusterEl: ReactNode = clusterName ? clusterName : 'n/a';
+  if (clusterName && clusterNamespace) {
+    clusterEl = (
+      <Link
+        component={RouterLink}
+        to={clusterRouteLink({
+          installationName: installationName,
+          namespace: clusterNamespace,
+          name: clusterName,
+        })}
+      >
+        {clusterName}
+      </Link>
+    );
+  }
 
   return (
     <div>
@@ -115,7 +142,7 @@ export const HelmReleaseDetails = ({
               <StructuredMetadataList
                 metadata={{
                   Installation: installationName,
-                  Cluster: clusterName ? clusterName : 'n/a',
+                  Cluster: clusterEl,
                 }}
               />
             </CardContent>

@@ -4,7 +4,8 @@ import { RouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import {
-  getAppClusterName,
+  getAppTargetClusterName,
+  getAppTargetClusterNamespace,
   getAppCurrentVersion,
   getAppStatus,
   getAppVersion,
@@ -12,7 +13,8 @@ import {
   getAppUpdatedTimestamp,
   getAppCatalogName,
   getHelmReleaseStatus,
-  getHelmReleaseClusterName,
+  getHelmReleaseTargetClusterName,
+  getHelmReleaseTargetClusterNamespace,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
   getHelmReleaseChartName,
@@ -46,7 +48,8 @@ const DeploymentsTableView = ({
       ? {
           installationName,
           kind: 'app',
-          clusterName: getAppClusterName(deployment, installationName),
+          clusterName: getAppTargetClusterName(deployment, installationName),
+          clusterNamespace: getAppTargetClusterNamespace(deployment),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(getAppCurrentVersion(deployment) ?? ''),
@@ -61,7 +64,11 @@ const DeploymentsTableView = ({
       : {
           installationName,
           kind: 'helmrelease',
-          clusterName: getHelmReleaseClusterName(deployment, installationName),
+          clusterName: getHelmReleaseTargetClusterName(
+            deployment,
+            installationName,
+          ),
+          clusterNamespace: getHelmReleaseTargetClusterNamespace(deployment),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(
@@ -121,8 +128,6 @@ export const DeploymentsTable = ({
   }, [baseRouteRef, grafanaDashboard, ingressHost]);
 
   const { data: deploymentsData, isLoading, retry } = useDeploymentsData();
-
-  console.log('deploymentsData', deploymentsData);
 
   return (
     <DeploymentsTableView
