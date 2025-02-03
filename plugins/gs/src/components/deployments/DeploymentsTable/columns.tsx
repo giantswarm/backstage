@@ -11,12 +11,14 @@ import { Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { formatSource } from '../../utils/helpers';
+import { renderClusterType } from '../../clusters/ClustersTable/columns';
 
 export type Row = {
   installationName: string;
   kind: string;
   clusterName?: string;
   clusterNamespace?: string;
+  clusterType?: string;
   name: string;
   namespace?: string;
   version: string;
@@ -94,6 +96,14 @@ export const getInitialColumns = (
         }
 
         return row.clusterName;
+      },
+    },
+    {
+      title: 'Cluster Type',
+      field: 'clusterType',
+      hidden: true,
+      render: row => {
+        return row.clusterType ? renderClusterType(row.clusterType) : undefined;
       },
     },
     {

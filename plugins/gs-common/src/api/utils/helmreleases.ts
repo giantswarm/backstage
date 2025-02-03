@@ -69,7 +69,9 @@ export function getHelmReleaseStatus(helmRelease: HelmRelease) {
   return HelmReleaseStatuses.Unknown;
 }
 
-function isHelmReleaseTargetClusterManagementCluster(helmRelease: HelmRelease) {
+export function isHelmReleaseTargetClusterManagementCluster(
+  helmRelease: HelmRelease,
+) {
   return !Boolean(helmRelease.spec?.kubeConfig);
 }
 

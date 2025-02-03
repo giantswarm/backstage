@@ -25,6 +25,7 @@ import {
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
 import { getInitialColumns, Row } from './columns';
+import { calculateClusterType } from '../utils';
 
 type Props = {
   columns: TableColumn<Row>[];
@@ -51,6 +52,7 @@ const DeploymentsTableView = ({
           kind: 'app',
           clusterName: getAppTargetClusterName(deployment, installationName),
           clusterNamespace: getAppTargetClusterNamespace(deployment),
+          clusterType: calculateClusterType(deployment),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(getAppCurrentVersion(deployment) ?? ''),
@@ -71,6 +73,7 @@ const DeploymentsTableView = ({
             installationName,
           ),
           clusterNamespace: getHelmReleaseTargetClusterNamespace(deployment),
+          clusterType: calculateClusterType(deployment),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(

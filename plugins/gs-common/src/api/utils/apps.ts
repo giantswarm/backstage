@@ -76,7 +76,7 @@ export function getAppStatus(app: App) {
   return app.status?.release.status;
 }
 
-function isAppTargetClusterManagementCluster(app: App) {
+export function isAppTargetClusterManagementCluster(app: App) {
   return app.spec?.kubeConfig.inCluster === true;
 }
 
