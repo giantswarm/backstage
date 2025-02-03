@@ -10,6 +10,7 @@ import { HelmReleaseStatus } from '../HelmReleaseStatus';
 import { Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
 import { clusterDetailsRouteRef } from '../../../routes';
+import { formatSource } from '../../utils/helpers';
 
 export type Row = {
   installationName: string;
@@ -23,6 +24,7 @@ export type Row = {
   status?: string;
   sourceLocation?: string;
   updated?: string;
+  sourceKind?: string;
   sourceName?: string;
   chartName?: string;
   apiVersion: string;
@@ -114,23 +116,27 @@ export const getInitialColumns = (
     {
       title: 'Source',
       field: 'source',
+      hidden: true,
       render: row => {
         return (
-          <>
-            {row.sourceName && (
-              <Typography variant="inherit" noWrap>
-                {row.sourceName}/
-              </Typography>
-            )}
-            {row.chartName && (
-              <Typography variant="inherit" noWrap>
-                {row.chartName}
-              </Typography>
-            )}
-          </>
+          <Typography variant="inherit" noWrap>
+            {formatSource(row.sourceKind, row.sourceName)}
+          </Typography>
         );
       },
-      ...sortAndFilterOptions(row => `${row.sourceName} / ${row.chartName}`),
+      ...sortAndFilterOptions(row => `${row.sourceKind} ${row.sourceName}`),
+    },
+    {
+      title: 'Chart Name',
+      field: 'chartName',
+      hidden: true,
+      render: row => {
+        return (
+          <Typography variant="inherit" noWrap>
+            {row.chartName}
+          </Typography>
+        );
+      },
     },
     {
       title: 'Version',

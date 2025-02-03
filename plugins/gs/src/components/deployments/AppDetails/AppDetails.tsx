@@ -9,7 +9,6 @@ import {
   CardHeader,
   Grid,
   Link,
-  Typography,
 } from '@material-ui/core';
 import {
   getAppCatalogName,
@@ -22,7 +21,11 @@ import {
   getAppTargetClusterNamespace,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useApp } from '../../hooks';
-import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
+import {
+  formatAppCatalogName,
+  formatSource,
+  formatVersion,
+} from '../../utils/helpers';
 import {
   ApplicationLink,
   DateComponent,
@@ -163,20 +166,8 @@ export const AppDetails = ({
                 metadata={{
                   Name: name,
                   Namespace: namespace,
-                  Source: (
-                    <>
-                      {sourceName && (
-                        <Typography variant="inherit" noWrap>
-                          {sourceName}/
-                        </Typography>
-                      )}
-                      {chartName && (
-                        <Typography variant="inherit" noWrap>
-                          {chartName}
-                        </Typography>
-                      )}
-                    </>
-                  ),
+                  Source: formatSource('AppCatalog', sourceName),
+                  'Chart name': chartName,
                   Created: (
                     <DateComponent
                       value={getAppCreatedTimestamp(app)}

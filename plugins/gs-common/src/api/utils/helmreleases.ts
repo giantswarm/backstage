@@ -113,6 +113,12 @@ export function getHelmReleaseUpdatedTimestamp(
     .lastTransitionTime;
 }
 
+export function getHelmReleaseSourceKind(
+  helmRelease: HelmRelease,
+): string | undefined {
+  return helmRelease.spec?.chart.spec.sourceRef?.kind;
+}
+
 export function getHelmReleaseSourceName(
   helmRelease: HelmRelease,
 ): string | undefined {

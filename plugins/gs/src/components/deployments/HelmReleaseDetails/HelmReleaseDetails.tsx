@@ -9,7 +9,6 @@ import {
   CardHeader,
   Grid,
   Link,
-  Typography,
 } from '@material-ui/core';
 import {
   getHelmReleaseChartName,
@@ -20,9 +19,10 @@ import {
   getHelmReleaseSourceName,
   getHelmReleaseUpdatedTimestamp,
   getHelmReleaseTargetClusterNamespace,
+  getHelmReleaseSourceKind,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useHelmRelease } from '../../hooks';
-import { formatVersion } from '../../utils/helpers';
+import { formatSource, formatVersion } from '../../utils/helpers';
 import {
   ApplicationLink,
   DateComponent,
@@ -95,6 +95,7 @@ export const HelmReleaseDetails = ({
   const lastAttemptedRevision = formatVersion(
     getHelmReleaseLastAttemptedRevision(helmrelease) ?? '',
   );
+  const sourceKind = getHelmReleaseSourceKind(helmrelease);
   const sourceName = getHelmReleaseSourceName(helmrelease);
   const chartName = getHelmReleaseChartName(helmrelease);
 
@@ -170,20 +171,8 @@ export const HelmReleaseDetails = ({
                 metadata={{
                   Name: name,
                   Namespace: namespace,
-                  Source: (
-                    <>
-                      {sourceName && (
-                        <Typography variant="inherit" noWrap>
-                          {sourceName}/
-                        </Typography>
-                      )}
-                      {chartName && (
-                        <Typography variant="inherit" noWrap>
-                          {chartName}
-                        </Typography>
-                      )}
-                    </>
-                  ),
+                  Source: formatSource(sourceKind, sourceName),
+                  'Chart name': chartName,
                   Created: (
                     <DateComponent
                       value={getHelmReleaseCreatedTimestamp(helmrelease)}

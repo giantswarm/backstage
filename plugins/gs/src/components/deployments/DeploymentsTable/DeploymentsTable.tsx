@@ -20,6 +20,7 @@ import {
   getHelmReleaseChartName,
   getHelmReleaseUpdatedTimestamp,
   getHelmReleaseSourceName,
+  getHelmReleaseSourceKind,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
@@ -57,6 +58,7 @@ const DeploymentsTableView = ({
           status: getAppStatus(deployment),
           sourceLocation,
           updated: getAppUpdatedTimestamp(deployment),
+          sourceKind: 'AppCatalog',
           sourceName: formatAppCatalogName(getAppCatalogName(deployment) ?? ''),
           chartName: getAppChartName(deployment),
           apiVersion: deployment.apiVersion,
@@ -80,6 +82,7 @@ const DeploymentsTableView = ({
           status: getHelmReleaseStatus(deployment),
           sourceLocation,
           updated: getHelmReleaseUpdatedTimestamp(deployment),
+          sourceKind: getHelmReleaseSourceKind(deployment),
           sourceName: getHelmReleaseSourceName(deployment),
           chartName: getHelmReleaseChartName(deployment),
           apiVersion: deployment.apiVersion,
