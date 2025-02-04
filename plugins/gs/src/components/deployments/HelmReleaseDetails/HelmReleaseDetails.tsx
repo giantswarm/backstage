@@ -1,24 +1,28 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/core-plugin-api';
 import {
   Box,
   Card,
   CardContent,
   CardHeader,
   Grid,
-  Typography,
+  Link,
 } from '@material-ui/core';
 import {
   getHelmReleaseChartName,
-  getHelmReleaseClusterName,
+  getHelmReleaseTargetClusterName,
   getHelmReleaseCreatedTimestamp,
   getHelmReleaseLastAppliedRevision,
   getHelmReleaseLastAttemptedRevision,
   getHelmReleaseSourceName,
   getHelmReleaseUpdatedTimestamp,
+  getHelmReleaseTargetClusterNamespace,
+  getHelmReleaseSourceKind,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useHelmRelease } from '../../hooks';
-import { formatVersion } from '../../utils/helpers';
+import { formatSource, formatVersion } from '../../utils/helpers';
 import {
   ApplicationLink,
   DateComponent,
@@ -28,6 +32,7 @@ import {
 } from '../../UI';
 import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
 import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
+import { clusterDetailsRouteRef } from '../../../routes';
 
 type HelmReleaseDetailsProps = {
   installationName: string;
@@ -51,6 +56,8 @@ export const HelmReleaseDetails = ({
     isLoading,
     error,
   } = useHelmRelease(installationName, name, namespace);
+
+  const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
   if (isLoading) {
     return <Progress />;
@@ -77,15 +84,36 @@ export const HelmReleaseDetails = ({
     );
   }
 
-  const clusterName = getHelmReleaseClusterName(helmrelease);
+  const clusterName = getHelmReleaseTargetClusterName(
+    helmrelease,
+    installationName,
+  );
+  const clusterNamespace = getHelmReleaseTargetClusterNamespace(helmrelease);
   const lastAppliedRevision = formatVersion(
     getHelmReleaseLastAppliedRevision(helmrelease) ?? '',
   );
   const lastAttemptedRevision = formatVersion(
     getHelmReleaseLastAttemptedRevision(helmrelease) ?? '',
   );
+  const sourceKind = getHelmReleaseSourceKind(helmrelease);
   const sourceName = getHelmReleaseSourceName(helmrelease);
   const chartName = getHelmReleaseChartName(helmrelease);
+
+  let clusterEl: ReactNode = clusterName ? clusterName : 'n/a';
+  if (clusterName && clusterNamespace) {
+    clusterEl = (
+      <Link
+        component={RouterLink}
+        to={clusterRouteLink({
+          installationName: installationName,
+          namespace: clusterNamespace,
+          name: clusterName,
+        })}
+      >
+        {clusterName}
+      </Link>
+    );
+  }
 
   return (
     <div>
@@ -115,7 +143,7 @@ export const HelmReleaseDetails = ({
               <StructuredMetadataList
                 metadata={{
                   Installation: installationName,
-                  Cluster: clusterName ? clusterName : 'n/a',
+                  Cluster: clusterEl,
                 }}
               />
             </CardContent>
@@ -141,22 +169,10 @@ export const HelmReleaseDetails = ({
             <CardContent>
               <StructuredMetadataList
                 metadata={{
-                  Namespace: namespace,
                   Name: name,
-                  Source: (
-                    <>
-                      {sourceName && (
-                        <Typography variant="inherit" noWrap>
-                          {sourceName}/
-                        </Typography>
-                      )}
-                      {chartName && (
-                        <Typography variant="inherit" noWrap>
-                          {chartName}
-                        </Typography>
-                      )}
-                    </>
-                  ),
+                  Namespace: namespace,
+                  Source: formatSource(sourceKind, sourceName),
+                  'Chart name': chartName,
                   Created: (
                     <DateComponent
                       value={getHelmReleaseCreatedTimestamp(helmrelease)}

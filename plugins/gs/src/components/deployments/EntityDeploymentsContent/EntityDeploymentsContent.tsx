@@ -18,6 +18,8 @@ import { DetailsPane } from '../../UI';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { AppDetails } from '../AppDetails';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
+import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
+import { entityDeploymentsRouteRef } from '../../../routes';
 
 export const EntityDeploymentsContent = () => {
   const { entity } = useEntity();
@@ -35,12 +37,14 @@ export const EntityDeploymentsContent = () => {
           <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
         </ContentHeader>
         <InstallationsWrapper>
-          <DeploymentsTable
-            deploymentNames={deploymentNames}
-            sourceLocation={sourceLocation}
-            grafanaDashboard={grafanaDashboard}
-            ingressHost={ingressHost}
-          />
+          <DeploymentsDataProvider deploymentNames={deploymentNames}>
+            <DeploymentsTable
+              baseRouteRef={entityDeploymentsRouteRef}
+              sourceLocation={sourceLocation}
+              grafanaDashboard={grafanaDashboard}
+              ingressHost={ingressHost}
+            />
+          </DeploymentsDataProvider>
         </InstallationsWrapper>
         <DetailsPane
           paneId={DEPLOYMENT_DETAILS_PANE_ID}

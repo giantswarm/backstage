@@ -77,6 +77,10 @@ export function getTelemetryPageViewPayload(location: Location): {
       break;
     }
 
+    case pathname === '/deployments':
+      payload = { page: 'Deployments index' };
+      break;
+
     case pathname === '/search':
       payload = { page: 'Search' };
       break;

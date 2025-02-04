@@ -1,24 +1,31 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/core-plugin-api';
 import {
   Box,
   Card,
   CardContent,
   CardHeader,
   Grid,
-  Typography,
+  Link,
 } from '@material-ui/core';
 import {
   getAppCatalogName,
   getAppChartName,
-  getAppClusterName,
+  getAppTargetClusterName,
   getAppCreatedTimestamp,
   getAppCurrentVersion,
   getAppUpdatedTimestamp,
   getAppVersion,
+  getAppTargetClusterNamespace,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useApp } from '../../hooks';
-import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
+import {
+  formatAppCatalogName,
+  formatSource,
+  formatVersion,
+} from '../../utils/helpers';
 import {
   ApplicationLink,
   DateComponent,
@@ -28,6 +35,7 @@ import {
 } from '../../UI';
 import { AppDetailsStatus } from '../AppDetailsStatus';
 import { RevisionDetails } from '../RevisionDetails';
+import { clusterDetailsRouteRef } from '../../../routes';
 
 type AppDetailsProps = {
   installationName: string;
@@ -51,6 +59,8 @@ export const AppDetails = ({
     isLoading,
     error,
   } = useApp(installationName, name, namespace);
+
+  const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
   if (isLoading) {
     return <Progress />;
@@ -77,11 +87,28 @@ export const AppDetails = ({
     );
   }
 
-  const clusterName = getAppClusterName(app);
+  const clusterName = getAppTargetClusterName(app, installationName);
+  const clusterNamespace = getAppTargetClusterNamespace(app);
   const lastAppliedRevision = formatVersion(getAppCurrentVersion(app) ?? '');
   const lastAttemptedRevision = formatVersion(getAppVersion(app) ?? '');
   const sourceName = formatAppCatalogName(getAppCatalogName(app) ?? '');
   const chartName = getAppChartName(app);
+
+  let clusterEl: ReactNode = clusterName ? clusterName : 'n/a';
+  if (clusterName && clusterNamespace) {
+    clusterEl = (
+      <Link
+        component={RouterLink}
+        to={clusterRouteLink({
+          installationName: installationName,
+          namespace: clusterNamespace,
+          name: clusterName,
+        })}
+      >
+        {clusterName}
+      </Link>
+    );
+  }
 
   return (
     <div>
@@ -111,7 +138,7 @@ export const AppDetails = ({
               <StructuredMetadataList
                 metadata={{
                   Installation: installationName,
-                  Cluster: clusterName ? clusterName : 'n/a',
+                  Cluster: clusterEl,
                 }}
               />
             </CardContent>
@@ -137,22 +164,10 @@ export const AppDetails = ({
             <CardContent>
               <StructuredMetadataList
                 metadata={{
-                  Namespace: namespace,
                   Name: name,
-                  Source: (
-                    <>
-                      {sourceName && (
-                        <Typography variant="inherit" noWrap>
-                          {sourceName}/
-                        </Typography>
-                      )}
-                      {chartName && (
-                        <Typography variant="inherit" noWrap>
-                          {chartName}
-                        </Typography>
-                      )}
-                    </>
-                  ),
+                  Namespace: namespace,
+                  Source: formatSource('AppCatalog', sourceName),
+                  'Chart name': chartName,
                   Created: (
                     <DateComponent
                       value={getAppCreatedTimestamp(app)}

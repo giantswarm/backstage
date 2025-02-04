@@ -1,4 +1,4 @@
-import { Labels } from '../constants';
+import { Constants, Labels } from '../constants';
 import type { App, Catalog } from '../types';
 import * as giantswarmApplication from '../../model/giantswarm-application';
 
@@ -76,8 +76,24 @@ export function getAppStatus(app: App) {
   return app.status?.release.status;
 }
 
-export function getAppClusterName(app: App) {
+export function isAppTargetClusterManagementCluster(app: App) {
+  return app.spec?.kubeConfig.inCluster === true;
+}
+
+export function getAppTargetClusterName(app: App, installationName: string) {
+  if (isAppTargetClusterManagementCluster(app)) {
+    return installationName;
+  }
+
   return app.metadata.labels?.[Labels.labelCluster];
+}
+
+export function getAppTargetClusterNamespace(app: App) {
+  if (isAppTargetClusterManagementCluster(app)) {
+    return Constants.MANAGEMENT_CLUSTER_NAMESPACE;
+  }
+
+  return app.metadata.namespace;
 }
 
 export function getAppChartName(app: App) {

@@ -34,28 +34,32 @@ export type Row = {
   awsAccountUrl?: string;
 };
 
+export const renderClusterType = (clusterType: string) => {
+  if (clusterType === ClusterTypes.Management) {
+    return (
+      <Tooltip title="Management cluster">
+        <Box display="inline-block">
+          <ClusterTypeManagementIcon />
+        </Box>
+      </Tooltip>
+    );
+  }
+  return (
+    <Tooltip title="Workload cluster">
+      <Box display="inline-block">
+        <ClusterTypeWorkloadIcon />
+      </Box>
+    </Tooltip>
+  );
+};
+
 export const getInitialColumns = (): TableColumn<Row>[] => [
   {
     title: 'Type',
     field: 'type',
     width: 'auto',
     render: row => {
-      if (row.type === ClusterTypes.Management) {
-        return (
-          <Tooltip title="Management cluster">
-            <Box display="inline-block">
-              <ClusterTypeManagementIcon />
-            </Box>
-          </Tooltip>
-        );
-      }
-      return (
-        <Tooltip title="Workload cluster">
-          <Box display="inline-block">
-            <ClusterTypeWorkloadIcon />
-          </Box>
-        </Tooltip>
-      );
+      return renderClusterType(row.type);
     },
   },
   {

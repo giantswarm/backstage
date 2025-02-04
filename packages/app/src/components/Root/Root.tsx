@@ -85,19 +85,21 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarItem icon={HomeIcon} to="/" text="Home" />
           <SidebarItem icon={FolderIcon} to="catalog" text="Catalog" />
           <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
+          {/* End global nav */}
+        </SidebarGroup>
+        <SidebarDivider />
+        <GSMainMenu />
+        <SidebarGroup label="Menu" icon={<MenuIcon />}>
           <GSFeatureEnabled feature="scaffolder">
+            <SidebarDivider />
             <SidebarItem
               icon={CreateComponentIcon}
               to="create"
               text="Create..."
             />
           </GSFeatureEnabled>
-
-          {/* End global nav */}
         </SidebarGroup>
-        <GSMainMenu />
         <SidebarSpace />
-        <SidebarDivider />
         <SidebarGroup
           label="Settings"
           icon={<UserSettingsSignInAvatar />}

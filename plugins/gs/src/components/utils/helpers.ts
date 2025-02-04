@@ -109,3 +109,7 @@ export function formatVersion(version: string) {
 export function formatAppCatalogName(name: string) {
   return name.endsWith('-catalog') ? name : `${name}-catalog`;
 }
+
+export function formatSource(sourceKind?: string, sourceName?: string) {
+  return sourceKind && sourceName ? `${sourceKind} ${sourceName}` : 'n/a';
+}
