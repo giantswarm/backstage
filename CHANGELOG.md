@@ -7,11 +7,26 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.51.0] - 2025-02-04
 
+In this release:
+
+- Deployments page with overview of all apps deployed throughout clusters was added.
+
+Deployments list changes:
+
+- Information in SOURCE column was changed. Now it shows type of source and source name. Information about chart name was moved to a separate column called CHART NAME;
+- NAMESPACE/NAME column was split into two separate columns;
+- CLUSTER column was changed. Missing cluster names are being correctly filled and values are displayed as links to cluster details pages;
+- CLUSTER TYPE column was added to deployments list.
+
+Clusters list changes:
+
+- AWS ACCOUNT ID column was fixed to display values in groups of four digits.
+
 See [./docs/releases/v0.51.0-changelog.md](./docs/releases/v0.51.0-changelog.md) for more information.
 
 ## [0.50.0] - 2025-01-29
 
-In this PR:
+In this release:
 
 - KUBERNETES VERSION column was added to clusters list;
 - AWS ACCOUNT ID column in clusters list was changed to display value with color hashing and link to AWS account;
