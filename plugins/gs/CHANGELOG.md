@@ -1,5 +1,25 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.12.0
+
+### Minor Changes
+
+- 60cf504: Split SOURCE column in deployments table into SOURCE and CHART NAME.
+- 60cf504: Split NAMESPACE/NAME column in deployments table into two separate columns.
+- 60cf504: Fixed missing values in CLUSTER column in deployments list.
+- 60cf504: Added deployments page.
+- 60cf504: Added links to cluster details from deployments table and deployment details pane.
+- 60cf504: Added CLUSTER TYPE column to deployments list.
+
+### Patch Changes
+
+- c9d0eb6: Change grouping of AWS account ID into groups of four digits
+- Updated dependencies [60cf504]
+- Updated dependencies [60cf504]
+- Updated dependencies [60cf504]
+- Updated dependencies [60cf504]
+  - @giantswarm/backstage-plugin-gs-common@0.8.0
+
 ## 0.11.0
 
 ### Minor Changes

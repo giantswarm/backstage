@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.8.0
+
+### Minor Changes
+
+- 60cf504: Split SOURCE column in deployments table into SOURCE and CHART NAME.
+- 60cf504: Fixed missing values in CLUSTER column in deployments list.
+- 60cf504: Added links to cluster details from deployments table and deployment details pane.
+- 60cf504: Added CLUSTER TYPE column to deployments list.
+
 ## 0.7.3
 
 ### Patch Changes

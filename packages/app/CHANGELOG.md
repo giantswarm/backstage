@@ -1,5 +1,22 @@
 # app
 
+## 0.7.0
+
+### Minor Changes
+
+- 60cf504: Added deployments page.
+
+### Patch Changes
+
+- Updated dependencies [60cf504]
+- Updated dependencies [60cf504]
+- Updated dependencies [60cf504]
+- Updated dependencies [60cf504]
+- Updated dependencies [c9d0eb6]
+- Updated dependencies [60cf504]
+- Updated dependencies [60cf504]
+  - @giantswarm/backstage-plugin-gs@0.12.0
+
 ## 0.6.3
 
 ### Patch Changes
