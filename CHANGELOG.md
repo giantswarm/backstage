@@ -7,6 +7,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.51.1] - 2025-02-05
 
+In this release:
+
+Deployments table improvements:
+
+- page size was changed to 50 items. Allowed for a user to change page size to 100 items;
+- sort by name by default;
+- CLUSTER TYPE column values were fixed for App CRs deployed by a bundle.
+
+Grafana link on cluster details page was changed to point to the new Cluster Overview Dashboard.
+
 See [./docs/releases/v0.51.1-changelog.md](./docs/releases/v0.51.1-changelog.md) for more information.
 
 ## [0.51.0] - 2025-02-04
