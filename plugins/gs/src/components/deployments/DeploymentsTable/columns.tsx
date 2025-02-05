@@ -42,6 +42,7 @@ export const getInitialColumns = (
       title: 'Name',
       field: 'name',
       highlight: true,
+      defaultSort: 'asc',
       render: row => {
         const LinkWrapper = () => {
           const { getRoute } = useDetailsPane(DEPLOYMENT_DETAILS_PANE_ID);

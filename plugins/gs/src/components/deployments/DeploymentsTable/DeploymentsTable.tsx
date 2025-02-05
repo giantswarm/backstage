@@ -96,7 +96,8 @@ const DeploymentsTableView = ({
     <Table<Row>
       isLoading={loading}
       options={{
-        pageSize: 20,
+        pageSize: 50,
+        pageSizeOptions: [50, 100],
         emptyRowsWhenPaging: false,
         columnsButton: true,
       }}
