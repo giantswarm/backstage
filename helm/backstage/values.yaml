@@ -70,6 +70,18 @@ aws:
   accessKeyID: ''
   secretAccessKey: ''
 
+# Allows to define the sharedConfig as a multiline string that generates a ConfigMap
+# automatically. Configuration defined here can be referenced in the main app configuration
+# with $include keyword.
+# E.g:
+# sharedConfig:
+#   gs:
+#     kubernetesVersions:
+#       '1.28':
+#         eolDate: '2024-10-28'
+#         minorVersion: '1.28'
+sharedConfig: {}
+
 # Can be used to assign pods to the node pool. E.g. - giantswarm.io/machine-deployment: a1b2c
 # Docs - https://docs.giantswarm.io/advanced/node-pools/#assigning-workloads
 nodeSelector: {}

@@ -110,6 +110,11 @@ spec:
             {{- if .Values.backstage.extraVolumeMounts }}
               {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraVolumeMounts "context" $ ) | nindent 12 }}
             {{- end }}
+            {{- if .Values.sharedConfig }}
+            - name: backstage-shared-config
+              mountPath: "/app/shared-config.yaml"
+              subPath: shared-config.yaml
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -147,6 +152,11 @@ spec:
         {{- end }}
         {{- if .Values.backstage.extraVolumes }}
           {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraVolumes "context" $ ) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.sharedConfig }}
+        - name: backstage-shared-config
+          configMap:
+            name: shared-config-configmap
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

@@ -266,6 +266,10 @@
         }
       }
     },
+    "sharedConfig": {
+      "default": {},
+      "type": ["object", "string"]
+    },
     "sentry": {
       "type": "object",
       "properties": {
