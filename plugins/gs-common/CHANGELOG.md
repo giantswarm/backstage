@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.8.1
+
+### Patch Changes
+
+- 0b15773: Fixed how cluster type is determined for deployments.
+
 ## 0.8.0
 
 ### Minor Changes
