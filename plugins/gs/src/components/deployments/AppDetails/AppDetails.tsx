@@ -88,7 +88,7 @@ export const AppDetails = ({
   }
 
   const clusterName = getAppTargetClusterName(app, installationName);
-  const clusterNamespace = getAppTargetClusterNamespace(app);
+  const clusterNamespace = getAppTargetClusterNamespace(app, installationName);
   const lastAppliedRevision = formatVersion(getAppCurrentVersion(app) ?? '');
   const lastAttemptedRevision = formatVersion(getAppVersion(app) ?? '');
   const sourceName = formatAppCatalogName(getAppCatalogName(app) ?? '');
