@@ -5,6 +5,20 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.51.1] - 2025-02-05
+
+In this release:
+
+Deployments table improvements:
+
+- page size was changed to 50 items. Allowed for a user to change page size to 100 items;
+- sort by name by default;
+- CLUSTER TYPE column values were fixed for App CRs deployed by a bundle.
+
+Grafana link on cluster details page was changed to point to the new Cluster Overview Dashboard.
+
+See [./docs/releases/v0.51.1-changelog.md](./docs/releases/v0.51.1-changelog.md) for more information.
+
 ## [0.51.0] - 2025-02-04
 
 In this release:
@@ -894,7 +908,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.51.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.51.1...HEAD
+[0.51.1]: https://github.com/giantswarm/backstage/compare/v0.51.0...v0.51.1
 [0.51.0]: https://github.com/giantswarm/backstage/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/giantswarm/backstage/compare/v0.49.2...v0.50.0
 [0.49.2]: https://github.com/giantswarm/backstage/compare/v0.49.1...v0.49.2

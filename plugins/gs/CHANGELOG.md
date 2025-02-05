@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.12.1
+
+### Patch Changes
+
+- 1ba6a38: Changed deployments table page size to 50. Allowed to change to 100.
+- 1ba6a38: Sorted deployments table by name on initial render.
+- e08db30: Changed Grafana link on cluster details page.
+- 0b15773: Fixed how cluster type is determined for deployments.
+- Updated dependencies [0b15773]
+  - @giantswarm/backstage-plugin-gs-common@0.8.1
+
 ## 0.12.0
 
 ### Minor Changes
