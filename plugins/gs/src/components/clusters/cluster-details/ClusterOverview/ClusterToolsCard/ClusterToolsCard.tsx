@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardContent } from '@material-ui/core';
+import { Card, CardContent, Typography } from '@material-ui/core';
 import PublicIcon from '@material-ui/icons/Public';
 import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
@@ -12,7 +12,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   useGrafanaAlertsLink,
-  useGrafanaDashboardsLink,
+  useGrafanaDashboardLink,
   useWebUILink,
 } from '../../../../hooks/useClusterLinks';
 
@@ -32,10 +32,10 @@ export function ClusterToolsCard() {
     ? ''
     : `Web UI link is not available. Base domain is not configured for '${installationName}' installation.`;
 
-  const dashboardsLink = useGrafanaDashboardsLink(installationName);
-  const dashboardsLinkDisabledNote = dashboardsLink
+  const dashboardLink = useGrafanaDashboardLink(installationName, clusterName);
+  const dashboardsLinkDisabledNote = dashboardLink
     ? ''
-    : `Grafana dashboards link is not available. Base domain is not configured for '${installationName}' installation.`;
+    : `Cluster overview dashboard link is not available. Base domain is not configured for '${installationName}' installation.`;
 
   const alertsLink = useGrafanaAlertsLink(installationName);
   const alertsLinkDisabledNote = alertsLink
@@ -44,8 +44,18 @@ export function ClusterToolsCard() {
 
   const tools = [
     {
-      url: dashboardsLink ?? '',
-      label: 'Dashboards',
+      url: dashboardLink ?? '',
+      label: (
+        <>
+          <Typography variant="inherit" noWrap>
+            Cluster overview
+          </Typography>
+          <br />
+          <Typography variant="inherit" noWrap>
+            dashboard
+          </Typography>
+        </>
+      ),
       icon: <GrafanaIcon />,
       disabled: Boolean(dashboardsLinkDisabledNote),
       disabledNote: dashboardsLinkDisabledNote,

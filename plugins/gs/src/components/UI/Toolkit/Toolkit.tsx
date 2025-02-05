@@ -9,13 +9,13 @@ import classNames from 'classnames';
 
 type Tool =
   | {
-      label: string;
+      label: React.ReactNode;
       url: string;
       icon: React.ReactNode;
       disabled?: false;
     }
   | {
-      label: string;
+      label: React.ReactNode;
       url: string;
       icon: React.ReactNode;
       disabled: true;
@@ -39,7 +39,6 @@ const useStyles = makeStyles(theme => ({
   label: {
     marginTop: theme.spacing(1),
     minWidth: '72px',
-    maxWidth: '82px',
     fontSize: '0.9em',
     lineHeight: '1.25',
     overflowWrap: 'break-word',
@@ -68,7 +67,7 @@ export const Toolkit = ({ tools }: ToolkitProps) => {
 
   return (
     <List className={classes.toolkit}>
-      {tools.map((tool: Tool) => {
+      {tools.map((tool, idx) => {
         const el = (
           <>
             <ListItemIcon
@@ -91,7 +90,7 @@ export const Toolkit = ({ tools }: ToolkitProps) => {
 
         if (tool.disabled) {
           return (
-            <Tooltip title={tool.disabledNote} key={tool.label}>
+            <Tooltip title={tool.disabledNote} key={idx}>
               <Typography
                 variant="inherit"
                 color="textSecondary"
@@ -104,7 +103,7 @@ export const Toolkit = ({ tools }: ToolkitProps) => {
         }
 
         return (
-          <Link key={tool.label} to={tool.url} className={classes.tool}>
+          <Link key={idx} to={tool.url} className={classes.tool}>
             {el}
           </Link>
         );
