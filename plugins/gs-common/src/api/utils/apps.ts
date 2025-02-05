@@ -76,20 +76,29 @@ export function getAppStatus(app: App) {
   return app.status?.release.status;
 }
 
-export function isAppTargetClusterManagementCluster(app: App) {
-  return app.spec?.kubeConfig.inCluster === true;
+export function isAppTargetClusterManagementCluster(
+  app: App,
+  installationName: string,
+) {
+  return (
+    app.spec?.kubeConfig.inCluster === true ||
+    app.spec?.kubeConfig.secret?.name === `${installationName}-kubeconfig`
+  );
 }
 
 export function getAppTargetClusterName(app: App, installationName: string) {
-  if (isAppTargetClusterManagementCluster(app)) {
+  if (isAppTargetClusterManagementCluster(app, installationName)) {
     return installationName;
   }
 
   return app.metadata.labels?.[Labels.labelCluster];
 }
 
-export function getAppTargetClusterNamespace(app: App) {
-  if (isAppTargetClusterManagementCluster(app)) {
+export function getAppTargetClusterNamespace(
+  app: App,
+  installationName: string,
+) {
+  if (isAppTargetClusterManagementCluster(app, installationName)) {
     return Constants.MANAGEMENT_CLUSTER_NAMESPACE;
   }
 

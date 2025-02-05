@@ -51,8 +51,11 @@ const DeploymentsTableView = ({
           installationName,
           kind: 'app',
           clusterName: getAppTargetClusterName(deployment, installationName),
-          clusterNamespace: getAppTargetClusterNamespace(deployment),
-          clusterType: calculateClusterType(deployment),
+          clusterNamespace: getAppTargetClusterNamespace(
+            deployment,
+            installationName,
+          ),
+          clusterType: calculateClusterType(deployment, installationName),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(getAppCurrentVersion(deployment) ?? ''),
@@ -73,7 +76,7 @@ const DeploymentsTableView = ({
             installationName,
           ),
           clusterNamespace: getHelmReleaseTargetClusterNamespace(deployment),
-          clusterType: calculateClusterType(deployment),
+          clusterType: calculateClusterType(deployment, installationName),
           name: deployment.metadata.name,
           namespace: deployment.metadata.namespace,
           version: formatVersion(
