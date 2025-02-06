@@ -6,6 +6,7 @@ import { ClusterAccessCard } from './ClusterAccessCard';
 import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 import { ClusterLabelsCard } from './ClusterLabelsCard';
 import { ClusterToolsCard } from './ClusterToolsCard';
+import { ClusterGitOpsCard } from './ClusterGitOpsCard';
 
 export const ClusterOverview = () => {
   return (
@@ -28,6 +29,9 @@ export const ClusterOverview = () => {
           <Grid item container spacing={3}>
             <Grid item xs={12}>
               <ClusterToolsCard />
+            </Grid>
+            <Grid item xs={12}>
+              <ClusterGitOpsCard />
             </Grid>
             <Grid item xs={12}>
               <ClusterAccessCard />
