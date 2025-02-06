@@ -7,6 +7,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useGetResource } from './useGetResource';
 import { useApiVersionOverride } from './useApiVersionOverrides';
+import { getErrorMessage } from './utils/helpers';
 
 export function useProviderCluster(installationName: string, cluster: Cluster) {
   const { kind, apiVersion, name, namespace } =
@@ -18,11 +19,18 @@ export function useProviderCluster(installationName: string, cluster: Cluster) {
   );
   const gvk = getProviderClusterGVK(kind, apiVersionOverride ?? apiVersion);
 
+  const query = useGetResource<ProviderCluster>(
+    { installationName, gvk, name, namespace },
+    { enabled: true },
+  );
+
   return {
-    ...useGetResource<ProviderCluster>(
-      { installationName, gvk, name, namespace },
-      { enabled: true },
-    ),
-    queryErrorMessage: 'Failed to fetch provider cluster',
+    ...query,
+    queryErrorMessage: getErrorMessage({
+      error: query.error,
+      resourceKind: 'provider cluster',
+      resourceName: name,
+      resourceNamespace: namespace,
+    }),
   };
 }
