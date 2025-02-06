@@ -15,7 +15,11 @@ export const GSContext = ({ children }: { children: ReactNode }) => {
           retry: (failureCount, error) => {
             const name = (error as Error).name;
 
-            if (name === 'RejectedError' || name === 'NotFoundError') {
+            if (
+              name === 'RejectedError' ||
+              name === 'NotFoundError' ||
+              name === 'ForbiddenError'
+            ) {
               return false;
             }
 

@@ -21,7 +21,10 @@ export function useControlPlane(installationName: string, cluster: Cluster) {
   const gvk = getControlPlaneGVK(kind, apiVersionOverride ?? apiVersion);
 
   return {
-    ...useGetResource<ControlPlane>(installationName, gvk, name, namespace),
+    ...useGetResource<ControlPlane>(
+      { installationName, gvk, name, namespace },
+      { enabled: true },
+    ),
     queryErrorMessage: 'Failed to fetch control plane',
   };
 }

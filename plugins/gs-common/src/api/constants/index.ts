@@ -20,6 +20,10 @@ export const Labels = {
   // Cluster app labels
   labelApp: 'app',
   labelAppVersion: 'app.kubernetes.io/version',
+
+  // Flux labels
+  labelKustomizationName: 'kustomize.toolkit.fluxcd.io/name',
+  labelKustomizationNamespace: 'kustomize.toolkit.fluxcd.io/namespace',
 } as const;
 
 export const ClusterConditionTypes = {

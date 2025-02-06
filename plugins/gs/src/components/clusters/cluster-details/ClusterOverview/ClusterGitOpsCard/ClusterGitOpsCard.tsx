@@ -10,20 +10,96 @@ import {
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { GitOpsIcon } from '../../../../../assets/icons/CustomIcons';
-import { ExternalLink } from '../../../../UI';
+import { AsyncValue, ExternalLink } from '../../../../UI';
+import {
+  App,
+  getAppKustomizationName,
+  getAppKustomizationNamespace,
+  getGitRepositoryKind,
+  getGitRepositoryRevision,
+  getGitRepositoryUrl,
+  getKustomizationPath,
+  getKustomizationSourceRef,
+} from '@giantswarm/backstage-plugin-gs-common';
+import { useGitRepository, useKustomization } from '../../../../hooks';
+import { useGitOpsSourceLink } from '../../../../hooks/useClusterLinks';
 
 const InfoIcon = styled(InfoOutlinedIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export function ClusterGitOpsCard() {
-  const { cluster, installationName } = useCurrentCluster();
+type ClusterGitOpsCardProps = {
+  clusterApp: App;
+};
 
-  // const sourceUrl = '#';
-  const sourceUrl = undefined;
+export function ClusterGitOpsCard({ clusterApp }: ClusterGitOpsCardProps) {
+  const { installationName } = useCurrentCluster();
 
-  const tooltipNote =
-    'Source link cannot be provided. Reason: permission not sufficient to  get Kustomization resource named “gazelle-clusters-operations” in namespace “default”.';
+  const kustomizationName = getAppKustomizationName(clusterApp);
+  const kustomizationNamespace = getAppKustomizationNamespace(clusterApp);
+  const {
+    data: kustomization,
+    isLoading: kustomizationIsLoading,
+    error: kustomizationError,
+    queryErrorMessage: kustomizationQueryErrorMessage,
+  } = useKustomization({
+    installationName,
+    name: kustomizationName!,
+    namespace: kustomizationNamespace,
+  });
+
+  const kustomizationSourceRef = kustomization
+    ? getKustomizationSourceRef(kustomization)
+    : undefined;
+  const {
+    data: gitRepository,
+    isLoading: gitRepositoryIsLoading,
+    error: gitRepositoryError,
+    queryErrorMessage: gitRepositoryQueryErrorMessage,
+  } = useGitRepository(
+    {
+      installationName,
+      name: kustomizationSourceRef?.name!,
+      namespace: kustomizationSourceRef?.namespace,
+    },
+    {
+      enabled: Boolean(
+        kustomizationSourceRef &&
+          kustomizationSourceRef.kind === getGitRepositoryKind(),
+      ),
+    },
+  );
+
+  const kustomizationPath = kustomization
+    ? getKustomizationPath(kustomization)
+    : undefined;
+
+  const gitRepositoryUrl = gitRepository
+    ? getGitRepositoryUrl(gitRepository)
+    : undefined;
+
+  const gitRepositoryRevision = gitRepository
+    ? getGitRepositoryRevision(gitRepository)
+    : undefined;
+
+  const isLoading = kustomizationIsLoading || gitRepositoryIsLoading;
+
+  let error;
+  let errorMessage;
+  if (kustomizationError) {
+    error = kustomizationError;
+    errorMessage = kustomizationQueryErrorMessage;
+  }
+  if (gitRepositoryError) {
+    error = gitRepositoryError;
+    errorMessage = gitRepositoryQueryErrorMessage;
+  }
+
+  const sourceUrl = useGitOpsSourceLink({
+    url: gitRepositoryUrl,
+    revision: gitRepositoryRevision,
+    path: kustomizationPath,
+  });
 
   return (
     <Card>
@@ -33,20 +109,32 @@ export function ClusterGitOpsCard() {
             <GitOpsIcon />
           </Box>
           <Typography variant="inherit">Managed through GitOps</Typography>
-          {sourceUrl ? (
-            <>
-              <Box paddingLeft={1} paddingRight={1}>
-                <Typography variant="inherit">·</Typography>
-              </Box>
-              <ExternalLink href={sourceUrl}>Source</ExternalLink>
-            </>
-          ) : (
-            <Box display="flex" alignItems="center" marginLeft={1.5}>
-              <Tooltip title={tooltipNote}>
-                <InfoIcon />
-              </Tooltip>
-            </Box>
-          )}
+          <Box marginLeft={1.5} minWidth={75}>
+            <AsyncValue
+              isLoading={isLoading}
+              value={sourceUrl}
+              error={error}
+              errorMessage={errorMessage}
+              renderError={message => (
+                <Box display="flex" alignItems="center">
+                  <Tooltip
+                    title={`Source link cannot be provided. Reason: ${message}`}
+                  >
+                    <InfoIcon />
+                  </Tooltip>
+                </Box>
+              )}
+            >
+              {value => (
+                <Box display="flex" alignItems="center">
+                  <Box marginLeft={-0.5} marginRight={1}>
+                    <Typography variant="inherit">·</Typography>
+                  </Box>
+                  <ExternalLink href={value}>Source</ExternalLink>
+                </Box>
+              )}
+            </AsyncValue>
+          </Box>
         </Box>
       </CardContent>
     </Card>

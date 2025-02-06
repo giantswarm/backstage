@@ -19,7 +19,10 @@ export function useProviderCluster(installationName: string, cluster: Cluster) {
   const gvk = getProviderClusterGVK(kind, apiVersionOverride ?? apiVersion);
 
   return {
-    ...useGetResource<ProviderCluster>(installationName, gvk, name, namespace),
+    ...useGetResource<ProviderCluster>(
+      { installationName, gvk, name, namespace },
+      { enabled: true },
+    ),
     queryErrorMessage: 'Failed to fetch provider cluster',
   };
 }

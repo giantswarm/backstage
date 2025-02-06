@@ -46,6 +46,8 @@ export function useResourceRequests(
                 `Failed to fetch resources from ${installationName} at ${path}. Reason: ${response.statusText}.`,
               );
               error.name =
+                response.status === 403 ? 'ForbiddenError' : error.name;
+              error.name =
                 response.status === 404 ? 'NotFoundError' : error.name;
 
               throw error;

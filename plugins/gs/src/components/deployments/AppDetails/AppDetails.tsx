@@ -58,7 +58,7 @@ export const AppDetails = ({
     data: app,
     isLoading,
     error,
-  } = useApp(installationName, name, namespace);
+  } = useApp({ installationName, name, namespace });
 
   const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
