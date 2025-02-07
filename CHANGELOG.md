@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.52.0] - 2025-02-07
 
+In this release:
+
+- "Managed through GitOps" indicator was added to cluster details page.
+
 See [./docs/releases/v0.52.0-changelog.md](./docs/releases/v0.52.0-changelog.md) for more information.
 
 ## [0.51.1] - 2025-02-05
