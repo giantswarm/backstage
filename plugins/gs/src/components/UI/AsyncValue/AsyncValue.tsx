@@ -5,8 +5,20 @@ import { NotAvailable } from '../NotAvailable';
 import { Box, Tooltip } from '@material-ui/core';
 
 const progressHeight = 4;
+
+const defaultRenderErrorFn = (errorMessage: string) => (
+  <Box display="flex">
+    <NotAvailable />
+    <Tooltip title={errorMessage}>
+      <Box marginLeft={1}>
+        <StatusError />
+      </Box>
+    </Tooltip>
+  </Box>
+);
 interface AsyncValueProps<T> {
   children?: (value: T) => React.ReactNode;
+  renderError?: (message: string) => React.ReactNode;
   value?: T;
   isLoading: boolean;
   error?: Error | null;
@@ -21,6 +33,7 @@ export const AsyncValue = <T extends React.ReactNode>({
   error,
   errorMessage,
   height = 24,
+  renderError = defaultRenderErrorFn,
 }: AsyncValueProps<T>) => {
   return (
     <>
@@ -35,16 +48,7 @@ export const AsyncValue = <T extends React.ReactNode>({
 
       {value && (children ? children(value) : value)}
 
-      {error && (
-        <Box display="flex">
-          <NotAvailable />
-          <Tooltip title={errorMessage ? errorMessage : error.message}>
-            <Box marginLeft={1}>
-              <StatusError />
-            </Box>
-          </Tooltip>
-        </Box>
-      )}
+      {error && renderError(errorMessage || error.message)}
     </>
   );
 };

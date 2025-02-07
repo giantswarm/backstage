@@ -110,7 +110,10 @@ export function getAppChartName(app: App) {
 }
 
 export function isAppManagedByFlux(app: App) {
-  return app.metadata.labels?.[labelManagedBy] === 'flux';
+  return (
+    Boolean(getAppKustomizationName(app)) &&
+    Boolean(getAppKustomizationNamespace(app))
+  );
 }
 
 export function getAppCreatedTimestamp(app: App) {
@@ -123,4 +126,12 @@ export function getAppUpdatedTimestamp(app: App) {
 
 export function getAppCatalogName(app: App) {
   return app.spec?.catalog;
+}
+
+export function getAppKustomizationName(app: App) {
+  return app.metadata.labels?.[Labels.labelKustomizationName];
+}
+
+export function getAppKustomizationNamespace(app: App) {
+  return app.metadata.labels?.[Labels.labelKustomizationNamespace];
 }

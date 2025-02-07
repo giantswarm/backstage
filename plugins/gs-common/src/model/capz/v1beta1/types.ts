@@ -43,7 +43,6 @@ export interface IAzureCluster {
      * - PublicCloud: "AzurePublicCloud"
      * - USGovernmentCloud: "AzureUSGovernmentCloud"
      *
-     *
      * Note that values other than the default must also be accompanied by corresponding changes to the
      * aso-controller-settings Secret to configure ASO to refer to the non-Public cloud. ASO currently does
      * not support referring to multiple different clouds in a single installation. The following fields must
@@ -52,9 +51,7 @@ export interface IAzureCluster {
      * - AZURE_RESOURCE_MANAGER_ENDPOINT
      * - AZURE_RESOURCE_MANAGER_AUDIENCE
      *
-     *
      * See the [ASO docs] for more details.
-     *
      *
      * [ASO docs]: https://azure.github.io/azure-service-operator/guide/aso-controller-settings-options/
      */
@@ -376,13 +373,13 @@ export interface IAzureCluster {
        */
       [k: string]: {
         /**
-         * Attributes is a free form map of attributes an infrastructure provider might use or require.
+         * attributes is a free form map of attributes an infrastructure provider might use or require.
          */
         attributes?: {
           [k: string]: string;
         };
         /**
-         * ControlPlane determines if this failure domain is suitable for use by control plane machines.
+         * controlPlane determines if this failure domain is suitable for use by control plane machines.
          */
         controlPlane?: boolean;
       };
@@ -403,7 +400,6 @@ export interface IAzureCluster {
        * the event) or if no container name is specified "spec.containers[2]" (container with
        * index 2 in this pod). This syntax is chosen only to have some well-defined way of
        * referencing a part of an object.
-       * TODO: this design is not final and this field is subject to change in the future.
        */
       fieldPath?: string;
       /**
@@ -927,21 +923,21 @@ export interface IAzureCluster {
       /**
        * The reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
-       * This field may not be empty.
+       * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
@@ -962,13 +958,13 @@ export interface IAzureCluster {
        */
       [k: string]: {
         /**
-         * Attributes is a free form map of attributes an infrastructure provider might use or require.
+         * attributes is a free form map of attributes an infrastructure provider might use or require.
          */
         attributes?: {
           [k: string]: string;
         };
         /**
-         * ControlPlane determines if this failure domain is suitable for use by control plane machines.
+         * controlPlane determines if this failure domain is suitable for use by control plane machines.
          */
         controlPlane?: boolean;
       };
@@ -1050,7 +1046,6 @@ export interface IAzureClusterIdentity {
        * a label query over a set of resources. The result of matchLabels and
        * matchExpressions are ANDed.
        *
-       *
        * A nil or empty selector indicates that AzureCluster cannot use this
        * AzureClusterIdentity from any namespace.
        */
@@ -1112,7 +1107,6 @@ export interface IAzureClusterIdentity {
      * ResourceID is the Azure resource ID for the User Assigned MSI resource.
      * Only applicable when type is UserAssignedMSI.
      *
-     *
      * Deprecated: This field no longer has any effect.
      */
     resourceID?: string;
@@ -1153,21 +1147,21 @@ export interface IAzureClusterIdentity {
       /**
        * The reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
-       * This field may not be empty.
+       * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
@@ -1208,12 +1202,10 @@ export interface IAzureMachineTemplate {
        * ObjectMeta is metadata that all persisted resources must have, which includes all objects
        * users must create. This is a copy of customizable fields from metav1.ObjectMeta.
        *
-       *
        * ObjectMeta is embedded in `Machine.Spec`, `MachineDeployment.Template` and `MachineSet.Template`,
        * which are not top-level Kubernetes objects. Given that metav1.ObjectMeta has lots of special cases
        * and read-only fields which end up in the generated CRD validation, having it as a subset simplifies
        * the API and some issues that can impact user experience.
-       *
        *
        * During the [upgrade to controller-tools@v2](https://github.com/kubernetes-sigs/cluster-api/pull/1054)
        * for v1alpha2, we noticed a failure would occur running Cluster API test suite against the new CRDs,
@@ -1221,19 +1213,17 @@ export interface IAzureMachineTemplate {
        * The investigation showed that `controller-tools@v2` behaves differently than its previous version
        * when handling types from [metav1](k8s.io/apimachinery/pkg/apis/meta/v1) package.
        *
-       *
        * In more details, we found that embedded (non-top level) types that embedded `metav1.ObjectMeta`
        * had validation properties, including for `creationTimestamp` (metav1.Time).
        * The `metav1.Time` type specifies a custom json marshaller that, when IsZero() is true, returns `null`
        * which breaks validation because the field isn't marked as nullable.
-       *
        *
        * In future versions, controller-tools@v2 might allow overriding the type and validation for embedded
        * types. When that happens, this hack should be revisited.
        */
       metadata?: {
         /**
-         * Annotations is an unstructured key value map stored with a resource that may be
+         * annotations is an unstructured key value map stored with a resource that may be
          * set by external tools to store and retrieve arbitrary metadata. They are not
          * queryable and should be preserved when modifying objects.
          * More info: http://kubernetes.io/docs/user-guide/annotations
@@ -2374,21 +2364,21 @@ export interface IAzureMachine {
       /**
        * The reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
-       * This field may not be empty.
+       * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
@@ -2399,7 +2389,6 @@ export interface IAzureMachine {
      * reconciling the Machine and will contain a more verbose string suitable
      * for logging and human consumption.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -2408,7 +2397,6 @@ export interface IAzureMachine {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of Machines
      * can be added as events to the Machine object and/or logged in the
@@ -2420,7 +2408,6 @@ export interface IAzureMachine {
      * reconciling the Machine and will contain a succinct value suitable
      * for machine interpretation.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -2429,7 +2416,6 @@ export interface IAzureMachine {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of Machines
      * can be added as events to the Machine object and/or logged in the
@@ -3094,21 +3080,21 @@ export interface IAzureMachinePool {
       /**
        * The reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
-       * This field may not be empty.
+       * This field may be empty.
        */
       reason?: string;
       /**
-       * Severity provides an explicit classification of Reason code, so the users or machines can immediately
+       * severity provides an explicit classification of Reason code, so the users or machines can immediately
        * understand the current situation and act accordingly.
        * The Severity field MUST be set only when Status=False.
        */
       severity?: string;
       /**
-       * Status of the condition, one of True, False, Unknown.
+       * status of the condition, one of True, False, Unknown.
        */
       status: string;
       /**
-       * Type of condition in CamelCase or in foo.example.com/CamelCase.
+       * type of condition in CamelCase or in foo.example.com/CamelCase.
        * Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
        * can be useful (see .node.status.conditions), the ability to deconflict is important.
        */
@@ -3119,7 +3105,6 @@ export interface IAzureMachinePool {
      * reconciling the MachinePool and will contain a more verbose string suitable
      * for logging and human consumption.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -3128,7 +3113,6 @@ export interface IAzureMachinePool {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of MachinePools
      * can be added as events to the MachinePool object and/or logged in the
@@ -3140,7 +3124,6 @@ export interface IAzureMachinePool {
      * reconciling the MachinePool and will contain a succinct value suitable
      * for machine interpretation.
      *
-     *
      * This field should not be set for transitive errors that a controller
      * faces that are expected to be fixed automatically over
      * time (like service outages), but instead indicate that something is
@@ -3149,7 +3132,6 @@ export interface IAzureMachinePool {
      * of terminal errors would be invalid combinations of settings in the
      * spec, values that are unsupported by the controller, or the
      * responsible controller itself being critically misconfigured.
-     *
      *
      * Any transient errors that occur during the reconciliation of MachinePools
      * can be added as events to the MachinePool object and/or logged in the

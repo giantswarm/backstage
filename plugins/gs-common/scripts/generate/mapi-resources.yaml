@@ -114,6 +114,14 @@
       crdURL: https://raw.githubusercontent.com/fluxcd/helm-controller/main/config/crd/bases/helm.toolkit.fluxcd.io_helmreleases.yaml
       versions:
         - v2beta1
+    - name: Kustomization
+      crdURL: https://raw.githubusercontent.com/fluxcd/kustomize-controller/main/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
+      versions:
+        - v1
+    - name: GitRepository
+      crdURL: https://raw.githubusercontent.com/fluxcd/source-controller/main/config/crd/bases/source.toolkit.fluxcd.io_gitrepositories.yaml
+      versions:
+        - v1
 
 - group: giantswarm-application
   resources:

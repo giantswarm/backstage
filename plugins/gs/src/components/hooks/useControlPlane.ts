@@ -9,6 +9,7 @@ import type {
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useGetResource } from './useGetResource';
 import { useApiVersionOverride } from './useApiVersionOverrides';
+import { getErrorMessage } from './utils/helpers';
 
 export function useControlPlane(installationName: string, cluster: Cluster) {
   const { kind, apiVersion, name, namespace } =
@@ -20,8 +21,18 @@ export function useControlPlane(installationName: string, cluster: Cluster) {
   );
   const gvk = getControlPlaneGVK(kind, apiVersionOverride ?? apiVersion);
 
+  const query = useGetResource<ControlPlane>(
+    { installationName, gvk, name, namespace },
+    { enabled: true },
+  );
+
   return {
-    ...useGetResource<ControlPlane>(installationName, gvk, name, namespace),
-    queryErrorMessage: 'Failed to fetch control plane',
+    ...query,
+    queryErrorMessage: getErrorMessage({
+      error: query.error,
+      resourceKind: 'control plane',
+      resourceName: name,
+      resourceNamespace: namespace,
+    }),
   };
 }

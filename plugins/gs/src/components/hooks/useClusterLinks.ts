@@ -63,3 +63,19 @@ export const useWebUILink = (
 
   return `https://happa.${baseDomain}/organizations/${organizationName}/clusters/${clusterName}`;
 };
+
+export const useGitOpsSourceLink = ({
+  url,
+  revision,
+  path,
+}: {
+  url?: string;
+  revision?: string;
+  path?: string;
+}) => {
+  if (!url || !revision || !path) {
+    return undefined;
+  }
+
+  return new URL(`${url}/blob/${revision}/${path}`).toString();
+};

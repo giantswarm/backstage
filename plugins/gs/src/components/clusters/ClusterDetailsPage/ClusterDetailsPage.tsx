@@ -4,6 +4,7 @@ import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';
 import { ClusterOverview } from '../cluster-details/ClusterOverview';
 import { ClusterSSHAccess } from '../cluster-details/ClusterSSHAccess';
+import { ErrorsProvider } from '../../Errors';
 
 export const ClusterDetailsPage = () => {
   return (
@@ -11,14 +12,18 @@ export const ClusterDetailsPage = () => {
       <AsyncClusterProvider>
         <ClusterLayout>
           <ClusterLayout.Route path="/" title="Overview">
-            <ClusterOverview />
+            <ErrorsProvider>
+              <ClusterOverview />
+            </ErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route
             path="/ssh-access"
             title="SSH access"
             if={({ isGSUser }) => isGSUser}
           >
-            <ClusterSSHAccess />
+            <ErrorsProvider>
+              <ClusterSSHAccess />
+            </ErrorsProvider>
           </ClusterLayout.Route>
         </ClusterLayout>
       </AsyncClusterProvider>

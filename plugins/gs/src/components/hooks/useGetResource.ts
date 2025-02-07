@@ -7,10 +7,18 @@ import {
 } from '../../apis/kubernetes';
 
 export function useGetResource<T>(
-  installationName: string,
-  gvk: CustomResourceMatcher,
-  name: string,
-  namespace?: string,
+  {
+    installationName,
+    gvk,
+    name,
+    namespace,
+  }: {
+    installationName: string;
+    gvk: CustomResourceMatcher;
+    name: string;
+    namespace?: string;
+  },
+  { enabled = true },
 ) {
   const kubernetesApi = useApi(gsKubernetesApiRef);
   const path = useK8sGetPath(gvk, name, namespace);
@@ -35,6 +43,7 @@ export function useGetResource<T>(
         const error = new Error(
           `Failed to fetch resources from ${installationName} at ${path}. Reason: ${response.statusText}.`,
         );
+        error.name = response.status === 403 ? 'ForbiddenError' : error.name;
         error.name = response.status === 404 ? 'NotFoundError' : error.name;
 
         throw error;
@@ -44,6 +53,7 @@ export function useGetResource<T>(
 
       return app;
     },
+    enabled,
   });
 
   return {

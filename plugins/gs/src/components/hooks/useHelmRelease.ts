@@ -17,5 +17,8 @@ export function useHelmRelease(
   );
   const gvk = getHelmReleaseGVK(apiVersion);
 
-  return useGetResource<HelmRelease>(installationName, gvk, name, namespace);
+  return useGetResource<HelmRelease>(
+    { installationName, gvk, name, namespace },
+    { enabled: true },
+  );
 }

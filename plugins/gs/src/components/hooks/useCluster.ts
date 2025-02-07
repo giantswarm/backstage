@@ -14,5 +14,8 @@ export function useCluster(
   const apiVersion = useApiVersionOverride(installationName, getClusterNames());
   const gvk = getClusterGVK(apiVersion);
 
-  return useGetResource<Cluster>(installationName, gvk, name, namespace);
+  return useGetResource<Cluster>(
+    { installationName, gvk, name, namespace },
+    { enabled: true },
+  );
 }

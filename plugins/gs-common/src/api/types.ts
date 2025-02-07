@@ -21,7 +21,11 @@ export type ControlPlane = capi.KubeadmControlPlane;
 
 export type Deployment = App | HelmRelease;
 
+export type GitRepository = fluxcd.GitRepository;
+
 export type HelmRelease = fluxcd.HelmRelease;
+
+export type Kustomization = fluxcd.Kustomization;
 
 export type List<T> = metav1.IList<T>;
 

@@ -329,7 +329,7 @@ export interface IProviderConfig {
          * configuration for dynamically resolving the URL with the config you provide
          * once you set the type as Dynamic.
          */
-        type: 'Static' | 'Dynamic';
+        type: 'Static' | 'Dynamic' | 'Auto';
       };
     };
     /**

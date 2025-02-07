@@ -138,18 +138,18 @@ export interface IVSphereCluster {
      */
     conditions?: {
       /**
-       * Last time the condition transitioned from one status to another.
+       * lastTransitionTime is the last time the condition transitioned from one status to another.
        * This should be when the underlying condition changed. If that is not known, then using the time when
        * the API field changed is acceptable.
        */
       lastTransitionTime: string;
       /**
-       * A human readable message indicating details about the transition.
+       * message is a human readable message indicating details about the transition.
        * This field may be empty.
        */
       message?: string;
       /**
-       * The reason for the condition's last transition in CamelCase.
+       * reason is the reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
        * This field may be empty.
        */
@@ -279,18 +279,18 @@ export interface IVSphereClusterIdentity {
      */
     conditions?: {
       /**
-       * Last time the condition transitioned from one status to another.
+       * lastTransitionTime is the last time the condition transitioned from one status to another.
        * This should be when the underlying condition changed. If that is not known, then using the time when
        * the API field changed is acceptable.
        */
       lastTransitionTime: string;
       /**
-       * A human readable message indicating details about the transition.
+       * message is a human readable message indicating details about the transition.
        * This field may be empty.
        */
       message?: string;
       /**
-       * The reason for the condition's last transition in CamelCase.
+       * reason is the reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
        * This field may be empty.
        */
@@ -376,6 +376,11 @@ export interface IVSphereMachine {
        */
       name: string;
       /**
+       * ProvisioningMode specifies the provisioning type to be used by this vSphere data disk.
+       * If not set, the setting will be provided by the default storage policy.
+       */
+      provisioningMode?: 'Thin' | 'Thick' | 'EagerlyZeroed';
+      /**
        * SizeGiB is the size of the disk in GiB.
        */
       sizeGiB: number;
@@ -430,6 +435,28 @@ export interface IVSphereMachine {
      * virtual machine is cloned.
      */
     memoryMiB?: number;
+    /**
+     * NamingStrategy allows configuring the naming strategy used when calculating the name of the VSphereVM.
+     */
+    namingStrategy?: {
+      /**
+       * Template defines the template to use for generating the name of the VSphereVM object.
+       * If not defined, it will fall back to `{{ .machine.name }}`.
+       * The templating has the following data available:
+       * * `.machine.name`: The name of the Machine object.
+       * The templating also has the following funcs available:
+       * * `trimSuffix`: same as strings.TrimSuffix
+       * * `trunc`: truncates a string, e.g. `trunc 2 "hello"` or `trunc -2 "hello"`
+       * Notes:
+       * * While the template offers some flexibility, we would like the name to link to the Machine name
+       *   to ensure better user experience when troubleshooting
+       * * Generated names must be valid Kubernetes names as they are used to create a VSphereVM object
+       *   and usually also as the name of the Node object.
+       * * Names are automatically truncated at 63 characters. Please note that this can lead to name conflicts,
+       *   so we highly recommend to use a template which leads to a name shorter than 63 characters.
+       */
+      template?: string;
+    };
     /**
      * Network is the network configuration for this machine's VM.
      */
@@ -805,11 +832,11 @@ export interface IVSphereMachine {
      */
     addresses?: {
       /**
-       * The machine address.
+       * address is the machine address.
        */
       address: string;
       /**
-       * Machine address type, one of Hostname, ExternalIP, InternalIP, ExternalDNS or InternalDNS.
+       * type is the machine address type, one of Hostname, ExternalIP, InternalIP, ExternalDNS or InternalDNS.
        */
       type: string;
     }[];
@@ -818,18 +845,18 @@ export interface IVSphereMachine {
      */
     conditions?: {
       /**
-       * Last time the condition transitioned from one status to another.
+       * lastTransitionTime is the last time the condition transitioned from one status to another.
        * This should be when the underlying condition changed. If that is not known, then using the time when
        * the API field changed is acceptable.
        */
       lastTransitionTime: string;
       /**
-       * A human readable message indicating details about the transition.
+       * message is a human readable message indicating details about the transition.
        * This field may be empty.
        */
       message?: string;
       /**
-       * The reason for the condition's last transition in CamelCase.
+       * reason is the reason for the condition's last transition in CamelCase.
        * The specific API may choose whether or not this field is considered a guaranteed API.
        * This field may be empty.
        */
@@ -962,7 +989,7 @@ export interface IVSphereMachineTemplate {
           [k: string]: string;
         };
         /**
-         * Map of string keys and values that can be used to organize and categorize
+         * labels is a map of string keys and values that can be used to organize and categorize
          * (scope and select) objects. May match selectors of replication controllers
          * and services.
          * More info: http://kubernetes.io/docs/user-guide/labels
@@ -1010,6 +1037,11 @@ export interface IVSphereMachineTemplate {
            * clearly identify purpose of the disk.
            */
           name: string;
+          /**
+           * ProvisioningMode specifies the provisioning type to be used by this vSphere data disk.
+           * If not set, the setting will be provided by the default storage policy.
+           */
+          provisioningMode?: 'Thin' | 'Thick' | 'EagerlyZeroed';
           /**
            * SizeGiB is the size of the disk in GiB.
            */
@@ -1065,6 +1097,28 @@ export interface IVSphereMachineTemplate {
          * virtual machine is cloned.
          */
         memoryMiB?: number;
+        /**
+         * NamingStrategy allows configuring the naming strategy used when calculating the name of the VSphereVM.
+         */
+        namingStrategy?: {
+          /**
+           * Template defines the template to use for generating the name of the VSphereVM object.
+           * If not defined, it will fall back to `{{ .machine.name }}`.
+           * The templating has the following data available:
+           * * `.machine.name`: The name of the Machine object.
+           * The templating also has the following funcs available:
+           * * `trimSuffix`: same as strings.TrimSuffix
+           * * `trunc`: truncates a string, e.g. `trunc 2 "hello"` or `trunc -2 "hello"`
+           * Notes:
+           * * While the template offers some flexibility, we would like the name to link to the Machine name
+           *   to ensure better user experience when troubleshooting
+           * * Generated names must be valid Kubernetes names as they are used to create a VSphereVM object
+           *   and usually also as the name of the Node object.
+           * * Names are automatically truncated at 63 characters. Please note that this can lead to name conflicts,
+           *   so we highly recommend to use a template which leads to a name shorter than 63 characters.
+           */
+          template?: string;
+        };
         /**
          * Network is the network configuration for this machine's VM.
          */

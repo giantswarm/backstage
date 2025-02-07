@@ -1,13 +1,13 @@
 import {
-  getAppGVK,
-  getAppNames,
-  type App,
+  getKustomizationGVK,
+  getKustomizationNames,
+  type Kustomization,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useGetResource } from './useGetResource';
 import { useApiVersionOverride } from './useApiVersionOverrides';
 import { getErrorMessage } from './utils/helpers';
 
-export function useApp(
+export function useKustomization(
   {
     installationName,
     name,
@@ -20,10 +20,13 @@ export function useApp(
   options?: { enabled?: boolean },
 ) {
   const enabled = options?.enabled ?? true;
-  const apiVersion = useApiVersionOverride(installationName, getAppNames());
-  const gvk = getAppGVK(apiVersion);
+  const apiVersion = useApiVersionOverride(
+    installationName,
+    getKustomizationNames(),
+  );
+  const gvk = getKustomizationGVK(apiVersion);
 
-  const query = useGetResource<App>(
+  const query = useGetResource<Kustomization>(
     { installationName, gvk, name, namespace },
     { enabled },
   );
@@ -32,7 +35,7 @@ export function useApp(
     ...query,
     queryErrorMessage: getErrorMessage({
       error: query.error,
-      resourceKind: 'App',
+      resourceKind: 'Kustomization',
       resourceName: name,
       resourceNamespace: namespace,
     }),

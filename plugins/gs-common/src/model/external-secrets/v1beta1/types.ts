@@ -765,6 +765,7 @@ export interface ISecretStore {
          */
         server: {
           apiUrl: string;
+          apiVersion?: string;
           /**
            * Timeout specifies a time limit for requests made by this Client. The timeout includes connection time, any redirects, and reading the response body. Defaults to 45 seconds.
            */
@@ -3811,6 +3812,7 @@ export interface IClusterSecretStore {
          */
         server: {
           apiUrl: string;
+          apiVersion?: string;
           /**
            * Timeout specifies a time limit for requests made by this Client. The timeout includes connection time, any redirects, and reading the response body. Defaults to 45 seconds.
            */
