@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.9.0
+
+### Minor Changes
+
+- d5e7820: Added "Managed through GitOps" indicator to cluster details.
+
 ## 0.8.1
 
 ### Patch Changes
