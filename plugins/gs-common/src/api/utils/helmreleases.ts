@@ -3,6 +3,8 @@ import type { HelmRelease } from '../types';
 import { compareDates } from './helpers';
 import * as fluxcd from '../../model/fluxcd';
 
+export { HelmReleaseKind, HelmReleaseNames } from '../../model/fluxcd';
+
 export function getHelmReleaseNames() {
   return fluxcd.HelmReleaseNames;
 }

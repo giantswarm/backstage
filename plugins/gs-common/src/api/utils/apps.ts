@@ -2,6 +2,8 @@ import { Constants, Labels } from '../constants';
 import type { App, Catalog } from '../types';
 import * as giantswarmApplication from '../../model/giantswarm-application';
 
+export { AppKind, AppNames } from '../../model/giantswarm-application';
+
 export function getAppNames() {
   return giantswarmApplication.AppNames;
 }

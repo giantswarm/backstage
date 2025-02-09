@@ -1,28 +1,18 @@
 import * as capi from '../../model/capi';
 import { ControlPlane } from '../types';
 
-export function getControlPlaneNames(kind: string) {
-  let names;
-  switch (kind) {
-    case capi.KubeadmControlPlaneKind:
-      names = capi.KubeadmControlPlaneNames;
-      break;
-    default:
-      throw new Error(`${kind} is not a supported control plane kind.`);
-  }
+export {
+  KubeadmControlPlaneKind,
+  KubeadmControlPlaneNames,
+} from '../../model/capi';
 
-  return names;
+export function getKubeadmControlPlaneNames() {
+  return capi.KubeadmControlPlaneNames;
 }
 
-export function getControlPlaneGVK(kind: string, apiVersion?: string) {
-  let gvk;
-  switch (kind) {
-    case capi.KubeadmControlPlaneKind:
-      gvk = capi.getKubeadmControlPlaneGVK(apiVersion);
-      break;
-    default:
-      throw new Error(`${kind} is not a supported control plane kind.`);
-  }
+export function getKubeadmControlPlaneGVK(apiVersion?: string) {
+  const gvk = capi.getKubeadmControlPlaneGVK(apiVersion);
+  const kind = capi.KubeadmControlPlaneKind;
 
   if (!gvk) {
     throw new Error(

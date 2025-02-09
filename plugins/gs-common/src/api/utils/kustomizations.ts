@@ -1,6 +1,8 @@
 import * as fluxcd from '../../model/fluxcd';
 import { Kustomization } from '../types';
 
+export { KustomizationKind, KustomizationNames } from '../../model/fluxcd';
+
 export function getKustomizationNames() {
   return fluxcd.KustomizationNames;
 }

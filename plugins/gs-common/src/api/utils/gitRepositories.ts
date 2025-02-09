@@ -1,6 +1,8 @@
 import * as fluxcd from '../../model/fluxcd';
 import { GitRepository } from '../types';
 
+export { GitRepositoryKind, GitRepositoryNames } from '../../model/fluxcd';
+
 export function getGitRepositoryNames() {
   return fluxcd.GitRepositoryNames;
 }
