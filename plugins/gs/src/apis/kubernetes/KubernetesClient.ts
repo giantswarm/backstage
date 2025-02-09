@@ -1,6 +1,13 @@
+import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import { KubernetesAuthProvidersApi } from '../kubernetes-auth-providers';
-import { KubernetesApi, ClusterConfiguration } from './types';
+import { ClusterConfiguration } from './types';
 import { ConfigApi, FetchApi } from '@backstage/core-plugin-api';
+import {
+  KubernetesRequestBody,
+  ObjectsByEntityResponse,
+  WorkloadsByEntityRequest,
+  CustomObjectsByEntityRequest,
+} from '@backstage/plugin-kubernetes-common/index';
 
 export class KubernetesClient implements KubernetesApi {
   private readonly configApi: ConfigApi;
@@ -41,6 +48,30 @@ export class KubernetesClient implements KubernetesApi {
 
       this.clusters = clusters;
     }
+  }
+
+  getObjectsByEntity(
+    _requestBody: KubernetesRequestBody,
+  ): Promise<ObjectsByEntityResponse> {
+    throw new Error('Method not implemented.');
+  }
+
+  getClusters(): Promise<
+    { name: string; authProvider: string; oidcTokenProvider?: string }[]
+  > {
+    throw new Error('Method not implemented.');
+  }
+
+  getWorkloadsByEntity(
+    _request: WorkloadsByEntityRequest,
+  ): Promise<ObjectsByEntityResponse> {
+    throw new Error('Method not implemented.');
+  }
+
+  getCustomObjectsByEntity(
+    _request: CustomObjectsByEntityRequest,
+  ): Promise<ObjectsByEntityResponse> {
+    throw new Error('Method not implemented.');
   }
 
   private async getCredentials(

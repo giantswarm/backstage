@@ -13,7 +13,7 @@ import { useQueries } from '@tanstack/react-query';
 import { getK8sListPath } from './utils/k8sPath';
 import { getInstallationsQueriesInfo } from './utils/queries';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
-import { gsKubernetesApiRef } from '../../apis/kubernetes';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 
 function getInstallationOrganizationNamespaces(
   installationName: string,
@@ -47,7 +47,7 @@ export function useClusters(installations?: string[]) {
   const { resources: organizations, isLoading: isLoadingOrganizations } =
     useOrganizations(selectedInstallations);
 
-  const kubernetesApi = useApi(gsKubernetesApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
 
   const queries = useQueries({
     queries: selectedInstallations.map(installationName => {

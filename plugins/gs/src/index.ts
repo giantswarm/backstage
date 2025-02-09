@@ -12,7 +12,8 @@ export {
   GSTemplateStringInputFieldExtension,
   GSStepLayout,
 } from './plugin';
-export { gsAuthApiRef } from './apis/auth/types';
+export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
+export { gsKubernetesApiRef } from './apis/kubernetes/types';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
 export { EntityInstallationDetailsCard as EntityGSInstallationDetailsCard } from './components/catalog/EntityInstallationDetailsCard';
 export { EntityKratixResourcesCard as EntityGSKratixResourcesCard } from './components/catalog/EntityKratixResourcesCard';

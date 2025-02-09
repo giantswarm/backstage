@@ -9,7 +9,7 @@ import { useQueries } from '@tanstack/react-query';
 import { getK8sGetPath } from './utils/k8sPath';
 import { getInstallationsQueriesInfo } from './utils/queries';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
-import { gsKubernetesApiRef } from '../../apis/kubernetes';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 
 export function useResourceRequests(
   kratixResources: {
@@ -22,7 +22,7 @@ export function useResourceRequests(
   const apiVersionOverrides = useApiVersionOverrides(
     kratixResources.map(item => item.installationName),
   );
-  const kubernetesApi = useApi(gsKubernetesApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
   const queries = useQueries({
     queries: kratixResources.map(
       ({ kind, name, namespace, installationName }) => {

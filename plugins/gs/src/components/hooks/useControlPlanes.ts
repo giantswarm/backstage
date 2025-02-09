@@ -9,10 +9,13 @@ import {
   getClusterControlPlaneRef,
   getResourceGVK,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { gsKubernetesApiRef, KubernetesApi } from '../../apis/kubernetes';
 import { getK8sGetPath, getK8sListPath } from './utils/k8sPath';
 import { getInstallationsQueriesInfo } from './utils/queries';
 import { getUniqueRefsByNamespace } from './utils/helpers';
+import {
+  KubernetesApi,
+  kubernetesApiRef,
+} from '@backstage/plugin-kubernetes-react';
 
 const getQueryKey = (ref: InstallationObjectRef) => {
   const { installationName, kind, apiVersion, name, namespace } = ref;
@@ -97,7 +100,7 @@ export function useControlPlanes(
   { enabled = true },
 ) {
   const featureFlagsApi = useApi(featureFlagsApiRef);
-  const kubernetesApi = useApi(gsKubernetesApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
 
   const isExperimentalDataFetchingEnabled = featureFlagsApi.isActive(
     'experimental-data-fetching',
