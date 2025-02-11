@@ -25,21 +25,7 @@ export function getGitRepositoryGVK(apiVersion?: string) {
 }
 
 export function getGitRepositoryUrl(gitRepository: GitRepository) {
-  const spec = gitRepository.spec;
-  if (!spec) {
-    return undefined;
-  }
-
-  const url = new URL(spec.url);
-
-  if (url.protocol === 'ssh:') {
-    const hostname = url.hostname.replace(/^ssh\./, '');
-    const pathname = url.pathname.replace(/\.git$/, '');
-
-    return `https://${hostname}${pathname}`;
-  }
-
-  return url.toString();
+  return gitRepository.spec?.url;
 }
 
 export function getGitRepositoryRevision(gitRepository: GitRepository) {
