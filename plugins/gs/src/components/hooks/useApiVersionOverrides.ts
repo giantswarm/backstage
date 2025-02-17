@@ -28,7 +28,7 @@ export function useApiVersionOverrides(installations: string[]) {
 export function useApiVersionOverride(
   installationName: string,
   resourceNames: { plural: string },
-) {
+): string | undefined {
   return useApiVersionOverrides([installationName])[installationName]?.[
     resourceNames.plural
   ];

@@ -7,9 +7,11 @@ import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 import { ClusterLabelsCard } from './ClusterLabelsCard';
 import { ClusterToolsCard } from './ClusterToolsCard';
 import { ClusterGitOpsCard } from './ClusterGitOpsCard';
-import { useApp } from '../../../hooks';
+import { useResource } from '../../../hooks';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import {
+  App,
+  AppKind,
   getClusterName,
   getClusterNamespace,
   hasClusterAppLabel,
@@ -28,8 +30,13 @@ export const ClusterOverview = () => {
     queryKey: clusterAppQueryKey,
     queryErrorMessage: clusterAppQueryErrorMessage,
     refetch: clusterAppRefetch,
-  } = useApp(
-    { installationName, name: clusterAppName!, namespace: clusterAppNamespace },
+  } = useResource<App>(
+    {
+      kind: AppKind,
+      installationName,
+      name: clusterAppName!,
+      namespace: clusterAppNamespace,
+    },
     {
       enabled: hasClusterApp,
     },

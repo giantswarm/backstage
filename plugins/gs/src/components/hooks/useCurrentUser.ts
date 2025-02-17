@@ -1,7 +1,7 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import useAsync from 'react-use/esm/useAsync';
 import { jwtDecode } from 'jwt-decode';
-import { gsKubernetesApiRef } from '../../apis/kubernetes';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsKubernetesAuthProvidersApiRef } from '../../apis/kubernetes-auth-providers';
 
 type JWT = {
@@ -12,7 +12,7 @@ export function useCurrentUser(installationName: string) {
   const configApi = useApi(configApiRef);
   const adminGroups = configApi.getOptionalStringArray('gs.adminGroups') || [];
 
-  const kubernetesApi = useApi(gsKubernetesApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
   const kubernetesAuthProvidersApi = useApi(gsKubernetesAuthProvidersApiRef);
   const { loading: tokenIsLoading, value: token } = useAsync(async () => {
     const cluster = await kubernetesApi.getCluster(installationName);

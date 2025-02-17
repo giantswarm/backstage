@@ -20,8 +20,10 @@ import {
   getHelmReleaseUpdatedTimestamp,
   getHelmReleaseTargetClusterNamespace,
   getHelmReleaseSourceKind,
+  HelmRelease,
+  HelmReleaseKind,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useHelmRelease } from '../../hooks';
+import { useResource } from '../../hooks';
 import { formatSource, formatVersion } from '../../utils/helpers';
 import {
   ApplicationLink,
@@ -55,7 +57,12 @@ export const HelmReleaseDetails = ({
     data: helmrelease,
     isLoading,
     error,
-  } = useHelmRelease(installationName, name, namespace);
+  } = useResource<HelmRelease>({
+    kind: HelmReleaseKind,
+    installationName,
+    name,
+    namespace,
+  });
 
   const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 

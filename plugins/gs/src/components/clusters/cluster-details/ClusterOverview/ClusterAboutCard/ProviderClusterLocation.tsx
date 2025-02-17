@@ -1,13 +1,23 @@
 import React, { useEffect } from 'react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '../../../../UI';
-import { useProviderCluster } from '../../../../hooks';
-import { getProviderClusterLocation } from '@giantswarm/backstage-plugin-gs-common';
+import { useResource } from '../../../../hooks';
+import {
+  getClusterInfrastructureRef,
+  getProviderClusterLocation,
+  ProviderCluster,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { useErrors } from '../../../../Errors';
 
 export const ProviderClusterLocation = () => {
   const { cluster, installationName } = useCurrentCluster();
 
+  const {
+    kind: providerClusterKind,
+    apiVersion: providerClusterApiVersion,
+    name: providerClusterName,
+    namespace: providerClusterNamespace,
+  } = getClusterInfrastructureRef(cluster);
   const {
     data: providerCluster,
     isLoading: providerClusterIsLoading,
@@ -15,7 +25,13 @@ export const ProviderClusterLocation = () => {
     refetch: providerClusterRefetch,
     queryKey: providerClusterQueryKey,
     queryErrorMessage: providerClusterQueryErrorMessage,
-  } = useProviderCluster(installationName, cluster);
+  } = useResource<ProviderCluster>({
+    kind: providerClusterKind,
+    apiVersion: providerClusterApiVersion,
+    installationName,
+    name: providerClusterName,
+    namespace: providerClusterNamespace,
+  });
 
   const { showError } = useErrors();
   useEffect(() => {

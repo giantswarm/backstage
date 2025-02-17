@@ -1,7 +1,7 @@
 import { useRouteRefParams } from '@backstage/core-plugin-api';
 import { clusterDetailsRouteRef } from '../../../routes';
-import { Cluster } from '@giantswarm/backstage-plugin-gs-common';
-import { useCluster } from '../../hooks';
+import { Cluster, ClusterKind } from '@giantswarm/backstage-plugin-gs-common';
+import { useResource } from '../../hooks';
 
 export const useClusterFromUrl = (): {
   installationName: string;
@@ -17,7 +17,12 @@ export const useClusterFromUrl = (): {
     data: cluster,
     isLoading,
     error,
-  } = useCluster(installationName, name, namespace);
+  } = useResource<Cluster>({
+    kind: ClusterKind,
+    installationName,
+    name,
+    namespace,
+  });
 
   return { installationName, cluster, loading: isLoading, error };
 };

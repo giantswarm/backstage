@@ -1,10 +1,8 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useK8sGetPath } from './useK8sPath';
-import {
-  gsKubernetesApiRef,
-  CustomResourceMatcher,
-} from '../../apis/kubernetes';
+import { CustomResourceMatcher } from '../../apis/kubernetes';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 
 export function useGetResource<T>(
   {
@@ -20,7 +18,7 @@ export function useGetResource<T>(
   },
   { enabled = true },
 ) {
-  const kubernetesApi = useApi(gsKubernetesApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
   const path = useK8sGetPath(gvk, name, namespace);
 
   const queryKey = [

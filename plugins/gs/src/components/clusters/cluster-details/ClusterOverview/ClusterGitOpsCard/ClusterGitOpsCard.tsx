@@ -20,8 +20,12 @@ import {
   getGitRepositoryUrl,
   getKustomizationPath,
   getKustomizationSourceRef,
+  GitRepository,
+  GitRepositoryKind,
+  Kustomization,
+  KustomizationKind,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useGitRepository, useKustomization } from '../../../../hooks';
+import { useResource } from '../../../../hooks';
 import { useGitOpsSourceLink } from '../../../../hooks/useClusterLinks';
 
 const InfoIcon = styled(InfoOutlinedIcon)(({ theme }) => ({
@@ -42,7 +46,8 @@ export function ClusterGitOpsCard({ clusterApp }: ClusterGitOpsCardProps) {
     isLoading: kustomizationIsLoading,
     error: kustomizationError,
     queryErrorMessage: kustomizationQueryErrorMessage,
-  } = useKustomization({
+  } = useResource<Kustomization>({
+    kind: KustomizationKind,
     installationName,
     name: kustomizationName!,
     namespace: kustomizationNamespace,
@@ -56,8 +61,9 @@ export function ClusterGitOpsCard({ clusterApp }: ClusterGitOpsCardProps) {
     isLoading: gitRepositoryIsLoading,
     error: gitRepositoryError,
     queryErrorMessage: gitRepositoryQueryErrorMessage,
-  } = useGitRepository(
+  } = useResource<GitRepository>(
     {
+      kind: GitRepositoryKind,
       installationName,
       name: kustomizationSourceRef?.name!,
       namespace: kustomizationSourceRef?.namespace,

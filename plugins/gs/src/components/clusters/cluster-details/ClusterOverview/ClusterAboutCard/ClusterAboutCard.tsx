@@ -11,6 +11,8 @@ import {
   getControlPlaneK8sVersion,
   Constants,
   isManagementCluster,
+  ControlPlane,
+  getClusterControlPlaneRef,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { AboutField } from '@backstage/plugin-catalog';
 import {
@@ -19,7 +21,7 @@ import {
   ClusterProviders,
   ClusterTypes,
 } from '../../../utils';
-import { useControlPlane } from '../../../../hooks';
+import { useResource } from '../../../../hooks';
 import {
   AboutFieldValue,
   AsyncValue,
@@ -68,13 +70,26 @@ export function ClusterAboutCard() {
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
   const {
+    kind: controlPlaneKind,
+    apiVersion: controlPlaneApiVersion,
+    name: controlPlaneName,
+    namespace: controlPlaneNamespace,
+  } = getClusterControlPlaneRef(cluster);
+
+  const {
     data: controlPlane,
     isLoading: controlPlaneIsLoading,
     error: controlPlaneError,
     queryKey: controlPlaneQueryKey,
     queryErrorMessage: controlPlaneQueryErrorMessage,
     refetch: controlPlaneRefetch,
-  } = useControlPlane(installationName, cluster);
+  } = useResource<ControlPlane>({
+    kind: controlPlaneKind,
+    apiVersion: controlPlaneApiVersion,
+    installationName,
+    name: controlPlaneName,
+    namespace: controlPlaneNamespace,
+  });
 
   const { showError } = useErrors();
   useEffect(() => {

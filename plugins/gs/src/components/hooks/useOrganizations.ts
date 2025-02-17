@@ -23,11 +23,11 @@ import {
   SelfSubjectRulesReview,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
+import { CustomResourceMatcher } from '../../apis/kubernetes';
 import {
-  gsKubernetesApiRef,
   KubernetesApi,
-  CustomResourceMatcher,
-} from '../../apis/kubernetes';
+  kubernetesApiRef,
+} from '@backstage/plugin-kubernetes-react';
 
 async function checkListAllPermissions(
   installationName: string,
@@ -162,7 +162,7 @@ export function useOrganizations(installations?: string[]) {
     }),
   );
 
-  const kubernetesApi = useApi(gsKubernetesApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
   const queries = useQueries({
     queries: selectedInstallations.map(installationName => {
       const gvk = installationsGVKs[installationName];

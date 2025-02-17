@@ -15,6 +15,8 @@ import {
 } from '@backstage/core-plugin-api';
 import { GithubAuth } from '@backstage/core-app-api';
 import { visitsApiRef, VisitsWebStorageApi } from '@backstage/plugin-home';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { gsKubernetesApiRef } from '@giantswarm/backstage-plugin-gs';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -53,5 +55,12 @@ export const apis: AnyApiFactory[] = [
     },
     factory: ({ identityApi, errorApi }) =>
       VisitsWebStorageApi.create({ identityApi, errorApi }),
+  }),
+  createApiFactory({
+    api: kubernetesApiRef,
+    deps: {
+      gsKubernetesApi: gsKubernetesApiRef,
+    },
+    factory: ({ gsKubernetesApi }) => gsKubernetesApi,
   }),
 ];

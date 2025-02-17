@@ -7,16 +7,19 @@ import {
   type ControlPlane,
   type InstallationObjectRef,
   getClusterControlPlaneRef,
-  getControlPlaneGVK,
+  getResourceGVK,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { gsKubernetesApiRef, KubernetesApi } from '../../apis/kubernetes';
 import { getK8sGetPath, getK8sListPath } from './utils/k8sPath';
 import { getInstallationsQueriesInfo } from './utils/queries';
 import { getUniqueRefsByNamespace } from './utils/helpers';
+import {
+  KubernetesApi,
+  kubernetesApiRef,
+} from '@backstage/plugin-kubernetes-react';
 
 const getQueryKey = (ref: InstallationObjectRef) => {
   const { installationName, kind, apiVersion, name, namespace } = ref;
-  const gvk = getControlPlaneGVK(kind, apiVersion);
+  const gvk = getResourceGVK(kind, apiVersion);
 
   return [installationName, 'get', gvk.plural, namespace, name].filter(
     Boolean,
@@ -25,7 +28,7 @@ const getQueryKey = (ref: InstallationObjectRef) => {
 
 const listQueryKey = (ref: Omit<InstallationObjectRef, 'name'>) => {
   const { installationName, kind, apiVersion, namespace } = ref;
-  const gvk = getControlPlaneGVK(kind, apiVersion);
+  const gvk = getResourceGVK(kind, apiVersion);
 
   return [installationName, 'list', gvk.plural, namespace].filter(
     Boolean,
@@ -37,7 +40,7 @@ const getQueryFn = (
   kubernetesApi: KubernetesApi,
 ) => {
   const { installationName, kind, apiVersion, name, namespace } = ref;
-  const gvk = getControlPlaneGVK(kind, apiVersion);
+  const gvk = getResourceGVK(kind, apiVersion);
   const path = getK8sGetPath(gvk, name, namespace);
 
   return async () => {
@@ -69,7 +72,7 @@ const listQueryFn = (
   kubernetesApi: KubernetesApi,
 ) => {
   const { installationName, kind, apiVersion, namespace } = ref;
-  const gvk = getControlPlaneGVK(kind, apiVersion);
+  const gvk = getResourceGVK(kind, apiVersion);
   const path = getK8sListPath(gvk, namespace);
 
   return async () => {
@@ -97,7 +100,7 @@ export function useControlPlanes(
   { enabled = true },
 ) {
   const featureFlagsApi = useApi(featureFlagsApiRef);
-  const kubernetesApi = useApi(gsKubernetesApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
 
   const isExperimentalDataFetchingEnabled = featureFlagsApi.isActive(
     'experimental-data-fetching',

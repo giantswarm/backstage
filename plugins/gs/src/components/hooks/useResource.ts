@@ -1,18 +1,21 @@
-import {
-  getGitRepositoryGVK,
-  getGitRepositoryNames,
-  type GitRepository,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { useGetResource } from './useGetResource';
 import { useApiVersionOverride } from './useApiVersionOverrides';
 import { getErrorMessage } from './utils/helpers';
+import {
+  getResourceGVK,
+  getResourceNames,
+} from '@giantswarm/backstage-plugin-gs-common';
 
-export function useGitRepository(
+export function useResource<T>(
   {
+    kind,
+    apiVersion,
     installationName,
     name,
     namespace,
   }: {
+    kind: string;
+    apiVersion?: string;
     installationName: string;
     name: string;
     namespace?: string;
@@ -20,13 +23,13 @@ export function useGitRepository(
   options?: { enabled?: boolean },
 ) {
   const enabled = options?.enabled ?? true;
-  const apiVersion = useApiVersionOverride(
+  const apiVersionOverride = useApiVersionOverride(
     installationName,
-    getGitRepositoryNames(),
+    getResourceNames(kind),
   );
-  const gvk = getGitRepositoryGVK(apiVersion);
+  const gvk = getResourceGVK(kind, apiVersionOverride ?? apiVersion);
 
-  const query = useGetResource<GitRepository>(
+  const query = useGetResource<T>(
     { installationName, gvk, name, namespace },
     { enabled },
   );
@@ -35,7 +38,7 @@ export function useGitRepository(
     ...query,
     queryErrorMessage: getErrorMessage({
       error: query.error,
-      resourceKind: 'GitRepository',
+      resourceKind: kind,
       resourceName: name,
       resourceNamespace: namespace,
     }),

@@ -1,4 +1,5 @@
 import { createApiRef } from '@backstage/core-plugin-api';
+import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 
 export const gsKubernetesApiRef = createApiRef<KubernetesApi>({
   id: 'plugin.gs.kubernetes',
@@ -9,15 +10,6 @@ export interface ClusterConfiguration {
   apiEndpoint: string;
   authProvider: string;
   oidcTokenProvider?: string;
-}
-
-export interface KubernetesApi {
-  getCluster(clusterName: string): Promise<ClusterConfiguration>;
-  proxy(options: {
-    clusterName: string;
-    path: string;
-    init?: RequestInit;
-  }): Promise<Response>;
 }
 
 export interface CustomResourceMatcher {

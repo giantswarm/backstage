@@ -19,8 +19,10 @@ import {
   getAppUpdatedTimestamp,
   getAppVersion,
   getAppTargetClusterNamespace,
+  App,
+  AppKind,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useApp } from '../../hooks';
+import { useResource } from '../../hooks';
 import {
   formatAppCatalogName,
   formatSource,
@@ -58,7 +60,12 @@ export const AppDetails = ({
     data: app,
     isLoading,
     error,
-  } = useApp({ installationName, name, namespace });
+  } = useResource<App>({
+    kind: AppKind,
+    installationName,
+    name,
+    namespace,
+  });
 
   const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 

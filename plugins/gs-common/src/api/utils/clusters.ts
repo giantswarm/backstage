@@ -9,6 +9,8 @@ import { isConditionFalse } from './conditions';
 import { isResourceImported } from './resources';
 import * as capi from '../../model/capi';
 
+export { ClusterKind, ClusterNames } from '../../model/capi';
+
 export function getClusterNames() {
   return capi.ClusterNames;
 }
