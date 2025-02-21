@@ -12911,13 +12911,13 @@
       linkType: hard
     
     "@tanstack/react-query@npm:^5.17.19":
-      version: 5.66.4
-      resolution: "@tanstack/react-query@npm:5.66.4"
+      version: 5.66.9
+      resolution: "@tanstack/react-query@npm:5.66.9"
       dependencies:
         "@tanstack/query-core": "npm:5.66.4"
       peerDependencies:
         react: ^18 || ^19
-      checksum: 10c0/90378598c4d95f1e7c378e5cb65c7e7cf7fee9ff4bc65feccfa9c56703ffe2b74f59245d9e255279b7029219877e0f98dde895940b8db26f5a619b33aa48d063
+      checksum: 10c0/80565eb550e1fe3e90117c8dd4dd13c1ef27d1bf89689b09c6cdf6df084173582c3a20fbc709638b64502a10b1e10357b3172c38604739641dbdeb29715cae0d
       languageName: node
       linkType: hard
     
