@@ -6481,21 +6481,6 @@
       languageName: node
       linkType: hard
     
-    "@backstage/plugin-kubernetes-common@npm:^0.9.2":
-      version: 0.9.2
-      resolution: "@backstage/plugin-kubernetes-common@npm:0.9.2"
-      dependencies:
-        "@backstage/catalog-model": "npm:^1.7.3"
-        "@backstage/plugin-permission-common": "npm:^0.8.4"
-        "@backstage/types": "npm:^1.2.1"
-        "@kubernetes/client-node": "npm:1.0.0-rc7"
-        kubernetes-models: "npm:^4.3.1"
-        lodash: "npm:^4.17.21"
-        luxon: "npm:^3.0.0"
-      checksum: 10c0/61092cdc42d6b98ed2ece2603c8acdcc0f6d10b47cb4b92141aa7ea83e0ad3959c9c3e5b02799f632542ac9ecbaa0dabbc22f902f6b3213a3bf717d71e74fc9e
-      languageName: node
-      linkType: hard
-    
     "@backstage/plugin-kubernetes-node@npm:^0.2.1":
       version: 0.2.1
       resolution: "@backstage/plugin-kubernetes-node@npm:0.2.1"
@@ -6582,43 +6567,6 @@
         "@types/react":
           optional: true
       checksum: 10c0/b47069c3052d848695c4c4cb13a1249a84ec7c03ba97e20df9b78639f276885b7c44808598fb58b7bd8f73198a1785415b6192bb45a0ae6597f7567fd84e7887
-      languageName: node
-      linkType: hard
-    
-    "@backstage/plugin-kubernetes-react@npm:^0.5.3":
-      version: 0.5.3
-      resolution: "@backstage/plugin-kubernetes-react@npm:0.5.3"
-      dependencies:
-        "@backstage/catalog-model": "npm:^1.7.3"
-        "@backstage/core-components": "npm:^0.16.3"
-        "@backstage/core-plugin-api": "npm:^1.10.3"
-        "@backstage/errors": "npm:^1.2.7"
-        "@backstage/plugin-kubernetes-common": "npm:^0.9.2"
-        "@backstage/types": "npm:^1.2.1"
-        "@kubernetes-models/apimachinery": "npm:^2.0.0"
-        "@kubernetes-models/base": "npm:^5.0.0"
-        "@kubernetes/client-node": "npm:1.0.0-rc7"
-        "@material-ui/core": "npm:^4.9.13"
-        "@material-ui/icons": "npm:^4.11.3"
-        "@material-ui/lab": "npm:^4.0.0-alpha.61"
-        cronstrue: "npm:^2.32.0"
-        js-yaml: "npm:^4.1.0"
-        kubernetes-models: "npm:^4.3.1"
-        lodash: "npm:^4.17.21"
-        luxon: "npm:^3.0.0"
-        react-use: "npm:^17.4.0"
-        xterm: "npm:^5.3.0"
-        xterm-addon-attach: "npm:^0.9.0"
-        xterm-addon-fit: "npm:^0.8.0"
-      peerDependencies:
-        "@types/react": ^16.13.1 || ^17.0.0 || ^18.0.0
-        react: ^16.13.1 || ^17.0.0 || ^18.0.0
-        react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
-        react-router-dom: 6.0.0-beta.0 || ^6.3.0
-      peerDependenciesMeta:
-        "@types/react":
-          optional: true
-      checksum: 10c0/cc526e9a7e505a7c2d4577c7932f5747cb539aabe6cfcfde849e2a58869b2e21c928c30099e559b98e47dca4cbe407b59e668f392475a048e8a6ab77bf7d5e78
       languageName: node
       linkType: hard
     
@@ -9041,7 +8989,7 @@
         "@backstage/integration-react": "backstage:^"
         "@backstage/plugin-catalog": "backstage:^"
         "@backstage/plugin-catalog-react": "backstage:^"
-        "@backstage/plugin-kubernetes-react": "npm:^0.5.3"
+        "@backstage/plugin-kubernetes-react": "backstage:^"
         "@backstage/plugin-scaffolder": "backstage:^"
         "@backstage/plugin-scaffolder-react": "backstage:^"
         "@backstage/plugin-user-settings": "backstage:^"
@@ -15245,7 +15193,7 @@
         "@backstage/plugin-catalog-import": "backstage:^"
         "@backstage/plugin-catalog-react": "backstage:^"
         "@backstage/plugin-circleci": "npm:^0.3.35"
-        "@backstage/plugin-home": "npm:^0.8.3"
+        "@backstage/plugin-home": "backstage:^"
         "@backstage/plugin-kubernetes": "backstage:^"
         "@backstage/plugin-kubernetes-react": "backstage:^"
         "@backstage/plugin-org": "backstage:^"
