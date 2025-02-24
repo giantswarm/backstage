@@ -8,11 +8,6 @@ organization:
   name: My Company
 
 backend:
-  auth:
-    # TODO: once plugins have been migrated we can remove this, but right now it
-    # is require for the backend to work
-    dangerouslyDisableDefaultAuthPolicy: true
-
   baseUrl: http://localhost:7007
   listen:
     port: 7007
