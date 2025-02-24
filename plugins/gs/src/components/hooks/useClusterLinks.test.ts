@@ -32,7 +32,7 @@ describe('useGitOpsSourceLink', () => {
     const path = './test/repo/path';
     const result = useGitOpsSourceLink({ url, revision, path });
     expect(result).toBe(
-      'https://gitlab.example.com/test-project/test-repo/blob/1234567890/test/repo/path',
+      'https://gitlab.example.com/test-project/test-repo/-/tree/1234567890/test/repo/path',
     );
   });
 

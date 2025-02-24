@@ -117,7 +117,7 @@ export const useGitOpsSourceLink = ({
       const { hostname, repositoryPath } = matchResult.groups;
 
       return new URL(
-        `https://${hostname}/${repositoryPath}/blob/${revision}/${path}`,
+        `https://${hostname}/${repositoryPath}/-/tree/${revision}/${path}`,
       ).toString();
     }
   }
