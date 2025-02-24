@@ -6323,6 +6323,27 @@
       languageName: node
       linkType: hard
     
+    "@backstage/plugin-home-react@npm:^0.1.20":
+      version: 0.1.23
+      resolution: "@backstage/plugin-home-react@npm:0.1.23"
+      dependencies:
+        "@backstage/core-components": "npm:^0.16.4"
+        "@backstage/core-plugin-api": "npm:^1.10.4"
+        "@material-ui/core": "npm:^4.12.2"
+        "@material-ui/icons": "npm:^4.9.1"
+        "@rjsf/utils": "npm:5.23.2"
+      peerDependencies:
+        "@types/react": ^17.0.0 || ^18.0.0
+        react: ^17.0.0 || ^18.0.0
+        react-dom: ^17.0.0 || ^18.0.0
+        react-router-dom: ^6.3.0
+      peerDependenciesMeta:
+        "@types/react":
+          optional: true
+      checksum: 10c0/5f5fd8a2d6bf787cb949ceab7263e570644c8b8bb5898bdcbbdc663d15191b8c07de32f8382778255f05ff03ca6c1631b1ba027ed0d91b911661dd51178652b3
+      languageName: node
+      linkType: hard
+    
     "@backstage/plugin-home-react@npm:^0.1.22":
       version: 0.1.22
       resolution: "@backstage/plugin-home-react@npm:0.1.22"
@@ -11821,16 +11842,16 @@
       linkType: hard
     
     "@roadiehq/backstage-plugin-github-pull-requests@npm:^3.0.0":
-      version: 3.3.0
-      resolution: "@roadiehq/backstage-plugin-github-pull-requests@npm:3.3.0"
+      version: 3.4.0
+      resolution: "@roadiehq/backstage-plugin-github-pull-requests@npm:3.4.0"
       dependencies:
-        "@backstage/catalog-model": "npm:^1.7.3"
-        "@backstage/core-components": "npm:^0.16.3"
-        "@backstage/core-plugin-api": "npm:^1.10.3"
+        "@backstage/catalog-model": "npm:^1.7.1"
+        "@backstage/core-components": "npm:^0.16.1"
+        "@backstage/core-plugin-api": "npm:^1.10.1"
         "@backstage/integration": "npm:^1.16.1"
-        "@backstage/integration-react": "npm:^1.2.3"
-        "@backstage/plugin-catalog-react": "npm:^1.15.1"
-        "@backstage/plugin-home-react": "npm:^0.1.22"
+        "@backstage/integration-react": "npm:^1.2.1"
+        "@backstage/plugin-catalog-react": "npm:^1.14.2"
+        "@backstage/plugin-home-react": "npm:^0.1.20"
         "@material-ui/core": "npm:^4.12.2"
         "@material-ui/icons": "npm:^4.9.1"
         "@material-ui/lab": "npm:^4.0.0-alpha.60"
@@ -11849,7 +11870,7 @@
         react: ^16.13.1 || ^17.0.0 || ^18.0.0
         react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
         react-router: 6.0.0-beta.0 || ^6.3.0
-      checksum: 10c0/5365008c41c49899c357aaacfaaf946d01de65d8545a0090945896674ebbb890ca56dbd6fb178c77d6eccf901227a106410e5031acc02ab0a9fcfc9d172188ff
+      checksum: 10c0/d6128857a39131b25cbff8a5c639ba68a92132bd96a4cf4884ca5c09e834f682d95307c3ab2928678ca74b125d2178b7dddc3e3474c0c8288c533c44349a49b2
       languageName: node
       linkType: hard
     
