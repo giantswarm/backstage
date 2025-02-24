@@ -6,7 +6,7 @@
     "node": "20 || 22"
   },
   "scripts": {
-    "dev": "yarn workspaces foreach -A --include backend --include app --parallel -v -i run start",
+    "dev": "yarn workspaces foreach -A --include backend --include app --parallel --jobs unlimited -v -i run start",
     "start": "yarn env-cmd yarn workspace app start",
     "start-backend": "yarn env-cmd yarn workspace backend start",
     "build:backend": "yarn workspace backend build",
@@ -23,7 +23,7 @@
     "lint:all": "backstage-cli repo lint",
     "prettier:check": "prettier --check .",
     "prettier:fix": "prettier --write .",
-    "new": "backstage-cli new --scope internal",
+    "new": "backstage-cli new",
     "postinstall": "yarn patch-package",
     "release": "yarn changeset version && yarn install --no-immutable && ts-node scripts/prepare-release.ts && yarn prettier --write --log-level silent '{packages,plugins}/*/{package.json,CHANGELOG.md}' 'docs/releases/*.md' './{package.json,CHANGELOG.md}'"
   },
