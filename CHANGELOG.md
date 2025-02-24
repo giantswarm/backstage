@@ -5,6 +5,21 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.53.0] - 2025-02-24
+
+In this release:
+
+- Backstage was updated to v1.36.1.
+- Update other dependencies.
+- Enable default auth policy.
+
+GS plugins changes:
+
+- Refactored how GS Kubernetes API is used.
+- Refactored data fetching hooks to share common logic.
+
+See [./docs/releases/v0.53.0-changelog.md](./docs/releases/v0.53.0-changelog.md) for more information.
+
 ## [0.52.0] - 2025-02-07
 
 In this release:
@@ -916,7 +931,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.52.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.53.0...HEAD
+[0.53.0]: https://github.com/giantswarm/backstage/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/giantswarm/backstage/compare/v0.51.1...v0.52.0
 [0.51.1]: https://github.com/giantswarm/backstage/compare/v0.51.0...v0.51.1
 [0.51.0]: https://github.com/giantswarm/backstage/compare/v0.50.0...v0.51.0
