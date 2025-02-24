@@ -1,5 +1,23 @@
 # app
 
+## 0.8.0
+
+### Minor Changes
+
+- 9e6f3c1: Backstage was updated to v1.36.1.
+
+### Patch Changes
+
+- f99862c: Refactored how GS Kubernetes API is used.
+- c5d9972: Enable default auth policy.
+- e06b6cd: Update dependencies.
+- Updated dependencies [f99862c]
+- Updated dependencies [9e6f3c1]
+- Updated dependencies [c5d9972]
+- Updated dependencies [e06b6cd]
+- Updated dependencies [f99862c]
+  - @giantswarm/backstage-plugin-gs@0.14.0
+
 ## 0.7.1
 
 ### Patch Changes

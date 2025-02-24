@@ -1,5 +1,22 @@
 # backend
 
+## 0.6.0
+
+### Minor Changes
+
+- 9e6f3c1: Backstage was updated to v1.36.1.
+
+### Patch Changes
+
+- c5d9972: Enable default auth policy.
+- e06b6cd: Update dependencies.
+- Updated dependencies [9e6f3c1]
+- Updated dependencies [c5d9972]
+- Updated dependencies [e06b6cd]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.7.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.6.0
+  - @giantswarm/backstage-plugin-techdocs-backend-module-gs@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes
