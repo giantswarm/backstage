@@ -22,7 +22,6 @@
     "lint": "backstage-cli repo lint --since origin/main",
     "lint:all": "backstage-cli repo lint",
     "prettier:check": "prettier --check .",
-    "prettier:check-ci": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .prettierignore-ci",
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new --scope internal",
     "postinstall": "yarn patch-package",
@@ -64,5 +63,5 @@
     "patch-package": "^8.0.0",
     "postinstall-postinstall": "^2.1.0"
   },
-  "packageManager": "yarn@4.5.3"
+  "packageManager": "yarn@4.4.1"
 }

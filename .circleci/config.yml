@@ -97,7 +97,7 @@ jobs:
 
       - run:
           name: Validate code style using prettier
-          command: yarn run prettier:check-ci
+          command: yarn run prettier:check
 
       - run:
           name: Run tests
