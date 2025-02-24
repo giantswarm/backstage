@@ -15245,7 +15245,7 @@
         "@backstage/plugin-catalog-import": "backstage:^"
         "@backstage/plugin-catalog-react": "backstage:^"
         "@backstage/plugin-circleci": "npm:^0.3.35"
-        "@backstage/plugin-home": "npm:^0.8.3"
+        "@backstage/plugin-home": "backstage:^"
         "@backstage/plugin-kubernetes": "backstage:^"
         "@backstage/plugin-kubernetes-react": "backstage:^"
         "@backstage/plugin-org": "backstage:^"
