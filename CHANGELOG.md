@@ -7,6 +7,17 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.53.0] - 2025-02-24
 
+In this release:
+
+- Backstage was updated to v1.36.1.
+- Update other dependencies.
+- Enable default auth policy.
+
+GS plugins changes:
+
+- Refactored how GS Kubernetes API is used.
+- Refactored data fetching hooks to share common logic.
+
 See [./docs/releases/v0.53.0-changelog.md](./docs/releases/v0.53.0-changelog.md) for more information.
 
 ## [0.52.0] - 2025-02-07
