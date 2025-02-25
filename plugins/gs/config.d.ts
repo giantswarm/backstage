@@ -5,6 +5,12 @@ export interface Config {
     authProvider: string;
 
     /** @deepVisibility frontend */
+    gitopsRepositories?: {
+      targetUrl: string;
+      gitRepositoryUrlPattern: string;
+    }[];
+
+    /** @deepVisibility frontend */
     installations: {
       [installationName: string]: {
         pipeline: string;
