@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.15.0
+
+### Minor Changes
+
+- d431e37: On installations details, show custom CA info and non-standard access docs
+- 6ed2cbb: Made GitOps indicator link configurable via app configuration.
+
+### Patch Changes
+
+- Updated dependencies [6ed2cbb]
+  - @giantswarm/backstage-plugin-gs-common@0.11.0
+
 ## 0.14.0
 
 ### Minor Changes
