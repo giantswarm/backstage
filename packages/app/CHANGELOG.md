@@ -1,5 +1,17 @@
 # app
 
+## 0.9.0
+
+### Minor Changes
+
+- d431e37: On installations details, show custom CA info and non-standard access docs
+
+### Patch Changes
+
+- Updated dependencies [d431e37]
+- Updated dependencies [6ed2cbb]
+  - @giantswarm/backstage-plugin-gs@0.15.0
+
 ## 0.8.0
 
 ### Minor Changes

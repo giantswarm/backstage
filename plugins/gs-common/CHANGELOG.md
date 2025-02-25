@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.11.0
+
+### Minor Changes
+
+- 6ed2cbb: Made GitOps indicator link configurable via app configuration.
+
 ## 0.10.0
 
 ### Minor Changes
