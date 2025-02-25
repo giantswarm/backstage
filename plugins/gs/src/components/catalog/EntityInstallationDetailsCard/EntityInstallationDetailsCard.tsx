@@ -54,15 +54,16 @@ export function EntityInstallationDetailsCard() {
                 entity.metadata.annotations?.['giantswarm.io/account-engineer']
               }
             />
-            {
-              entity.metadata.annotations?.['giantswarm.io/custom-ca'] && (
-                <AboutField
-                  label="Custom CA"
-                  value="">
-                  <Link to={entity.metadata.annotations?.['giantswarm.io/custom-ca']} externalLinkIcon={true}>YES</Link>
-                </AboutField>
-              )
-            }
+            {entity.metadata.annotations?.['giantswarm.io/custom-ca'] && (
+              <AboutField label="Custom CA" value="">
+                <Link
+                  to={entity.metadata.annotations?.['giantswarm.io/custom-ca']}
+                  externalLinkIcon={true}
+                >
+                  YES
+                </Link>
+              </AboutField>
+            )}
           </Grid>
           <Grid container spacing={5}>
             <AboutField label="Escalation matrix">
@@ -85,13 +86,19 @@ export function EntityInstallationDetailsCard() {
         </InfoCard>
       </Grid>
       <Grid item xs={12}>
-      {
-        entity.metadata.annotations?.['giantswarm.io/access-docs-markdown'] && (
+        {entity.metadata.annotations?.[
+          'giantswarm.io/access-docs-markdown'
+        ] && (
           <InfoCard title="Non-standard access">
-            <MarkdownContent content={entity.metadata.annotations?.['giantswarm.io/access-docs-markdown']} />
+            <MarkdownContent
+              content={
+                entity.metadata.annotations?.[
+                  'giantswarm.io/access-docs-markdown'
+                ]
+              }
+            />
           </InfoCard>
-        )
-      }
+        )}
       </Grid>
     </>
   );
