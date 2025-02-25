@@ -5,9 +5,9 @@ export interface Config {
     authProvider: string;
 
     /** @deepVisibility frontend */
-    gitRepositoryUrlPatterns?: {
-      pattern: string;
+    gitopsRepositories?: {
       targetUrl: string;
+      gitRepositoryUrlPattern: string;
     }[];
 
     /** @deepVisibility frontend */

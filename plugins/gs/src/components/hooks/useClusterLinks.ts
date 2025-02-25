@@ -75,11 +75,11 @@ export const useGitOpsSourceLink = ({
   path?: string;
 }) => {
   const config = useApi(configApiRef);
-  const urlPatternsConfig = config.getOptionalConfigArray(
-    `gs.gitRepositoryUrlPatterns`,
+  const gitopsRepositoriesConfig = config.getOptionalConfigArray(
+    `gs.gitopsRepositories`,
   );
 
-  if (!url || !revision || !path || !urlPatternsConfig) {
+  if (!url || !revision || !path || !gitopsRepositoriesConfig) {
     return undefined;
   }
 
@@ -88,15 +88,15 @@ export const useGitOpsSourceLink = ({
     REVISION: revision,
   };
 
-  const urlPatternConfig = urlPatternsConfig.find(configItem => {
-    const pattern = configItem.getString('pattern');
+  const gitopsRepositoryConfig = gitopsRepositoriesConfig.find(configItem => {
+    const pattern = configItem.getString('gitRepositoryUrlPattern');
     const regexp = new RegExp(pattern);
     return regexp.test(url);
   });
 
-  if (urlPatternConfig) {
-    const pattern = urlPatternConfig.getString('pattern');
-    const targetUrl = urlPatternConfig.getString('targetUrl');
+  if (gitopsRepositoryConfig) {
+    const pattern = gitopsRepositoryConfig.getString('gitRepositoryUrlPattern');
+    const targetUrl = gitopsRepositoryConfig.getString('targetUrl');
 
     const regexp = new RegExp(pattern);
     const matchResult = url.match(regexp);

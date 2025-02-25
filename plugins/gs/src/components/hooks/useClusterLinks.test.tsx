@@ -38,30 +38,30 @@ describe('useGitOpsSourceLink', () => {
     const configApiMock = mockApis.config({
       data: {
         gs: {
-          gitRepositoryUrlPatterns: [
+          gitopsRepositories: [
             {
-              pattern:
-                '^https:\/\/(?<HOSTNAME>bitbucket.+?)\/scm\/(?<PROJECT_NAME>.+?)\/(?<REPOSITORY_NAME>.+?)(\.git)?$',
               targetUrl:
                 'https://${{HOSTNAME}}/projects/${{PROJECT_NAME}}/repos/${{REPOSITORY_NAME}}/browse/${{PATH}}?at=${{REVISION}}',
+              gitRepositoryUrlPattern:
+                '^https:\/\/(?<HOSTNAME>bitbucket.+?)\/scm\/(?<PROJECT_NAME>.+?)\/(?<REPOSITORY_NAME>.+?)(\.git)?$',
             },
             {
-              pattern:
-                '^ssh:\/\/git@(?<HOSTNAME>gitlab.+?)\/(?<REPOSITORY_PATH>.+?)(\.git)?$',
               targetUrl:
                 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/-/tree/${{REVISION}}/${{PATH}}',
+              gitRepositoryUrlPattern:
+                '^ssh:\/\/git@(?<HOSTNAME>gitlab.+?)\/(?<REPOSITORY_PATH>.+?)(\.git)?$',
             },
             {
-              pattern:
+              targetUrl:
+                'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}',
+              gitRepositoryUrlPattern:
                 '^ssh:\/\/git@(ssh\.)?(?<HOSTNAME>github.+?)(:443)?\/(?<REPOSITORY_PATH>.+?)(\.git)?$',
-              targetUrl:
-                'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}',
             },
             {
-              pattern:
-                '^https:\/\/(?<HOSTNAME>github.+?)\/(?<REPOSITORY_PATH>.+?)$',
               targetUrl:
                 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}',
+              gitRepositoryUrlPattern:
+                '^https:\/\/(?<HOSTNAME>github.+?)\/(?<REPOSITORY_PATH>.+?)$',
             },
           ],
         },
