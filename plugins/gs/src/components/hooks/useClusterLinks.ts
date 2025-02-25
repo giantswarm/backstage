@@ -1,4 +1,5 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { formatTemplateString } from '../utils/formatTemplateString';
 
 export const useGrafanaDashboardLink = (
   installationName: string,
@@ -64,18 +65,6 @@ export const useWebUILink = (
   return `https://happa.${baseDomain}/organizations/${organizationName}/clusters/${clusterName}`;
 };
 
-const GIT_REPOSITORY_URL_VARIANT_1 =
-  /^https:\/\/(?<hostname>bitbucket.+?)\/scm\/(?<projectName>.+?)\/(?<repositoryName>.+?)(\.git)?$/;
-
-const GIT_REPOSITORY_URL_VARIANT_2 =
-  /^ssh:\/\/git@(?<hostname>gitlab.+?)\/(?<repositoryPath>.+?)(\.git)?$/;
-
-const GIT_REPOSITORY_URL_VARIANT_3 =
-  /^ssh:\/\/git@(ssh\.)?(?<hostname>github.+?)(:443)?\/(?<repositoryPath>.+?)(\.git)?$/;
-
-const GIT_REPOSITORY_URL_VARIANT_4 =
-  /^https:\/\/(?<hostname>github.+?)\/(?<repositoryPath>.+?)$/;
-
 export const useGitOpsSourceLink = ({
   url,
   revision,
@@ -85,72 +74,40 @@ export const useGitOpsSourceLink = ({
   revision?: string;
   path?: string;
 }) => {
-  if (!url || !revision || !path) {
+  const config = useApi(configApiRef);
+  const urlPatternsConfig = config.getOptionalConfigArray(
+    `gs.gitRepositoryUrlPatterns`,
+  );
+
+  if (!url || !revision || !path || !urlPatternsConfig) {
     return undefined;
   }
 
-  if (GIT_REPOSITORY_URL_VARIANT_1.test(url)) {
-    const matchResult = url.match(GIT_REPOSITORY_URL_VARIANT_1);
-    if (
-      matchResult &&
-      matchResult.groups &&
-      matchResult.groups.hostname &&
-      matchResult.groups.projectName &&
-      matchResult.groups.repositoryName
-    ) {
-      const { hostname, projectName, repositoryName } = matchResult.groups;
+  const data = {
+    PATH: path,
+    REVISION: revision,
+  };
 
-      return new URL(
-        `https://${hostname}/projects/${projectName}/repos/${repositoryName}/browse/${path}?at=${revision}`,
-      ).toString();
-    }
-  }
+  const urlPatternConfig = urlPatternsConfig.find(configItem => {
+    const pattern = configItem.getString('pattern');
+    const regexp = new RegExp(pattern);
+    return regexp.test(url);
+  });
 
-  if (GIT_REPOSITORY_URL_VARIANT_2.test(url)) {
-    const matchResult = url.match(GIT_REPOSITORY_URL_VARIANT_2);
-    if (
-      matchResult &&
-      matchResult.groups &&
-      matchResult.groups.hostname &&
-      matchResult.groups.repositoryPath
-    ) {
-      const { hostname, repositoryPath } = matchResult.groups;
+  if (urlPatternConfig) {
+    const pattern = urlPatternConfig.getString('pattern');
+    const targetUrl = urlPatternConfig.getString('targetUrl');
 
-      return new URL(
-        `https://${hostname}/${repositoryPath}/-/tree/${revision}/${path}`,
-      ).toString();
-    }
-  }
+    const regexp = new RegExp(pattern);
+    const matchResult = url.match(regexp);
 
-  if (GIT_REPOSITORY_URL_VARIANT_3.test(url)) {
-    const matchResult = url.match(GIT_REPOSITORY_URL_VARIANT_3);
-    if (
-      matchResult &&
-      matchResult.groups &&
-      matchResult.groups.hostname &&
-      matchResult.groups.repositoryPath
-    ) {
-      const { hostname, repositoryPath } = matchResult.groups;
+    if (matchResult && matchResult.groups) {
+      const formattedUrl = formatTemplateString(targetUrl, {
+        ...data,
+        ...matchResult.groups,
+      });
 
-      return new URL(
-        `https://${hostname}/${repositoryPath}/blob/${revision}/${path}`,
-      ).toString();
-    }
-  }
-
-  if (GIT_REPOSITORY_URL_VARIANT_4.test(url)) {
-    const matchResult = url.match(GIT_REPOSITORY_URL_VARIANT_4);
-    if (
-      matchResult &&
-      matchResult.groups &&
-      matchResult.groups.hostname &&
-      matchResult.groups.repositoryPath
-    ) {
-      const { hostname, repositoryPath } = matchResult.groups;
-
-      return new URL(
-        `https://${hostname}/${repositoryPath}/blob/${revision}/${path}`,
-      ).toString();
+      return new URL(formattedUrl).toString();
     }
   }
 
