@@ -453,9 +453,7 @@ const resourcePage = (
         </Grid>
         <EntitySwitch>
           <EntitySwitch.Case if={isEntityGSInstallationResource}>
-            <Grid item xs={12}>
-              <EntityGSInstallationDetailsCard />
-            </Grid>
+            <EntityGSInstallationDetailsCard />
           </EntitySwitch.Case>
         </EntitySwitch>
       </Grid>
