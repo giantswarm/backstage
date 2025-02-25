@@ -1,6 +1,6 @@
 ---
-'@giantswarm/backstage-plugin-gs-common': patch
-'@giantswarm/backstage-plugin-gs': patch
+'@giantswarm/backstage-plugin-gs-common': minor
+'@giantswarm/backstage-plugin-gs': minor
 ---
 
-Fixed GitOps indicator link for Bitbucket.
+Made GitOps indicator link configurable via app configuration.
