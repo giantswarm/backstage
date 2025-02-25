@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.54.0] - 2025-02-25
 
+In this release:
+
+- Custom CA information was added to installation details page.
+- Non-standard access documentation was added to installation details page.
+- GitOps indicator on cluster details page was refactored to be configurable via app configuration.
+
 See [./docs/releases/v0.54.0-changelog.md](./docs/releases/v0.54.0-changelog.md) for more information.
 
 ## [0.53.0] - 2025-02-24
