@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.54.0] - 2025-02-25
+
 See [./docs/releases/v0.54.0-changelog.md](./docs/releases/v0.54.0-changelog.md) for more information.
 
 ## [0.53.0] - 2025-02-24
@@ -933,7 +935,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.53.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.54.0...HEAD
+[0.54.0]: https://github.com/giantswarm/backstage/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/giantswarm/backstage/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/giantswarm/backstage/compare/v0.51.1...v0.52.0
 [0.51.1]: https://github.com/giantswarm/backstage/compare/v0.51.0...v0.51.1
