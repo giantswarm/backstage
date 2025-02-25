@@ -58,7 +58,7 @@ export function EntityInstallationDetailsCard() {
               <AboutField label="Custom CA" value="">
                 <Link
                   to={entity.metadata.annotations?.['giantswarm.io/custom-ca']}
-                  externalLinkIcon={true}
+                  externalLinkIcon
                 >
                   YES
                 </Link>
