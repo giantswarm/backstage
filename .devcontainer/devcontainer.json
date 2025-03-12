@@ -35,9 +35,7 @@
 
   "customizations": {
     "vscode": {
-      "extensions": [
-        "esbenp.prettier-vscode"
-      ],
+      "extensions": ["esbenp.prettier-vscode"],
       "settings": {
         "files.eol": "\n",
         "editor.defaultFormatter": "esbenp.prettier-vscode",
