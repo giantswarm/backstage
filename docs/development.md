@@ -21,7 +21,8 @@ This is the recommended way if you want to get started simply, but it may not pr
 2. When prompted if you want to open the repository in a devcontainer, click "Reopen in Container".
 3. Wait for the devcontainer to build. This may take a few minutes.
 4. Once the devcontainer is ready, open a new terminal in VS Code.
-5. Run `yarn install` to install dependencies.
+5. Run `yarn dev` to in the VS code terminal to start backend and frontend.
+6. If it doesn't open automatically, open [https://localhost:3000/](https://localhost:3000/) in your browser.
 
 ## Classic local development {#classic}
 
