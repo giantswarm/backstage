@@ -31,5 +31,16 @@
     "7007": { "label": "Backend", "onAutoForward": "ignore" }
   },
 
-  "postCreateCommand": "yarn config set --home enableTelemetry 0; yarn install"
+  "postCreateCommand": "yarn config set --home enableTelemetry 0; yarn install",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["esbenp.prettier-vscode"],
+      "settings": {
+        "files.eol": "\n",
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+      }
+    }
+  }
 }
