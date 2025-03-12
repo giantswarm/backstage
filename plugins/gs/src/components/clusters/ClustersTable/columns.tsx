@@ -3,7 +3,10 @@ import { Link as RouterLink } from 'react-router-dom';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
-import { sortAndFilterOptions } from '../../utils/tableHelpers';
+import {
+  semverCompareSort,
+  sortAndFilterOptions,
+} from '../../utils/tableHelpers';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
 import { Account, DateComponent, KubernetesVersion, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
@@ -114,6 +117,7 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
     render: row => {
       return <Version version={row.releaseVersion || ''} highlight />;
     },
+    customSort: semverCompareSort(row => row.releaseVersion),
   },
   {
     title: 'Cluster App',
@@ -129,6 +133,7 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
         />
       );
     },
+    customSort: semverCompareSort(row => row.appVersion),
   },
   {
     title: 'Kubernetes Version',
@@ -145,6 +150,7 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
         )
       );
     },
+    customSort: semverCompareSort(row => row.kubernetesVersion),
   },
   {
     title: 'Location',

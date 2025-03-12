@@ -2,7 +2,6 @@ import React from 'react';
 import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { Box, Typography } from '@material-ui/core';
-import semver from 'semver';
 import {
   getHelmChartsAppVersionsFromEntity,
   getHelmChartsFromEntity,
@@ -12,6 +11,7 @@ import {
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
 import { Entity } from '@backstage/catalog-model';
+import { semverCompareSort } from '../utils/tableHelpers';
 
 const noWrapStyle = {
   overflow: 'hidden',
@@ -75,24 +75,9 @@ export const columnFactories = Object.freeze({
       title: 'Latest release',
       hidden: options.hidden,
       width: 'auto',
-      customSort({ entity: entity1 }, { entity: entity2 }) {
-        const entity1Tag = getLatestReleaseTagFromEntity(entity1);
-        const entity2Tag = getLatestReleaseTagFromEntity(entity2);
-
-        if (!entity1Tag && !entity2Tag) {
-          return 0;
-        }
-
-        if (!entity1Tag) {
-          return -1;
-        }
-
-        if (!entity2Tag) {
-          return 1;
-        }
-
-        return semver.compare(entity1Tag, entity2Tag);
-      },
+      customSort: semverCompareSort(({ entity }) =>
+        getLatestReleaseTagFromEntity(entity),
+      ),
       customFilterAndSearch(query: string, { entity }) {
         const entityTag = getLatestReleaseTagFromEntity(entity);
 
