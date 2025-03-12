@@ -4,6 +4,7 @@ describe('semverCompareSort', () => {
   it('should sort valid semver strings correctly', () => {
     const items = [
       { version: '1.0.0' },
+      { version: '10.0.0' },
       { version: '2.0.0' },
       { version: '1.2.0' },
       { version: '1.1.0' },
@@ -16,12 +17,14 @@ describe('semverCompareSort', () => {
       { version: '1.1.0' },
       { version: '1.2.0' },
       { version: '2.0.0' },
+      { version: '10.0.0' },
     ]);
   });
 
   it('should handle invalid semver strings by placing them at the end', () => {
     const items = [
       { version: '1.0.0' },
+      { version: '10.0.0' },
       { version: 'invalid' },
       { version: '2.0.0' },
       { version: '1.1.0' },
@@ -33,6 +36,7 @@ describe('semverCompareSort', () => {
       { version: '1.0.0' },
       { version: '1.1.0' },
       { version: '2.0.0' },
+      { version: '10.0.0' },
       { version: 'invalid' },
     ]);
   });
@@ -40,6 +44,7 @@ describe('semverCompareSort', () => {
   it('should handle undefined versions by placing them at the end', () => {
     const items = [
       { version: '1.0.0' },
+      { version: '10.0.0' },
       { version: undefined },
       { version: '2.0.0' },
       { version: '1.1.0' },
@@ -51,6 +56,7 @@ describe('semverCompareSort', () => {
       { version: '1.0.0' },
       { version: '1.1.0' },
       { version: '2.0.0' },
+      { version: '10.0.0' },
       { version: undefined },
     ]);
   });
