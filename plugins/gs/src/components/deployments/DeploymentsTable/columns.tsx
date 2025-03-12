@@ -3,7 +3,10 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
 import { DEPLOYMENT_DETAILS_PANE_ID, useDetailsPane } from '../../hooks';
-import { sortAndFilterOptions } from '../../utils/tableHelpers';
+import {
+  semverCompareSort,
+  sortAndFilterOptions,
+} from '../../utils/tableHelpers';
 import { DateComponent, Version } from '../../UI';
 import { AppStatus } from '../AppStatus';
 import { HelmReleaseStatus } from '../HelmReleaseStatus';
@@ -163,6 +166,7 @@ export const getInitialColumns = (
           />
         );
       },
+      customSort: semverCompareSort(row => row.version),
     },
     {
       title: 'Updated',
