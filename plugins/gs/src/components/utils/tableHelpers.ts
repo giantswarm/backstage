@@ -34,11 +34,11 @@ export function semverCompareSort<T>(fn: (item: T) => string | undefined) {
     }
 
     if (!versionA) {
-      return -1;
+      return 1;
     }
 
     if (!versionB) {
-      return 1;
+      return -1;
     }
 
     return semver.compare(versionA, versionB);
