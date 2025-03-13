@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.54.1] - 2025-03-13
 
+This release fixes the sorting behavior for version columns by changing alphanumeric sorting to semver-aware sorting.
+
 See [./docs/releases/v0.54.1-changelog.md](./docs/releases/v0.54.1-changelog.md) for more information.
 
 ## [0.54.0] - 2025-02-25
