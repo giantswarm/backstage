@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.15.1
+
+### Patch Changes
+
+- 3196e83: Made sorting by version column behave semver-aware.
+
 ## 0.15.0
 
 ### Minor Changes
