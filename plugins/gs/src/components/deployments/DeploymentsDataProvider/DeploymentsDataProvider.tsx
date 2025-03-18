@@ -6,18 +6,12 @@ import React, {
   useMemo,
 } from 'react';
 import {
-  Deployment,
   getAppChartName,
   getHelmReleaseChartName,
-  Resource,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
 import { KindFilter } from '../DeploymentsPage/filters/filters';
-
-export type DeploymentData = {
-  installationName: string;
-  deployment: Deployment;
-};
+import { collectDeploymentData, DeploymentData } from './utils';
 
 export type DefaultDeploymentFilters = {
   kind?: KindFilter;
@@ -25,7 +19,7 @@ export type DefaultDeploymentFilters = {
 
 export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   data: DeploymentData[];
-  resources: Resource<Deployment>[];
+  filteredData: DeploymentData[];
   isLoading: boolean;
   retry: () => void;
 };
@@ -75,11 +69,15 @@ export const DeploymentsDataProvider = ({
     retryHelmReleases();
   }, [retryApps, retryHelmReleases]);
 
-  const resources = useMemo(() => {
-    let allResources = [...appResources, ...helmReleaseResources];
+  const deploymentsData: DeploymentData[] = useMemo(() => {
+    if (isLoading) {
+      return [];
+    }
+
+    let resources = [...appResources, ...helmReleaseResources];
 
     if (deploymentNames) {
-      allResources = allResources.filter(resource => {
+      resources = resources.filter(resource => {
         const chartName =
           resource.kind === 'App'
             ? getAppChartName(resource)
@@ -89,36 +87,23 @@ export const DeploymentsDataProvider = ({
       });
     }
 
-    return allResources;
-  }, [appResources, helmReleaseResources, deploymentNames]);
+    return resources.map(({ installationName, ...deployment }) => {
+      return collectDeploymentData({ installationName, deployment });
+    });
+  }, [appResources, helmReleaseResources, isLoading, deploymentNames]);
 
-  const deploymentDataList: DeploymentData[] = useMemo(() => {
-    if (isLoading) {
-      return [];
-    }
-
+  const contextValue: DeploymentsData = useMemo(() => {
     const appliedFilters = Object.values(filters).filter(filter =>
       Boolean(filter),
     );
 
-    const filteredResources = resources.filter(resource => {
-      return appliedFilters.every(filter => filter.filter(resource));
+    const filteredData = deploymentsData.filter(item => {
+      return appliedFilters.every(filter => filter.filter(item));
     });
 
-    return filteredResources.map(({ installationName, ...deployment }) => {
-      const data: DeploymentData = {
-        installationName,
-        deployment,
-      };
-
-      return data;
-    });
-  }, [filters, isLoading, resources]);
-
-  const deploymentsData: DeploymentsData = useMemo(() => {
     return {
-      resources,
-      data: deploymentDataList,
+      data: deploymentsData,
+      filteredData: filteredData,
       isLoading,
       retry,
 
@@ -127,17 +112,16 @@ export const DeploymentsDataProvider = ({
       updateFilters,
     };
   }, [
-    deploymentDataList,
+    deploymentsData,
     filters,
     isLoading,
     queryParameters,
-    resources,
     retry,
     updateFilters,
   ]);
 
   return (
-    <DeploymentsDataContext.Provider value={deploymentsData}>
+    <DeploymentsDataContext.Provider value={contextValue}>
       {children}
     </DeploymentsDataContext.Provider>
   );

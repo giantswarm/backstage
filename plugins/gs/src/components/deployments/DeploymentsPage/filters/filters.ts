@@ -1,20 +1,15 @@
-import { Deployment, Resource } from '@giantswarm/backstage-plugin-gs-common';
 import { FacetFilter } from '../../../hooks';
+import { DeploymentData } from '../../DeploymentsDataProvider';
 
 export class KindFilter implements FacetFilter {
   constructor(readonly value: string[]) {}
 
-  getFilters(): Record<string, string | string[]> {
-    return { kind: this.value };
-  }
-
-  filter(item: Resource<Deployment>): boolean {
-    const { installationName, ...deployment } = item;
+  filter(item: DeploymentData): boolean {
     if (this.value.length === 0) {
       return true;
     }
 
-    return this.value.includes(deployment.kind.toLocaleLowerCase('en-US'));
+    return this.value.includes(item.kind);
   }
 
   toQueryValue(): string[] {

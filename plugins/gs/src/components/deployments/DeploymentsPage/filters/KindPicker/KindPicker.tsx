@@ -11,7 +11,7 @@ const defaultItems = [
 
 export const KindPicker = () => {
   const {
-    resources,
+    data,
     filters,
     queryParameters: { kind: queryParameterKind },
     updateFilters,
@@ -20,16 +20,16 @@ export const KindPicker = () => {
 
   const kindOptions = useMemo(() => {
     return new Map(
-      resources
-        .map(({ installationName, ...deployment }) => {
+      data
+        .map(item => {
           return [
-            deployment.kind.toLocaleLowerCase('en-US'),
-            deployment.kind === 'App' ? 'Giant Swarm App' : 'Flux HelmRelease',
+            item.kind,
+            item.kind === 'app' ? 'Giant Swarm App' : 'Flux HelmRelease',
           ];
         })
         .filter(item => Boolean(item)) as [string, string][],
     );
-  }, [resources]);
+  }, [data]);
 
   const queryParameter = useMemo(
     () => [queryParameterKind].flat().filter(Boolean) as string[],
