@@ -11,15 +11,19 @@ import {
   getHelmReleaseChartName,
   Resource,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useApps, useHelmReleases } from '../../hooks';
-import { FiltersData, useFilters } from './useFilters';
+import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
+import { KindFilter } from '../DeploymentsPage/filters/filters';
 
 export type DeploymentData = {
   installationName: string;
   deployment: Deployment;
 };
 
-export type DeploymentsData = FiltersData & {
+export type DefaultDeploymentFilters = {
+  kind?: KindFilter;
+};
+
+export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   data: DeploymentData[];
   resources: Resource<Deployment>[];
   isLoading: boolean;
@@ -49,7 +53,8 @@ export const DeploymentsDataProvider = ({
   deploymentNames,
   children,
 }: DeploymentsDataProviderProps) => {
-  const { filters, queryParameters, updateFilters } = useFilters();
+  const { filters, queryParameters, updateFilters } =
+    useFilters<DefaultDeploymentFilters>();
 
   const {
     resources: appResources,

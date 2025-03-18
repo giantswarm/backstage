@@ -10,6 +10,7 @@ import type {
   ControlPlane,
   ProviderCluster,
   ProviderClusterIdentity,
+  Resource,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   findResourceByRef,
@@ -17,10 +18,11 @@ import {
   getClusterInfrastructureRef,
   getProviderClusterIdentityRef,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useClusters } from '../../hooks';
+import { FiltersData, useClusters, useFilters } from '../../hooks';
 import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { useControlPlanes } from '../../hooks/useControlPlanes';
+import { KindFilter } from '../ClustersPage/filters/filters';
 
 export type ClusterData = {
   installationName: string;
@@ -30,7 +32,12 @@ export type ClusterData = {
   providerClusterIdentity?: ProviderClusterIdentity | null;
 };
 
-export type ClustersData = {
+export type DefaultClusterFilters = {
+  kind?: KindFilter;
+};
+
+export type ClustersData = FiltersData<DefaultClusterFilters> & {
+  resources: Resource<Cluster>[];
   data: ClusterData[];
   isLoading: boolean;
   retry: () => void;
@@ -56,6 +63,9 @@ type ClustersDataProviderProps = {
 export const ClustersDataProvider = ({
   children,
 }: ClustersDataProviderProps) => {
+  const { filters, queryParameters, updateFilters } =
+    useFilters<DefaultClusterFilters>();
+
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   const {
@@ -171,12 +181,25 @@ export const ClustersDataProvider = ({
 
   const clustersData: ClustersData = useMemo(() => {
     return {
+      resources: clusterResources,
       data: clusterDataList,
       isLoading,
       retry,
       setVisibleColumns,
+
+      filters,
+      queryParameters,
+      updateFilters,
     };
-  }, [clusterDataList, isLoading, retry]);
+  }, [
+    clusterDataList,
+    clusterResources,
+    filters,
+    isLoading,
+    queryParameters,
+    retry,
+    updateFilters,
+  ]);
 
   return (
     <ClustersDataContext.Provider value={clustersData}>

@@ -3,35 +3,35 @@ import { useLocation } from 'react-router-dom';
 import useMountedState from 'react-use/esm/useMountedState';
 import useDebounce from 'react-use/esm/useDebounce';
 import qs from 'qs';
-import { FacetFilter, KindFilter } from '../DeploymentsPage/filters/filters';
 
-export type DefaultDeploymentFilters = {
-  kind?: KindFilter;
+export type FacetFilter = {
+  getFilters?: () => Record<string, string | symbol | (string | symbol)[]>;
+
+  filter: (item: any) => boolean;
+
+  toQueryValue?: () => string | string[];
 };
 
-export type FiltersData<
-  DeploymentFilters extends DefaultDeploymentFilters = DefaultDeploymentFilters,
-> = {
-  filters: DeploymentFilters;
-  updateFilters: (filters: Partial<DeploymentFilters>) => void;
+export type DefaultFilters = {};
+
+export type FiltersData<Filters extends DefaultFilters = DefaultFilters> = {
+  filters: Filters;
+  updateFilters: (filters: Partial<Filters>) => void;
   queryParameters: Record<string, string | string[]>;
 };
 
 export function useFilters<
-  DeploymentFilters extends DefaultDeploymentFilters = DefaultDeploymentFilters,
->(): FiltersData<DeploymentFilters> {
-  const [requestedFilters, setRequestedFilters] = useState<DeploymentFilters>(
-    {} as DeploymentFilters,
+  Filters extends DefaultFilters = DefaultFilters,
+>(): FiltersData<Filters> {
+  const [requestedFilters, setRequestedFilters] = useState<Filters>(
+    {} as Filters,
   );
 
-  const updateFilters = useCallback(
-    (newFilters: Partial<DeploymentFilters>) => {
-      setRequestedFilters(prevFilters => {
-        return { ...prevFilters, ...newFilters };
-      });
-    },
-    [],
-  );
+  const updateFilters = useCallback((newFilters: Partial<Filters>) => {
+    setRequestedFilters(prevFilters => {
+      return { ...prevFilters, ...newFilters };
+    });
+  }, []);
 
   const location = useLocation();
   const isMounted = useMountedState();
@@ -52,7 +52,7 @@ export function useFilters<
     () => {
       const queryParams = Object.keys(requestedFilters).reduce(
         (params, key) => {
-          const filter = requestedFilters[key as keyof DeploymentFilters] as
+          const filter = requestedFilters[key as keyof Filters] as
             | FacetFilter
             | undefined;
           if (filter?.toQueryValue) {

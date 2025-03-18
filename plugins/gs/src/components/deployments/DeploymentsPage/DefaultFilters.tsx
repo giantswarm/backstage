@@ -1,7 +1,7 @@
 import React from 'react';
 import { InstallationsPicker } from '../../InstallationsPicker';
 import { useInstallations } from '../../hooks';
-import { KindPicker } from '../DeploymentsPage/filters/KindPicker';
+import { KindPicker } from './filters/KindPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =

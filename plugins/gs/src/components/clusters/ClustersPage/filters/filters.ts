@@ -1,4 +1,8 @@
-import { Deployment, Resource } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  Cluster,
+  isManagementCluster,
+  Resource,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { FacetFilter } from '../../../hooks';
 
 export class KindFilter implements FacetFilter {
@@ -8,13 +12,15 @@ export class KindFilter implements FacetFilter {
     return { kind: this.value };
   }
 
-  filter(item: Resource<Deployment>): boolean {
-    const { installationName, ...deployment } = item;
+  filter(item: Resource<Cluster>): boolean {
     if (this.value.length === 0) {
       return true;
     }
 
-    return this.value.includes(deployment.kind.toLocaleLowerCase('en-US'));
+    const { installationName, ...cluster } = item;
+    const kind = isManagementCluster(cluster, installationName) ? 'mc' : 'wc';
+
+    return this.value.includes(kind);
   }
 
   toQueryValue(): string[] {

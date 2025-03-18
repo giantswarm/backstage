@@ -4,7 +4,7 @@ import { GSContext } from '../../GSContext';
 import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';
 import { ClustersDataProvider } from '../ClustersDataProvider';
-import { DefaultFilters } from '../DefaultFilters';
+import { DefaultFilters } from './DefaultFilters';
 
 export type BaseClustersPageProps = {
   filters: ReactNode;
