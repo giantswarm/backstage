@@ -1,6 +1,7 @@
 import React from 'react';
 import { InstallationsPicker } from '../../InstallationsPicker';
 import { useInstallations } from '../../hooks';
+import { KindPicker } from '../DeploymentsPage/filters/KindPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -17,6 +18,7 @@ export const DefaultFilters = () => {
         selectedInstallations={selectedInstallations}
         onChange={handleSelectedInstallationsChange}
       />
+      <KindPicker />
     </>
   );
 };
