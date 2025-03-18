@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.55.0] - 2025-03-18
+
+In this release, layout of deployments and clusters pages was changed. Now it allows to add filters for a table.
+
+See [./docs/releases/v0.55.0-changelog.md](./docs/releases/v0.55.0-changelog.md) for more information.
+
 ## [0.54.1] - 2025-03-13
 
 This release fixes the sorting behavior for version columns by changing alphanumeric sorting to semver-aware sorting.
@@ -947,7 +953,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.54.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/giantswarm/backstage/compare/v0.54.1...v0.55.0
 [0.54.1]: https://github.com/giantswarm/backstage/compare/v0.54.0...v0.54.1
 [0.54.0]: https://github.com/giantswarm/backstage/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/giantswarm/backstage/compare/v0.52.0...v0.53.0
