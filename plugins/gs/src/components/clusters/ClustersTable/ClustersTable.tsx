@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import type {
   Cluster,
   ControlPlane,
@@ -9,11 +9,8 @@ import type {
   ProviderClusterIdentity,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
-  findResourceByRef,
-  getClusterControlPlaneRef,
   getClusterCreationTimestamp,
   getClusterDescription,
-  getClusterInfrastructureRef,
   getClusterName,
   getClusterNamespace,
   getClusterOrganization,
@@ -24,19 +21,16 @@ import {
   getProviderClusterAppVersion,
   getProviderClusterIdentityAWSAccountUrl,
   getProviderClusterIdentityAWSAccountId,
-  getProviderClusterIdentityRef,
   getProviderClusterLocation,
   isClusterCreating,
   isClusterDeleting,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useClusters } from '../../hooks';
 import { ClusterStatuses } from '../ClusterStatus';
 import { calculateClusterType } from '../utils';
-
-import { useProviderClusters } from '../../hooks/useProviderClusters';
-import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { getInitialColumns, Row } from './columns';
-import { useControlPlanes } from '../../hooks/useControlPlanes';
+import { useClustersData } from '../ClustersDataProvider';
+import { useInstallationsStatuses } from '../../hooks';
+import { InstallationsErrors } from '../../InstallationsErrors';
 
 const calculateClusterStatus = (cluster: Cluster) => {
   if (isClusterDeleting(cluster)) {
@@ -156,121 +150,7 @@ const ClustersTableView = ({
 };
 
 export const ClustersTable = () => {
-  const [columns, setColumns] = React.useState(getInitialColumns());
-  const visibleColumns = columns
-    .filter(column => !Boolean(column.hidden))
-    .map(column => column.field);
-
-  const {
-    resources: clusterResources,
-    isLoading: isLoadingClusters,
-    retry,
-  } = useClusters();
-
-  const controlPlanesRequired = visibleColumns.includes('kubernetesVersion');
-
-  const {
-    resources: controlPlaneResources,
-    isLoading: isLoadingControlPlanes,
-  } = useControlPlanes(clusterResources, {
-    enabled:
-      controlPlanesRequired &&
-      !isLoadingClusters &&
-      clusterResources.length > 0,
-  });
-
-  const providerClustersRequired =
-    visibleColumns.includes('appVersion') ||
-    visibleColumns.includes('location') ||
-    visibleColumns.includes('awsAccountId');
-
-  const {
-    resources: providerClusterResources,
-    isLoading: isLoadingProviderClusters,
-  } = useProviderClusters(clusterResources, {
-    enabled:
-      providerClustersRequired &&
-      !isLoadingClusters &&
-      clusterResources.length > 0,
-  });
-
-  const providerClusterIdentitiesRequired =
-    visibleColumns.includes('awsAccountId');
-
-  const {
-    resources: providerClusterIdentityResources,
-    isLoading: isLoadingProviderClusterIdentities,
-  } = useProviderClustersIdentities(providerClusterResources, {
-    enabled:
-      providerClusterIdentitiesRequired &&
-      !isLoadingProviderClusters &&
-      providerClusterResources.length > 0,
-  });
-
-  const isLoading =
-    isLoadingClusters ||
-    isLoadingControlPlanes ||
-    isLoadingProviderClusters ||
-    isLoadingProviderClusterIdentities;
-
-  const clustersData = useMemo(() => {
-    if (isLoading) {
-      return [];
-    }
-
-    return clusterResources.map(({ installationName, ...cluster }) => {
-      const data: ClusterData = {
-        installationName,
-        cluster,
-      };
-
-      let controlPlane = null;
-      if (controlPlaneResources.length) {
-        const controlPlaneRef = getClusterControlPlaneRef(cluster);
-        if (controlPlaneRef) {
-          controlPlane = findResourceByRef(controlPlaneResources, {
-            installationName,
-            ...controlPlaneRef,
-          });
-        }
-      }
-
-      let providerCluster = null;
-      if (providerClusterResources.length) {
-        const infrastructureRef = getClusterInfrastructureRef(cluster);
-        if (infrastructureRef) {
-          providerCluster = findResourceByRef(providerClusterResources, {
-            installationName,
-            ...infrastructureRef,
-          });
-        }
-      }
-
-      let providerClusterIdentity = null;
-      if (providerCluster && providerClusterIdentityResources.length) {
-        const providerClusterIdentityRef =
-          getProviderClusterIdentityRef(providerCluster);
-        if (providerClusterIdentityRef) {
-          providerClusterIdentity = findResourceByRef(
-            providerClusterIdentityResources,
-            { installationName, ...providerClusterIdentityRef },
-          );
-        }
-      }
-
-      data.controlPlane = controlPlane;
-      data.providerCluster = providerCluster;
-      data.providerClusterIdentity = providerClusterIdentity;
-
-      return data;
-    });
-  }, [
-    isLoading,
-    clusterResources,
-    controlPlaneResources,
-    providerClusterResources,
-    providerClusterIdentityResources,
-  ]);
+  const [columns, setColumns] = useState(getInitialColumns());
 
   const handleChangeColumnHidden = useCallback(
     (field: string, hidden: boolean) => {
@@ -290,13 +170,40 @@ export const ClustersTable = () => {
     [],
   );
 
+  const {
+    data: clustersData,
+    isLoading,
+    retry,
+    setVisibleColumns,
+  } = useClustersData();
+
+  useEffect(() => {
+    const visibleColumns = columns
+      .filter(column => !Boolean(column.hidden))
+      .map(column => column.field) as string[];
+
+    setVisibleColumns(visibleColumns);
+  }, [columns, setVisibleColumns]);
+
+  const { installationsStatuses } = useInstallationsStatuses();
+  const installationsErrors = installationsStatuses.some(
+    installationStatus => installationStatus.isError,
+  );
+
   return (
-    <ClustersTableView
-      columns={columns}
-      loading={isLoading}
-      retry={retry}
-      clustersData={clustersData}
-      onChangeColumnHidden={handleChangeColumnHidden}
-    />
+    <>
+      {installationsErrors && (
+        <Box mb={2}>
+          <InstallationsErrors installationsStatuses={installationsStatuses} />
+        </Box>
+      )}
+      <ClustersTableView
+        columns={columns}
+        loading={isLoading}
+        retry={retry}
+        clustersData={clustersData}
+        onChangeColumnHidden={handleChangeColumnHidden}
+      />
+    </>
   );
 };

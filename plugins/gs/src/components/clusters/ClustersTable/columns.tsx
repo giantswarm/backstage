@@ -11,7 +11,7 @@ import { formatVersion, toSentenceCase } from '../../utils/helpers';
 import { Account, DateComponent, KubernetesVersion, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 import { ClusterTypes } from '../utils';
-import { Box, Tooltip } from '@material-ui/core';
+import { Box, Tooltip, Typography } from '@material-ui/core';
 import {
   ClusterTypeManagementIcon,
   ClusterTypeWorkloadIcon,
@@ -81,7 +81,9 @@ export const getInitialColumns = (): TableColumn<Row>[] => [
               name: row.name,
             })}
           >
-            {row.name}
+            <Typography variant="inherit" noWrap>
+              {row.name}
+            </Typography>
           </Link>
         );
       };
