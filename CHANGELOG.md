@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.55.0] - 2025-03-18
 
+In this release, layout of deployments and clusters pages was changed. Now it allows to add filters for a table.
+
 See [./docs/releases/v0.55.0-changelog.md](./docs/releases/v0.55.0-changelog.md) for more information.
 
 ## [0.54.1] - 2025-03-13
