@@ -3,7 +3,7 @@ import { Box } from '@material-ui/core';
 import { MultipleSelect } from '../../../../UI/MultipleSelect';
 import { useClustersData } from '../../../ClustersDataProvider';
 import { KindFilter } from '../filters';
-import { isManagementCluster } from '@giantswarm/backstage-plugin-gs-common';
+import { ClusterTypes } from '../../../utils';
 
 const defaultItems = [
   { value: 'mc', label: 'Management Cluster' },
@@ -12,7 +12,7 @@ const defaultItems = [
 
 export const KindPicker = () => {
   const {
-    resources,
+    data,
     filters,
     queryParameters: { kind: queryParameterKind },
     updateFilters,
@@ -21,11 +21,11 @@ export const KindPicker = () => {
 
   const kindOptions = useMemo(() => {
     return new Map(
-      resources
-        .map(({ installationName, ...cluster }) => {
+      data
+        .map(item => {
           let kind = 'wc';
           let label = 'Workload Cluster';
-          if (isManagementCluster(cluster, installationName)) {
+          if (item.type === ClusterTypes.Management) {
             kind = 'mc';
             label = 'Management Cluster';
           }
@@ -34,7 +34,7 @@ export const KindPicker = () => {
         })
         .filter(item => Boolean(item)) as [string, string][],
     );
-  }, [resources]);
+  }, [data]);
 
   const queryParameter = useMemo(
     () => [queryParameterKind].flat().filter(Boolean) as string[],

@@ -1,8 +1,11 @@
 import type { Cluster } from '@giantswarm/backstage-plugin-gs-common';
 import {
   getClusterAppName,
+  isClusterCreating,
+  isClusterDeleting,
   isManagementCluster,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { ClusterStatuses } from './ClusterStatus';
 
 export const ClusterTypes = {
   Management: 'management',
@@ -16,6 +19,18 @@ export function calculateClusterType(
   return isManagementCluster(cluster, installationName)
     ? ClusterTypes.Management
     : ClusterTypes.Workload;
+}
+
+export function calculateClusterStatus(cluster: Cluster) {
+  if (isClusterDeleting(cluster)) {
+    return ClusterStatuses.Deleting;
+  }
+
+  if (isClusterCreating(cluster)) {
+    return ClusterStatuses.Creating;
+  }
+
+  return ClusterStatuses.Ready;
 }
 
 export const ClusterProviders = {

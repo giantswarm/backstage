@@ -16,26 +16,7 @@ import {
   ClusterTypeManagementIcon,
   ClusterTypeWorkloadIcon,
 } from '../../../assets/icons/CustomIcons';
-
-export type Row = {
-  installationName: string;
-  name: string;
-  namespace?: string;
-  description?: string;
-  type: string;
-  organization?: string;
-  created?: string;
-  priority?: string;
-  status: string;
-  apiVersion: string;
-  appVersion?: string;
-  appSourceLocation?: string;
-  releaseVersion?: string;
-  kubernetesVersion?: string;
-  location?: string;
-  awsAccountId?: string;
-  awsAccountUrl?: string;
-};
+import { ClusterData } from '../ClustersDataProvider';
 
 export const renderClusterType = (clusterType: string) => {
   if (clusterType === ClusterTypes.Management) {
@@ -56,7 +37,7 @@ export const renderClusterType = (clusterType: string) => {
   );
 };
 
-export const getInitialColumns = (): TableColumn<Row>[] => [
+export const getInitialColumns = (): TableColumn<ClusterData>[] => [
   {
     title: 'Type',
     field: 'type',

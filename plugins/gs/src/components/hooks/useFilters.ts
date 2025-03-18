@@ -5,8 +5,6 @@ import useDebounce from 'react-use/esm/useDebounce';
 import qs from 'qs';
 
 export type FacetFilter = {
-  getFilters?: () => Record<string, string | symbol | (string | symbol)[]>;
-
   filter: (item: any) => boolean;
 
   toQueryValue?: () => string | string[];
