@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import { RouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import {
   getAppTargetClusterName,
   getAppTargetClusterNamespace,
@@ -26,6 +26,8 @@ import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
 import { getInitialColumns, Row } from './columns';
 import { calculateClusterType } from '../utils';
+import { useInstallationsStatuses } from '../../hooks';
+import { InstallationsErrors } from '../../InstallationsErrors';
 
 type Props = {
   columns: TableColumn<Row>[];
@@ -139,16 +141,28 @@ export const DeploymentsTable = ({
 
   const { data: deploymentsData, isLoading, retry } = useDeploymentsData();
 
+  const { installationsStatuses } = useInstallationsStatuses();
+  const installationsErrors = installationsStatuses.some(
+    installationStatus => installationStatus.isError,
+  );
+
   return (
-    <DeploymentsTableView
-      columns={columns}
-      loading={isLoading}
-      deploymentsData={deploymentsData}
-      retry={retry}
-      baseRouteRef={baseRouteRef}
-      sourceLocation={sourceLocation}
-      grafanaDashboard={grafanaDashboard}
-      ingressHost={ingressHost}
-    />
+    <>
+      {installationsErrors && (
+        <Box mb={2}>
+          <InstallationsErrors installationsStatuses={installationsStatuses} />
+        </Box>
+      )}
+      <DeploymentsTableView
+        columns={columns}
+        loading={isLoading}
+        deploymentsData={deploymentsData}
+        retry={retry}
+        baseRouteRef={baseRouteRef}
+        sourceLocation={sourceLocation}
+        grafanaDashboard={grafanaDashboard}
+        ingressHost={ingressHost}
+      />
+    </>
   );
 };
