@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.16.0
+
+### Minor Changes
+
+- 733fcf7: Used layout with facet filters on clusters and deployments pages.
+
 ## 0.15.1
 
 ### Patch Changes

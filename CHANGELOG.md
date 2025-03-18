@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.55.0-changelog.md](./docs/releases/v0.55.0-changelog.md) for more information.
+
 ## [0.54.1] - 2025-03-13
 
 This release fixes the sorting behavior for version columns by changing alphanumeric sorting to semver-aware sorting.
