@@ -116,7 +116,7 @@ const DeploymentsTableView = ({
       ]}
       data={data}
       style={{ width: '100%' }}
-      title={<Typography variant="h6">Deployments</Typography>}
+      title={<Typography variant="h6">Deployments ({data.length})</Typography>}
       columns={columns}
     />
   );

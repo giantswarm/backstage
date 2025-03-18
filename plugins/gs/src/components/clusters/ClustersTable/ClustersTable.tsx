@@ -138,7 +138,7 @@ const ClustersTableView = ({
       ]}
       data={data}
       style={{ width: '100%' }}
-      title={<Typography variant="h6">Clusters</Typography>}
+      title={<Typography variant="h6">Clusters ({data.length})</Typography>}
       columns={columns}
       onChangeColumnHidden={(column, hidden) => {
         if (column.field) {
