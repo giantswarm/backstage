@@ -1,7 +1,6 @@
 import React from 'react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { useInstallations, useInstallationsStatuses } from '../hooks';
-import { InstallationsErrors } from '../InstallationsErrors';
 import { InstallationsSelector } from '../InstallationsSelector';
 import { EmptyState } from '@backstage/core-components';
 
@@ -28,10 +27,6 @@ export const InstallationsWrapper = ({
 
   const classes = useStyles();
 
-  const errors = installationsStatuses.some(
-    installationStatus => installationStatus.isError,
-  );
-
   const handleSelectedInstallationsChange = (selectedItems: string[]) => {
     setSelectedInstallations(selectedItems);
   };
@@ -47,11 +42,6 @@ export const InstallationsWrapper = ({
           onChange={handleSelectedInstallationsChange}
         />
       </Grid>
-      {errors && (
-        <Grid item>
-          <InstallationsErrors installationsStatuses={installationsStatuses} />
-        </Grid>
-      )}
       <Grid item className={classes.fullWidth}>
         {selectedInstallations.length === 0 ? (
           <EmptyState
