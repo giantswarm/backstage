@@ -28,6 +28,7 @@ import { GSFeatureEnabled, GSMainMenu } from '@giantswarm/backstage-plugin-gs';
 import { useTelemetryDeck } from '@typedigital/telemetrydeck-react';
 import { useLocation } from 'react-router-dom';
 import { getTelemetryPageViewPayload } from '../../utils/telemetry';
+import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -105,6 +106,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           icon={<UserSettingsSignInAvatar />}
           to="/settings"
         >
+          <NotificationsSidebarItem />
           <SidebarSettings />
         </SidebarGroup>
       </Sidebar>

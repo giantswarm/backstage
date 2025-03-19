@@ -21,6 +21,10 @@ backend.add(
   ) as unknown as BackendFeature,
 );
 
+// notifications
+backend.add(import('@backstage/plugin-notifications-backend'));
+backend.add(import('@backstage/plugin-signals-backend'));
+
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
 backend.add(import('@giantswarm/backstage-plugin-techdocs-backend-module-gs'));
