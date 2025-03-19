@@ -5,9 +5,17 @@ import { useClustersData } from '../../../ClustersDataProvider';
 import { KindFilter } from '../filters';
 import { ClusterTypes } from '../../../utils';
 
+export const MC_VALUE = 'mc';
+export const WC_VALUE = 'wc';
+
+const MC_LABEL = 'Management Cluster (MC)';
+const WC_LABEL = 'Workload Cluster (WC)';
+
+const TITLE = 'Type';
+
 const defaultItems = [
-  { value: 'mc', label: 'Management Cluster' },
-  { value: 'wc', label: 'Workload Cluster' },
+  { value: MC_VALUE, label: MC_LABEL },
+  { value: WC_VALUE, label: WC_LABEL },
 ];
 
 export const KindPicker = () => {
@@ -23,11 +31,11 @@ export const KindPicker = () => {
     return new Map(
       data
         .map(item => {
-          let kind = 'wc';
-          let label = 'Workload Cluster';
+          let kind = WC_VALUE;
+          let label = WC_LABEL;
           if (item.type === ClusterTypes.Management) {
-            kind = 'mc';
-            label = 'Management Cluster';
+            kind = MC_VALUE;
+            label = MC_LABEL;
           }
 
           return [kind, label];
@@ -42,12 +50,6 @@ export const KindPicker = () => {
   );
 
   const [value, setValue] = useState(queryParameter ?? filters.kind?.value);
-
-  useEffect(() => {
-    if (value.some(valueItem => !kindOptions.has(valueItem))) {
-      setValue([]);
-    }
-  }, [kindOptions, value]);
 
   useEffect(() => {
     if (queryParameter) {
@@ -75,10 +77,10 @@ export const KindPicker = () => {
   return (
     <Box pb={1} pt={1}>
       {isLoading || items.length === 0 ? (
-        <MultipleSelect label="Type" items={defaultItems} disabled />
+        <MultipleSelect label={TITLE} items={defaultItems} disabled />
       ) : (
         <MultipleSelect
-          label="Type"
+          label={TITLE}
           items={items}
           selected={value}
           onChange={selectedItems => setValue(selectedItems)}

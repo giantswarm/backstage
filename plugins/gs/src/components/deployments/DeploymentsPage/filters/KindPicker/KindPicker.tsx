@@ -4,9 +4,17 @@ import { MultipleSelect } from '../../../../UI/MultipleSelect';
 import { useDeploymentsData } from '../../../DeploymentsDataProvider';
 import { KindFilter } from '../filters';
 
+export const APP_VALUE = 'app';
+export const HELM_RELEASE_VALUE = 'helmrelease';
+
+const APP_LABEL = 'Giant Swarm App';
+const HELM_RELEASE_LABEL = 'Flux HelmRelease';
+
+const TITLE = 'Deployment type';
+
 const defaultItems = [
-  { value: 'app', label: 'Giant Swarm App' },
-  { value: 'helmrelease', label: 'Flux HelmRelease' },
+  { value: APP_VALUE, label: APP_LABEL },
+  { value: HELM_RELEASE_VALUE, label: HELM_RELEASE_LABEL },
 ];
 
 export const KindPicker = () => {
@@ -24,7 +32,7 @@ export const KindPicker = () => {
         .map(item => {
           return [
             item.kind,
-            item.kind === 'app' ? 'Giant Swarm App' : 'Flux HelmRelease',
+            item.kind === APP_VALUE ? APP_LABEL : HELM_RELEASE_LABEL,
           ];
         })
         .filter(item => Boolean(item)) as [string, string][],
@@ -37,12 +45,6 @@ export const KindPicker = () => {
   );
 
   const [value, setValue] = useState(queryParameter ?? filters.kind?.value);
-
-  useEffect(() => {
-    if (value.some(valueItem => !kindOptions.has(valueItem))) {
-      setValue([]);
-    }
-  }, [kindOptions, value]);
 
   useEffect(() => {
     if (queryParameter) {
@@ -70,10 +72,10 @@ export const KindPicker = () => {
   return (
     <Box pb={1} pt={1}>
       {isLoading || items.length === 0 ? (
-        <MultipleSelect label="Deployment type" items={defaultItems} disabled />
+        <MultipleSelect label={TITLE} items={defaultItems} disabled />
       ) : (
         <MultipleSelect
-          label="Deployment type"
+          label={TITLE}
           items={items}
           selected={value}
           onChange={selectedItems => setValue(selectedItems)}
