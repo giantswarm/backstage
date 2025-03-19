@@ -15,32 +15,20 @@ import { DeploymentActions } from '../DeploymentActions';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
+import { DeploymentData } from '../DeploymentsDataProvider';
 
-export type Row = {
-  installationName: string;
-  kind: string;
-  clusterName?: string;
-  clusterNamespace?: string;
-  clusterType?: string;
-  name: string;
-  namespace?: string;
-  version: string;
-  attemptedVersion: string;
-  status?: string;
+export const getInitialColumns = ({
+  baseRouteRef,
+  grafanaDashboard,
+  ingressHost,
+  sourceLocation,
+}: {
+  baseRouteRef: RouteRef;
+  grafanaDashboard?: string;
+  ingressHost?: string;
   sourceLocation?: string;
-  updated?: string;
-  sourceKind?: string;
-  sourceName?: string;
-  chartName?: string;
-  apiVersion: string;
-};
-
-export const getInitialColumns = (
-  baseRouteRef: RouteRef,
-  grafanaDashboard?: string,
-  ingressHost?: string,
-): TableColumn<Row>[] => {
-  const columns: TableColumn<Row>[] = [
+}): TableColumn<DeploymentData>[] => {
+  const columns: TableColumn<DeploymentData>[] = [
     {
       title: 'Name',
       field: 'name',
@@ -159,7 +147,7 @@ export const getInitialColumns = (
         return (
           <Version
             version={row.version}
-            sourceLocation={row.sourceLocation}
+            sourceLocation={sourceLocation}
             highlight
             displayWarning={row.version !== row.attemptedVersion}
             warningMessageVersion={row.attemptedVersion}

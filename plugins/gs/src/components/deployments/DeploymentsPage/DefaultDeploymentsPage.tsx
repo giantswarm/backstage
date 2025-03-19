@@ -9,7 +9,7 @@ import { HelmReleaseDetails } from '../HelmReleaseDetails';
 import { DEPLOYMENT_DETAILS_PANE_ID } from '../../hooks';
 import { deploymentsRouteRef } from '../../../routes';
 import { FiltersLayout } from '../../FiltersLayout';
-import { DefaultFilters } from '../DefaultFilters';
+import { DefaultFilters } from './DefaultFilters';
 
 export type BaseDeploymentsPageProps = {
   filters: ReactNode;

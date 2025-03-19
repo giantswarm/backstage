@@ -1,5 +1,6 @@
 export {
   DeploymentsDataProvider,
   useDeploymentsData,
-  type DeploymentData,
 } from './DeploymentsDataProvider';
+
+export type { DeploymentData } from './utils';

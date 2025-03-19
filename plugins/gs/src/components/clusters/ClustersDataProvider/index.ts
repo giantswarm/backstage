@@ -1,5 +1,2 @@
-export {
-  ClustersDataProvider,
-  useClustersData,
-  type ClusterData,
-} from './ClustersDataProvider';
+export { ClustersDataProvider, useClustersData } from './ClustersDataProvider';
+export type { ClusterData } from './utils';

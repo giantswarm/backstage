@@ -6,28 +6,27 @@ import React, {
   useMemo,
 } from 'react';
 import {
-  Deployment,
   getAppChartName,
   getHelmReleaseChartName,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useApps, useHelmReleases } from '../../hooks';
+import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
+import { KindFilter } from '../DeploymentsPage/filters/filters';
+import { collectDeploymentData, DeploymentData } from './utils';
 
-export type DeploymentData = {
-  installationName: string;
-  deployment: Deployment;
+export type DefaultDeploymentFilters = {
+  kind?: KindFilter;
 };
 
-export type DeploymentsData = {
+export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   data: DeploymentData[];
+  filteredData: DeploymentData[];
   isLoading: boolean;
   retry: () => void;
 };
 
-const DeploymentsDataContext = createContext<DeploymentsData>({
-  data: [],
-  isLoading: false,
-  retry: () => {},
-});
+const DeploymentsDataContext = createContext<DeploymentsData | undefined>(
+  undefined,
+);
 
 export function useDeploymentsData(): DeploymentsData {
   const value = useContext(DeploymentsDataContext);
@@ -48,6 +47,9 @@ export const DeploymentsDataProvider = ({
   deploymentNames,
   children,
 }: DeploymentsDataProviderProps) => {
+  const { filters, queryParameters, updateFilters } =
+    useFilters<DefaultDeploymentFilters>();
+
   const {
     resources: appResources,
     isLoading: isLoadingApps,
@@ -67,7 +69,7 @@ export const DeploymentsDataProvider = ({
     retryHelmReleases();
   }, [retryApps, retryHelmReleases]);
 
-  const deploymentDataList: DeploymentData[] = useMemo(() => {
+  const deploymentsData: DeploymentData[] = useMemo(() => {
     if (isLoading) {
       return [];
     }
@@ -86,25 +88,40 @@ export const DeploymentsDataProvider = ({
     }
 
     return resources.map(({ installationName, ...deployment }) => {
-      const data: DeploymentData = {
-        installationName,
-        deployment,
-      };
-
-      return data;
+      return collectDeploymentData({ installationName, deployment });
     });
-  }, [isLoading, appResources, helmReleaseResources, deploymentNames]);
+  }, [appResources, helmReleaseResources, isLoading, deploymentNames]);
 
-  const deploymentsData: DeploymentsData = useMemo(() => {
+  const contextValue: DeploymentsData = useMemo(() => {
+    const appliedFilters = Object.values(filters).filter(filter =>
+      Boolean(filter),
+    );
+
+    const filteredData = deploymentsData.filter(item => {
+      return appliedFilters.every(filter => filter.filter(item));
+    });
+
     return {
-      data: deploymentDataList,
+      data: deploymentsData,
+      filteredData: filteredData,
       isLoading,
       retry,
+
+      filters,
+      queryParameters,
+      updateFilters,
     };
-  }, [deploymentDataList, isLoading, retry]);
+  }, [
+    deploymentsData,
+    filters,
+    isLoading,
+    queryParameters,
+    retry,
+    updateFilters,
+  ]);
 
   return (
-    <DeploymentsDataContext.Provider value={deploymentsData}>
+    <DeploymentsDataContext.Provider value={contextValue}>
       {children}
     </DeploymentsDataContext.Provider>
   );

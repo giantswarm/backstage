@@ -5,33 +5,26 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import type {
-  Cluster,
-  ControlPlane,
-  ProviderCluster,
-  ProviderClusterIdentity,
-} from '@giantswarm/backstage-plugin-gs-common';
 import {
   findResourceByRef,
   getClusterControlPlaneRef,
   getClusterInfrastructureRef,
   getProviderClusterIdentityRef,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useClusters } from '../../hooks';
+import { FiltersData, useClusters, useFilters } from '../../hooks';
 import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { useControlPlanes } from '../../hooks/useControlPlanes';
+import { KindFilter } from '../ClustersPage/filters/filters';
+import { ClusterData, collectClusterData } from './utils';
 
-export type ClusterData = {
-  installationName: string;
-  cluster: Cluster;
-  controlPlane?: ControlPlane | null;
-  providerCluster?: ProviderCluster | null;
-  providerClusterIdentity?: ProviderClusterIdentity | null;
+export type DefaultClusterFilters = {
+  kind?: KindFilter;
 };
 
-export type ClustersData = {
+export type ClustersData = FiltersData<DefaultClusterFilters> & {
   data: ClusterData[];
+  filteredData: ClusterData[];
   isLoading: boolean;
   retry: () => void;
   setVisibleColumns: (columns: string[]) => void;
@@ -56,6 +49,9 @@ type ClustersDataProviderProps = {
 export const ClustersDataProvider = ({
   children,
 }: ClustersDataProviderProps) => {
+  const { filters, queryParameters, updateFilters } =
+    useFilters<DefaultClusterFilters>();
+
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   const {
@@ -110,17 +106,12 @@ export const ClustersDataProvider = ({
     isLoadingProviderClusters ||
     isLoadingProviderClusterIdentities;
 
-  const clusterDataList = useMemo(() => {
+  const clustersData = useMemo(() => {
     if (isLoading) {
       return [];
     }
 
     return clusterResources.map(({ installationName, ...cluster }) => {
-      const data: ClusterData = {
-        installationName,
-        cluster,
-      };
-
       let controlPlane = null;
       if (controlPlaneResources.length) {
         const controlPlaneRef = getClusterControlPlaneRef(cluster);
@@ -155,11 +146,13 @@ export const ClustersDataProvider = ({
         }
       }
 
-      data.controlPlane = controlPlane;
-      data.providerCluster = providerCluster;
-      data.providerClusterIdentity = providerClusterIdentity;
-
-      return data;
+      return collectClusterData({
+        installationName,
+        cluster,
+        controlPlane,
+        providerCluster,
+        providerClusterIdentity,
+      });
     });
   }, [
     isLoading,
@@ -169,17 +162,30 @@ export const ClustersDataProvider = ({
     providerClusterIdentityResources,
   ]);
 
-  const clustersData: ClustersData = useMemo(() => {
+  const contextValue: ClustersData = useMemo(() => {
+    const appliedFilters = Object.values(filters).filter(filter =>
+      Boolean(filter),
+    );
+
+    const filteredData = clustersData.filter(item => {
+      return appliedFilters.every(filter => filter.filter(item));
+    });
+
     return {
-      data: clusterDataList,
+      data: clustersData,
+      filteredData,
       isLoading,
       retry,
       setVisibleColumns,
+
+      filters,
+      queryParameters,
+      updateFilters,
     };
-  }, [clusterDataList, isLoading, retry]);
+  }, [clustersData, filters, isLoading, queryParameters, retry, updateFilters]);
 
   return (
-    <ClustersDataContext.Provider value={clustersData}>
+    <ClustersDataContext.Provider value={contextValue}>
       {children}
     </ClustersDataContext.Provider>
   );

@@ -2,58 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Box, Typography } from '@material-ui/core';
-import type {
-  Cluster,
-  ControlPlane,
-  ProviderCluster,
-  ProviderClusterIdentity,
-} from '@giantswarm/backstage-plugin-gs-common';
-import {
-  getClusterCreationTimestamp,
-  getClusterDescription,
-  getClusterName,
-  getClusterNamespace,
-  getClusterOrganization,
-  getClusterReleaseVersion,
-  getClusterServicePriority,
-  getControlPlaneK8sVersion,
-  getProviderClusterAppSourceLocation,
-  getProviderClusterAppVersion,
-  getProviderClusterIdentityAWSAccountUrl,
-  getProviderClusterIdentityAWSAccountId,
-  getProviderClusterLocation,
-  isClusterCreating,
-  isClusterDeleting,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { ClusterStatuses } from '../ClusterStatus';
-import { calculateClusterType } from '../utils';
-import { getInitialColumns, Row } from './columns';
-import { useClustersData } from '../ClustersDataProvider';
+import { getInitialColumns } from './columns';
+import { ClusterData, useClustersData } from '../ClustersDataProvider';
 import { useInstallationsStatuses } from '../../hooks';
 import { InstallationsErrors } from '../../InstallationsErrors';
 
-const calculateClusterStatus = (cluster: Cluster) => {
-  if (isClusterDeleting(cluster)) {
-    return ClusterStatuses.Deleting;
-  }
-
-  if (isClusterCreating(cluster)) {
-    return ClusterStatuses.Creating;
-  }
-
-  return ClusterStatuses.Ready;
-};
-
-type ClusterData = {
-  installationName: string;
-  cluster: Cluster;
-  controlPlane?: ControlPlane | null;
-  providerCluster?: ProviderCluster | null;
-  providerClusterIdentity?: ProviderClusterIdentity | null;
-};
-
 type Props = {
-  columns: TableColumn<Row>[];
+  columns: TableColumn<ClusterData>[];
   loading: boolean;
   retry: () => void;
   clustersData: ClusterData[];
@@ -67,62 +22,8 @@ const ClustersTableView = ({
   retry,
   onChangeColumnHidden,
 }: Props) => {
-  const data: Row[] = clustersData.map(
-    ({
-      installationName,
-      cluster,
-      controlPlane,
-      providerCluster,
-      providerClusterIdentity,
-    }) => {
-      const appVersion = providerCluster
-        ? getProviderClusterAppVersion(providerCluster)
-        : undefined;
-
-      const appSourceLocation = providerCluster
-        ? getProviderClusterAppSourceLocation(providerCluster)
-        : undefined;
-
-      const kubernetesVersion = controlPlane
-        ? getControlPlaneK8sVersion(controlPlane)
-        : undefined;
-
-      const location = providerCluster
-        ? getProviderClusterLocation(providerCluster)
-        : undefined;
-
-      const awsAccountId = providerClusterIdentity
-        ? getProviderClusterIdentityAWSAccountId(providerClusterIdentity)
-        : undefined;
-
-      const awsAccountUrl = providerClusterIdentity
-        ? getProviderClusterIdentityAWSAccountUrl(providerClusterIdentity)
-        : undefined;
-
-      return {
-        installationName,
-        name: getClusterName(cluster),
-        namespace: getClusterNamespace(cluster),
-        description: getClusterDescription(cluster),
-        type: calculateClusterType(cluster, installationName),
-        organization: getClusterOrganization(cluster),
-        created: getClusterCreationTimestamp(cluster),
-        priority: getClusterServicePriority(cluster),
-        status: calculateClusterStatus(cluster),
-        apiVersion: cluster.apiVersion,
-        appVersion,
-        appSourceLocation,
-        kubernetesVersion,
-        releaseVersion: getClusterReleaseVersion(cluster),
-        location,
-        awsAccountId,
-        awsAccountUrl,
-      };
-    },
-  );
-
   return (
-    <Table<Row>
+    <Table<ClusterData>
       isLoading={loading}
       options={{
         paging: false,
@@ -136,9 +37,11 @@ const ClustersTableView = ({
           onClick: () => retry(),
         },
       ]}
-      data={data}
+      data={clustersData}
       style={{ width: '100%' }}
-      title={<Typography variant="h6">Clusters</Typography>}
+      title={
+        <Typography variant="h6">Clusters ({clustersData.length})</Typography>
+      }
       columns={columns}
       onChangeColumnHidden={(column, hidden) => {
         if (column.field) {
@@ -171,7 +74,7 @@ export const ClustersTable = () => {
   );
 
   const {
-    data: clustersData,
+    filteredData: clustersData,
     isLoading,
     retry,
     setVisibleColumns,
