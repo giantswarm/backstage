@@ -46,12 +46,33 @@ const useStyles = makeStyles(
           borderColor: '#1F5493',
         },
       },
+      formControlLabel: {
+        root: {
+          marginRight: 0,
+        },
+        label: {
+          fontSize: theme.typography.body2.fontSize,
+        },
+      },
       root: {
         display: 'flex',
         flexDirection: 'column',
       },
     }),
   { name: 'MultipleSelect' },
+);
+
+const useFormControlLabelStyles = makeStyles(
+  (theme: Theme) =>
+    createStyles({
+      root: {
+        marginRight: 0,
+      },
+      label: {
+        fontSize: theme.typography.body2.fontSize,
+      },
+    }),
+  { name: 'FormControlLabel' },
 );
 
 export type SelectItem = {
@@ -80,6 +101,7 @@ export function MultipleSelect(props: MultipleSelectProps) {
     disabled = false,
   } = props;
   const classes = useStyles();
+  const formControlLabelClasses = useFormControlLabelStyles();
   const [value, setValue] = useState<SelectedItems>(selected || []);
 
   useEffect(() => {
@@ -114,12 +136,14 @@ export function MultipleSelect(props: MultipleSelectProps) {
           {items.map(item => (
             <FormControlLabel
               key={item.value}
+              classes={formControlLabelClasses}
               control={
                 <Checkbox
                   checked={value.includes(item.value)}
                   onChange={handleChange}
                   name={item.value.toString()}
                   disabled={disabled}
+                  size="small"
                 />
               }
               label={item.label}
