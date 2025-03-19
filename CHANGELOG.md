@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.56.0-changelog.md](./docs/releases/v0.56.0-changelog.md) for more information.
+
 ## [0.55.0] - 2025-03-18
 
 In this release, layout of deployments and clusters pages was changed. Now it allows to add filters for a table.

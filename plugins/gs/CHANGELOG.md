@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.17.0
+
+### Minor Changes
+
+- 2e9eb19: Added filtering logic to deployments and clusters pages.
+
+### Patch Changes
+
+- 2e9eb19: Added Deployment Type filter to deployments page.
+- 2e9eb19: Added Type filter to clusters page.
+
 ## 0.16.0
 
 ### Minor Changes
