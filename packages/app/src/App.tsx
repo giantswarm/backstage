@@ -20,6 +20,7 @@ import {
 import {
   DefaultProviderSettings,
   UserSettingsPage,
+  SettingsLayout,
 } from '@backstage/plugin-user-settings';
 import { apis } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
@@ -38,6 +39,9 @@ import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
 import { HomePage } from './components/home/HomePage';
 
+import { NotificationsPage } from '@backstage/plugin-notifications';
+import { SignalsDisplay } from '@backstage/plugin-signals';
+
 import {
   GSClusterPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
@@ -55,6 +59,8 @@ import {
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
+
+import { UserNotificationSettingsCard } from '@backstage/plugin-notifications';
 
 const app = createApp({
   apis,
@@ -165,7 +171,13 @@ const routes = (
           }
         />
       }
-    />
+    >
+      <SettingsLayout.Route path="/notifications" title="Notifications">
+        <UserNotificationSettingsCard
+          originNames={{ 'plugin:scaffolder': 'Scaffolder' }}
+        />
+      </SettingsLayout.Route>
+    </Route>
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route
       path="/clusters"
@@ -183,6 +195,7 @@ const routes = (
         </GSFeatureEnabled>
       }
     />
+    <Route path="/notifications" element={<NotificationsPage />} />
   </FlatRoutes>
 );
 
@@ -192,6 +205,7 @@ export default app.createRoot(
       <ErrorReporterProvider>
         <AlertDisplay />
         <OAuthRequestDialog />
+        <SignalsDisplay />
         <AppRouter>
           <VisitListener />
           <Root>{routes}</Root>
