@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.56.0] - 2025-03-19
+
+In this release:
+
+- filtering logic was added to the Deployments and Clusters pages;
+- "Deployment Type" filter was added to the Deployments page;
+- "Type" filter was added to the Clusters page;
+- "MultipleSelect" component styles were improved to provide a more compact view;
+- a counter for table items was added to the table titles.
+
+See [./docs/releases/v0.56.0-changelog.md](./docs/releases/v0.56.0-changelog.md) for more information.
+
 ## [0.55.0] - 2025-03-18
 
 In this release, layout of deployments and clusters pages was changed. Now it allows to add filters for a table.
@@ -953,7 +965,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.55.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.56.0...HEAD
+[0.56.0]: https://github.com/giantswarm/backstage/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/giantswarm/backstage/compare/v0.54.1...v0.55.0
 [0.54.1]: https://github.com/giantswarm/backstage/compare/v0.54.0...v0.54.1
 [0.54.0]: https://github.com/giantswarm/backstage/compare/v0.53.0...v0.54.0
