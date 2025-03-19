@@ -7,6 +7,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.56.0] - 2025-03-19
 
+In this release:
+
+- filtering logic was added to the Deployments and Clusters pages;
+- "Deployment Type" filter was added to the Deployments page;
+- "Type" filter was added to the Clusters page;
+- "MultipleSelect" component styles were improved to provide a more compact view;
+- a counter for table items was added to the table titles.
+
 See [./docs/releases/v0.56.0-changelog.md](./docs/releases/v0.56.0-changelog.md) for more information.
 
 ## [0.55.0] - 2025-03-18
