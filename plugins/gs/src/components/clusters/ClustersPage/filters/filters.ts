@@ -20,3 +20,23 @@ export class KindFilter implements FacetFilter {
     return Array.isArray(this.values) ? this.values : [this.values];
   }
 }
+
+export class OrganizationFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.organization) {
+      return false;
+    }
+
+    return this.values.includes(item.organization);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}

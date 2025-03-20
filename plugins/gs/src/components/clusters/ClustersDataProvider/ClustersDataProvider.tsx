@@ -15,11 +15,15 @@ import { FiltersData, useClusters, useFilters } from '../../hooks';
 import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { useControlPlanes } from '../../hooks/useControlPlanes';
-import { KindFilter } from '../ClustersPage/filters/filters';
+import {
+  KindFilter,
+  OrganizationFilter,
+} from '../ClustersPage/filters/filters';
 import { ClusterData, collectClusterData } from './utils';
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
+  organization?: OrganizationFilter;
 };
 
 export type ClustersData = FiltersData<DefaultClusterFilters> & {
