@@ -5,6 +5,7 @@ import { KindPicker } from './filters/KindPicker';
 import { TargetClusterPicker } from './filters/TargetClusterPicker';
 import { TargetClusterKindPicker } from './filters/TargetClusterKindPicker';
 import { VersionPicker } from './filters/VersionPicker';
+import { NamespacePicker } from './filters/NamespacePicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -25,6 +26,7 @@ export const DefaultFilters = () => {
       <TargetClusterPicker />
       <TargetClusterKindPicker />
       <VersionPicker />
+      <NamespacePicker />
     </>
   );
 };
