@@ -4,6 +4,7 @@ import { useInstallations } from '../../hooks';
 import { KindPicker } from './filters/KindPicker';
 import { TargetClusterPicker } from './filters/TargetClusterPicker';
 import { TargetClusterKindPicker } from './filters/TargetClusterKindPicker';
+import { VersionPicker } from './filters/VersionPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -23,6 +24,7 @@ export const DefaultFilters = () => {
       <KindPicker />
       <TargetClusterPicker />
       <TargetClusterKindPicker />
+      <VersionPicker />
     </>
   );
 };

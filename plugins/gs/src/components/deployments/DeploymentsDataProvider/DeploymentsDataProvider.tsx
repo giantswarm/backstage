@@ -14,6 +14,7 @@ import {
   KindFilter,
   TargetClusterFilter,
   TargetClusterKindFilter,
+  VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
 
@@ -21,6 +22,7 @@ export type DefaultDeploymentFilters = {
   kind?: KindFilter;
   targetCluster?: TargetClusterFilter;
   targetClusterKind?: TargetClusterKindFilter;
+  version?: VersionFilter;
 };
 
 export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {

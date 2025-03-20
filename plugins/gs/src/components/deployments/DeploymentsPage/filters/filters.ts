@@ -63,3 +63,23 @@ export class TargetClusterKindFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class VersionFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: DeploymentData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (item.version === '') {
+      return false;
+    }
+
+    return this.values.includes(item.version);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
