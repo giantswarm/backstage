@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.17.2
+
+### Patch Changes
+
+- 859d53e: Added Namespace filter to the Deployments page.
+- 859d53e: Added Version filter to the Deployments page.
+- 859d53e: Added Cluster type filter to the Deployments page.
+
 ## 0.17.1
 
 ### Patch Changes
