@@ -31,7 +31,7 @@
     "@backstage/integration": "backstage:^",
     "@backstage/integration-react": "backstage:^",
     "@backstage/plugin-catalog": "backstage:^",
-    "@backstage/plugin-catalog-react": "backstage:^",
+    "@backstage/plugin-catalog-react": "1.16.0",
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/plugin-scaffolder": "backstage:^",
     "@backstage/plugin-scaffolder-react": "backstage:^",

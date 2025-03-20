@@ -1,35 +1,28 @@
 import React, { useMemo } from 'react';
-import uniqBy from 'lodash/uniqBy';
+import { OrganizationFilter } from '../filters';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
-import { KindFilter } from '../filters';
-import { ClusterTypes } from '../../../utils';
 import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
+import uniqBy from 'lodash/uniqBy';
 
-export const MC_VALUE = 'mc';
-export const WC_VALUE = 'wc';
-
-const MC_LABEL = 'Management Cluster';
-const WC_LABEL = 'Workload Cluster';
-
-const TITLE = 'Type';
+const TITLE = 'Organizations';
 
 function formatOption(item: ClusterData): MultiplePickerOption | undefined {
-  let value = WC_VALUE;
-  let label = WC_LABEL;
-  if (item.type === ClusterTypes.Management) {
-    value = MC_VALUE;
-    label = MC_LABEL;
+  if (!item.organization) {
+    return undefined;
   }
+
+  const label = item.organization;
+  const value = item.organization;
 
   return { value, label };
 }
 
-export const KindPicker = () => {
+export const OrganizationPicker = () => {
   const {
     data,
-    filters,
-    queryParameters: { kind: queryParameter },
     updateFilters,
+    filters,
+    queryParameters: { organization: queryParameter },
   } = useClustersData();
 
   const options = useMemo(() => {
@@ -42,7 +35,7 @@ export const KindPicker = () => {
 
   const handleSelect = (selectedValues: string[]) => {
     updateFilters({
-      kind: new KindFilter(selectedValues),
+      organization: new OrganizationFilter(selectedValues),
     });
   };
 
@@ -50,9 +43,10 @@ export const KindPicker = () => {
     <MultiplePicker
       label={TITLE}
       queryParameter={queryParameter}
-      filterValue={filters.kind?.values}
+      filterValue={filters.organization?.values}
       options={options}
       onSelect={handleSelect}
+      autocomplete
     />
   );
 };

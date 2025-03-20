@@ -4,19 +4,39 @@ import { ClusterTypes } from '../../utils';
 import { MC_VALUE, WC_VALUE } from './KindPicker/KindPicker';
 
 export class KindFilter implements FacetFilter {
-  constructor(readonly value: string[]) {}
+  constructor(readonly values: string[]) {}
 
   filter(item: ClusterData): boolean {
-    if (this.value.length === 0) {
+    if (this.values.length === 0) {
       return true;
     }
 
     const kind = item.type === ClusterTypes.Management ? MC_VALUE : WC_VALUE;
 
-    return this.value.includes(kind);
+    return this.values.includes(kind);
   }
 
   toQueryValue(): string[] {
-    return Array.isArray(this.value) ? this.value : [this.value];
+    return Array.isArray(this.values) ? this.values : [this.values];
+  }
+}
+
+export class OrganizationFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.organization) {
+      return false;
+    }
+
+    return this.values.includes(item.organization);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
   }
 }

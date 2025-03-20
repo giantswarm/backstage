@@ -10,11 +10,15 @@ import {
   getHelmReleaseChartName,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
-import { KindFilter } from '../DeploymentsPage/filters/filters';
+import {
+  KindFilter,
+  TargetClusterFilter,
+} from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
 
 export type DefaultDeploymentFilters = {
   kind?: KindFilter;
+  targetCluster?: TargetClusterFilter;
 };
 
 export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
