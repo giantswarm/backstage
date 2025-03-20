@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.56.2] - 2025-03-20
+
+In this release:
+
+- "Version" filter was added to the Deployments page;
+- "Cluster type" filter was added to the Deployments page;
+- "Namespace" filter was added to the Deployments page.
+
+See [./docs/releases/v0.56.2-changelog.md](./docs/releases/v0.56.2-changelog.md) for more information.
+
 ## [0.56.1] - 2025-03-20
 
 In this release:
@@ -974,7 +984,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.56.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.56.2...HEAD
+[0.56.2]: https://github.com/giantswarm/backstage/compare/v0.56.1...v0.56.2
 [0.56.1]: https://github.com/giantswarm/backstage/compare/v0.56.0...v0.56.1
 [0.56.0]: https://github.com/giantswarm/backstage/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/giantswarm/backstage/compare/v0.54.1...v0.55.0
