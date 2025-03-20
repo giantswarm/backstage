@@ -12,13 +12,19 @@ import {
 import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
 import {
   KindFilter,
+  NamespaceFilter,
   TargetClusterFilter,
+  TargetClusterKindFilter,
+  VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
 
 export type DefaultDeploymentFilters = {
   kind?: KindFilter;
   targetCluster?: TargetClusterFilter;
+  targetClusterKind?: TargetClusterKindFilter;
+  version?: VersionFilter;
+  namespace?: NamespaceFilter;
 };
 
 export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {

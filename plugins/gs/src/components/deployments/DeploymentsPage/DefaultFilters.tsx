@@ -3,6 +3,9 @@ import { InstallationsPicker } from '../../InstallationsPicker';
 import { useInstallations } from '../../hooks';
 import { KindPicker } from './filters/KindPicker';
 import { TargetClusterPicker } from './filters/TargetClusterPicker';
+import { TargetClusterKindPicker } from './filters/TargetClusterKindPicker';
+import { VersionPicker } from './filters/VersionPicker';
+import { NamespacePicker } from './filters/NamespacePicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -19,8 +22,11 @@ export const DefaultFilters = () => {
         selectedInstallations={selectedInstallations}
         onChange={handleSelectedInstallationsChange}
       />
-      <KindPicker />
+      <VersionPicker />
       <TargetClusterPicker />
+      <NamespacePicker />
+      <TargetClusterKindPicker />
+      <KindPicker />
     </>
   );
 };
