@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.17.1
+
+### Patch Changes
+
+- 441dd20: Added Clusters filter to the Deployments page.
+- 441dd20: Added Organizations filter to the Clusters page.
+
 ## 0.17.0
 
 ### Minor Changes
