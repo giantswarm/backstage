@@ -1,8 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Box } from '@material-ui/core';
-import { MultipleSelect } from '../../../../UI/MultipleSelect';
-import { useDeploymentsData } from '../../../DeploymentsDataProvider';
+import React, { useMemo } from 'react';
+import uniqBy from 'lodash/uniqBy';
+import {
+  DeploymentData,
+  useDeploymentsData,
+} from '../../../DeploymentsDataProvider';
 import { KindFilter } from '../filters';
+import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 
 export const APP_VALUE = 'app';
 export const HELM_RELEASE_VALUE = 'helmrelease';
@@ -12,75 +15,42 @@ const HELM_RELEASE_LABEL = 'Flux HelmRelease';
 
 const TITLE = 'Deployment type';
 
-const defaultItems = [
-  { value: APP_VALUE, label: APP_LABEL },
-  { value: HELM_RELEASE_VALUE, label: HELM_RELEASE_LABEL },
-];
+function formatOption(item: DeploymentData): MultiplePickerOption | undefined {
+  const label = item.kind === APP_VALUE ? APP_LABEL : HELM_RELEASE_LABEL;
+  const value = item.kind;
+
+  return { value, label };
+}
 
 export const KindPicker = () => {
   const {
     data,
     filters,
-    queryParameters: { kind: queryParameterKind },
+    queryParameters: { kind: queryParameter },
     updateFilters,
-    isLoading,
   } = useDeploymentsData();
 
-  const kindOptions = useMemo(() => {
-    return new Map(
-      data
-        .map(item => {
-          return [
-            item.kind,
-            item.kind === APP_VALUE ? APP_LABEL : HELM_RELEASE_LABEL,
-          ];
-        })
-        .filter(item => Boolean(item)) as [string, string][],
-    );
+  const options = useMemo(() => {
+    const allOptions = data
+      .map(item => formatOption(item))
+      .filter(item => Boolean(item)) as MultiplePickerOption[];
+
+    return uniqBy(allOptions, 'value');
   }, [data]);
 
-  const queryParameter = useMemo(
-    () => [queryParameterKind].flat().filter(Boolean) as string[],
-    [queryParameterKind],
-  );
-
-  const [value, setValue] = useState(queryParameter ?? filters.kind?.value);
-
-  useEffect(() => {
-    if (queryParameter) {
-      setValue(queryParameter);
-    }
-  }, [queryParameter]);
-
-  useEffect(() => {
-    if (filters.kind?.value) {
-      setValue(filters.kind?.value);
-    }
-  }, [filters.kind]);
-
-  useEffect(() => {
+  const handleSelect = (selectedValues: string[]) => {
     updateFilters({
-      kind: value ? new KindFilter(value) : undefined,
+      kind: new KindFilter(selectedValues),
     });
-  }, [value, updateFilters]);
-
-  const items = [...kindOptions.entries()].map(([key, label]) => ({
-    label,
-    value: key,
-  }));
+  };
 
   return (
-    <Box pb={1} pt={1}>
-      {isLoading || items.length === 0 ? (
-        <MultipleSelect label={TITLE} items={defaultItems} disabled />
-      ) : (
-        <MultipleSelect
-          label={TITLE}
-          items={items}
-          selected={value}
-          onChange={selectedItems => setValue(selectedItems)}
-        />
-      )}
-    </Box>
+    <MultiplePicker
+      label={TITLE}
+      queryParameter={queryParameter}
+      filterValue={filters.kind?.values}
+      options={options}
+      onSelect={handleSelect}
+    />
   );
 };

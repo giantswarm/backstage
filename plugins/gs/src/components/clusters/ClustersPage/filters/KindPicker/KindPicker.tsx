@@ -1,91 +1,58 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Box } from '@material-ui/core';
-import { MultipleSelect } from '../../../../UI/MultipleSelect';
-import { useClustersData } from '../../../ClustersDataProvider';
+import React, { useMemo } from 'react';
+import uniqBy from 'lodash/uniqBy';
+import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { KindFilter } from '../filters';
 import { ClusterTypes } from '../../../utils';
+import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 
 export const MC_VALUE = 'mc';
 export const WC_VALUE = 'wc';
 
-const MC_LABEL = 'Management Cluster (MC)';
-const WC_LABEL = 'Workload Cluster (WC)';
+const MC_LABEL = 'Management Cluster';
+const WC_LABEL = 'Workload Cluster';
 
 const TITLE = 'Type';
 
-const defaultItems = [
-  { value: MC_VALUE, label: MC_LABEL },
-  { value: WC_VALUE, label: WC_LABEL },
-];
+function formatOption(item: ClusterData): MultiplePickerOption | undefined {
+  let value = WC_VALUE;
+  let label = WC_LABEL;
+  if (item.type === ClusterTypes.Management) {
+    value = MC_VALUE;
+    label = MC_LABEL;
+  }
+
+  return { value, label };
+}
 
 export const KindPicker = () => {
   const {
     data,
     filters,
-    queryParameters: { kind: queryParameterKind },
+    queryParameters: { kind: queryParameter },
     updateFilters,
-    isLoading,
   } = useClustersData();
 
-  const kindOptions = useMemo(() => {
-    return new Map(
-      data
-        .map(item => {
-          let kind = WC_VALUE;
-          let label = WC_LABEL;
-          if (item.type === ClusterTypes.Management) {
-            kind = MC_VALUE;
-            label = MC_LABEL;
-          }
+  const options = useMemo(() => {
+    const allOptions = data
+      .map(item => formatOption(item))
+      .filter(item => Boolean(item)) as MultiplePickerOption[];
 
-          return [kind, label];
-        })
-        .filter(item => Boolean(item)) as [string, string][],
-    );
+    return uniqBy(allOptions, 'value');
   }, [data]);
 
-  const queryParameter = useMemo(
-    () => [queryParameterKind].flat().filter(Boolean) as string[],
-    [queryParameterKind],
-  );
-
-  const [value, setValue] = useState(queryParameter ?? filters.kind?.value);
-
-  useEffect(() => {
-    if (queryParameter) {
-      setValue(queryParameter);
-    }
-  }, [queryParameter]);
-
-  useEffect(() => {
-    if (filters.kind?.value) {
-      setValue(filters.kind?.value);
-    }
-  }, [filters.kind]);
-
-  useEffect(() => {
+  const handleSelect = (selectedValues: string[]) => {
     updateFilters({
-      kind: value ? new KindFilter(value) : undefined,
+      kind: new KindFilter(selectedValues),
     });
-  }, [value, updateFilters]);
-
-  const items = [...kindOptions.entries()].map(([key, label]) => ({
-    label,
-    value: key,
-  }));
+  };
 
   return (
-    <Box pb={1} pt={1}>
-      {isLoading || items.length === 0 ? (
-        <MultipleSelect label={TITLE} items={defaultItems} disabled />
-      ) : (
-        <MultipleSelect
-          label={TITLE}
-          items={items}
-          selected={value}
-          onChange={selectedItems => setValue(selectedItems)}
-        />
-      )}
-    </Box>
+    <MultiplePicker
+      label={TITLE}
+      queryParameter={queryParameter}
+      filterValue={filters.kind?.values}
+      options={options}
+      onSelect={handleSelect}
+    />
   );
 };
