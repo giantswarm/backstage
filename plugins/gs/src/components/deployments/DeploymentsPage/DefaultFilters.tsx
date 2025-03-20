@@ -22,11 +22,11 @@ export const DefaultFilters = () => {
         selectedInstallations={selectedInstallations}
         onChange={handleSelectedInstallationsChange}
       />
-      <KindPicker />
-      <TargetClusterPicker />
-      <TargetClusterKindPicker />
       <VersionPicker />
+      <TargetClusterPicker />
       <NamespacePicker />
+      <TargetClusterKindPicker />
+      <KindPicker />
     </>
   );
 };
