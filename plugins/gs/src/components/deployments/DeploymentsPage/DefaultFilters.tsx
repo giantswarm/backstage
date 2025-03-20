@@ -2,6 +2,7 @@ import React from 'react';
 import { InstallationsPicker } from '../../InstallationsPicker';
 import { useInstallations } from '../../hooks';
 import { KindPicker } from './filters/KindPicker';
+import { TargetClusterPicker } from './filters/TargetClusterPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -19,6 +20,7 @@ export const DefaultFilters = () => {
         onChange={handleSelectedInstallationsChange}
       />
       <KindPicker />
+      <TargetClusterPicker />
     </>
   );
 };

@@ -19,3 +19,19 @@ export class KindFilter implements FacetFilter {
     return Array.isArray(this.value) ? this.value : [this.value];
   }
 }
+
+export class TargetClusterFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: DeploymentData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    return this.values.includes(`${item.installationName}/${item.clusterName}`);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
