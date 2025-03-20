@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.56.1] - 2025-03-20
 
+In this release:
+
+- "Clusters" filter was added to the Deployments page;
+- "Organizations" filter was added to the Clusters page.
+
 See [./docs/releases/v0.56.1-changelog.md](./docs/releases/v0.56.1-changelog.md) for more information.
 
 ## [0.56.0] - 2025-03-19
