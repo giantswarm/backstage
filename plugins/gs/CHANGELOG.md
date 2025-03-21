@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.17.3
+
+### Patch Changes
+
+- bfc0a5f: Pinned dependency versions to fix error "useEntityList must be used within EntityListProvider"
+
 ## 0.17.2
 
 ### Patch Changes
