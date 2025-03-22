@@ -1,0 +1,1 @@
+export { MetadataProcessor } from './MetadataProcessor';

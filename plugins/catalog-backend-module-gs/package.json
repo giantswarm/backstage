@@ -24,7 +24,10 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-plugin-api": "backstage:^",
+    "@backstage/catalog-model": "backstage:^",
+    "@backstage/plugin-catalog-common": "backstage:^",
+    "@backstage/plugin-catalog-node": "backstage:^"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
