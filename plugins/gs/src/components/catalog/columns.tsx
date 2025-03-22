@@ -7,7 +7,7 @@ import {
   getHelmChartsFromEntity,
   getLatestReleaseDateFromEntity,
   getLatestReleaseTagFromEntity,
-} from '../utils/entity';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
 import { Entity } from '@backstage/catalog-model';

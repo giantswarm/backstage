@@ -9011,6 +9011,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
   dependencies:
+    "@backstage/catalog-model": "npm:^1.7.3"
     "@backstage/cli": "backstage:^"
     "@types/js-yaml": "npm:^4"
     "@types/lodash": "npm:^4.17.5"
