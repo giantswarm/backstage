@@ -2980,18 +2980,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage-community/plugin-github-actions@npm:^0.8.0":
-  version: 0.8.0
-  resolution: "@backstage-community/plugin-github-actions@npm:0.8.0"
+"@backstage-community/plugin-github-actions@npm:^0.9.0":
+  version: 0.9.0
+  resolution: "@backstage-community/plugin-github-actions@npm:0.9.0"
   dependencies:
     "@backstage/catalog-model": "npm:^1.7.3"
-    "@backstage/core-compat-api": "npm:^0.3.6"
-    "@backstage/core-components": "npm:^0.16.4"
-    "@backstage/core-plugin-api": "npm:^1.10.4"
-    "@backstage/frontend-plugin-api": "npm:^0.9.5"
-    "@backstage/integration": "npm:^1.16.1"
-    "@backstage/integration-react": "npm:^1.2.4"
-    "@backstage/plugin-catalog-react": "npm:^1.15.2"
+    "@backstage/core-compat-api": "npm:^0.4.0"
+    "@backstage/core-components": "npm:^0.17.0"
+    "@backstage/core-plugin-api": "npm:^1.10.5"
+    "@backstage/frontend-plugin-api": "npm:^0.10.0"
+    "@backstage/integration": "npm:^1.16.2"
+    "@backstage/integration-react": "npm:^1.2.5"
+    "@backstage/plugin-catalog-react": "npm:^1.16.0"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:4.0.0-alpha.61"
@@ -3004,7 +3004,7 @@ __metadata:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: 6.0.0-beta.0 || ^6.3.0
-  checksum: 10c0/bd63c7b4054c3c4c2b166500dbaddd77d6eb52d8963682201168442e9dfc3b3e9cd35acf102bd73e9022c9e4f374123ef56efb01915aa5f48c3fbe015b70e93f
+  checksum: 10c0/e7190dae936cbb3e5e383135185c9d61882779a227d60c5e07bf95be788bfa93cc60312ef0ecf1382e999aea7623ed3e3304f17dec891109b6ee31e92cfda363
   languageName: node
   linkType: hard
 
@@ -15148,7 +15148,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "app@workspace:packages/app"
   dependencies:
-    "@backstage-community/plugin-github-actions": "npm:^0.8.0"
+    "@backstage-community/plugin-github-actions": "npm:^0.9.0"
     "@backstage/app-defaults": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
