@@ -1,9 +1,6 @@
-import {
-  coreServices,
-  createBackendModule,
-} from '@backstage/backend-plugin-api';
+import { createBackendModule } from '@backstage/backend-plugin-api';
 import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node/alpha';
-import { MetadataProcessor } from './processors';
+import { ServiceDeploymentsProcessor } from './processors';
 
 export const catalogModuleGS = createBackendModule({
   pluginId: 'catalog',
@@ -12,10 +9,9 @@ export const catalogModuleGS = createBackendModule({
     reg.registerInit({
       deps: {
         catalog: catalogProcessingExtensionPoint,
-        logger: coreServices.logger,
       },
-      async init({ catalog, logger }) {
-        catalog.addProcessor(new MetadataProcessor(logger));
+      async init({ catalog }) {
+        catalog.addProcessor([new ServiceDeploymentsProcessor()]);
       },
     });
   },

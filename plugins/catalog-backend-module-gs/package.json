@@ -27,7 +27,10 @@
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/catalog-model": "backstage:^",
     "@backstage/plugin-catalog-common": "backstage:^",
-    "@backstage/plugin-catalog-node": "backstage:^"
+    "@backstage/plugin-catalog-node": "backstage:^",
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^",
+    "@types/lodash": "^4.17.5",
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",

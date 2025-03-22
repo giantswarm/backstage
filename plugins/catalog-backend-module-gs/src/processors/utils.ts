@@ -1,12 +1,15 @@
 import { Entity, getEntitySourceLocation } from '@backstage/catalog-model';
 
+const SERVICE_TYPE = 'service';
+const GS_ORG_NAME = 'giantswarm';
+
 function extractGitHubOrgName(url: string): string | null {
   const match = url.match(/^https:\/\/github\.com\/([^\/]+)\/[^\/]+/);
   return match ? match[1] : null;
 }
 
 export function isGSService(entity: Entity): boolean {
-  if (entity.spec?.type !== 'service') {
+  if (entity.spec?.type !== SERVICE_TYPE) {
     return false;
   }
 
@@ -16,5 +19,5 @@ export function isGSService(entity: Entity): boolean {
     return false;
   }
 
-  return orgName === 'giantswarm';
+  return orgName === GS_ORG_NAME;
 }

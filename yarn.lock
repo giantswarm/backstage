@@ -9004,10 +9004,13 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/plugin-catalog-common": "backstage:^"
     "@backstage/plugin-catalog-node": "backstage:^"
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^"
+    "@types/lodash": "npm:^4.17.5"
+    lodash: "npm:^4.17.21"
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-gs-common@npm:^0.12.0, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
+"@giantswarm/backstage-plugin-gs-common@npm:^0.12.0, @giantswarm/backstage-plugin-gs-common@workspace:^, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
   dependencies:

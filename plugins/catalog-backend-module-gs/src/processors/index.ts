@@ -1,1 +1,1 @@
-export { MetadataProcessor } from './MetadataProcessor';
+export { ServiceDeploymentsProcessor } from './ServiceDeploymentsProcessor';
