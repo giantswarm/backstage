@@ -41,6 +41,7 @@ backend.add(import('@backstage/plugin-catalog-backend-module-aws'));
 backend.add(
   import('@backstage/plugin-catalog-backend-module-scaffolder-entity-model'),
 );
+backend.add(import('@giantswarm/backstage-plugin-catalog-backend-module-gs'));
 
 // permission plugin
 backend.add(import('@backstage/plugin-permission-backend'));

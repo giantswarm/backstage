@@ -8994,6 +8994,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-catalog-backend-module-gs@npm:^0.1.0, @giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs"
+  dependencies:
+    "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^"
+    "@backstage/cli": "backstage:^"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-gs-common@npm:^0.12.0, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
@@ -16295,6 +16305,7 @@ __metadata:
     "@backstage/plugin-search-backend-node": "backstage:^"
     "@backstage/plugin-techdocs-backend": "backstage:^"
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.8.0"
+    "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.1.0"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.7.0"
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "npm:^0.7.0"
     app: "link:../app"
