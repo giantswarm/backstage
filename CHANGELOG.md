@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.57.0] - 2025-03-24
 
+In this release, Backstage was updated to v1.37.0.
+
 See [./docs/releases/v0.57.0-changelog.md](./docs/releases/v0.57.0-changelog.md) for more information.
 
 ## [0.56.3] - 2025-03-21
