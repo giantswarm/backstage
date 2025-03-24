@@ -7,7 +7,7 @@ import {
   ObjectsByEntityResponse,
   WorkloadsByEntityRequest,
   CustomObjectsByEntityRequest,
-} from '@backstage/plugin-kubernetes-common/index';
+} from '@backstage/plugin-kubernetes-common';
 
 export class KubernetesClient implements KubernetesApi {
   private readonly configApi: ConfigApi;
