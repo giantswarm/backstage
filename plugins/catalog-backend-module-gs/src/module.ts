@@ -1,6 +1,12 @@
-import { createBackendModule } from '@backstage/backend-plugin-api';
+import {
+  coreServices,
+  createBackendModule,
+} from '@backstage/backend-plugin-api';
 import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node/alpha';
-import { ServiceDeploymentsProcessor } from './processors';
+import {
+  ServiceDeploymentsProcessor,
+  ServiceReleaseInfoProcessor,
+} from './processors';
 
 export const catalogModuleGS = createBackendModule({
   pluginId: 'catalog',
@@ -9,9 +15,16 @@ export const catalogModuleGS = createBackendModule({
     reg.registerInit({
       deps: {
         catalog: catalogProcessingExtensionPoint,
+        config: coreServices.rootConfig,
+        logger: coreServices.logger,
       },
-      async init({ catalog }) {
-        catalog.addProcessor([new ServiceDeploymentsProcessor()]);
+      async init({ catalog, config, logger }) {
+        catalog.addProcessor([
+          new ServiceDeploymentsProcessor(),
+          ServiceReleaseInfoProcessor.fromConfig(config, {
+            logger,
+          }),
+        ]);
       },
     });
   },
