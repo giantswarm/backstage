@@ -37,135 +37,139 @@ export const renderClusterType = (clusterType: string) => {
   );
 };
 
-export const getInitialColumns = (): TableColumn<ClusterData>[] => [
-  {
-    title: 'Type',
-    field: 'type',
-    width: 'auto',
-    render: row => {
-      return renderClusterType(row.type);
+export const getInitialColumns = (
+  queryParameters: Record<string, string | string[]>,
+): TableColumn<ClusterData>[] => {
+  return [
+    {
+      title: 'Type',
+      field: 'type',
+      width: 'auto',
+      render: row => {
+        return renderClusterType(row.type);
+      },
     },
-  },
-  {
-    title: 'Name',
-    field: 'name',
-    highlight: true,
-    render: row => {
-      const LinkWrapper = () => {
-        const routeLink = useRouteRef(clusterDetailsRouteRef);
+    {
+      title: 'Name',
+      field: 'name',
+      highlight: true,
+      render: row => {
+        const LinkWrapper = () => {
+          const routeLink = useRouteRef(clusterDetailsRouteRef);
+          return (
+            <Link
+              component={RouterLink}
+              to={routeLink({
+                installationName: row.installationName,
+                namespace: row.namespace ?? 'default',
+                name: row.name,
+              })}
+            >
+              <Typography variant="inherit" noWrap>
+                {row.name}
+              </Typography>
+            </Link>
+          );
+        };
+
         return (
-          <Link
-            component={RouterLink}
-            to={routeLink({
-              installationName: row.installationName,
-              namespace: row.namespace ?? 'default',
-              name: row.name,
-            })}
-          >
-            <Typography variant="inherit" noWrap>
-              {row.name}
-            </Typography>
-          </Link>
+          <SubvalueCell value={<LinkWrapper />} subvalue={row.description} />
         );
-      };
+      },
+      ...sortAndFilterOptions(row => `${row.name} ${row.description}`),
+    },
+    {
+      title: 'Installation',
+      field: 'installationName',
+    },
+    {
+      title: 'Organization',
+      field: 'organization',
+    },
+    {
+      title: 'Service Priority',
+      field: 'priority',
+      render: row => {
+        if (!row.priority) {
+          return 'n/a';
+        }
 
-      return (
-        <SubvalueCell value={<LinkWrapper />} subvalue={row.description} />
-      );
+        return toSentenceCase(row.priority);
+      },
     },
-    ...sortAndFilterOptions(row => `${row.name} ${row.description}`),
-  },
-  {
-    title: 'Installation',
-    field: 'installationName',
-  },
-  {
-    title: 'Organization',
-    field: 'organization',
-  },
-  {
-    title: 'Service Priority',
-    field: 'priority',
-    render: row => {
-      if (!row.priority) {
-        return 'n/a';
-      }
-
-      return toSentenceCase(row.priority);
+    {
+      title: 'Release',
+      field: 'releaseVersion',
+      render: row => {
+        return <Version version={row.releaseVersion || ''} highlight />;
+      },
+      customSort: semverCompareSort(row => row.releaseVersion),
     },
-  },
-  {
-    title: 'Release',
-    field: 'releaseVersion',
-    render: row => {
-      return <Version version={row.releaseVersion || ''} highlight />;
-    },
-    customSort: semverCompareSort(row => row.releaseVersion),
-  },
-  {
-    title: 'Cluster App',
-    field: 'appVersion',
-    hidden: true,
-    render: row => {
-      return (
-        <Version
-          version={row.appVersion || ''}
-          highlight
-          sourceLocation={row.appSourceLocation}
-          displayWarning={false}
-        />
-      );
-    },
-    customSort: semverCompareSort(row => row.appVersion),
-  },
-  {
-    title: 'Kubernetes Version',
-    field: 'kubernetesVersion',
-    hidden: true,
-    render: row => {
-      return (
-        row.kubernetesVersion && (
-          <KubernetesVersion
-            version={formatVersion(row.kubernetesVersion)}
-            hideIcon
-            hideLabel
+    {
+      title: 'Cluster App',
+      field: 'appVersion',
+      hidden: true,
+      render: row => {
+        return (
+          <Version
+            version={row.appVersion || ''}
+            highlight
+            sourceLocation={row.appSourceLocation}
+            displayWarning={false}
           />
-        )
-      );
+        );
+      },
+      customSort: semverCompareSort(row => row.appVersion),
     },
-    customSort: semverCompareSort(row => row.kubernetesVersion),
-  },
-  {
-    title: 'Location',
-    field: 'location',
-    hidden: true,
-  },
-  {
-    title: 'AWS account ID',
-    field: 'awsAccountId',
-    hidden: true,
-    render: row => {
-      return (
-        row.awsAccountId && (
-          <Account
-            accountId={row.awsAccountId}
-            accountUrl={row.awsAccountUrl}
-          />
-        )
-      );
+    {
+      title: 'Kubernetes Version',
+      field: 'kubernetesVersion',
+      hidden: queryParameters.kubernetesVersion ? false : true,
+      render: row => {
+        return (
+          row.kubernetesVersion && (
+            <KubernetesVersion
+              version={formatVersion(row.kubernetesVersion)}
+              hideIcon
+              hideLabel
+            />
+          )
+        );
+      },
+      customSort: semverCompareSort(row => row.kubernetesVersion),
     },
-  },
-  {
-    title: 'Created',
-    field: 'created',
-    type: 'datetime',
-    render: row => <DateComponent value={row.created} relative />,
-  },
-  {
-    title: 'Status',
-    field: 'status',
-    render: row => {
-      return <ClusterStatus status={row.status} />;
+    {
+      title: 'Location',
+      field: 'location',
+      hidden: true,
     },
-  },
-];
+    {
+      title: 'AWS account ID',
+      field: 'awsAccountId',
+      hidden: true,
+      render: row => {
+        return (
+          row.awsAccountId && (
+            <Account
+              accountId={row.awsAccountId}
+              accountUrl={row.awsAccountUrl}
+            />
+          )
+        );
+      },
+    },
+    {
+      title: 'Created',
+      field: 'created',
+      type: 'datetime',
+      render: row => <DateComponent value={row.created} relative />,
+    },
+    {
+      title: 'Status',
+      field: 'status',
+      render: row => {
+        return <ClusterStatus status={row.status} />;
+      },
+    },
+  ];
+};

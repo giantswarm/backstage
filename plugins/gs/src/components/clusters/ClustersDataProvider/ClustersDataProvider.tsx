@@ -17,6 +17,7 @@ import { useProviderClustersIdentities } from '../../hooks/useProviderClustersId
 import { useControlPlanes } from '../../hooks/useControlPlanes';
 import {
   KindFilter,
+  KubernetesVersionFilter,
   OrganizationFilter,
   ReleaseVersionFilter,
   StatusFilter,
@@ -27,6 +28,7 @@ export type DefaultClusterFilters = {
   kind?: KindFilter;
   organization?: OrganizationFilter;
   releaseVersion?: ReleaseVersionFilter;
+  kubernetesVersion?: KubernetesVersionFilter;
   status?: StatusFilter;
 };
 
@@ -35,6 +37,7 @@ export type ClustersData = FiltersData<DefaultClusterFilters> & {
   filteredData: ClusterData[];
   isLoading: boolean;
   retry: () => void;
+  visibleColumns: string[];
   setVisibleColumns: (columns: string[]) => void;
 };
 
@@ -184,13 +187,22 @@ export const ClustersDataProvider = ({
       filteredData,
       isLoading,
       retry,
+      visibleColumns,
       setVisibleColumns,
 
       filters,
       queryParameters,
       updateFilters,
     };
-  }, [clustersData, filters, isLoading, queryParameters, retry, updateFilters]);
+  }, [
+    clustersData,
+    filters,
+    isLoading,
+    queryParameters,
+    retry,
+    updateFilters,
+    visibleColumns,
+  ]);
 
   return (
     <ClustersDataContext.Provider value={contextValue}>

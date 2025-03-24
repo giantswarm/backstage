@@ -5,6 +5,7 @@ import { KindPicker } from './filters/KindPicker';
 import { OrganizationPicker } from './filters/OrganizationPicker';
 import { ReleaseVersionPicker } from './filters/ReleaseVersionPicker/ReleaseVersionPicker';
 import { StatusPicker } from './filters/StatusPicker';
+import { KubernetesVersionPicker } from './filters/KubernetesVersionPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -25,6 +26,7 @@ export const DefaultFilters = () => {
       <OrganizationPicker />
       <StatusPicker />
       <ReleaseVersionPicker />
+      <KubernetesVersionPicker />
     </>
   );
 };
