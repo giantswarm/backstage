@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-techdocs-backend-module-gs
 
+## 0.7.0
+
+### Minor Changes
+
+- f42edd2: Updated Backstage to v1.37.0.
+
 ## 0.6.0
 
 ### Minor Changes

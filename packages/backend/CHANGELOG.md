@@ -1,5 +1,18 @@
 # backend
 
+## 0.7.0
+
+### Minor Changes
+
+- f42edd2: Updated Backstage to v1.37.0.
+
+### Patch Changes
+
+- Updated dependencies [f42edd2]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.8.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.7.0
+  - @giantswarm/backstage-plugin-techdocs-backend-module-gs@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.12.0
+
+### Minor Changes
+
+- f42edd2: Updated Backstage to v1.37.0.
+
 ## 0.11.0
 
 ### Minor Changes
