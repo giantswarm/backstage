@@ -18,12 +18,14 @@ import { useControlPlanes } from '../../hooks/useControlPlanes';
 import {
   KindFilter,
   OrganizationFilter,
+  ReleaseVersionFilter,
 } from '../ClustersPage/filters/filters';
 import { ClusterData, collectClusterData } from './utils';
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
   organization?: OrganizationFilter;
+  releaseVersion?: ReleaseVersionFilter;
 };
 
 export type ClustersData = FiltersData<DefaultClusterFilters> & {

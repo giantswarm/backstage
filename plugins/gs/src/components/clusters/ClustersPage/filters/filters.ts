@@ -40,3 +40,23 @@ export class OrganizationFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class ReleaseVersionFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.releaseVersion || item.releaseVersion === '') {
+      return false;
+    }
+
+    return this.values.includes(item.releaseVersion);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}

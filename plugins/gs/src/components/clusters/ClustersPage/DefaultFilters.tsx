@@ -3,6 +3,7 @@ import { InstallationsPicker } from '../../InstallationsPicker';
 import { useInstallations } from '../../hooks';
 import { KindPicker } from './filters/KindPicker';
 import { OrganizationPicker } from './filters/OrganizationPicker';
+import { ReleaseVersionPicker } from './filters/ReleaseVersionPicker/ReleaseVersionPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -21,6 +22,7 @@ export const DefaultFilters = () => {
       />
       <KindPicker />
       <OrganizationPicker />
+      <ReleaseVersionPicker />
     </>
   );
 };
