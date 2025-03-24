@@ -19,6 +19,7 @@ import {
   KindFilter,
   OrganizationFilter,
   ReleaseVersionFilter,
+  StatusFilter,
 } from '../ClustersPage/filters/filters';
 import { ClusterData, collectClusterData } from './utils';
 
@@ -26,6 +27,7 @@ export type DefaultClusterFilters = {
   kind?: KindFilter;
   organization?: OrganizationFilter;
   releaseVersion?: ReleaseVersionFilter;
+  status?: StatusFilter;
 };
 
 export type ClustersData = FiltersData<DefaultClusterFilters> & {

@@ -60,3 +60,19 @@ export class ReleaseVersionFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class StatusFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    return this.values.includes(item.status);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
