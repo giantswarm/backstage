@@ -20,6 +20,7 @@ import {
   KindFilter,
   KubernetesVersionFilter,
   LocationFilter,
+  LabelFilter,
   OrganizationFilter,
   ProviderFilter,
   ReleaseVersionFilter,
@@ -37,6 +38,7 @@ export type DefaultClusterFilters = {
   appVersion?: AppVersionFilter;
   status?: StatusFilter;
   location?: LocationFilter;
+  label?: LabelFilter;
 };
 
 export type ClustersData = FiltersData<DefaultClusterFilters> & {

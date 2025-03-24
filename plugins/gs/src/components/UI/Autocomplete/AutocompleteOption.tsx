@@ -1,7 +1,7 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import Checkbox from '@material-ui/core/Checkbox';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
-import React, { memo } from 'react';
+import React, { memo, ReactNode } from 'react';
 
 const useStyles = makeStyles((theme: Theme) => ({
   root: {
@@ -9,13 +9,16 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   label: {
     fontSize: theme.typography.body2.fontSize,
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
   },
 }));
 
 interface Props {
   selected: boolean;
   value: string;
-  label: string;
+  label: ReactNode;
 }
 
 export const AutocompleteOption = memo((props: Props) => {

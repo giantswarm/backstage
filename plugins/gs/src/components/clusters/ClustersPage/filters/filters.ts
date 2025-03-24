@@ -156,3 +156,23 @@ export class LocationFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class LabelFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.labels || item.labels.length === 0) {
+      return false;
+    }
+
+    return item.labels.some(label => this.values.includes(label));
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
