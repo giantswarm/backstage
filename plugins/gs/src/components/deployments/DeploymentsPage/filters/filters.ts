@@ -103,3 +103,23 @@ export class NamespaceFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class StatusFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: DeploymentData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.status) {
+      return false;
+    }
+
+    return this.values.includes(item.status);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
