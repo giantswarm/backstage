@@ -25,9 +25,6 @@ export function EntityInstallationDetailsCard() {
       <Grid item xs={12}>
         <InfoCard title="Installation details">
           <Grid container spacing={5}>
-            <AboutField label="Codename">
-              <code>{entity.metadata.name}</code>
-            </AboutField>
             <AboutField
               label="Customer"
               value={entity.metadata.labels?.['giantswarm.io/customer']}
