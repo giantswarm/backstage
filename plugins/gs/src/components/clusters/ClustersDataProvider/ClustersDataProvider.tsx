@@ -16,6 +16,7 @@ import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { useControlPlanes } from '../../hooks/useControlPlanes';
 import {
+  AppVersionFilter,
   KindFilter,
   KubernetesVersionFilter,
   OrganizationFilter,
@@ -29,6 +30,7 @@ export type DefaultClusterFilters = {
   organization?: OrganizationFilter;
   releaseVersion?: ReleaseVersionFilter;
   kubernetesVersion?: KubernetesVersionFilter;
+  appVersion?: AppVersionFilter;
   status?: StatusFilter;
 };
 

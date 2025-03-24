@@ -108,7 +108,7 @@ export const getInitialColumns = (
     {
       title: 'Cluster App',
       field: 'appVersion',
-      hidden: true,
+      hidden: queryParameters.appVersion ? false : true,
       render: row => {
         return (
           <Version

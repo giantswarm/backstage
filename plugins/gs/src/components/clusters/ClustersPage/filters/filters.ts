@@ -81,6 +81,26 @@ export class KubernetesVersionFilter implements FacetFilter {
   }
 }
 
+export class AppVersionFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.appVersion || item.appVersion === '') {
+      return false;
+    }
+
+    return this.values.includes(item.appVersion);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
 export class StatusFilter implements FacetFilter {
   constructor(readonly values: string[]) {}
 
