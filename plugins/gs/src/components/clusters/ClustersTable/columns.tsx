@@ -139,7 +139,7 @@ export const getInitialColumns = (
       customSort: semverCompareSort(row => row.kubernetesVersion),
     },
     {
-      title: 'Location',
+      title: 'Region',
       field: 'location',
       hidden: queryParameters.location ? false : true,
     },
