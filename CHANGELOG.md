@@ -7,6 +7,25 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.57.1] - 2025-03-25
 
+In this release:
+
+The following filters were added to the Deployments page:
+
+- "Status";
+- "Label".
+
+The following filters were added to the Clusters page:
+
+- "Release";
+- "App version";
+- "Kubernetes version";
+- "Region";
+- "Status";
+- "Provider";
+- "Label".
+
+The "codename" field was removed from the Installation details page.
+
 See [./docs/releases/v0.57.1-changelog.md](./docs/releases/v0.57.1-changelog.md) for more information.
 
 ## [0.57.0] - 2025-03-24
