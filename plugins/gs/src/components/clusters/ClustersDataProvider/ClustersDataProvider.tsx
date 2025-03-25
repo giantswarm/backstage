@@ -25,6 +25,7 @@ import {
   StatusFilter,
 } from '../ClustersPage/filters/filters';
 import { ClusterData, collectClusterData } from './utils';
+import { ClusterColumns } from '../ClustersTable/columns';
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
@@ -75,7 +76,9 @@ export const ClustersDataProvider = ({
     retry,
   } = useClusters();
 
-  const controlPlanesRequired = visibleColumns.includes('kubernetesVersion');
+  const controlPlanesRequired = visibleColumns.includes(
+    ClusterColumns.kubernetesVersion,
+  );
 
   const {
     resources: controlPlaneResources,
@@ -88,9 +91,9 @@ export const ClustersDataProvider = ({
   });
 
   const providerClustersRequired =
-    visibleColumns.includes('appVersion') ||
-    visibleColumns.includes('location') ||
-    visibleColumns.includes('awsAccountId');
+    visibleColumns.includes(ClusterColumns.appVersion) ||
+    visibleColumns.includes(ClusterColumns.location) ||
+    visibleColumns.includes(ClusterColumns.awsAccountId);
 
   const {
     resources: providerClusterResources,
@@ -102,8 +105,9 @@ export const ClustersDataProvider = ({
       clusterResources.length > 0,
   });
 
-  const providerClusterIdentitiesRequired =
-    visibleColumns.includes('awsAccountId');
+  const providerClusterIdentitiesRequired = visibleColumns.includes(
+    ClusterColumns.awsAccountId,
+  );
 
   const {
     resources: providerClusterIdentityResources,

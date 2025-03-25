@@ -3,6 +3,7 @@ import uniqBy from 'lodash/uniqBy';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { LocationFilter } from '../filters';
 import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
+import { ClusterColumns } from '../../../ClustersTable/columns';
 
 const TITLE = 'Region';
 
@@ -43,7 +44,8 @@ export const LocationPicker = () => {
   };
 
   const hidden =
-    visibleColumns.length > 0 && !visibleColumns.includes('location');
+    visibleColumns.length > 0 &&
+    !visibleColumns.includes(ClusterColumns.location);
 
   return (
     <MultiplePicker

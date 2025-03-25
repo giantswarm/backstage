@@ -4,6 +4,7 @@ import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 import uniqBy from 'lodash/uniqBy';
 import semver from 'semver';
+import { ClusterColumns } from '../../../ClustersTable/columns';
 
 const TITLE = 'App version';
 
@@ -44,7 +45,8 @@ export const AppVersionPicker = () => {
   };
 
   const hidden =
-    visibleColumns.length > 0 && !visibleColumns.includes('appVersion');
+    visibleColumns.length > 0 &&
+    !visibleColumns.includes(ClusterColumns.appVersion);
 
   return (
     <MultiplePicker

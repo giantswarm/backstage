@@ -37,13 +37,28 @@ export const renderClusterType = (clusterType: string) => {
   );
 };
 
+export const ClusterColumns = {
+  type: 'type',
+  name: 'name',
+  installationName: 'installationName',
+  organization: 'organization',
+  priority: 'priority',
+  releaseVersion: 'releaseVersion',
+  appVersion: 'appVersion',
+  kubernetesVersion: 'kubernetesVersion',
+  location: 'location',
+  awsAccountId: 'awsAccountId',
+  created: 'created',
+  status: 'status',
+} as const;
+
 export const getInitialColumns = (
   queryParameters: Record<string, string | string[]>,
 ): TableColumn<ClusterData>[] => {
   return [
     {
       title: 'Type',
-      field: 'type',
+      field: ClusterColumns.type,
       width: 'auto',
       render: row => {
         return renderClusterType(row.type);
@@ -51,7 +66,7 @@ export const getInitialColumns = (
     },
     {
       title: 'Name',
-      field: 'name',
+      field: ClusterColumns.name,
       highlight: true,
       render: row => {
         const LinkWrapper = () => {
@@ -80,15 +95,15 @@ export const getInitialColumns = (
     },
     {
       title: 'Installation',
-      field: 'installationName',
+      field: ClusterColumns.installationName,
     },
     {
       title: 'Organization',
-      field: 'organization',
+      field: ClusterColumns.organization,
     },
     {
       title: 'Service Priority',
-      field: 'priority',
+      field: ClusterColumns.priority,
       render: row => {
         if (!row.priority) {
           return 'n/a';
@@ -99,7 +114,7 @@ export const getInitialColumns = (
     },
     {
       title: 'Release',
-      field: 'releaseVersion',
+      field: ClusterColumns.releaseVersion,
       render: row => {
         return <Version version={row.releaseVersion || ''} highlight />;
       },
@@ -107,7 +122,7 @@ export const getInitialColumns = (
     },
     {
       title: 'Cluster App',
-      field: 'appVersion',
+      field: ClusterColumns.appVersion,
       hidden: queryParameters.appVersion ? false : true,
       render: row => {
         return (
@@ -123,7 +138,7 @@ export const getInitialColumns = (
     },
     {
       title: 'Kubernetes Version',
-      field: 'kubernetesVersion',
+      field: ClusterColumns.kubernetesVersion,
       hidden: queryParameters.kubernetesVersion ? false : true,
       render: row => {
         return (
@@ -140,12 +155,12 @@ export const getInitialColumns = (
     },
     {
       title: 'Region',
-      field: 'location',
+      field: ClusterColumns.location,
       hidden: queryParameters.location ? false : true,
     },
     {
       title: 'AWS account ID',
-      field: 'awsAccountId',
+      field: ClusterColumns.awsAccountId,
       hidden: true,
       render: row => {
         return (
@@ -160,13 +175,13 @@ export const getInitialColumns = (
     },
     {
       title: 'Created',
-      field: 'created',
+      field: ClusterColumns.created,
       type: 'datetime',
       render: row => <DateComponent value={row.created} relative />,
     },
     {
       title: 'Status',
-      field: 'status',
+      field: ClusterColumns.status,
       render: row => {
         return <ClusterStatus status={row.status} />;
       },
