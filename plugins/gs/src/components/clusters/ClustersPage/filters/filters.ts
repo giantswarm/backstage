@@ -21,6 +21,26 @@ export class KindFilter implements FacetFilter {
   }
 }
 
+export class ProviderFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.provider) {
+      return false;
+    }
+
+    return this.values.includes(item.provider);
+  }
+
+  toQueryValue(): string[] {
+    return Array.isArray(this.values) ? this.values : [this.values];
+  }
+}
+
 export class OrganizationFilter implements FacetFilter {
   constructor(readonly values: string[]) {}
 

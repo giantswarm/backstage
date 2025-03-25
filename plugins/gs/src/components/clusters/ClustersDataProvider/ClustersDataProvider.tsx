@@ -21,6 +21,7 @@ import {
   KubernetesVersionFilter,
   LocationFilter,
   OrganizationFilter,
+  ProviderFilter,
   ReleaseVersionFilter,
   StatusFilter,
 } from '../ClustersPage/filters/filters';
@@ -29,6 +30,7 @@ import { ClusterColumns } from '../ClustersTable/columns';
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
+  provider?: ProviderFilter;
   organization?: OrganizationFilter;
   releaseVersion?: ReleaseVersionFilter;
   kubernetesVersion?: KubernetesVersionFilter;

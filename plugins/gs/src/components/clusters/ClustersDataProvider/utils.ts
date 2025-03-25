@@ -17,7 +17,11 @@ import {
   ProviderCluster,
   ProviderClusterIdentity,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { calculateClusterStatus, calculateClusterType } from '../utils';
+import {
+  calculateClusterProvider,
+  calculateClusterStatus,
+  calculateClusterType,
+} from '../utils';
 
 export type ClusterData = {
   installationName: string;
@@ -28,6 +32,7 @@ export type ClusterData = {
   organization?: string;
   created?: string;
   priority?: string;
+  provider?: string;
   status: string;
   apiVersion: string;
   appVersion?: string;
@@ -62,6 +67,7 @@ export function collectClusterData({
   const priority = getClusterServicePriority(cluster);
   const status = calculateClusterStatus(cluster);
   const releaseVersion = getClusterReleaseVersion(cluster);
+  const provider = calculateClusterProvider(cluster);
 
   const appVersion = providerCluster
     ? getProviderClusterAppVersion(providerCluster)
@@ -99,6 +105,7 @@ export function collectClusterData({
     priority,
     status,
     releaseVersion,
+    provider,
     appVersion,
     appSourceLocation,
     kubernetesVersion,
