@@ -1,1 +1,1 @@
-export { VersionPicker } from './VersionPicker';
+export { ReleaseVersionPicker } from './ReleaseVersionPicker';
