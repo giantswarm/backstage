@@ -1,5 +1,20 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.18.1
+
+### Patch Changes
+
+- d37d5fb: Added Label filter to the Deployments page.
+- d37d5fb: Added Label filter to the Clusters page.
+- 37f9d76: Remove codename field from installations details
+- 1d75e6c: Added Release filter to the Clusters page.
+- 1d75e6c: Added App version filter to the Clusters page.
+- 1d75e6c: Added Region filter to the Clusters page.
+- 1d75e6c: Added Status filter to the Clusters page.
+- 1d75e6c: Added Provider filter to the Clusters page.
+- 1d75e6c: Added Kubernetes version filter to the Clusters page.
+- 1d75e6c: Added Status filter to the Deployments page.
+
 ## 0.18.0
 
 ### Minor Changes
