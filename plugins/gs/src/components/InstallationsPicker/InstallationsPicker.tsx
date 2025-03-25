@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box } from '@material-ui/core';
 import { MultipleSelect } from '../UI/MultipleSelect';
 import useDebounce from 'react-use/esm/useDebounce';
+import { useLocation } from 'react-router-dom';
+import qs from 'qs';
+import isEqual from 'lodash/isEqual';
 
 type InstallationsPickerProps = {
   installations: string[];
@@ -16,13 +19,22 @@ export const InstallationsPicker = ({
 }: InstallationsPickerProps) => {
   const [value, setValue] = useState(selectedInstallations);
 
+  const location = useLocation();
+  useEffect(() => {
+    const parsed = qs.parse(location.search, {
+      ignoreQueryPrefix: true,
+    });
+
+    const queryParameter = (parsed.installations ?? []) as string[];
+    const queryParameters = [queryParameter].flat().filter(Boolean) as string[];
+    if (queryParameters.length) {
+      setValue(queryParameters);
+    }
+  }, [location.search]);
+
   useDebounce(
     () => {
-      if (
-        onChange &&
-        JSON.stringify(value.sort()) !==
-          JSON.stringify(selectedInstallations.sort())
-      ) {
+      if (onChange && !isEqual(value, selectedInstallations)) {
         onChange(value);
       }
     },
