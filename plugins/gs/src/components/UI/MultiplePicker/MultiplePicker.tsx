@@ -17,6 +17,7 @@ export type MultiplePickerProps = {
   autocomplete?: boolean;
   disabled?: boolean;
   hidden?: boolean;
+  renderLabel?: (label: string) => React.ReactNode;
 };
 
 export function MultiplePicker(props: MultiplePickerProps) {
@@ -28,6 +29,7 @@ export function MultiplePicker(props: MultiplePickerProps) {
     onSelect,
     autocomplete = false,
     hidden = false,
+    renderLabel,
   } = props;
 
   const queryParameters = useMemo(
@@ -72,6 +74,7 @@ export function MultiplePicker(props: MultiplePickerProps) {
           items={options}
           selectedValues={values}
           onChange={selectedValues => setValues(selectedValues)}
+          renderLabel={renderLabel}
         />
       ) : (
         <MultipleSelect

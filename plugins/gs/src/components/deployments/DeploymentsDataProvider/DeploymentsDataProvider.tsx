@@ -12,6 +12,7 @@ import {
 import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
 import {
   KindFilter,
+  LabelFilter,
   NamespaceFilter,
   StatusFilter,
   TargetClusterFilter,
@@ -27,6 +28,7 @@ export type DefaultDeploymentFilters = {
   version?: VersionFilter;
   namespace?: NamespaceFilter;
   status?: StatusFilter;
+  label?: LabelFilter;
 };
 
 export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {

@@ -19,3 +19,13 @@ export function calculateClusterType(
     ? ClusterTypes.Management
     : ClusterTypes.Workload;
 }
+
+export function calculateDeploymentLabels(deployment: Deployment) {
+  if (!deployment.metadata.labels) {
+    return undefined;
+  }
+
+  return Object.entries(deployment.metadata.labels).map(([key, value]) => {
+    return value === '' ? key : `${key}: ${value}`;
+  });
+}

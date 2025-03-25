@@ -34,6 +34,16 @@ export function calculateClusterStatus(cluster: Cluster) {
   return ClusterStatuses.Ready;
 }
 
+export function calculateClusterLabels(cluster: Cluster) {
+  if (!cluster.metadata.labels) {
+    return undefined;
+  }
+
+  return Object.entries(cluster.metadata.labels).map(([key, value]) => {
+    return value === '' ? key : `${key}: ${value}`;
+  });
+}
+
 export const ClusterProviders = {
   AWS: 'aws',
   Azure: 'azure',

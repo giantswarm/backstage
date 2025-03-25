@@ -19,6 +19,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   calculateClusterProvider,
+  calculateClusterLabels,
   calculateClusterStatus,
   calculateClusterType,
 } from '../utils';
@@ -42,6 +43,7 @@ export type ClusterData = {
   location?: string;
   awsAccountId?: string;
   awsAccountUrl?: string;
+  labels?: string[];
 };
 
 export function collectClusterData({
@@ -68,6 +70,7 @@ export function collectClusterData({
   const status = calculateClusterStatus(cluster);
   const releaseVersion = getClusterReleaseVersion(cluster);
   const provider = calculateClusterProvider(cluster);
+  const labels = calculateClusterLabels(cluster);
 
   const appVersion = providerCluster
     ? getProviderClusterAppVersion(providerCluster)
@@ -112,5 +115,6 @@ export function collectClusterData({
     location,
     awsAccountId,
     awsAccountUrl,
+    labels,
   };
 }

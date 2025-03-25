@@ -18,7 +18,7 @@ import {
   getHelmReleaseTargetClusterNamespace,
   getHelmReleaseUpdatedTimestamp,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { calculateClusterType } from '../utils';
+import { calculateClusterType, calculateDeploymentLabels } from '../utils';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 
 export type DeploymentData = {
@@ -37,6 +37,7 @@ export type DeploymentData = {
   sourceName?: string;
   chartName?: string;
   apiVersion: string;
+  labels?: string[];
 };
 
 export function collectDeploymentData({
@@ -66,6 +67,7 @@ export function collectDeploymentData({
         sourceName: formatAppCatalogName(getAppCatalogName(deployment) ?? ''),
         chartName: getAppChartName(deployment),
         apiVersion: deployment.apiVersion,
+        labels: calculateDeploymentLabels(deployment),
       }
     : {
         installationName,
@@ -90,5 +92,6 @@ export function collectDeploymentData({
         sourceName: getHelmReleaseSourceName(deployment),
         chartName: getHelmReleaseChartName(deployment),
         apiVersion: deployment.apiVersion,
+        labels: calculateDeploymentLabels(deployment),
       };
 }
