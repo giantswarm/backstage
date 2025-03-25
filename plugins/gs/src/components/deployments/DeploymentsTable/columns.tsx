@@ -17,6 +17,20 @@ import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 
+export const DeploymentColumns = {
+  name: 'name',
+  installationName: 'installationName',
+  clusterName: 'clusterName',
+  clusterType: 'clusterType',
+  namespace: 'namespace',
+  kind: 'kind',
+  source: 'source',
+  chartName: 'chartName',
+  version: 'version',
+  updated: 'updated',
+  status: 'status',
+} as const;
+
 export const getInitialColumns = ({
   baseRouteRef,
   grafanaDashboard,
@@ -31,7 +45,7 @@ export const getInitialColumns = ({
   const columns: TableColumn<DeploymentData>[] = [
     {
       title: 'Name',
-      field: 'name',
+      field: DeploymentColumns.name,
       highlight: true,
       defaultSort: 'asc',
       render: row => {
@@ -60,11 +74,11 @@ export const getInitialColumns = ({
     },
     {
       title: 'Installation',
-      field: 'installationName',
+      field: DeploymentColumns.installationName,
     },
     {
       title: 'Cluster',
-      field: 'clusterName',
+      field: DeploymentColumns.clusterName,
       render: row => {
         if (row.clusterName && row.clusterNamespace) {
           const LinkWrapper = () => {
@@ -92,7 +106,7 @@ export const getInitialColumns = ({
     },
     {
       title: 'Cluster Type',
-      field: 'clusterType',
+      field: DeploymentColumns.clusterType,
       hidden: true,
       render: row => {
         return row.clusterType ? renderClusterType(row.clusterType) : undefined;
@@ -100,11 +114,11 @@ export const getInitialColumns = ({
     },
     {
       title: 'Namespace',
-      field: 'namespace',
+      field: DeploymentColumns.namespace,
     },
     {
       title: 'Type',
-      field: 'kind',
+      field: DeploymentColumns.kind,
       render: row => {
         const label = row.kind === 'app' ? 'App' : 'HelmRelease';
 
@@ -117,7 +131,7 @@ export const getInitialColumns = ({
     },
     {
       title: 'Source',
-      field: 'source',
+      field: DeploymentColumns.source,
       hidden: true,
       render: row => {
         return (
@@ -130,7 +144,7 @@ export const getInitialColumns = ({
     },
     {
       title: 'Chart Name',
-      field: 'chartName',
+      field: DeploymentColumns.chartName,
       hidden: true,
       render: row => {
         return (
@@ -142,7 +156,7 @@ export const getInitialColumns = ({
     },
     {
       title: 'Version',
-      field: 'version',
+      field: DeploymentColumns.version,
       render: row => {
         return (
           <Version
@@ -158,13 +172,13 @@ export const getInitialColumns = ({
     },
     {
       title: 'Updated',
-      field: 'updated',
+      field: DeploymentColumns.updated,
       type: 'datetime',
       render: row => <DateComponent value={row.updated} relative />,
     },
     {
       title: 'Status',
-      field: 'status',
+      field: DeploymentColumns.status,
       render: row => {
         if (!row.status) {
           return 'n/a';
