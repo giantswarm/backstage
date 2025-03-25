@@ -16,6 +16,7 @@ export type MultiplePickerProps = {
   filterValue?: string[];
   autocomplete?: boolean;
   disabled?: boolean;
+  hidden?: boolean;
 };
 
 export function MultiplePicker(props: MultiplePickerProps) {
@@ -26,6 +27,7 @@ export function MultiplePicker(props: MultiplePickerProps) {
     options,
     onSelect,
     autocomplete = false,
+    hidden = false,
   } = props;
 
   const queryParameters = useMemo(
@@ -50,13 +52,19 @@ export function MultiplePicker(props: MultiplePickerProps) {
   }, [filterValue]);
 
   useEffect(() => {
+    if (hidden) {
+      setValues([]);
+    }
+  }, [hidden]);
+
+  useEffect(() => {
     if (onSelect) {
       onSelect(values);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Don't trigger on onSelect reference change
   }, [values]);
 
-  return (
+  return hidden ? null : (
     <Box pb={1} pt={1}>
       {autocomplete ? (
         <Autocomplete

@@ -6,6 +6,7 @@ import {
   isManagementCluster,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { ClusterStatuses } from './ClusterStatus';
+import { toSentenceCase } from '../utils/helpers';
 
 export const ClusterTypes = {
   Management: 'management',
@@ -52,4 +53,32 @@ export function calculateClusterProvider(cluster: Cluster) {
     default:
       return undefined;
   }
+}
+
+export function formatClusterType(clusterType: 'management' | 'workload') {
+  switch (clusterType) {
+    case ClusterTypes.Management:
+      return 'Management cluster';
+    case ClusterTypes.Workload:
+      return 'Workload cluster';
+    default:
+      return clusterType;
+  }
+}
+
+export function formatClusterProvider(provider: string) {
+  switch (provider) {
+    case ClusterProviders.AWS:
+      return 'AWS';
+    case ClusterProviders.Azure:
+      return 'Azure';
+    case ClusterProviders.VSphere:
+      return 'vSphere';
+    default:
+      return provider;
+  }
+}
+
+export function formatServicePriority(servicePriority: string) {
+  return toSentenceCase(servicePriority);
 }

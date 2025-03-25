@@ -18,8 +18,9 @@ import { AboutField } from '@backstage/plugin-catalog';
 import {
   calculateClusterProvider,
   calculateClusterType,
-  ClusterProviders,
-  ClusterTypes,
+  formatClusterProvider,
+  formatClusterType,
+  formatServicePriority,
 } from '../../../utils';
 import { useResource } from '../../../../hooks';
 import {
@@ -29,40 +30,12 @@ import {
   KubernetesVersion,
   NotAvailable,
 } from '../../../../UI';
-import { formatVersion, toSentenceCase } from '../../../../utils/helpers';
+import { formatVersion } from '../../../../utils/helpers';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { useErrors } from '../../../../Errors';
 import { clusterDetailsRouteRef } from '../../../../../routes';
-
-function formatClusterType(clusterType: 'management' | 'workload') {
-  switch (clusterType) {
-    case ClusterTypes.Management:
-      return 'Management cluster';
-    case ClusterTypes.Workload:
-      return 'Workload cluster';
-    default:
-      return clusterType;
-  }
-}
-
-function formatClusterProvider(provider: string) {
-  switch (provider) {
-    case ClusterProviders.AWS:
-      return 'AWS';
-    case ClusterProviders.Azure:
-      return 'Azure';
-    case ClusterProviders.VSphere:
-      return 'vSphere';
-    default:
-      return provider;
-  }
-}
-
-function formatServicePriority(servicePriority: string) {
-  return toSentenceCase(servicePriority);
-}
 
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();

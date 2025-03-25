@@ -21,6 +21,26 @@ export class KindFilter implements FacetFilter {
   }
 }
 
+export class ProviderFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.provider) {
+      return false;
+    }
+
+    return this.values.includes(item.provider);
+  }
+
+  toQueryValue(): string[] {
+    return Array.isArray(this.values) ? this.values : [this.values];
+  }
+}
+
 export class OrganizationFilter implements FacetFilter {
   constructor(readonly values: string[]) {}
 
@@ -34,6 +54,102 @@ export class OrganizationFilter implements FacetFilter {
     }
 
     return this.values.includes(item.organization);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
+export class ReleaseVersionFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.releaseVersion || item.releaseVersion === '') {
+      return false;
+    }
+
+    return this.values.includes(item.releaseVersion);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
+export class KubernetesVersionFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.kubernetesVersion || item.kubernetesVersion === '') {
+      return false;
+    }
+
+    return this.values.includes(item.kubernetesVersion);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
+export class AppVersionFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.appVersion || item.appVersion === '') {
+      return false;
+    }
+
+    return this.values.includes(item.appVersion);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
+export class StatusFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    return this.values.includes(item.status);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
+export class LocationFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.location) {
+      return false;
+    }
+
+    return this.values.includes(item.location);
   }
 
   toQueryValue(): string[] {

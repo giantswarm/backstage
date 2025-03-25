@@ -53,7 +53,15 @@ const ClustersTableView = ({
 };
 
 export const ClustersTable = () => {
-  const [columns, setColumns] = useState(getInitialColumns());
+  const {
+    filteredData: clustersData,
+    isLoading,
+    retry,
+    setVisibleColumns,
+    queryParameters,
+  } = useClustersData();
+
+  const [columns, setColumns] = useState(getInitialColumns(queryParameters));
 
   const handleChangeColumnHidden = useCallback(
     (field: string, hidden: boolean) => {
@@ -72,13 +80,6 @@ export const ClustersTable = () => {
     },
     [],
   );
-
-  const {
-    filteredData: clustersData,
-    isLoading,
-    retry,
-    setVisibleColumns,
-  } = useClustersData();
 
   useEffect(() => {
     const visibleColumns = columns

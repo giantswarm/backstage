@@ -16,14 +16,27 @@ import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { useControlPlanes } from '../../hooks/useControlPlanes';
 import {
+  AppVersionFilter,
   KindFilter,
+  KubernetesVersionFilter,
+  LocationFilter,
   OrganizationFilter,
+  ProviderFilter,
+  ReleaseVersionFilter,
+  StatusFilter,
 } from '../ClustersPage/filters/filters';
 import { ClusterData, collectClusterData } from './utils';
+import { ClusterColumns } from '../ClustersTable/columns';
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
+  provider?: ProviderFilter;
   organization?: OrganizationFilter;
+  releaseVersion?: ReleaseVersionFilter;
+  kubernetesVersion?: KubernetesVersionFilter;
+  appVersion?: AppVersionFilter;
+  status?: StatusFilter;
+  location?: LocationFilter;
 };
 
 export type ClustersData = FiltersData<DefaultClusterFilters> & {
@@ -31,6 +44,7 @@ export type ClustersData = FiltersData<DefaultClusterFilters> & {
   filteredData: ClusterData[];
   isLoading: boolean;
   retry: () => void;
+  visibleColumns: string[];
   setVisibleColumns: (columns: string[]) => void;
 };
 
@@ -64,7 +78,9 @@ export const ClustersDataProvider = ({
     retry,
   } = useClusters();
 
-  const controlPlanesRequired = visibleColumns.includes('kubernetesVersion');
+  const controlPlanesRequired = visibleColumns.includes(
+    ClusterColumns.kubernetesVersion,
+  );
 
   const {
     resources: controlPlaneResources,
@@ -77,9 +93,9 @@ export const ClustersDataProvider = ({
   });
 
   const providerClustersRequired =
-    visibleColumns.includes('appVersion') ||
-    visibleColumns.includes('location') ||
-    visibleColumns.includes('awsAccountId');
+    visibleColumns.includes(ClusterColumns.appVersion) ||
+    visibleColumns.includes(ClusterColumns.location) ||
+    visibleColumns.includes(ClusterColumns.awsAccountId);
 
   const {
     resources: providerClusterResources,
@@ -91,8 +107,9 @@ export const ClustersDataProvider = ({
       clusterResources.length > 0,
   });
 
-  const providerClusterIdentitiesRequired =
-    visibleColumns.includes('awsAccountId');
+  const providerClusterIdentitiesRequired = visibleColumns.includes(
+    ClusterColumns.awsAccountId,
+  );
 
   const {
     resources: providerClusterIdentityResources,
@@ -180,13 +197,22 @@ export const ClustersDataProvider = ({
       filteredData,
       isLoading,
       retry,
+      visibleColumns,
       setVisibleColumns,
 
       filters,
       queryParameters,
       updateFilters,
     };
-  }, [clustersData, filters, isLoading, queryParameters, retry, updateFilters]);
+  }, [
+    clustersData,
+    filters,
+    isLoading,
+    queryParameters,
+    retry,
+    updateFilters,
+    visibleColumns,
+  ]);
 
   return (
     <ClustersDataContext.Provider value={contextValue}>
