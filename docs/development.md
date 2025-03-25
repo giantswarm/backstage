@@ -40,12 +40,12 @@ This is the recommended way if you want to get started simply, but it may not pr
 2. Have **yarn** v1 installed for NodeJS dependency management. Use
    `npm install --global yarn` to install it.
 
-3. **Credentials from LastPass**:
+3. **Credentials from 1Password**:
 
    - **GitHub OAuth credentials**: You'll have to create a file
      `/github-app-development-credentials.yaml` in the clone repository, which
      for security reasons is not checked in with the repository. Find the
-     content for this file in a LastPass secure note named `Backstage Dev GitHub App`.
+     content for this file in a 1Password secure note named `Backstage Dev GitHub App`.
    - **Environment variables**: Backstage requires a number of environment
      variables to be set in order to work successfully. Please see the section
      on [Loading `.env`](#loading-env) for details on how to create this file.
@@ -64,7 +64,7 @@ default and must be created.
 
 Copy the file [`.env.example`](../.env.example) to `.env` and modify it to
 to replace the secret values. You can find the contents of the secret values in
-the LastPass secure note `Backstage Dev Environment Variables`.
+the 1Password secure note `Backstage Dev Environment Variables`.
 
 > [!IMPORTANT]
 > Only replace the values below the comment line referencing the secret.
