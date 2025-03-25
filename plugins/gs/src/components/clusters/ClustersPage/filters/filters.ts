@@ -116,3 +116,23 @@ export class StatusFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class LocationFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: ClusterData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.location) {
+      return false;
+    }
+
+    return this.values.includes(item.location);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}

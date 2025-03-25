@@ -7,6 +7,7 @@ import { ReleaseVersionPicker } from './filters/ReleaseVersionPicker/ReleaseVers
 import { StatusPicker } from './filters/StatusPicker';
 import { KubernetesVersionPicker } from './filters/KubernetesVersionPicker';
 import { AppVersionPicker } from './filters/AppVersionPicker';
+import { LocationPicker } from './filters/LocationPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -23,6 +24,7 @@ export const DefaultFilters = () => {
         selectedInstallations={selectedInstallations}
         onChange={handleSelectedInstallationsChange}
       />
+      <LocationPicker />
       <KindPicker />
       <OrganizationPicker />
       <StatusPicker />

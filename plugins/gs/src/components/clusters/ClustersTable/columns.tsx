@@ -141,7 +141,7 @@ export const getInitialColumns = (
     {
       title: 'Location',
       field: 'location',
-      hidden: true,
+      hidden: queryParameters.location ? false : true,
     },
     {
       title: 'AWS account ID',
