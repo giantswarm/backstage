@@ -62,7 +62,9 @@ export const DeploymentsDataProvider = ({
   children,
 }: DeploymentsDataProviderProps) => {
   const { filters, queryParameters, updateFilters } =
-    useFilters<DefaultDeploymentFilters>();
+    useFilters<DefaultDeploymentFilters>({
+      persistToURL: deploymentNames ? false : true,
+    });
 
   const {
     resources: appResources,

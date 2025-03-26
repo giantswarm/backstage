@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Box, Typography } from '@material-ui/core';
+import useDebounce from 'react-use/esm/useDebounce';
 import { getInitialColumns } from './columns';
 import { ClusterData, useClustersData } from '../ClustersDataProvider';
 import { useInstallationsStatuses } from '../../hooks';
@@ -81,13 +82,17 @@ export const ClustersTable = () => {
     [],
   );
 
-  useEffect(() => {
-    const visibleColumns = columns
-      .filter(column => !Boolean(column.hidden))
-      .map(column => column.field) as string[];
+  useDebounce(
+    () => {
+      const visibleColumns = columns
+        .filter(column => !Boolean(column.hidden))
+        .map(column => column.field) as string[];
 
-    setVisibleColumns(visibleColumns);
-  }, [columns, setVisibleColumns]);
+      setVisibleColumns(visibleColumns);
+    },
+    10,
+    [columns, setVisibleColumns],
+  );
 
   const { installationsStatuses } = useInstallationsStatuses();
   const installationsErrors = installationsStatuses.some(

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import useMountedState from 'react-use/esm/useMountedState';
 import useDebounce from 'react-use/esm/useDebounce';
 import qs from 'qs';
+import { useInstallations } from './useInstallations';
 
 export type FacetFilter = {
   filter: (item: any) => boolean;
@@ -18,9 +19,15 @@ export type FiltersData<Filters extends DefaultFilters = DefaultFilters> = {
   queryParameters: Record<string, string | string[]>;
 };
 
-export function useFilters<
-  Filters extends DefaultFilters = DefaultFilters,
->(): FiltersData<Filters> {
+type Options = {
+  persistToURL?: boolean;
+};
+
+export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
+  options: Options = {},
+): FiltersData<Filters> {
+  const persistToURL = options.persistToURL ?? true;
+
   const [requestedFilters, setRequestedFilters] = useState<Filters>(
     {} as Filters,
   );
@@ -46,9 +53,16 @@ export function useFilters<
     };
   }, [location.search]);
 
+  const { selectedInstallations } = useInstallations();
+
   useDebounce(
     () => {
-      const queryParams = Object.keys(requestedFilters).reduce(
+      if (!persistToURL) {
+        return;
+      }
+
+      const installationsQueryParams = selectedInstallations;
+      const filtersQueryParams = Object.keys(requestedFilters).reduce(
         (params, key) => {
           const filter = requestedFilters[key as keyof Filters] as
             | FacetFilter
@@ -66,7 +80,11 @@ export function useFilters<
           ignoreQueryPrefix: true,
         });
         const newParams = qs.stringify(
-          { ...oldParams, filters: queryParams },
+          {
+            ...oldParams,
+            installations: installationsQueryParams,
+            filters: filtersQueryParams,
+          },
           { addQueryPrefix: true, arrayFormat: 'repeat' },
         );
         const newUrl = `${window.location.pathname}${newParams}`;
@@ -74,7 +92,13 @@ export function useFilters<
       }
     },
     10,
-    [isMounted, location.search, requestedFilters],
+    [
+      isMounted,
+      persistToURL,
+      location.search,
+      requestedFilters,
+      selectedInstallations,
+    ],
   );
 
   return useMemo(
