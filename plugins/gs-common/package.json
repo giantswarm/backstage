@@ -40,6 +40,7 @@
     "dist"
   ],
   "dependencies": {
+    "@backstage/catalog-model": "^1.7.3",
     "date-fns": "^4.0.0",
     "date-fns-tz": "^3.0.0"
   },

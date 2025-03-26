@@ -28,5 +28,5 @@ export {
   isEntityHelmChartsAvailable as isEntityGSHelmChartsAvailable,
   isEntityInstallationResource as isEntityGSInstallationResource,
   isEntityKratixResource as isEntityGSKratixResource,
-} from './components/utils/entity';
+} from '@giantswarm/backstage-plugin-gs-common';
 export { columnFactories as GSColumnFactories } from './components/catalog/columns';

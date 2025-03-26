@@ -11,7 +11,7 @@ import {
   getIngressHostFromEntity,
   getGrafanaDashboardFromEntity,
   getSourceLocationFromEntity,
-} from '../../utils/entity';
+} from '@giantswarm/backstage-plugin-gs-common';
 import { GSContext } from '../../GSContext';
 import { InstallationsWrapper } from '../../InstallationsWrapper';
 import { DetailsPane } from '../../UI';

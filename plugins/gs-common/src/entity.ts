@@ -1,5 +1,5 @@
 import { ANNOTATION_SOURCE_LOCATION, Entity } from '@backstage/catalog-model';
-import { formatVersion } from './helpers';
+import { formatVersion } from './utils';
 
 export const GS_DEPLOYMENT_NAMES = 'giantswarm.io/deployment-names';
 export const GS_INGRESS_HOST = 'giantswarm.io/ingress-host';

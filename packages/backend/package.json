@@ -47,6 +47,7 @@
     "@backstage/plugin-search-backend-node": "backstage:^",
     "@backstage/plugin-techdocs-backend": "backstage:^",
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.8.0",
+    "@giantswarm/backstage-plugin-catalog-backend-module-gs": "^0.1.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.7.0",
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "^0.7.0",
     "app": "link:../app",

@@ -22,7 +22,7 @@ import { columnFactories, hiddenColumn, noWrapColumn } from '../columns';
 import {
   isEntityHelmChartsAvailable,
   isEntityLatestReleaseAvailable,
-} from '../../utils/entity';
+} from '@giantswarm/backstage-plugin-gs-common';
 
 const YellowStar = withStyles({
   root: {
