@@ -31,6 +31,10 @@ import {
   DeploymentDetailsPickerSchema,
 } from './components/scaffolder/DeploymentDetailsPicker';
 import {
+  WorkloadClusterDetailsPicker,
+  WorkloadClusterDetailsPickerSchema,
+} from './components/scaffolder/WorkloadClusterDetailsPicker';
+import {
   SecretStorePicker,
   SecretStorePickerSchema,
 } from './components/scaffolder/SecretStorePicker';
@@ -184,6 +188,14 @@ export const GSDeploymentDetailsPickerFieldExtension = gsPlugin.provide(
     name: 'GSDeploymentDetailsPicker',
     component: DeploymentDetailsPicker,
     schema: DeploymentDetailsPickerSchema,
+  }),
+);
+
+export const GSWorkloadClusterDetailsPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSWorkloadClusterDetailsPicker',
+    component: WorkloadClusterDetailsPicker,
+    schema: WorkloadClusterDetailsPickerSchema,
   }),
 );
 
