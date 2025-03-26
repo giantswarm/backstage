@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.18.2
+
+### Patch Changes
+
+- 54e79ce: Allowed to set selected installations with the URL parameters.
+
 ## 0.18.1
 
 ### Patch Changes
