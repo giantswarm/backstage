@@ -21,6 +21,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { useCurrentUser } from '../../hooks';
+import { ClusterAppStatus } from './ClusterAppStatus';
 
 export type ClusterLayoutRouteProps = {
   path: string;
@@ -46,11 +47,13 @@ export interface ClusterLayoutProps {
 
 export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
   const { name } = useRouteRefParams(clusterDetailsRouteRef);
+
   const {
     cluster,
+    clusterApp,
     installationName,
     loading: clusterIsLoading,
-    error: clusterError,
+    error: error,
   } = useAsyncCluster();
 
   const { isGSUser, isLoading: currentUserIsLoading } =
@@ -103,12 +106,21 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
       />
       {isLoading && <Progress />}
       {cluster && <RoutedTabs routes={routes} />}
-      {clusterError && (
+      {error && !cluster && clusterApp ? (
         <Content>
-          <Alert severity="error">{clusterError.toString()}</Alert>
+          <ClusterAppStatus
+            installationName={installationName}
+            name={clusterApp.metadata.name}
+            namespace={clusterApp.metadata.namespace ?? ''}
+          />
         </Content>
-      )}
-      {!isLoading && !clusterError && !cluster && (
+      ) : null}
+      {error && !cluster && !clusterApp ? (
+        <Content>
+          <Alert severity="error">{error.toString()}</Alert>
+        </Content>
+      ) : null}
+      {!isLoading && !error && !cluster && !clusterApp && (
         <Content>
           <WarningPanel title="Error">
             There is no cluster with the requested installation, namespace, and
