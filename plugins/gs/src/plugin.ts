@@ -43,6 +43,10 @@ import {
   ReleasePickerSchema,
 } from './components/scaffolder/ReleasePicker';
 import {
+  OrganizationPicker,
+  OrganizationPickerSchema,
+} from './components/scaffolder/OrganizationPicker';
+import {
   SecretStorePicker,
   SecretStorePickerSchema,
 } from './components/scaffolder/SecretStorePicker';
@@ -220,6 +224,14 @@ export const GSReleasePickerFieldExtension = gsPlugin.provide(
     name: 'GSReleasePicker',
     component: ReleasePicker,
     schema: ReleasePickerSchema,
+  }),
+);
+
+export const GSOrganizationPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSOrganizationPicker',
+    component: OrganizationPicker,
+    schema: OrganizationPickerSchema,
   }),
 );
 

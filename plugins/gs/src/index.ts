@@ -13,6 +13,7 @@ export {
   GSTemplateStringInputFieldExtension,
   GSInstallationPickerFieldExtension,
   GSReleasePickerFieldExtension,
+  GSOrganizationPickerFieldExtension,
   GSStepLayout,
 } from './plugin';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
