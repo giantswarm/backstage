@@ -35,6 +35,10 @@ import {
   WorkloadClusterDetailsPickerSchema,
 } from './components/scaffolder/WorkloadClusterDetailsPicker';
 import {
+  InstallationPicker,
+  InstallationPickerSchema,
+} from './components/scaffolder/InstallationPicker';
+import {
   SecretStorePicker,
   SecretStorePickerSchema,
 } from './components/scaffolder/SecretStorePicker';
@@ -196,6 +200,14 @@ export const GSWorkloadClusterDetailsPickerFieldExtension = gsPlugin.provide(
     name: 'GSWorkloadClusterDetailsPicker',
     component: WorkloadClusterDetailsPicker,
     schema: WorkloadClusterDetailsPickerSchema,
+  }),
+);
+
+export const GSInstallationPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSInstallationPicker',
+    component: InstallationPicker,
+    schema: InstallationPickerSchema,
   }),
 );
 
