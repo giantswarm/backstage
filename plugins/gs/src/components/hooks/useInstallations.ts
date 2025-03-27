@@ -2,10 +2,11 @@ import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { useEffect } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 
-type InstallationInfo = {
+export type InstallationInfo = {
   name: string;
   pipeline: string;
   providers: string[];
+  baseDomain?: string;
 };
 
 export const useInstallations = (): {
@@ -33,6 +34,7 @@ export const useInstallations = (): {
       name: installation,
       pipeline: installationConfig.getString('pipeline'),
       providers: installationConfig.getOptionalStringArray('providers') ?? [],
+      baseDomain: installationConfig.getOptionalString('baseDomain'),
     };
   });
 

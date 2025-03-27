@@ -5,6 +5,7 @@ import { OIDCTokenProps } from './schema';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useApi } from '@backstage/core-plugin-api';
 import { gsKubernetesAuthProvidersApiRef } from '../../../apis/kubernetes-auth-providers';
+import { get } from 'lodash';
 
 type OIDCTokenFieldProps = {
   id?: string;
@@ -85,9 +86,10 @@ export const OIDCToken = ({
 
     if (installationNameFieldOption) {
       const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const installationNameFieldValue = allFormData[
-        installationNameFieldOption
-      ] as string;
+      const installationNameFieldValue = get(
+        allFormData,
+        installationNameFieldOption,
+      ) as string;
 
       return installationNameFieldValue;
     }

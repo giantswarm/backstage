@@ -4,6 +4,7 @@ import { OrganizationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
 import { GSContext } from '../../GSContext';
 import { useOrganizations } from '../../hooks/useOrganizations';
+import { get } from 'lodash';
 
 type OrganizationPickerFieldProps = {
   id?: string;
@@ -103,9 +104,10 @@ export const OrganizationPicker = ({
 
     if (installationNameFieldOption) {
       const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const installationNameFieldValue = allFormData[
-        installationNameFieldOption
-      ] as string;
+      const installationNameFieldValue = get(
+        allFormData,
+        installationNameFieldOption,
+      ) as string;
 
       return installationNameFieldValue;
     }

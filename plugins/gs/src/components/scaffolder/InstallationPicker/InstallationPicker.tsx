@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { useInstallations } from '../../hooks';
+import { useInstallations, InstallationInfo } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { InstallationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
@@ -15,7 +15,9 @@ type InstallationFieldProps = {
   allowedProviders: string[];
   allowedPipelines: string[];
   installationNameValue?: string;
-  onInstallationSelect: (selectedInstallation: string | undefined) => void;
+  onInstallationSelect: (
+    selectedInstallation: InstallationInfo | undefined,
+  ) => void;
 };
 
 const InstallationPickerField = ({
@@ -61,8 +63,14 @@ const InstallationPickerField = ({
   }, [installations, selectedInstallation]);
 
   useEffect(() => {
-    onInstallationSelect(selectedInstallation);
-  }, [onInstallationSelect, selectedInstallation]);
+    const selectedInstallationInfo = installationsInfo.find(
+      installation => installation.name === selectedInstallation,
+    );
+
+    if (selectedInstallationInfo) {
+      onInstallationSelect(selectedInstallationInfo);
+    }
+  }, [installationsInfo, onInstallationSelect, selectedInstallation]);
 
   const handleChange = (selectedItem: string) => {
     setSelectedInstallation(selectedItem);
@@ -96,7 +104,8 @@ export const InstallationPicker = ({
   idSchema,
   formContext,
 }: InstallationPickerProps) => {
-  const installationName = formData;
+  const { installationName } = formData ?? {};
+
   const {
     requestUserCredentials,
     allowedProviders: allowedProvidersOption,
@@ -128,8 +137,15 @@ export const InstallationPicker = ({
   ]);
 
   const handleInstallationSelect = useCallback(
-    (selectedInstallation: string | undefined) => {
-      onChange(selectedInstallation);
+    (selectedInstallation: InstallationInfo | undefined) => {
+      if (!selectedInstallation) {
+        return;
+      }
+
+      onChange({
+        installationName: selectedInstallation.name,
+        installationBaseDomain: selectedInstallation.baseDomain,
+      });
     },
     [onChange],
   );

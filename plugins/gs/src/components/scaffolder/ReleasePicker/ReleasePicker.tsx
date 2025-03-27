@@ -6,6 +6,7 @@ import { GSContext } from '../../GSContext';
 import { useReleases } from '../../hooks';
 import semver from 'semver';
 import { getReleaseVersion } from '@giantswarm/backstage-plugin-gs-common';
+import { get } from 'lodash';
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -103,9 +104,10 @@ export const ReleasePicker = ({
 
     if (installationNameFieldOption) {
       const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const installationNameFieldValue = allFormData[
-        installationNameFieldOption
-      ] as string;
+      const installationNameFieldValue = get(
+        allFormData,
+        installationNameFieldOption,
+      ) as string;
 
       return installationNameFieldValue;
     }

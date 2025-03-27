@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { makeFieldSchemaFromZod } from '@backstage/plugin-scaffolder';
 
 export const InstallationPickerFieldSchema = makeFieldSchemaFromZod(
-  z.string(),
+  z.object({
+    installationName: z.string(),
+    installationBaseDomain: z.string().optional(),
+  }),
   z.object({
     allowedPipelines: z
       .array(z.string())
