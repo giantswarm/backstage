@@ -30,6 +30,19 @@ import {
   DeploymentDetailsPicker,
   DeploymentDetailsPickerSchema,
 } from './components/scaffolder/DeploymentDetailsPicker';
+import { OIDCToken, OIDCTokenSchema } from './components/scaffolder/OIDCToken';
+import {
+  InstallationPicker,
+  InstallationPickerSchema,
+} from './components/scaffolder/InstallationPicker';
+import {
+  ReleasePicker,
+  ReleasePickerSchema,
+} from './components/scaffolder/ReleasePicker';
+import {
+  OrganizationPicker,
+  OrganizationPickerSchema,
+} from './components/scaffolder/OrganizationPicker';
 import {
   SecretStorePicker,
   SecretStorePickerSchema,
@@ -184,6 +197,38 @@ export const GSDeploymentDetailsPickerFieldExtension = gsPlugin.provide(
     name: 'GSDeploymentDetailsPicker',
     component: DeploymentDetailsPicker,
     schema: DeploymentDetailsPickerSchema,
+  }),
+);
+
+export const GSOIDCTokenFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSOIDCToken',
+    component: OIDCToken,
+    schema: OIDCTokenSchema,
+  }),
+);
+
+export const GSInstallationPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSInstallationPicker',
+    component: InstallationPicker,
+    schema: InstallationPickerSchema,
+  }),
+);
+
+export const GSReleasePickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSReleasePicker',
+    component: ReleasePicker,
+    schema: ReleasePickerSchema,
+  }),
+);
+
+export const GSOrganizationPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSOrganizationPicker',
+    component: OrganizationPicker,
+    schema: OrganizationPickerSchema,
   }),
 );
 

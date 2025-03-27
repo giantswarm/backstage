@@ -1,10 +1,11 @@
-import { Cluster } from '@giantswarm/backstage-plugin-gs-common';
+import { App, Cluster } from '@giantswarm/backstage-plugin-gs-common';
 import React, { createContext, ReactNode, useContext } from 'react';
 import { useClusterFromUrl } from './useClusterFromUrl';
 
 export type ClusterLoadingStatus = {
   installationName: string;
   cluster?: Cluster;
+  clusterApp?: App;
   loading: boolean;
   error: Error | null;
 };
@@ -12,6 +13,7 @@ export type ClusterLoadingStatus = {
 const ClusterContext = createContext<ClusterLoadingStatus>({
   installationName: '',
   cluster: undefined,
+  clusterApp: undefined,
   loading: false,
   error: null,
 });
@@ -28,8 +30,10 @@ export interface AsyncClusterProviderProps {
 export const AsyncClusterProvider = ({
   children,
 }: AsyncClusterProviderProps) => {
-  const { installationName, cluster, loading, error } = useClusterFromUrl();
-  const value = { installationName, cluster, loading, error };
+  const { installationName, cluster, clusterApp, loading, error } =
+    useClusterFromUrl();
+
+  const value = { installationName, cluster, clusterApp, loading, error };
 
   return (
     <ClusterContext.Provider value={value}>{children}</ClusterContext.Provider>
@@ -73,7 +77,7 @@ export function useAsyncCluster(): ClusterLoadingStatus {
     throw new Error('ClusterContext not available');
   }
 
-  const { installationName, cluster, loading, error } = value;
+  const { installationName, cluster, clusterApp, loading, error } = value;
 
-  return { installationName, cluster, loading, error };
+  return { installationName, cluster, clusterApp, loading, error };
 }

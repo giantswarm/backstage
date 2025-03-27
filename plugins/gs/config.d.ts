@@ -14,6 +14,7 @@ export interface Config {
     installations: {
       [installationName: string]: {
         pipeline: string;
+        providers?: string[];
         apiEndpoint: string;
         authProvider: string;
         oidcTokenProvider?: string;

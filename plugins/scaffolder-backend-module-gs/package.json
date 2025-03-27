@@ -25,12 +25,17 @@
   },
   "dependencies": {
     "@backstage/backend-plugin-api": "backstage:^",
+    "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
-    "@backstage/plugin-scaffolder-node": "backstage:^"
+    "@backstage/plugin-scaffolder-node": "backstage:^",
+    "@kubernetes/client-node": "^0.22.3",
+    "js-yaml": "^4.1.0",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
-    "@backstage/cli": "backstage:^"
+    "@backstage/cli": "backstage:^",
+    "@types/js-yaml": "^4"
   },
   "files": [
     "dist"
