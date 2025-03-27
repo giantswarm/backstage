@@ -1,9 +1,9 @@
 /**
  * This file was automatically generated, PLEASE DO NOT MODIFY IT BY HAND.
  */
-  
-  import * as metav1 from '../../metav1';
-  
+
+import * as metav1 from '../../metav1';
+
 /**
  * Release is a Kubernetes resource (CR) representing a Giant Swarm workload cluster release.
  */
@@ -99,7 +99,7 @@ export interface IRelease {
          * Version of the component.
          */
         version: string;
-      }[]
+      }[],
     ];
     /**
      * Date that the release became active.
