@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-scaffolder-backend-module-gs
 
+## 0.8.0
+
+### Minor Changes
+
+- 1aad32a: Handle cluster creation state.
+- 1aad32a: Added custom scaffolder action to apply manifest to a cluster.
+- 1aad32a: Added InstallationPicker, OrganizationPicker, ReleasePicker scaffolder fields.
+
 ## 0.7.0
 
 ### Minor Changes

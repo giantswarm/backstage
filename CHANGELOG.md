@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.58.0] - 2025-03-27
+
+In this release:
+
+- "InstallationPicker", "OrganizationPicker", "ReleasePicker" custom scaffolder fields were added;
+- custom scaffolder action that allows to apply manifests to a Kubernetes cluster was added.
+
+See [./docs/releases/v0.58.0-changelog.md](./docs/releases/v0.58.0-changelog.md) for more information.
+
 ## [0.57.2] - 2025-03-26
 
 See [./docs/releases/v0.57.2-changelog.md](./docs/releases/v0.57.2-changelog.md) for more information.
@@ -1021,7 +1030,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.57.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.58.0...HEAD
+[0.58.0]: https://github.com/giantswarm/backstage/compare/v0.57.2...v0.58.0
 [0.57.2]: https://github.com/giantswarm/backstage/compare/v0.57.1...v0.57.2
 [0.57.1]: https://github.com/giantswarm/backstage/compare/v0.57.0...v0.57.1
 [0.57.0]: https://github.com/giantswarm/backstage/compare/v0.56.3...v0.57.0
