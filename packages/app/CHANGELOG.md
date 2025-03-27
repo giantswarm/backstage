@@ -1,5 +1,20 @@
 # app
 
+## 0.11.0
+
+### Minor Changes
+
+- 1aad32a: Handle cluster creation state.
+- 1aad32a: Added custom scaffolder action to apply manifest to a cluster.
+- 1aad32a: Added InstallationPicker, OrganizationPicker, ReleasePicker scaffolder fields.
+
+### Patch Changes
+
+- Updated dependencies [1aad32a]
+- Updated dependencies [1aad32a]
+- Updated dependencies [1aad32a]
+  - @giantswarm/backstage-plugin-gs@0.19.0
+
 ## 0.10.0
 
 ### Minor Changes

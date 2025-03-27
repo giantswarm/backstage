@@ -1,5 +1,14 @@
 # backend
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [1aad32a]
+- Updated dependencies [1aad32a]
+- Updated dependencies [1aad32a]
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
