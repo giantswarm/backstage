@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.58.0] - 2025-03-27
 
+In this release:
+
+- "InstallationPicker", "OrganizationPicker", "ReleasePicker" custom scaffolder fields were added;
+- custom scaffolder action that allows to apply manifests to a Kubernetes cluster was added.
+
 See [./docs/releases/v0.58.0-changelog.md](./docs/releases/v0.58.0-changelog.md) for more information.
 
 ## [0.57.2] - 2025-03-26
