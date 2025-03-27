@@ -12,6 +12,7 @@ export {
   GSSecretStorePickerFieldExtension,
   GSTemplateStringInputFieldExtension,
   GSInstallationPickerFieldExtension,
+  GSReleasePickerFieldExtension,
   GSStepLayout,
 } from './plugin';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';

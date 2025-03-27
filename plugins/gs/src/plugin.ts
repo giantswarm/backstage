@@ -39,6 +39,10 @@ import {
   InstallationPickerSchema,
 } from './components/scaffolder/InstallationPicker';
 import {
+  ReleasePicker,
+  ReleasePickerSchema,
+} from './components/scaffolder/ReleasePicker';
+import {
   SecretStorePicker,
   SecretStorePickerSchema,
 } from './components/scaffolder/SecretStorePicker';
@@ -208,6 +212,14 @@ export const GSInstallationPickerFieldExtension = gsPlugin.provide(
     name: 'GSInstallationPicker',
     component: InstallationPicker,
     schema: InstallationPickerSchema,
+  }),
+);
+
+export const GSReleasePickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSReleasePicker',
+    component: ReleasePicker,
+    schema: ReleasePickerSchema,
   }),
 );
 

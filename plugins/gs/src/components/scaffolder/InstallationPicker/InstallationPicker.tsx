@@ -58,11 +58,11 @@ const InstallationPickerField = ({
     if (selectedInstallation && !installations.includes(selectedInstallation)) {
       setSelectedInstallation(installations[0]);
     }
-  }, [selectedInstallation, installations, onInstallationSelect]);
+  }, [installations, selectedInstallation]);
 
   useEffect(() => {
     onInstallationSelect(selectedInstallation);
-  }, [selectedInstallation, onInstallationSelect]);
+  }, [onInstallationSelect, selectedInstallation]);
 
   const handleChange = (selectedItem: string) => {
     setSelectedInstallation(selectedItem);

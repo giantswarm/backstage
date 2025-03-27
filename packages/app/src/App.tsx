@@ -50,6 +50,7 @@ import {
   GSDeploymentDetailsPickerFieldExtension,
   GSWorkloadClusterDetailsPickerFieldExtension,
   GSInstallationPickerFieldExtension,
+  GSReleasePickerFieldExtension,
   GSSecretStorePickerFieldExtension,
   gsAuthApiRef,
   GSDeploymentsPage,
@@ -149,6 +150,7 @@ const routes = (
         <GSSecretStorePickerFieldExtension />
         <GSTemplateStringInputFieldExtension />
         <GSInstallationPickerFieldExtension />
+        <GSReleasePickerFieldExtension />
       </ScaffolderFieldExtensions>
       <ScaffolderLayouts>
         <GSStepLayout />
