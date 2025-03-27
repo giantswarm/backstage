@@ -30,10 +30,7 @@ import {
   DeploymentDetailsPicker,
   DeploymentDetailsPickerSchema,
 } from './components/scaffolder/DeploymentDetailsPicker';
-import {
-  WorkloadClusterDetailsPicker,
-  WorkloadClusterDetailsPickerSchema,
-} from './components/scaffolder/WorkloadClusterDetailsPicker';
+import { OIDCToken, OIDCTokenSchema } from './components/scaffolder/OIDCToken';
 import {
   InstallationPicker,
   InstallationPickerSchema,
@@ -203,11 +200,11 @@ export const GSDeploymentDetailsPickerFieldExtension = gsPlugin.provide(
   }),
 );
 
-export const GSWorkloadClusterDetailsPickerFieldExtension = gsPlugin.provide(
+export const GSOIDCTokenFieldExtension = gsPlugin.provide(
   createScaffolderFieldExtension({
-    name: 'GSWorkloadClusterDetailsPicker',
-    component: WorkloadClusterDetailsPicker,
-    schema: WorkloadClusterDetailsPickerSchema,
+    name: 'GSOIDCToken',
+    component: OIDCToken,
+    schema: OIDCTokenSchema,
   }),
 );
 

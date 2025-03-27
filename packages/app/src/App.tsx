@@ -48,7 +48,7 @@ import {
   GSProviderSettings,
   GSStepLayout,
   GSDeploymentDetailsPickerFieldExtension,
-  GSWorkloadClusterDetailsPickerFieldExtension,
+  GSOIDCTokenFieldExtension,
   GSInstallationPickerFieldExtension,
   GSReleasePickerFieldExtension,
   GSOrganizationPickerFieldExtension,
@@ -147,7 +147,7 @@ const routes = (
       <ScaffolderFieldExtensions>
         <GSClusterPickerFieldExtension />
         <GSDeploymentDetailsPickerFieldExtension />
-        <GSWorkloadClusterDetailsPickerFieldExtension />
+        <GSOIDCTokenFieldExtension />
         <GSSecretStorePickerFieldExtension />
         <GSTemplateStringInputFieldExtension />
         <GSInstallationPickerFieldExtension />
