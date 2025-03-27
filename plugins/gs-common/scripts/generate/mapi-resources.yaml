@@ -134,6 +134,13 @@
       versions:
         - v1alpha1
 
+- group: giantswarm-release
+  resources:
+    - name: Release
+      crdURL: https://raw.githubusercontent.com/giantswarm/releases/refs/heads/master/sdk/config/crd/bases/release.giantswarm.io_releases.yaml
+      versions:
+        - v1alpha1
+
 - group: giantswarm-platform
   resources:
     - name: GitHubApp

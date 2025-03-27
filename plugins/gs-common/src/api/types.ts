@@ -7,6 +7,7 @@ import * as crossplaneAWS from '../model/crossplane-aws';
 import * as fluxcd from '../model/fluxcd';
 import * as giantswarmApplication from '../model/giantswarm-application';
 import * as giantswarmPlatform from '../model/giantswarm-platform';
+import * as giantswarmRelease from '../model/giantswarm-release';
 import * as giantswarmSecurity from '../model/giantswarm-security';
 import * as metav1 from '../model/metav1';
 import * as externalSecrets from '../model/external-secrets';
@@ -30,6 +31,8 @@ export type Kustomization = fluxcd.Kustomization;
 export type List<T> = metav1.IList<T>;
 
 export type Organization = giantswarmSecurity.Organization;
+
+export type Release = giantswarmRelease.Release;
 
 export type ProviderCluster =
   | capa.AWSCluster

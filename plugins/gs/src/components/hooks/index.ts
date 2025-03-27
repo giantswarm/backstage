@@ -10,6 +10,7 @@ export * from './useHelmReleases';
 export * from './useInstallations';
 export * from './useK8sVersionEOLDate';
 export * from './useProviderConfigs';
+export * from './useReleases';
 export * from './useResource';
 export * from './useResourceRequests';
 export * from './useResourceRequestStatusDetails';
