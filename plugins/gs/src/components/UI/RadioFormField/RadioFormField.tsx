@@ -16,6 +16,7 @@ type RadioFormFieldProps = {
   disabled?: boolean;
   error?: boolean;
   items: string[];
+  itemLabels?: string[];
   selectedItem: string;
   renderValue?: (value: string) => React.ReactNode;
   onChange?: (selectedItem: string) => void;
@@ -28,6 +29,7 @@ export const RadioFormField = ({
   disabled,
   error,
   items,
+  itemLabels,
   helperText,
   selectedItem,
   onChange,
@@ -57,12 +59,12 @@ export const RadioFormField = ({
         value={selectedItem}
         onChange={handleChange}
       >
-        {items.map(item => (
+        {items.map((item, index) => (
           <FormControlLabel
             key={item}
             value={item}
             control={<Radio color="primary" />}
-            label={item}
+            label={itemLabels && itemLabels[index] ? itemLabels[index] : item}
           />
         ))}
       </RadioGroup>
