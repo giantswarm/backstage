@@ -20,6 +20,7 @@ export interface Config {
         oidcTokenProvider?: string;
         grafanaUrl?: string;
         baseDomain?: string;
+        region?: string;
         apiVersionOverrides?: {
           [pluralKind: string]: string;
         };
