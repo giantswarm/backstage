@@ -31,10 +31,10 @@ const InstallationPickerField = ({
   installationNameValue,
   onInstallationSelect,
 }: InstallationFieldProps) => {
-  const installationLabels = [];
   const { installationsInfo } = useInstallations();
-  const installations = useMemo(() => {
+  const { installations, installationLabels } = useMemo(() => {
     let filteredInstallations = installationsInfo;
+    const labels: string[] = [];
 
     // Filter by provider
     if (allowedProviders.length > 0) {
@@ -53,7 +53,7 @@ const InstallationPickerField = ({
     }
 
     filteredInstallations.forEach((installation, idx) => {
-      installationLabels[idx] = installation.name;
+      labels[idx] = installation.name;
       if (installation.region || installation.pipeline) {
         const info = [];
         if (installation.region) {
@@ -62,11 +62,16 @@ const InstallationPickerField = ({
         if (installation.pipeline) {
           info.push(`pipeline ${installation.pipeline}`);
         }
-        installationLabels[idx] += ` (${info.join(', ')})`;
+        labels[idx] += ` (${info.join(', ')})`;
       }
     });
 
-    return filteredInstallations.map(installation => installation.name);
+    return {
+      installations: filteredInstallations.map(
+        installation => installation.name,
+      ),
+      installationLabels: labels,
+    };
   }, [allowedProviders, allowedPipelines, installationsInfo]);
 
   const [selectedInstallation, setSelectedInstallation] = React.useState<
