@@ -7,6 +7,7 @@ export type InstallationInfo = {
   pipeline: string;
   providers: string[];
   baseDomain?: string;
+  region?: string;
 };
 
 export const useInstallations = (): {
@@ -35,6 +36,7 @@ export const useInstallations = (): {
       pipeline: installationConfig.getString('pipeline'),
       providers: installationConfig.getOptionalStringArray('providers') ?? [],
       baseDomain: installationConfig.getOptionalString('baseDomain'),
+      region: installationConfig.getOptionalString('region'),
     };
   });
 

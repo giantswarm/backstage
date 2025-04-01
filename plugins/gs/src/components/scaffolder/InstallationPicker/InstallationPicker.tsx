@@ -32,9 +32,11 @@ const InstallationPickerField = ({
   onInstallationSelect,
 }: InstallationFieldProps) => {
   const { installationsInfo } = useInstallations();
-  const installations = useMemo(() => {
+  const { installations, installationLabels } = useMemo(() => {
     let filteredInstallations = installationsInfo;
+    const labels: string[] = [];
 
+    // Filter by provider
     if (allowedProviders.length > 0) {
       filteredInstallations = filteredInstallations.filter(installation => {
         return allowedProviders.some(provider =>
@@ -43,13 +45,33 @@ const InstallationPickerField = ({
       });
     }
 
+    // Filter by pipeline
     if (allowedPipelines.length > 0) {
       filteredInstallations = filteredInstallations.filter(installation => {
         return allowedPipelines.includes(installation.pipeline);
       });
     }
 
-    return filteredInstallations.map(installation => installation.name);
+    filteredInstallations.forEach((installation, idx) => {
+      labels[idx] = installation.name;
+      if (installation.region || installation.pipeline) {
+        const info = [];
+        if (installation.region) {
+          info.push(`region ${installation.region}`);
+        }
+        if (installation.pipeline) {
+          info.push(`pipeline ${installation.pipeline}`);
+        }
+        labels[idx] += ` (${info.join(', ')})`;
+      }
+    });
+
+    return {
+      installations: filteredInstallations.map(
+        installation => installation.name,
+      ),
+      installationLabels: labels,
+    };
   }, [allowedProviders, allowedPipelines, installationsInfo]);
 
   const [selectedInstallation, setSelectedInstallation] = React.useState<
@@ -86,6 +108,7 @@ const InstallationPickerField = ({
           required={required}
           error={error}
           items={installations}
+          itemLabels={installationLabels}
           selectedItem={selectedInstallation ?? ''}
           onChange={handleChange}
         />
