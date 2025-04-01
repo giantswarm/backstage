@@ -31,10 +31,12 @@ const InstallationPickerField = ({
   installationNameValue,
   onInstallationSelect,
 }: InstallationFieldProps) => {
+  const installationLabels = [];
   const { installationsInfo } = useInstallations();
   const installations = useMemo(() => {
     let filteredInstallations = installationsInfo;
 
+    // Filter by provider
     if (allowedProviders.length > 0) {
       filteredInstallations = filteredInstallations.filter(installation => {
         return allowedProviders.some(provider =>
@@ -43,11 +45,26 @@ const InstallationPickerField = ({
       });
     }
 
+    // Filter by pipeline
     if (allowedPipelines.length > 0) {
       filteredInstallations = filteredInstallations.filter(installation => {
         return allowedPipelines.includes(installation.pipeline);
       });
     }
+
+    filteredInstallations.forEach((installation, idx) => {
+      installationLabels[idx] = installation.name;
+      if (installation.region || installation.pipeline) {
+        const info = [];
+        if (installation.region) {
+          info.push(`region ${installation.region}`);
+        }
+        if (installation.pipeline) {
+          info.push(`pipeline ${installation.pipeline}`);
+        }
+        installationLabels[idx] += ` (${info.join(', ')})`;
+      }
+    });
 
     return filteredInstallations.map(installation => installation.name);
   }, [allowedProviders, allowedPipelines, installationsInfo]);
@@ -86,6 +103,7 @@ const InstallationPickerField = ({
           required={required}
           error={error}
           items={installations}
+          itemLabels={installationLabels}
           selectedItem={selectedInstallation ?? ''}
           onChange={handleChange}
         />
