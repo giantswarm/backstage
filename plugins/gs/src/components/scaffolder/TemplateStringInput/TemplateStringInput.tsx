@@ -1,9 +1,12 @@
 import React, { useEffect } from 'react';
 import { TextField } from '@material-ui/core';
 import { TemplateStringInputProps } from './schema';
-import { formatTemplateString } from '../../utils/formatTemplateString';
+import { useTemplateString } from '../../hooks/useTemplateString';
 
 export const TemplateStringInput = (props: TemplateStringInputProps) => {
+  const [initialValue, setInitialValue] = React.useState<string | undefined>(
+    undefined,
+  );
   const {
     onChange,
     required,
@@ -19,18 +22,15 @@ export const TemplateStringInput = (props: TemplateStringInputProps) => {
   const autoFocus = uiSchema['ui:autofocus'];
   const initialValueTemplate = uiSchema['ui:options']?.initialValue ?? '';
 
+  const allFormData = (formContext.formData as Record<string, any>) ?? {};
+  const templatedValue = useTemplateString(initialValueTemplate, allFormData);
+
   useEffect(() => {
-    if (formData) {
-      return;
+    if (!formData && !initialValue && templatedValue) {
+      setInitialValue(templatedValue);
+      onChange(templatedValue);
     }
-
-    const initialValue = formatTemplateString(
-      initialValueTemplate,
-      (formContext.formData as Record<string, any>) ?? {},
-    );
-
-    onChange(initialValue);
-  }, [formContext.formData, formData, initialValueTemplate, onChange]);
+  }, [formData, initialValue, templatedValue, onChange]);
 
   return (
     <TextField
@@ -41,9 +41,9 @@ export const TemplateStringInput = (props: TemplateStringInputProps) => {
       required={required}
       value={formData}
       onChange={({ target: { value } }) => onChange(value)}
-      margin="normal"
       error={rawErrors?.length > 0 && !formData}
       inputProps={{ autoFocus }}
+      InputLabelProps={{ shrink: true }}
     />
   );
 };

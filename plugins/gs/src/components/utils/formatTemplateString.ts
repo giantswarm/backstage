@@ -1,9 +1,23 @@
 import { get } from 'lodash';
 import { generateUID } from '../utils/generateUID';
 
+const CURRENT_USER_PLACEHOLDER_REGEXP = /\${{currentUser\(\)}}/;
 const GENERATE_UID_PLACEHOLDER_REGEXP =
   /\${{generateUID\((?<length>[1-9]\d*)\)}}/;
 const DATA_VALUE_PLACEHOLDER_REGEXP = /\${{(?<parameter>[\w\.]+)}}/;
+
+function replaceCurrentUserPlaceholder(
+  template: string,
+  placeholder: string,
+  currentUser: string,
+) {
+  const match = template.match(CURRENT_USER_PLACEHOLDER_REGEXP);
+  if (!match) {
+    return template;
+  }
+
+  return template.replace(placeholder, currentUser);
+}
 
 function replaceGenerateUIDPlaceholder(template: string, placeholder: string) {
   const match = template.match(GENERATE_UID_PLACEHOLDER_REGEXP);
@@ -36,14 +50,19 @@ function replaceDataValuePlaceholder(
   return template.replace(placeholder, value);
 }
 
-export function formatTemplateString(
-  template: string,
-  data?: Record<string, any>,
-) {
+type Options = {
+  data?: Record<string, any>;
+  currentUser?: string;
+};
+
+export function formatTemplateString(template: string, options: Options = {}) {
+  const { data, currentUser } = options;
+
   let newTemplate = template;
 
   const placeholderRegexp = new RegExp(
     [
+      CURRENT_USER_PLACEHOLDER_REGEXP.source,
       GENERATE_UID_PLACEHOLDER_REGEXP.source,
       DATA_VALUE_PLACEHOLDER_REGEXP.source,
     ].join('|'),
@@ -51,6 +70,14 @@ export function formatTemplateString(
   );
   for (const placeholderMatch of template.matchAll(placeholderRegexp)) {
     const placeholder = placeholderMatch[0];
+
+    if (CURRENT_USER_PLACEHOLDER_REGEXP.test(placeholder)) {
+      newTemplate = replaceCurrentUserPlaceholder(
+        newTemplate,
+        placeholder,
+        currentUser ?? '',
+      );
+    }
 
     if (GENERATE_UID_PLACEHOLDER_REGEXP.test(placeholder)) {
       newTemplate = replaceGenerateUIDPlaceholder(newTemplate, placeholder);

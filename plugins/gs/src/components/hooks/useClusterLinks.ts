@@ -103,8 +103,10 @@ export const useGitOpsSourceLink = ({
 
     if (matchResult && matchResult.groups) {
       const formattedUrl = formatTemplateString(targetUrl, {
-        ...data,
-        ...matchResult.groups,
+        data: {
+          ...data,
+          ...matchResult.groups,
+        },
       });
 
       return new URL(formattedUrl).toString();
