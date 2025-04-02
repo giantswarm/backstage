@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { Grid } from '@material-ui/core';
+import { Box, Grid, Typography } from '@material-ui/core';
 import { ReleasePickerProps } from './schema';
-import { RadioFormField } from '../../UI/RadioFormField';
 import { GSContext } from '../../GSContext';
 import { useReleases } from '../../hooks';
 import semver from 'semver';
 import { getReleaseVersion } from '@giantswarm/backstage-plugin-gs-common';
 import { get } from 'lodash';
+import { SelectFormField } from '../../UI/SelectFormField';
+import { ErrorsProvider, useErrors } from '../../Errors';
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -29,18 +30,28 @@ const ReleasePickerField = ({
   installationName,
   onReleaseSelect,
 }: ReleasePickerFieldProps) => {
-  const { resources: releaseResources, isLoading: isLoadingReleases } =
-    useReleases([installationName]);
+  const { showError } = useErrors();
+  const { resources, isLoading, errors, retry } = useReleases([
+    installationName,
+  ]);
+  const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
+
+  useEffect(() => {
+    if (!loadingError) return;
+
+    showError(loadingError, { message: 'Failed to load releases', retry });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingError]);
 
   const releases = useMemo(() => {
-    if (isLoadingReleases) {
+    if (isLoading) {
       return [];
     }
 
-    return releaseResources
+    return resources
       .map(release => getReleaseVersion(release))
       .sort(semver.rcompare);
-  }, [isLoadingReleases, releaseResources]);
+  }, [isLoading, resources]);
 
   const [selectedRelease, setSelectedRelease] = React.useState<
     string | undefined
@@ -49,11 +60,11 @@ const ReleasePickerField = ({
   useEffect(() => {
     if (
       !selectedRelease ||
-      (selectedRelease && !releases.includes(selectedRelease))
+      (!isLoading && selectedRelease && !releases.includes(selectedRelease))
     ) {
       setSelectedRelease(releases[0]);
     }
-  }, [releases, selectedRelease]);
+  }, [isLoading, releases, selectedRelease]);
 
   useEffect(() => {
     onReleaseSelect(selectedRelease);
@@ -66,16 +77,24 @@ const ReleasePickerField = ({
   return (
     <Grid container spacing={3} direction="column">
       <Grid item>
-        <RadioFormField
-          id={id}
-          label={label}
-          helperText={helperText}
-          required={required}
-          error={error}
-          items={releases}
-          selectedItem={selectedRelease ?? ''}
-          onChange={handleChange}
-        />
+        {isLoading ? (
+          <Box mt={2}>
+            <Typography variant="body1" color="textSecondary">
+              Loading releases...
+            </Typography>
+          </Box>
+        ) : (
+          <SelectFormField
+            id={id}
+            label={label}
+            helperText={helperText}
+            required={required}
+            error={error}
+            items={releases}
+            selectedItem={selectedRelease ?? ''}
+            onChange={handleChange}
+          />
+        )}
       </Grid>
     </Grid>
   );
@@ -128,16 +147,18 @@ export const ReleasePicker = ({
 
   return (
     <GSContext>
-      <ReleasePickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        releaseValue={releaseValue}
-        installationName={installationName ?? ''}
-        onReleaseSelect={handleReleaseSelect}
-      />
+      <ErrorsProvider>
+        <ReleasePickerField
+          id={idSchema?.$id}
+          label={title}
+          helperText={description}
+          required={required}
+          error={rawErrors?.length > 0 && !formData}
+          releaseValue={releaseValue}
+          installationName={installationName ?? ''}
+          onReleaseSelect={handleReleaseSelect}
+        />
+      </ErrorsProvider>
     </GSContext>
   );
 };

@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { Grid } from '@material-ui/core';
+import { Box, Grid, Typography } from '@material-ui/core';
 import { OrganizationPickerProps } from './schema';
-import { RadioFormField } from '../../UI/RadioFormField';
 import { GSContext } from '../../GSContext';
 import { useOrganizations } from '../../hooks/useOrganizations';
 import { get } from 'lodash';
+import { SelectFormField } from '../../UI/SelectFormField';
+import { ErrorsProvider, useErrors } from '../../Errors';
 
 type OrganizationPickerFieldProps = {
   id?: string;
@@ -27,33 +28,41 @@ const OrganizationPickerField = ({
   installationName,
   onOrganizationSelect,
 }: OrganizationPickerFieldProps) => {
-  const {
-    resources: organizationResources,
-    isLoading: isLoadingOrganizations,
-  } = useOrganizations([installationName]);
+  const { showError } = useErrors();
+  const { resources, isLoading, errors, retry } = useOrganizations([
+    installationName,
+  ]);
+  const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
+
+  useEffect(() => {
+    if (!loadingError) return;
+
+    showError(loadingError, { message: 'Failed to load releases', retry });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingError]);
 
   const organizations = useMemo(() => {
-    if (isLoadingOrganizations) {
+    if (isLoading) {
       return [];
     }
 
-    return organizationResources
-      .map(organization => organization.metadata.name)
-      .sort();
-  }, [isLoadingOrganizations, organizationResources]);
+    return resources.map(organization => organization.metadata.name).sort();
+  }, [isLoading, resources]);
 
   const [selectedOrganization, setSelectedOrganization] = React.useState<
     string | undefined
-  >(organizationValue ?? organizations[0]);
+  >(organizationValue);
 
   useEffect(() => {
     if (
       !selectedOrganization ||
-      (selectedOrganization && !organizations.includes(selectedOrganization))
+      (selectedOrganization &&
+        !isLoading &&
+        !organizations.includes(selectedOrganization))
     ) {
-      setSelectedOrganization(organizations[0]);
+      setSelectedOrganization(undefined);
     }
-  }, [organizations, selectedOrganization]);
+  }, [isLoading, organizations, selectedOrganization]);
 
   useEffect(() => {
     onOrganizationSelect(selectedOrganization);
@@ -66,16 +75,24 @@ const OrganizationPickerField = ({
   return (
     <Grid container spacing={3} direction="column">
       <Grid item>
-        <RadioFormField
-          id={id}
-          label={label}
-          helperText={helperText}
-          required={required}
-          error={error}
-          items={organizations}
-          selectedItem={selectedOrganization ?? ''}
-          onChange={handleChange}
-        />
+        {isLoading ? (
+          <Box mt={2}>
+            <Typography variant="body1" color="textSecondary">
+              Loading organizations...
+            </Typography>
+          </Box>
+        ) : (
+          <SelectFormField
+            id={id}
+            label={label}
+            helperText={helperText}
+            required={required}
+            error={error}
+            items={organizations}
+            selectedItem={selectedOrganization ?? ''}
+            onChange={handleChange}
+          />
+        )}
       </Grid>
     </Grid>
   );
@@ -128,16 +145,18 @@ export const OrganizationPicker = ({
 
   return (
     <GSContext>
-      <OrganizationPickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        organizationValue={organizationValue}
-        installationName={installationName ?? ''}
-        onOrganizationSelect={handleOrganizationSelect}
-      />
+      <ErrorsProvider>
+        <OrganizationPickerField
+          id={idSchema?.$id}
+          label={title}
+          helperText={description}
+          required={required}
+          error={rawErrors?.length > 0 && !formData}
+          organizationValue={organizationValue}
+          installationName={installationName ?? ''}
+          onOrganizationSelect={handleOrganizationSelect}
+        />
+      </ErrorsProvider>
     </GSContext>
   );
 };
