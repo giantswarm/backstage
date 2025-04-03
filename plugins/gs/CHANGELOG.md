@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.20.0
+
+### Minor Changes
+
+- 8e45f1b: Added developer portal roadmap link to homepage
+- 6c9ae8d: Installations picker now shows region and pipeline info
+
+### Patch Changes
+
+- d95c4ea: Allowed to template current user name in TemplateStringInput scaffolder field.
+- d95c4ea: Improved loading and error states for OrganizationPicker and ReleasePicker scaffolder fields.
+
 ## 0.19.0
 
 ### Minor Changes
