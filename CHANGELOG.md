@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.59.0] - 2025-04-03
+
+In this release:
+
+- developer portal roadmap link was added to home page;
+- configurable Slack support channel link was added to home page;
+- "loading" and "error" states were added to the OrganizationPicker and ReleasePicker scaffolder fields;
+- region and pipeline information was added to the Installations picker;
+- ability to use current user name in the TemplateStringInput scaffolder field was added.
+
+See [./docs/releases/v0.59.0-changelog.md](./docs/releases/v0.59.0-changelog.md) for more information.
+
 ## [0.58.0] - 2025-03-27
 
 In this release:
@@ -1030,7 +1042,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.58.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.59.0...HEAD
+[0.59.0]: https://github.com/giantswarm/backstage/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/giantswarm/backstage/compare/v0.57.2...v0.58.0
 [0.57.2]: https://github.com/giantswarm/backstage/compare/v0.57.1...v0.57.2
 [0.57.1]: https://github.com/giantswarm/backstage/compare/v0.57.0...v0.57.1
