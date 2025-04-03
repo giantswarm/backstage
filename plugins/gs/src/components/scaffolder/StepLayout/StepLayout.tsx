@@ -33,7 +33,7 @@ export const StepLayout: LayoutTemplate = ({
 
       <Grid container spacing={3} direction="column">
         {properties.map(element => (
-          <Grid key={element.content.key} item>
+          <Grid key={element.content.key} item xs={12}>
             {element.content}
           </Grid>
         ))}
