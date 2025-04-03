@@ -12,6 +12,17 @@ jest.mock('./generateUID', () => {
 });
 
 describe('formatTemplateString', () => {
+  it('replaces currentUser placeholders', () => {
+    expect(
+      formatTemplateString(
+        'test-${{currentUser()}}-test-${{currentUser()}}-test',
+        {
+          currentUser: 'John Doe',
+        },
+      ),
+    ).toEqual('test-John Doe-test-John Doe-test');
+  });
+
   it('replaces generateUID placeholders', () => {
     jest
       .mocked(generateUID)
@@ -34,7 +45,7 @@ describe('formatTemplateString', () => {
   });
 
   it('replaces form data values placeholders', () => {
-    const formData = {
+    const data = {
       name: 'TEST_NAME',
       description: 'TEST_DESCRIPTION',
       deployment: {
@@ -45,7 +56,7 @@ describe('formatTemplateString', () => {
     expect(
       formatTemplateString(
         'test-${{name}}-test-${{description}}-test-${{deployment.clusterName}}',
-        formData,
+        { data },
       ),
     ).toEqual('test-TEST_NAME-test-TEST_DESCRIPTION-test-TEST_CLUSTER_NAME');
   });

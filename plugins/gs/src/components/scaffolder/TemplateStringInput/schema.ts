@@ -9,7 +9,7 @@ export const TemplateStringInputFieldSchema = makeFieldSchemaFromZod(
       .optional()
       .default('')
       .describe(
-        'Template string for the initial value. Placeholder can be a function e.g. admin-${{generateUID(5)}}, or a field name, e.g. ${{name}}, ${{description}}, etc.',
+        'Template string for the initial value. Placeholder can be a function e.g. "admin-${{generateUID(5)}}", "created by ${{currentUser()}}", or other field name, e.g. "${{name}}", "${{description}}", etc.',
       ),
   }),
 );

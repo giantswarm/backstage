@@ -2,7 +2,7 @@ import React from 'react';
 import { MarkdownContent } from '@backstage/core-components';
 import { LayoutTemplate } from '@backstage/plugin-scaffolder-react';
 import { Box, Grid, Typography } from '@material-ui/core';
-import { formatTemplateString } from '../../utils/formatTemplateString';
+import { useTemplateString } from '../../hooks';
 
 export const StepLayout: LayoutTemplate = ({
   properties,
@@ -11,10 +11,8 @@ export const StepLayout: LayoutTemplate = ({
   uiSchema,
 }) => {
   const noteTemplate = (uiSchema?.['ui:options']?.note as string) ?? '';
-  const note = formatTemplateString(
-    noteTemplate,
-    (formContext.formData as Record<string, any>) ?? {},
-  );
+  const allFormData = (formContext.formData as Record<string, any>) ?? {};
+  const note = useTemplateString(noteTemplate, allFormData);
 
   const formWidth = uiSchema?.['ui:options']?.formWidth;
 
@@ -35,7 +33,7 @@ export const StepLayout: LayoutTemplate = ({
 
       <Grid container spacing={3} direction="column">
         {properties.map(element => (
-          <Grid key={element.content.key} item>
+          <Grid key={element.content.key} item xs={12}>
             {element.content}
           </Grid>
         ))}

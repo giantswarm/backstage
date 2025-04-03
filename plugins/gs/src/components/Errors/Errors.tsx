@@ -25,9 +25,6 @@ const useStyles = makeStyles(theme => ({
   stronger: {
     fontWeight: 500,
   },
-  fullWidth: {
-    width: '100%',
-  },
   details: {
     width: '100%',
     display: 'block',
@@ -141,7 +138,7 @@ export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Box display="flex" alignItems="center">
           <StyledErrorOutlineIcon />
-          <Typography variant="subtitle1" className={classes.stronger}>
+          <Typography variant="subtitle2" className={classes.stronger}>
             Something went wrong
           </Typography>
         </Box>
@@ -159,10 +156,10 @@ export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
             const showRetry = errorsWithRetry.length > 0;
 
             return (
-              <Grid item key={groupId} className={classes.fullWidth}>
+              <Grid item key={groupId} xs={12}>
                 <Box>
                   <Typography
-                    variant="subtitle1"
+                    variant="subtitle2"
                     component="p"
                     className={classes.stronger}
                   >
