@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Card, CardContent, Typography } from '@material-ui/core';
 import GitHubIcon from '@material-ui/icons/GitHub';
+import LiveHelpIcon from '@material-ui/icons/LiveHelp';
 import MenuBookIcon from '@material-ui/icons/MenuBook';
 import { Toolkit } from '../../UI';
 import { BackstageIcon } from '../../../assets/icons/CustomIcons';
+import { useApi, configApiRef } from '@backstage/core-plugin-api';
 
+/**
+ * Links defined for everyone
+ */
 const resources = [
   {
     url: 'https://docs.giantswarm.io',
@@ -53,10 +58,41 @@ const resources = [
 ];
 
 export function ResourcesCard() {
+  const configApi = useApi(configApiRef);
+  const supportConfig = configApi.getOptionalConfig('gs.support');
+
+  // Add Slack support channel link if configured
+  const combinedResources = useMemo(() => {
+    if (!supportConfig) {
+      return resources;
+    }
+
+    const slackChannelConfig = supportConfig.getOptionalConfig('slackChannel');
+    if (!slackChannelConfig) {
+      return resources;
+    }
+
+    const channelUrl = slackChannelConfig.getString('url');
+    return [
+      ...resources,
+      {
+        url: channelUrl,
+        label: (
+          <>
+            <Typography variant="inherit">Giant Swarm</Typography>
+            <br />
+            <Typography variant="inherit">Support</Typography>
+          </>
+        ),
+        icon: <LiveHelpIcon />,
+      },
+    ];
+  }, [supportConfig]);
+
   return (
     <Card>
       <CardContent>
-        <Toolkit tools={resources} />
+        <Toolkit tools={combinedResources} />
       </CardContent>
     </Card>
   );
