@@ -76,6 +76,11 @@ const ConditionCard = ({
     setExpanded(!expanded);
   };
 
+  let conditionHeadline = condition.type;
+  if (condition.status === 'False') {
+    conditionHeadline = `Not ${condition.type.toLowerCase()}`;
+  }
+
   return (
     <Card>
       <CardHeader
@@ -91,7 +96,7 @@ const ConditionCard = ({
               ) : (
                 <StyledCancelOutlinedIcon />
               ))}
-            <Heading level="h3">{condition.type}</Heading>
+            <Heading level="h3">{conditionHeadline}</Heading>
           </Box>
         }
         titleTypographyProps={{ variant: undefined }}
