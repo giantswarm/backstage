@@ -42,6 +42,13 @@ export interface Config {
     };
     /** @visibility frontend */
     adminGroups?: string[];
+
+    /** @deepVisibility frontend */
+    support?: {
+      slackChannel?: {
+        url: string;
+      };
+    };
   };
 
   auth?: {
