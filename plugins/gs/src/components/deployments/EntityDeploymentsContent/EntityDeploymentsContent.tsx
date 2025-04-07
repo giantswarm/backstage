@@ -48,7 +48,6 @@ export const EntityDeploymentsContent = () => {
         </InstallationsWrapper>
         <DetailsPane
           paneId={DEPLOYMENT_DETAILS_PANE_ID}
-          title="Deployment details"
           render={({ kind, installationName, name, namespace }) => (
             <>
               {kind === 'app' && (

@@ -66,7 +66,7 @@ const DrawerContent = ({
 
 type DetailsPaneProps = {
   paneId: string;
-  title: string;
+  title?: string;
   render: (props: {
     kind: string;
     installationName: string;
@@ -98,7 +98,7 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
       open={isOpen}
       onClose={handleClose}
     >
-      <DrawerContent title={title} onClose={handleClose}>
+      <DrawerContent title={title ?? name} onClose={handleClose}>
         {render({ kind, installationName, name, namespace })}
       </DrawerContent>
     </Drawer>
