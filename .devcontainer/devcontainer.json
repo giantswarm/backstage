@@ -1,7 +1,7 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/typescript-node
 {
-  "name": "Node.js & TypeScript",
+  "name": "Backstage",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
 
   // Features to add to the dev container. More info: https://containers.dev/features.
@@ -34,15 +34,29 @@
     "7007": { "label": "Backend", "onAutoForward": "ignore" }
   },
 
-  "postCreateCommand": "yarn config set --home enableTelemetry 0; yarn install",
+  // Install pangocairo, which is required by tests, specifically by the canvas package.
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libpango1.0-dev; yarn config set --home enableTelemetry 0;",
+
+  "postStartCommand": "yarn install",
 
   "customizations": {
     "vscode": {
-      "extensions": ["esbenp.prettier-vscode"],
+      "extensions": ["esbenp.prettier-vscode", "orta.vscode-jest"],
       "settings": {
         "files.eol": "\n",
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
-        "editor.formatOnSave": true
+        "editor": {
+          "defaultFormatter": "esbenp.prettier-vscode",
+          "formatOnSave": true
+        },
+        "testing.openTesting": "neverOpen",
+        "jest": {
+          "jestCommandLine": "yarn test",
+          "runMode": {
+            "type": "on-save",
+            "testFileOnly": true,
+            "coverage": true
+          }
+        }
       }
     }
   }
