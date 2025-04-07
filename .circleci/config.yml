@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  architect: giantswarm/architect@5.11.6
+  architect: giantswarm/architect@5.12.1
 
 job_filters: &job_filters
   filters:
