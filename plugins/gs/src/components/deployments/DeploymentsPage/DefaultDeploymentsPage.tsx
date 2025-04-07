@@ -58,7 +58,6 @@ export function DefaultDeploymentsPage(props: DefaultDeploymentsPageProps) {
           <DeploymentsTable baseRouteRef={deploymentsRouteRef} />
           <DetailsPane
             paneId={DEPLOYMENT_DETAILS_PANE_ID}
-            title="Deployment details"
             render={({ kind, installationName, name, namespace }) => (
               <>
                 {kind === 'app' && (
