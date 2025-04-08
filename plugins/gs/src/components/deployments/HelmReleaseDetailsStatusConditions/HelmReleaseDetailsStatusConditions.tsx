@@ -9,6 +9,7 @@ import {
   Grid,
   IconButton,
   Paper,
+  Typography,
   makeStyles,
   styled,
 } from '@material-ui/core';
@@ -17,7 +18,7 @@ import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
 import { compareDates } from '../../utils/helpers';
-import { DateComponent, Heading, StructuredMetadataList } from '../../UI';
+import { DateComponent, Heading, ScrollContainer } from '../../UI';
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,
@@ -125,12 +126,26 @@ const ConditionCard = ({
       />
       <Collapse in={expanded} timeout="auto" unmountOnExit>
         <CardContent className={classes.content}>
-          <StructuredMetadataList
-            metadata={{
-              Reason: condition.reason,
-              Message: condition.message,
-            }}
-          />
+          <Grid container>
+            <Grid item xs={12}>
+              <Box>
+                <Typography variant="subtitle2">Reason:</Typography>
+                <Typography variant="body2" component="pre">
+                  {condition.reason}
+                </Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={12}>
+              <Box>
+                <Typography variant="subtitle2">Message:</Typography>
+                <ScrollContainer>
+                  <Typography variant="body2" component="pre">
+                    <code>{condition.message}</code>
+                  </Typography>
+                </ScrollContainer>
+              </Box>
+            </Grid>
+          </Grid>
         </CardContent>
       </Collapse>
     </Card>
@@ -161,7 +176,7 @@ export const HelmReleaseDetailsStatusConditions = ({
   return (
     <Grid container direction="column">
       {conditions.map((condition, idx) => (
-        <Grid item key={condition.type}>
+        <Grid item xs={12} key={condition.type}>
           <ConditionCard
             condition={condition}
             defaultState={

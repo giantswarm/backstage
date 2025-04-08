@@ -16,6 +16,7 @@ export { KubernetesVersion } from './KubernetesVersion';
 export * from './MultiplePicker';
 export { MultipleSelect } from './MultipleSelect';
 export { NotAvailable } from './NotAvailable';
+export { ScrollContainer } from './ScrollContainer';
 export { SimpleAccordion } from './SimpleAccordion';
 export { StructuredMetadataList } from './StructuredMetadataList';
 export { Toolkit } from './Toolkit';
