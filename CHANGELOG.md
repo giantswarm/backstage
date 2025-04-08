@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.60.0] - 2025-04-08
 
+In this release:
+
+- when no installations are selected, all are being fetched;
+- several UI improvements were introduced;
+
 See [./docs/releases/v0.60.0-changelog.md](./docs/releases/v0.60.0-changelog.md) for more information.
 
 ## [0.59.0] - 2025-04-03
