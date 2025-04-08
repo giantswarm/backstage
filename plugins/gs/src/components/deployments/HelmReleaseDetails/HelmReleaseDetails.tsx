@@ -163,7 +163,7 @@ export const HelmReleaseDetails = ({
           sourceLocation={sourceLocation}
         />
 
-        <Grid item>
+        <Grid item xs={12}>
           <HelmReleaseDetailsStatusConditions helmrelease={helmrelease} />
         </Grid>
 
