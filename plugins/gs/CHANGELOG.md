@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.21.0
+
+### Minor Changes
+
+- 2e4b66f: Display HelmRelease deployment conditions with keyword "Not" if status is "False"
+- e8062d0: Show resource name as title of the deployment details pane
+
+### Patch Changes
+
+- 1731002: Changed K8s API fetching to use all installations when none is selected.
+- c43b45a: Improved how error messages are displayed in HelmRelease details panel.
+
 ## 0.20.0
 
 ### Minor Changes
