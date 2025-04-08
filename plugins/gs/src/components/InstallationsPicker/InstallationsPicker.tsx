@@ -24,9 +24,7 @@ export const InstallationsPicker = ({
     const parsed = qs.parse(location.search, {
       ignoreQueryPrefix: true,
     });
-
-    const queryParameter = (parsed.installations ?? []) as string[];
-    const queryParameters = [queryParameter].flat().filter(Boolean) as string[];
+    const queryParameters = (parsed.installations ?? []) as string[];
     if (queryParameters.length) {
       setValue(queryParameters);
     }

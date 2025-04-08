@@ -13,6 +13,7 @@ export type InstallationInfo = {
 export const useInstallations = (): {
   installations: string[];
   installationsInfo: InstallationInfo[];
+  activeInstallations: string[];
   selectedInstallations: string[];
   setSelectedInstallations: (items: string[]) => void;
 } => {
@@ -56,9 +57,13 @@ export const useInstallations = (): {
     }
   }, [selectedInstallations, savedInstallations, setSavedInstallations]);
 
+  const activeInstallations =
+    selectedInstallations.length > 0 ? selectedInstallations : installations;
+
   return {
     installations,
     installationsInfo,
+    activeInstallations,
     selectedInstallations,
     setSelectedInstallations,
   };

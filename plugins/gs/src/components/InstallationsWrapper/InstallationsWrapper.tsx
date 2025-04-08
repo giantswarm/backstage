@@ -2,7 +2,6 @@ import React from 'react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { useInstallations, useInstallationsStatuses } from '../hooks';
 import { InstallationsSelector } from '../InstallationsSelector';
-import { EmptyState } from '@backstage/core-components';
 
 export const useStyles = makeStyles({
   fullWidth: {
@@ -43,15 +42,7 @@ export const InstallationsWrapper = ({
         />
       </Grid>
       <Grid item className={classes.fullWidth}>
-        {selectedInstallations.length === 0 ? (
-          <EmptyState
-            missing="data"
-            title="No Installations Selected"
-            description="Please select one or more installations."
-          />
-        ) : (
-          children
-        )}
+        {children}
       </Grid>
     </Grid>
   );

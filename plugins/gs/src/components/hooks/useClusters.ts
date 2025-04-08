@@ -29,8 +29,8 @@ function getInstallationOrganizationNamespaces(
 }
 
 export function useClusters(installations?: string[]) {
-  const { selectedInstallations: savedInstallations } = useInstallations();
-  const selectedInstallations = installations ?? savedInstallations;
+  const { activeInstallations } = useInstallations();
+  const selectedInstallations = installations ?? activeInstallations;
 
   const apiVersionOverrides = useApiVersionOverrides(selectedInstallations);
 
