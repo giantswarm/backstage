@@ -5,8 +5,8 @@ import { useInstallations } from './useInstallations';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
 
 export function useApps(installations?: string[]) {
-  const { selectedInstallations: savedInstallations } = useInstallations();
-  const selectedInstallations = installations ?? savedInstallations;
+  const { activeInstallations } = useInstallations();
+  const selectedInstallations = installations ?? activeInstallations;
 
   const apiVersionOverrides = useApiVersionOverrides(selectedInstallations);
 

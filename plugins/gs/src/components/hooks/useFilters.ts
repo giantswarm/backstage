@@ -68,7 +68,13 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
             | FacetFilter
             | undefined;
           if (filter?.toQueryValue) {
-            params[key] = filter.toQueryValue();
+            const queryValue = filter.toQueryValue();
+            if (
+              !Array.isArray(queryValue) ||
+              (Array.isArray(queryValue) && queryValue.length > 0)
+            ) {
+              params[key] = queryValue;
+            }
           }
           return params;
         },
@@ -83,9 +89,15 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
           {
             ...oldParams,
             installations: installationsQueryParams,
-            filters: filtersQueryParams,
+            filters: Object.entries(filtersQueryParams).length
+              ? filtersQueryParams
+              : undefined,
           },
-          { addQueryPrefix: true, arrayFormat: 'repeat' },
+          {
+            addQueryPrefix: true,
+            arrayFormat: 'repeat',
+            allowEmptyArrays: true,
+          },
         );
         const newUrl = `${window.location.pathname}${newParams}`;
         window.history?.replaceState(null, document.title, newUrl);

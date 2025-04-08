@@ -7,8 +7,8 @@ import { useApiVersionOverrides } from './useApiVersionOverrides';
 const resourcePluralName = 'providerconfigs';
 
 export function useProviderConfigs(installations?: string[]) {
-  const { selectedInstallations: savedInstallations } = useInstallations();
-  const selectedInstallations = installations ?? savedInstallations;
+  const { activeInstallations } = useInstallations();
+  const selectedInstallations = installations ?? activeInstallations;
 
   const apiVersionOverrides = useApiVersionOverrides(selectedInstallations);
 
