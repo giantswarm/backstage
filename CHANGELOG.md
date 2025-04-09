@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.62.0] - 2025-04-09
+
+In this release:
+
+- error messages styles in deployment details were improved;
+- resource entity page layout was improved.
+
+See [./docs/releases/v0.62.0-changelog.md](./docs/releases/v0.62.0-changelog.md) for more information.
+
 ## [0.61.0] - 2025-04-09
 
 In this release, links from deployments to corresponding catalog entities were added.
@@ -1057,7 +1066,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.61.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.62.0...HEAD
+[0.62.0]: https://github.com/giantswarm/backstage/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/giantswarm/backstage/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/giantswarm/backstage/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/giantswarm/backstage/compare/v0.58.0...v0.59.0
