@@ -18,7 +18,12 @@ import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
 import { compareDates } from '../../utils/helpers';
-import { DateComponent, Heading, ScrollContainer } from '../../UI';
+import {
+  DateComponent,
+  Heading,
+  ScrollContainer,
+  StatusMessage,
+} from '../../UI';
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,
@@ -130,18 +135,16 @@ const ConditionCard = ({
             <Grid item xs={12}>
               <Box>
                 <Typography variant="subtitle2">Reason:</Typography>
-                <Typography variant="body2" component="pre">
-                  {condition.reason}
-                </Typography>
+                <StatusMessage>{condition.reason}</StatusMessage>
               </Box>
             </Grid>
             <Grid item xs={12}>
               <Box>
                 <Typography variant="subtitle2">Message:</Typography>
                 <ScrollContainer>
-                  <Typography variant="body2" component="pre">
+                  <StatusMessage>
                     <code>{condition.message}</code>
-                  </Typography>
+                  </StatusMessage>
                 </ScrollContainer>
               </Box>
             </Grid>

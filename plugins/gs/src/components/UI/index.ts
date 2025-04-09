@@ -18,6 +18,7 @@ export { MultipleSelect } from './MultipleSelect';
 export { NotAvailable } from './NotAvailable';
 export { ScrollContainer } from './ScrollContainer';
 export { SimpleAccordion } from './SimpleAccordion';
+export { StatusMessage } from './StatusMessage';
 export { StructuredMetadataList } from './StructuredMetadataList';
 export { Toolkit } from './Toolkit';
 export { Version } from './Version';

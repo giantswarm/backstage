@@ -3,7 +3,13 @@ import { Box, Paper } from '@material-ui/core';
 import type { App } from '@giantswarm/backstage-plugin-gs-common';
 import { getAppStatus } from '@giantswarm/backstage-plugin-gs-common';
 import { useAppStatusDetails } from '../../hooks';
-import { ContentRow, DeploymentStatusCard, Heading } from '../../UI';
+import {
+  ContentRow,
+  DeploymentStatusCard,
+  Heading,
+  ScrollContainer,
+  StatusMessage,
+} from '../../UI';
 
 const StatusCard = ({
   status,
@@ -49,7 +55,15 @@ export const AppDetailsStatus = ({ app }: AppDetailsStatusProps) => {
 
   return (
     <StatusCard status={status} lastTransitionTime={lastTransitionTime}>
-      {reason && <ContentRow title="Reason">{reason}</ContentRow>}
+      {reason && (
+        <ContentRow title="Reason">
+          <ScrollContainer>
+            <StatusMessage>
+              <code>{reason}</code>
+            </StatusMessage>
+          </ScrollContainer>
+        </ContentRow>
+      )}
     </StatusCard>
   );
 };
