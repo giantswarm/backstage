@@ -8,6 +8,7 @@ import { VersionPicker } from './filters/VersionPicker';
 import { NamespacePicker } from './filters/NamespacePicker';
 import { StatusPicker } from './filters/StatusPicker';
 import { LabelPicker } from './filters/LabelPicker';
+import { AppPicker } from './filters/AppPicker';
 
 export const DefaultFilters = () => {
   const { installations, selectedInstallations, setSelectedInstallations } =
@@ -24,6 +25,7 @@ export const DefaultFilters = () => {
         selectedInstallations={selectedInstallations}
         onChange={handleSelectedInstallationsChange}
       />
+      <AppPicker />
       <VersionPicker />
       <TargetClusterPicker />
       <NamespacePicker />

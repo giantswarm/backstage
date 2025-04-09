@@ -143,3 +143,23 @@ export class LabelFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class AppFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: DeploymentData): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    if (!item.app) {
+      return false;
+    }
+
+    return this.values.includes(item.app);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}

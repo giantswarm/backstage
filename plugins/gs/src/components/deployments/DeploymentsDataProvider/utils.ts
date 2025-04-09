@@ -18,6 +18,7 @@ import {
   getHelmReleaseTargetClusterNamespace,
   getHelmReleaseUpdatedTimestamp,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { parseEntityRef } from '@backstage/catalog-model';
 import { calculateClusterType, calculateDeploymentLabels } from '../utils';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 
@@ -39,6 +40,7 @@ export type DeploymentData = {
   apiVersion: string;
   labels?: string[];
   entityRef?: string;
+  app?: string;
 };
 
 export function collectDeploymentData({
@@ -55,6 +57,7 @@ export function collectDeploymentData({
       ? getAppChartName(deployment)
       : getHelmReleaseChartName(deployment);
   const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
+  const app = entityRef ? parseEntityRef(entityRef).name : undefined;
 
   return deployment.kind === 'App'
     ? {
@@ -78,6 +81,7 @@ export function collectDeploymentData({
         apiVersion: deployment.apiVersion,
         labels: calculateDeploymentLabels(deployment),
         entityRef,
+        app,
       }
     : {
         installationName,
@@ -104,5 +108,6 @@ export function collectDeploymentData({
         apiVersion: deployment.apiVersion,
         labels: calculateDeploymentLabels(deployment),
         entityRef,
+        app,
       };
 }

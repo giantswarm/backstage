@@ -14,6 +14,7 @@ import { catalogApiRef } from '@backstage/plugin-catalog-react';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
 import {
+  AppFilter,
   KindFilter,
   LabelFilter,
   NamespaceFilter,
@@ -27,6 +28,7 @@ import useAsync from 'react-use/esm/useAsync';
 import { getDeploymentNamesFromEntity } from '../../utils/entity';
 
 export type DefaultDeploymentFilters = {
+  app?: AppFilter;
   kind?: KindFilter;
   targetCluster?: TargetClusterFilter;
   targetClusterKind?: TargetClusterKindFilter;
