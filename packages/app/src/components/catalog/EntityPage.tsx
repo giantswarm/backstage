@@ -430,30 +430,33 @@ const domainPage = (
 const resourcePage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
-      <Grid container spacing={3} alignItems="flex-start">
+      <Grid container spacing={2} alignItems="flex-start">
         {entityWarningContent}
-        <Grid item md={6}>
+
+        <Grid item md={8}>
           <EntityAboutCard variant="gridItem" />
         </Grid>
-        <Grid item container spacing={3} md={6}>
-          <EntitySwitch>
-            <EntitySwitch.Case if={isEntityGSKratixResource}>
-              <Grid item xs={12}>
-                <EntityGSKratixStatusCard />
-              </Grid>
-            </EntitySwitch.Case>
-          </EntitySwitch>
-          <EntitySwitch>
-            <EntitySwitch.Case if={isLinksAvailable}>
-              <Grid item xs={12}>
-                <EntityLinksCard />
-              </Grid>
-            </EntitySwitch.Case>
-          </EntitySwitch>
-        </Grid>
+
+        <EntitySwitch>
+          <EntitySwitch.Case if={isEntityGSKratixResource}>
+            <Grid item md={8}>
+              <EntityGSKratixStatusCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        <EntitySwitch>
+          <EntitySwitch.Case if={isLinksAvailable}>
+            <Grid item md={4}>
+              <EntityLinksCard cols={1} />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+
         <EntitySwitch>
           <EntitySwitch.Case if={isEntityGSInstallationResource}>
-            <EntityGSInstallationDetailsCard />
+            <Grid item md={8}>
+              <EntityGSInstallationDetailsCard />
+            </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
       </Grid>
