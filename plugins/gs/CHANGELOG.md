@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.22.0
+
+### Minor Changes
+
+- 492699f: Added catalog entity link to the Deployment details pane.
+- 492699f: Added App filter to the Deployments page.
+- 492699f: Added link to a catalog entity to the Deployments table.
+
 ## 0.21.0
 
 ### Minor Changes
