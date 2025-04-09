@@ -9,6 +9,9 @@ import {
   getAppChartName,
   getHelmReleaseChartName,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { useApi } from '@backstage/core-plugin-api';
+import { catalogApiRef } from '@backstage/plugin-catalog-react';
+import { stringifyEntityRef } from '@backstage/catalog-model';
 import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
 import {
   KindFilter,
@@ -20,6 +23,8 @@ import {
   VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
+import useAsync from 'react-use/esm/useAsync';
+import { getDeploymentNamesFromEntity } from '../../utils/entity';
 
 export type DefaultDeploymentFilters = {
   kind?: KindFilter;
@@ -66,6 +71,34 @@ export const DeploymentsDataProvider = ({
       persistToURL: deploymentNames ? false : true,
     });
 
+  const catalogApi = useApi(catalogApiRef);
+  const { value: catalogEntities } = useAsync(async () => {
+    const entities = await catalogApi.getEntities({
+      filter: { kind: 'component', 'spec.type': 'service' },
+    });
+
+    return entities.items;
+  });
+
+  const catalogEntitiesMap = useMemo(() => {
+    if (!catalogEntities) {
+      return {};
+    }
+
+    return catalogEntities.reduce((acc: Record<string, string>, entity) => {
+      const entityDeploymentNames = getDeploymentNamesFromEntity(entity);
+      if (!entityDeploymentNames) {
+        return acc;
+      }
+
+      entityDeploymentNames.forEach(deploymentName => {
+        acc[deploymentName] = stringifyEntityRef(entity);
+      });
+
+      return acc;
+    }, {});
+  }, [catalogEntities]);
+
   const {
     resources: appResources,
     isLoading: isLoadingApps,
@@ -104,9 +137,19 @@ export const DeploymentsDataProvider = ({
     }
 
     return resources.map(({ installationName, ...deployment }) => {
-      return collectDeploymentData({ installationName, deployment });
+      return collectDeploymentData({
+        installationName,
+        deployment,
+        catalogEntitiesMap,
+      });
     });
-  }, [appResources, helmReleaseResources, isLoading, deploymentNames]);
+  }, [
+    isLoading,
+    appResources,
+    helmReleaseResources,
+    deploymentNames,
+    catalogEntitiesMap,
+  ]);
 
   const contextValue: DeploymentsData = useMemo(() => {
     const appliedFilters = Object.values(filters).filter(filter =>

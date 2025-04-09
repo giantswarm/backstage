@@ -55,6 +55,7 @@ type DeploymentsTableProps = {
   sourceLocation?: string;
   grafanaDashboard?: string;
   ingressHost?: string;
+  context?: 'catalog-entity' | 'deployments-page';
 };
 
 export const DeploymentsTable = ({
@@ -62,6 +63,7 @@ export const DeploymentsTable = ({
   sourceLocation,
   grafanaDashboard,
   ingressHost,
+  context = 'deployments-page',
 }: DeploymentsTableProps) => {
   const columns = useMemo(() => {
     return getInitialColumns({
@@ -69,8 +71,9 @@ export const DeploymentsTable = ({
       grafanaDashboard,
       ingressHost,
       sourceLocation,
+      context,
     });
-  }, [baseRouteRef, grafanaDashboard, ingressHost, sourceLocation]);
+  }, [baseRouteRef, context, grafanaDashboard, ingressHost, sourceLocation]);
 
   const {
     filteredData: deploymentsData,

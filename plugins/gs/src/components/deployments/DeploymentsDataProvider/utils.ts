@@ -38,15 +38,24 @@ export type DeploymentData = {
   chartName?: string;
   apiVersion: string;
   labels?: string[];
+  entityRef?: string;
 };
 
 export function collectDeploymentData({
   installationName,
   deployment,
+  catalogEntitiesMap,
 }: {
   installationName: string;
   deployment: Deployment;
+  catalogEntitiesMap: { [deploymentName: string]: string };
 }): DeploymentData {
+  const chartName =
+    deployment.kind === 'App'
+      ? getAppChartName(deployment)
+      : getHelmReleaseChartName(deployment);
+  const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
+
   return deployment.kind === 'App'
     ? {
         installationName,
@@ -65,9 +74,10 @@ export function collectDeploymentData({
         updated: getAppUpdatedTimestamp(deployment),
         sourceKind: 'AppCatalog',
         sourceName: formatAppCatalogName(getAppCatalogName(deployment) ?? ''),
-        chartName: getAppChartName(deployment),
+        chartName,
         apiVersion: deployment.apiVersion,
         labels: calculateDeploymentLabels(deployment),
+        entityRef,
       }
     : {
         installationName,
@@ -90,8 +100,9 @@ export function collectDeploymentData({
         updated: getHelmReleaseUpdatedTimestamp(deployment),
         sourceKind: getHelmReleaseSourceKind(deployment),
         sourceName: getHelmReleaseSourceName(deployment),
-        chartName: getHelmReleaseChartName(deployment),
+        chartName,
         apiVersion: deployment.apiVersion,
         labels: calculateDeploymentLabels(deployment),
+        entityRef,
       };
 }

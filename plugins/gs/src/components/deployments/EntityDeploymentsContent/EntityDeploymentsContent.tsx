@@ -43,6 +43,7 @@ export const EntityDeploymentsContent = () => {
               sourceLocation={sourceLocation}
               grafanaDashboard={grafanaDashboard}
               ingressHost={ingressHost}
+              context="catalog-entity"
             />
           </DeploymentsDataProvider>
         </InstallationsWrapper>
