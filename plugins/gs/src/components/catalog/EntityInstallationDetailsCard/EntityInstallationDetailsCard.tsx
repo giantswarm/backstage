@@ -4,6 +4,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import { InfoCard, Link, MarkdownContent } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { AboutField } from '@backstage/plugin-catalog';
+import { ScrollContainer } from '../../UI';
 
 const useStyles = makeStyles({
   notSpecified: {
@@ -63,8 +64,8 @@ export function EntityInstallationDetailsCard() {
             )}
           </Grid>
           <Grid container spacing={5}>
-            <AboutField label="Escalation matrix">
-              <>
+            <AboutField label="Escalation matrix" gridSizes={{ xs: 12 }}>
+              <ScrollContainer>
                 {(entity.metadata.annotations?.[
                   'giantswarm.io/escalation-matrix'
                 ] && (
@@ -77,7 +78,7 @@ export function EntityInstallationDetailsCard() {
                   </pre>
                 )) ||
                   notSpecified}
-              </>
+              </ScrollContainer>
             </AboutField>
           </Grid>
         </InfoCard>

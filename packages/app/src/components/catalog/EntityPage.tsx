@@ -433,20 +433,20 @@ const resourcePage = (
       <Grid container spacing={2} alignItems="flex-start">
         {entityWarningContent}
 
-        <Grid item md={8}>
+        <Grid item xs={12} md={8}>
           <EntityAboutCard variant="gridItem" />
         </Grid>
 
         <EntitySwitch>
           <EntitySwitch.Case if={isEntityGSKratixResource}>
-            <Grid item md={8}>
+            <Grid item xs={12} md={4}>
               <EntityGSKratixStatusCard />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
         <EntitySwitch>
           <EntitySwitch.Case if={isLinksAvailable}>
-            <Grid item md={4}>
+            <Grid item xs={12} md={4}>
               <EntityLinksCard cols={1} />
             </Grid>
           </EntitySwitch.Case>
@@ -454,7 +454,7 @@ const resourcePage = (
 
         <EntitySwitch>
           <EntitySwitch.Case if={isEntityGSInstallationResource}>
-            <Grid item md={8}>
+            <Grid item xs={12} md={8}>
               <EntityGSInstallationDetailsCard />
             </Grid>
           </EntitySwitch.Case>
