@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.62.0] - 2025-04-09
 
+In this release:
+
+- error messages styles in deployment details were improved;
+- resource entity page layout was improved.
+
 See [./docs/releases/v0.62.0-changelog.md](./docs/releases/v0.62.0-changelog.md) for more information.
 
 ## [0.61.0] - 2025-04-09
