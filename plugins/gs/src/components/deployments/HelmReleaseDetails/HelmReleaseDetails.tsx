@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';
+import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import {
   Box,
   Card,
@@ -23,13 +24,14 @@ import {
   HelmRelease,
   HelmReleaseKind,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useResource } from '../../hooks';
+import { useCatalogEntitiesForDeployments, useResource } from '../../hooks';
 import { formatSource, formatVersion } from '../../utils/helpers';
 import {
   ApplicationLink,
   DateComponent,
   GrafanaDashboardLink,
   Heading,
+  NotAvailable,
   StructuredMetadataList,
 } from '../../UI';
 import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
@@ -65,6 +67,8 @@ export const HelmReleaseDetails = ({
   });
 
   const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
+
+  const catalogEntitiesMap = useCatalogEntitiesForDeployments();
 
   if (isLoading) {
     return <Progress />;
@@ -106,7 +110,7 @@ export const HelmReleaseDetails = ({
   const sourceName = getHelmReleaseSourceName(helmrelease);
   const chartName = getHelmReleaseChartName(helmrelease);
 
-  let clusterEl: ReactNode = clusterName ? clusterName : 'n/a';
+  let clusterEl: ReactNode = clusterName ? clusterName : <NotAvailable />;
   if (clusterName && clusterNamespace) {
     clusterEl = (
       <Link
@@ -121,6 +125,13 @@ export const HelmReleaseDetails = ({
       </Link>
     );
   }
+
+  const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
+  const entityLink: ReactNode = entityRef ? (
+    <EntityRefLink entityRef={entityRef} />
+  ) : (
+    <NotAvailable />
+  );
 
   return (
     <div>
@@ -151,6 +162,7 @@ export const HelmReleaseDetails = ({
                 metadata={{
                   Installation: installationName,
                   Cluster: clusterEl,
+                  App: entityLink,
                 }}
               />
             </CardContent>

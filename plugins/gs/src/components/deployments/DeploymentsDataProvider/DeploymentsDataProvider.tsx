@@ -9,10 +9,13 @@ import {
   getAppChartName,
   getHelmReleaseChartName,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useApi } from '@backstage/core-plugin-api';
-import { catalogApiRef } from '@backstage/plugin-catalog-react';
-import { stringifyEntityRef } from '@backstage/catalog-model';
-import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
+import {
+  FiltersData,
+  useApps,
+  useCatalogEntitiesForDeployments,
+  useFilters,
+  useHelmReleases,
+} from '../../hooks';
 import {
   AppFilter,
   KindFilter,
@@ -24,8 +27,6 @@ import {
   VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
-import useAsync from 'react-use/esm/useAsync';
-import { getDeploymentNamesFromEntity } from '../../utils/entity';
 
 export type DefaultDeploymentFilters = {
   app?: AppFilter;
@@ -73,33 +74,7 @@ export const DeploymentsDataProvider = ({
       persistToURL: deploymentNames ? false : true,
     });
 
-  const catalogApi = useApi(catalogApiRef);
-  const { value: catalogEntities } = useAsync(async () => {
-    const entities = await catalogApi.getEntities({
-      filter: { kind: 'component', 'spec.type': 'service' },
-    });
-
-    return entities.items;
-  });
-
-  const catalogEntitiesMap = useMemo(() => {
-    if (!catalogEntities) {
-      return {};
-    }
-
-    return catalogEntities.reduce((acc: Record<string, string>, entity) => {
-      const entityDeploymentNames = getDeploymentNamesFromEntity(entity);
-      if (!entityDeploymentNames) {
-        return acc;
-      }
-
-      entityDeploymentNames.forEach(deploymentName => {
-        acc[deploymentName] = stringifyEntityRef(entity);
-      });
-
-      return acc;
-    }, {});
-  }, [catalogEntities]);
+  const catalogEntitiesMap = useCatalogEntitiesForDeployments();
 
   const {
     resources: appResources,
