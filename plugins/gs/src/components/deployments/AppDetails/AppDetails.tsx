@@ -170,7 +170,7 @@ export const AppDetails = ({
           sourceLocation={sourceLocation}
         />
 
-        <Grid item>
+        <Grid item xs={12}>
           <AppDetailsStatus app={app} />
         </Grid>
 
