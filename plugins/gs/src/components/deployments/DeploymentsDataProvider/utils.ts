@@ -18,6 +18,7 @@ import {
   getHelmReleaseTargetClusterNamespace,
   getHelmReleaseUpdatedTimestamp,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { parseEntityRef } from '@backstage/catalog-model';
 import { calculateClusterType, calculateDeploymentLabels } from '../utils';
 import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
 
@@ -38,15 +39,26 @@ export type DeploymentData = {
   chartName?: string;
   apiVersion: string;
   labels?: string[];
+  entityRef?: string;
+  app?: string;
 };
 
 export function collectDeploymentData({
   installationName,
   deployment,
+  catalogEntitiesMap,
 }: {
   installationName: string;
   deployment: Deployment;
+  catalogEntitiesMap: { [deploymentName: string]: string };
 }): DeploymentData {
+  const chartName =
+    deployment.kind === 'App'
+      ? getAppChartName(deployment)
+      : getHelmReleaseChartName(deployment);
+  const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
+  const app = entityRef ? parseEntityRef(entityRef).name : undefined;
+
   return deployment.kind === 'App'
     ? {
         installationName,
@@ -65,9 +77,11 @@ export function collectDeploymentData({
         updated: getAppUpdatedTimestamp(deployment),
         sourceKind: 'AppCatalog',
         sourceName: formatAppCatalogName(getAppCatalogName(deployment) ?? ''),
-        chartName: getAppChartName(deployment),
+        chartName,
         apiVersion: deployment.apiVersion,
         labels: calculateDeploymentLabels(deployment),
+        entityRef,
+        app,
       }
     : {
         installationName,
@@ -90,8 +104,10 @@ export function collectDeploymentData({
         updated: getHelmReleaseUpdatedTimestamp(deployment),
         sourceKind: getHelmReleaseSourceKind(deployment),
         sourceName: getHelmReleaseSourceName(deployment),
-        chartName: getHelmReleaseChartName(deployment),
+        chartName,
         apiVersion: deployment.apiVersion,
         labels: calculateDeploymentLabels(deployment),
+        entityRef,
+        app,
       };
 }

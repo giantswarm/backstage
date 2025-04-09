@@ -9,8 +9,15 @@ import {
   getAppChartName,
   getHelmReleaseChartName,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { FiltersData, useApps, useFilters, useHelmReleases } from '../../hooks';
 import {
+  FiltersData,
+  useApps,
+  useCatalogEntitiesForDeployments,
+  useFilters,
+  useHelmReleases,
+} from '../../hooks';
+import {
+  AppFilter,
   KindFilter,
   LabelFilter,
   NamespaceFilter,
@@ -22,6 +29,7 @@ import {
 import { collectDeploymentData, DeploymentData } from './utils';
 
 export type DefaultDeploymentFilters = {
+  app?: AppFilter;
   kind?: KindFilter;
   targetCluster?: TargetClusterFilter;
   targetClusterKind?: TargetClusterKindFilter;
@@ -66,6 +74,8 @@ export const DeploymentsDataProvider = ({
       persistToURL: deploymentNames ? false : true,
     });
 
+  const catalogEntitiesMap = useCatalogEntitiesForDeployments();
+
   const {
     resources: appResources,
     isLoading: isLoadingApps,
@@ -104,9 +114,19 @@ export const DeploymentsDataProvider = ({
     }
 
     return resources.map(({ installationName, ...deployment }) => {
-      return collectDeploymentData({ installationName, deployment });
+      return collectDeploymentData({
+        installationName,
+        deployment,
+        catalogEntitiesMap,
+      });
     });
-  }, [appResources, helmReleaseResources, isLoading, deploymentNames]);
+  }, [
+    isLoading,
+    appResources,
+    helmReleaseResources,
+    deploymentNames,
+    catalogEntitiesMap,
+  ]);
 
   const contextValue: DeploymentsData = useMemo(() => {
     const appliedFilters = Object.values(filters).filter(filter =>

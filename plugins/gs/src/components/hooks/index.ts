@@ -1,4 +1,5 @@
 export * from './useApps';
+export * from './useCatalogEntitiesForDeployments';
 export * from './useClusterSecretStores';
 export * from './useClusters';
 export * from './useCurrentUser';

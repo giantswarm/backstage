@@ -2,12 +2,13 @@ import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
+import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { DEPLOYMENT_DETAILS_PANE_ID, useDetailsPane } from '../../hooks';
 import {
   semverCompareSort,
   sortAndFilterOptions,
 } from '../../utils/tableHelpers';
-import { DateComponent, Version } from '../../UI';
+import { DateComponent, NotAvailable, Version } from '../../UI';
 import { AppStatus } from '../AppStatus';
 import { HelmReleaseStatus } from '../HelmReleaseStatus';
 import { Typography } from '@material-ui/core';
@@ -32,11 +33,13 @@ export const DeploymentColumns = {
 } as const;
 
 export const getInitialColumns = ({
+  context = 'deployments-page',
   baseRouteRef,
   grafanaDashboard,
   ingressHost,
   sourceLocation,
 }: {
+  context?: 'catalog-entity' | 'deployments-page';
   baseRouteRef: RouteRef;
   grafanaDashboard?: string;
   ingressHost?: string;
@@ -70,6 +73,23 @@ export const getInitialColumns = ({
         };
 
         return <LinkWrapper />;
+      },
+    },
+    {
+      title: 'App',
+      field: 'entityRef',
+      hidden: context === 'catalog-entity',
+      render: row => {
+        return row.entityRef ? (
+          <EntityRefLink entityRef={row.entityRef} />
+        ) : (
+          <NotAvailable />
+        );
+      },
+      cellStyle: {
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        textOverflow: 'ellipsis',
       },
     },
     {
