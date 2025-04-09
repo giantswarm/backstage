@@ -1,5 +1,16 @@
 # app
 
+## 0.12.0
+
+### Minor Changes
+
+- f5731e5: Improved resource entity page layout
+
+### Patch Changes
+
+- Updated dependencies [3c16f4d]
+  - @giantswarm/backstage-plugin-gs@0.22.1
+
 ## 0.11.3
 
 ### Patch Changes

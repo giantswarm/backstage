@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.22.1
+
+### Patch Changes
+
+- 3c16f4d: Fixed how error messages are displayed for deployments.
+
 ## 0.22.0
 
 ### Minor Changes
