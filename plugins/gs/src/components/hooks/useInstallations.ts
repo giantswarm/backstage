@@ -45,7 +45,8 @@ export const useInstallations = (): {
     savedInstallations.includes(installation),
   );
   const setSelectedInstallations = (items: string[]) => {
-    setSavedInstallations(items);
+    const itemsToSave = [items].flat().filter(Boolean) as string[];
+    setSavedInstallations(itemsToSave);
   };
 
   useEffect(() => {
