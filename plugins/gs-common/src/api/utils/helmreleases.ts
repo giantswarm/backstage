@@ -128,3 +128,18 @@ export function getHelmReleaseSourceName(
 ): string | undefined {
   return helmRelease.spec?.chart.spec.sourceRef?.name;
 }
+
+export function getHelmReleaseKustomizationName(helmrelease: HelmRelease) {
+  return helmrelease.metadata.labels?.[Labels.labelKustomizationName];
+}
+
+export function getHelmReleaseKustomizationNamespace(helmrelease: HelmRelease) {
+  return helmrelease.metadata.labels?.[Labels.labelKustomizationNamespace];
+}
+
+export function isHelmReleaseManagedByFlux(helmrelease: HelmRelease) {
+  return (
+    Boolean(getHelmReleaseKustomizationName(helmrelease)) &&
+    Boolean(getHelmReleaseKustomizationNamespace(helmrelease))
+  );
+}

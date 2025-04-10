@@ -6,6 +6,7 @@ export * from './useCurrentUser';
 export * from './useDeploymentStatusDetails';
 export * from './useDetailsPane';
 export * from './useFilters';
+export * from './useGitOpsSourceLink';
 export * from './useGrafanaDashboardLink';
 export * from './useHelmReleases';
 export * from './useInstallations';

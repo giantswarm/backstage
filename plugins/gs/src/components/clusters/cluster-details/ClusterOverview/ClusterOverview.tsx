@@ -6,7 +6,6 @@ import { ClusterAccessCard } from './ClusterAccessCard';
 import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 import { ClusterLabelsCard } from './ClusterLabelsCard';
 import { ClusterToolsCard } from './ClusterToolsCard';
-import { ClusterGitOpsCard } from './ClusterGitOpsCard';
 import { useResource } from '../../../hooks';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import {
@@ -17,6 +16,7 @@ import {
   hasClusterAppLabel,
   isAppManagedByFlux,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { GitOpsCard } from '../../../GitOpsCard';
 
 export const ClusterOverview = () => {
   const { cluster, installationName } = useCurrentCluster();
@@ -77,7 +77,10 @@ export const ClusterOverview = () => {
           </Grid>
           {isGitOpsManaged && (
             <Grid item xs={12}>
-              <ClusterGitOpsCard clusterApp={clusterApp} />
+              <GitOpsCard
+                deployment={clusterApp}
+                installationName={installationName}
+              />
             </Grid>
           )}
           <Grid item xs={12}>

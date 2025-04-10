@@ -3,7 +3,7 @@ import { configApiRef } from '@backstage/core-plugin-api';
 import { ApiProvider } from '@backstage/core-app-api';
 import { mockApis, TestApiRegistry } from '@backstage/test-utils';
 import { renderHook } from '@testing-library/react';
-import { useGitOpsSourceLink } from './useClusterLinks';
+import { useGitOpsSourceLink } from './useGitOpsSourceLink';
 
 describe('useGitOpsSourceLink', () => {
   describe('when configuration for Git repository URL patterns is not provided', () => {

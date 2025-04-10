@@ -8,16 +8,16 @@ import {
   Typography,
 } from '@material-ui/core';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
-import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { GitOpsIcon } from '../../../../../assets/icons/CustomIcons';
-import { AsyncValue, ExternalLink } from '../../../../UI';
+
 import {
-  App,
+  Deployment,
   getAppKustomizationName,
   getAppKustomizationNamespace,
   getGitRepositoryKind,
   getGitRepositoryRevision,
   getGitRepositoryUrl,
+  getHelmReleaseKustomizationName,
+  getHelmReleaseKustomizationNamespace,
   getKustomizationPath,
   getKustomizationSourceRef,
   GitRepository,
@@ -25,22 +25,28 @@ import {
   Kustomization,
   KustomizationKind,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useResource } from '../../../../hooks';
-import { useGitOpsSourceLink } from '../../../../hooks/useClusterLinks';
+import { useGitOpsSourceLink, useResource } from '../hooks';
+import { GitOpsIcon } from '../../assets/icons/CustomIcons';
+import { AsyncValue, ExternalLink } from '../UI';
 
 const InfoIcon = styled(InfoOutlinedIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-type ClusterGitOpsCardProps = {
-  clusterApp: App;
+type GitOpsCardProps = {
+  deployment: Deployment;
+  installationName: string;
 };
 
-export function ClusterGitOpsCard({ clusterApp }: ClusterGitOpsCardProps) {
-  const { installationName } = useCurrentCluster();
-
-  const kustomizationName = getAppKustomizationName(clusterApp);
-  const kustomizationNamespace = getAppKustomizationNamespace(clusterApp);
+export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
+  const kustomizationName =
+    deployment.kind === 'App'
+      ? getAppKustomizationName(deployment)
+      : getHelmReleaseKustomizationName(deployment);
+  const kustomizationNamespace =
+    deployment.kind === 'App'
+      ? getAppKustomizationNamespace(deployment)
+      : getHelmReleaseKustomizationNamespace(deployment);
   const {
     data: kustomization,
     isLoading: kustomizationIsLoading,
