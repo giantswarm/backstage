@@ -62,6 +62,7 @@ import {
   EntityGSKratixStatusCard,
   isEntityGSInstallationResource,
   isEntityGSKratixResource,
+  isEntityGSDeploymentsAvailable,
 } from '@giantswarm/backstage-plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -177,13 +178,17 @@ const appcatalogEntityPage = (
   </EntityLayout>
 );
 
-const serviceEntityPage = (
+const componentEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route path="/deployments" title="Deployments">
+    <EntityLayout.Route
+      if={isEntityGSDeploymentsAvailable}
+      path="/deployments"
+      title="Deployments"
+    >
       <EntityGSDeploymentsContent />
     </EntityLayout.Route>
 
@@ -294,9 +299,6 @@ const defaultEntityPage = (
 
 const componentPage = (
   <EntitySwitch>
-    <EntitySwitch.Case if={isComponentType('service')}>
-      {serviceEntityPage}
-    </EntitySwitch.Case>
     <EntitySwitch.Case if={isComponentType('customer')}>
       {baseEntityPage}
     </EntitySwitch.Case>
@@ -307,7 +309,7 @@ const componentPage = (
       {appcatalogEntityPage}
     </EntitySwitch.Case>
 
-    <EntitySwitch.Case>{defaultEntityPage}</EntitySwitch.Case>
+    <EntitySwitch.Case>{componentEntityPage}</EntitySwitch.Case>
   </EntitySwitch>
 );
 
