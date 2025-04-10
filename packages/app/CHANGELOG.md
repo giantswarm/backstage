@@ -1,5 +1,14 @@
 # app
 
+## 0.12.1
+
+### Patch Changes
+
+- 58db05e: Fixed how deployments entity content is displayed.
+- Updated dependencies [8f11eb3]
+- Updated dependencies [93f0340]
+  - @giantswarm/backstage-plugin-gs@0.23.0
+
 ## 0.12.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.14.0
+
+### Minor Changes
+
+- 93f0340: Added GitOps indicator to the Deployment details pane.
+
 ## 0.13.0
 
 ### Minor Changes

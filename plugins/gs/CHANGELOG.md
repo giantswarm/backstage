@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.23.0
+
+### Minor Changes
+
+- 93f0340: Added GitOps indicator to the Deployment details pane.
+
+### Patch Changes
+
+- 8f11eb3: Changed mapping between deployments and catalog entities to use all entities of kind "Component".
+- Updated dependencies [93f0340]
+  - @giantswarm/backstage-plugin-gs-common@0.14.0
+
 ## 0.22.1
 
 ### Patch Changes
