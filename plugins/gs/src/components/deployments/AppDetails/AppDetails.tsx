@@ -22,6 +22,7 @@ import {
   getAppTargetClusterNamespace,
   App,
   AppKind,
+  isAppManagedByFlux,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useCatalogEntitiesForDeployments, useResource } from '../../hooks';
 import {
@@ -40,6 +41,7 @@ import {
 import { AppDetailsStatus } from '../AppDetailsStatus';
 import { RevisionDetails } from '../RevisionDetails';
 import { clusterDetailsRouteRef } from '../../../routes';
+import { GitOpsCard } from '../../GitOpsCard';
 
 type AppDetailsProps = {
   installationName: string;
@@ -128,6 +130,8 @@ export const AppDetails = ({
     <NotAvailable />
   );
 
+  const isGitOpsManaged = isAppManagedByFlux(app);
+
   return (
     <div>
       {ingressHost || grafanaDashboard ? (
@@ -163,6 +167,12 @@ export const AppDetails = ({
             </CardContent>
           </Card>
         </Grid>
+
+        {isGitOpsManaged && (
+          <Grid item xs={12}>
+            <GitOpsCard deployment={app} installationName={installationName} />
+          </Grid>
+        )}
 
         <RevisionDetails
           lastAppliedRevision={lastAppliedRevision}

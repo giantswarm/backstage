@@ -23,6 +23,7 @@ import {
   getHelmReleaseSourceKind,
   HelmRelease,
   HelmReleaseKind,
+  isHelmReleaseManagedByFlux,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { useCatalogEntitiesForDeployments, useResource } from '../../hooks';
 import { formatSource, formatVersion } from '../../utils/helpers';
@@ -37,6 +38,7 @@ import {
 import { RevisionDetails } from '../RevisionDetails/RevisionDetails';
 import { HelmReleaseDetailsStatusConditions } from '../HelmReleaseDetailsStatusConditions';
 import { clusterDetailsRouteRef } from '../../../routes';
+import { GitOpsCard } from '../../GitOpsCard';
 
 type HelmReleaseDetailsProps = {
   installationName: string;
@@ -133,6 +135,8 @@ export const HelmReleaseDetails = ({
     <NotAvailable />
   );
 
+  const isGitOpsManaged = isHelmReleaseManagedByFlux(helmrelease);
+
   return (
     <div>
       {ingressHost || grafanaDashboard ? (
@@ -168,6 +172,15 @@ export const HelmReleaseDetails = ({
             </CardContent>
           </Card>
         </Grid>
+
+        {isGitOpsManaged && (
+          <Grid item xs={12}>
+            <GitOpsCard
+              deployment={helmrelease}
+              installationName={installationName}
+            />
+          </Grid>
+        )}
 
         <RevisionDetails
           lastAppliedRevision={lastAppliedRevision}
