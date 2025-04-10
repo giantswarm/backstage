@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.63.1] - 2025-04-10
 
+In this release, a bug that caused the InstallationsPicker component to incorrectly save selected installations into local storage was fixed.
+
 See [./docs/releases/v0.63.1-changelog.md](./docs/releases/v0.63.1-changelog.md) for more information.
 
 ## [0.63.0] - 2025-04-10
