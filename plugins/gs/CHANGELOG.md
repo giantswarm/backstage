@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.23.1
+
+### Patch Changes
+
+- 5208ef7: Fixed a bug when Installation picker used to incorrectly save selected installations into local storage.
+
 ## 0.23.0
 
 ### Minor Changes
