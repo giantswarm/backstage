@@ -9,7 +9,7 @@ export function useCatalogEntitiesForDeployments() {
   const catalogApi = useApi(catalogApiRef);
   const { value: catalogEntities } = useAsync(async () => {
     const entities = await catalogApi.getEntities({
-      filter: { kind: 'component', 'spec.type': 'service' },
+      filter: { kind: 'component' },
     });
 
     return entities.items;
