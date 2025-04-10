@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.63.0] - 2025-04-10
 
+In this release:
+
+- GitOps indicator was added to the Deployment details pane;
+- linkage between deployments and catalog entities was fixed.
+
 See [./docs/releases/v0.63.0-changelog.md](./docs/releases/v0.63.0-changelog.md) for more information.
 
 ## [0.62.0] - 2025-04-09
