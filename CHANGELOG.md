@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+- Make Ingress annotations configurable (`ingress.annotations`) and move `hostnames` value to `ingress.hostnames` in the Helm chart.
+
 ## [0.63.1] - 2025-04-10
 
 In this release, a bug that caused the InstallationsPicker component to incorrectly save selected installations into local storage was fixed.
