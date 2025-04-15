@@ -1,6 +1,21 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { formatTemplateString } from '../utils/formatTemplateString';
 
+const defaultGitOpsRepositories = [
+  {
+    targetUrl:
+      'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}',
+    gitRepositoryUrlPattern:
+      '^ssh:\/\/git@(ssh\.)?(?<HOSTNAME>github.+?)(:443)?\/(?<REPOSITORY_PATH>.+?)(\.git)?$',
+  },
+  {
+    targetUrl:
+      'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}',
+    gitRepositoryUrlPattern:
+      '^https:\/\/(?<HOSTNAME>github.+?)\/(?<REPOSITORY_PATH>.+?)$',
+  },
+];
+
 export const useGitOpsSourceLink = ({
   url,
   revision,
@@ -15,24 +30,36 @@ export const useGitOpsSourceLink = ({
     `gs.gitopsRepositories`,
   );
 
-  if (!url || !revision || !path || !gitopsRepositoriesConfig) {
+  if (!url || !revision || !path) {
     return undefined;
   }
+
+  const gitopsRepositories = gitopsRepositoriesConfig
+    ? [
+        ...defaultGitOpsRepositories,
+        ...gitopsRepositoriesConfig.map(configItem => ({
+          targetUrl: configItem.getString('targetUrl'),
+          gitRepositoryUrlPattern: configItem.getString(
+            'gitRepositoryUrlPattern',
+          ),
+        })),
+      ]
+    : defaultGitOpsRepositories;
 
   const data = {
     PATH: path,
     REVISION: revision,
   };
 
-  const gitopsRepositoryConfig = gitopsRepositoriesConfig.find(configItem => {
-    const pattern = configItem.getString('gitRepositoryUrlPattern');
+  const gitopsRepository = gitopsRepositories.find(item => {
+    const pattern = item.gitRepositoryUrlPattern;
     const regexp = new RegExp(pattern);
     return regexp.test(url);
   });
 
-  if (gitopsRepositoryConfig) {
-    const pattern = gitopsRepositoryConfig.getString('gitRepositoryUrlPattern');
-    const targetUrl = gitopsRepositoryConfig.getString('targetUrl');
+  if (gitopsRepository) {
+    const pattern = gitopsRepository.gitRepositoryUrlPattern;
+    const targetUrl = gitopsRepository.targetUrl;
 
     const regexp = new RegExp(pattern);
     const matchResult = url.match(regexp);
