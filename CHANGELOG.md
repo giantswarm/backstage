@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.64.0] - 2025-04-15
 
+In this release:
+
+- Dex sign-in resolver was changed to use username from an email as user reference;
+- `gitopsRepositories` configuration was changed to support GitHub repositories by default.
+
 See [./docs/releases/v0.64.0-changelog.md](./docs/releases/v0.64.0-changelog.md) for more information.
 
 ## [0.63.1] - 2025-04-10
