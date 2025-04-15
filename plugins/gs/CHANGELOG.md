@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.24.0
+
+### Minor Changes
+
+- 8ff7d5d: Changed gitopsRepositories configuration to support GitHub repositories by default.
+
 ## 0.23.1
 
 ### Patch Changes

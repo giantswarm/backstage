@@ -1,5 +1,12 @@
 # backend
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [03e8bfc]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.9.0
+
 ## 0.7.1
 
 ### Patch Changes
