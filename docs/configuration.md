@@ -14,6 +14,18 @@ The plugin allows you to format links to your GitOps sources. A link is being fo
 - **gitRepositoryUrlPattern**:  
   A regular expression used to extract values from the GitRepository `.spec.url` field. The names of the capturing groups (e.g., `HOSTNAME`, `PROJECT_NAME`) correspond to placeholder values that can be used in the `targetUrl`.
 
+If no configuration is provided, two patterns for GitHub repositories are set as defaults:
+
+```yaml
+- targetUrl: 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}'
+  gitRepositoryUrlPattern: '^ssh:\/\/git@(ssh\.)?(?<HOSTNAME>github.+?)(:443)?\/(?<REPOSITORY_PATH>.+?)(\.git)?$'
+
+- targetUrl: 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}'
+  gitRepositoryUrlPattern: '^https:\/\/(?<HOSTNAME>github.+?)\/(?<REPOSITORY_PATH>.+?)$'
+```
+
+When configuration is provided, the configured patterns are added to the two default ones.
+
 ### Configuration example
 
 Below is an example configuration with several entries:
@@ -26,13 +38,9 @@ gs:
 
     - targetUrl: 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/-/tree/${{REVISION}}/${{PATH}}'
       gitRepositoryUrlPattern: '^ssh:\/\/git@(?<HOSTNAME>gitlab.+?)\/(?<REPOSITORY_PATH>.+?)(\.git)?$'
-
-    - targetUrl: 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}'
-      gitRepositoryUrlPattern: '^ssh:\/\/git@(ssh\.)?(?<HOSTNAME>github.+?)(:443)?\/(?<REPOSITORY_PATH>.+?)(\.git)?$'
-
-    - targetUrl: 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/blob/${{REVISION}}/${{PATH}}'
-      gitRepositoryUrlPattern: '^https:\/\/(?<HOSTNAME>github.+?)\/(?<REPOSITORY_PATH>.+?)$'
 ```
+
+The result of this configuration is four patterns: two default ones for GitHub repositories and two additional ones for Bitbucket and GitLab.
 
 ### How it works
 
