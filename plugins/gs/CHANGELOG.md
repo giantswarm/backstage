@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.24.2
+
+### Patch Changes
+
+- 96b704d: Refactored the cluster details page.
+
 ## 0.24.1
 
 ### Patch Changes
