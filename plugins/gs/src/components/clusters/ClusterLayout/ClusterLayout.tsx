@@ -94,7 +94,7 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
             },
           ];
         }),
-    [cluster],
+    [cluster, isLoading, isGSUser],
   );
 
   return (
@@ -104,7 +104,11 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
         subtitle={cluster ? getClusterDescription(cluster) : undefined}
         type="resource - kubernetes cluster"
       />
-      {isLoading && <Progress />}
+      {isLoading && (
+        <Content>
+          <Progress />
+        </Content>
+      )}
       {cluster && <RoutedTabs routes={routes} />}
       {error && !cluster && clusterApp ? (
         <Content>
