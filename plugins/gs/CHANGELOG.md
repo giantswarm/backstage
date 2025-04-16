@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.24.1
+
+### Patch Changes
+
+- 0109bc4: Fixed a bug where the cluster details page may be displayed as blank.
+
 ## 0.24.0
 
 ### Minor Changes
