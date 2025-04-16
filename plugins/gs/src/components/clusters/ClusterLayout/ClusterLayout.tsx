@@ -4,7 +4,6 @@ import {
   Page,
   Progress,
   RoutedTabs,
-  WarningPanel,
 } from '@backstage/core-components';
 import {
   attachComponentData,
@@ -16,6 +15,7 @@ import Alert from '@material-ui/lab/Alert';
 import React from 'react';
 import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
 import {
+  App,
   Cluster,
   getClusterDescription,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -41,26 +41,23 @@ const Route: (props: ClusterLayoutRouteProps) => null = () => null;
 attachComponentData(Route, dataKey, true);
 attachComponentData(Route, 'core.gatherMountPoints', true);
 
-export interface ClusterLayoutProps {
+const PageContent = ({
+  isLoading,
+  error,
+  installationName,
+  cluster,
+  clusterApp,
+  isGSUser,
+  children,
+}: {
+  isLoading: boolean;
+  error: Error | null;
+  installationName: string;
+  cluster?: Cluster;
+  clusterApp?: App;
+  isGSUser?: boolean;
   children?: React.ReactNode;
-}
-
-export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
-  const { name } = useRouteRefParams(clusterDetailsRouteRef);
-
-  const {
-    cluster,
-    clusterApp,
-    installationName,
-    loading: clusterIsLoading,
-    error: error,
-  } = useAsyncCluster();
-
-  const { isGSUser, isLoading: currentUserIsLoading } =
-    useCurrentUser(installationName);
-
-  const isLoading = clusterIsLoading || currentUserIsLoading;
-
+}) => {
   const routes = useElementFilter(
     children,
     elements =>
@@ -97,6 +94,53 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
     [cluster, isLoading, isGSUser],
   );
 
+  if (isLoading) {
+    return (
+      <Content>
+        <Progress />
+      </Content>
+    );
+  }
+
+  if (error) {
+    return (
+      <Content>
+        {clusterApp ? (
+          <ClusterAppStatus
+            installationName={installationName}
+            name={clusterApp.metadata.name}
+            namespace={clusterApp.metadata.namespace ?? ''}
+          />
+        ) : (
+          <Alert severity="error">{error.toString()}</Alert>
+        )}
+      </Content>
+    );
+  }
+
+  return <RoutedTabs routes={routes} />;
+};
+
+export interface ClusterLayoutProps {
+  children?: React.ReactNode;
+}
+
+export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
+  const { name } = useRouteRefParams(clusterDetailsRouteRef);
+
+  const {
+    cluster,
+    clusterApp,
+    installationName,
+    loading: clusterIsLoading,
+    error: error,
+  } = useAsyncCluster();
+
+  const { isGSUser, isLoading: currentUserIsLoading } =
+    useCurrentUser(installationName);
+
+  const isLoading = clusterIsLoading || currentUserIsLoading;
+
   return (
     <Page themeId="service">
       <Header
@@ -104,34 +148,16 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
         subtitle={cluster ? getClusterDescription(cluster) : undefined}
         type="resource - kubernetes cluster"
       />
-      {isLoading && (
-        <Content>
-          <Progress />
-        </Content>
-      )}
-      {cluster && <RoutedTabs routes={routes} />}
-      {error && !cluster && clusterApp ? (
-        <Content>
-          <ClusterAppStatus
-            installationName={installationName}
-            name={clusterApp.metadata.name}
-            namespace={clusterApp.metadata.namespace ?? ''}
-          />
-        </Content>
-      ) : null}
-      {error && !cluster && !clusterApp ? (
-        <Content>
-          <Alert severity="error">{error.toString()}</Alert>
-        </Content>
-      ) : null}
-      {!isLoading && !error && !cluster && !clusterApp && (
-        <Content>
-          <WarningPanel title="Error">
-            There is no cluster with the requested installation, namespace, and
-            name.
-          </WarningPanel>
-        </Content>
-      )}
+      <PageContent
+        isLoading={isLoading}
+        error={error}
+        installationName={installationName}
+        cluster={cluster}
+        clusterApp={clusterApp}
+        isGSUser={isGSUser}
+      >
+        {children}
+      </PageContent>
     </Page>
   );
 };
