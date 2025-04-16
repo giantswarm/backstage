@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.64.1] - 2025-04-16
 
+In this release:
+
+- custom scaffolder actions were replaced with the `@devangelista/backstage-scaffolder-kubernetes` plugin;
+- the bug where the cluster details page may be displayed as blank was fixed.
+
 See [./docs/releases/v0.64.1-changelog.md](./docs/releases/v0.64.1-changelog.md) for more information.
 
 ## [0.64.0] - 2025-04-15
