@@ -1,5 +1,11 @@
 # backend
 
+## 0.7.5
+
+### Patch Changes
+
+- 910a2fe: Fixed Sentry configuration on backend.
+
 ## 0.7.4
 
 ### Patch Changes
