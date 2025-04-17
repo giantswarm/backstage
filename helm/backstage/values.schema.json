@@ -197,8 +197,16 @@
     "groupID": {
       "type": "integer"
     },
-    "hostnames": {
-      "type": "array"
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "annotations": {
+          "type": "object"
+        },
+        "hostnames": {
+          "type": "array"
+        }
+      }
     },
     "image": {
       "type": "object",

@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+- Make Ingress annotations configurable (`ingress.annotations`) and move `hostnames` value to `ingress.hostnames` in the Helm chart.
+
 ## [0.64.3] - 2025-04-17
 
 In this release, a rule to Sentry configuration was added to ignore TechDocs warnings.

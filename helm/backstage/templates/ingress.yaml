@@ -6,16 +6,16 @@ metadata:
   labels:
     app: {{ .Values.name }}
     {{- include "labels.backstage" $ | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-giantswarm
-    kubernetes.io/tls-acme: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: nginx
   rules:
     {{- $serviceName := .Values.name -}}
     {{- $port := .Values.port -}}
-    {{- range .Values.hostnames }}
+    {{- range .Values.ingress.hostnames }}
     - host: {{ . }}
       http:
         paths:
@@ -29,7 +29,7 @@ spec:
     {{- end }}
   tls:
     - hosts:
-      {{- range .Values.hostnames }}
+      {{- range .Values.ingress.hostnames }}
       - {{ . }}
       {{- end }}
       secretName: {{ .Values.name }}
