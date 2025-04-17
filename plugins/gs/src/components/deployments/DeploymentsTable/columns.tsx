@@ -9,14 +9,13 @@ import {
   sortAndFilterOptions,
 } from '../../utils/tableHelpers';
 import { DateComponent, NotAvailable, Version } from '../../UI';
-import { AppStatus } from '../AppStatus';
-import { HelmReleaseStatus } from '../HelmReleaseStatus';
 import { Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
+import { DeploymentStatus } from '../DeploymentStatus';
 
 export const DeploymentColumns = {
   name: 'name',
@@ -201,14 +200,10 @@ export const getInitialColumns = ({
       field: DeploymentColumns.status,
       render: row => {
         if (!row.status) {
-          return 'n/a';
+          return <NotAvailable />;
         }
 
-        return row.kind === 'app' ? (
-          <AppStatus status={row.status} />
-        ) : (
-          <HelmReleaseStatus status={row.status} />
-        );
+        return <DeploymentStatus status={row.status} />;
       },
       ...sortAndFilterOptions(row => (row.status ?? '').replace(/-/g, ' ')),
     },

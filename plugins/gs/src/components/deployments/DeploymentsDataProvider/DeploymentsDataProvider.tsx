@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useMemo,
+  useState,
 } from 'react';
 import {
   getAppChartName,
@@ -44,6 +45,8 @@ export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   filteredData: DeploymentData[];
   isLoading: boolean;
   retry: () => void;
+  visibleColumns: string[];
+  setVisibleColumns: (columns: string[]) => void;
 };
 
 const DeploymentsDataContext = createContext<DeploymentsData | undefined>(
@@ -73,6 +76,8 @@ export const DeploymentsDataProvider = ({
     useFilters<DefaultDeploymentFilters>({
       persistToURL: deploymentNames ? false : true,
     });
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   const catalogEntitiesMap = useCatalogEntitiesForDeployments();
 
@@ -142,6 +147,8 @@ export const DeploymentsDataProvider = ({
       filteredData: filteredData,
       isLoading,
       retry,
+      visibleColumns,
+      setVisibleColumns,
 
       filters,
       queryParameters,
@@ -154,6 +161,7 @@ export const DeploymentsDataProvider = ({
     queryParameters,
     retry,
     updateFilters,
+    visibleColumns,
   ]);
 
   return (

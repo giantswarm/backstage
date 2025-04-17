@@ -85,7 +85,6 @@ export function useHelmReleaseStatusDetails(status: string) {
       break;
 
     case HelmReleaseStatuses.Reconciling:
-    case HelmReleaseStatuses.Stalled:
       statusIcon = StatusWarning;
       icon = ScheduleOutlinedIcon;
       color = theme.palette.status.warning;
