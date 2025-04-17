@@ -5,7 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
-- Make Ingress annotations configurable (`ingress.annotations`) and move `hostnames` value to `ingress.hostnames` in the Helm chart.
+## [0.65.0] - 2025-04-17
+
+In this release:
+
+- Ingress annotations have been made configurable in the Helm chart;
+- `hostnames` configuration has been moved to `ingress.hostnames`;
+- Sentry configuration on the backend has been fixed.
+
+See [./docs/releases/v0.65.0-changelog.md](./docs/releases/v0.65.0-changelog.md) for more information.
 
 ## [0.64.3] - 2025-04-17
 
@@ -1113,7 +1121,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.64.3...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.65.0...HEAD
+[0.65.0]: https://github.com/giantswarm/backstage/compare/v0.64.3...v0.65.0
 [0.64.3]: https://github.com/giantswarm/backstage/compare/v0.64.2...v0.64.3
 [0.64.2]: https://github.com/giantswarm/backstage/compare/v0.64.1...v0.64.2
 [0.64.1]: https://github.com/giantswarm/backstage/compare/v0.64.0...v0.64.1
