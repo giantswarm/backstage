@@ -1,5 +1,11 @@
 # backend
 
+## 0.7.4
+
+### Patch Changes
+
+- 6a11b8c: Added a rule to Sentry configuration to ignore TechDocs warnings.
+
 ## 0.7.3
 
 ### Patch Changes
