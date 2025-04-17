@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.64.3] - 2025-04-17
 
+In this release, a rule to Sentry configuration was added to ignore TechDocs warnings.
+
 See [./docs/releases/v0.64.3-changelog.md](./docs/releases/v0.64.3-changelog.md) for more information.
 
 ## [0.64.2] - 2025-04-16
