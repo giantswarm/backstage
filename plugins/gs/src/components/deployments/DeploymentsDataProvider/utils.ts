@@ -44,7 +44,7 @@ export type DeploymentData = {
 };
 
 function getStatus(deploymentStatus: string) {
-  const successfullStatuses = ['reconciled', 'deployed'];
+  const successfulStatuses = ['reconciled', 'deployed'];
 
   const pendingStatuses = [
     'reconciling',
@@ -54,7 +54,7 @@ function getStatus(deploymentStatus: string) {
     'uninstalling',
   ];
 
-  if (successfullStatuses.includes(deploymentStatus)) {
+  if (successfulStatuses.includes(deploymentStatus)) {
     return 'successful';
   }
 
