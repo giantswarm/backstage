@@ -25,6 +25,9 @@ export const rootLogger = createServiceFactory({
             tracesSampleRate: logConfig.getNumber('tracesSampleRate'),
           },
           level: 'warn',
+          ignoreErrors: [
+            /^Index for techdocs was not created: indexer received 0 documents$/,
+          ],
         }),
       );
     }
