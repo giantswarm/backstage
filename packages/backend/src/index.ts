@@ -1,6 +1,5 @@
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
-import { BackendFeature } from '@backstage/backend-plugin-api';
 import { githubAuthProvider } from './githubAuthProvider';
 import { rootLogger } from './rootLogger';
 
@@ -15,11 +14,8 @@ backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
 backend.add(
   import('@giantswarm/backstage-plugin-scaffolder-backend-module-gs'),
 );
-backend.add(
-  import(
-    '@aws/aws-core-plugin-for-backstage-scaffolder-actions'
-  ) as unknown as BackendFeature,
-);
+backend.add(import('@aws/aws-core-plugin-for-backstage-scaffolder-actions'));
+backend.add(import('@devangelista/backstage-scaffolder-kubernetes'));
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
@@ -60,4 +56,5 @@ backend.add(import('@backstage/plugin-search-backend-module-techdocs'));
 
 // kubernetes plugin
 backend.add(import('@backstage/plugin-kubernetes-backend'));
+
 backend.start();

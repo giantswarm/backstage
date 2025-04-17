@@ -7,6 +7,36 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Make Ingress annotations configurable (`ingress.annotations`) and move `hostnames` value to `ingress.hostnames` in the Helm chart.
 
+## [0.64.3] - 2025-04-17
+
+In this release, a rule to Sentry configuration was added to ignore TechDocs warnings.
+
+See [./docs/releases/v0.64.3-changelog.md](./docs/releases/v0.64.3-changelog.md) for more information.
+
+## [0.64.2] - 2025-04-16
+
+In this release, cluster details page component was refactored to simplify the rendering flow.
+
+See [./docs/releases/v0.64.2-changelog.md](./docs/releases/v0.64.2-changelog.md) for more information.
+
+## [0.64.1] - 2025-04-16
+
+In this release:
+
+- custom scaffolder actions were replaced with the `@devangelista/backstage-scaffolder-kubernetes` plugin;
+- the bug where the cluster details page may be displayed as blank was fixed.
+
+See [./docs/releases/v0.64.1-changelog.md](./docs/releases/v0.64.1-changelog.md) for more information.
+
+## [0.64.0] - 2025-04-15
+
+In this release:
+
+- Dex sign-in resolver was changed to use username from an email as user reference;
+- `gitopsRepositories` configuration was changed to support GitHub repositories by default.
+
+See [./docs/releases/v0.64.0-changelog.md](./docs/releases/v0.64.0-changelog.md) for more information.
+
 ## [0.63.1] - 2025-04-10
 
 In this release, a bug that caused the InstallationsPicker component to incorrectly save selected installations into local storage was fixed.
@@ -1083,7 +1113,11 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.63.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.64.3...HEAD
+[0.64.3]: https://github.com/giantswarm/backstage/compare/v0.64.2...v0.64.3
+[0.64.2]: https://github.com/giantswarm/backstage/compare/v0.64.1...v0.64.2
+[0.64.1]: https://github.com/giantswarm/backstage/compare/v0.64.0...v0.64.1
+[0.64.0]: https://github.com/giantswarm/backstage/compare/v0.63.1...v0.64.0
 [0.63.1]: https://github.com/giantswarm/backstage/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/giantswarm/backstage/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/giantswarm/backstage/compare/v0.61.0...v0.62.0

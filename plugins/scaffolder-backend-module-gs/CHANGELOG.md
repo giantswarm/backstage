@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-scaffolder-backend-module-gs
 
+## 0.8.1
+
+### Patch Changes
+
+- 84ae9db: Moved from custom scaffolder actions to backstage-scaffolder-kubernetes plugin.
+
 ## 0.8.0
 
 ### Minor Changes

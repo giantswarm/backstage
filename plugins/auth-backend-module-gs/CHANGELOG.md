@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.9.0
+
+### Minor Changes
+
+- 03e8bfc: Changed Dex sign-in resolver to use username from email as user reference when it's available.
+
 ## 0.8.0
 
 ### Minor Changes

@@ -58,6 +58,18 @@ const customSignInResolver: SignInResolver<OidcAuthResult> = async (
     return signInWithGuestUser(ctx);
   }
 
+  if (userInfo.email) {
+    const username = userInfo.email.split('@')[0];
+    const userRef = `user:default/${username}`;
+
+    return ctx.issueToken({
+      claims: {
+        sub: userRef,
+        ent: [userRef],
+      },
+    });
+  }
+
   return signInWithGuestUser(ctx);
 };
 

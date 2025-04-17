@@ -144,7 +144,7 @@ export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
         </Box>
       </AccordionSummary>
       <AccordionDetails>
-        <Grid container spacing={4} direction="column">
+        <Grid container spacing={4}>
           {groups.map(([groupId, errorItems]) => {
             const errorsWithMessage = errorItems.filter(
               ({ message }) => !!message,
