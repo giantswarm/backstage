@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import { RouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
@@ -7,12 +7,14 @@ import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
 import { getInitialColumns } from './columns';
 import { useInstallationsStatuses } from '../../hooks';
 import { InstallationsErrors } from '../../InstallationsErrors';
+import useDebounce from 'react-use/esm/useDebounce';
 
 type Props = {
   columns: TableColumn<DeploymentData>[];
   loading: boolean;
   retry: () => void;
   deploymentsData: DeploymentData[];
+  onChangeColumnHidden: (field: string, hidden: boolean) => void;
 };
 
 const DeploymentsTableView = ({
@@ -20,6 +22,7 @@ const DeploymentsTableView = ({
   loading,
   retry,
   deploymentsData,
+  onChangeColumnHidden,
 }: Props) => {
   return (
     <Table<DeploymentData>
@@ -46,6 +49,11 @@ const DeploymentsTableView = ({
         </Typography>
       }
       columns={columns}
+      onChangeColumnHidden={(column, hidden) => {
+        if (column.field) {
+          onChangeColumnHidden(column.field, hidden);
+        }
+      }}
     />
   );
 };
@@ -65,21 +73,52 @@ export const DeploymentsTable = ({
   ingressHost,
   context = 'deployments-page',
 }: DeploymentsTableProps) => {
-  const columns = useMemo(() => {
-    return getInitialColumns({
+  const {
+    filteredData: deploymentsData,
+    isLoading,
+    retry,
+    setVisibleColumns,
+  } = useDeploymentsData();
+
+  const [columns, setColumns] = useState(
+    getInitialColumns({
       baseRouteRef,
       grafanaDashboard,
       ingressHost,
       sourceLocation,
       context,
-    });
-  }, [baseRouteRef, context, grafanaDashboard, ingressHost, sourceLocation]);
+    }),
+  );
 
-  const {
-    filteredData: deploymentsData,
-    isLoading,
-    retry,
-  } = useDeploymentsData();
+  const handleChangeColumnHidden = useCallback(
+    (field: string, hidden: boolean) => {
+      setColumns(prev =>
+        prev.map(column => {
+          if (column.field === field) {
+            return {
+              ...column,
+              hidden,
+            };
+          }
+
+          return column;
+        }),
+      );
+    },
+    [],
+  );
+
+  useDebounce(
+    () => {
+      const visibleColumns = columns
+        .filter(column => !Boolean(column.hidden))
+        .map(column => column.field) as string[];
+
+      setVisibleColumns(visibleColumns);
+    },
+    10,
+    [columns, setVisibleColumns],
+  );
 
   const { installationsStatuses } = useInstallationsStatuses();
   const installationsErrors = installationsStatuses.some(
@@ -98,6 +137,7 @@ export const DeploymentsTable = ({
         loading={isLoading}
         deploymentsData={deploymentsData}
         retry={retry}
+        onChangeColumnHidden={handleChangeColumnHidden}
       />
     </>
   );
