@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.25.0
+
+### Minor Changes
+
+- 763e8fb: Display aggregated statuses for deployments.
+
 ## 0.24.2
 
 ### Patch Changes

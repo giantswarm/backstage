@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.66.0-changelog.md](./docs/releases/v0.66.0-changelog.md) for more information.
+
 ## [0.65.0] - 2025-04-17
 
 In this release:
