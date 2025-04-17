@@ -43,6 +43,28 @@ export type DeploymentData = {
   app?: string;
 };
 
+function getStatus(deploymentStatus: string) {
+  const successfullStatuses = ['reconciled', 'deployed'];
+
+  const pendingStatuses = [
+    'reconciling',
+    'pending-install',
+    'pending-upgrade',
+    'pending-rollback',
+    'uninstalling',
+  ];
+
+  if (successfullStatuses.includes(deploymentStatus)) {
+    return 'successful';
+  }
+
+  if (pendingStatuses.includes(deploymentStatus)) {
+    return 'pending';
+  }
+
+  return 'failed';
+}
+
 export function collectDeploymentData({
   installationName,
   deployment,
@@ -59,6 +81,13 @@ export function collectDeploymentData({
   const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
   const app = entityRef ? parseEntityRef(entityRef).name : undefined;
 
+  const deploymentStatus =
+    deployment.kind === 'App'
+      ? getAppStatus(deployment)
+      : getHelmReleaseStatus(deployment);
+
+  const status = deploymentStatus ? getStatus(deploymentStatus) : undefined;
+
   return deployment.kind === 'App'
     ? {
         installationName,
@@ -73,7 +102,7 @@ export function collectDeploymentData({
         namespace: deployment.metadata.namespace,
         version: formatVersion(getAppCurrentVersion(deployment) ?? ''),
         attemptedVersion: formatVersion(getAppVersion(deployment) ?? ''),
-        status: getAppStatus(deployment),
+        status,
         updated: getAppUpdatedTimestamp(deployment),
         sourceKind: 'AppCatalog',
         sourceName: formatAppCatalogName(getAppCatalogName(deployment) ?? ''),
@@ -100,7 +129,7 @@ export function collectDeploymentData({
         attemptedVersion: formatVersion(
           getHelmReleaseLastAttemptedRevision(deployment) ?? '',
         ),
-        status: getHelmReleaseStatus(deployment),
+        status,
         updated: getHelmReleaseUpdatedTimestamp(deployment),
         sourceKind: getHelmReleaseSourceKind(deployment),
         sourceName: getHelmReleaseSourceName(deployment),
