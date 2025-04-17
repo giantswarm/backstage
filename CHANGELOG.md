@@ -7,9 +7,13 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.65.0] - 2025-04-17
 
-See [./docs/releases/v0.65.0-changelog.md](./docs/releases/v0.65.0-changelog.md) for more information.
+In this release:
 
-- Make Ingress annotations configurable (`ingress.annotations`) and move `hostnames` value to `ingress.hostnames` in the Helm chart.
+- Ingress annotations have been made configurable in the Helm chart;
+- `hostnames` configuration has been moved to `ingress.hostnames`;
+- Sentry configuration on the backend has been fixed.
+
+See [./docs/releases/v0.65.0-changelog.md](./docs/releases/v0.65.0-changelog.md) for more information.
 
 ## [0.64.3] - 2025-04-17
 
