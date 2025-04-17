@@ -23,11 +23,11 @@ export const rootLogger = createServiceFactory({
             environment: logConfig.getString('environment'),
             releaseVersion: logConfig.getString('releaseVersion'),
             tracesSampleRate: logConfig.getNumber('tracesSampleRate'),
+            ignoreErrors: [
+              /^Index for techdocs was not created: indexer received 0 documents$/,
+            ],
           },
           level: 'warn',
-          ignoreErrors: [
-            /^Index for techdocs was not created: indexer received 0 documents$/,
-          ],
         }),
       );
     }
