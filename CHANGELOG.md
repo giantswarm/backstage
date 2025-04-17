@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.66.0] - 2025-04-17
 
+In this release, deployments table was changed to display aggregated statuses for deployments.
+
 See [./docs/releases/v0.66.0-changelog.md](./docs/releases/v0.66.0-changelog.md) for more information.
 
 ## [0.65.0] - 2025-04-17
