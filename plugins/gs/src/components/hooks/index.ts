@@ -17,5 +17,6 @@ export * from './useResource';
 export * from './useResourceRequests';
 export * from './useResourceRequestStatusDetails';
 export * from './useSecretStores';
+export * from './useTableColumns';
 export * from './useTemplateString';
 export { useInstallationsStatuses } from './useInstallationsStatuses';

@@ -8,6 +8,7 @@ import {
   sortAndFilterOptions,
 } from '../../utils/tableHelpers';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
+import { isTableColumnHidden } from '../../utils/isTableColumnHidden';
 import { Account, DateComponent, KubernetesVersion, Version } from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 import { ClusterTypes } from '../utils';
@@ -53,9 +54,10 @@ export const ClusterColumns = {
 } as const;
 
 export const getInitialColumns = (
+  visibleColumns: string[],
   queryParameters: Record<string, string | string[]>,
 ): TableColumn<ClusterData>[] => {
-  return [
+  const columns: TableColumn<ClusterData>[] = [
     {
       title: 'Type',
       field: ClusterColumns.type,
@@ -123,7 +125,7 @@ export const getInitialColumns = (
     {
       title: 'Cluster App',
       field: ClusterColumns.appVersion,
-      hidden: queryParameters.appVersion ? false : true,
+      hidden: true,
       render: row => {
         return (
           <Version
@@ -139,7 +141,7 @@ export const getInitialColumns = (
     {
       title: 'Kubernetes Version',
       field: ClusterColumns.kubernetesVersion,
-      hidden: queryParameters.kubernetesVersion ? false : true,
+      hidden: true,
       render: row => {
         return (
           row.kubernetesVersion && (
@@ -156,7 +158,7 @@ export const getInitialColumns = (
     {
       title: 'Region',
       field: ClusterColumns.location,
-      hidden: queryParameters.location ? false : true,
+      hidden: true,
     },
     {
       title: 'AWS account ID',
@@ -187,4 +189,13 @@ export const getInitialColumns = (
       },
     },
   ];
+
+  return columns.map(column => ({
+    ...column,
+    hidden: isTableColumnHidden(column.field, {
+      defaultValue: Boolean(column.hidden),
+      visibleColumns,
+      queryParameters,
+    }),
+  }));
 };

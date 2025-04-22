@@ -58,11 +58,14 @@ export const ClustersTable = () => {
     filteredData: clustersData,
     isLoading,
     retry,
+    visibleColumns,
     setVisibleColumns,
     queryParameters,
   } = useClustersData();
 
-  const [columns, setColumns] = useState(getInitialColumns(queryParameters));
+  const [columns, setColumns] = useState(
+    getInitialColumns(visibleColumns, queryParameters),
+  );
 
   const handleChangeColumnHidden = useCallback(
     (field: string, hidden: boolean) => {
@@ -84,14 +87,19 @@ export const ClustersTable = () => {
 
   useDebounce(
     () => {
-      const visibleColumns = columns
+      const newVisibleColumns = columns
         .filter(column => !Boolean(column.hidden))
         .map(column => column.field) as string[];
 
-      setVisibleColumns(visibleColumns);
+      if (
+        JSON.stringify(newVisibleColumns.sort()) !==
+        JSON.stringify(visibleColumns.sort())
+      ) {
+        setVisibleColumns(newVisibleColumns);
+      }
     },
     10,
-    [columns, setVisibleColumns],
+    [columns, visibleColumns, setVisibleColumns],
   );
 
   const { installationsStatuses } = useInstallationsStatuses();
