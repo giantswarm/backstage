@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Box, Typography } from '@material-ui/core';
@@ -6,6 +6,10 @@ import useDebounce from 'react-use/esm/useDebounce';
 import { getInitialColumns } from './columns';
 import { ClusterData, useClustersData } from '../ClustersDataProvider';
 import { useInstallationsStatuses } from '../../hooks';
+import {
+  useTableColumns,
+  CLUSTERS_TABLE_ID,
+} from '../../hooks/useTableColumns';
 import { InstallationsErrors } from '../../InstallationsErrors';
 
 type Props = {
@@ -62,7 +66,12 @@ export const ClustersTable = () => {
     queryParameters,
   } = useClustersData();
 
-  const [columns, setColumns] = useState(getInitialColumns(queryParameters));
+  const { visibleColumns, saveVisibleColumns } =
+    useTableColumns(CLUSTERS_TABLE_ID);
+
+  const [columns, setColumns] = useState(
+    getInitialColumns({ visibleColumns, queryParameters }),
+  );
 
   const handleChangeColumnHidden = useCallback(
     (field: string, hidden: boolean) => {
@@ -84,15 +93,19 @@ export const ClustersTable = () => {
 
   useDebounce(
     () => {
-      const visibleColumns = columns
+      const newVisibleColumns = columns
         .filter(column => !Boolean(column.hidden))
         .map(column => column.field) as string[];
 
-      setVisibleColumns(visibleColumns);
+      saveVisibleColumns(newVisibleColumns);
     },
     10,
     [columns, setVisibleColumns],
   );
+
+  useEffect(() => {
+    setVisibleColumns(visibleColumns);
+  }, [setVisibleColumns, visibleColumns]);
 
   const { installationsStatuses } = useInstallationsStatuses();
   const installationsErrors = installationsStatuses.some(

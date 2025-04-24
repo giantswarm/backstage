@@ -6,6 +6,11 @@ import { Box, Typography } from '@material-ui/core';
 import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
 import { getInitialColumns } from './columns';
 import { useInstallationsStatuses } from '../../hooks';
+import {
+  useTableColumns,
+  DEPLOYMENTS_TABLE_ID,
+  ENTITY_DEPLOYMENTS_TABLE_ID,
+} from '../../hooks/useTableColumns';
 import { InstallationsErrors } from '../../InstallationsErrors';
 import useDebounce from 'react-use/esm/useDebounce';
 
@@ -77,11 +82,17 @@ export const DeploymentsTable = ({
     filteredData: deploymentsData,
     isLoading,
     retry,
-    setVisibleColumns,
   } = useDeploymentsData();
+
+  const { visibleColumns, saveVisibleColumns } = useTableColumns(
+    context === 'deployments-page'
+      ? DEPLOYMENTS_TABLE_ID
+      : ENTITY_DEPLOYMENTS_TABLE_ID,
+  );
 
   const [columns, setColumns] = useState(
     getInitialColumns({
+      visibleColumns,
       baseRouteRef,
       grafanaDashboard,
       ingressHost,
@@ -110,14 +121,14 @@ export const DeploymentsTable = ({
 
   useDebounce(
     () => {
-      const visibleColumns = columns
+      const newVisibleColumns = columns
         .filter(column => !Boolean(column.hidden))
         .map(column => column.field) as string[];
 
-      setVisibleColumns(visibleColumns);
+      saveVisibleColumns(newVisibleColumns);
     },
     10,
-    [columns, setVisibleColumns],
+    [columns, saveVisibleColumns],
   );
 
   const { installationsStatuses } = useInstallationsStatuses();

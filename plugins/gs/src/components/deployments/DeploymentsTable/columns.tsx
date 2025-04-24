@@ -16,6 +16,7 @@ import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
+import { isTableColumnHidden } from '../../utils/isTableColumnHidden';
 
 export const DeploymentColumns = {
   name: 'name',
@@ -32,12 +33,14 @@ export const DeploymentColumns = {
 } as const;
 
 export const getInitialColumns = ({
+  visibleColumns,
   context = 'deployments-page',
   baseRouteRef,
   grafanaDashboard,
   ingressHost,
   sourceLocation,
 }: {
+  visibleColumns: string[];
   context?: 'catalog-entity' | 'deployments-page';
   baseRouteRef: RouteRef;
   grafanaDashboard?: string;
@@ -229,5 +232,11 @@ export const getInitialColumns = ({
     });
   }
 
-  return columns;
+  return columns.map(column => ({
+    ...column,
+    hidden: isTableColumnHidden(column.field, {
+      defaultValue: Boolean(column.hidden),
+      visibleColumns,
+    }),
+  }));
 };
