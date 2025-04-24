@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.26.0
+
+### Minor Changes
+
+- 0126c0d: Changed column selection to be persisted in the deployments and clusters tables.
+
 ## 0.25.0
 
 ### Minor Changes
