@@ -9373,7 +9373,6 @@ __metadata:
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/plugin-scaffolder-node": "backstage:^"
-    "@kubernetes/client-node": "npm:^0.22.3"
     "@types/js-yaml": "npm:^4"
     js-yaml: "npm:^4.1.0"
     zod: "npm:^3.24.2"
