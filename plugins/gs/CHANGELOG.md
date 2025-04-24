@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.27.0
+
+### Minor Changes
+
+- 09bae90: Updated Backstage packages to v1.38.1.
+- d121c2e: Updated dependencies.
+
+### Patch Changes
+
+- Updated dependencies [09bae90]
+- Updated dependencies [d121c2e]
+  - @giantswarm/backstage-plugin-gs-common@0.15.0
+
 ## 0.26.0
 
 ### Minor Changes

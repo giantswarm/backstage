@@ -1,5 +1,20 @@
 # backend
 
+## 0.8.0
+
+### Minor Changes
+
+- 09bae90: Updated Backstage packages to v1.38.1.
+- d121c2e: Updated dependencies.
+
+### Patch Changes
+
+- Updated dependencies [09bae90]
+- Updated dependencies [d121c2e]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.10.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.9.0
+  - @giantswarm/backstage-plugin-techdocs-backend-module-gs@0.8.0
+
 ## 0.7.5
 
 ### Patch Changes
