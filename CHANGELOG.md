@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.68.0] - 2025-04-24
+
+In this release:
+
+- Backstage was updated to v1.38.1;
+- other dependencies were updated.
+
+See [./docs/releases/v0.68.0-changelog.md](./docs/releases/v0.68.0-changelog.md) for more information.
+
 ## [0.67.0] - 2025-04-24
 
 In this release, column selection in deployments and clusters tables was improved to be persisted in local storage.
@@ -1133,7 +1142,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.67.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.68.0...HEAD
+[0.68.0]: https://github.com/giantswarm/backstage/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/giantswarm/backstage/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/giantswarm/backstage/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/giantswarm/backstage/compare/v0.64.3...v0.65.0

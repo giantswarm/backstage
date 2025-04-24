@@ -1,5 +1,18 @@
 # app
 
+## 0.13.0
+
+### Minor Changes
+
+- 09bae90: Updated Backstage packages to v1.38.1.
+- d121c2e: Updated dependencies.
+
+### Patch Changes
+
+- Updated dependencies [09bae90]
+- Updated dependencies [d121c2e]
+  - @giantswarm/backstage-plugin-gs@0.27.0
+
 ## 0.12.4
 
 ### Patch Changes
