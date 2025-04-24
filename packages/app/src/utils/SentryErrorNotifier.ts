@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react';
-import React from 'react';
+import { useEffect } from 'react';
 import {
   RouteProps,
   createRoutesFromChildren,
@@ -26,7 +26,7 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
       environment: config.environment,
       integrations: [
         Sentry.reactRouterV6BrowserTracingIntegration({
-          useEffect: React.useEffect,
+          useEffect,
           useLocation,
           useNavigationType,
           createRoutesFromChildren,

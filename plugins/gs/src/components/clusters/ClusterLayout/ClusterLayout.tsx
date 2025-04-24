@@ -12,7 +12,6 @@ import {
 } from '@backstage/core-plugin-api';
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
-import React from 'react';
 import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
 import {
   App,

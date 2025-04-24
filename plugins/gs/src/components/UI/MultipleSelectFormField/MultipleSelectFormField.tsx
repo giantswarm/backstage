@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import { ChangeEvent, ReactNode, useId, useState } from 'react';
 import {
   Checkbox,
   FormControl,
@@ -30,7 +30,7 @@ type MultipleSelectFormFieldProps = {
   error?: boolean;
   items: string[];
   selectedItems: string[];
-  renderValue?: (value: string[]) => React.ReactNode;
+  renderValue?: (value: string[]) => ReactNode;
   onChange: (selectedItems: string[]) => void;
 };
 
@@ -47,10 +47,10 @@ export const MultipleSelectFormField = ({
   onChange,
 }: MultipleSelectFormFieldProps) => {
   const [localSelectedItems, setLocalSelectedItems] =
-    React.useState<string[]>(selectedItems);
+    useState<string[]>(selectedItems);
 
   const handleChange = (
-    event: React.ChangeEvent<{ name?: string; value: unknown }>,
+    event: ChangeEvent<{ name?: string; value: unknown }>,
   ) => {
     setLocalSelectedItems(event.target.value as string[]);
   };

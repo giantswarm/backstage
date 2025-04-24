@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInstallations, InstallationInfo } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { InstallationPickerProps } from './schema';
@@ -74,7 +74,7 @@ const InstallationPickerField = ({
     };
   }, [allowedProviders, allowedPipelines, installationsInfo]);
 
-  const [selectedInstallation, setSelectedInstallation] = React.useState<
+  const [selectedInstallation, setSelectedInstallation] = useState<
     string | undefined
   >(installationNameValue ?? installations[0]);
 

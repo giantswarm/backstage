@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Link, styled } from '@material-ui/core';
 import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
 

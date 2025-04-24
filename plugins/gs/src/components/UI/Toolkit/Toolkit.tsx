@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from '@backstage/core-components';
 import List from '@material-ui/core/List';
 import ListItemIcon from '@material-ui/core/ListItemIcon';

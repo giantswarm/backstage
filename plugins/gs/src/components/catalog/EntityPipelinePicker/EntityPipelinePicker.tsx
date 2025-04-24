@@ -1,4 +1,3 @@
-import React from 'react';
 import { EntityCheckboxesPicker } from '../EntityCheckboxesPicker';
 import { EntityPipelineFilter } from '../filters';
 

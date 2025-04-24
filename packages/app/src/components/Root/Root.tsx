@@ -1,4 +1,4 @@
-import React, { PropsWithChildren, useEffect } from 'react';
+import { PropsWithChildren, useEffect } from 'react';
 import { makeStyles } from '@material-ui/core';
 import FolderIcon from '@material-ui/icons/Folder';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';

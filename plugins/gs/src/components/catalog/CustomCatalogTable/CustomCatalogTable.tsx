@@ -12,7 +12,7 @@ import {
   CatalogTableProps,
   CatalogTableRow,
 } from '@backstage/plugin-catalog';
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { TableColumn, TableProps } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
 import { withStyles } from '@material-ui/core/styles';

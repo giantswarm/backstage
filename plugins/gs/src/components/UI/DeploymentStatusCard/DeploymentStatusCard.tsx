@@ -1,4 +1,4 @@
-import React, { ComponentProps, ComponentType } from 'react';
+import { ComponentProps, ComponentType } from 'react';
 import { Box, Card, CardContent, CardHeader, styled } from '@material-ui/core';
 import { Heading } from '../Heading';
 import { DateComponent } from '../Date';

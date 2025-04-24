@@ -2,7 +2,7 @@
  * EntityCheckboxesPicker component is based on the EntityAutocompletePicker.tsx - https://github.com/backstage/backstage/blob/62c80557b638946f4c01569b5ede4338cb517543/plugins/catalog-react/src/components/EntityAutocompletePicker/EntityAutocompletePicker.tsx
  */
 
-import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   catalogApiRef,
   DefaultEntityFilters,

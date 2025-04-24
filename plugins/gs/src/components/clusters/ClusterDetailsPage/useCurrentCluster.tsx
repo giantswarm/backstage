@@ -1,5 +1,5 @@
 import { App, Cluster } from '@giantswarm/backstage-plugin-gs-common';
-import React, { createContext, ReactNode, useContext } from 'react';
+import { createContext, ReactNode, useContext } from 'react';
 import { useClusterFromUrl } from './useClusterFromUrl';
 
 export type ClusterLoadingStatus = {

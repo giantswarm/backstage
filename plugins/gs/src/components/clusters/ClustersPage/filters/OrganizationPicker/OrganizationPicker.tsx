@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { OrganizationFilter } from '../filters';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { MultiplePicker, MultiplePickerOption } from '../../../../UI';

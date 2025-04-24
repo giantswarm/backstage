@@ -1,4 +1,3 @@
-import React from 'react';
 import semver from 'semver';
 import { Box, Tooltip, styled } from '@material-ui/core';
 import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';

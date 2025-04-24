@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { InfoCard } from '@backstage/core-components';
 import { ClusterLabels } from './ClusterLabels/ClusterLabels';
 import { getClusterLabels } from '@giantswarm/backstage-plugin-gs-common';

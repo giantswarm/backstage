@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { LabelFilter } from '../filters';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { MultiplePicker, MultiplePickerOption } from '../../../../UI';

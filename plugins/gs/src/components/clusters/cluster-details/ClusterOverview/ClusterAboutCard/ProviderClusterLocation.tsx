@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '../../../../UI';
 import { useResource } from '../../../../hooks';

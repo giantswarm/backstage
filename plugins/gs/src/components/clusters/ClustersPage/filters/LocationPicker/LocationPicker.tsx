@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { LocationFilter } from '../filters';

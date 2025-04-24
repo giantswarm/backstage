@@ -1,4 +1,4 @@
-import React, { useMemo, ReactNode, useCallback } from 'react';
+import { useMemo, ReactNode, useCallback } from 'react';
 import { AutocompleteOption } from './AutocompleteOption';
 
 import Box from '@material-ui/core/Box';

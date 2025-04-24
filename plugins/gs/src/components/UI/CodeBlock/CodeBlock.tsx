@@ -1,6 +1,5 @@
 import { CodeSnippet, CopyTextButton } from '@backstage/core-components';
 import { Box, makeStyles } from '@material-ui/core';
-import React from 'react';
 
 const useStyles = makeStyles(theme => ({
   flexContainer: {

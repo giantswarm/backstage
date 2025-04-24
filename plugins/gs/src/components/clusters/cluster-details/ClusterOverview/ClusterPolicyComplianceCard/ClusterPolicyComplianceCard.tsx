@@ -1,4 +1,3 @@
-import React from 'react';
 import { InfoCard } from '@backstage/core-components';
 import { Box, Grid, Link, makeStyles, Typography } from '@material-ui/core';
 import { CodeBlock } from '../../../../UI';

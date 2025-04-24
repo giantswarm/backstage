@@ -1,4 +1,3 @@
-import React from 'react';
 import { ResourceRequestsTable } from '../../kratix/ResourceRequestsTable';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { useRouteRef } from '@backstage/core-plugin-api';

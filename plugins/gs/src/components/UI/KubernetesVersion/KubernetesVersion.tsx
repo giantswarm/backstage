@@ -1,4 +1,3 @@
-import React from 'react';
 import { NotAvailable } from '../NotAvailable';
 import { Box, styled, Tooltip } from '@material-ui/core';
 import { useK8sVersionEOLDate } from '../../hooks';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { SubvalueCell, Table, TableColumn } from '@backstage/core-components';
 import {
   getResourceRequestStatus,

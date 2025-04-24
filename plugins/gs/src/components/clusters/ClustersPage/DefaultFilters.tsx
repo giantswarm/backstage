@@ -1,4 +1,3 @@
-import React from 'react';
 import { InstallationsPicker } from '../../InstallationsPicker';
 import { useInstallations } from '../../hooks';
 import { KindPicker } from './filters/KindPicker';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { InfoCard } from '@backstage/core-components';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { Box, Grid, Link, Typography } from '@material-ui/core';

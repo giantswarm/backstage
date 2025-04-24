@@ -1,5 +1,5 @@
-import React from 'react';
 import { Box, Divider, makeStyles } from '@material-ui/core';
+import { Fragment } from 'react';
 import classNames from 'classnames';
 import { DateComponent, StructuredMetadataList } from '../../UI';
 
@@ -30,7 +30,7 @@ export const HelmReleaseDetailsConditions = ({
   return (
     <Box>
       {conditions.map((condition, idx) => (
-        <React.Fragment key={condition.type}>
+        <Fragment key={condition.type}>
           <Divider
             className={classNames(classes.divider, {
               [classes.dividerFirst]: idx === 0,
@@ -47,7 +47,7 @@ export const HelmReleaseDetailsConditions = ({
               ),
             }}
           />
-        </React.Fragment>
+        </Fragment>
       ))}
     </Box>
   );

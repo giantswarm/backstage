@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { StatusFilter } from '../filters';
 import {
   DeploymentData,

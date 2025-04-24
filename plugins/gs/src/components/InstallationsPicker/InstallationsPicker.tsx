@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Box } from '@material-ui/core';
 import { MultipleSelect } from '../UI/MultipleSelect';
 import useDebounce from 'react-use/esm/useDebounce';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Card, CardContent, Typography } from '@material-ui/core';
 import PublicIcon from '@material-ui/icons/Public';
 import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';

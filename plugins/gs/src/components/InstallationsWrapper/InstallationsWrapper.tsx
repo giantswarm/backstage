@@ -1,4 +1,3 @@
-import React from 'react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { useInstallations, useInstallationsStatuses } from '../hooks';
 import { InstallationsSelector } from '../InstallationsSelector';
