@@ -1,13 +1,17 @@
 import { useCallback } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 
+export const DEPLOYMENTS_TABLE_ID = 'deployments';
+export const ENTITY_DEPLOYMENTS_TABLE_ID = 'entity-deployments';
+export const CLUSTERS_TABLE_ID = 'clusters';
+
 export function useTableColumns(tableName: string) {
   const [savedTableColumns, setSavedTableColumns] = useLocalStorageState<
     string[]
   >(`gs-table-columns-${tableName}`, {
     defaultValue: [],
   });
-  const setVisibleColumns = useCallback(
+  const saveVisibleColumns = useCallback(
     (columns: string[]) => {
       const itemsToSave = [columns].flat().filter(Boolean) as string[];
 
@@ -23,6 +27,6 @@ export function useTableColumns(tableName: string) {
 
   return {
     visibleColumns: savedTableColumns,
-    setVisibleColumns,
+    saveVisibleColumns,
   };
 }

@@ -1,16 +1,17 @@
-import React, { createContext, ReactNode, useContext, useMemo } from 'react';
+import React, {
+  createContext,
+  ReactNode,
+  useContext,
+  useMemo,
+  useState,
+} from 'react';
 import {
   findResourceByRef,
   getClusterControlPlaneRef,
   getClusterInfrastructureRef,
   getProviderClusterIdentityRef,
 } from '@giantswarm/backstage-plugin-gs-common';
-import {
-  FiltersData,
-  useClusters,
-  useFilters,
-  useTableColumns,
-} from '../../hooks';
+import { FiltersData, useClusters, useFilters } from '../../hooks';
 import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { useControlPlanes } from '../../hooks/useControlPlanes';
@@ -71,7 +72,7 @@ export const ClustersDataProvider = ({
   const { filters, queryParameters, updateFilters } =
     useFilters<DefaultClusterFilters>();
 
-  const { visibleColumns, setVisibleColumns } = useTableColumns('clusters');
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   const {
     resources: clusterResources,
@@ -211,7 +212,6 @@ export const ClustersDataProvider = ({
     isLoading,
     queryParameters,
     retry,
-    setVisibleColumns,
     updateFilters,
     visibleColumns,
   ]);
