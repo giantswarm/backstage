@@ -53,10 +53,13 @@ export const ClusterColumns = {
   status: 'status',
 } as const;
 
-export const getInitialColumns = (
-  visibleColumns: string[],
-  queryParameters: Record<string, string | string[]>,
-): TableColumn<ClusterData>[] => {
+export const getInitialColumns = ({
+  visibleColumns,
+  queryParameters,
+}: {
+  visibleColumns: string[];
+  queryParameters: Record<string, string | string[]>;
+}): TableColumn<ClusterData>[] => {
   const columns: TableColumn<ClusterData>[] = [
     {
       title: 'Type',

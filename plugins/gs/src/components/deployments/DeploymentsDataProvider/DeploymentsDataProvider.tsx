@@ -16,6 +16,7 @@ import {
   useCatalogEntitiesForDeployments,
   useFilters,
   useHelmReleases,
+  useTableColumns,
 } from '../../hooks';
 import {
   AppFilter,
@@ -77,7 +78,7 @@ export const DeploymentsDataProvider = ({
       persistToURL: deploymentNames ? false : true,
     });
 
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+  const { visibleColumns, setVisibleColumns } = useTableColumns('deployments');
 
   const catalogEntitiesMap = useCatalogEntitiesForDeployments();
 
@@ -160,6 +161,7 @@ export const DeploymentsDataProvider = ({
     isLoading,
     queryParameters,
     retry,
+    setVisibleColumns,
     updateFilters,
     visibleColumns,
   ]);

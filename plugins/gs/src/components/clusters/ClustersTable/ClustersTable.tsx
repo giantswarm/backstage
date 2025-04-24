@@ -64,7 +64,7 @@ export const ClustersTable = () => {
   } = useClustersData();
 
   const [columns, setColumns] = useState(
-    getInitialColumns(visibleColumns, queryParameters),
+    getInitialColumns({ visibleColumns, queryParameters }),
   );
 
   const handleChangeColumnHidden = useCallback(

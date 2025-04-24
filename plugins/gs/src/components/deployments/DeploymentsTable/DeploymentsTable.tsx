@@ -77,11 +77,13 @@ export const DeploymentsTable = ({
     filteredData: deploymentsData,
     isLoading,
     retry,
+    visibleColumns,
     setVisibleColumns,
   } = useDeploymentsData();
 
   const [columns, setColumns] = useState(
     getInitialColumns({
+      visibleColumns,
       baseRouteRef,
       grafanaDashboard,
       ingressHost,
@@ -110,14 +112,19 @@ export const DeploymentsTable = ({
 
   useDebounce(
     () => {
-      const visibleColumns = columns
+      const newVisibleColumns = columns
         .filter(column => !Boolean(column.hidden))
         .map(column => column.field) as string[];
 
-      setVisibleColumns(visibleColumns);
+      if (
+        JSON.stringify(newVisibleColumns.sort()) !==
+        JSON.stringify(visibleColumns.sort())
+      ) {
+        setVisibleColumns(newVisibleColumns);
+      }
     },
     10,
-    [columns, setVisibleColumns],
+    [columns, visibleColumns, setVisibleColumns],
   );
 
   const { installationsStatuses } = useInstallationsStatuses();
