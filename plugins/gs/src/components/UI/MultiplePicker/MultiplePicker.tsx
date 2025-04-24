@@ -1,5 +1,5 @@
 import Box from '@material-ui/core/Box';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MultipleSelect } from '../MultipleSelect';
 import { Autocomplete } from '../Autocomplete';
 

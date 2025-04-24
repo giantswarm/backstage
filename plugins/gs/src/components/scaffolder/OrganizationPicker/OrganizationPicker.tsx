@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Grid, Typography } from '@material-ui/core';
 import { OrganizationPickerProps } from './schema';
 import { GSContext } from '../../GSContext';
@@ -49,7 +49,7 @@ const OrganizationPickerField = ({
     return resources.map(organization => organization.metadata.name).sort();
   }, [isLoading, resources]);
 
-  const [selectedOrganization, setSelectedOrganization] = React.useState<
+  const [selectedOrganization, setSelectedOrganization] = useState<
     string | undefined
   >(organizationValue);
 

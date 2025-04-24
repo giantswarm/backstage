@@ -21,7 +21,7 @@ import {
   CatalogTableColumnsFunc,
   CatalogTableRow,
 } from '@backstage/plugin-catalog';
-import React, { ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { CustomCatalogTable } from '../CustomCatalogTable';
 import { EntityProviderPicker } from '../EntityProviderPicker';
 import { EntityPipelinePicker } from '../EntityPipelinePicker';

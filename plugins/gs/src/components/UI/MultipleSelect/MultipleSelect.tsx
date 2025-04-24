@@ -2,7 +2,7 @@ import Box from '@material-ui/core/Box';
 import Checkbox from '@material-ui/core/Checkbox';
 import FormControl from '@material-ui/core/FormControl';
 import { createStyles, makeStyles, Theme } from '@material-ui/core/styles';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FormControlLabel, FormGroup, FormLabel } from '@material-ui/core';
 
 const useStyles = makeStyles(

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import { useCallback } from 'react';
 import { Typography, makeStyles } from '@material-ui/core';
 import classnames from 'classnames';
 import type { InstallationStatus } from '../hooks/useInstallationsStatuses';

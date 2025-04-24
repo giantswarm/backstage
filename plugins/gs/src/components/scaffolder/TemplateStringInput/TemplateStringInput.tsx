@@ -1,10 +1,10 @@
-import React, { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { TextField } from '@material-ui/core';
 import { TemplateStringInputProps } from './schema';
 import { useTemplateString } from '../../hooks/useTemplateString';
 
 export const TemplateStringInput = (props: TemplateStringInputProps) => {
-  const [initialValue, setInitialValue] = React.useState<string | undefined>(
+  const [initialValue, setInitialValue] = useState<string | undefined>(
     undefined,
   );
   const {

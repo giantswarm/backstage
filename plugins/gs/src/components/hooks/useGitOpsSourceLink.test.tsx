@@ -1,4 +1,3 @@
-import React from 'react';
 import { configApiRef } from '@backstage/core-plugin-api';
 import { ApiProvider } from '@backstage/core-app-api';
 import { mockApis, TestApiRegistry } from '@backstage/test-utils';

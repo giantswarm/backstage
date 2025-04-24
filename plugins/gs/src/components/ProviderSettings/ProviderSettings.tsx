@@ -1,4 +1,3 @@
-import React from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ProviderSettingsItem } from './ProviderSettingsItem';

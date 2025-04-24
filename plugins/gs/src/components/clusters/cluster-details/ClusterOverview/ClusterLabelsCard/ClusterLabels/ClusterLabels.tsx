@@ -1,5 +1,4 @@
 import { Box, Grid, makeStyles, Typography } from '@material-ui/core';
-import React from 'react';
 
 const useStyles = makeStyles(theme => ({
   label: {

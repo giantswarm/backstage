@@ -21,7 +21,7 @@ This is the recommended way if you want to get started simply, but it may not pr
 2. When prompted if you want to open the repository in a devcontainer, click "Reopen in Container".
 3. Wait for the devcontainer to build. This may take a few minutes.
 4. Once the devcontainer is ready, open a new terminal in VS Code.
-5. Run `yarn dev` to in the VS code terminal to start backend and frontend.
+5. Run `yarn start` to in the VS code terminal to start backend and frontend.
 6. If it doesn't open automatically, open [https://localhost:3000/](https://localhost:3000/) in your browser.
 
 ## Classic local development {#classic}
@@ -79,7 +79,7 @@ set -a; source .env; set +a
 (Simply running `source .env` will not work for sub-commands as the variables are
 not exported.)
 
-If the environment variables are not loaded, yarn may fail to start with the
+If the environment variables are not loaded, `yarn` may fail to start with the
 following error:
 
 ```nohighlight
@@ -99,7 +99,7 @@ dependencies installed in the right version.
 
 To start both backend and frontent at the same time, execute
 
-    yarn dev
+    yarn start
 
 Note that it can take a bit after launch until Backstage has processed the
 entire catalog data.
@@ -112,15 +112,15 @@ To stop the development server, hit `Ctrl + C`.
 
 ## Running backend and frontend separately
 
-With the `yarn dev` command above, two processes -- backend and frontend -- are
+With the `yarn start` command above, two processes -- backend and frontend -- are
 logging into the same terminal. If this is not what you want, you can start both
 processes separately.
 
 Execute these commands in separate shells (but watch out! Both need the
 environment variables set.)
 
-- `yarn start-backend` to start the backend
-- `yarn start` to start the frontend
+- `yarn start backend` to start the backend
+- `yarn start app` to start the frontend
 
 ## Running app locally with HTTPS
 

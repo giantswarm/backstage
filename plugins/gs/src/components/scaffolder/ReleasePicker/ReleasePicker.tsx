@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Grid, Typography } from '@material-ui/core';
 import { ReleasePickerProps } from './schema';
 import { GSContext } from '../../GSContext';
@@ -53,9 +53,9 @@ const ReleasePickerField = ({
       .sort(semver.rcompare);
   }, [isLoading, resources]);
 
-  const [selectedRelease, setSelectedRelease] = React.useState<
-    string | undefined
-  >(releaseValue ?? releases[0]);
+  const [selectedRelease, setSelectedRelease] = useState<string | undefined>(
+    releaseValue ?? releases[0],
+  );
 
   useEffect(() => {
     if (

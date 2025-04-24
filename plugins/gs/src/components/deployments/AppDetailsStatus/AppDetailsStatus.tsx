@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Paper } from '@material-ui/core';
 import type { App } from '@giantswarm/backstage-plugin-gs-common';
 import { getAppStatus } from '@giantswarm/backstage-plugin-gs-common';

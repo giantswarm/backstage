@@ -1,4 +1,3 @@
-import React from 'react';
 import { InfoCard, Progress } from '@backstage/core-components';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { ClusterAccessGS } from './ClusterAccessGS';

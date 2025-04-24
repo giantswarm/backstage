@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { EmptyState, Progress, WarningPanel } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';

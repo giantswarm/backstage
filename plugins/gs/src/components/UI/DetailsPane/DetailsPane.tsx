@@ -1,4 +1,3 @@
-import React from 'react';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import { Drawer, IconButton, Typography } from '@material-ui/core';
 import Close from '@material-ui/icons/Close';

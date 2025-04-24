@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Link, Tooltip, Typography, styled } from '@material-ui/core';
 import LanguageOutlinedIcon from '@material-ui/icons/LanguageOutlined';
 

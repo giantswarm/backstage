@@ -1,4 +1,3 @@
-import React from 'react';
 import { Content, Page } from '@backstage/core-components';
 import {
   HomePageCompanyLogo,

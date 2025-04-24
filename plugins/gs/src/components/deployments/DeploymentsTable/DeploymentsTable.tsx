@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import { RouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';

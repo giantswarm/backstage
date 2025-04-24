@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { InfoCard, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';

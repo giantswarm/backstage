@@ -1,5 +1,5 @@
 import { Content, Header, Page } from '@backstage/core-components';
-import React, { ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { GSContext } from '../../GSContext';
 import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';

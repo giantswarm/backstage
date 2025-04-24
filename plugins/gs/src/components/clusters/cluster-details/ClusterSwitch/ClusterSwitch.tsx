@@ -1,4 +1,3 @@
-import React from 'react';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import {
   getClusterInfrastructureRef,

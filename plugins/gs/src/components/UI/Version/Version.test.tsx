@@ -1,4 +1,3 @@
-import React from 'react';
 import { renderInTestApp } from '@backstage/test-utils';
 import { cleanup } from '@testing-library/react';
 import { Version, VersionProps } from './Version';

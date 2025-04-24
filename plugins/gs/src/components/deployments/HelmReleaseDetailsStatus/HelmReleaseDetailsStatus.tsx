@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Paper } from '@material-ui/core';
 import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
 import { getHelmReleaseStatus } from '@giantswarm/backstage-plugin-gs-common';

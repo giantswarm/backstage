@@ -1,4 +1,3 @@
-import React from 'react';
 import { MarkdownContent } from '@backstage/core-components';
 import { LayoutTemplate } from '@backstage/plugin-scaffolder-react';
 import { Box, Grid, Typography } from '@material-ui/core';

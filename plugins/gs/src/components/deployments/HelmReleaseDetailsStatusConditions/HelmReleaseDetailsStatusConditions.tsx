@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import classNames from 'classnames';
 import {
   Box,
@@ -76,7 +76,7 @@ const ConditionCard = ({
   defaultState = 'collapsed',
 }: ConditionCardProps) => {
   const classes = useStyles();
-  const [expanded, setExpanded] = React.useState(defaultState === 'expanded');
+  const [expanded, setExpanded] = useState(defaultState === 'expanded');
 
   const handleExpandClick = () => {
     setExpanded(!expanded);

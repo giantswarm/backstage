@@ -1,4 +1,3 @@
-import React from 'react';
 import { Grid } from '@material-ui/core';
 import { useCurrentUser } from '../../../hooks';
 import { ClusterSSHAccessCard } from './ClusterSSHAccessCard';

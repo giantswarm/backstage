@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Grid, Typography, withStyles } from '@material-ui/core';
 import MuiAccordion from '@material-ui/core/Accordion';
 import MuiAccordionSummary from '@material-ui/core/AccordionSummary';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';

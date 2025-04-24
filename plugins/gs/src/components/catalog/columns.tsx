@@ -1,4 +1,3 @@
-import React from 'react';
 import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { Box, Typography } from '@material-ui/core';

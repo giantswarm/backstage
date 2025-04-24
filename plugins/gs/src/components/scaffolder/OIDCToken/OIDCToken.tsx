@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import { OIDCTokenProps } from './schema';

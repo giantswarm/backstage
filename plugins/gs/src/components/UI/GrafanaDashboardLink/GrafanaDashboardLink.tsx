@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, Typography, Tooltip, styled, Box } from '@material-ui/core';
 import { GrafanaIcon } from '../../../assets/icons/CustomIcons';
 import { useGrafanaDashboardLink } from '../../hooks';

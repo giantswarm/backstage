@@ -1,4 +1,3 @@
-import React from 'react';
 import { GSContext } from '../../GSContext';
 import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';

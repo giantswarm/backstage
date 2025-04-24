@@ -1,4 +1,3 @@
-import React from 'react';
 import { SidebarGroup, SidebarItem } from '@backstage/core-components';
 import { FeatureEnabled } from '../FeatureEnabled';
 import ApartmentIcon from '@material-ui/icons/Apartment';
