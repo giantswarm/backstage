@@ -30,7 +30,7 @@
     "@backstage/plugin-auth-backend": "backstage:^",
     "@backstage/plugin-auth-backend-module-github-provider": "backstage:^",
     "@backstage/plugin-auth-node": "backstage:^",
-    "express": "^4.21.1"
+    "express": "^5.0.0"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
