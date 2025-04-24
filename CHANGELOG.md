@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.67.0] - 2025-04-24
 
+In this release, column selection in deployments and clusters tables was improved to be persisted in local storage.
+
 See [./docs/releases/v0.67.0-changelog.md](./docs/releases/v0.67.0-changelog.md) for more information.
 
 ## [0.66.0] - 2025-04-17
