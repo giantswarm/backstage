@@ -1,5 +1,11 @@
 # backend
 
+## 0.9.0
+
+### Minor Changes
+
+- d9eb6f4: Removed custom GitHub auth provider.
+
 ## 0.8.0
 
 ### Minor Changes
