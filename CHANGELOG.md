@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.69.0] - 2025-04-28
 
+In this release, custom GitHub auth provider was removed.
+
 See [./docs/releases/v0.69.0-changelog.md](./docs/releases/v0.69.0-changelog.md) for more information.
 
 ## [0.68.0] - 2025-04-24
