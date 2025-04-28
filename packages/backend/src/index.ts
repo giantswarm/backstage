@@ -1,6 +1,5 @@
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
-import { githubAuthProvider } from './githubAuthProvider';
 import { rootLogger } from './rootLogger';
 
 const backend = createBackend();
@@ -23,8 +22,8 @@ backend.add(import('@giantswarm/backstage-plugin-techdocs-backend-module-gs'));
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
+backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
 backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-gs'));
-backend.add(githubAuthProvider);
 
 // events plugin
 backend.add(import('@backstage/plugin-events-backend'));
