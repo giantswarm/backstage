@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.28.0
+
+### Minor Changes
+
+- c3eb724: Delegated unimplemented custom Kubernetes client methods to the standard Kubernetes backend client.
+
 ## 0.27.0
 
 ### Minor Changes

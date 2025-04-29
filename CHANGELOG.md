@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.70.0-changelog.md](./docs/releases/v0.70.0-changelog.md) for more information.
+
 ## [0.69.0] - 2025-04-28
 
 In this release, custom GitHub auth provider was removed.
