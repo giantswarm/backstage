@@ -7,7 +7,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.70.0] - 2025-04-29
 
-In this release, custom Kubernetes client was improved. Now it delegates unimplemented  methods to the standard Kubernetes backend client.
+In this release, custom Kubernetes client was improved. Now it delegates unimplemented methods to the standard Kubernetes backend client.
 
 See [./docs/releases/v0.70.0-changelog.md](./docs/releases/v0.70.0-changelog.md) for more information.
 
