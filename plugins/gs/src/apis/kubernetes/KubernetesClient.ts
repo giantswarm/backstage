@@ -1,7 +1,10 @@
-import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
-import { KubernetesAuthProvidersApi } from '../kubernetes-auth-providers';
+import {
+  KubernetesApi,
+  KubernetesAuthProvidersApi,
+  KubernetesBackendClient,
+} from '@backstage/plugin-kubernetes-react';
 import { ClusterConfiguration } from './types';
-import { ConfigApi, FetchApi } from '@backstage/core-plugin-api';
+import { ConfigApi, DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import {
   KubernetesRequestBody,
   ObjectsByEntityResponse,
@@ -10,6 +13,7 @@ import {
 } from '@backstage/plugin-kubernetes-common';
 
 export class KubernetesClient implements KubernetesApi {
+  private readonly backendClient: KubernetesBackendClient;
   private readonly configApi: ConfigApi;
   private readonly fetchApi: FetchApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
@@ -19,9 +23,16 @@ export class KubernetesClient implements KubernetesApi {
 
   constructor(options: {
     configApi: ConfigApi;
+    discoveryApi: DiscoveryApi;
     fetchApi: FetchApi;
     kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
   }) {
+    this.backendClient = new KubernetesBackendClient({
+      discoveryApi: options.discoveryApi,
+      fetchApi: options.fetchApi,
+      kubernetesAuthProvidersApi: options.kubernetesAuthProvidersApi,
+    });
+
     this.configApi = options.configApi;
     this.fetchApi = options.fetchApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
@@ -51,27 +62,27 @@ export class KubernetesClient implements KubernetesApi {
   }
 
   getObjectsByEntity(
-    _requestBody: KubernetesRequestBody,
+    requestBody: KubernetesRequestBody,
   ): Promise<ObjectsByEntityResponse> {
-    throw new Error('Method not implemented.');
+    return this.backendClient.getObjectsByEntity(requestBody);
   }
 
   getClusters(): Promise<
     { name: string; authProvider: string; oidcTokenProvider?: string }[]
   > {
-    throw new Error('Method not implemented.');
+    return this.backendClient.getClusters();
   }
 
   getWorkloadsByEntity(
-    _request: WorkloadsByEntityRequest,
+    request: WorkloadsByEntityRequest,
   ): Promise<ObjectsByEntityResponse> {
-    throw new Error('Method not implemented.');
+    return this.backendClient.getWorkloadsByEntity(request);
   }
 
   getCustomObjectsByEntity(
-    _request: CustomObjectsByEntityRequest,
+    request: CustomObjectsByEntityRequest,
   ): Promise<ObjectsByEntityResponse> {
-    throw new Error('Method not implemented.');
+    return this.backendClient.getCustomObjectsByEntity(request);
   }
 
   private async getCredentials(

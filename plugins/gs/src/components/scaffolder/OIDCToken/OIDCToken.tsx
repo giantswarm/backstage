@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import { OIDCTokenProps } from './schema';
-import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import {
+  kubernetesApiRef,
+  kubernetesAuthProvidersApiRef,
+} from '@backstage/plugin-kubernetes-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { gsKubernetesAuthProvidersApiRef } from '../../../apis/kubernetes-auth-providers';
 import { get } from 'lodash';
 
 type OIDCTokenFieldProps = {
@@ -22,7 +24,7 @@ const OIDCTokenField = ({
   installationName,
 }: OIDCTokenFieldProps) => {
   const kubernetesApi = useApi(kubernetesApiRef);
-  const kubernetesAuthProvidersApi = useApi(gsKubernetesAuthProvidersApiRef);
+  const kubernetesAuthProvidersApi = useApi(kubernetesAuthProvidersApiRef);
   const { secrets, setSecrets } = useTemplateSecrets();
   const [credentialsCluster, setCredentialsCluster] = useState<
     string | undefined

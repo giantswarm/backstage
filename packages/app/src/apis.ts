@@ -9,14 +9,24 @@ import {
   createApiFactory,
   discoveryApiRef,
   errorApiRef,
+  fetchApiRef,
   githubAuthApiRef,
+  googleAuthApiRef,
   identityApiRef,
+  microsoftAuthApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 import { GithubAuth } from '@backstage/core-app-api';
 import { visitsApiRef, VisitsWebStorageApi } from '@backstage/plugin-home';
-import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { gsKubernetesApiRef } from '@giantswarm/backstage-plugin-gs';
+import {
+  kubernetesApiRef,
+  KubernetesAuthProviders,
+  kubernetesAuthProvidersApiRef,
+} from '@backstage/plugin-kubernetes-react';
+import {
+  gsAuthProvidersApiRef,
+  KubernetesClient,
+} from '@giantswarm/backstage-plugin-gs';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -57,10 +67,44 @@ export const apis: AnyApiFactory[] = [
       VisitsWebStorageApi.create({ identityApi, errorApi }),
   }),
   createApiFactory({
+    api: kubernetesAuthProvidersApiRef,
+    deps: {
+      microsoftAuthApi: microsoftAuthApiRef,
+      googleAuthApi: googleAuthApiRef,
+      gsAuthProvidersApi: gsAuthProvidersApiRef,
+    },
+    factory: ({ microsoftAuthApi, googleAuthApi, gsAuthProvidersApi }) => {
+      const oidcProviders = {
+        ...gsAuthProvidersApi.getAuthApis(),
+      };
+
+      return new KubernetesAuthProviders({
+        microsoftAuthApi,
+        googleAuthApi,
+        oidcProviders,
+      });
+    },
+  }),
+  createApiFactory({
     api: kubernetesApiRef,
     deps: {
-      gsKubernetesApi: gsKubernetesApiRef,
+      configApi: configApiRef,
+      discoveryApi: discoveryApiRef,
+      fetchApi: fetchApiRef,
+      kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
     },
-    factory: ({ gsKubernetesApi }) => gsKubernetesApi,
+    factory: ({
+      configApi,
+      discoveryApi,
+      fetchApi,
+      kubernetesAuthProvidersApi,
+    }) => {
+      return new KubernetesClient({
+        configApi,
+        discoveryApi,
+        fetchApi,
+        kubernetesAuthProvidersApi,
+      });
+    },
   }),
 ];
