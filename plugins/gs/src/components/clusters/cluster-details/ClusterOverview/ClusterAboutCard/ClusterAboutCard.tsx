@@ -136,12 +136,13 @@ export function ClusterAboutCard() {
             {provider ? formatClusterProvider(provider) : <NotAvailable />}
           </AboutFieldValue>
         </AboutField>
-        <AboutField label="Location" gridSizes={{ xs: 6, md: 4 }}>
+        <AboutField label="Region" gridSizes={{ xs: 6, md: 4 }}>
           <AboutFieldValue>
             <ClusterSwitch
               renderAWS={() => <ProviderClusterLocation />}
               renderAzure={() => <ProviderClusterLocation />}
               renderVSphere={() => <NotAvailable />}
+              renderVCD={() => <NotAvailable />}
             />
           </AboutFieldValue>
         </AboutField>

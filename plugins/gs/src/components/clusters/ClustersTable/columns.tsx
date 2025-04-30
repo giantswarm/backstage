@@ -8,7 +8,13 @@ import {
 } from '../../utils/tableHelpers';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
 import { isTableColumnHidden } from '../../utils/isTableColumnHidden';
-import { Account, DateComponent, KubernetesVersion, Version } from '../../UI';
+import {
+  Account,
+  DateComponent,
+  KubernetesVersion,
+  NotAvailable,
+  Version,
+} from '../../UI';
 import { ClusterStatus } from '../ClusterStatus';
 import { ClusterTypes } from '../utils';
 import { Box, Tooltip, Typography } from '@material-ui/core';
@@ -129,9 +135,13 @@ export const getInitialColumns = ({
       field: ClusterColumns.appVersion,
       hidden: true,
       render: row => {
+        if (!row.appVersion) {
+          return <NotAvailable />;
+        }
+
         return (
           <Version
-            version={row.appVersion || ''}
+            version={row.appVersion}
             highlight
             sourceLocation={row.appSourceLocation}
             displayWarning={false}
@@ -161,6 +171,13 @@ export const getInitialColumns = ({
       title: 'Region',
       field: ClusterColumns.location,
       hidden: true,
+      render: row => {
+        if (!row.location) {
+          return <NotAvailable />;
+        }
+
+        return row.location;
+      },
     },
     {
       title: 'AWS account ID',

@@ -1,5 +1,6 @@
 import * as capa from '../../model/capa';
 import * as capv from '../../model/capv';
+import * as capvcd from '../../model/capvcd';
 import * as capz from '../../model/capz';
 import { Labels } from '../constants';
 import { ProviderCluster, ProviderClusterIdentity } from '../types';
@@ -13,6 +14,9 @@ export function getProviderClusterNames(kind: string) {
       break;
     case capv.VSphereClusterKind:
       names = capv.VSphereClusterNames;
+      break;
+    case capvcd.VCDClusterKind:
+      names = capvcd.VCDClusterNames;
       break;
     case capz.AzureClusterKind:
       names = capz.AzureClusterNames;
@@ -32,6 +36,9 @@ export function getProviderClusterGVK(kind: string, apiVersion?: string) {
       break;
     case capv.VSphereClusterKind:
       gvk = capv.getVSphereClusterGVK(apiVersion);
+      break;
+    case capvcd.VCDClusterKind:
+      gvk = capvcd.getVCDClusterGVK(apiVersion);
       break;
     case capz.AzureClusterKind:
       gvk = capz.getAzureClusterGVK(apiVersion);
@@ -101,6 +108,14 @@ export function isVSphereCluster(kind: string, apiVersion: string) {
   );
 }
 
+export function isVCDCluster(kind: string, apiVersion: string) {
+  const apiGroup = getApiGroupFromApiVersion(apiVersion);
+
+  return (
+    kind === capvcd.VCDClusterKind && apiGroup === capvcd.VCDClusterApiGroup
+  );
+}
+
 export function getProviderClusterAppVersion(providerCluster: ProviderCluster) {
   return providerCluster.metadata.labels?.[Labels.labelAppVersion];
 }
@@ -117,6 +132,8 @@ export function getProviderClusterAppSourceLocation(
       return 'https://github.com/giantswarm/cluster-azure';
     case isVSphereCluster(kind, apiVersion):
       return 'https://github.com/giantswarm/cluster-vsphere';
+    case isVCDCluster(kind, apiVersion):
+      return 'https://github.com/giantswarm/cluster-cloud-director';
     default:
       return undefined;
   }
@@ -208,6 +225,7 @@ export function isSupportedProviderCluster(kind: string) {
   return [
     capa.AWSClusterKind,
     capv.VSphereClusterKind,
+    capvcd.VCDClusterKind,
     capz.AzureClusterKind,
   ].includes(kind);
 }
