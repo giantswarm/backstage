@@ -1,7 +1,7 @@
 {
   "name": "@giantswarm/backstage-plugin-auth-backend-module-gs",
   "description": "The GS backend module for the auth plugin.",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "license": "Apache-2.0",
