@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.71.0] - 2025-04-30
 
+In this release:
+
+- Cloud Director support was added;
+- GS auth backend module was changed to use `fetch` method from `node-fetch` package.
+
 See [./docs/releases/v0.71.0-changelog.md](./docs/releases/v0.71.0-changelog.md) for more information.
 
 ## [0.70.0] - 2025-04-29
