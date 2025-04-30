@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.29.0
+
+### Minor Changes
+
+- df8b489: Added Cloud Director support.
+
+### Patch Changes
+
+- Updated dependencies [df8b489]
+  - @giantswarm/backstage-plugin-gs-common@0.16.0
+
 ## 0.28.0
 
 ### Minor Changes

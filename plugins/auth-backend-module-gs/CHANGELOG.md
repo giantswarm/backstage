@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.10.1
+
+### Patch Changes
+
+- df8b489: Changed gs-auth-module to use node-fetch package.
+
 ## 0.10.0
 
 ### Minor Changes
