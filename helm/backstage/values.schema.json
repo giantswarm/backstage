@@ -145,6 +145,11 @@
         "enabled": {
           "type": "boolean",
           "title": "Enabled"
+        },
+        "clusterNameSuffix": {
+          "type": "string",
+          "title": "Cluster name suffix",
+          "description": "Name suffdix of the PostgreSQL cluster to use."
         }
       }
     },

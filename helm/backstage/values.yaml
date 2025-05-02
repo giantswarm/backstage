@@ -127,6 +127,7 @@ backstage:
 
 database:
   enabled: false
+  clusterNameSuffix: pgsql
 
 ingress:
   annotations:
