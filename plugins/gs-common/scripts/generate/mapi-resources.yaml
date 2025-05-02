@@ -89,6 +89,12 @@
       crdURL: https://raw.githubusercontent.com/kubernetes-sigs/cluster-api-provider-vsphere/refs/heads/main/config/default/crd/bases/infrastructure.cluster.x-k8s.io_vspheremachinetemplates.yaml
       versions:
         - v1beta1
+- group: capvcd
+  resources:
+    - name: VCDCluster
+      crdURL: https://raw.githubusercontent.com/vmware/cluster-api-provider-cloud-director/refs/heads/main/config/crd/bases/infrastructure.cluster.x-k8s.io_vcdclusters.yaml
+      versions:
+        - v1beta3
 
 - group: crossplane-aws
   resources:

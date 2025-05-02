@@ -48,6 +48,7 @@ export const ClusterProviders = {
   AWS: 'aws',
   Azure: 'azure',
   VSphere: 'vsphere',
+  VCD: 'vcd',
 } as const;
 
 export function calculateClusterProvider(cluster: Cluster) {
@@ -60,6 +61,8 @@ export function calculateClusterProvider(cluster: Cluster) {
       return ClusterProviders.Azure;
     case 'cluster-vsphere':
       return ClusterProviders.VSphere;
+    case 'cluster-cloud-director':
+      return ClusterProviders.VCD;
     default:
       return undefined;
   }
@@ -84,6 +87,8 @@ export function formatClusterProvider(provider: string) {
       return 'Azure';
     case ClusterProviders.VSphere:
       return 'vSphere';
+    case ClusterProviders.VCD:
+      return 'Cloud Director';
     default:
       return provider;
   }

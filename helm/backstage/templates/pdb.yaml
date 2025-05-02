@@ -1,5 +1,3 @@
-{{- if .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" }}
----
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -9,7 +7,7 @@ metadata:
     {{- include "labels.backstage" $ | nindent 4 }}
 spec:
   maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: {{ .Values.name }}
-{{- end }}
