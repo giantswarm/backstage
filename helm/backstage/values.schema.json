@@ -155,6 +155,11 @@
           "type": "string",
           "title": "Image repository",
           "description": "PostgreSQL image to use, without registry. Assumes the registry configured in .image.registry.domain."
+        },
+        "storageSize": {
+          "type": "string",
+          "title": "Storage size",
+          "description": "Size of the PostgreSQL storage volume."
         }
       }
     },

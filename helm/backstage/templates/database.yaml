@@ -64,5 +64,5 @@ spec:
   imageName: {{ .Values.registry.domain }}/{{ .Values.database.image }}
   instances: 2
   storage:
-    size: 2Gi
+    size: {{ .Values.database.storageSize }}
 {{- end }}
