@@ -137,6 +137,17 @@
         }
       }
     },
+    "database": {
+      "type": "object",
+      "title": "Database",
+      "description": "Settings relevant to the PostgreSQL connection in production.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Enabled"
+        }
+      }
+    },
     "dexAuthCredentials": {
       "type": "object",
       "additionalProperties": {

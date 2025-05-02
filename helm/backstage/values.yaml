@@ -125,6 +125,9 @@ backstage:
   # -- Backstage container additional volumes
   extraVolumes: []
 
+database:
+  enabled: false
+
 ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-giantswarm
