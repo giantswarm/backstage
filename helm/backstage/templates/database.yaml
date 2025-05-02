@@ -5,7 +5,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   labels:
-    {{- include "labels.selector" . | nindent 4 }}
+    {{- include "labels.backstage" $ | nindent 4 }}
   name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}
   namespace: {{ .Release.Namespace }}
 spec:
@@ -41,8 +41,8 @@ apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
   labels:
-  observability.giantswarm.io/tenant: giantswarm
-    {{- include "labels.selector" . | nindent 4 }}
+    observability.giantswarm.io/tenant: giantswarm
+    {{- include "labels.backstage" $ | nindent 4 }}
   name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}
   namespace: {{ .Release.Namespace }}
 spec:
@@ -57,7 +57,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   labels:
-    {{- include "labels.selector" . | nindent 4 }}
+    {{- include "labels.backstage" $ | nindent 4 }}
   name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}
   namespace: {{ .Release.Namespace }}
 spec:
