@@ -85,6 +85,28 @@ spec:
           env:
           - name: VERSION
             value: "{{ .Chart.AppVersion }}"
+          {{- if .Values.database.enabled }}
+          - name: POSTGRES_HOST
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: host
+          - name: POSTGRES_PORT
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: port
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: username
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: password
+          {{- end }}
           {{- if .Values.backstage.extraEnvVars }}
           {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 10 }}
           {{- end }}
