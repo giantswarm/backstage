@@ -150,6 +150,11 @@
           "type": "string",
           "title": "Cluster name suffix",
           "description": "Name suffdix of the PostgreSQL cluster to use."
+        },
+        "image": {
+          "type": "string",
+          "title": "Image repository",
+          "description": "PostgreSQL image to use, without registry. Assumes the registry configured in .image.registry.domain."
         }
       }
     },

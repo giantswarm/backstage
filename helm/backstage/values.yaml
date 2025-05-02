@@ -128,6 +128,8 @@ backstage:
 database:
   enabled: false
   clusterNameSuffix: pgsql
+  # -- Repostory and tag to use for the PostgreSQL cluster. Registry will be set to .Values.registry.domain.
+  image: giantswarm/postgresql-cnpg:17.4
 
 ingress:
   annotations:
