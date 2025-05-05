@@ -138,6 +138,11 @@ spec:
               mountPath: "/app/shared-config.yaml"
               subPath: shared-config.yaml
             {{- end }}
+            {{- if .Values.database.enabled }}
+            - name: database-server-ca
+              mountPath: /app/database-ca-certificate/ca.crt
+              subPath: ca.crt
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
