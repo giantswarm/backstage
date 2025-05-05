@@ -181,6 +181,11 @@ spec:
           configMap:
             name: shared-config-configmap
         {{- end }}
+        {{- if .Values.database.enabled }}
+        - name: database-server-ca
+          secret:
+            secretName: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-ca
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
