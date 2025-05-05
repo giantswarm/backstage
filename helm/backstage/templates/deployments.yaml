@@ -18,6 +18,7 @@ spec:
       labels:
         app: {{ .Values.name }}
         component: backstage
+        app.kubernetes.io/instance: {{ .Chart.Name }}
         {{- include "labels.backstage" $ | nindent 8 }}
     spec:
       affinity:
