@@ -14,6 +14,12 @@ image:
 
 port: 7007
 
+postgresql:
+  host: ''
+  port: ''
+  user: ''
+  password: ''
+
 registry:
   domain: gsoci.azurecr.io
 
