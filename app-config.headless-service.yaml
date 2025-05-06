@@ -1,0 +1,34 @@
+app:
+  baseUrl: http://localhost:3000
+
+backend:
+  baseUrl: http://localhost:7008
+  listen:
+    port: 7008
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+  cache:
+    store: memory
+
+discovery:
+  endpoints:
+    - target: 'https://localhost:7007/api/{{pluginId}}'
+      plugins: ['auth', 'catalog', 'events', 'permission']
+
+auth:
+  environment: development
+  providers:
+    oidc-glasgow:
+      development:
+        metadataUrl: ${AUTH_DEX_GLASGOW_METADATA_URL}
+        clientId: ${AUTH_DEX_GLASGOW_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GLASGOW_CLIENT_SECRET}
+      production:
+        metadataUrl: ${AUTH_DEX_GLASGOW_METADATA_URL}
+        clientId: ${AUTH_DEX_GLASGOW_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GLASGOW_CLIENT_SECRET}
