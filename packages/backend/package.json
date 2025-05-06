@@ -18,10 +18,6 @@
   "dependencies": {
     "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "^0.3.0",
     "@backstage/backend-defaults": "backstage:^",
-    "@backstage/backend-plugin-api": "backstage:^",
-    "@backstage/backend-tasks": "^0.6.1",
-    "@backstage/catalog-model": "backstage:^",
-    "@backstage/config": "backstage:^",
     "@backstage/plugin-app-backend": "backstage:^",
     "@backstage/plugin-auth-backend": "backstage:^",
     "@backstage/plugin-auth-backend-module-github-provider": "backstage:^",
@@ -50,15 +46,14 @@
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.10.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.9.0",
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "^0.8.0",
+    "@internal/backend-common": "workspace:^",
     "app": "link:../app",
     "better-sqlite3": "^11.0.0",
     "express": "^4.17.1",
     "express-promise-router": "^4.1.0",
     "global-agent": "^3.0.0",
     "node-gyp": "^11.0.0",
-    "pg": "^8.10.0",
-    "winston": "^3.17.0",
-    "winston-sentry-log": "^1.0.26"
+    "pg": "^8.10.0"
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^"
