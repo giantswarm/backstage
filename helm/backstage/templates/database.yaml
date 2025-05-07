@@ -60,7 +60,7 @@ data:
   password: {{ .password }}
 kind: Secret
 metadata:
-  name: {{ $.Chart.Name }}-{{ $.Values.database.clusterNameSuffix }}-role-{{ .name }}
+  name: {{ $.Chart.Name }}-{{ $.Values.database.clusterNameSuffix }}-{{ .name | b64dec }}
   namespace: {{ $.Release.Namespace }}
   labels:
     cnpg.io/reload: "true"
@@ -84,12 +84,12 @@ spec:
   managed:
     roles:
     {{- range .Values.database.roles }}
-    - name: {{ .name }}
+    - name: {{ .name | b64dec | quote }}
       ensure: present
       login: true
       superuser: false
       passwordSecret:
-        name: {{ $.Chart.Name }}-{{ $.Values.database.clusterNameSuffix }}-role-{{ .name }}
+        name: {{ $.Chart.Name }}-{{ $.Values.database.clusterNameSuffix }}-{{ .name | b64dec }}
     {{- end }}
   {{- end }}
 {{- end }}
