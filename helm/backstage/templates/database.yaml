@@ -51,6 +51,28 @@ spec:
       cnpg.io/cluster: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}
   podMetricsEndpoints:
   - port: metrics
+{{- if and .Values.database.exposed .Values.database.hostname }}
+---
+# Postgresql cluster ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: {{ .Values.database.hostname }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-rw 
+                port:
+                  number: "5432"
+{{- end }}
 {{- range .Values.database.roles }}
 ---
 # managed role secret
@@ -91,5 +113,10 @@ spec:
       passwordSecret:
         name: {{ $.Chart.Name }}-{{ $.Values.database.clusterNameSuffix }}-{{ .name | b64dec }}
     {{- end }}
+  postgresql:
+    pg_hba:
+    {{- range .Values.database.roles }}
+      - host app {{ .name | b64dec }} md5
+    {{- end }}    
   {{- end }}
 {{- end }}
