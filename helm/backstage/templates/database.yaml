@@ -51,6 +51,21 @@ spec:
       cnpg.io/cluster: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}
   podMetricsEndpoints:
   - port: metrics
+{{- range .Values.database.roles }}
+---
+# managed role secret
+apiVersion: v1
+data:
+  username: {{ .name }}
+  password: {{ .password }}
+kind: Secret
+metadata:
+  name: {{ $.Chart.Name }}-{{ $.Values.database.clusterNameSuffix }}-role-{{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    cnpg.io/reload: "true"
+type: kubernetes.io/basic-auth
+{{- end }}
 ---
 # Postgresql cluster
 apiVersion: postgresql.cnpg.io/v1
@@ -65,4 +80,16 @@ spec:
   instances: 2
   storage:
     size: {{ .Values.database.storageSize }}
+  {{- if .Values.database.roles }}
+  managed:
+    roles:
+    {{- range .Values.database.roles }}
+    - name: {{ .name }}
+      ensure: present
+      login: true
+      superuser: false
+      passwordSecret:
+        name: {{ $.Chart.Name }}-{{ $.Values.database.clusterNameSuffix }}-role-{{ .name }}
+    {{- end }}
+  {{- end }}
 {{- end }}
