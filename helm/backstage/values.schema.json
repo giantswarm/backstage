@@ -146,6 +146,10 @@
           "type": "boolean",
           "title": "Enabled"
         },
+        "exposed": {
+          "type": "boolean",
+          "title": "Exposed"
+        },
         "clusterNameSuffix": {
           "type": "string",
           "title": "Cluster name suffix",
@@ -155,6 +159,10 @@
           "type": "string",
           "title": "Image repository",
           "description": "PostgreSQL image to use, without registry. Assumes the registry configured in .image.registry.domain."
+        },
+        "hostname": {
+          "type": "string",
+          "title": "Hostname"
         },
         "roles": {
           "type": "array",
