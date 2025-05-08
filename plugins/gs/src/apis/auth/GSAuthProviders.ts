@@ -1,4 +1,4 @@
-import { OAuth2, OAuthApiCreateOptions } from '@backstage/core-app-api';
+import { OAuthApiCreateOptions } from '@backstage/core-app-api';
 import { default as CustomOAuth2 } from './overrides/oauth2/OAuth2';
 import {
   ConfigApi,
@@ -93,15 +93,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private createAuthApis() {
     const entries = this.authProviders.map(
       ({ providerName, providerDisplayName }) => {
-        const OAuth2Impl = providerName.startsWith(
-          CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
-        )
-          ? CustomOAuth2
-          : OAuth2;
-
         return [
           providerName,
-          OAuth2Impl.create({
+          CustomOAuth2.create({
             configApi: this.configApi,
             discoveryApi: this.discoveryApi,
             oauthRequestApi: this.oauthRequestApi,

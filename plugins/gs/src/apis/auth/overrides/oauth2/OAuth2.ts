@@ -38,6 +38,10 @@ import { Observable } from '@backstage/types';
 import { OAuth2Session } from './types';
 import { OAuthApiCreateOptions } from '../types';
 
+import { DefaultAuthConnector } from './lib/AuthConnector/DefaultAuthConnector';
+
+const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
+
 /**
  * OAuth2 create options.
  * @public
@@ -93,7 +97,14 @@ export default class OAuth2
       popupOptions,
     } = options;
 
-    const connector = new CustomAuthConnector({
+    const providerName = provider.id;
+    const AuthConnectorClass = providerName.startsWith(
+      CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
+    )
+      ? CustomAuthConnector
+      : DefaultAuthConnector;
+
+    const connector = new AuthConnectorClass({
       configApi,
       discoveryApi,
       environment,

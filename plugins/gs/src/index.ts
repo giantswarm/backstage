@@ -16,6 +16,7 @@ export {
   GSOrganizationPickerFieldExtension,
   GSStepLayout,
 } from './plugin';
+export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';

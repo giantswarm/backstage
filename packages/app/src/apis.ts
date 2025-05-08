@@ -25,10 +25,18 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import {
   gsAuthProvidersApiRef,
+  GSDiscoveryApiClient,
   KubernetesClient,
 } from '@giantswarm/backstage-plugin-gs';
 
 export const apis: AnyApiFactory[] = [
+  createApiFactory({
+    api: discoveryApiRef,
+    deps: {
+      configApi: configApiRef,
+    },
+    factory: ({ configApi }) => GSDiscoveryApiClient.fromConfig(configApi),
+  }),
   createApiFactory({
     api: scmIntegrationsApiRef,
     deps: { configApi: configApiRef },
