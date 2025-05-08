@@ -44,32 +44,50 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   private getAuthProvidersFromConfig(): AuthProvider[] {
-    const providersConfig = this.configApi?.getOptionalConfig('auth.providers');
-    const configuredProviders = providersConfig?.keys() || [];
-    return configuredProviders
-      .filter(
-        providerName =>
-          providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX) ||
-          providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX),
-      )
-      .map(providerName => {
-        let providerDisplayName = providerName;
-        if (providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)) {
-          providerDisplayName = providerName.split(
-            OIDC_PROVIDER_NAME_PREFIX,
-          )[1];
-        } else if (providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)) {
-          providerDisplayName = providerName.split(
-            CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
-          )[1];
-        }
+    const installationsConfig =
+      this.configApi?.getOptionalConfig('gs.installations');
+    if (!installationsConfig) {
+      return [];
+    }
 
-        return {
-          providerName,
-          providerDisplayName,
-          installationName: providerDisplayName,
-        };
-      });
+    const installationNames = installationsConfig.keys();
+    return installationNames.map(installationName => {
+      const installationConfig =
+        installationsConfig.getConfig(installationName);
+      const authProvider = installationConfig.getString('authProvider');
+      if (!authProvider || authProvider !== 'oidc') {
+        throw new Error(
+          `OIDC auth provider is not configured for installation "${installationName}".`,
+        );
+      }
+      const oidcTokenProvider =
+        installationConfig.getOptionalString('oidcTokenProvider');
+
+      if (!oidcTokenProvider) {
+        throw new Error(
+          `OIDC token provider is not configured for installation "${installationName}".`,
+        );
+      }
+
+      let providerDisplayName = oidcTokenProvider;
+      if (oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)) {
+        providerDisplayName = oidcTokenProvider.split(
+          OIDC_PROVIDER_NAME_PREFIX,
+        )[1];
+      } else if (
+        oidcTokenProvider.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)
+      ) {
+        providerDisplayName = oidcTokenProvider.split(
+          CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
+        )[1];
+      }
+
+      return {
+        providerName: oidcTokenProvider,
+        providerDisplayName,
+        installationName,
+      };
+    });
   }
 
   private createAuthApis() {
