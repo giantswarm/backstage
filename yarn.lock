@@ -16203,9 +16203,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"backend-headless@workspace:packages/backend-headless":
+"backend-headless-service@workspace:packages/backend-headless-service":
   version: 0.0.0-use.local
-  resolution: "backend-headless@workspace:packages/backend-headless"
+  resolution: "backend-headless-service@workspace:packages/backend-headless-service"
   dependencies:
     "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.3.0"
     "@backstage/backend-defaults": "backstage:^"
