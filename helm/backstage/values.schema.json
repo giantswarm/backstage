@@ -228,6 +228,23 @@
     "nodeSelector": {
       "type": "object"
     },
+    "pluginKeys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyId": {
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "privateKey": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "port": {
       "type": "integer"
     },

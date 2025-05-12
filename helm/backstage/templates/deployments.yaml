@@ -115,6 +115,16 @@ spec:
               mountPath: "/app/shared-config.yaml"
               subPath: shared-config.yaml
             {{- end }}
+            {{- if .Values.pluginKeys }}
+            {{- range .Values.pluginKeys }}
+            - name: plugin-key-{{ .keyId }}
+              mountPath: /app/plugin-keys/{{ .keyId }}/public.key
+              subPath: public.key
+            - name: plugin-key-{{ .keyId }}
+              mountPath: /app/plugin-keys/{{ .keyId }}/private.key
+              subPath: private.key
+            {{- end }}
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -157,6 +167,13 @@ spec:
         - name: backstage-shared-config
           configMap:
             name: shared-config-configmap
+        {{- end }}
+        {{- if .Values.pluginKeys }}
+        {{- range .Values.pluginKeys }}
+        - name: plugin-key-{{ .keyId }}
+          secret:
+            secretName: plugin-key-{{ .keyId }}-secret
+        {{- end }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
