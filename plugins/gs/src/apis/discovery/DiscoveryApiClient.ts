@@ -7,6 +7,7 @@ export class DiscoveryApiClient implements DiscoveryApi {
   private urlPatternDiscovery: UrlPatternDiscovery;
 
   private static installation: string | null = null;
+  private static installationsWithBaseUrlOverrides: string[] = [];
 
   constructor(
     baseUrl: string,
@@ -36,6 +37,8 @@ export class DiscoveryApiClient implements DiscoveryApi {
   static fromConfig(configApi: ConfigApi) {
     const baseUrl = configApi.getString('backend.baseUrl');
     const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides(configApi);
+    DiscoveryApiClient.installationsWithBaseUrlOverrides =
+      Object.keys(baseUrlOverrides);
 
     return new DiscoveryApiClient(baseUrl, baseUrlOverrides);
   }
@@ -57,6 +60,10 @@ export class DiscoveryApiClient implements DiscoveryApi {
 
   static resetInstallation() {
     DiscoveryApiClient.installation = null;
+  }
+
+  static getInstallationsWithBaseUrlOverrides() {
+    return DiscoveryApiClient.installationsWithBaseUrlOverrides;
   }
 
   private static getBaseUrlOverrides(

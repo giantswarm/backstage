@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import { makeFieldSchemaFromZod } from '@backstage/plugin-scaffolder';
 
+export const oidcTokenInstallation = 'oidcTokenInstallation';
+
 export const OIDCTokenFieldSchema = makeFieldSchemaFromZod(
-  z.boolean(),
+  z.object({
+    [oidcTokenInstallation]: z.string(),
+  }),
   z.object({
     secretsKey: z
       .string()
