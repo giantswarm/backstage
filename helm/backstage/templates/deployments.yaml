@@ -18,6 +18,7 @@ spec:
       labels:
         app: {{ .Values.name }}
         component: backstage
+        app.kubernetes.io/instance: {{ .Chart.Name }}
         {{- include "labels.backstage" $ | nindent 8 }}
     spec:
       affinity:
@@ -85,6 +86,28 @@ spec:
           env:
           - name: VERSION
             value: "{{ .Chart.AppVersion }}"
+          {{- if .Values.database.enabled }}
+          - name: POSTGRES_HOST
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: host
+          - name: POSTGRES_PORT
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: port
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: username
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-app
+                key: password
+          {{- end }}
           {{- if .Values.backstage.extraEnvVars }}
           {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 10 }}
           {{- end }}
@@ -114,6 +137,11 @@ spec:
             - name: backstage-shared-config
               mountPath: "/app/shared-config.yaml"
               subPath: shared-config.yaml
+            {{- end }}
+            {{- if .Values.database.enabled }}
+            - name: database-server-ca
+              mountPath: /app/database-ca-certificate/ca.crt
+              subPath: ca.crt
             {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
@@ -157,6 +185,11 @@ spec:
         - name: backstage-shared-config
           configMap:
             name: shared-config-configmap
+        {{- end }}
+        {{- if .Values.database.enabled }}
+        - name: database-server-ca
+          secret:
+            secretName: {{ .Chart.Name }}-{{ .Values.database.clusterNameSuffix }}-ca
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

@@ -47,6 +47,8 @@ backstage:
   command: ['node', 'packages/backend']
   args: []
   extraAppConfig: []
+database:
+  enabled: true
 resources:
   verticalPodAutoscaler:
     enabled: true

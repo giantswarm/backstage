@@ -137,6 +137,47 @@
         }
       }
     },
+    "database": {
+      "type": "object",
+      "title": "Database",
+      "description": "Settings relevant to the PostgreSQL connection in production.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "Enabled"
+        },
+        "clusterNameSuffix": {
+          "type": "string",
+          "title": "Cluster name suffix",
+          "description": "Name suffdix of the PostgreSQL cluster to use."
+        },
+        "image": {
+          "type": "string",
+          "title": "Image repository",
+          "description": "PostgreSQL image to use, without registry. Assumes the registry configured in .image.registry.domain."
+        },
+        "roles": {
+          "type": "array",
+          "title": "Managed roles",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "storageSize": {
+          "type": "string",
+          "title": "Storage size",
+          "description": "Size of the PostgreSQL storage volume."
+        }
+      }
+    },
     "dexAuthCredentials": {
       "type": "object",
       "additionalProperties": {
@@ -230,6 +271,23 @@
     },
     "port": {
       "type": "integer"
+    },
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        }
+      }
     },
     "quay": {
       "type": "object",
