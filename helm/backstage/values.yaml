@@ -14,6 +14,12 @@ image:
 
 port: 7007
 
+postgresql:
+  host: ''
+  port: ''
+  user: ''
+  password: ''
+
 registry:
   domain: gsoci.azurecr.io
 
@@ -130,6 +136,7 @@ database:
   clusterNameSuffix: pgsql
   # -- Repostory and tag to use for the PostgreSQL cluster. Registry will be set to .Values.registry.domain.
   image: giantswarm/postgresql-cnpg:17.4@sha256:458058e3db40bb83898d096e6d78c07d28a084731dd9758937b42a3943ce26d0
+  roles: []
   storageSize: 1Gi
 
 ingress:
