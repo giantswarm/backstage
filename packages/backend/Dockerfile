@@ -33,7 +33,7 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN pip3 install mkdocs-techdocs-core==1.2.1
+RUN pip3 install mkdocs-techdocs-core==1.5.2
 
 # From here on we use the least-privileged `node` user to run the backend.
 USER node
