@@ -1,5 +1,18 @@
 # app
 
+## 0.15.0
+
+### Minor Changes
+
+- 4c21763: Added a custom scaffolder client to interact with headless backend instances.
+- 4c21763: Added a custom discovery API to interact with headless backend instances.
+
+### Patch Changes
+
+- Updated dependencies [4c21763]
+- Updated dependencies [4c21763]
+  - @giantswarm/backstage-plugin-gs@0.30.0
+
 ## 0.14.1
 
 ### Patch Changes
