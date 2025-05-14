@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: app-config-configmap
+  name: {{ .Values.name }}-app-config-configmap
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}
@@ -17,7 +17,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: shared-config-configmap
+  name: {{ .Values.name }}-shared-config-configmap
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.name }}

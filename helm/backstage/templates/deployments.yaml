@@ -69,10 +69,10 @@ spec:
               memory: {{ .Values.resources.limits.memory }}
           envFrom:
             - secretRef:
-                name: backstage-secrets
+                name: {{ .Values.name }}-secrets
             {{- if .Values.dexAuthCredentials }}
             - secretRef:
-                name: dex-auth-credentials-secret
+                name: {{ .Values.name }}-dex-auth-credentials-secret
             {{- end }}
             {{- range .Values.backstage.extraEnvVarsCM }}
             - configMapRef:
@@ -146,12 +146,12 @@ spec:
         {{- if .Values.githubAppCredentials }}
         - name: github-app-credentials
           secret:
-            secretName: github-app-credentials-secret
+            secretName: {{ .Values.name }}-github-app-credentials-secret
         {{- end }}
         {{- if .Values.backstage.appConfig }}
         - name: backstage-app-config
           configMap:
-            name: app-config-configmap
+            name: {{ .Values.name }}-app-config-configmap
         {{- end }}
         {{- if .Values.backstage.extraAppConfig }}
         {{- range .Values.backstage.extraAppConfig }}
@@ -166,13 +166,13 @@ spec:
         {{- if .Values.sharedConfig }}
         - name: backstage-shared-config
           configMap:
-            name: shared-config-configmap
+            name: {{ .Values.name }}-shared-config-configmap
         {{- end }}
         {{- if .Values.pluginKeys }}
         {{- range .Values.pluginKeys }}
         - name: plugin-key-{{ .keyId }}
           secret:
-            secretName: plugin-key-{{ .keyId }}-secret
+            secretName: {{ .Values.name }}-plugin-key-{{ .keyId }}-secret
         {{- end }}
         {{- end }}
       {{- with .Values.nodeSelector }}
