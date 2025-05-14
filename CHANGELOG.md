@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.72.0] - 2025-05-14
 
+In this release:
+
+- headless backend package has been added to serve auth and scaffolder plugins separately from the main backend instance;
+- custom discovery and scaffolder API clients have been added to interact with the headless backend instances.
+
 See [./docs/releases/v0.72.0-changelog.md](./docs/releases/v0.72.0-changelog.md) for more information.
 
 ## [0.71.0] - 2025-04-30
