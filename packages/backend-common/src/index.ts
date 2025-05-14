@@ -1,0 +1,1 @@
+export { rootLogger } from './rootLogger';

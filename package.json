@@ -8,6 +8,7 @@
   "scripts": {
     "start": "yarn env-cmd yarn backstage-cli repo start",
     "build:backend": "yarn workspace backend build",
+    "build:backend-headless-service": "yarn workspace backend-headless-service build",
     "build:all": "backstage-cli repo build --all",
     "build-image": "yarn workspace backend build-image",
     "tsc": "tsc",

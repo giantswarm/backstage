@@ -131,3 +131,5 @@ ingress:
     kubernetes.io/tls-acme: 'true'
     nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
   hostnames: []
+
+pluginKeys: []

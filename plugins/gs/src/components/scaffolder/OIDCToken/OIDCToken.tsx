@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
-import { OIDCTokenProps } from './schema';
+import { oidcTokenInstallation, OIDCTokenProps } from './schema';
 import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
@@ -74,6 +74,7 @@ export const OIDCToken = ({
   uiSchema,
   idSchema,
   formContext,
+  onChange,
 }: OIDCTokenProps) => {
   const {
     secretsKey,
@@ -102,6 +103,14 @@ export const OIDCToken = ({
     installationNameFieldOption,
     formContext.formData,
   ]);
+
+  useEffect(() => {
+    if (!installationName) {
+      return;
+    }
+
+    onChange({ [oidcTokenInstallation]: installationName });
+  }, [onChange, installationName]);
 
   return (
     <OIDCTokenField

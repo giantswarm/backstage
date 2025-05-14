@@ -16,7 +16,11 @@ import {
   microsoftAuthApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
-import { GithubAuth } from '@backstage/core-app-api';
+import {
+  createFetchApi,
+  FetchMiddlewares,
+  GithubAuth,
+} from '@backstage/core-app-api';
 import { visitsApiRef, VisitsWebStorageApi } from '@backstage/plugin-home';
 import {
   kubernetesApiRef,
@@ -25,10 +29,60 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import {
   gsAuthProvidersApiRef,
+  GSDiscoveryApiClient,
+  GSScaffolderApiClient,
   KubernetesClient,
 } from '@giantswarm/backstage-plugin-gs';
+import { scaffolderApiRef } from '@backstage/plugin-scaffolder-react';
 
 export const apis: AnyApiFactory[] = [
+  createApiFactory({
+    api: discoveryApiRef,
+    deps: {
+      configApi: configApiRef,
+    },
+    factory: ({ configApi }) => GSDiscoveryApiClient.fromConfig(configApi),
+  }),
+  createApiFactory({
+    api: fetchApiRef,
+    deps: {
+      configApi: configApiRef,
+      identityApi: identityApiRef,
+      discoveryApi: discoveryApiRef,
+    },
+    factory: ({ configApi, identityApi, discoveryApi }) => {
+      return createFetchApi({
+        middleware: [
+          FetchMiddlewares.resolvePluginProtocol({
+            discoveryApi,
+          }),
+          FetchMiddlewares.injectIdentityAuth({
+            identityApi,
+            config: configApi,
+            urlPrefixAllowlist:
+              GSDiscoveryApiClient.getUrlPrefixAllowlist(configApi),
+          }),
+        ],
+      });
+    },
+  }),
+
+  createApiFactory({
+    api: scaffolderApiRef,
+    deps: {
+      discoveryApi: discoveryApiRef,
+      identityApi: identityApiRef,
+      scmIntegrationsApi: scmIntegrationsApiRef,
+      fetchApi: fetchApiRef,
+    },
+    factory: ({ scmIntegrationsApi, discoveryApi, identityApi, fetchApi }) =>
+      new GSScaffolderApiClient({
+        discoveryApi,
+        identityApi,
+        scmIntegrationsApi,
+        fetchApi,
+      }),
+  }),
   createApiFactory({
     api: scmIntegrationsApiRef,
     deps: { configApi: configApiRef },

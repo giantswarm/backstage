@@ -1,6 +1,6 @@
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
-import { rootLogger } from './rootLogger';
+import { rootLogger } from '@internal/backend-common';
 
 const backend = createBackend();
 

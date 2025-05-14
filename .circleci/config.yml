@@ -62,7 +62,6 @@ workflows:
           filters:
             tags:
               only: /^v.*/
-
             branches:
               ignore:
                 - main
@@ -110,7 +109,9 @@ jobs:
 
       - run:
           name: Build application
-          command: yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml
+          command: |
+            yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml
+            yarn run build:backend-headless-service --config ../../app-config.yaml --config ../../app-config.production.yaml
           environment:
             NODE_ENV: production
 
