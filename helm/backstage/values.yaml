@@ -1,5 +1,4 @@
 name: backstage
-namespace: backstage
 
 backstageDiscovery:
   # Value to set for the backstage.io/kubernetes-id label in resources, for discovery in Backstage.
