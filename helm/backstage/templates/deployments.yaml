@@ -172,7 +172,7 @@ spec:
         {{- range .Values.pluginKeys }}
         - name: plugin-key-{{ .keyId }}
           secret:
-            secretName: {{ .Values.name }}-plugin-key-{{ .keyId }}-secret
+            secretName: {{ $.Values.name }}-plugin-key-{{ .keyId }}-secret
         {{- end }}
         {{- end }}
       {{- with .Values.nodeSelector }}
