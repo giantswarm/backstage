@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.72.2-changelog.md](./docs/releases/v0.72.2-changelog.md) for more information.
+
 ## [0.72.1] - 2025-05-14
 
 In this release, Helm chart templates have been cleaned up.
