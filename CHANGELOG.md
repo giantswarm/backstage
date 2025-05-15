@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.72.2] - 2025-05-15
+
+In this release fixed an incorrect secret reference in Helm chart templates.
+
+See [./docs/releases/v0.72.2-changelog.md](./docs/releases/v0.72.2-changelog.md) for more information.
+
 ## [0.72.1] - 2025-05-14
 
 In this release, Helm chart templates have been cleaned up.
@@ -1178,7 +1184,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.72.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.72.2...HEAD
+[0.72.2]: https://github.com/giantswarm/backstage/compare/v0.72.1...v0.72.2
 [0.72.1]: https://github.com/giantswarm/backstage/compare/v0.72.0...v0.72.1
 [0.72.0]: https://github.com/giantswarm/backstage/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/giantswarm/backstage/compare/v0.70.0...v0.71.0
