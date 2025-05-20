@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.10.2
+
+### Patch Changes
+
+- b0650cd: Removed custom OIDC provider implementation.
+
 ## 0.10.1
 
 ### Patch Changes
