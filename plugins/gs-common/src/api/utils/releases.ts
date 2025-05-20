@@ -21,6 +21,10 @@ export function getReleaseGVK(apiVersion?: string) {
   return gvk;
 }
 
+export const getReleaseName = (release: Release) => {
+  return release.metadata.name;
+};
+
 export const getReleaseVersion = (release: Release) => {
   return normalizeReleaseVersion(release.metadata.name);
 };
@@ -67,8 +71,17 @@ export function isPreRelease(version: string): boolean {
   return preReleaseRegexp.test(version);
 }
 
+export const RELEASE_VERSION_PREFIXES: Record<string, string> = {
+  capa: 'aws-',
+  capz: 'azure-',
+  capv: 'vsphere-',
+};
+
 export function normalizeReleaseVersion(version: string): string {
-  const normalizedVersion = version.replace(/^(aws-|azure-|vsphere-)/, '');
+  const versionPrefixRegExp = new RegExp(
+    `^(${Object.values(RELEASE_VERSION_PREFIXES).join('|')})`,
+  );
+  const normalizedVersion = version.replace(versionPrefixRegExp, '');
   if (normalizedVersion.toLowerCase().startsWith('v')) {
     return normalizedVersion.substring(1);
   }

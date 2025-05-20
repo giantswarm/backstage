@@ -4,6 +4,11 @@ import { makeFieldSchemaFromZod } from '@backstage/plugin-scaffolder';
 export const ReleasePickerFieldSchema = makeFieldSchemaFromZod(
   z.string(),
   z.object({
+    provider: z.string().optional().describe('The name of the provider to use'),
+    providerField: z
+      .string()
+      .optional()
+      .describe('The name of the field to use for the provider'),
     installationName: z
       .string()
       .optional()

@@ -4,7 +4,11 @@ import { ReleasePickerProps } from './schema';
 import { GSContext } from '../../GSContext';
 import { useReleases } from '../../hooks';
 import semver from 'semver';
-import { getReleaseVersion } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  getReleaseName,
+  getReleaseVersion,
+  RELEASE_VERSION_PREFIXES,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { get } from 'lodash';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { ErrorsProvider, useErrors } from '../../Errors';
@@ -17,6 +21,7 @@ type ReleasePickerFieldProps = {
   error?: boolean;
   releaseValue?: string;
   installationName: string;
+  provider?: string;
   onReleaseSelect: (selectedRelease: string | undefined) => void;
 };
 
@@ -28,6 +33,7 @@ const ReleasePickerField = ({
   error,
   releaseValue,
   installationName,
+  provider,
   onReleaseSelect,
 }: ReleasePickerFieldProps) => {
   const { showError } = useErrors();
@@ -48,10 +54,19 @@ const ReleasePickerField = ({
       return [];
     }
 
-    return resources
+    const providerPrefix = provider
+      ? RELEASE_VERSION_PREFIXES[provider]
+      : undefined;
+    const filteredResources = providerPrefix
+      ? resources.filter(release =>
+          getReleaseName(release).startsWith(providerPrefix),
+        )
+      : resources;
+
+    return filteredResources
       .map(release => getReleaseVersion(release))
       .sort(semver.rcompare);
-  }, [isLoading, resources]);
+  }, [isLoading, provider, resources]);
 
   const [selectedRelease, setSelectedRelease] = useState<string | undefined>(
     releaseValue ?? releases[0],
@@ -112,9 +127,29 @@ export const ReleasePicker = ({
 }: ReleasePickerProps) => {
   const releaseValue = formData;
   const {
+    provider: providerOption,
+    providerField: providerFieldOption,
     installationName: installationNameOption,
     installationNameField: installationNameFieldOption,
   } = uiSchema?.['ui:options'] ?? {};
+
+  const provider = useMemo(() => {
+    if (providerOption) {
+      return providerOption;
+    }
+
+    if (providerFieldOption) {
+      const allFormData = (formContext.formData as Record<string, any>) ?? {};
+      const providerFieldValue = get(
+        allFormData,
+        providerFieldOption,
+      ) as string;
+
+      return providerFieldValue;
+    }
+
+    return '';
+  }, [providerOption, providerFieldOption, formContext.formData]);
 
   const installationName = useMemo(() => {
     if (installationNameOption) {
@@ -155,6 +190,7 @@ export const ReleasePicker = ({
           required={required}
           error={rawErrors?.length > 0 && !formData}
           releaseValue={releaseValue}
+          provider={provider}
           installationName={installationName ?? ''}
           onReleaseSelect={handleReleaseSelect}
         />
