@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.72.3] - 2025-05-20
 
+In this release, custom OIDC provider implementation was removed from GS auth backend module.
+
 See [./docs/releases/v0.72.3-changelog.md](./docs/releases/v0.72.3-changelog.md) for more information.
 
 ## [0.72.2] - 2025-05-15
