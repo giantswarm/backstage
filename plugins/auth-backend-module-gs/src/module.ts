@@ -3,16 +3,19 @@ import {
   coreServices,
   createBackendModule,
 } from '@backstage/backend-plugin-api';
-import { OidcAuthResult, providers } from '@backstage/plugin-auth-backend';
 import {
   authProvidersExtensionPoint,
   AuthResolverContext,
+  createOAuthProviderFactory,
+  OAuthAuthenticatorResult,
   SignInResolver,
 } from '@backstage/plugin-auth-node';
-import { createAuthProviderFactory } from './auth/createAuthProviderFactory';
+import {
+  oidcAuthenticator,
+  OidcAuthResult,
+} from '@backstage/plugin-auth-backend-module-oidc-provider';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
-const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
 
 type IdPClaim = {
   connector_id: string;
@@ -30,13 +33,12 @@ function signInWithGuestUser(ctx: AuthResolverContext) {
   });
 }
 
-const customSignInResolver: SignInResolver<OidcAuthResult> = async (
-  info,
-  ctx,
-) => {
-  const userInfo = info.result.userinfo;
+const customSignInResolver: SignInResolver<
+  OAuthAuthenticatorResult<OidcAuthResult>
+> = async (info, ctx) => {
+  const userInfo = info.result.fullProfile.userinfo;
 
-  const idpClaim = info.result.userinfo.federated_claims as IdPClaim;
+  const idpClaim = userInfo.federated_claims as IdPClaim;
   const connectorId = idpClaim.connector_id;
 
   try {
@@ -88,36 +90,34 @@ export const authModuleGsProviders = createBackendModule({
       async init({ providersExtensionPoint, config, logger }) {
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
-        const customProviders = configuredProviders.filter(
-          provider =>
-            provider.startsWith(OIDC_PROVIDER_NAME_PREFIX) ||
-            provider.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX),
+        const customProviders = configuredProviders.filter(provider =>
+          provider.startsWith(OIDC_PROVIDER_NAME_PREFIX),
         );
 
         for (const providerName of customProviders) {
           try {
             logger.info(`Configuring auth provider: ${providerName}`);
 
-            if (providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)) {
-              const providerConfig = providersConfig
-                .getConfig(providerName)
-                .getConfig(config.getString('auth.environment'));
-              const metadataUrl = providerConfig.getString('metadataUrl');
-              const response = await fetch(new URL(metadataUrl));
-              if (!response.ok) {
-                throw new Error(response.statusText);
-              }
+            const providerConfig = providersConfig
+              .getConfig(providerName)
+              .getConfig(config.getString('auth.environment'));
+            const metadataUrl = providerConfig.getString('metadataUrl');
+            const response = await fetch(new URL(metadataUrl));
+            if (!response.ok) {
+              throw new Error(response.statusText);
             }
+
+            const isMainAuthProvider =
+              config.getOptionalString('gs.authProvider') === providerName;
 
             providersExtensionPoint.registerProvider({
               providerId: providerName,
-              factory: providerName.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)
-                ? createAuthProviderFactory()
-                : providers.oidc.create({
-                    signIn: {
-                      resolver: customSignInResolver,
-                    },
-                  }),
+              factory: createOAuthProviderFactory({
+                authenticator: oidcAuthenticator,
+                signInResolver: isMainAuthProvider
+                  ? customSignInResolver
+                  : undefined,
+              }),
             });
           } catch (err) {
             logger.error(
