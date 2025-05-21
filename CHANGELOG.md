@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.72.6-changelog.md](./docs/releases/v0.72.6-changelog.md) for more information.
+
 ## [0.72.5] - 2025-05-21
 
 This release fixed an issue in custom scaffolder client that caused the cient to fail when some GS installations are unreachable.
