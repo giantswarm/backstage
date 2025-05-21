@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.72.4] - 2025-05-21
 
+In this release, ReleasePicker scaffolder field has been improved to allow to filter releases by provider.
+
 See [./docs/releases/v0.72.4-changelog.md](./docs/releases/v0.72.4-changelog.md) for more information.
 
 ## [0.72.3] - 2025-05-20
