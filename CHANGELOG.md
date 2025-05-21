@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.72.7] - 2025-05-21
 
+In this release, custom scaffolder API client code has been refactored.
+
 See [./docs/releases/v0.72.7-changelog.md](./docs/releases/v0.72.7-changelog.md) for more information.
 
 ## [0.72.6] - 2025-05-21
