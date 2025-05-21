@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.30.2
+
+### Patch Changes
+
+- 50811a5: Handle list tasks errors in custom scaffolder client.
+
 ## 0.30.1
 
 ### Patch Changes
