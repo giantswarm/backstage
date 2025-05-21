@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.72.4] - 2025-05-21
+
+In this release, ReleasePicker scaffolder field has been improved to allow to filter releases by provider.
+
+See [./docs/releases/v0.72.4-changelog.md](./docs/releases/v0.72.4-changelog.md) for more information.
+
 ## [0.72.3] - 2025-05-20
 
 In this release, custom OIDC provider implementation was removed from GS auth backend module.
@@ -1190,7 +1196,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.72.3...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.72.4...HEAD
+[0.72.4]: https://github.com/giantswarm/backstage/compare/v0.72.3...v0.72.4
 [0.72.3]: https://github.com/giantswarm/backstage/compare/v0.72.2...v0.72.3
 [0.72.2]: https://github.com/giantswarm/backstage/compare/v0.72.1...v0.72.2
 [0.72.1]: https://github.com/giantswarm/backstage/compare/v0.72.0...v0.72.1

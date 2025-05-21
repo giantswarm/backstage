@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.30.1
+
+### Patch Changes
+
+- 673eb67: Improved ReleasePicker scaffolder field to allow to filter releases by provider.
+- Updated dependencies [673eb67]
+  - @giantswarm/backstage-plugin-gs-common@0.16.1
+
 ## 0.30.0
 
 ### Minor Changes
