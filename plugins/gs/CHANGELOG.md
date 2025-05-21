@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.30.4
+
+### Patch Changes
+
+- 2c495c3: Refactored custom scaffolder API client.
+
 ## 0.30.3
 
 ### Patch Changes
