@@ -59,21 +59,30 @@ export class ScaffolderApiClient extends ScaffolderClient {
       }
     });
 
-    const results = await Promise.all(promises);
+    const results = await Promise.allSettled(promises);
 
     return Promise.resolve(
       results.reduce(
         (acc, result) => {
-          acc.tasks = [...acc.tasks, ...result.tasks].sort((a, b) => {
-            return (
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-          });
-          acc.totalTasks = acc.tasks.length;
+          if (result.status === 'fulfilled') {
+            acc.tasks = [...acc.tasks, ...result.value.tasks].sort((a, b) => {
+              return (
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+              );
+            });
+            acc.totalTasks = acc.tasks.length;
+          }
+
+          if (result.status === 'rejected') {
+            // eslint-disable-next-line no-console
+            console.error(`Failed to fetch tasks, ${result.reason}`);
+          }
+
           return acc;
         },
         {
-          tasks: [],
+          tasks: [] as ScaffolderTask[],
           totalTasks: 0,
         },
       ),
