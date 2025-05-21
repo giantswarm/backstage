@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.72.7] - 2025-05-21
+
+In this release, custom scaffolder API client code has been refactored.
+
+See [./docs/releases/v0.72.7-changelog.md](./docs/releases/v0.72.7-changelog.md) for more information.
+
 ## [0.72.6] - 2025-05-21
 
 This release fixed an issue in custom scaffolder client that caused the cient to fail when some GS installations are unreachable.
@@ -1208,7 +1214,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.72.6...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.72.7...HEAD
+[0.72.7]: https://github.com/giantswarm/backstage/compare/v0.72.6...v0.72.7
 [0.72.6]: https://github.com/giantswarm/backstage/compare/v0.72.5...v0.72.6
 [0.72.5]: https://github.com/giantswarm/backstage/compare/v0.72.4...v0.72.5
 [0.72.4]: https://github.com/giantswarm/backstage/compare/v0.72.3...v0.72.4
