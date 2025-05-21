@@ -51,6 +51,9 @@ export class ScaffolderApiClient extends ScaffolderClient {
       try {
         DiscoveryApiClient.setInstallation(installationName);
         promises.push(super.listTasks(options));
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(`Failed to fetch tasks from ${installationName}`, error);
       } finally {
         DiscoveryApiClient.resetInstallation();
       }
