@@ -1,5 +1,12 @@
 # app
 
+## 0.15.1
+
+### Patch Changes
+
+- Updated dependencies [d37eb78]
+  - @giantswarm/backstage-plugin-gs@0.31.0
+
 ## 0.15.0
 
 ### Minor Changes

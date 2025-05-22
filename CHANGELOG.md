@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.73.0-changelog.md](./docs/releases/v0.73.0-changelog.md) for more information.
+
 ## [0.72.7] - 2025-05-21
 
 In this release, custom scaffolder API client code has been refactored.
