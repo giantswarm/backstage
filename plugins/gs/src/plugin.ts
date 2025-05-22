@@ -33,6 +33,7 @@ import { OIDCToken, OIDCTokenSchema } from './components/scaffolder/OIDCToken';
 import {
   InstallationPicker,
   InstallationPickerSchema,
+  installationPickerValidation,
 } from './components/scaffolder/InstallationPicker';
 import {
   ReleasePicker,
@@ -178,6 +179,7 @@ export const GSInstallationPickerFieldExtension = gsPlugin.provide(
     name: 'GSInstallationPicker',
     component: InstallationPicker,
     schema: InstallationPickerSchema,
+    validation: installationPickerValidation,
   }),
 );
 

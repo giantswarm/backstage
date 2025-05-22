@@ -1,2 +1,5 @@
-export { InstallationPicker } from './InstallationPicker';
+export {
+  InstallationPicker,
+  installationPickerValidation,
+} from './InstallationPicker';
 export { InstallationPickerSchema } from './schema';

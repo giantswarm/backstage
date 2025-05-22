@@ -43,3 +43,5 @@ export const InstallationPickerFieldSchema = makeFieldSchemaFromZod(
 export const InstallationPickerSchema = InstallationPickerFieldSchema.schema;
 
 export type InstallationPickerProps = typeof InstallationPickerFieldSchema.type;
+export type InstallationPickerValue =
+  typeof InstallationPickerFieldSchema.TOutput;
