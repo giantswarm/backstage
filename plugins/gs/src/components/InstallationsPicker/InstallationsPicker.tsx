@@ -9,12 +9,14 @@ import isEqual from 'lodash/isEqual';
 type InstallationsPickerProps = {
   installations: string[];
   selectedInstallations: string[];
+  disabledInstallations: string[];
   onChange?: (selectedInstallations: string[]) => void;
 };
 
 export const InstallationsPicker = ({
   installations,
   selectedInstallations,
+  disabledInstallations,
   onChange,
 }: InstallationsPickerProps) => {
   const [value, setValue] = useState(selectedInstallations);
@@ -59,6 +61,7 @@ export const InstallationsPicker = ({
         label="Installations"
         items={items}
         selected={selectedInstallations}
+        disabledItems={disabledInstallations}
         onChange={handleChange}
       />
     </Box>

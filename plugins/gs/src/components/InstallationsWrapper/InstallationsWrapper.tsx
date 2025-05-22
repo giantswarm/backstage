@@ -18,8 +18,13 @@ type InstallationsWrapperProps = {
 export const InstallationsWrapper = ({
   children,
 }: InstallationsWrapperProps) => {
-  const { installations, selectedInstallations, setSelectedInstallations } =
-    useInstallations();
+  const {
+    installations,
+    selectedInstallations,
+    activeInstallations,
+    disabledInstallations,
+    setSelectedInstallations,
+  } = useInstallations();
 
   const { installationsStatuses } = useInstallationsStatuses();
 
@@ -35,6 +40,8 @@ export const InstallationsWrapper = ({
         <InstallationsSelector
           installations={installations}
           selectedInstallations={selectedInstallations}
+          activeInstallations={activeInstallations}
+          disabledInstallations={disabledInstallations}
           installationsStatuses={installationsStatuses}
           multiple
           onChange={handleSelectedInstallationsChange}

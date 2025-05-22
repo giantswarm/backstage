@@ -50,7 +50,7 @@ const DeploymentDetailsPickerField = ({
   onWCProviderConfigSelect,
   onMCProviderConfigSelect,
 }: DeploymentDetailsPickerFieldProps) => {
-  const { installations } = useInstallations();
+  const { installations, disabledInstallations } = useInstallations();
   const { installationsStatuses } = useInstallationsStatuses();
 
   const initiallySelectedInstallations =
@@ -59,6 +59,10 @@ const DeploymentDetailsPickerField = ({
   const selectedInstallations = installationNameValue
     ? [installationNameValue]
     : initiallySelectedInstallations;
+
+  const activeInstallations = selectedInstallations.filter(
+    installationName => !disabledInstallations.includes(installationName),
+  );
 
   useEffect(() => {
     if (!installationNameValue && installations.length === 1) {
@@ -82,6 +86,8 @@ const DeploymentDetailsPickerField = ({
         <InstallationsSelector
           installations={installations}
           selectedInstallations={selectedInstallations}
+          activeInstallations={activeInstallations}
+          disabledInstallations={disabledInstallations}
           installationsStatuses={installationsStatuses}
           onChange={handleInstallationSelect}
         />

@@ -53,6 +53,8 @@ const InstallationPreview = ({
 type InstallationsSelectorProps = {
   installations: string[];
   selectedInstallations: string[];
+  activeInstallations: string[];
+  disabledInstallations?: string[];
   installationsStatuses: InstallationStatus[];
   multiple?: boolean;
   onChange?: (selectedInstallations: string[]) => void;
@@ -61,6 +63,8 @@ type InstallationsSelectorProps = {
 export const InstallationsSelector = ({
   installations,
   selectedInstallations,
+  activeInstallations,
+  disabledInstallations,
   installationsStatuses,
   multiple,
   onChange,
@@ -79,15 +83,15 @@ export const InstallationsSelector = ({
 
   const renderValue = useCallback(
     () =>
-      selectedInstallations.map((item, idx) => (
+      activeInstallations.map((item, idx) => (
         <InstallationPreview
           key={item}
           installationName={item}
           installationsStatuses={installationsStatuses}
-          isLastItem={idx === selectedInstallations.length - 1}
+          isLastItem={idx === activeInstallations.length - 1}
         />
       )),
-    [installationsStatuses, selectedInstallations],
+    [installationsStatuses, activeInstallations],
   );
 
   return multiple ? (
@@ -95,6 +99,7 @@ export const InstallationsSelector = ({
       label="Installations"
       items={installations}
       selectedItems={selectedInstallations}
+      disabledItems={disabledInstallations}
       renderValue={renderValue}
       onChange={handleChange}
     />
@@ -103,6 +108,7 @@ export const InstallationsSelector = ({
       label="Installation"
       items={installations}
       selectedItem={selectedInstallations[0]}
+      disabledItems={disabledInstallations}
       renderValue={renderValue}
       onChange={handleChange}
     />

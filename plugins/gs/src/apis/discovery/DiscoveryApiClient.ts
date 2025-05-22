@@ -66,9 +66,7 @@ export class DiscoveryApiClient implements DiscoveryApi {
     return DiscoveryApiClient.installationsWithBaseUrlOverrides;
   }
 
-  private static getBaseUrlOverrides(
-    configApi: ConfigApi,
-  ): Record<string, string> {
+  static getBaseUrlOverrides(configApi: ConfigApi): Record<string, string> {
     const baseUrlOverrides: Record<string, string> = {};
     const installationsConfig = configApi.getOptionalConfig('gs.installations');
     if (installationsConfig) {
