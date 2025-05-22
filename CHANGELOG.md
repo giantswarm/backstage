@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.73.0] - 2025-05-22
 
+In this release, logic to check availability status of connected installations was added.
+
 See [./docs/releases/v0.73.0-changelog.md](./docs/releases/v0.73.0-changelog.md) for more information.
 
 ## [0.72.7] - 2025-05-21
