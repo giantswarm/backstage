@@ -111,11 +111,15 @@ const ClusterPickerField = ({
   onInstallationSelect,
   onClusterSelect,
 }: ClusterPickerFieldProps) => {
-  const { installations } = useInstallations();
+  const { installations, disabledInstallations } = useInstallations();
   const { installationsStatuses } = useInstallationsStatuses();
 
   const [selectedInstallations, setSelectedInstallations] = useState<string[]>(
     installationNameValue ? [installationNameValue] : [],
+  );
+
+  const activeInstallations = selectedInstallations.filter(
+    installationName => !disabledInstallations.includes(installationName),
   );
 
   const installationsErrors = installationsStatuses.some(
@@ -135,6 +139,8 @@ const ClusterPickerField = ({
         <InstallationsSelector
           installations={installations}
           selectedInstallations={selectedInstallations}
+          activeInstallations={activeInstallations}
+          disabledInstallations={disabledInstallations}
           installationsStatuses={installationsStatuses}
           multiple={false}
           onChange={handleInstallationSelect}

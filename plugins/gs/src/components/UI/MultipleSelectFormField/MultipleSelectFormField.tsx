@@ -30,6 +30,7 @@ type MultipleSelectFormFieldProps = {
   error?: boolean;
   items: string[];
   selectedItems: string[];
+  disabledItems?: string[];
   renderValue?: (value: string[]) => ReactNode;
   onChange: (selectedItems: string[]) => void;
 };
@@ -43,6 +44,7 @@ export const MultipleSelectFormField = ({
   items,
   helperText,
   selectedItems,
+  disabledItems,
   renderValue,
   onChange,
 }: MultipleSelectFormFieldProps) => {
@@ -87,7 +89,11 @@ export const MultipleSelectFormField = ({
         MenuProps={MenuProps}
       >
         {items.map(item => (
-          <MenuItem key={item} value={item}>
+          <MenuItem
+            key={item}
+            value={item}
+            disabled={disabledItems?.includes(item)}
+          >
             <Checkbox checked={localSelectedItems.indexOf(item) > -1} />
             <ListItemText primary={item} />
           </MenuItem>

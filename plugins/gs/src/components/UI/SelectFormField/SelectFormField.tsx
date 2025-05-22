@@ -29,6 +29,7 @@ type SelectFormFieldProps = {
   error?: boolean;
   items: string[];
   selectedItem: string;
+  disabledItems?: string[];
   renderValue?: (value: string) => React.ReactNode;
   onChange?: (selectedItem: string) => void;
 };
@@ -42,6 +43,7 @@ export const SelectFormField = ({
   items,
   helperText,
   selectedItem,
+  disabledItems,
   renderValue,
   onChange,
 }: SelectFormFieldProps) => {
@@ -77,7 +79,11 @@ export const SelectFormField = ({
         MenuProps={MenuProps}
       >
         {items.map(item => (
-          <MenuItem key={item} value={item}>
+          <MenuItem
+            key={item}
+            value={item}
+            disabled={disabledItems?.includes(item)}
+          >
             <ListItemText primary={item} />
           </MenuItem>
         ))}

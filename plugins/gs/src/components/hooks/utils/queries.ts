@@ -42,7 +42,10 @@ export const getInstallationsQueriesInfo = <T>(
 };
 
 export function getInstallationsStatuses(queryCache: QueryCache) {
-  const queries = queryCache.findAll({ type: 'active' });
+  const queries = queryCache.findAll({
+    type: 'active',
+    predicate: query => !query.queryKey.includes('status'),
+  });
   const queriesByInstallationName = new Map<string, Query[]>();
   queries.forEach(item => {
     const key = item.queryKey[0] ? (item.queryKey[0] as string) : null;

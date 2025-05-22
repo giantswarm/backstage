@@ -10,8 +10,12 @@ import { LabelPicker } from './filters/LabelPicker';
 import { AppPicker } from './filters/AppPicker';
 
 export const DefaultFilters = () => {
-  const { installations, selectedInstallations, setSelectedInstallations } =
-    useInstallations();
+  const {
+    installations,
+    selectedInstallations,
+    disabledInstallations,
+    setSelectedInstallations,
+  } = useInstallations();
 
   const handleSelectedInstallationsChange = (selectedItems: string[]) => {
     setSelectedInstallations(selectedItems);
@@ -22,6 +26,7 @@ export const DefaultFilters = () => {
       <InstallationsPicker
         installations={installations}
         selectedInstallations={selectedInstallations}
+        disabledInstallations={disabledInstallations}
         onChange={handleSelectedInstallationsChange}
       />
       <AppPicker />

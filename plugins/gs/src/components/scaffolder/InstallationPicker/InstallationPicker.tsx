@@ -3,6 +3,8 @@ import { useInstallations, InstallationInfo } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { InstallationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
+import { GSContext } from '../../GSContext';
+import { ErrorsProvider } from '../../Errors';
 
 type InstallationFieldProps = {
   id?: string;
@@ -31,7 +33,7 @@ const InstallationPickerField = ({
   installationNameValue,
   onInstallationSelect,
 }: InstallationFieldProps) => {
-  const { installationsInfo } = useInstallations();
+  const { disabledInstallations, installationsInfo } = useInstallations();
   const { installations, installationLabels } = useMemo(() => {
     let filteredInstallations = installationsInfo;
     const labels: string[] = [];
@@ -74,9 +76,12 @@ const InstallationPickerField = ({
     };
   }, [allowedProviders, allowedPipelines, installationsInfo]);
 
+  const activeInstallations = installations.filter(
+    installation => !disabledInstallations.includes(installation),
+  );
   const [selectedInstallation, setSelectedInstallation] = useState<
     string | undefined
-  >(installationNameValue ?? installations[0]);
+  >(installationNameValue ?? activeInstallations[0]);
 
   useEffect(() => {
     if (selectedInstallation && !installations.includes(selectedInstallation)) {
@@ -109,6 +114,7 @@ const InstallationPickerField = ({
           error={error}
           items={installations}
           itemLabels={installationLabels}
+          disabledItems={disabledInstallations}
           selectedItem={selectedInstallation ?? ''}
           onChange={handleChange}
         />
@@ -174,18 +180,22 @@ export const InstallationPicker = ({
   );
 
   return (
-    <InstallationPickerField
-      id={idSchema?.$id}
-      label={title}
-      helperText={description}
-      required={required}
-      error={rawErrors?.length > 0 && !formData}
-      installationNameValue={installationName}
-      onInstallationSelect={handleInstallationSelect}
-      requestUserCredentials={Boolean(requestUserCredentials)}
-      secretsKey={requestUserCredentials?.secretsKey}
-      allowedProviders={allowedProviders}
-      allowedPipelines={allowedPipelines}
-    />
+    <GSContext>
+      <ErrorsProvider>
+        <InstallationPickerField
+          id={idSchema?.$id}
+          label={title}
+          helperText={description}
+          required={required}
+          error={rawErrors?.length > 0 && !formData}
+          installationNameValue={installationName}
+          onInstallationSelect={handleInstallationSelect}
+          requestUserCredentials={Boolean(requestUserCredentials)}
+          secretsKey={requestUserCredentials?.secretsKey}
+          allowedProviders={allowedProviders}
+          allowedPipelines={allowedPipelines}
+        />
+      </ErrorsProvider>
+    </GSContext>
   );
 };

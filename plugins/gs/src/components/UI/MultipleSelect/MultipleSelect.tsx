@@ -89,6 +89,7 @@ export type MultipleSelectProps = {
   onChange?: (arg: SelectedItems) => void;
   triggerReset?: boolean;
   disabled?: boolean;
+  disabledItems?: string[];
 };
 
 export function MultipleSelect(props: MultipleSelectProps) {
@@ -99,6 +100,7 @@ export function MultipleSelect(props: MultipleSelectProps) {
     onChange,
     triggerReset,
     disabled = false,
+    disabledItems,
   } = props;
   const classes = useStyles();
   const formControlLabelClasses = useFormControlLabelStyles();
@@ -147,6 +149,7 @@ export function MultipleSelect(props: MultipleSelectProps) {
                 />
               }
               label={item.label}
+              disabled={disabledItems?.includes(item.value)}
             />
           ))}
         </FormGroup>
