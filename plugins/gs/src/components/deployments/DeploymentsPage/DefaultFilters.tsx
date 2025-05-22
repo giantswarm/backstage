@@ -8,6 +8,7 @@ import { NamespacePicker } from './filters/NamespacePicker';
 import { StatusPicker } from './filters/StatusPicker';
 import { LabelPicker } from './filters/LabelPicker';
 import { AppPicker } from './filters/AppPicker';
+import { Box } from '@material-ui/core';
 
 export const DefaultFilters = () => {
   const {
@@ -23,12 +24,14 @@ export const DefaultFilters = () => {
 
   return (
     <>
-      <InstallationsPicker
-        installations={installations}
-        selectedInstallations={selectedInstallations}
-        disabledInstallations={disabledInstallations}
-        onChange={handleSelectedInstallationsChange}
-      />
+      <Box pb={1} pt={1}>
+        <InstallationsPicker
+          installations={installations}
+          selectedInstallations={selectedInstallations}
+          disabledInstallations={disabledInstallations}
+          onChange={handleSelectedInstallationsChange}
+        />
+      </Box>
       <AppPicker />
       <VersionPicker />
       <TargetClusterPicker />
