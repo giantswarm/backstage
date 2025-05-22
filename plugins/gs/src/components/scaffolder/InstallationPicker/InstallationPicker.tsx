@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInstallations, InstallationInfo } from '../../hooks';
 import { Grid } from '@material-ui/core';
-import { InstallationPickerProps } from './schema';
+import { InstallationPickerProps, InstallationPickerValue } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
 import { GSContext } from '../../GSContext';
 import { ErrorsProvider } from '../../Errors';
+import { FieldValidation } from '@rjsf/utils';
 
 type InstallationFieldProps = {
   id?: string;
@@ -198,4 +199,13 @@ export const InstallationPicker = ({
       </ErrorsProvider>
     </GSContext>
   );
+};
+
+export const installationPickerValidation = (
+  value: InstallationPickerValue,
+  validation: FieldValidation,
+) => {
+  if (!value.installationName) {
+    validation.addError(`Please fill in this field`);
+  }
 };
