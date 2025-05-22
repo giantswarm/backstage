@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Box } from '@material-ui/core';
-import { MultipleSelect } from '../UI/MultipleSelect';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useLocation } from 'react-router-dom';
 import qs from 'qs';
 import isEqual from 'lodash/isEqual';
+import { Autocomplete } from '../UI';
 
 type InstallationsPickerProps = {
   installations: string[];
@@ -56,14 +55,12 @@ export const InstallationsPicker = ({
   }));
 
   return (
-    <Box pb={1} pt={1}>
-      <MultipleSelect
-        label="Installations"
-        items={items}
-        selected={selectedInstallations}
-        disabledItems={disabledInstallations}
-        onChange={handleChange}
-      />
-    </Box>
+    <Autocomplete
+      label="Installations"
+      items={items}
+      selectedValues={selectedInstallations}
+      disabledItems={disabledInstallations}
+      onChange={handleChange}
+    />
   );
 };
