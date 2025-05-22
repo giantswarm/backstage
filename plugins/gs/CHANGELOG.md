@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.31.0
+
+### Minor Changes
+
+- d37eb78: Added logic to check availability status of connected installations.
+
 ## 0.30.4
 
 ### Patch Changes
