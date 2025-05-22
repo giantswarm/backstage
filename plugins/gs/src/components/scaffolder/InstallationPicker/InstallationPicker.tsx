@@ -86,9 +86,9 @@ const InstallationPickerField = ({
 
   useEffect(() => {
     if (selectedInstallation && !installations.includes(selectedInstallation)) {
-      setSelectedInstallation(installations[0]);
+      setSelectedInstallation(activeInstallations[0]);
     }
-  }, [installations, selectedInstallation]);
+  }, [activeInstallations, installations, selectedInstallation]);
 
   useEffect(() => {
     const selectedInstallationInfo = installationsInfo.find(
@@ -97,6 +97,8 @@ const InstallationPickerField = ({
 
     if (selectedInstallationInfo) {
       onInstallationSelect(selectedInstallationInfo);
+    } else {
+      onInstallationSelect({} as InstallationInfo);
     }
   }, [installationsInfo, onInstallationSelect, selectedInstallation]);
 
