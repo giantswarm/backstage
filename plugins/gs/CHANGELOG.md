@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.31.1
+
+### Patch Changes
+
+- 1b04b30: Changed InstallationsPicker to use Autocomplete component.
+- b29a058: Added validation for InstallationPicker scaffolder field.
+
 ## 0.31.0
 
 ### Minor Changes
