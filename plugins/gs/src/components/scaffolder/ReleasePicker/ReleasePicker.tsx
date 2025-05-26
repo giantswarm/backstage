@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Grid, Typography } from '@material-ui/core';
 import { ReleasePickerProps } from './schema';
-import { GSContext } from '../../GSContext';
 import { useReleases } from '../../hooks';
 import semver from 'semver';
 import {
@@ -181,20 +180,18 @@ export const ReleasePicker = ({
   );
 
   return (
-    <GSContext>
-      <ErrorsProvider>
-        <ReleasePickerField
-          id={idSchema?.$id}
-          label={title}
-          helperText={description}
-          required={required}
-          error={rawErrors?.length > 0 && !formData}
-          releaseValue={releaseValue}
-          provider={provider}
-          installationName={installationName ?? ''}
-          onReleaseSelect={handleReleaseSelect}
-        />
-      </ErrorsProvider>
-    </GSContext>
+    <ErrorsProvider>
+      <ReleasePickerField
+        id={idSchema?.$id}
+        label={title}
+        helperText={description}
+        required={required}
+        error={rawErrors?.length > 0 && !formData}
+        releaseValue={releaseValue}
+        provider={provider}
+        installationName={installationName ?? ''}
+        onReleaseSelect={handleReleaseSelect}
+      />
+    </ErrorsProvider>
   );
 };

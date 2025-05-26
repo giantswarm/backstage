@@ -1,6 +1,4 @@
 import { useEffect } from 'react';
-
-import { GSContext } from '../../GSContext';
 import {
   Cluster,
   getClusterName,
@@ -214,23 +212,21 @@ export const DeploymentDetailsPicker = ({
   };
 
   return (
-    <GSContext>
-      <DeploymentDetailsPickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        displayProviderConfigsSelectors={displayProviderConfigsSelectors}
-        installationNameValue={installationName}
-        clusterNameValue={clusterName}
-        wcProviderConfigValue={wcProviderConfig}
-        mcProviderConfigValue={mcProviderConfig}
-        onInstallationSelect={handleInstallationSelect}
-        onClusterSelect={handleClusterSelect}
-        onWCProviderConfigSelect={handleWCProviderConfigSelect}
-        onMCProviderConfigSelect={handleMCProviderConfigSelect}
-      />
-    </GSContext>
+    <DeploymentDetailsPickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      displayProviderConfigsSelectors={displayProviderConfigsSelectors}
+      installationNameValue={installationName}
+      clusterNameValue={clusterName}
+      wcProviderConfigValue={wcProviderConfig}
+      mcProviderConfigValue={mcProviderConfig}
+      onInstallationSelect={handleInstallationSelect}
+      onClusterSelect={handleClusterSelect}
+      onWCProviderConfigSelect={handleWCProviderConfigSelect}
+      onMCProviderConfigSelect={handleMCProviderConfigSelect}
+    />
   );
 };

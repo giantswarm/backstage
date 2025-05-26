@@ -1,6 +1,5 @@
 import { Content, Header, Page } from '@backstage/core-components';
 import { ReactNode } from 'react';
-import { GSContext } from '../../GSContext';
 import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';
 import { ClustersDataProvider } from '../ClustersDataProvider';
@@ -15,22 +14,20 @@ export function BaseClustersPage(props: BaseClustersPageProps) {
   const { filters, content = <ClustersTable /> } = props;
 
   return (
-    <GSContext>
-      <Page themeId="service">
-        <Header
-          title="Kubernetes clusters by Giant Swarm"
-          subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters."
-        />
-        <Content>
-          <ClustersDataProvider>
-            <FiltersLayout>
-              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-              <FiltersLayout.Content>{content}</FiltersLayout.Content>
-            </FiltersLayout>
-          </ClustersDataProvider>
-        </Content>
-      </Page>
-    </GSContext>
+    <Page themeId="service">
+      <Header
+        title="Kubernetes clusters by Giant Swarm"
+        subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters."
+      />
+      <Content>
+        <ClustersDataProvider>
+          <FiltersLayout>
+            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+            <FiltersLayout.Content>{content}</FiltersLayout.Content>
+          </FiltersLayout>
+        </ClustersDataProvider>
+      </Content>
+    </Page>
   );
 }
 

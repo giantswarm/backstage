@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Grid, Typography } from '@material-ui/core';
 import { OrganizationPickerProps } from './schema';
-import { GSContext } from '../../GSContext';
 import { useOrganizations } from '../../hooks/useOrganizations';
 import { get } from 'lodash';
 import { SelectFormField } from '../../UI/SelectFormField';
@@ -144,19 +143,17 @@ export const OrganizationPicker = ({
   );
 
   return (
-    <GSContext>
-      <ErrorsProvider>
-        <OrganizationPickerField
-          id={idSchema?.$id}
-          label={title}
-          helperText={description}
-          required={required}
-          error={rawErrors?.length > 0 && !formData}
-          organizationValue={organizationValue}
-          installationName={installationName ?? ''}
-          onOrganizationSelect={handleOrganizationSelect}
-        />
-      </ErrorsProvider>
-    </GSContext>
+    <ErrorsProvider>
+      <OrganizationPickerField
+        id={idSchema?.$id}
+        label={title}
+        helperText={description}
+        required={required}
+        error={rawErrors?.length > 0 && !formData}
+        organizationValue={organizationValue}
+        installationName={installationName ?? ''}
+        onOrganizationSelect={handleOrganizationSelect}
+      />
+    </ErrorsProvider>
   );
 };

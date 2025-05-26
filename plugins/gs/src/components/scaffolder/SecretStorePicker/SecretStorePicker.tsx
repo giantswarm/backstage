@@ -1,4 +1,3 @@
-import { GSContext } from '../../GSContext';
 import {
   ClusterSecretStore,
   getSecretStoreName,
@@ -104,19 +103,17 @@ export const SecretStorePicker = ({
   };
 
   return (
-    <GSContext>
-      <SecretStorePickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        clusterNamespace={clusterNamespace}
-        installationNameValue={installationName}
-        secretStoreValue={formData}
-        onSelect={handleSecretStoreSelect}
-        isClusterSecretStore={isClusterSecretStore}
-      />
-    </GSContext>
+    <SecretStorePickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      clusterNamespace={clusterNamespace}
+      installationNameValue={installationName}
+      secretStoreValue={formData}
+      onSelect={handleSecretStoreSelect}
+      isClusterSecretStore={isClusterSecretStore}
+    />
   );
 };

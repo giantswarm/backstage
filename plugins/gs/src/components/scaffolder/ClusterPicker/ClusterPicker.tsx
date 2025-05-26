@@ -1,6 +1,4 @@
 import { useMemo, useState } from 'react';
-
-import { GSContext } from '../../GSContext';
 import {
   Cluster,
   getClusterName,
@@ -196,18 +194,16 @@ export const ClusterPicker = ({
   };
 
   return (
-    <GSContext>
-      <ClusterPickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        installationNameValue={installationName}
-        clusterNameValue={clusterName}
-        onInstallationSelect={handleInstallationSelect}
-        onClusterSelect={handleClusterSelect}
-      />
-    </GSContext>
+    <ClusterPickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      installationNameValue={installationName}
+      clusterNameValue={clusterName}
+      onInstallationSelect={handleInstallationSelect}
+      onClusterSelect={handleClusterSelect}
+    />
   );
 };

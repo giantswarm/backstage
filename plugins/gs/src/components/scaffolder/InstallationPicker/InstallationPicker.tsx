@@ -3,7 +3,6 @@ import { useInstallations, InstallationInfo } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { InstallationPickerProps, InstallationPickerValue } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
-import { GSContext } from '../../GSContext';
 import { ErrorsProvider } from '../../Errors';
 import { FieldValidation } from '@rjsf/utils';
 
@@ -183,23 +182,21 @@ export const InstallationPicker = ({
   );
 
   return (
-    <GSContext>
-      <ErrorsProvider>
-        <InstallationPickerField
-          id={idSchema?.$id}
-          label={title}
-          helperText={description}
-          required={required}
-          error={rawErrors?.length > 0 && !formData}
-          installationNameValue={installationName}
-          onInstallationSelect={handleInstallationSelect}
-          requestUserCredentials={Boolean(requestUserCredentials)}
-          secretsKey={requestUserCredentials?.secretsKey}
-          allowedProviders={allowedProviders}
-          allowedPipelines={allowedPipelines}
-        />
-      </ErrorsProvider>
-    </GSContext>
+    <ErrorsProvider>
+      <InstallationPickerField
+        id={idSchema?.$id}
+        label={title}
+        helperText={description}
+        required={required}
+        error={rawErrors?.length > 0 && !formData}
+        installationNameValue={installationName}
+        onInstallationSelect={handleInstallationSelect}
+        requestUserCredentials={Boolean(requestUserCredentials)}
+        secretsKey={requestUserCredentials?.secretsKey}
+        allowedProviders={allowedProviders}
+        allowedPipelines={allowedPipelines}
+      />
+    </ErrorsProvider>
   );
 };
 

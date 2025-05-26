@@ -1,6 +1,5 @@
 import { Content, Header, Page } from '@backstage/core-components';
 import { ReactNode } from 'react';
-import { GSContext } from '../../GSContext';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { DetailsPane } from '../../UI';
@@ -23,22 +22,20 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
   } = props;
 
   return (
-    <GSContext>
-      <Page themeId="service">
-        <Header
-          title="Deployed applications"
-          subtitle="Instances of your applications deployed to Kubernetes clusters"
-        />
-        <Content>
-          <DeploymentsDataProvider>
-            <FiltersLayout>
-              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-              <FiltersLayout.Content>{content}</FiltersLayout.Content>
-            </FiltersLayout>
-          </DeploymentsDataProvider>
-        </Content>
-      </Page>
-    </GSContext>
+    <Page themeId="service">
+      <Header
+        title="Deployed applications"
+        subtitle="Instances of your applications deployed to Kubernetes clusters"
+      />
+      <Content>
+        <DeploymentsDataProvider>
+          <FiltersLayout>
+            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+            <FiltersLayout.Content>{content}</FiltersLayout.Content>
+          </FiltersLayout>
+        </DeploymentsDataProvider>
+      </Content>
+    </Page>
   );
 }
 

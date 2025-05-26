@@ -11,7 +11,6 @@ import {
   getGrafanaDashboardFromEntity,
   getSourceLocationFromEntity,
 } from '../../utils/entity';
-import { GSContext } from '../../GSContext';
 import { InstallationsWrapper } from '../../InstallationsWrapper';
 import { DetailsPane } from '../../UI';
 import { DeploymentsTable } from '../DeploymentsTable';
@@ -30,50 +29,48 @@ export const EntityDeploymentsContent = () => {
   const ingressHost = getIngressHostFromEntity(entity);
 
   return (
-    <GSContext>
-      <Content>
-        <ContentHeader title={`Deployments of ${entityName}`}>
-          <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
-        </ContentHeader>
-        <InstallationsWrapper>
-          <DeploymentsDataProvider deploymentNames={deploymentNames}>
-            <DeploymentsTable
-              baseRouteRef={entityDeploymentsRouteRef}
-              sourceLocation={sourceLocation}
-              grafanaDashboard={grafanaDashboard}
-              ingressHost={ingressHost}
-              context="catalog-entity"
-            />
-          </DeploymentsDataProvider>
-        </InstallationsWrapper>
-        <DetailsPane
-          paneId={DEPLOYMENT_DETAILS_PANE_ID}
-          render={({ kind, installationName, name, namespace }) => (
-            <>
-              {kind === 'app' && (
-                <AppDetails
-                  installationName={installationName}
-                  name={name}
-                  namespace={namespace}
-                  sourceLocation={sourceLocation}
-                  grafanaDashboard={grafanaDashboard}
-                  ingressHost={ingressHost}
-                />
-              )}
-              {kind === 'helmrelease' && (
-                <HelmReleaseDetails
-                  installationName={installationName}
-                  name={name}
-                  namespace={namespace}
-                  sourceLocation={sourceLocation}
-                  grafanaDashboard={grafanaDashboard}
-                  ingressHost={ingressHost}
-                />
-              )}
-            </>
-          )}
-        />
-      </Content>
-    </GSContext>
+    <Content>
+      <ContentHeader title={`Deployments of ${entityName}`}>
+        <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
+      </ContentHeader>
+      <InstallationsWrapper>
+        <DeploymentsDataProvider deploymentNames={deploymentNames}>
+          <DeploymentsTable
+            baseRouteRef={entityDeploymentsRouteRef}
+            sourceLocation={sourceLocation}
+            grafanaDashboard={grafanaDashboard}
+            ingressHost={ingressHost}
+            context="catalog-entity"
+          />
+        </DeploymentsDataProvider>
+      </InstallationsWrapper>
+      <DetailsPane
+        paneId={DEPLOYMENT_DETAILS_PANE_ID}
+        render={({ kind, installationName, name, namespace }) => (
+          <>
+            {kind === 'app' && (
+              <AppDetails
+                installationName={installationName}
+                name={name}
+                namespace={namespace}
+                sourceLocation={sourceLocation}
+                grafanaDashboard={grafanaDashboard}
+                ingressHost={ingressHost}
+              />
+            )}
+            {kind === 'helmrelease' && (
+              <HelmReleaseDetails
+                installationName={installationName}
+                name={name}
+                namespace={namespace}
+                sourceLocation={sourceLocation}
+                grafanaDashboard={grafanaDashboard}
+                ingressHost={ingressHost}
+              />
+            )}
+          </>
+        )}
+      />
+    </Content>
   );
 };

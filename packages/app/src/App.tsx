@@ -54,6 +54,7 @@ import {
   GSSecretStorePickerFieldExtension,
   gsAuthApiRef,
   GSDeploymentsPage,
+  GSContext,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
@@ -195,15 +196,17 @@ const routes = (
 
 export default app.createRoot(
   <>
-    <TelemetryProvider>
-      <ErrorReporterProvider>
-        <AlertDisplay />
-        <OAuthRequestDialog />
-        <AppRouter>
-          <VisitListener />
-          <Root>{routes}</Root>
-        </AppRouter>
-      </ErrorReporterProvider>
-    </TelemetryProvider>
+    <GSContext>
+      <TelemetryProvider>
+        <ErrorReporterProvider>
+          <AlertDisplay />
+          <OAuthRequestDialog />
+          <AppRouter>
+            <VisitListener />
+            <Root>{routes}</Root>
+          </AppRouter>
+        </ErrorReporterProvider>
+      </TelemetryProvider>
+    </GSContext>
   </>,
 );
