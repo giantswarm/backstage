@@ -1,13 +1,10 @@
 import { Grid, makeStyles } from '@material-ui/core';
-import { useInstallations, useInstallationsStatuses } from '../hooks';
-import { InstallationsSelector } from '../InstallationsSelector';
+import { useInstallations } from '../hooks';
+import { InstallationsPicker } from '../InstallationsPicker';
 
 export const useStyles = makeStyles({
   fullWidth: {
     maxWidth: '100%',
-  },
-  installationsSelectorContainer: {
-    maxWidth: 350,
   },
 });
 
@@ -21,12 +18,9 @@ export const InstallationsWrapper = ({
   const {
     installations,
     selectedInstallations,
-    activeInstallations,
     disabledInstallations,
     setSelectedInstallations,
   } = useInstallations();
-
-  const { installationsStatuses } = useInstallationsStatuses();
 
   const classes = useStyles();
 
@@ -36,14 +30,11 @@ export const InstallationsWrapper = ({
 
   return (
     <Grid container spacing={3} direction="column">
-      <Grid item className={classes.installationsSelectorContainer}>
-        <InstallationsSelector
+      <Grid item>
+        <InstallationsPicker
           installations={installations}
           selectedInstallations={selectedInstallations}
-          activeInstallations={activeInstallations}
           disabledInstallations={disabledInstallations}
-          installationsStatuses={installationsStatuses}
-          multiple
           onChange={handleSelectedInstallationsChange}
         />
       </Grid>

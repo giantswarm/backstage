@@ -20,6 +20,7 @@ import AutocompleteComponent, {
 } from '@material-ui/lab/Autocomplete';
 import { merge } from 'lodash';
 import classNames from 'classnames';
+import { Chip } from '@material-ui/core';
 
 const useStyles = makeStyles(
   theme => ({
@@ -186,6 +187,7 @@ type AutocompleteProps = {
   }[];
   label: string;
   selectedValues?: string[];
+  disabledItems?: string[];
   onChange?: (selected: string[]) => void;
   renderLabel?: (label: string) => ReactNode;
   disabled?: boolean;
@@ -195,6 +197,7 @@ export const Autocomplete = ({
   items,
   label,
   selectedValues,
+  disabledItems,
   onChange,
   renderLabel,
   disabled = false,
@@ -226,6 +229,9 @@ export const Autocomplete = ({
       name={`${label.toLowerCase().replace(/\s/g, '-')}-autocomplete`}
       options={items}
       getOptionLabel={option => option.label}
+      getOptionDisabled={option =>
+        disabledItems?.includes(option.value) ?? false
+      }
       value={value}
       disabled={disabled}
       onChange={(_event, selectedItems) => {
@@ -241,6 +247,16 @@ export const Autocomplete = ({
           value={option.value}
         />
       )}
+      renderTags={(tagValue, getTagProps) =>
+        tagValue.map((option, index) => (
+          <Chip
+            label={option.label}
+            size="small"
+            {...getTagProps({ index })}
+            disabled={disabledItems?.includes(option.value) ?? false}
+          />
+        ))
+      }
     />
   );
 };
