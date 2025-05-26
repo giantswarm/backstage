@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.73.1] - 2025-05-26
+
+In this release:
+
+- installations picker has been changed to use Autocomplete component;
+- validation function has been added for the installations picker scaffolder field.
+
+See [./docs/releases/v0.73.1-changelog.md](./docs/releases/v0.73.1-changelog.md) for more information.
+
 ## [0.73.0] - 2025-05-22
 
 In this release, logic to check availability status of connected installations was added.
@@ -1220,7 +1229,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.73.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.73.1...HEAD
+[0.73.1]: https://github.com/giantswarm/backstage/compare/v0.73.0...v0.73.1
 [0.73.0]: https://github.com/giantswarm/backstage/compare/v0.72.7...v0.73.0
 [0.72.7]: https://github.com/giantswarm/backstage/compare/v0.72.6...v0.72.7
 [0.72.6]: https://github.com/giantswarm/backstage/compare/v0.72.5...v0.72.6
