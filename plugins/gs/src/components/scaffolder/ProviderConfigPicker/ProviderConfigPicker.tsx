@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import {
   getProviderConfigName,
   ProviderConfig,
@@ -7,9 +7,9 @@ import { SelectFormField } from '../../UI/SelectFormField';
 import { useProviderConfigs } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { ProviderConfigPickerProps } from './schema';
-import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
+import { useResourceErrors } from '../hooks/useResourceErrors';
 
 type ProviderConfigPickerFieldProps = {
   id?: string;
@@ -34,22 +34,15 @@ const ProviderConfigPickerField = ({
   installationName,
   onProviderConfigSelect,
 }: ProviderConfigPickerFieldProps) => {
-  const { showError } = useErrors();
-
   const installations = installationName ? [installationName] : [];
   const { resources, isLoading, errors, retry } =
     useProviderConfigs(installations);
+
   const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-
-  useEffect(() => {
-    if (!loadingError) return;
-
-    showError(loadingError, {
-      message: 'Failed to load provider configs',
-      retry,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingError]);
+  useResourceErrors(loadingError, {
+    message: 'Failed to load provider configs',
+    retry,
+  });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources,

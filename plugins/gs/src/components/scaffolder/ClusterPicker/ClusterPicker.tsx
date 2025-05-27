@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import {
   Cluster,
   getClusterName,
@@ -9,9 +9,9 @@ import { SelectFormField } from '../../UI/SelectFormField';
 import { useClusters } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { ClusterPickerProps } from './schema';
-import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
+import { useResourceErrors } from '../hooks/useResourceErrors';
 
 type ClusterPickerFieldProps = {
   id?: string;
@@ -34,18 +34,14 @@ const ClusterPickerField = ({
   installationName,
   onClusterSelect,
 }: ClusterPickerFieldProps) => {
-  const { showError } = useErrors();
-
   const installations = installationName ? [installationName] : [];
   const { resources, isLoading, errors, retry } = useClusters(installations);
+
   const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-
-  useEffect(() => {
-    if (!loadingError) return;
-
-    showError(loadingError, { message: 'Failed to load clusters', retry });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingError]);
+  useResourceErrors(loadingError, {
+    message: 'Failed to load clusters',
+    retry,
+  });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources,

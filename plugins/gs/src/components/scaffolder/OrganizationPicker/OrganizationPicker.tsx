@@ -1,15 +1,15 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { Grid } from '@material-ui/core';
 import { OrganizationPickerProps } from './schema';
 import { useOrganizations } from '../../hooks/useOrganizations';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
 import {
   getOrganizationName,
   Organization,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { useResourceErrors } from '../hooks/useResourceErrors';
 
 type OrganizationPickerFieldProps = {
   id?: string;
@@ -34,18 +34,15 @@ const OrganizationPickerField = ({
   installationName,
   onOrganizationSelect,
 }: OrganizationPickerFieldProps) => {
-  const { showError } = useErrors();
   const { resources, isLoading, errors, retry } = useOrganizations([
     installationName,
   ]);
+
   const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-
-  useEffect(() => {
-    if (!loadingError) return;
-
-    showError(loadingError, { message: 'Failed to load releases', retry });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingError]);
+  useResourceErrors(loadingError, {
+    message: 'Failed to load organizations',
+    retry,
+  });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources,

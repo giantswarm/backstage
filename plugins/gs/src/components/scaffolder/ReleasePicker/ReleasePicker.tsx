@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { Grid } from '@material-ui/core';
 import { ReleasePickerProps } from './schema';
 import { useReleases } from '../../hooks';
@@ -10,9 +10,9 @@ import {
   RELEASE_VERSION_PREFIXES,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
+import { useResourceErrors } from '../hooks/useResourceErrors';
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -37,7 +37,6 @@ const ReleasePickerField = ({
   provider,
   onReleaseSelect,
 }: ReleasePickerFieldProps) => {
-  const { showError } = useErrors();
   const providerPrefix = provider
     ? RELEASE_VERSION_PREFIXES[provider]
     : undefined;
@@ -49,14 +48,12 @@ const ReleasePickerField = ({
         getReleaseName(release).startsWith(providerPrefix),
       )
     : resources;
+
   const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-
-  useEffect(() => {
-    if (!loadingError) return;
-
-    showError(loadingError, { message: 'Failed to load releases', retry });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingError]);
+  useResourceErrors(loadingError, {
+    message: 'Failed to load releases',
+    retry,
+  });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources: filteredResources,
