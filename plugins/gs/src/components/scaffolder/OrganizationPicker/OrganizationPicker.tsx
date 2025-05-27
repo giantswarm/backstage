@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Grid, Typography } from '@material-ui/core';
+import { useCallback, useEffect } from 'react';
+import { Grid } from '@material-ui/core';
 import { OrganizationPickerProps } from './schema';
 import { useOrganizations } from '../../hooks/useOrganizations';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import { useResourcePicker } from '../hooks/useResourcePicker';
+import {
+  getOrganizationName,
+  Organization,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 type OrganizationPickerFieldProps = {
   id?: string;
@@ -14,7 +19,9 @@ type OrganizationPickerFieldProps = {
   error?: boolean;
   organizationValue?: string;
   installationName: string;
-  onOrganizationSelect: (selectedOrganization: string | undefined) => void;
+  onOrganizationSelect: (
+    selectedOrganization: Organization | undefined,
+  ) => void;
 };
 
 const OrganizationPickerField = ({
@@ -40,58 +47,31 @@ const OrganizationPickerField = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingError]);
 
-  const organizations = useMemo(() => {
-    if (isLoading) {
-      return [];
-    }
+  const { resourceNames, selectedName, handleChange } = useResourcePicker({
+    resources,
+    isLoading,
+    getResourceName: getOrganizationName,
+    initialValue: organizationValue,
+    onSelect: onOrganizationSelect,
+  });
 
-    return resources.map(organization => organization.metadata.name).sort();
-  }, [isLoading, resources]);
-
-  const [selectedOrganization, setSelectedOrganization] = useState<
-    string | undefined
-  >(organizationValue);
-
-  useEffect(() => {
-    if (
-      !selectedOrganization ||
-      (selectedOrganization &&
-        !isLoading &&
-        !organizations.includes(selectedOrganization))
-    ) {
-      setSelectedOrganization(undefined);
-    }
-  }, [isLoading, organizations, selectedOrganization]);
-
-  useEffect(() => {
-    onOrganizationSelect(selectedOrganization);
-  }, [onOrganizationSelect, selectedOrganization]);
-
-  const handleChange = (selectedItem: string) => {
-    setSelectedOrganization(selectedItem);
-  };
+  const disabled =
+    isLoading || !Boolean(installationName) || Boolean(loadingError);
 
   return (
     <Grid container spacing={3} direction="column">
       <Grid item>
-        {isLoading ? (
-          <Box mt={2}>
-            <Typography variant="body1" color="textSecondary">
-              Loading organizations...
-            </Typography>
-          </Box>
-        ) : (
-          <SelectFormField
-            id={id}
-            label={label}
-            helperText={helperText}
-            required={required}
-            error={error}
-            items={organizations}
-            selectedItem={selectedOrganization ?? ''}
-            onChange={handleChange}
-          />
-        )}
+        <SelectFormField
+          id={id}
+          label={label}
+          helperText={isLoading ? 'Loading organizations...' : helperText}
+          required={required}
+          error={error}
+          items={resourceNames}
+          selectedItem={selectedName ?? ''}
+          onChange={handleChange}
+          disabled={disabled}
+        />
       </Grid>
     </Grid>
   );
@@ -120,8 +100,13 @@ export const OrganizationPicker = ({
   );
 
   const handleOrganizationSelect = useCallback(
-    (selectedOrganization: string | undefined) => {
-      onChange(selectedOrganization);
+    (selectedOrganization: Organization | undefined) => {
+      if (!selectedOrganization) {
+        onChange(undefined);
+        return;
+      }
+
+      onChange(getOrganizationName(selectedOrganization));
     },
     [onChange],
   );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   Cluster,
   getClusterName,
@@ -11,6 +11,7 @@ import { Grid } from '@material-ui/core';
 import { ClusterPickerProps } from './schema';
 import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import { useResourcePicker } from '../hooks/useResourcePicker';
 
 type ClusterPickerFieldProps = {
   id?: string;
@@ -46,38 +47,13 @@ const ClusterPickerField = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingError]);
 
-  const clusters = useMemo(() => {
-    if (isLoading) {
-      return [];
-    }
-
-    return resources.map(cluster => getClusterName(cluster)).sort();
-  }, [isLoading, resources]);
-
-  const [selectedCluster, setSelectedCluster] = useState<string | undefined>(
-    clusterNameValue,
-  );
-
-  useEffect(() => {
-    if (
-      !selectedCluster ||
-      (!isLoading && selectedCluster && !clusters.includes(selectedCluster))
-    ) {
-      setSelectedCluster(undefined);
-    }
-  }, [isLoading, clusters, selectedCluster]);
-
-  useEffect(() => {
-    const selectedResource = resources.find(
-      cluster => getClusterName(cluster) === selectedCluster,
-    );
-
-    onClusterSelect(selectedResource);
-  }, [onClusterSelect, resources, selectedCluster]);
-
-  const handleChange = (selectedItem: string) => {
-    setSelectedCluster(selectedItem);
-  };
+  const { resourceNames, selectedName, handleChange } = useResourcePicker({
+    resources,
+    isLoading,
+    getResourceName: getClusterName,
+    initialValue: clusterNameValue,
+    onSelect: onClusterSelect,
+  });
 
   const disabled =
     isLoading || !Boolean(installationName) || Boolean(loadingError);
@@ -91,8 +67,8 @@ const ClusterPickerField = ({
           helperText={isLoading ? 'Loading clusters...' : helperText}
           required={required}
           error={error}
-          items={clusters}
-          selectedItem={selectedCluster ?? ''}
+          items={resourceNames}
+          selectedItem={selectedName ?? ''}
           onChange={handleChange}
           disabled={disabled}
         />

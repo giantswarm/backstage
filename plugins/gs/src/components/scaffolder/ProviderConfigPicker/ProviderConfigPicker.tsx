@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   getProviderConfigName,
   ProviderConfig,
@@ -9,6 +9,7 @@ import { Grid } from '@material-ui/core';
 import { ProviderConfigPickerProps } from './schema';
 import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import { useResourcePicker } from '../hooks/useResourcePicker';
 
 type ProviderConfigPickerFieldProps = {
   id?: string;
@@ -50,43 +51,13 @@ const ProviderConfigPickerField = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingError]);
 
-  const providerConfigs = useMemo(() => {
-    if (isLoading) {
-      return [];
-    }
-
-    return resources
-      .map(providerConfig => getProviderConfigName(providerConfig))
-      .sort();
-  }, [isLoading, resources]);
-
-  const [selectedProviderConfig, setSelectedCluster] = useState<
-    string | undefined
-  >(providerConfigNameValue);
-
-  useEffect(() => {
-    if (
-      !selectedProviderConfig ||
-      (!isLoading &&
-        selectedProviderConfig &&
-        !providerConfigs.includes(selectedProviderConfig))
-    ) {
-      setSelectedCluster(undefined);
-    }
-  }, [isLoading, providerConfigs, selectedProviderConfig]);
-
-  useEffect(() => {
-    const selectedResource = resources.find(
-      providerConfig =>
-        getProviderConfigName(providerConfig) === selectedProviderConfig,
-    );
-
-    onProviderConfigSelect(selectedResource);
-  }, [onProviderConfigSelect, resources, selectedProviderConfig]);
-
-  const handleChange = (selectedItem: string) => {
-    setSelectedCluster(selectedItem);
-  };
+  const { resourceNames, selectedName, handleChange } = useResourcePicker({
+    resources,
+    isLoading,
+    getResourceName: getProviderConfigName,
+    initialValue: providerConfigNameValue,
+    onSelect: onProviderConfigSelect,
+  });
 
   const disabled =
     isLoading || !Boolean(installationName) || Boolean(loadingError);
@@ -100,8 +71,8 @@ const ProviderConfigPickerField = ({
           helperText={isLoading ? 'Loading provider configs...' : helperText}
           required={required}
           error={error}
-          items={providerConfigs}
-          selectedItem={selectedProviderConfig ?? ''}
+          items={resourceNames}
+          selectedItem={selectedName ?? ''}
           onChange={handleChange}
           disabled={disabled}
         />
