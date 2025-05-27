@@ -8,9 +8,9 @@ import {
   getReleaseVersion,
   RELEASE_VERSION_PREFIXES,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { get } from 'lodash';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { ErrorsProvider, useErrors } from '../../Errors';
+import { useErrors } from '../../Errors';
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -132,45 +132,17 @@ export const ReleasePicker = ({
     installationNameField: installationNameFieldOption,
   } = uiSchema?.['ui:options'] ?? {};
 
-  const provider = useMemo(() => {
-    if (providerOption) {
-      return providerOption;
-    }
+  const provider = useValueFromOptions(
+    formContext,
+    providerOption,
+    providerFieldOption,
+  );
 
-    if (providerFieldOption) {
-      const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const providerFieldValue = get(
-        allFormData,
-        providerFieldOption,
-      ) as string;
-
-      return providerFieldValue;
-    }
-
-    return '';
-  }, [providerOption, providerFieldOption, formContext.formData]);
-
-  const installationName = useMemo(() => {
-    if (installationNameOption) {
-      return installationNameOption;
-    }
-
-    if (installationNameFieldOption) {
-      const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const installationNameFieldValue = get(
-        allFormData,
-        installationNameFieldOption,
-      ) as string;
-
-      return installationNameFieldValue;
-    }
-
-    return '';
-  }, [
+  const installationName = useValueFromOptions(
+    formContext,
     installationNameOption,
     installationNameFieldOption,
-    formContext.formData,
-  ]);
+  );
 
   const handleReleaseSelect = useCallback(
     (selectedRelease: string | undefined) => {
@@ -180,18 +152,16 @@ export const ReleasePicker = ({
   );
 
   return (
-    <ErrorsProvider>
-      <ReleasePickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        releaseValue={releaseValue}
-        provider={provider}
-        installationName={installationName ?? ''}
-        onReleaseSelect={handleReleaseSelect}
-      />
-    </ErrorsProvider>
+    <ReleasePickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      releaseValue={releaseValue}
+      provider={provider}
+      installationName={installationName ?? ''}
+      onReleaseSelect={handleReleaseSelect}
+    />
   );
 };

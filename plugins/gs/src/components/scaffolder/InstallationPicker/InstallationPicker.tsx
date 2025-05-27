@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useInstallations, InstallationInfo } from '../../hooks';
 import { Grid } from '@material-ui/core';
-import { InstallationPickerProps, InstallationPickerValue } from './schema';
+import { InstallationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
-import { ErrorsProvider } from '../../Errors';
-import { FieldValidation } from '@rjsf/utils';
+import { SelectFormField } from '../../UI/SelectFormField';
 
 type InstallationFieldProps = {
   id?: string;
@@ -12,11 +11,11 @@ type InstallationFieldProps = {
   helperText?: string;
   required?: boolean;
   error?: boolean;
-  requestUserCredentials?: boolean;
-  secretsKey?: string;
+  autoSelectFirstValue?: boolean;
   allowedProviders: string[];
   allowedPipelines: string[];
   installationNameValue?: string;
+  widget?: string;
   onInstallationSelect: (
     selectedInstallation: InstallationInfo | undefined,
   ) => void;
@@ -28,9 +27,11 @@ const InstallationPickerField = ({
   helperText,
   required,
   error,
+  autoSelectFirstValue = true,
   allowedProviders,
   allowedPipelines,
   installationNameValue,
+  widget = 'radio',
   onInstallationSelect,
 }: InstallationFieldProps) => {
   const { disabledInstallations, installationsInfo } = useInstallations();
@@ -79,15 +80,19 @@ const InstallationPickerField = ({
   const activeInstallations = installations.filter(
     installation => !disabledInstallations.includes(installation),
   );
+  const defaultValue =
+    autoSelectFirstValue && activeInstallations.length > 0
+      ? activeInstallations[0]
+      : undefined;
   const [selectedInstallation, setSelectedInstallation] = useState<
     string | undefined
-  >(installationNameValue ?? activeInstallations[0]);
+  >(installationNameValue ?? defaultValue);
 
   useEffect(() => {
     if (selectedInstallation && !installations.includes(selectedInstallation)) {
-      setSelectedInstallation(activeInstallations[0]);
+      setSelectedInstallation(defaultValue);
     }
-  }, [activeInstallations, installations, selectedInstallation]);
+  }, [activeInstallations, defaultValue, installations, selectedInstallation]);
 
   useEffect(() => {
     const selectedInstallationInfo = installationsInfo.find(
@@ -108,18 +113,32 @@ const InstallationPickerField = ({
   return (
     <Grid container spacing={3} direction="column">
       <Grid item>
-        <RadioFormField
-          id={id}
-          label={label}
-          helperText={helperText}
-          required={required}
-          error={error}
-          items={installations}
-          itemLabels={installationLabels}
-          disabledItems={disabledInstallations}
-          selectedItem={selectedInstallation ?? ''}
-          onChange={handleChange}
-        />
+        {widget === 'radio' ? (
+          <RadioFormField
+            id={id}
+            label={label}
+            helperText={helperText}
+            required={required}
+            error={error}
+            items={installations}
+            itemLabels={installationLabels}
+            disabledItems={disabledInstallations}
+            selectedItem={selectedInstallation ?? ''}
+            onChange={handleChange}
+          />
+        ) : (
+          <SelectFormField
+            id={id}
+            label={label}
+            helperText={helperText}
+            required={required}
+            error={error}
+            items={installations}
+            disabledItems={disabledInstallations}
+            selectedItem={selectedInstallation ?? ''}
+            onChange={handleChange}
+          />
+        )}
       </Grid>
     </Grid>
   );
@@ -138,10 +157,11 @@ export const InstallationPicker = ({
   const { installationName } = formData ?? {};
 
   const {
-    requestUserCredentials,
+    autoSelectFirstValue,
     allowedProviders: allowedProvidersOption,
     allowedProvidersField: allowedProvidersFieldOption,
     allowedPipelines = [],
+    widget,
   } = uiSchema?.['ui:options'] ?? {};
 
   const allowedProviders = useMemo(() => {
@@ -182,29 +202,18 @@ export const InstallationPicker = ({
   );
 
   return (
-    <ErrorsProvider>
-      <InstallationPickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        installationNameValue={installationName}
-        onInstallationSelect={handleInstallationSelect}
-        requestUserCredentials={Boolean(requestUserCredentials)}
-        secretsKey={requestUserCredentials?.secretsKey}
-        allowedProviders={allowedProviders}
-        allowedPipelines={allowedPipelines}
-      />
-    </ErrorsProvider>
+    <InstallationPickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      installationNameValue={installationName}
+      onInstallationSelect={handleInstallationSelect}
+      autoSelectFirstValue={autoSelectFirstValue}
+      allowedProviders={allowedProviders}
+      allowedPipelines={allowedPipelines}
+      widget={widget}
+    />
   );
-};
-
-export const installationPickerValidation = (
-  value: InstallationPickerValue,
-  validation: FieldValidation,
-) => {
-  if (!value.installationName) {
-    validation.addError(`Please fill in this field`);
-  }
 };

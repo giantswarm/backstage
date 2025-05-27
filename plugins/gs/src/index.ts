@@ -7,7 +7,7 @@ export {
   EntityGSDeploymentsContent,
   EntityGSKratixResourcesContent,
   GSClusterPickerFieldExtension,
-  GSDeploymentDetailsPickerFieldExtension,
+  GSProviderConfigPickerFieldExtension,
   GSOIDCTokenFieldExtension,
   GSSecretStorePickerFieldExtension,
   GSTemplateStringInputFieldExtension,

@@ -1,79 +1,88 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Cluster,
-  getClusterName,
-  getClusterNamespace,
-  getClusterOrganization,
+  getProviderConfigName,
+  ProviderConfig,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { useClusters } from '../../hooks';
+import { useProviderConfigs } from '../../hooks';
 import { Grid } from '@material-ui/core';
-import { ClusterPickerProps } from './schema';
+import { ProviderConfigPickerProps } from './schema';
 import { useErrors } from '../../Errors';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
-type ClusterPickerFieldProps = {
+type ProviderConfigPickerFieldProps = {
   id?: string;
   label?: string;
   helperText?: string;
   required?: boolean;
   error?: boolean;
-  clusterNameValue?: string;
+  providerConfigNameValue?: string;
   installationName?: string;
-  onClusterSelect: (selectedCluster: Cluster | undefined) => void;
+  onProviderConfigSelect: (
+    selectedProviderConfig: ProviderConfig | undefined,
+  ) => void;
 };
 
-const ClusterPickerField = ({
+const ProviderConfigPickerField = ({
   id,
   label,
   helperText,
   required,
   error,
-  clusterNameValue,
+  providerConfigNameValue,
   installationName,
-  onClusterSelect,
-}: ClusterPickerFieldProps) => {
+  onProviderConfigSelect,
+}: ProviderConfigPickerFieldProps) => {
   const { showError } = useErrors();
 
   const installations = installationName ? [installationName] : [];
-  const { resources, isLoading, errors, retry } = useClusters(installations);
+  const { resources, isLoading, errors, retry } =
+    useProviderConfigs(installations);
   const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
 
   useEffect(() => {
     if (!loadingError) return;
 
-    showError(loadingError, { message: 'Failed to load clusters', retry });
+    showError(loadingError, {
+      message: 'Failed to load provider configs',
+      retry,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingError]);
 
-  const clusters = useMemo(() => {
+  const providerConfigs = useMemo(() => {
     if (isLoading) {
       return [];
     }
 
-    return resources.map(cluster => getClusterName(cluster)).sort();
+    return resources
+      .map(providerConfig => getProviderConfigName(providerConfig))
+      .sort();
   }, [isLoading, resources]);
 
-  const [selectedCluster, setSelectedCluster] = useState<string | undefined>(
-    clusterNameValue,
-  );
+  const [selectedProviderConfig, setSelectedCluster] = useState<
+    string | undefined
+  >(providerConfigNameValue);
 
   useEffect(() => {
     if (
-      !selectedCluster ||
-      (!isLoading && selectedCluster && !clusters.includes(selectedCluster))
+      !selectedProviderConfig ||
+      (!isLoading &&
+        selectedProviderConfig &&
+        !providerConfigs.includes(selectedProviderConfig))
     ) {
       setSelectedCluster(undefined);
     }
-  }, [isLoading, clusters, selectedCluster]);
+  }, [isLoading, providerConfigs, selectedProviderConfig]);
 
   useEffect(() => {
     const selectedResource = resources.find(
-      cluster => getClusterName(cluster) === selectedCluster,
+      providerConfig =>
+        getProviderConfigName(providerConfig) === selectedProviderConfig,
     );
 
-    onClusterSelect(selectedResource);
-  }, [onClusterSelect, resources, selectedCluster]);
+    onProviderConfigSelect(selectedResource);
+  }, [onProviderConfigSelect, resources, selectedProviderConfig]);
 
   const handleChange = (selectedItem: string) => {
     setSelectedCluster(selectedItem);
@@ -88,11 +97,11 @@ const ClusterPickerField = ({
         <SelectFormField
           id={id}
           label={label}
-          helperText={isLoading ? 'Loading clusters...' : helperText}
+          helperText={isLoading ? 'Loading provider configs...' : helperText}
           required={required}
           error={error}
-          items={clusters}
-          selectedItem={selectedCluster ?? ''}
+          items={providerConfigs}
+          selectedItem={selectedProviderConfig ?? ''}
           onChange={handleChange}
           disabled={disabled}
         />
@@ -101,17 +110,17 @@ const ClusterPickerField = ({
   );
 };
 
-export const ClusterPicker = ({
+export const ProviderConfigPicker = ({
   onChange,
   rawErrors,
   required,
   formData,
-  schema: { title = 'Cluster', description = 'Workload cluster reference' },
+  schema: { title = 'Provider Config', description = 'Select Provider Config' },
   uiSchema,
   idSchema,
   formContext,
-}: ClusterPickerProps) => {
-  const { clusterName } = formData ?? {};
+}: ProviderConfigPickerProps) => {
+  const providerConfigName = formData;
   const {
     installationName: installationNameOption,
     installationNameField: installationNameFieldOption,
@@ -123,32 +132,28 @@ export const ClusterPicker = ({
     installationNameFieldOption,
   );
 
-  const handleClusterSelect = useCallback(
-    (selectedCluster: Cluster | undefined) => {
-      if (!selectedCluster) {
+  const handleProviderConfigSelect = useCallback(
+    (selectedProviderConfig: ProviderConfig | undefined) => {
+      if (!selectedProviderConfig) {
         onChange(undefined);
         return;
       }
 
-      onChange({
-        clusterName: getClusterName(selectedCluster),
-        clusterNamespace: getClusterNamespace(selectedCluster),
-        clusterOrganization: getClusterOrganization(selectedCluster),
-      });
+      onChange(getProviderConfigName(selectedProviderConfig));
     },
     [onChange],
   );
 
   return (
-    <ClusterPickerField
+    <ProviderConfigPickerField
       id={idSchema?.$id}
       label={title}
       helperText={description}
       required={required}
       error={rawErrors?.length > 0 && !formData}
-      clusterNameValue={clusterName}
+      providerConfigNameValue={providerConfigName}
       installationName={installationName}
-      onClusterSelect={handleClusterSelect}
+      onProviderConfigSelect={handleProviderConfigSelect}
     />
   );
 };

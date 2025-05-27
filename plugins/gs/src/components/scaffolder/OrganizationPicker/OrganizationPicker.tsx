@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Grid, Typography } from '@material-ui/core';
 import { OrganizationPickerProps } from './schema';
 import { useOrganizations } from '../../hooks/useOrganizations';
-import { get } from 'lodash';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { ErrorsProvider, useErrors } from '../../Errors';
+import { useErrors } from '../../Errors';
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 type OrganizationPickerFieldProps = {
   id?: string;
@@ -113,27 +113,11 @@ export const OrganizationPicker = ({
     installationNameField: installationNameFieldOption,
   } = uiSchema?.['ui:options'] ?? {};
 
-  const installationName = useMemo(() => {
-    if (installationNameOption) {
-      return installationNameOption;
-    }
-
-    if (installationNameFieldOption) {
-      const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const installationNameFieldValue = get(
-        allFormData,
-        installationNameFieldOption,
-      ) as string;
-
-      return installationNameFieldValue;
-    }
-
-    return '';
-  }, [
+  const installationName = useValueFromOptions(
+    formContext,
     installationNameOption,
     installationNameFieldOption,
-    formContext.formData,
-  ]);
+  );
 
   const handleOrganizationSelect = useCallback(
     (selectedOrganization: string | undefined) => {
@@ -143,17 +127,15 @@ export const OrganizationPicker = ({
   );
 
   return (
-    <ErrorsProvider>
-      <OrganizationPickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        organizationValue={organizationValue}
-        installationName={installationName ?? ''}
-        onOrganizationSelect={handleOrganizationSelect}
-      />
-    </ErrorsProvider>
+    <OrganizationPickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      organizationValue={organizationValue}
+      installationName={installationName ?? ''}
+      onOrganizationSelect={handleOrganizationSelect}
+    />
   );
 };

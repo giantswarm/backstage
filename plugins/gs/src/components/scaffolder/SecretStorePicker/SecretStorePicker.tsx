@@ -7,7 +7,7 @@ import { Grid } from '@material-ui/core';
 import { SecretStorePickerProps } from './schema';
 import { ClusterSecretStoreSelector } from './ClusterSecretStoreSelector';
 import { SecretStoreSelector } from './SecretStoreSelector';
-import { getInstallationName, getClusterNamespace } from './utils';
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 type SecretStorePickerFieldProps = {
   id?: string;
@@ -76,8 +76,14 @@ export const SecretStorePicker = ({
   idSchema,
   uiSchema,
 }: SecretStorePickerProps) => {
-  const isClusterSecretStore =
-    uiSchema['ui:options']?.isClusterSecretStore ?? false;
+  const {
+    isClusterSecretStore = false,
+    clusterNamespace: clusterNamespaceOption,
+    clusterNamespaceField: clusterNamespaceFieldOption,
+    installationName: installationNameOption,
+    installationNameField: installationNameFieldOption,
+  } = uiSchema?.['ui:options'] ?? {};
+
   const title =
     (schema.title ?? isClusterSecretStore)
       ? 'Cluster secret store'
@@ -87,13 +93,16 @@ export const SecretStorePicker = ({
       ? 'Cluster secret store reference.'
       : 'Secret store reference.';
 
-  const installationName = getInstallationName(
-    uiSchema['ui:options'],
-    formContext.formData,
+  const installationName = useValueFromOptions(
+    formContext,
+    installationNameOption,
+    installationNameFieldOption,
   );
-  const clusterNamespace = getClusterNamespace(
-    uiSchema['ui:options'],
-    formContext.formData,
+
+  const clusterNamespace = useValueFromOptions(
+    formContext,
+    clusterNamespaceOption,
+    clusterNamespaceFieldOption,
   );
 
   const handleSecretStoreSelect = (
