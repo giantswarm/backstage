@@ -12,7 +12,7 @@ import {
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
-import { useResourceErrors } from '../hooks/useResourceErrors';
+import { useShowErrors } from '../../Errors/useErrors';
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -40,19 +40,15 @@ const ReleasePickerField = ({
   const providerPrefix = provider
     ? RELEASE_VERSION_PREFIXES[provider]
     : undefined;
-  const { resources, isLoading, errors, retry } = useReleases([
-    installationName,
-  ]);
+  const { resources, isLoading, errors } = useReleases([installationName]);
   const filteredResources = providerPrefix
     ? resources.filter(release =>
         getReleaseName(release).startsWith(providerPrefix),
       )
     : resources;
 
-  const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-  useResourceErrors(loadingError, {
+  useShowErrors(errors, {
     message: 'Failed to load releases',
-    retry,
   });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
@@ -65,8 +61,7 @@ const ReleasePickerField = ({
     compareFn: semver.rcompare,
   });
 
-  const disabled =
-    isLoading || !Boolean(installationName) || Boolean(loadingError);
+  const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
 
   return (
     <Grid container spacing={3} direction="column">

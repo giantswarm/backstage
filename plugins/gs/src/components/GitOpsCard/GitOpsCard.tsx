@@ -27,6 +27,8 @@ import {
 import { useGitOpsSourceLink, useResource } from '../hooks';
 import { GitOpsIcon } from '../../assets/icons/CustomIcons';
 import { AsyncValue, ExternalLink } from '../UI';
+import { useShowErrors } from '../Errors/useErrors';
+import { useMemo } from 'react';
 
 const InfoIcon = styled(InfoOutlinedIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
@@ -48,6 +50,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
       : getHelmReleaseKustomizationNamespace(deployment);
   const {
     data: kustomization,
+    errors: kustomizationErrors,
     isLoading: kustomizationIsLoading,
     error: kustomizationError,
     queryErrorMessage: kustomizationQueryErrorMessage,
@@ -63,6 +66,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
     : undefined;
   const {
     data: gitRepository,
+    errors: gitRepositoryErrors,
     isLoading: gitRepositoryIsLoading,
     error: gitRepositoryError,
     queryErrorMessage: gitRepositoryQueryErrorMessage,
@@ -95,14 +99,18 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
 
   const isLoading = kustomizationIsLoading || gitRepositoryIsLoading;
 
-  let error;
+  const errors = useMemo(() => {
+    return [...kustomizationErrors, ...gitRepositoryErrors];
+  }, [gitRepositoryErrors, kustomizationErrors]);
+
+  useShowErrors(errors);
+
+  const firstError = errors[0]?.error ?? null;
   let errorMessage;
   if (kustomizationError) {
-    error = kustomizationError;
     errorMessage = kustomizationQueryErrorMessage;
   }
   if (gitRepositoryError) {
-    error = gitRepositoryError;
     errorMessage = gitRepositoryQueryErrorMessage;
   }
 
@@ -124,7 +132,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
             <AsyncValue
               isLoading={isLoading}
               value={sourceUrl}
-              error={error}
+              error={firstError}
               errorMessage={errorMessage}
               renderError={message => (
                 <Box display="flex" alignItems="center">

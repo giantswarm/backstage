@@ -9,7 +9,7 @@ import {
   getOrganizationName,
   Organization,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useResourceErrors } from '../hooks/useResourceErrors';
+import { useShowErrors } from '../../Errors/useErrors';
 
 type OrganizationPickerFieldProps = {
   id?: string;
@@ -34,14 +34,10 @@ const OrganizationPickerField = ({
   installationName,
   onOrganizationSelect,
 }: OrganizationPickerFieldProps) => {
-  const { resources, isLoading, errors, retry } = useOrganizations([
-    installationName,
-  ]);
+  const { resources, isLoading, errors } = useOrganizations([installationName]);
 
-  const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-  useResourceErrors(loadingError, {
+  useShowErrors(errors, {
     message: 'Failed to load organizations',
-    retry,
   });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
@@ -52,8 +48,7 @@ const OrganizationPickerField = ({
     onSelect: onOrganizationSelect,
   });
 
-  const disabled =
-    isLoading || !Boolean(installationName) || Boolean(loadingError);
+  const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
 
   return (
     <Grid container spacing={3} direction="column">

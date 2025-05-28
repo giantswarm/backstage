@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Box, Typography } from '@material-ui/core';
+import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { getInitialColumns } from './columns';
 import { ClusterData, useClustersData } from '../ClustersDataProvider';
-import { useInstallationsStatuses } from '../../hooks';
 import {
   useTableColumns,
   CLUSTERS_TABLE_ID,
 } from '../../hooks/useTableColumns';
-import { InstallationsErrors } from '../../InstallationsErrors';
 
 type Props = {
   columns: TableColumn<ClusterData>[];
@@ -107,25 +105,13 @@ export const ClustersTable = () => {
     setVisibleColumns(visibleColumns);
   }, [setVisibleColumns, visibleColumns]);
 
-  const { installationsStatuses } = useInstallationsStatuses();
-  const installationsErrors = installationsStatuses.some(
-    installationStatus => installationStatus.isError,
-  );
-
   return (
-    <>
-      {installationsErrors && (
-        <Box mb={2}>
-          <InstallationsErrors installationsStatuses={installationsStatuses} />
-        </Box>
-      )}
-      <ClustersTableView
-        columns={columns}
-        loading={isLoading}
-        retry={retry}
-        clustersData={clustersData}
-        onChangeColumnHidden={handleChangeColumnHidden}
-      />
-    </>
+    <ClustersTableView
+      columns={columns}
+      loading={isLoading}
+      retry={retry}
+      clustersData={clustersData}
+      onChangeColumnHidden={handleChangeColumnHidden}
+    />
   );
 };

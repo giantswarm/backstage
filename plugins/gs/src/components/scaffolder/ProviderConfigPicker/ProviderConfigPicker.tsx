@@ -9,7 +9,7 @@ import { Grid } from '@material-ui/core';
 import { ProviderConfigPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
-import { useResourceErrors } from '../hooks/useResourceErrors';
+import { useShowErrors } from '../../Errors/useErrors';
 
 type ProviderConfigPickerFieldProps = {
   id?: string;
@@ -35,13 +35,10 @@ const ProviderConfigPickerField = ({
   onProviderConfigSelect,
 }: ProviderConfigPickerFieldProps) => {
   const installations = installationName ? [installationName] : [];
-  const { resources, isLoading, errors, retry } =
-    useProviderConfigs(installations);
+  const { resources, isLoading, errors } = useProviderConfigs(installations);
 
-  const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-  useResourceErrors(loadingError, {
+  useShowErrors(errors, {
     message: 'Failed to load provider configs',
-    retry,
   });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
@@ -52,8 +49,7 @@ const ProviderConfigPickerField = ({
     onSelect: onProviderConfigSelect,
   });
 
-  const disabled =
-    isLoading || !Boolean(installationName) || Boolean(loadingError);
+  const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
 
   return (
     <Grid container spacing={3} direction="column">

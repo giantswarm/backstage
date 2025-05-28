@@ -6,6 +6,7 @@ import { getProviderConfigGVK } from '@giantswarm/backstage-plugin-gs-common';
 import { useListResources } from './useListResources';
 import { useInstallations } from './useInstallations';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
+import { useMemo } from 'react';
 
 const resourcePluralName = 'providerconfigs';
 
@@ -30,10 +31,11 @@ export function useProviderConfigs(installations?: string[]) {
     installationsGVKs,
   );
 
-  const resources: Resource<ProviderConfig>[] =
-    queriesInfo.installationsData.flatMap(({ installationName, data }) =>
+  const resources: Resource<ProviderConfig>[] = useMemo(() => {
+    return queriesInfo.installationsData.flatMap(({ installationName, data }) =>
       data.map(resource => ({ installationName, ...resource })),
     );
+  }, [queriesInfo.installationsData]);
 
   return {
     ...queriesInfo,

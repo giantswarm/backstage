@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
   getSecretStoreName,
-  Resource,
   ClusterSecretStore,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
@@ -30,13 +29,8 @@ export const ClusterSecretStoreSelector = ({
   selectedSecretStore,
   onChange,
 }: ClusterSecretStoreSelectorProps) => {
-  const { installationsData, isLoading, errors } =
+  const { resources, isLoading, errors } =
     useClusterSecretStores(installations);
-
-  const resources: Resource<ClusterSecretStore>[] = installationsData.flatMap(
-    ({ installationName, data }) =>
-      data.map(resource => ({ installationName, ...resource })),
-  );
 
   const resourcesMap = useMemo(() => {
     return Object.fromEntries(

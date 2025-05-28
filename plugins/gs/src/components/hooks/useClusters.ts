@@ -14,6 +14,7 @@ import { getK8sListPath } from './utils/k8sPath';
 import { getInstallationsQueriesInfo } from './utils/queries';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { useMemo } from 'react';
 
 function getInstallationOrganizationNamespaces(
   installationName: string,
@@ -44,12 +45,15 @@ export function useClusters(installations?: string[]) {
     }),
   );
 
-  const { resources: organizations, isLoading: isLoadingOrganizations } =
-    useOrganizations(selectedInstallations);
+  const {
+    resources: organizations,
+    errors: organizationsErrors,
+    isLoading: isLoadingOrganizations,
+  } = useOrganizations(selectedInstallations);
 
   const kubernetesApi = useApi(kubernetesApiRef);
 
-  const queries = useQueries({
+  const queriesInfo = useQueries({
     queries: selectedInstallations.map(installationName => {
       const namespaces = getInstallationOrganizationNamespaces(
         installationName,
@@ -79,21 +83,24 @@ export function useClusters(installations?: string[]) {
         enabled: !isLoadingOrganizations,
       };
     }),
+    combine: results =>
+      getInstallationsQueriesInfo(selectedInstallations, results),
   });
 
-  const queriesInfo = getInstallationsQueriesInfo(
-    selectedInstallations,
-    queries,
-  );
-
-  const resources: Resource<Cluster>[] = queriesInfo.installationsData.flatMap(
-    ({ installationName, data }) =>
+  const resources: Resource<Cluster>[] = useMemo(() => {
+    return queriesInfo.installationsData.flatMap(({ installationName, data }) =>
       data.map(resource => ({ installationName, ...resource })),
-  );
+    );
+  }, [queriesInfo.installationsData]);
+
+  const errors = useMemo(() => {
+    return [...organizationsErrors, ...queriesInfo.errors];
+  }, [organizationsErrors, queriesInfo.errors]);
 
   return {
     ...queriesInfo,
     resources,
     isLoading: queriesInfo.isLoading || isLoadingOrganizations,
+    errors,
   };
 }

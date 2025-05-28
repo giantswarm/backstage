@@ -32,6 +32,8 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
     {} as Filters,
   );
 
+  const [filters, setFilters] = useState<Filters>({} as Filters);
+
   const updateFilters = useCallback((newFilters: Partial<Filters>) => {
     setRequestedFilters(prevFilters => {
       return { ...prevFilters, ...newFilters };
@@ -40,6 +42,7 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
 
   const location = useLocation();
   const isMounted = useMountedState();
+  const mounted = isMounted();
   const { queryParameters } = useMemo(() => {
     const parsed = qs.parse(location.search, {
       ignoreQueryPrefix: true,
@@ -54,6 +57,14 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
   }, [location.search]);
 
   const { selectedInstallations } = useInstallations();
+
+  useDebounce(
+    () => {
+      setFilters(requestedFilters);
+    },
+    10,
+    [requestedFilters],
+  );
 
   useDebounce(
     () => {
@@ -81,7 +92,7 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
         {} as Record<string, string | string[]>,
       );
 
-      if (isMounted()) {
+      if (mounted) {
         const oldParams = qs.parse(location.search, {
           ignoreQueryPrefix: true,
         });
@@ -105,7 +116,7 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
     },
     10,
     [
-      isMounted,
+      mounted,
       persistToURL,
       location.search,
       requestedFilters,
@@ -115,10 +126,10 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
 
   return useMemo(
     () => ({
-      filters: requestedFilters,
+      filters,
       queryParameters,
       updateFilters,
     }),
-    [requestedFilters, queryParameters, updateFilters],
+    [filters, queryParameters, updateFilters],
   );
 }

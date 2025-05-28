@@ -11,7 +11,7 @@ import { Grid } from '@material-ui/core';
 import { ClusterPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
-import { useResourceErrors } from '../hooks/useResourceErrors';
+import { useShowErrors } from '../../Errors/useErrors';
 
 type ClusterPickerFieldProps = {
   id?: string;
@@ -35,12 +35,10 @@ const ClusterPickerField = ({
   onClusterSelect,
 }: ClusterPickerFieldProps) => {
   const installations = installationName ? [installationName] : [];
-  const { resources, isLoading, errors, retry } = useClusters(installations);
+  const { resources, isLoading, errors } = useClusters(installations);
 
-  const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
-  useResourceErrors(loadingError, {
+  useShowErrors(errors, {
     message: 'Failed to load clusters',
-    retry,
   });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
@@ -51,8 +49,7 @@ const ClusterPickerField = ({
     onSelect: onClusterSelect,
   });
 
-  const disabled =
-    isLoading || !Boolean(installationName) || Boolean(loadingError);
+  const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
 
   return (
     <Grid container spacing={3} direction="column">

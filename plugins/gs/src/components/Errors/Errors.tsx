@@ -2,6 +2,7 @@ import {
   Box,
   Button,
   Grid,
+  Link,
   List,
   ListItem,
   ListItemText,
@@ -19,6 +20,7 @@ import ReplayIcon from '@material-ui/icons/Replay';
 import { ErrorItem } from './ErrorsProvider';
 import { groupBy } from 'lodash';
 import { CopyTextButton } from '@backstage/core-components';
+import { useState } from 'react';
 
 const useStyles = makeStyles(theme => ({
   stronger: {
@@ -33,6 +35,9 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(2.0),
     fontFamily: 'sans-serif',
     marginTop: theme.spacing(2),
+  },
+  showDetailsLink: {
+    color: theme.palette.text.primary,
   },
   text: {
     fontFamily: 'monospace',
@@ -115,6 +120,72 @@ const AccordionDetails = withStyles(theme => ({
   },
 }))(MuiAccordionDetails);
 
+type ErrorDetailsProps = {
+  errorItem: ErrorItem;
+  onRetry: (errorItemId: number) => void;
+  onDismiss: (errorItemId: number) => void;
+};
+
+const ErrorDetails = ({ errorItem, onRetry, onDismiss }: ErrorDetailsProps) => {
+  const classes = useStyles();
+  const [showDetails, setShowDetails] = useState(false);
+
+  const handleShowDetailsClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    setShowDetails(!showDetails);
+  };
+
+  const message = errorItem.message
+    ? errorItem.message
+    : errorItem.error.message;
+
+  return (
+    <Box mt={1}>
+      <Typography variant="body2">
+        {message}
+        {message.endsWith('.') ? ' ' : '. '}
+        <Link
+          href="#"
+          className={classes.showDetailsLink}
+          onClick={handleShowDetailsClick}
+        >
+          Show details.
+        </Link>
+      </Typography>
+
+      {showDetails ? (
+        <Box mb={4} className={classes.details}>
+          <ErrorPanel
+            error={errorItem.error.name}
+            message={errorItem.error.message}
+            stack={errorItem.error.stack}
+          />
+          <Box display="flex" marginTop={2} gridGap={10}>
+            <Button
+              size="small"
+              variant="outlined"
+              endIcon={<ClearIcon>dismiss</ClearIcon>}
+              onClick={() => onDismiss(errorItem.id)}
+            >
+              Dismiss
+            </Button>
+            {errorItem.retry ? (
+              <Button
+                size="small"
+                variant="outlined"
+                endIcon={<ReplayIcon>retry</ReplayIcon>}
+                onClick={() => onRetry(errorItem.id)}
+              >
+                Retry
+              </Button>
+            ) : null}
+          </Box>
+        </Box>
+      ) : null}
+    </Box>
+  );
+};
+
 type ErrorsProps = {
   errors: ErrorItem[];
   onRetry: (errorItemId: number) => void;
@@ -124,22 +195,25 @@ type ErrorsProps = {
 export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
   const classes = useStyles();
 
-  const queryErrors = errors.filter(({ queryKey }) => !!queryKey);
-  const otherErrors = errors.filter(({ queryKey }) => !queryKey);
+  const groups = Object.entries(groupBy(errors, 'installationName')).sort(
+    (a, b) => {
+      const aId = a[0] || '';
+      const bId = b[0] || '';
+      return aId.localeCompare(bId);
+    },
+  );
 
-  const groups = [
-    ...Object.entries(groupBy(queryErrors, 'queryKey')),
-    ...Object.entries(groupBy(otherErrors, 'id')),
-  ];
+  const installations = groups.map(([groupId]) => groupId).filter(Boolean);
+  const title = installations.length
+    ? `Errors when trying to fetch resources from ${installations.join(', ')}.`
+    : 'Something went wrong';
 
   return (
     <Accordion>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Box display="flex" alignItems="center">
           <StyledErrorOutlineIcon />
-          <Typography variant="subtitle2" className={classes.stronger}>
-            Something went wrong
-          </Typography>
+          <Typography variant="subtitle1">{title}</Typography>
         </Box>
       </AccordionSummary>
       <AccordionDetails>
@@ -148,11 +222,10 @@ export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
             const errorsWithMessage = errorItems.filter(
               ({ message }) => !!message,
             );
-            const errorsWithRetry = errorItems.filter(({ retry }) => !!retry);
 
-            const title =
-              errorsWithMessage[0]?.message || errorItems[0].error.message;
-            const showRetry = errorsWithRetry.length > 0;
+            const groupTitle = groupId
+              ? `${groupId}:`
+              : errorsWithMessage[0]?.message || errorItems[0].error.message;
 
             return (
               <Grid item key={groupId} xs={12}>
@@ -162,36 +235,15 @@ export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
                     component="p"
                     className={classes.stronger}
                   >
-                    {title}
+                    {groupTitle}
                   </Typography>
                   {errorItems.map(errorItem => (
-                    <Box className={classes.details}>
-                      <ErrorPanel
-                        error={errorItem.error.name}
-                        message={errorItem.error.message}
-                        stack={errorItem.error.stack}
-                      />
-                      <Box display="flex" marginTop={2} gridGap={10}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          endIcon={<ClearIcon>dismiss</ClearIcon>}
-                          onClick={() => onDismiss(errorItem.id)}
-                        >
-                          Dismiss
-                        </Button>
-                        {showRetry && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            endIcon={<ReplayIcon>retry</ReplayIcon>}
-                            onClick={() => onRetry(errorItem.id)}
-                          >
-                            Retry
-                          </Button>
-                        )}
-                      </Box>
-                    </Box>
+                    <ErrorDetails
+                      key={errorItem.id}
+                      errorItem={errorItem}
+                      onRetry={onRetry}
+                      onDismiss={onDismiss}
+                    />
                   ))}
                 </Box>
               </Grid>

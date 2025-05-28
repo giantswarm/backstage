@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { InfoCard, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';
@@ -34,8 +33,8 @@ import { formatVersion } from '../../../../utils/helpers';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
-import { useErrors } from '../../../../Errors';
 import { clusterDetailsRouteRef } from '../../../../../routes';
+import { useShowErrors } from '../../../../Errors/useErrors';
 
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();
@@ -52,10 +51,8 @@ export function ClusterAboutCard() {
   const {
     data: controlPlane,
     isLoading: controlPlaneIsLoading,
-    error: controlPlaneError,
-    queryKey: controlPlaneQueryKey,
+    errors: controlPlaneErrors,
     queryErrorMessage: controlPlaneQueryErrorMessage,
-    refetch: controlPlaneRefetch,
   } = useResource<ControlPlane>({
     kind: controlPlaneKind,
     apiVersion: controlPlaneApiVersion,
@@ -64,17 +61,9 @@ export function ClusterAboutCard() {
     namespace: controlPlaneNamespace,
   });
 
-  const { showError } = useErrors();
-  useEffect(() => {
-    if (!controlPlaneError) return;
-
-    showError(controlPlaneError, {
-      queryKey: controlPlaneQueryKey,
-      message: controlPlaneQueryErrorMessage,
-      retry: controlPlaneRefetch,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controlPlaneError]);
+  useShowErrors(controlPlaneErrors, {
+    message: controlPlaneQueryErrorMessage,
+  });
 
   const clusterType = calculateClusterType(cluster, installationName);
   const releaseVersion = getClusterReleaseVersion(cluster);
@@ -85,6 +74,8 @@ export function ClusterAboutCard() {
   const k8sVersion = controlPlane
     ? getControlPlaneK8sVersion(controlPlane)
     : undefined;
+
+  const firstError = controlPlaneErrors[0]?.error ?? null;
 
   return (
     <InfoCard title="About">
@@ -99,7 +90,7 @@ export function ClusterAboutCard() {
             <AsyncValue
               isLoading={controlPlaneIsLoading}
               value={k8sVersion}
-              error={controlPlaneError}
+              error={firstError}
               errorMessage={controlPlaneQueryErrorMessage}
             >
               {value => (

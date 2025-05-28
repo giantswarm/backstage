@@ -5,9 +5,9 @@ import { Box } from '@material-ui/core';
 export type ErrorItem = {
   id: number;
   error: Error;
-  occurrances: number;
+  installationName?: string;
+  sourceId?: string;
   message?: string;
-  queryKey?: string;
   retry?: VoidFunction;
 };
 
@@ -35,20 +35,13 @@ export const ErrorsProvider = ({ children }: ErrorsProviderProps) => {
 
   const handleRetry = (errorItemId: number) => {
     const errorItem = errors.find(e => e.id === errorItemId);
-    if (!errorItem) return;
+    if (!errorItem || !errorItem.retry) return;
 
-    const errorsToRetry = errors.filter(e => e.queryKey === errorItem.queryKey);
-    const retryFn = errorsToRetry.find(({ retry }) => !!retry)?.retry;
-
-    const filteredErrors = errors.filter(
-      e => e.queryKey !== errorItem.queryKey,
-    );
+    const filteredErrors = errors.filter(e => e.id !== errorItem.id);
     errorsRef.current = filteredErrors;
     setUpdatedAt(new Date());
 
-    if (retryFn) {
-      retryFn();
-    }
+    errorItem.retry();
   };
 
   const handleDismiss = (errorItemId: number) => {

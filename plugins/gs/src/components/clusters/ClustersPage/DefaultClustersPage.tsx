@@ -4,6 +4,7 @@ import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';
 import { ClustersDataProvider } from '../ClustersDataProvider';
 import { DefaultFilters } from './DefaultFilters';
+import { ErrorsProvider } from '../../Errors';
 
 export type BaseClustersPageProps = {
   filters: ReactNode;
@@ -20,12 +21,14 @@ export function BaseClustersPage(props: BaseClustersPageProps) {
         subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters."
       />
       <Content>
-        <ClustersDataProvider>
-          <FiltersLayout>
-            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-            <FiltersLayout.Content>{content}</FiltersLayout.Content>
-          </FiltersLayout>
-        </ClustersDataProvider>
+        <ErrorsProvider>
+          <ClustersDataProvider>
+            <FiltersLayout>
+              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+              <FiltersLayout.Content>{content}</FiltersLayout.Content>
+            </FiltersLayout>
+          </ClustersDataProvider>
+        </ErrorsProvider>
       </Content>
     </Page>
   );

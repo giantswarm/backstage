@@ -163,7 +163,7 @@ export function useOrganizations(installations?: string[]) {
   );
 
   const kubernetesApi = useApi(kubernetesApiRef);
-  const queries = useQueries({
+  const queriesInfo = useQueries({
     queries: selectedInstallations.map(installationName => {
       const gvk = installationsGVKs[installationName];
 
@@ -205,12 +205,10 @@ export function useOrganizations(installations?: string[]) {
         },
       };
     }),
+    combine: results => {
+      return getInstallationsQueriesInfo(selectedInstallations, results);
+    },
   });
-
-  const queriesInfo = getInstallationsQueriesInfo(
-    selectedInstallations,
-    queries,
-  );
 
   const resources: Resource<Organization>[] =
     queriesInfo.installationsData.flatMap(({ installationName, data }) =>

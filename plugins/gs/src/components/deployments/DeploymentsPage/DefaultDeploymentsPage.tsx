@@ -9,6 +9,7 @@ import { DEPLOYMENT_DETAILS_PANE_ID } from '../../hooks';
 import { deploymentsRouteRef } from '../../../routes';
 import { FiltersLayout } from '../../FiltersLayout';
 import { DefaultFilters } from './DefaultFilters';
+import { ErrorsProvider } from '../../Errors';
 
 export type BaseDeploymentsPageProps = {
   filters: ReactNode;
@@ -28,12 +29,14 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
         subtitle="Instances of your applications deployed to Kubernetes clusters"
       />
       <Content>
-        <DeploymentsDataProvider>
-          <FiltersLayout>
-            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-            <FiltersLayout.Content>{content}</FiltersLayout.Content>
-          </FiltersLayout>
-        </DeploymentsDataProvider>
+        <ErrorsProvider>
+          <DeploymentsDataProvider>
+            <FiltersLayout>
+              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+              <FiltersLayout.Content>{content}</FiltersLayout.Content>
+            </FiltersLayout>
+          </DeploymentsDataProvider>
+        </ErrorsProvider>
       </Content>
     </Page>
   );

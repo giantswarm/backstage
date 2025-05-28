@@ -9,6 +9,7 @@ import {
 import { useListResources } from './useListResources';
 import { useInstallations } from './useInstallations';
 import { useApiVersionOverrides } from './useApiVersionOverrides';
+import { useMemo } from 'react';
 
 export function useHelmReleases(installations?: string[]) {
   const { activeInstallations } = useInstallations();
@@ -31,10 +32,11 @@ export function useHelmReleases(installations?: string[]) {
     installationsGVKs,
   );
 
-  const resources: Resource<HelmRelease>[] =
-    queriesInfo.installationsData.flatMap(({ installationName, data }) =>
+  const resources: Resource<HelmRelease>[] = useMemo(() => {
+    return queriesInfo.installationsData.flatMap(({ installationName, data }) =>
       data.map(resource => ({ installationName, ...resource })),
     );
+  }, [queriesInfo.installationsData]);
 
   return {
     ...queriesInfo,

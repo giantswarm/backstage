@@ -2,6 +2,7 @@ import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import { Drawer, IconButton, Typography } from '@material-ui/core';
 import Close from '@material-ui/icons/Close';
 import { useDetailsPane } from '../../hooks';
+import { ErrorsProvider } from '../../Errors';
 
 const useDrawerStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -98,7 +99,9 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
       onClose={handleClose}
     >
       <DrawerContent title={title ?? name} onClose={handleClose}>
-        {render({ kind, installationName, name, namespace })}
+        <ErrorsProvider>
+          {render({ kind, installationName, name, namespace })}
+        </ErrorsProvider>
       </DrawerContent>
     </Drawer>
   );

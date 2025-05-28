@@ -27,6 +27,7 @@ import {
   VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
+import { useShowErrors } from '../../Errors/useErrors';
 
 export type DefaultDeploymentFilters = {
   app?: AppFilter;
@@ -78,17 +79,24 @@ export const DeploymentsDataProvider = ({
 
   const {
     resources: appResources,
+    errors: appErrors,
     isLoading: isLoadingApps,
     retry: retryApps,
   } = useApps();
 
   const {
     resources: helmReleaseResources,
+    errors: helmReleaseErrors,
     isLoading: isLoadingHelmReleases,
     retry: retryHelmReleases,
   } = useHelmReleases();
 
   const isLoading = isLoadingApps || isLoadingHelmReleases;
+
+  const errors = useMemo(() => {
+    return [...appErrors, ...helmReleaseErrors];
+  }, [appErrors, helmReleaseErrors]);
+  useShowErrors(errors);
 
   const retry = useCallback(() => {
     retryApps();
