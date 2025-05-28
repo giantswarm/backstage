@@ -1,6 +1,6 @@
 import { configApiRef, fetchApiRef, useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { DiscoveryApiClient } from '../../apis/discovery/DiscoveryApiClient';
 
@@ -15,7 +15,7 @@ export type InstallationInfo = {
 const STATUS_CHECK_TIMEOUT = 5000;
 const STATUS_CHECK_INTERVAL = 20000;
 
-const useDisabledInstallations = (installations: string[]) => {
+const useDisabledInstallations = () => {
   const fetchApi = useApi(fetchApiRef);
   const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides();
   const uniqueEndpoints = Array.from(new Set(Object.values(baseUrlOverrides)));
@@ -42,16 +42,19 @@ const useDisabledInstallations = (installations: string[]) => {
     refetchInterval: STATUS_CHECK_INTERVAL,
   });
 
-  if (isLoading) {
-    return installations; // All installations are disabled while loading endpoint statuses
-  }
-
   const installationsWithBaseUrlOverrides = Object.keys(baseUrlOverrides);
 
-  return installationsWithBaseUrlOverrides.filter(installationName => {
-    const endpoint = baseUrlOverrides[installationName];
-    return !endpointStatuses || endpointStatuses[endpoint] === false;
-  });
+  const disabledInstallations = installationsWithBaseUrlOverrides.filter(
+    installationName => {
+      const endpoint = baseUrlOverrides[installationName];
+      return !endpointStatuses || endpointStatuses[endpoint] === false;
+    },
+  );
+
+  return {
+    isLoading,
+    disabledInstallations,
+  };
 };
 
 export const useInstallations = (): {
@@ -103,12 +106,31 @@ export const useInstallations = (): {
     }
   }, [selectedInstallations, savedInstallations, setSavedInstallations]);
 
-  const disabledInstallations = useDisabledInstallations(installations);
-  const activeInstallations = (
-    selectedInstallations.length > 0 ? selectedInstallations : installations
-  ).filter(
-    installationName => !disabledInstallations.includes(installationName),
-  );
+  const { isLoading: isLoadingDisabledInstallations, disabledInstallations } =
+    useDisabledInstallations();
+
+  const activeInstallations = useMemo(() => {
+    const allSelectedInstallations =
+      selectedInstallations.length > 0 ? selectedInstallations : installations;
+
+    if (
+      allSelectedInstallations.some(installation =>
+        disabledInstallations.includes(installation),
+      ) &&
+      isLoadingDisabledInstallations
+    ) {
+      return []; // Some selected installations are potentially disabled, waiting for status check to complete
+    }
+
+    return allSelectedInstallations.filter(
+      installationName => !disabledInstallations.includes(installationName),
+    );
+  }, [
+    disabledInstallations,
+    installations,
+    isLoadingDisabledInstallations,
+    selectedInstallations,
+  ]);
 
   return {
     installations,
