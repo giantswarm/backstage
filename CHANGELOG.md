@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.73.2] - 2025-05-28
 
+In this release:
+
+- timeout for scaffolder API requests has been added;
+- disabled installations check logic has been refactored.
+
 See [./docs/releases/v0.73.2-changelog.md](./docs/releases/v0.73.2-changelog.md) for more information.
 
 ## [0.73.1] - 2025-05-26
