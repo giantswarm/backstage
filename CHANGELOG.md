@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.73.2] - 2025-05-28
+
+In this release:
+
+- timeout for scaffolder API requests has been added;
+- disabled installations check logic has been refactored.
+
+See [./docs/releases/v0.73.2-changelog.md](./docs/releases/v0.73.2-changelog.md) for more information.
+
 ## [0.73.1] - 2025-05-26
 
 In this release:
@@ -1229,7 +1238,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.73.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.73.2...HEAD
+[0.73.2]: https://github.com/giantswarm/backstage/compare/v0.73.1...v0.73.2
 [0.73.1]: https://github.com/giantswarm/backstage/compare/v0.73.0...v0.73.1
 [0.73.0]: https://github.com/giantswarm/backstage/compare/v0.72.7...v0.73.0
 [0.72.7]: https://github.com/giantswarm/backstage/compare/v0.72.6...v0.72.7

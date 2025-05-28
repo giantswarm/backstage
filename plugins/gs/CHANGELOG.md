@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.31.2
+
+### Patch Changes
+
+- 5ce287f: Set timeout for scaffolder API requests.
+- 5ce287f: Changed how disabled installations check is implemented.
+
 ## 0.31.1
 
 ### Patch Changes
