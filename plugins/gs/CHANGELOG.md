@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.31.3
+
+### Patch Changes
+
+- 76498b6: Improved installations status check.
+
 ## 0.31.2
 
 ### Patch Changes
