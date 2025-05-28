@@ -1,9 +1,8 @@
 import { configApiRef, fetchApiRef, useApi } from '@backstage/core-plugin-api';
-import { useQueries } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { DiscoveryApiClient } from '../../apis/discovery/DiscoveryApiClient';
-import { getInstallationsQueriesInfo } from './utils/queries';
 
 export type InstallationInfo = {
   name: string;
@@ -13,46 +12,46 @@ export type InstallationInfo = {
   region?: string;
 };
 
-const STATUS_CHECK_TIMEOUT = 3000;
-const STATUS_CHECK_INTERVAL = 10000;
+const STATUS_CHECK_TIMEOUT = 5000;
+const STATUS_CHECK_INTERVAL = 20000;
 
 const useDisabledInstallations = (installations: string[]) => {
   const fetchApi = useApi(fetchApiRef);
-  const configApi = useApi(configApiRef);
-  const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides(configApi);
-  const installationsWithBaseUrlOverrides = Object.keys(baseUrlOverrides);
+  const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides();
+  const uniqueEndpoints = Array.from(new Set(Object.values(baseUrlOverrides)));
 
-  const queries = useQueries({
-    queries: installationsWithBaseUrlOverrides.map(installationName => {
-      const baseUrlOverride = baseUrlOverrides[installationName];
-      return {
-        queryKey: [installationName, 'status'],
-        queryFn: async () => {
-          const statusEndpoint = `${baseUrlOverride}/.backstage/health/v1/readiness`;
-          return fetchApi.fetch(statusEndpoint, {
-            signal: AbortSignal.timeout(STATUS_CHECK_TIMEOUT),
-          });
-        },
-        retry: false,
-        refetchInterval: STATUS_CHECK_INTERVAL,
-      };
-    }),
+  const { data: endpointStatuses, isLoading } = useQuery({
+    queryKey: ['installations', 'status'],
+    queryFn: async () => {
+      const requestPromises = uniqueEndpoints.map(endpoint => {
+        const statusEndpoint = `${endpoint}/.backstage/health/v1/readiness`;
+        return fetchApi.fetch(statusEndpoint, {
+          signal: AbortSignal.timeout(STATUS_CHECK_TIMEOUT),
+        });
+      });
+
+      const results = await Promise.allSettled(requestPromises);
+      return Object.fromEntries(
+        results.map((result, idx) => [
+          uniqueEndpoints[idx],
+          result.status === 'fulfilled',
+        ]),
+      );
+    },
+    retry: false,
+    refetchInterval: STATUS_CHECK_INTERVAL,
   });
 
-  const { queries: installationsQueries } = getInstallationsQueriesInfo(
-    installationsWithBaseUrlOverrides,
-    queries,
-  );
+  if (isLoading) {
+    return installations; // All installations are disabled while loading endpoint statuses
+  }
 
-  return useMemo(() => {
-    return installations.filter(installation => {
-      const installationQuery = installationsQueries.find(
-        ({ installationName }) => installationName === installation,
-      );
+  const installationsWithBaseUrlOverrides = Object.keys(baseUrlOverrides);
 
-      return installationQuery && !installationQuery.query.isSuccess;
-    });
-  }, [installations, installationsQueries]);
+  return installationsWithBaseUrlOverrides.filter(installationName => {
+    const endpoint = baseUrlOverrides[installationName];
+    return !endpointStatuses || endpointStatuses[endpoint] === false;
+  });
 };
 
 export const useInstallations = (): {
