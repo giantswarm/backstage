@@ -36,30 +36,57 @@ export class ScaffolderApiClient extends ScaffolderClient {
     limit?: number;
     offset?: number;
   }): Promise<{ tasks: ScaffolderTask[]; totalTasks?: number }> {
-    const installations =
-      DiscoveryApiClient.getInstallationsWithBaseUrlOverrides();
+    const TIMEOUT_MS = 5000;
 
-    const promises = [super.listTasks(options)];
-    installations.forEach(installationName => {
+    const fetchWithTimeout = async (installationName: string) => {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(`Request to ${installationName} endpoint timed out`),
+            ),
+          TIMEOUT_MS,
+        ),
+      );
+
       try {
         // Temporarily set installation for this specific call
         DiscoveryApiClient.setInstallation(installationName);
-        promises.push(super.listTasks(options));
+        const fetchPromise = super.listTasks(options);
+        return Promise.race([fetchPromise, timeoutPromise]);
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error(`Failed to fetch tasks from ${installationName}`, error);
+        return null;
       } finally {
         // Reset to default/previous state immediately after queuing the promise
         DiscoveryApiClient.resetInstallation();
       }
-    });
+    };
+
+    const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides();
+    const uniqueEndpoints = Array.from(
+      new Set(Object.values(baseUrlOverrides)),
+    );
+    const installations = uniqueEndpoints
+      .map(endpoint => {
+        const matchingEntry = Object.entries(baseUrlOverrides).find(
+          ([, value]) => value === endpoint,
+        );
+        return matchingEntry?.[0];
+      })
+      .filter(Boolean) as string[];
+    const promises = [
+      super.listTasks(options),
+      ...installations.map(fetchWithTimeout),
+    ];
 
     const results = await Promise.allSettled(promises);
     let allTasks: ScaffolderTask[] = [];
-
     results.forEach(result => {
       if (result.status === 'fulfilled') {
-        allTasks = allTasks.concat(result.value.tasks);
+        const value = result.value as { tasks: ScaffolderTask[] };
+        allTasks = allTasks.concat(value.tasks);
       }
       if (result.status === 'rejected') {
         // eslint-disable-next-line no-console

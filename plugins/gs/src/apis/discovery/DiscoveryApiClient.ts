@@ -7,6 +7,7 @@ export class DiscoveryApiClient implements DiscoveryApi {
   private urlPatternDiscovery: UrlPatternDiscovery;
 
   private static installation: string | null = null;
+  private static baseUrlOverrides: Record<string, string> = {};
   private static installationsWithBaseUrlOverrides: string[] = [];
 
   constructor(
@@ -36,7 +37,9 @@ export class DiscoveryApiClient implements DiscoveryApi {
 
   static fromConfig(configApi: ConfigApi) {
     const baseUrl = configApi.getString('backend.baseUrl');
-    const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides(configApi);
+    const baseUrlOverrides =
+      DiscoveryApiClient.calculateBaseUrlOverrides(configApi);
+    DiscoveryApiClient.baseUrlOverrides = baseUrlOverrides;
     DiscoveryApiClient.installationsWithBaseUrlOverrides =
       Object.keys(baseUrlOverrides);
 
@@ -45,7 +48,8 @@ export class DiscoveryApiClient implements DiscoveryApi {
 
   static getUrlPrefixAllowlist(configApi: ConfigApi) {
     const baseUrl = configApi.getString('backend.baseUrl');
-    const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides(configApi);
+    const baseUrlOverrides =
+      DiscoveryApiClient.calculateBaseUrlOverrides(configApi);
 
     return [baseUrl, ...Object.values(baseUrlOverrides)];
   }
@@ -66,7 +70,13 @@ export class DiscoveryApiClient implements DiscoveryApi {
     return DiscoveryApiClient.installationsWithBaseUrlOverrides;
   }
 
-  static getBaseUrlOverrides(configApi: ConfigApi): Record<string, string> {
+  static getBaseUrlOverrides() {
+    return DiscoveryApiClient.baseUrlOverrides;
+  }
+
+  private static calculateBaseUrlOverrides(
+    configApi: ConfigApi,
+  ): Record<string, string> {
     const baseUrlOverrides: Record<string, string> = {};
     const installationsConfig = configApi.getOptionalConfig('gs.installations');
     if (installationsConfig) {
