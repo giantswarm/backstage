@@ -1,13 +1,4 @@
-import {
-  Box,
-  Card,
-  CardContent,
-  styled,
-  Tooltip,
-  Typography,
-} from '@material-ui/core';
-import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
-
+import { Box, Card, CardContent, Typography } from '@material-ui/core';
 import {
   Deployment,
   getAppKustomizationName,
@@ -29,10 +20,7 @@ import { GitOpsIcon } from '../../assets/icons/CustomIcons';
 import { AsyncValue, ExternalLink } from '../UI';
 import { useShowErrors } from '../Errors/useErrors';
 import { useMemo } from 'react';
-
-const InfoIcon = styled(InfoOutlinedIcon)(({ theme }) => ({
-  color: theme.palette.text.secondary,
-}));
+import { ErrorStatus } from '../UI/ErrorStatus/ErrorStatus';
 
 type GitOpsCardProps = {
   deployment: Deployment;
@@ -135,13 +123,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
               error={firstError}
               errorMessage={errorMessage}
               renderError={message => (
-                <Box display="flex" alignItems="center">
-                  <Tooltip
-                    title={`Source link cannot be provided. Reason: ${message}`}
-                  >
-                    <InfoIcon />
-                  </Tooltip>
-                </Box>
+                <ErrorStatus errorMessage={message} notAvailable={false} />
               )}
             >
               {value => (

@@ -1,24 +1,16 @@
-import * as React from 'react';
-import { Progress, StatusError } from '@backstage/core-components';
-
-import { NotAvailable } from '../NotAvailable';
-import { Box, Tooltip } from '@material-ui/core';
+import { ReactNode } from 'react';
+import { Progress } from '@backstage/core-components';
+import { Box } from '@material-ui/core';
+import { ErrorStatus } from '../ErrorStatus/ErrorStatus';
 
 const progressHeight = 4;
 
 const defaultRenderErrorFn = (errorMessage: string) => (
-  <Box display="flex">
-    <NotAvailable />
-    <Tooltip title={errorMessage}>
-      <Box marginLeft={1}>
-        <StatusError />
-      </Box>
-    </Tooltip>
-  </Box>
+  <ErrorStatus errorMessage={errorMessage} />
 );
 interface AsyncValueProps<T> {
-  children?: (value: T) => React.ReactNode;
-  renderError?: (message: string) => React.ReactNode;
+  children?: (value: T) => ReactNode;
+  renderError?: (message: string) => ReactNode;
   value?: T;
   isLoading: boolean;
   error?: Error | null;
@@ -26,7 +18,7 @@ interface AsyncValueProps<T> {
   height?: number;
 }
 
-export const AsyncValue = <T extends React.ReactNode>({
+export const AsyncValue = <T extends ReactNode>({
   value,
   children,
   isLoading,
