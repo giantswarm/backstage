@@ -7,6 +7,13 @@ export const InstallationPickerFieldSchema = makeFieldSchemaFromZod(
     installationBaseDomain: z.string().optional(),
   }),
   z.object({
+    autoSelectFirstValue: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        'If true, the first installation will be selected automatically',
+      ),
     allowedPipelines: z
       .array(z.string())
       .optional()
@@ -25,17 +32,12 @@ export const InstallationPickerFieldSchema = makeFieldSchemaFromZod(
       .describe(
         'If defined, only installations with the providers from the given field will be shown',
       ),
-    requestUserCredentials: z
-      .object({
-        secretsKey: z
-          .string()
-          .describe(
-            'Key used within the template secrets context to store the credential',
-          ),
-      })
+    widget: z
+      .string()
       .optional()
+      .default('radio')
       .describe(
-        'If defined will request user credentials to auth against the given cluster',
+        'The widget to use for the installation picker, e.g. "radio" or "select"',
       ),
   }),
 );

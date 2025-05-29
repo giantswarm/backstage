@@ -17,6 +17,7 @@ import {
   KubernetesApi,
   kubernetesApiRef,
 } from '@backstage/plugin-kubernetes-react';
+import { useMemo } from 'react';
 
 const getQueryKey = (ref: InstallationObjectRef) => {
   const { installationName, kind, apiVersion, name, namespace } = ref;
@@ -121,8 +122,9 @@ export function useProviderClusters(
   const refs = isExperimentalDataFetchingEnabled
     ? infrastructureRefs
     : getUniqueRefsByNamespace(infrastructureRefs);
+  const installations = refs.map(({ installationName }) => installationName);
 
-  const queries = useQueries({
+  const queriesInfo = useQueries({
     queries: refs.map(ref => {
       const queryKey = isExperimentalDataFetchingEnabled
         ? getQueryKey(ref as InstallationObjectRef)
@@ -137,25 +139,27 @@ export function useProviderClusters(
         enabled,
       };
     }),
+    combine: results => {
+      return getInstallationsQueriesInfo(installations, results);
+    },
   });
 
-  const installations = refs.map(({ installationName }) => installationName);
-  const queriesInfo = getInstallationsQueriesInfo(installations, queries);
+  const resources = useMemo(() => {
+    return queriesInfo.installationsData
+      .flatMap(({ installationName, data }) => {
+        if (data === null) {
+          return null;
+        }
 
-  const resources = queriesInfo.installationsData
-    .flatMap(({ installationName, data }) => {
-      if (data === null) {
-        return null;
-      }
-
-      return Array.isArray(data)
-        ? data.map(resource => ({ installationName, ...resource }))
-        : {
-            installationName,
-            ...data,
-          };
-    })
-    .filter(Boolean) as Resource<ProviderCluster>[];
+        return Array.isArray(data)
+          ? data.map(resource => ({ installationName, ...resource }))
+          : {
+              installationName,
+              ...data,
+            };
+      })
+      .filter(Boolean) as Resource<ProviderCluster>[];
+  }, [queriesInfo.installationsData]);
 
   return {
     ...queriesInfo,

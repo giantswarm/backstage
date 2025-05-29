@@ -1,7 +1,6 @@
 import { ResourceRequestsTable } from '../../kratix/ResourceRequestsTable';
 import { entityRouteRef, useEntity } from '@backstage/plugin-catalog-react';
 import { useRouteRef } from '@backstage/core-plugin-api';
-import { GSContext } from '../../GSContext';
 
 type KratixResource = {
   installationName: string;
@@ -27,11 +26,9 @@ export function EntityKratixResourcesCard() {
   }
 
   return (
-    <GSContext>
-      <ResourceRequestsTable
-        kratixResources={kratixResources as KratixResource[]}
-        baseRoute={baseRoute}
-      />
-    </GSContext>
+    <ResourceRequestsTable
+      kratixResources={kratixResources as KratixResource[]}
+      baseRoute={baseRoute}
+    />
   );
 }

@@ -7,7 +7,7 @@ export {
   EntityGSDeploymentsContent,
   EntityGSKratixResourcesContent,
   GSClusterPickerFieldExtension,
-  GSDeploymentDetailsPickerFieldExtension,
+  GSProviderConfigPickerFieldExtension,
   GSOIDCTokenFieldExtension,
   GSSecretStorePickerFieldExtension,
   GSTemplateStringInputFieldExtension,
@@ -16,6 +16,7 @@ export {
   GSOrganizationPickerFieldExtension,
   GSStepLayout,
 } from './plugin';
+export { GSContext } from './components/GSContext';
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';

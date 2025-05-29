@@ -26,9 +26,9 @@ import {
   clusterPickerValidation,
 } from './components/scaffolder/ClusterPicker';
 import {
-  DeploymentDetailsPicker,
-  DeploymentDetailsPickerSchema,
-} from './components/scaffolder/DeploymentDetailsPicker';
+  ProviderConfigPicker,
+  ProviderConfigPickerSchema,
+} from './components/scaffolder/ProviderConfigPicker';
 import { OIDCToken, OIDCTokenSchema } from './components/scaffolder/OIDCToken';
 import {
   InstallationPicker,
@@ -158,11 +158,11 @@ export const GSClusterPickerFieldExtension = gsPlugin.provide(
   }),
 );
 
-export const GSDeploymentDetailsPickerFieldExtension = gsPlugin.provide(
+export const GSProviderConfigPickerFieldExtension = gsPlugin.provide(
   createScaffolderFieldExtension({
-    name: 'GSDeploymentDetailsPicker',
-    component: DeploymentDetailsPicker,
-    schema: DeploymentDetailsPickerSchema,
+    name: 'GSProviderConfigPicker',
+    component: ProviderConfigPicker,
+    schema: ProviderConfigPickerSchema,
   }),
 );
 

@@ -1,5 +1,11 @@
 import { Query, QueryCache, UseQueryResult } from '@tanstack/react-query';
 
+export type ErrorInfo = {
+  installationName: string;
+  error: Error;
+  retry: VoidFunction;
+};
+
 export const getInstallationsQueriesInfo = <T>(
   installations: string[],
   queries: UseQueryResult<T, unknown>[],
@@ -23,6 +29,13 @@ export const getInstallationsQueriesInfo = <T>(
       data: query.data!,
     }),
   );
+  const installationsErrors: ErrorInfo[] = failedInstallationsQueries.map(
+    ({ installationName, query }) => ({
+      installationName,
+      error: query.error as Error,
+      retry: query.refetch,
+    }),
+  );
 
   const isLoading = queries.some(query => query.isLoading);
   const retry = () => {
@@ -30,14 +43,13 @@ export const getInstallationsQueriesInfo = <T>(
       query.refetch();
     }
   };
-  const errors = failedInstallationsQueries.map(({ query }) => query.error);
 
   return {
     queries: installationsQueries,
+    errors: installationsErrors,
     installationsData,
     isLoading,
     retry,
-    errors,
   };
 };
 

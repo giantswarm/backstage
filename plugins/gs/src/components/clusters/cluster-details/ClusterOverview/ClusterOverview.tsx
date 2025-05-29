@@ -1,7 +1,5 @@
-import { useEffect } from 'react';
 import { Grid } from '@material-ui/core';
 import { ClusterAboutCard } from './ClusterAboutCard';
-import { useErrors } from '../../../Errors';
 import { ClusterAccessCard } from './ClusterAccessCard';
 import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 import { ClusterLabelsCard } from './ClusterLabelsCard';
@@ -17,19 +15,17 @@ import {
   isAppManagedByFlux,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { GitOpsCard } from '../../../GitOpsCard';
+import { useShowErrors } from '../../../Errors/useErrors';
 
 export const ClusterOverview = () => {
   const { cluster, installationName } = useCurrentCluster();
-  const { showError } = useErrors();
   const hasClusterApp = hasClusterAppLabel(cluster);
   const clusterAppName = getClusterName(cluster);
   const clusterAppNamespace = getClusterNamespace(cluster);
   const {
     data: clusterApp,
-    error: clusterAppError,
-    queryKey: clusterAppQueryKey,
+    errors: clusterAppErrors,
     queryErrorMessage: clusterAppQueryErrorMessage,
-    refetch: clusterAppRefetch,
   } = useResource<App>(
     {
       kind: AppKind,
@@ -42,16 +38,9 @@ export const ClusterOverview = () => {
     },
   );
 
-  useEffect(() => {
-    if (!clusterAppError) return;
-
-    showError(clusterAppError, {
-      queryKey: clusterAppQueryKey,
-      message: clusterAppQueryErrorMessage,
-      retry: clusterAppRefetch,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clusterAppError]);
+  useShowErrors(clusterAppErrors, {
+    message: clusterAppQueryErrorMessage,
+  });
 
   const isGitOpsManaged = clusterApp && isAppManagedByFlux(clusterApp);
 

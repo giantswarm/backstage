@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '../../../../UI';
 import { useResource } from '../../../../hooks';
@@ -7,7 +6,7 @@ import {
   getProviderClusterLocation,
   ProviderCluster,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useErrors } from '../../../../Errors';
+import { useShowErrors } from '../../../../Errors/useErrors';
 
 export const ProviderClusterLocation = () => {
   const { cluster, installationName } = useCurrentCluster();
@@ -21,9 +20,7 @@ export const ProviderClusterLocation = () => {
   const {
     data: providerCluster,
     isLoading: providerClusterIsLoading,
-    error: providerClusterError,
-    refetch: providerClusterRefetch,
-    queryKey: providerClusterQueryKey,
+    errors: providerClusterErrors,
     queryErrorMessage: providerClusterQueryErrorMessage,
   } = useResource<ProviderCluster>({
     kind: providerClusterKind,
@@ -33,26 +30,20 @@ export const ProviderClusterLocation = () => {
     namespace: providerClusterNamespace,
   });
 
-  const { showError } = useErrors();
-  useEffect(() => {
-    if (!providerClusterError) return;
-
-    showError(providerClusterError, {
-      queryKey: providerClusterQueryKey,
-      message: providerClusterQueryErrorMessage,
-      retry: providerClusterRefetch,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerClusterError]);
+  useShowErrors(providerClusterErrors, {
+    message: providerClusterQueryErrorMessage,
+  });
 
   const location = providerCluster
     ? getProviderClusterLocation(providerCluster)
     : undefined;
 
+  const firstError = providerClusterErrors[0]?.error ?? null;
+
   return (
     <AsyncValue
       isLoading={providerClusterIsLoading}
-      error={providerClusterError}
+      error={firstError}
       errorMessage={providerClusterQueryErrorMessage}
       value={location}
     >

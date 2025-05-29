@@ -5,10 +5,22 @@ export const SecretStorePickerFieldSchema = makeFieldSchemaFromZod(
   z.string(),
   z.object({
     isClusterSecretStore: z.boolean().optional().default(false),
-    installationName: z.string().optional(),
-    installationNameFormDataPath: z.string().optional(),
-    clusterNamespace: z.string().optional(),
-    clusterNamespaceFormDataPath: z.string().optional(),
+    clusterNamespace: z
+      .string()
+      .optional()
+      .describe('The namespace of the cluster to use'),
+    clusterNamespaceField: z
+      .string()
+      .optional()
+      .describe('The name of the field to use for the cluster namespace'),
+    installationName: z
+      .string()
+      .optional()
+      .describe('The name of the installation to use'),
+    installationNameField: z
+      .string()
+      .optional()
+      .describe('The name of the field to use for the installation'),
   }),
 );
 

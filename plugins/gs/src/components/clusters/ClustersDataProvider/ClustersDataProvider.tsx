@@ -22,6 +22,7 @@ import {
 } from '../ClustersPage/filters/filters';
 import { ClusterData, collectClusterData } from './utils';
 import { ClusterColumns } from '../ClustersTable/columns';
+import { useShowErrors } from '../../Errors/useErrors';
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
@@ -70,6 +71,7 @@ export const ClustersDataProvider = ({
 
   const {
     resources: clusterResources,
+    errors: clusterErrors,
     isLoading: isLoadingClusters,
     retry,
   } = useClusters();
@@ -80,6 +82,7 @@ export const ClustersDataProvider = ({
 
   const {
     resources: controlPlaneResources,
+    errors: controlPlaneErrors,
     isLoading: isLoadingControlPlanes,
   } = useControlPlanes(clusterResources, {
     enabled:
@@ -95,6 +98,7 @@ export const ClustersDataProvider = ({
 
   const {
     resources: providerClusterResources,
+    errors: providerClusterErrors,
     isLoading: isLoadingProviderClusters,
   } = useProviderClusters(clusterResources, {
     enabled:
@@ -109,6 +113,7 @@ export const ClustersDataProvider = ({
 
   const {
     resources: providerClusterIdentityResources,
+    errors: providerClusterIdentityErrors,
     isLoading: isLoadingProviderClusterIdentities,
   } = useProviderClustersIdentities(providerClusterResources, {
     enabled:
@@ -122,6 +127,21 @@ export const ClustersDataProvider = ({
     isLoadingControlPlanes ||
     isLoadingProviderClusters ||
     isLoadingProviderClusterIdentities;
+
+  const errors = useMemo(() => {
+    return [
+      ...clusterErrors,
+      ...controlPlaneErrors,
+      ...providerClusterErrors,
+      ...providerClusterIdentityErrors,
+    ];
+  }, [
+    clusterErrors,
+    controlPlaneErrors,
+    providerClusterErrors,
+    providerClusterIdentityErrors,
+  ]);
+  useShowErrors(errors);
 
   const clustersData = useMemo(() => {
     if (isLoading) {

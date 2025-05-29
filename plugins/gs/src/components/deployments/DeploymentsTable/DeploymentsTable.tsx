@@ -2,16 +2,14 @@ import { useCallback, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import { RouteRef } from '@backstage/core-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
-import { Box, Typography } from '@material-ui/core';
+import { Typography } from '@material-ui/core';
 import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
 import { getInitialColumns } from './columns';
-import { useInstallationsStatuses } from '../../hooks';
 import {
   useTableColumns,
   DEPLOYMENTS_TABLE_ID,
   ENTITY_DEPLOYMENTS_TABLE_ID,
 } from '../../hooks/useTableColumns';
-import { InstallationsErrors } from '../../InstallationsErrors';
 import useDebounce from 'react-use/esm/useDebounce';
 
 type Props = {
@@ -131,25 +129,13 @@ export const DeploymentsTable = ({
     [columns, saveVisibleColumns],
   );
 
-  const { installationsStatuses } = useInstallationsStatuses();
-  const installationsErrors = installationsStatuses.some(
-    installationStatus => installationStatus.isError,
-  );
-
   return (
-    <>
-      {installationsErrors && (
-        <Box mb={2}>
-          <InstallationsErrors installationsStatuses={installationsStatuses} />
-        </Box>
-      )}
-      <DeploymentsTableView
-        columns={columns}
-        loading={isLoading}
-        deploymentsData={deploymentsData}
-        retry={retry}
-        onChangeColumnHidden={handleChangeColumnHidden}
-      />
-    </>
+    <DeploymentsTableView
+      columns={columns}
+      loading={isLoading}
+      deploymentsData={deploymentsData}
+      retry={retry}
+      onChangeColumnHidden={handleChangeColumnHidden}
+    />
   );
 };

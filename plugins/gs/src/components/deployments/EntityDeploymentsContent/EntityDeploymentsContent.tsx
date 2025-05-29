@@ -11,7 +11,6 @@ import {
   getGrafanaDashboardFromEntity,
   getSourceLocationFromEntity,
 } from '../../utils/entity';
-import { GSContext } from '../../GSContext';
 import { InstallationsWrapper } from '../../InstallationsWrapper';
 import { DetailsPane } from '../../UI';
 import { DeploymentsTable } from '../DeploymentsTable';
@@ -19,6 +18,7 @@ import { AppDetails } from '../AppDetails';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { entityDeploymentsRouteRef } from '../../../routes';
+import { ErrorsProvider } from '../../Errors';
 
 export const EntityDeploymentsContent = () => {
   const { entity } = useEntity();
@@ -30,11 +30,11 @@ export const EntityDeploymentsContent = () => {
   const ingressHost = getIngressHostFromEntity(entity);
 
   return (
-    <GSContext>
-      <Content>
-        <ContentHeader title={`Deployments of ${entityName}`}>
-          <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
-        </ContentHeader>
+    <Content>
+      <ContentHeader title={`Deployments of ${entityName}`}>
+        <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
+      </ContentHeader>
+      <ErrorsProvider>
         <InstallationsWrapper>
           <DeploymentsDataProvider deploymentNames={deploymentNames}>
             <DeploymentsTable
@@ -46,6 +46,7 @@ export const EntityDeploymentsContent = () => {
             />
           </DeploymentsDataProvider>
         </InstallationsWrapper>
+
         <DetailsPane
           paneId={DEPLOYMENT_DETAILS_PANE_ID}
           render={({ kind, installationName, name, namespace }) => (
@@ -73,7 +74,7 @@ export const EntityDeploymentsContent = () => {
             </>
           )}
         />
-      </Content>
-    </GSContext>
+      </ErrorsProvider>
+    </Content>
   );
 };

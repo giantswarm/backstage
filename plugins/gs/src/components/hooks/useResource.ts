@@ -5,6 +5,8 @@ import {
   getResourceGVK,
   getResourceNames,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { useMemo } from 'react';
+import { ErrorInfo } from './utils/queries';
 
 export function useResource<T>(
   {
@@ -34,8 +36,22 @@ export function useResource<T>(
     { enabled },
   );
 
+  const errors: ErrorInfo[] = useMemo(() => {
+    if (!query.error) {
+      return [];
+    }
+    return [
+      {
+        installationName,
+        error: query.error,
+        retry: query.refetch,
+      },
+    ];
+  }, [installationName, query.error, query.refetch]);
+
   return {
     ...query,
+    errors,
     queryErrorMessage: getErrorMessage({
       error: query.error,
       resourceKind: kind,

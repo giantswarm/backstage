@@ -1,89 +1,17 @@
-import { useMemo, useState } from 'react';
-
-import { GSContext } from '../../GSContext';
+import { useCallback } from 'react';
 import {
   Cluster,
   getClusterName,
-  isManagementCluster,
+  getClusterNamespace,
+  getClusterOrganization,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
-import {
-  useClusters,
-  useInstallations,
-  useInstallationsStatuses,
-} from '../../hooks';
+import { useClusters } from '../../hooks';
 import { Grid } from '@material-ui/core';
-import { InstallationsSelector } from '../../InstallationsSelector';
-import { InstallationsErrors } from '../../InstallationsErrors';
 import { ClusterPickerProps } from './schema';
-import {
-  parseClusterPickerFormData,
-  serializeClusterPickerFormData,
-} from './utils';
-
-type ClusterSelectorProps = {
-  id?: string;
-  label?: string;
-  helperText?: string;
-  required?: boolean;
-  disabled?: boolean;
-  error?: boolean;
-  installations: string[];
-  selectedCluster?: string;
-  onChange: (installationName: string, cluster: Cluster) => void;
-};
-
-const ClusterSelector = ({
-  id,
-  label,
-  helperText,
-  required,
-  disabled,
-  error,
-  installations,
-  selectedCluster,
-  onChange,
-}: ClusterSelectorProps) => {
-  const { resources, isLoading } = useClusters(installations);
-
-  const clusterResourcesMap = useMemo(() => {
-    const clusterResources = resources.filter(
-      ({ installationName, ...cluster }) =>
-        !isManagementCluster(cluster, installationName),
-    );
-
-    return Object.fromEntries(
-      clusterResources.map(resource => {
-        const { installationName, ...cluster } = resource;
-
-        return [getClusterName(cluster), resource];
-      }),
-    );
-  }, [resources]);
-  const clusterNames = Object.keys(clusterResourcesMap);
-
-  const isDisabled = disabled || installations.length === 0 || isLoading;
-
-  const handleChange = (selectedItem: string) => {
-    const { installationName, ...cluster } = clusterResourcesMap[selectedItem];
-
-    onChange(installationName, cluster);
-  };
-
-  return (
-    <SelectFormField
-      id={id}
-      label={label}
-      helperText={helperText}
-      required={required}
-      disabled={isDisabled}
-      error={error}
-      items={clusterNames}
-      selectedItem={selectedCluster ?? ''}
-      onChange={handleChange}
-    />
-  );
-};
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import { useResourcePicker } from '../hooks/useResourcePicker';
+import { useShowErrors } from '../../Errors/useErrors';
 
 type ClusterPickerFieldProps = {
   id?: string;
@@ -91,13 +19,9 @@ type ClusterPickerFieldProps = {
   helperText?: string;
   required?: boolean;
   error?: boolean;
-  installationNameValue?: string;
   clusterNameValue?: string;
-  onInstallationSelect: (selectedInstallation: string) => void;
-  onClusterSelect: (
-    selectedInstallation: string,
-    selectedCluster: Cluster,
-  ) => void;
+  installationName?: string;
+  onClusterSelect: (selectedCluster: Cluster | undefined) => void;
 };
 
 const ClusterPickerField = ({
@@ -106,62 +30,40 @@ const ClusterPickerField = ({
   helperText,
   required,
   error,
-  installationNameValue,
   clusterNameValue,
-  onInstallationSelect,
+  installationName,
   onClusterSelect,
 }: ClusterPickerFieldProps) => {
-  const { installations, disabledInstallations } = useInstallations();
-  const { installationsStatuses } = useInstallationsStatuses();
+  const installations = installationName ? [installationName] : [];
+  const { resources, isLoading, errors } = useClusters(installations);
 
-  const [selectedInstallations, setSelectedInstallations] = useState<string[]>(
-    installationNameValue ? [installationNameValue] : [],
-  );
+  useShowErrors(errors, {
+    message: 'Failed to load clusters',
+  });
 
-  const activeInstallations = selectedInstallations.filter(
-    installationName => !disabledInstallations.includes(installationName),
-  );
+  const { resourceNames, selectedName, handleChange } = useResourcePicker({
+    resources,
+    isLoading,
+    getResourceName: getClusterName,
+    initialValue: clusterNameValue,
+    onSelect: onClusterSelect,
+  });
 
-  const installationsErrors = installationsStatuses.some(
-    installationStatus => installationStatus.isError,
-  );
-
-  const handleInstallationSelect = (selectedItems: string[]) => {
-    if (selectedItems.length === 1) {
-      setSelectedInstallations(selectedItems);
-      onInstallationSelect(selectedItems[0]);
-    }
-  };
+  const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
 
   return (
     <Grid container spacing={3} direction="column">
       <Grid item>
-        <InstallationsSelector
-          installations={installations}
-          selectedInstallations={selectedInstallations}
-          activeInstallations={activeInstallations}
-          disabledInstallations={disabledInstallations}
-          installationsStatuses={installationsStatuses}
-          multiple={false}
-          onChange={handleInstallationSelect}
-        />
-      </Grid>
-      {installationsErrors && (
-        <Grid item>
-          <InstallationsErrors installationsStatuses={installationsStatuses} />
-        </Grid>
-      )}
-      <Grid item>
-        <ClusterSelector
+        <SelectFormField
           id={id}
           label={label}
-          helperText={helperText}
+          helperText={isLoading ? 'Loading clusters...' : helperText}
           required={required}
-          disabled={installationsErrors}
           error={error}
-          installations={selectedInstallations}
-          selectedCluster={clusterNameValue}
-          onChange={onClusterSelect}
+          items={resourceNames}
+          selectedItem={selectedName ?? ''}
+          onChange={handleChange}
+          disabled={disabled}
         />
       </Grid>
     </Grid>
@@ -174,40 +76,48 @@ export const ClusterPicker = ({
   required,
   formData,
   schema: { title = 'Cluster', description = 'Workload cluster reference' },
+  uiSchema,
   idSchema,
+  formContext,
 }: ClusterPickerProps) => {
-  const { installationName, clusterName } =
-    parseClusterPickerFormData(formData);
+  const { clusterName } = formData ?? {};
+  const {
+    installationName: installationNameOption,
+    installationNameField: installationNameFieldOption,
+  } = uiSchema?.['ui:options'] ?? {};
 
-  const handleInstallationSelect = () => {
-    onChange(undefined);
-  };
+  const installationName = useValueFromOptions(
+    formContext,
+    installationNameOption,
+    installationNameFieldOption,
+  );
 
-  const handleClusterSelect = (
-    selectedInstallation: string,
-    selectedCluster: Cluster,
-  ) => {
-    onChange(
-      serializeClusterPickerFormData(
-        selectedInstallation,
-        getClusterName(selectedCluster),
-      ),
-    );
-  };
+  const handleClusterSelect = useCallback(
+    (selectedCluster: Cluster | undefined) => {
+      if (!selectedCluster) {
+        onChange(undefined);
+        return;
+      }
+
+      onChange({
+        clusterName: getClusterName(selectedCluster),
+        clusterNamespace: getClusterNamespace(selectedCluster),
+        clusterOrganization: getClusterOrganization(selectedCluster),
+      });
+    },
+    [onChange],
+  );
 
   return (
-    <GSContext>
-      <ClusterPickerField
-        id={idSchema?.$id}
-        label={title}
-        helperText={description}
-        required={required}
-        error={rawErrors?.length > 0 && !formData}
-        installationNameValue={installationName}
-        clusterNameValue={clusterName}
-        onInstallationSelect={handleInstallationSelect}
-        onClusterSelect={handleClusterSelect}
-      />
-    </GSContext>
+    <ClusterPickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      clusterNameValue={clusterName}
+      installationName={installationName}
+      onClusterSelect={handleClusterSelect}
+    />
   );
 };

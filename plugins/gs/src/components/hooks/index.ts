@@ -19,4 +19,3 @@ export * from './useResourceRequestStatusDetails';
 export * from './useSecretStores';
 export * from './useTableColumns';
 export * from './useTemplateString';
-export { useInstallationsStatuses } from './useInstallationsStatuses';

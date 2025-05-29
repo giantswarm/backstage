@@ -1,51 +1,52 @@
 import { useCallback } from 'react';
-import { Grid } from '@material-ui/core';
-import { OrganizationPickerProps } from './schema';
-import { useOrganizations } from '../../hooks/useOrganizations';
+import {
+  getProviderConfigName,
+  ProviderConfig,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
+import { useProviderConfigs } from '../../hooks';
+import { Grid } from '@material-ui/core';
+import { ProviderConfigPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
-import {
-  getOrganizationName,
-  Organization,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { useShowErrors } from '../../Errors/useErrors';
 
-type OrganizationPickerFieldProps = {
+type ProviderConfigPickerFieldProps = {
   id?: string;
   label?: string;
   helperText?: string;
   required?: boolean;
   error?: boolean;
-  organizationValue?: string;
-  installationName: string;
-  onOrganizationSelect: (
-    selectedOrganization: Organization | undefined,
+  providerConfigNameValue?: string;
+  installationName?: string;
+  onProviderConfigSelect: (
+    selectedProviderConfig: ProviderConfig | undefined,
   ) => void;
 };
 
-const OrganizationPickerField = ({
+const ProviderConfigPickerField = ({
   id,
   label,
   helperText,
   required,
   error,
-  organizationValue,
+  providerConfigNameValue,
   installationName,
-  onOrganizationSelect,
-}: OrganizationPickerFieldProps) => {
-  const { resources, isLoading, errors } = useOrganizations([installationName]);
+  onProviderConfigSelect,
+}: ProviderConfigPickerFieldProps) => {
+  const installations = installationName ? [installationName] : [];
+  const { resources, isLoading, errors } = useProviderConfigs(installations);
 
   useShowErrors(errors, {
-    message: 'Failed to load organizations',
+    message: 'Failed to load provider configs',
   });
 
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources,
     isLoading,
-    getResourceName: getOrganizationName,
-    initialValue: organizationValue,
-    onSelect: onOrganizationSelect,
+    getResourceName: getProviderConfigName,
+    initialValue: providerConfigNameValue,
+    onSelect: onProviderConfigSelect,
   });
 
   const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
@@ -56,7 +57,7 @@ const OrganizationPickerField = ({
         <SelectFormField
           id={id}
           label={label}
-          helperText={isLoading ? 'Loading organizations...' : helperText}
+          helperText={isLoading ? 'Loading provider configs...' : helperText}
           required={required}
           error={error}
           items={resourceNames}
@@ -69,17 +70,17 @@ const OrganizationPickerField = ({
   );
 };
 
-export const OrganizationPicker = ({
+export const ProviderConfigPicker = ({
   onChange,
   rawErrors,
   required,
   formData,
-  schema: { title = 'Organization', description = 'The organization' },
+  schema: { title = 'Provider Config', description = 'Select Provider Config' },
   uiSchema,
   idSchema,
   formContext,
-}: OrganizationPickerProps) => {
-  const organizationValue = formData;
+}: ProviderConfigPickerProps) => {
+  const providerConfigName = formData;
   const {
     installationName: installationNameOption,
     installationNameField: installationNameFieldOption,
@@ -91,28 +92,28 @@ export const OrganizationPicker = ({
     installationNameFieldOption,
   );
 
-  const handleOrganizationSelect = useCallback(
-    (selectedOrganization: Organization | undefined) => {
-      if (!selectedOrganization) {
+  const handleProviderConfigSelect = useCallback(
+    (selectedProviderConfig: ProviderConfig | undefined) => {
+      if (!selectedProviderConfig) {
         onChange(undefined);
         return;
       }
 
-      onChange(getOrganizationName(selectedOrganization));
+      onChange(getProviderConfigName(selectedProviderConfig));
     },
     [onChange],
   );
 
   return (
-    <OrganizationPickerField
+    <ProviderConfigPickerField
       id={idSchema?.$id}
       label={title}
       helperText={description}
       required={required}
       error={rawErrors?.length > 0 && !formData}
-      organizationValue={organizationValue}
-      installationName={installationName ?? ''}
-      onOrganizationSelect={handleOrganizationSelect}
+      providerConfigNameValue={providerConfigName}
+      installationName={installationName}
+      onProviderConfigSelect={handleProviderConfigSelect}
     />
   );
 };

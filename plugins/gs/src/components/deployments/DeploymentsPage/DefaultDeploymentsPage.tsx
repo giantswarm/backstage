@@ -1,6 +1,5 @@
 import { Content, Header, Page } from '@backstage/core-components';
 import { ReactNode } from 'react';
-import { GSContext } from '../../GSContext';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { DetailsPane } from '../../UI';
@@ -10,6 +9,7 @@ import { DEPLOYMENT_DETAILS_PANE_ID } from '../../hooks';
 import { deploymentsRouteRef } from '../../../routes';
 import { FiltersLayout } from '../../FiltersLayout';
 import { DefaultFilters } from './DefaultFilters';
+import { ErrorsProvider } from '../../Errors';
 
 export type BaseDeploymentsPageProps = {
   filters: ReactNode;
@@ -23,22 +23,22 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
   } = props;
 
   return (
-    <GSContext>
-      <Page themeId="service">
-        <Header
-          title="Deployed applications"
-          subtitle="Instances of your applications deployed to Kubernetes clusters"
-        />
-        <Content>
+    <Page themeId="service">
+      <Header
+        title="Deployed applications"
+        subtitle="Instances of your applications deployed to Kubernetes clusters"
+      />
+      <Content>
+        <ErrorsProvider>
           <DeploymentsDataProvider>
             <FiltersLayout>
               <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
               <FiltersLayout.Content>{content}</FiltersLayout.Content>
             </FiltersLayout>
           </DeploymentsDataProvider>
-        </Content>
-      </Page>
-    </GSContext>
+        </ErrorsProvider>
+      </Content>
+    </Page>
   );
 }
 

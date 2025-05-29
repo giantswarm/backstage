@@ -1,14 +1,11 @@
 import type { FieldValidation } from '@rjsf/utils';
-
-import { formDataRegexp } from './utils';
+import { ClusterPickerValue } from './schema';
 
 export const clusterPickerValidation = (
-  value: string,
+  value: ClusterPickerValue,
   validation: FieldValidation,
 ) => {
-  if (!formDataRegexp.test(value)) {
-    validation.addError(
-      `Invalid cluster reference, installation and/or cluster names are not provided.`,
-    );
+  if (!value.clusterName) {
+    validation.addError(`Please fill in this field`);
   }
 };

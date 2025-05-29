@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
   getSecretStoreName,
-  Resource,
   SecretStore,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
@@ -32,14 +31,9 @@ export const SecretStoreSelector = ({
   selectedSecretStore,
   onChange,
 }: SecretStoreSelectorProps) => {
-  const { installationsData, isLoading, errors } = useSecretStores(
+  const { resources, isLoading, errors } = useSecretStores(
     installations,
     namespace,
-  );
-
-  const resources: Resource<SecretStore>[] = installationsData.flatMap(
-    ({ installationName, data }) =>
-      data.map(resource => ({ installationName, ...resource })),
   );
 
   const resourcesMap = useMemo(() => {

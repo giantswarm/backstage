@@ -1,1 +1,0 @@
-export { InstallationsSelector } from './InstallationsSelector';

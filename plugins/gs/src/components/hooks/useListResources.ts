@@ -12,7 +12,8 @@ export function useListResources<T>(
   namespace?: string,
 ) {
   const kubernetesApi = useApi(kubernetesApiRef);
-  const queries = useQueries({
+
+  return useQueries({
     queries: installations.map(installationName => {
       const gvk = installationsGVKs[installationName];
       const path = getK8sListPath(gvk, namespace);
@@ -41,7 +42,6 @@ export function useListResources<T>(
         },
       };
     }),
+    combine: results => getInstallationsQueriesInfo(installations, results),
   });
-
-  return getInstallationsQueriesInfo(installations, queries);
 }

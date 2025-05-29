@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Grid, Typography } from '@material-ui/core';
+import { useCallback } from 'react';
+import { Grid } from '@material-ui/core';
 import { ReleasePickerProps } from './schema';
-import { GSContext } from '../../GSContext';
 import { useReleases } from '../../hooks';
 import semver from 'semver';
 import {
   getReleaseName,
   getReleaseVersion,
+  Release,
   RELEASE_VERSION_PREFIXES,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { get } from 'lodash';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { ErrorsProvider, useErrors } from '../../Errors';
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import { useResourcePicker } from '../hooks/useResourcePicker';
+import { useShowErrors } from '../../Errors/useErrors';
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -22,7 +23,7 @@ type ReleasePickerFieldProps = {
   releaseValue?: string;
   installationName: string;
   provider?: string;
-  onReleaseSelect: (selectedRelease: string | undefined) => void;
+  onReleaseSelect: (selectedRelease: Release | undefined) => void;
 };
 
 const ReleasePickerField = ({
@@ -36,80 +37,46 @@ const ReleasePickerField = ({
   provider,
   onReleaseSelect,
 }: ReleasePickerFieldProps) => {
-  const { showError } = useErrors();
-  const { resources, isLoading, errors, retry } = useReleases([
-    installationName,
-  ]);
-  const loadingError = errors.length > 0 ? (errors[0] as Error) : undefined;
+  const providerPrefix = provider
+    ? RELEASE_VERSION_PREFIXES[provider]
+    : undefined;
+  const { resources, isLoading, errors } = useReleases([installationName]);
+  const filteredResources = providerPrefix
+    ? resources.filter(release =>
+        getReleaseName(release).startsWith(providerPrefix),
+      )
+    : resources;
 
-  useEffect(() => {
-    if (!loadingError) return;
+  useShowErrors(errors, {
+    message: 'Failed to load releases',
+  });
 
-    showError(loadingError, { message: 'Failed to load releases', retry });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingError]);
+  const { resourceNames, selectedName, handleChange } = useResourcePicker({
+    resources: filteredResources,
+    isLoading,
+    getResourceName: getReleaseVersion,
+    initialValue: releaseValue,
+    selectFirstValue: true,
+    onSelect: onReleaseSelect,
+    compareFn: semver.rcompare,
+  });
 
-  const releases = useMemo(() => {
-    if (isLoading) {
-      return [];
-    }
-
-    const providerPrefix = provider
-      ? RELEASE_VERSION_PREFIXES[provider]
-      : undefined;
-    const filteredResources = providerPrefix
-      ? resources.filter(release =>
-          getReleaseName(release).startsWith(providerPrefix),
-        )
-      : resources;
-
-    return filteredResources
-      .map(release => getReleaseVersion(release))
-      .sort(semver.rcompare);
-  }, [isLoading, provider, resources]);
-
-  const [selectedRelease, setSelectedRelease] = useState<string | undefined>(
-    releaseValue ?? releases[0],
-  );
-
-  useEffect(() => {
-    if (
-      !selectedRelease ||
-      (!isLoading && selectedRelease && !releases.includes(selectedRelease))
-    ) {
-      setSelectedRelease(releases[0]);
-    }
-  }, [isLoading, releases, selectedRelease]);
-
-  useEffect(() => {
-    onReleaseSelect(selectedRelease);
-  }, [onReleaseSelect, selectedRelease]);
-
-  const handleChange = (selectedItem: string) => {
-    setSelectedRelease(selectedItem);
-  };
+  const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
 
   return (
     <Grid container spacing={3} direction="column">
       <Grid item>
-        {isLoading ? (
-          <Box mt={2}>
-            <Typography variant="body1" color="textSecondary">
-              Loading releases...
-            </Typography>
-          </Box>
-        ) : (
-          <SelectFormField
-            id={id}
-            label={label}
-            helperText={helperText}
-            required={required}
-            error={error}
-            items={releases}
-            selectedItem={selectedRelease ?? ''}
-            onChange={handleChange}
-          />
-        )}
+        <SelectFormField
+          id={id}
+          label={label}
+          helperText={isLoading ? 'Loading releases...' : helperText}
+          required={required}
+          error={error}
+          items={resourceNames}
+          selectedItem={selectedName ?? ''}
+          onChange={handleChange}
+          disabled={disabled}
+        />
       </Grid>
     </Grid>
   );
@@ -133,68 +100,41 @@ export const ReleasePicker = ({
     installationNameField: installationNameFieldOption,
   } = uiSchema?.['ui:options'] ?? {};
 
-  const provider = useMemo(() => {
-    if (providerOption) {
-      return providerOption;
-    }
+  const provider = useValueFromOptions(
+    formContext,
+    providerOption,
+    providerFieldOption,
+  );
 
-    if (providerFieldOption) {
-      const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const providerFieldValue = get(
-        allFormData,
-        providerFieldOption,
-      ) as string;
-
-      return providerFieldValue;
-    }
-
-    return '';
-  }, [providerOption, providerFieldOption, formContext.formData]);
-
-  const installationName = useMemo(() => {
-    if (installationNameOption) {
-      return installationNameOption;
-    }
-
-    if (installationNameFieldOption) {
-      const allFormData = (formContext.formData as Record<string, any>) ?? {};
-      const installationNameFieldValue = get(
-        allFormData,
-        installationNameFieldOption,
-      ) as string;
-
-      return installationNameFieldValue;
-    }
-
-    return '';
-  }, [
+  const installationName = useValueFromOptions(
+    formContext,
     installationNameOption,
     installationNameFieldOption,
-    formContext.formData,
-  ]);
+  );
 
   const handleReleaseSelect = useCallback(
-    (selectedRelease: string | undefined) => {
-      onChange(selectedRelease);
+    (selectedRelease: Release | undefined) => {
+      if (!selectedRelease) {
+        onChange(undefined);
+        return;
+      }
+
+      onChange(getReleaseName(selectedRelease));
     },
     [onChange],
   );
 
   return (
-    <GSContext>
-      <ErrorsProvider>
-        <ReleasePickerField
-          id={idSchema?.$id}
-          label={title}
-          helperText={description}
-          required={required}
-          error={rawErrors?.length > 0 && !formData}
-          releaseValue={releaseValue}
-          provider={provider}
-          installationName={installationName ?? ''}
-          onReleaseSelect={handleReleaseSelect}
-        />
-      </ErrorsProvider>
-    </GSContext>
+    <ReleasePickerField
+      id={idSchema?.$id}
+      label={title}
+      helperText={description}
+      required={required}
+      error={rawErrors?.length > 0 && !formData}
+      releaseValue={releaseValue}
+      provider={provider}
+      installationName={installationName ?? ''}
+      onReleaseSelect={handleReleaseSelect}
+    />
   );
 };
