@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.32.0
+
+### Minor Changes
+
+- e9b3d0f: Use one GS context for the application.
+- e9b3d0f: Refactor errors handling.
+
 ## 0.31.3
 
 ### Patch Changes

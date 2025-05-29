@@ -1,5 +1,17 @@
 # app
 
+## 0.16.0
+
+### Minor Changes
+
+- e9b3d0f: Use one GS context for the application.
+
+### Patch Changes
+
+- Updated dependencies [e9b3d0f]
+- Updated dependencies [e9b3d0f]
+  - @giantswarm/backstage-plugin-gs@0.32.0
+
 ## 0.15.1
 
 ### Patch Changes
