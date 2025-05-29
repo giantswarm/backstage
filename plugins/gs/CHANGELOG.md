@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.32.1
+
+### Patch Changes
+
+- 59cd825: Moved installations data to context.
+
 ## 0.32.0
 
 ### Minor Changes

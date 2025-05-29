@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.74.1] - 2025-05-29
+
+In this release, `useInstallations` hook was refactored to store data in the context.
+
+See [./docs/releases/v0.74.1-changelog.md](./docs/releases/v0.74.1-changelog.md) for more information.
+
 ## [0.74.0] - 2025-05-29
 
 In this release:
@@ -1254,7 +1260,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.74.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.74.1...HEAD
+[0.74.1]: https://github.com/giantswarm/backstage/compare/v0.74.0...v0.74.1
 [0.74.0]: https://github.com/giantswarm/backstage/compare/v0.73.3...v0.74.0
 [0.73.3]: https://github.com/giantswarm/backstage/compare/v0.73.2...v0.73.3
 [0.73.2]: https://github.com/giantswarm/backstage/compare/v0.73.1...v0.73.2
