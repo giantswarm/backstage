@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.74.0-changelog.md](./docs/releases/v0.74.0-changelog.md) for more information.
+
 ## [0.73.3] - 2025-05-28
 
 In this release, installations status check has been improved.
