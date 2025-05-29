@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.74.0] - 2025-05-29
 
+In this release:
+
+- `GSContext` component has been moved above in the components tree so it can be shared between components;
+- errors handling in the UI has been refactored;
+- custom scaffolder fields have been refactored.
+
 See [./docs/releases/v0.74.0-changelog.md](./docs/releases/v0.74.0-changelog.md) for more information.
 
 ## [0.73.3] - 2025-05-28
