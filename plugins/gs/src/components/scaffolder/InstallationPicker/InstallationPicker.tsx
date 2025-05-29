@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useInstallations, InstallationInfo } from '../../hooks';
+import { useInstallations } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { InstallationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
 import { SelectFormField } from '../../UI/SelectFormField';
+import { InstallationInfo } from '../../installations/InstallationsProvider';
 
 type InstallationFieldProps = {
   id?: string;

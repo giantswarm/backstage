@@ -124,12 +124,11 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
     ],
   );
 
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    return {
       filters,
       queryParameters,
       updateFilters,
-    }),
-    [filters, queryParameters, updateFilters],
-  );
+    };
+  }, [filters, queryParameters, updateFilters]);
 }

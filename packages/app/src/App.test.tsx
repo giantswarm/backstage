@@ -13,6 +13,9 @@ describe('App', () => {
             techdocs: {
               storageUrl: 'http://localhost:7007/api/techdocs/static/docs',
             },
+            gs: {
+              installations: {},
+            },
           },
           context: 'test',
         },
