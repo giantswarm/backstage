@@ -4,6 +4,7 @@ import {
   QueryClientConfig,
   QueryClientProvider,
 } from '@tanstack/react-query';
+import { InstallationsProvider } from './installations/InstallationsProvider';
 
 export const GSContext = ({ children }: { children: ReactNode }) => {
   const queryOptions: QueryClientConfig = useMemo(
@@ -41,6 +42,8 @@ export const GSContext = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <InstallationsProvider>{children}</InstallationsProvider>
+    </QueryClientProvider>
   );
 };
