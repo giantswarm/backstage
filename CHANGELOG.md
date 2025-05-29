@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.74.1] - 2025-05-29
 
+In this release, `useInstallations` hook was refactored to store data in the context.
+
 See [./docs/releases/v0.74.1-changelog.md](./docs/releases/v0.74.1-changelog.md) for more information.
 
 ## [0.74.0] - 2025-05-29
