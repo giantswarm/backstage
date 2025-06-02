@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.33.0
+
+### Minor Changes
+
+- 5ac83b5: Hide provider filter when there is only one provider available.
+- 32f30df: Hide installations selector when there is only one installation available.
+
 ## 0.32.1
 
 ### Patch Changes
