@@ -1,4 +1,4 @@
-import { InstallationsPicker } from '../../InstallationsPicker';
+import { InstallationsSelector } from '../../installations/InstallationsSelector';
 import { useInstallations } from '../../hooks';
 import { KindPicker } from './filters/KindPicker';
 import { OrganizationPicker } from './filters/OrganizationPicker';
@@ -26,7 +26,7 @@ export const DefaultFilters = () => {
   return (
     <>
       <Box pb={1} pt={1}>
-        <InstallationsPicker
+        <InstallationsSelector
           installations={installations}
           selectedInstallations={selectedInstallations}
           disabledInstallations={disabledInstallations}

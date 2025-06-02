@@ -3,21 +3,21 @@ import useDebounce from 'react-use/esm/useDebounce';
 import { useLocation } from 'react-router-dom';
 import qs from 'qs';
 import isEqual from 'lodash/isEqual';
-import { Autocomplete } from '../UI';
+import { Autocomplete } from '../../UI';
 
-type InstallationsPickerProps = {
+type InstallationsSelectorProps = {
   installations: string[];
   selectedInstallations: string[];
   disabledInstallations: string[];
   onChange?: (selectedInstallations: string[]) => void;
 };
 
-export const InstallationsPicker = ({
+export const InstallationsSelector = ({
   installations,
   selectedInstallations,
   disabledInstallations,
   onChange,
-}: InstallationsPickerProps) => {
+}: InstallationsSelectorProps) => {
   const [value, setValue] = useState(selectedInstallations);
 
   const location = useLocation();
