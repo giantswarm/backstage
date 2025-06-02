@@ -1,6 +1,6 @@
 import { Grid, makeStyles } from '@material-ui/core';
 import { useInstallations } from '../hooks';
-import { InstallationsPicker } from '../InstallationsPicker';
+import { InstallationsSelector } from '../installations/InstallationsSelector';
 
 export const useStyles = makeStyles({
   fullWidth: {
@@ -30,14 +30,16 @@ export const InstallationsWrapper = ({
 
   return (
     <Grid container spacing={3} direction="column">
-      <Grid item>
-        <InstallationsPicker
-          installations={installations}
-          selectedInstallations={selectedInstallations}
-          disabledInstallations={disabledInstallations}
-          onChange={handleSelectedInstallationsChange}
-        />
-      </Grid>
+      {installations.length > 1 ? (
+        <Grid item>
+          <InstallationsSelector
+            installations={installations}
+            selectedInstallations={selectedInstallations}
+            disabledInstallations={disabledInstallations}
+            onChange={handleSelectedInstallationsChange}
+          />
+        </Grid>
+      ) : null}
       <Grid item className={classes.fullWidth}>
         {children}
       </Grid>

@@ -112,7 +112,9 @@ export const useInstallationsData = (): {
 
   const activeInstallations = useMemo(() => {
     const allSelectedInstallations =
-      selectedInstallations.length > 0 ? selectedInstallations : installations;
+      installations.length === 1 || selectedInstallations.length === 0
+        ? installations
+        : selectedInstallations;
 
     if (
       allSelectedInstallations.some(installation =>
