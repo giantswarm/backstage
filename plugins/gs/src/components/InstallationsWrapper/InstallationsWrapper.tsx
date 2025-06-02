@@ -30,14 +30,16 @@ export const InstallationsWrapper = ({
 
   return (
     <Grid container spacing={3} direction="column">
-      <Grid item>
-        <InstallationsSelector
-          installations={installations}
-          selectedInstallations={selectedInstallations}
-          disabledInstallations={disabledInstallations}
-          onChange={handleSelectedInstallationsChange}
-        />
-      </Grid>
+      {installations.length > 1 ? (
+        <Grid item>
+          <InstallationsSelector
+            installations={installations}
+            selectedInstallations={selectedInstallations}
+            disabledInstallations={disabledInstallations}
+            onChange={handleSelectedInstallationsChange}
+          />
+        </Grid>
+      ) : null}
       <Grid item className={classes.fullWidth}>
         {children}
       </Grid>

@@ -14,6 +14,10 @@ export const InstallationPicker = () => {
     setSelectedInstallations(selectedItems);
   };
 
+  if (installations.length <= 1) {
+    return null;
+  }
+
   return (
     <Box pb={1} pt={1}>
       <InstallationsSelector

@@ -56,7 +56,7 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
     };
   }, [location.search]);
 
-  const { selectedInstallations } = useInstallations();
+  const { installations, selectedInstallations } = useInstallations();
 
   useDebounce(
     () => {
@@ -99,7 +99,8 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
         const newParams = qs.stringify(
           {
             ...oldParams,
-            installations: installationsQueryParams,
+            installations:
+              installations.length > 1 ? installationsQueryParams : undefined,
             filters: Object.entries(filtersQueryParams).length
               ? filtersQueryParams
               : undefined,
