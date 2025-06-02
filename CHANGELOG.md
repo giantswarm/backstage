@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.75.0] - 2025-06-02
 
+In this release:
+
+- The use case where there is only one installation connected is handled by hiding the installations selector.
+- The use case where there is only one provider available is handled by hiding the provider filter.
+
 See [./docs/releases/v0.75.0-changelog.md](./docs/releases/v0.75.0-changelog.md) for more information.
 
 ## [0.74.1] - 2025-05-29
