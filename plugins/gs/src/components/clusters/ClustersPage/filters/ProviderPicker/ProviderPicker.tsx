@@ -4,6 +4,7 @@ import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { ProviderFilter } from '../filters';
 import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 import { formatClusterProvider } from '../../../utils';
+import { useInstallations } from '../../../../hooks';
 
 const TITLE = 'Provider';
 
@@ -19,6 +20,7 @@ function formatOption(item: ClusterData): MultiplePickerOption | undefined {
 }
 
 export const ProviderPicker = () => {
+  const { installationsInfo } = useInstallations();
   const {
     data,
     filters,
@@ -41,6 +43,13 @@ export const ProviderPicker = () => {
       provider: new ProviderFilter(selectedValues),
     });
   };
+
+  const availableProviders = new Set(
+    installationsInfo.flatMap(installation => installation.providers),
+  );
+  if (availableProviders.size <= 1) {
+    return null;
+  }
 
   return (
     <MultiplePicker
