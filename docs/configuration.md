@@ -33,7 +33,7 @@ If the `clusterType` is set to `workload`, the link will be displayed only for w
 
 ### URL Templating
 
-The url parameter supports templating with the following placeholders:
+The `url` parameter supports templating with the following placeholders:
 
 - `CLUSTER_NAME` - name of the cluster.
 - `CLUSTER_NAMESPACE` - namespace of the cluster.
