@@ -14,6 +14,8 @@ import {
 import { useMemo } from 'react';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { Tool } from '../../../../UI/Toolkit';
+import { formatTemplateString } from '../../../../utils/formatTemplateString';
+import { useClusterDetailsTemplateData } from '../../../../hooks';
 
 export function ClusterToolsCard() {
   const configApi = useApi(configApiRef);
@@ -21,6 +23,11 @@ export function ClusterToolsCard() {
 
   const clusterName = getClusterName(cluster);
   const organizationName = getClusterOrganization(cluster);
+
+  const clusterDetailsTemplateData = useClusterDetailsTemplateData(
+    installationName,
+    cluster,
+  );
 
   const webUILink = useWebUILink(
     installationName,
@@ -85,7 +92,9 @@ export function ClusterToolsCard() {
     if (linksConfig) {
       linksConfig.forEach(link => {
         result.push({
-          url: link.getString('url'),
+          url: formatTemplateString(link.getString('url'), {
+            data: clusterDetailsTemplateData,
+          }),
           label: link.getString('label'),
           icon: link.getString('icon'),
         });
@@ -93,7 +102,7 @@ export function ClusterToolsCard() {
     }
 
     return result;
-  }, [configApi, defaultLinks]);
+  }, [clusterDetailsTemplateData, configApi, defaultLinks]);
 
   return (
     <Card>
