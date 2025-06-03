@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.76.0] - 2025-06-03
 
+In this release, configurable links have been added to the home page and cluster details page.
+
 See [./docs/releases/v0.76.0-changelog.md](./docs/releases/v0.76.0-changelog.md) for more information.
 
 ## [0.75.0] - 2025-06-02
