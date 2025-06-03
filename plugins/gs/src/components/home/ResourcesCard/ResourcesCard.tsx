@@ -1,12 +1,7 @@
-import { useMemo } from 'react';
 import { Card, CardContent } from '@material-ui/core';
 import { Toolkit } from '../../UI';
 import { useApi, configApiRef } from '@backstage/core-plugin-api';
-import { Tool } from '../../UI/Toolkit';
 
-/**
- * Links defined for everyone
- */
 const defaultLinks = [
   {
     url: 'https://docs.giantswarm.io',
@@ -33,43 +28,20 @@ const defaultLinks = [
 export function ResourcesCard() {
   const configApi = useApi(configApiRef);
 
-  const combinedLinks = useMemo(() => {
-    const result: Tool[] = [...defaultLinks];
+  const linksConfig = configApi.getOptionalConfigArray('gs.homepage.resources');
 
-    // Add Slack support channel link if configured
-    const slackChannelConfig = configApi.getOptionalConfig(
-      'gs.support.slackChannel',
-    );
-    if (slackChannelConfig) {
-      const channelUrl = slackChannelConfig.getString('url');
-      result.push({
-        url: channelUrl,
-        label: 'Giant Swarm \n Support',
-        icon: 'LiveHelp',
-      });
-    }
-
-    // Add extra links from homepage configuration
-    const homeLinksConfig = configApi.getOptionalConfigArray(
-      'gs.homepage.resources',
-    );
-    if (homeLinksConfig) {
-      homeLinksConfig.forEach(link => {
-        result.push({
-          url: link.getString('url'),
-          label: link.getString('label'),
-          icon: link.getString('icon'),
-        });
-      });
-    }
-
-    return result;
-  }, [configApi]);
+  const links = linksConfig
+    ? linksConfig.map(link => ({
+        url: link.getString('url'),
+        label: link.getString('label'),
+        icon: link.getString('icon'),
+      }))
+    : defaultLinks;
 
   return (
     <Card>
       <CardContent>
-        <Toolkit tools={combinedLinks} />
+        <Toolkit tools={links} />
       </CardContent>
     </Card>
   );

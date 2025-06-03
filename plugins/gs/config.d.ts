@@ -10,6 +10,7 @@ export interface Config {
         label: string;
         icon: string;
         url: string;
+        clusterType?: 'management' | 'workload';
       }[];
     };
 
@@ -61,13 +62,6 @@ export interface Config {
     };
     /** @visibility frontend */
     adminGroups?: string[];
-
-    /** @deepVisibility frontend */
-    support?: {
-      slackChannel?: {
-        url: string;
-      };
-    };
   };
 
   auth?: {
