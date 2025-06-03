@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.34.0
+
+### Minor Changes
+
+- 8378d2a: Added configurable links to the cluster details page resources card.
+- 8378d2a: Added configurable links to the homepage resources card.
+
 ## 0.33.0
 
 ### Minor Changes
