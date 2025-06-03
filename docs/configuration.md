@@ -1,5 +1,55 @@
 # Configuration
 
+## Cluster details page resources
+
+The cluster details page allows you to configure resource links that will be displayed in place of the default links.
+
+### Configuration example
+
+Below is an example configuration for overriding the default links on the cluster details page:
+
+```yaml
+gs:
+  clusterDetails:
+    resources:
+      - label: 'Alerts'
+        icon: 'NotificationsNone'
+        url: 'https://grafana.${{BASE_DOMAIN}}/alerting'
+      - label: 'Web UI'
+        icon: 'Public'
+        url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}'
+        clusterType: 'workload'
+      - label: 'Web UI'
+        icon: 'Public'
+        url: 'https://happa.${{BASE_DOMAIN}}'
+        clusterType: 'management'
+```
+
+### Cluster type specific links
+
+If the `clusterType` configuration option is not set, the link will be displayed for both management and workload clusters.
+If the `clusterType` is set to `management`, the link will be displayed only for management clusters.
+If the `clusterType` is set to `workload`, the link will be displayed only for workload clusters.
+
+### URL Templating
+
+The `url` parameter supports templating with the following placeholders:
+
+- `CLUSTER_NAME` - name of the cluster.
+- `CLUSTER_NAMESPACE` - namespace of the cluster.
+- `MC_NAME` - name of the management cluster.
+- `ORG_NAME` - name of the organization.
+- `BASE_DOMAIN` - base domain of the management cluster.
+
+For example, the URL `https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}` will be dynamically populated with the appropriate values.
+
+### Icon Configuration
+
+The icon parameter can be:
+
+- A custom icon name from the list of [supported icons](https://github.com/giantswarm/backstage/blob/main/plugins/gs/src/assets/icons/CustomIcons.tsx]), e.g. `BackstageIcon`.
+- A [Material UI](https://v4.mui.com/components/material-icons/#material-icons) icon name, e.g. `GitHub`.
+
 ## GitOps repositories
 
 The plugin allows you to format links to your GitOps sources. A link is being formatted based on a template string provided via configuration:
@@ -80,6 +130,33 @@ The result of this configuration is four patterns: two default ones for GitHub r
   ```
   https://github.example.com/test-project/test-repo/blob/1234567890/test/repo/path
   ```
+
+## Home page resources
+
+The home page allows you to configure resource links that will be displayed in place of the default links.
+
+### Configuration example
+
+Below is an example configuration for overriding the default links on the home page:
+
+```yaml
+gs:
+  homepage:
+    resources:
+      - label: 'Giant Swarm \n GitHub'
+        icon: 'GitHub'
+        url: 'https://github.com/giantswarm'
+      - label: 'Portal \n changelog'
+        icon: 'BackstageIcon'
+        url: 'https://github.com/giantswarm/backstage/releases'
+```
+
+### Icon Configuration
+
+The icon parameter can be:
+
+- A custom icon name from the list of [supported icons](https://github.com/giantswarm/backstage/blob/main/plugins/gs/src/assets/icons/CustomIcons.tsx]), e.g. `BackstageIcon`.
+- A [Material UI](https://v4.mui.com/components/material-icons/#material-icons) icon name, e.g. `GitHub`.
 
 ## Optional features
 

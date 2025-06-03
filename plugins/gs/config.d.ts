@@ -5,10 +5,29 @@ export interface Config {
     authProvider: string;
 
     /** @deepVisibility frontend */
+    clusterDetails?: {
+      resources?: {
+        label: string;
+        icon: string;
+        url: string;
+        clusterType?: 'management' | 'workload';
+      }[];
+    };
+
+    /** @deepVisibility frontend */
     gitopsRepositories?: {
       targetUrl: string;
       gitRepositoryUrlPattern: string;
     }[];
+
+    /** @deepVisibility frontend */
+    homepage?: {
+      resources?: {
+        label: string;
+        icon: string;
+        url: string;
+      }[];
+    };
 
     /** @deepVisibility frontend */
     installations: {
@@ -43,13 +62,6 @@ export interface Config {
     };
     /** @visibility frontend */
     adminGroups?: string[];
-
-    /** @deepVisibility frontend */
-    support?: {
-      slackChannel?: {
-        url: string;
-      };
-    };
   };
 
   auth?: {

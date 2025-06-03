@@ -1,79 +1,74 @@
-import { Card, CardContent, Typography } from '@material-ui/core';
-import PublicIcon from '@material-ui/icons/Public';
-import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
+import { Card, CardContent } from '@material-ui/core';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { GrafanaIcon } from '../../../../../assets/icons/CustomIcons';
 import { Toolkit } from '../../../../UI';
-import {
-  getClusterName,
-  getClusterOrganization,
-  isManagementCluster,
-} from '@giantswarm/backstage-plugin-gs-common';
-import {
-  useGrafanaAlertsLink,
-  useGrafanaDashboardLink,
-  useWebUILink,
-} from '../../../../hooks/useClusterLinks';
+import { isManagementCluster } from '@giantswarm/backstage-plugin-gs-common';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { formatTemplateString } from '../../../../utils/formatTemplateString';
+import { useClusterDetailsTemplateData } from '../../../../hooks';
+
+const defaultLinks = [
+  {
+    label: 'Cluster overview \n dashboard',
+    icon: 'GrafanaIcon',
+    url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=${{CLUSTER_NAME}}',
+  },
+  {
+    label: 'Alerts',
+    icon: 'NotificationsNone',
+    url: 'https://grafana.${{BASE_DOMAIN}}/alerting',
+  },
+  {
+    label: 'Web UI',
+    icon: 'Public',
+    url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}',
+    clusterType: 'workload',
+  },
+  {
+    label: 'Web UI',
+    icon: 'Public',
+    url: 'https://happa.${{BASE_DOMAIN}}',
+    clusterType: 'management',
+  },
+];
 
 export function ClusterToolsCard() {
+  const configApi = useApi(configApiRef);
   const { cluster, installationName } = useCurrentCluster();
 
-  const clusterName = getClusterName(cluster);
-  const organizationName = getClusterOrganization(cluster);
-
-  const webUILink = useWebUILink(
+  const clusterDetailsTemplateData = useClusterDetailsTemplateData(
     installationName,
-    clusterName,
-    organizationName ?? '',
-    isManagementCluster(cluster, installationName),
+    cluster,
   );
-  const webUILinkDisabledNote = webUILink
-    ? ''
-    : `Web UI link is not available. Base domain is not configured for '${installationName}' installation.`;
 
-  const dashboardLink = useGrafanaDashboardLink(installationName, clusterName);
-  const dashboardsLinkDisabledNote = dashboardLink
-    ? ''
-    : `Cluster overview dashboard link is not available. Base domain is not configured for '${installationName}' installation.`;
+  const linksConfig = configApi.getOptionalConfigArray(
+    'gs.clusterDetails.resources',
+  );
 
-  const alertsLink = useGrafanaAlertsLink(installationName);
-  const alertsLinkDisabledNote = alertsLink
-    ? ''
-    : `Grafana alerts link is not available. Base domain is not configured for '${installationName}' installation.`;
+  const links = linksConfig
+    ? linksConfig.map(link => ({
+        url: link.getString('url'),
+        label: link.getString('label'),
+        icon: link.getString('icon'),
+        clusterType: link.getOptionalString('clusterType'),
+      }))
+    : defaultLinks;
 
-  const tools = [
-    {
-      url: dashboardLink ?? '',
-      label: (
-        <>
-          <Typography variant="inherit" noWrap>
-            Cluster overview
-          </Typography>
-          <br />
-          <Typography variant="inherit" noWrap>
-            dashboard
-          </Typography>
-        </>
-      ),
-      icon: <GrafanaIcon />,
-      disabled: Boolean(dashboardsLinkDisabledNote),
-      disabledNote: dashboardsLinkDisabledNote,
-    },
-    {
-      url: alertsLink ?? '',
-      label: 'Alerts',
-      icon: <NotificationsNoneIcon />,
-      disabled: Boolean(alertsLinkDisabledNote),
-      disabledNote: alertsLinkDisabledNote,
-    },
-    {
-      url: webUILink ?? '',
-      label: 'Web UI',
-      icon: <PublicIcon />,
-      disabled: Boolean(webUILinkDisabledNote),
-      disabledNote: webUILinkDisabledNote,
-    },
-  ];
+  const clusterType = isManagementCluster(cluster, installationName)
+    ? 'management'
+    : 'workload';
+  const filteredLinks = links.filter(
+    link =>
+      typeof link.clusterType === 'undefined' ||
+      link.clusterType === clusterType,
+  );
+
+  const tools = filteredLinks.map(link => ({
+    url: formatTemplateString(link.url, {
+      data: clusterDetailsTemplateData,
+    }),
+    label: link.label,
+    icon: link.icon,
+  }));
 
   return (
     <Card>
