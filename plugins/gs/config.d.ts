@@ -5,6 +5,15 @@ export interface Config {
     authProvider: string;
 
     /** @deepVisibility frontend */
+    clusterDetails?: {
+      resources?: {
+        label: string;
+        icon: string;
+        url: string;
+      }[];
+    };
+
+    /** @deepVisibility frontend */
     gitopsRepositories?: {
       targetUrl: string;
       gitRepositoryUrlPattern: string;

@@ -11,7 +11,7 @@ function replaceWithBr(text: string): string {
   return text.replaceAll('\n', '<br />').replaceAll('\\n', '<br />');
 }
 
-type Tool =
+export type Tool =
   | {
       label: string | React.ReactNode;
       url: string;

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Card, CardContent } from '@material-ui/core';
 import { Toolkit } from '../../UI';
 import { useApi, configApiRef } from '@backstage/core-plugin-api';
+import { Tool } from '../../UI/Toolkit';
 
 /**
  * Links defined for everyone
@@ -33,7 +34,7 @@ export function ResourcesCard() {
   const configApi = useApi(configApiRef);
 
   const combinedLinks = useMemo(() => {
-    const result = [...defaultLinks];
+    const result: Tool[] = [...defaultLinks];
 
     // Add Slack support channel link if configured
     const slackChannelConfig = configApi.getOptionalConfig(

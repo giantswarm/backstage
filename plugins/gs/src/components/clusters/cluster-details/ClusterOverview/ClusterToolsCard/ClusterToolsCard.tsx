@@ -11,8 +11,12 @@ import {
   useGrafanaDashboardLink,
   useWebUILink,
 } from '../../../../hooks/useClusterLinks';
+import { useMemo } from 'react';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { Tool } from '../../../../UI/Toolkit';
 
 export function ClusterToolsCard() {
+  const configApi = useApi(configApiRef);
   const { cluster, installationName } = useCurrentCluster();
 
   const clusterName = getClusterName(cluster);
@@ -38,34 +42,63 @@ export function ClusterToolsCard() {
     ? ''
     : `Grafana alerts link is not available. Base domain is not configured for '${installationName}' installation.`;
 
-  const tools = [
-    {
-      url: dashboardLink ?? '',
-      label: 'Cluster overview \n dashboard',
-      icon: 'GrafanaIcon',
-      disabled: Boolean(dashboardsLinkDisabledNote),
-      disabledNote: dashboardsLinkDisabledNote,
-    },
-    {
-      url: alertsLink ?? '',
-      label: 'Alerts',
-      icon: 'NotificationsNone',
-      disabled: Boolean(alertsLinkDisabledNote),
-      disabledNote: alertsLinkDisabledNote,
-    },
-    {
-      url: webUILink ?? '',
-      label: 'Web UI',
-      icon: 'Public',
-      disabled: Boolean(webUILinkDisabledNote),
-      disabledNote: webUILinkDisabledNote,
-    },
-  ];
+  const defaultLinks = useMemo(() => {
+    return [
+      {
+        url: dashboardLink ?? '',
+        label: 'Cluster overview \n dashboard',
+        icon: 'GrafanaIcon',
+        disabled: Boolean(dashboardsLinkDisabledNote),
+        disabledNote: dashboardsLinkDisabledNote,
+      },
+      {
+        url: alertsLink ?? '',
+        label: 'Alerts',
+        icon: 'NotificationsNone',
+        disabled: Boolean(alertsLinkDisabledNote),
+        disabledNote: alertsLinkDisabledNote,
+      },
+      {
+        url: webUILink ?? '',
+        label: 'Web UI',
+        icon: 'Public',
+        disabled: Boolean(webUILinkDisabledNote),
+        disabledNote: webUILinkDisabledNote,
+      },
+    ];
+  }, [
+    alertsLink,
+    alertsLinkDisabledNote,
+    dashboardLink,
+    dashboardsLinkDisabledNote,
+    webUILink,
+    webUILinkDisabledNote,
+  ]);
+
+  const combinedLinks = useMemo(() => {
+    const result: Tool[] = [...defaultLinks];
+
+    // Add extra links from cluster details page configuration
+    const linksConfig = configApi.getOptionalConfigArray(
+      'gs.clusterDetails.resources',
+    );
+    if (linksConfig) {
+      linksConfig.forEach(link => {
+        result.push({
+          url: link.getString('url'),
+          label: link.getString('label'),
+          icon: link.getString('icon'),
+        });
+      });
+    }
+
+    return result;
+  }, [configApi, defaultLinks]);
 
   return (
     <Card>
       <CardContent>
-        <Toolkit tools={tools} />
+        <Toolkit tools={combinedLinks} />
       </CardContent>
     </Card>
   );
