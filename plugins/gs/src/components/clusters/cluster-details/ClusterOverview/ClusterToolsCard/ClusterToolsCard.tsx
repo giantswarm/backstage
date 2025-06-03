@@ -1,8 +1,5 @@
-import { Card, CardContent, Typography } from '@material-ui/core';
-import PublicIcon from '@material-ui/icons/Public';
-import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
+import { Card, CardContent } from '@material-ui/core';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { GrafanaIcon } from '../../../../../assets/icons/CustomIcons';
 import { Toolkit } from '../../../../UI';
 import {
   getClusterName,
@@ -44,32 +41,22 @@ export function ClusterToolsCard() {
   const tools = [
     {
       url: dashboardLink ?? '',
-      label: (
-        <>
-          <Typography variant="inherit" noWrap>
-            Cluster overview
-          </Typography>
-          <br />
-          <Typography variant="inherit" noWrap>
-            dashboard
-          </Typography>
-        </>
-      ),
-      icon: <GrafanaIcon />,
+      label: 'Cluster overview \n dashboard',
+      icon: 'GrafanaIcon',
       disabled: Boolean(dashboardsLinkDisabledNote),
       disabledNote: dashboardsLinkDisabledNote,
     },
     {
       url: alertsLink ?? '',
       label: 'Alerts',
-      icon: <NotificationsNoneIcon />,
+      icon: 'NotificationsNone',
       disabled: Boolean(alertsLinkDisabledNote),
       disabledNote: alertsLinkDisabledNote,
     },
     {
       url: webUILink ?? '',
       label: 'Web UI',
-      icon: <PublicIcon />,
+      icon: 'Public',
       disabled: Boolean(webUILinkDisabledNote),
       disabledNote: webUILinkDisabledNote,
     },

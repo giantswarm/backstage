@@ -5,18 +5,23 @@ import ListItemText from '@material-ui/core/ListItemText';
 import { makeStyles } from '@material-ui/core/styles';
 import { Tooltip, Typography } from '@material-ui/core';
 import classNames from 'classnames';
+import IconResolver from '../IconResolver/IconResolver';
+
+function replaceWithBr(text: string): string {
+  return text.replaceAll('\n', '<br />').replaceAll('\\n', '<br />');
+}
 
 type Tool =
   | {
-      label: React.ReactNode;
+      label: string | React.ReactNode;
       url: string;
-      icon: React.ReactNode;
+      icon: string | React.ReactNode;
       disabled?: false;
     }
   | {
-      label: React.ReactNode;
+      label: string | React.ReactNode;
       url: string;
-      icon: React.ReactNode;
+      icon: string | React.ReactNode;
       disabled: true;
       disabledNote: string;
     };
@@ -33,7 +38,7 @@ const useStyles = makeStyles(theme => ({
     padding: 0,
   },
   tool: {
-    margin: theme.spacing(0.5, 1),
+    margin: theme.spacing(1, 1),
   },
   label: {
     marginTop: theme.spacing(1),
@@ -74,7 +79,11 @@ export const Toolkit = ({ tools }: ToolkitProps) => {
                 [classes.iconDisabled]: tool.disabled,
               })}
             >
-              {tool.icon}
+              {typeof tool.icon === 'string' ? (
+                <IconResolver iconName={tool.icon} />
+              ) : (
+                tool.icon
+              )}
             </ListItemIcon>
             <ListItemText
               secondaryTypographyProps={{
@@ -82,7 +91,20 @@ export const Toolkit = ({ tools }: ToolkitProps) => {
                   [classes.labelDisabled]: tool.disabled,
                 }),
               }}
-              secondary={tool.label}
+              secondary={
+                typeof tool.label === 'string' ? (
+                  <>
+                    <Typography
+                      variant="inherit"
+                      dangerouslySetInnerHTML={{
+                        __html: replaceWithBr(tool.label),
+                      }}
+                    />
+                  </>
+                ) : (
+                  tool.label
+                )
+              }
             />
           </>
         );

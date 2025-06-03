@@ -11,6 +11,15 @@ export interface Config {
     }[];
 
     /** @deepVisibility frontend */
+    homepage?: {
+      resources?: {
+        label: string;
+        icon: string;
+        url: string;
+      }[];
+    };
+
+    /** @deepVisibility frontend */
     installations: {
       [installationName: string]: {
         pipeline: string;
