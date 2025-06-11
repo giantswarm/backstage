@@ -43,8 +43,14 @@ backend:
     methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
     credentials: true
   database:
-    client: better-sqlite3
-    connection: ':memory:'
+    client: pg
+    pluginDivisionMode: schema
+    connection:
+      host: '127.0.0.1'
+      port: '5432'
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+
   cache:
     store: memory
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
