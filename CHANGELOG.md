@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.76.1-changelog.md](./docs/releases/v0.76.1-changelog.md) for more information.
+
 ## [0.76.0] - 2025-06-03
 
 In this release, configurable links have been added to the home page and cluster details page.
