@@ -175,3 +175,67 @@ The following optional features are available:
 - `deploymentsPage`: Enable the Deployments page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
+
+## Well known labels
+
+The `wellKnownLabels` configuration allows you to control which Kubernetes resource labels are displayed and how they are formatted in the UI. Only labels matching the configured patterns will be shown. If no configuration is provided, the following default is used:
+
+```yaml
+wellKnownLabels:
+  - label: 'giantswarm.io/service-priority'
+    key: 'Service priority'
+    valueMap:
+      highest: 'Highest'
+      medium: 'Medium'
+      lowest: 'Lowest'
+```
+
+### Configuration options
+
+Each entry in `wellKnownLabels` supports the following properties:
+
+- **label** (string, required):
+  - Used to match labels on resources. Can be:
+    - An exact key (e.g. `giantswarm.io/service-priority`)
+    - A key-value pair (e.g. `giantswarm.io/service-priority:highest`)
+    - A pattern (e.g. `giantswarm.io*`) to match multiple labels by key prefix.
+- **key** (string, optional):
+  - Overrides how the label key is displayed in the UI for matching labels. If set, replaces the original key.
+- **valueMap** (object, optional):
+  - Maps label values to display values. If a label's value matches a key in this map, it will be replaced with the mapped value. If not, the original value is shown.
+- **variant** (string, optional):
+  - Applies additional visual styles to the label. Available variants are:
+    `gray`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple`, `pink`, `brown`.
+  - See [`makeLabelVariants.ts`](../plugins/gs/src/components/LabelsCard/Labels/utils/makeLabelVariants.ts) for details.
+
+**Note:**
+
+- The order of entries in `wellKnownLabels` is important. Labels are matched and displayed in the order they appear in the configuration.
+- Only labels matching a configured entry will be shown.
+
+#### Example configuration
+
+```yaml
+gs:
+  wellKnownLabels:
+    - label: 'giantswarm.io/service-priority'
+      key: 'Service priority'
+      valueMap:
+        highest: 'Highest'
+        medium: 'Medium'
+        lowest: 'Lowest'
+    - label: 'environment'
+      key: 'Environment'
+      valueMap:
+        prod: 'Production'
+        dev: 'Development'
+      variant: 'green'
+    - label: 'giantswarm.io*'
+      variant: 'blue'
+```
+
+This configuration will:
+
+- Show only the specified labels.
+- Display custom keys and values where configured.
+- Apply visual variants for additional styling.
