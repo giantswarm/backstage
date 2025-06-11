@@ -12421,8 +12421,8 @@ __metadata:
   linkType: hard
 
 "@rjsf/core@npm:^5.24.8":
-  version: 5.24.8
-  resolution: "@rjsf/core@npm:5.24.8"
+  version: 5.24.11
+  resolution: "@rjsf/core@npm:5.24.11"
   dependencies:
     lodash: "npm:^4.17.21"
     lodash-es: "npm:^4.17.21"
@@ -12432,7 +12432,7 @@ __metadata:
   peerDependencies:
     "@rjsf/utils": ^5.24.x
     react: ^16.14.0 || >=17
-  checksum: 10c0/37ffbab75d515b62530bba826f37b305d9a266f5b5ff6d475109ce67b2709a63a426a8ffe2e2554fd26a52dd6f9c36d5d48db3c30d61e11f7aa76214c0772673
+  checksum: 10c0/367ca12d3d332d96a6b3357296d80a88b0b81ed4852aa7eda152e51d3e0434a452202cbef00dc3839a3bc58e427e3813fd4fde4d63436e3e6c9b7468998ba2ff
   languageName: node
   linkType: hard
 
@@ -12465,8 +12465,8 @@ __metadata:
   linkType: hard
 
 "@rjsf/utils@npm:^5.24.8":
-  version: 5.24.8
-  resolution: "@rjsf/utils@npm:5.24.8"
+  version: 5.24.11
+  resolution: "@rjsf/utils@npm:5.24.11"
   dependencies:
     json-schema-merge-allof: "npm:^0.8.1"
     jsonpointer: "npm:^5.0.1"
@@ -12475,7 +12475,7 @@ __metadata:
     react-is: "npm:^18.2.0"
   peerDependencies:
     react: ^16.14.0 || >=17
-  checksum: 10c0/f672a8083deb1aed23bb2a0ab03f9b81480cb15b78af0f4db76f807e46525322245f19fe2b0ead70e99ebdb3a90bd55eaf44fa1c2528dd1b78b072c0ddcb9f02
+  checksum: 10c0/43edfd62bce8fb41e671b881b7e902f75e2c0416085fea58a499fdbc73d31ff9e3cd8ff0713f8e476f00be08fd252990c6ee7c4457dde47e98ad2f68bd19f8e4
   languageName: node
   linkType: hard
 
@@ -12494,8 +12494,8 @@ __metadata:
   linkType: hard
 
 "@rjsf/validator-ajv8@npm:^5.24.8":
-  version: 5.24.8
-  resolution: "@rjsf/validator-ajv8@npm:5.24.8"
+  version: 5.24.11
+  resolution: "@rjsf/validator-ajv8@npm:5.24.11"
   dependencies:
     ajv: "npm:^8.12.0"
     ajv-formats: "npm:^2.1.1"
@@ -12503,7 +12503,7 @@ __metadata:
     lodash-es: "npm:^4.17.21"
   peerDependencies:
     "@rjsf/utils": ^5.24.x
-  checksum: 10c0/3395cc657fe113a0019f67e347006de32b2d64ac12fa24f0331dc49f804b0aefd71b11f2f65a16f223b87c3a67676f5dd2ca2881a053c7eadbf7740fb2d46e7b
+  checksum: 10c0/fc95de0fcdd0a16fdee558f0ae78028186384710e0027a26aef371f45f247322328ca06f23d30c4954678e791a9d0850cea125992457108a0edddb237eb24836
   languageName: node
   linkType: hard
 
