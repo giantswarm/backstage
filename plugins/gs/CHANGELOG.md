@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.35.0
+
+### Minor Changes
+
+- bb84af1: Added possibility to configure how Kubernetes resources labels are being displayed.
+
 ## 0.34.0
 
 ### Minor Changes

@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.77.0] - 2025-06-11
+
+In this release, a possibility to configure how labels of Kubernetes resources are being displayed has been added.
+
+See [./docs/releases/v0.77.0-changelog.md](./docs/releases/v0.77.0-changelog.md) for more information.
+
 ## [0.76.1] - 2025-06-11
 
 In this release, source reference namespace for Kustomization objects has been fixed.
@@ -1281,7 +1287,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.76.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.77.0...HEAD
+[0.77.0]: https://github.com/giantswarm/backstage/compare/v0.76.1...v0.77.0
 [0.76.1]: https://github.com/giantswarm/backstage/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/giantswarm/backstage/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/giantswarm/backstage/compare/v0.74.1...v0.75.0
