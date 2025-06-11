@@ -9361,6 +9361,7 @@ __metadata:
     classnames: "npm:^2.3.2"
     clean-deep: "npm:^3.4.0"
     color-hash: "npm:^2.0.2"
+    colord: "npm:^2.9.3"
     date-fns: "npm:^4.0.0"
     date-fns-tz: "npm:^3.0.0"
     jwt-decode: "npm:^4.0.0"
@@ -17912,7 +17913,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"colord@npm:^2.9.1":
+"colord@npm:^2.9.1, colord@npm:^2.9.3":
   version: 2.9.3
   resolution: "colord@npm:2.9.3"
   checksum: 10c0/9699e956894d8996b28c686afe8988720785f476f59335c80ce852ded76ab3ebe252703aec53d9bef54f6219aea6b960fb3d9a8300058a1d0c0d4026460cd110

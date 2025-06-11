@@ -2,6 +2,9 @@ export interface Config {
   /** @visibility frontend */
   gs?: {
     /** @visibility frontend */
+    adminGroups?: string[];
+
+    /** @visibility frontend */
     authProvider: string;
 
     /** @deepVisibility frontend */
@@ -53,6 +56,17 @@ export interface Config {
         enabled: boolean;
       };
     };
+
+    /** @deepVisibility frontend */
+    friendlyLabels?: {
+      label: string;
+      key?: string;
+      valueMap?: {
+        [v: string]: string;
+      };
+      variant?: string;
+    }[];
+
     /** @deepVisibility frontend */
     kubernetesVersions?: {
       [minorVersion: string]: {
@@ -60,8 +74,6 @@ export interface Config {
         minorVersion: string;
       };
     };
-    /** @visibility frontend */
-    adminGroups?: string[];
   };
 
   auth?: {
