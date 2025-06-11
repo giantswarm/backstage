@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.76.1] - 2025-06-11
+
+In this release, source reference namespace for Kustomization objects has been fixed.
+
+See [./docs/releases/v0.76.1-changelog.md](./docs/releases/v0.76.1-changelog.md) for more information.
+
 ## [0.76.0] - 2025-06-03
 
 In this release, configurable links have been added to the home page and cluster details page.
@@ -1275,7 +1281,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.76.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.76.1...HEAD
+[0.76.1]: https://github.com/giantswarm/backstage/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/giantswarm/backstage/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/giantswarm/backstage/compare/v0.74.1...v0.75.0
 [0.74.1]: https://github.com/giantswarm/backstage/compare/v0.74.0...v0.74.1

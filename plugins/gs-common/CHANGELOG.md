@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.16.2
+
+### Patch Changes
+
+- cca7808: Fixed source reference namespace for Kustomization objects.
+
 ## 0.16.1
 
 ### Patch Changes
