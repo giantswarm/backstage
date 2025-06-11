@@ -1,15 +1,15 @@
 const baseColors: Record<string, { light: string; dark: string }> = {
   gray: { light: '#F8F8F8', dark: '#333333' },
-  red: { light: '#FFB3BA', dark: '#B22234' },
-  orange: { light: '#FFD8B1', dark: '#FF8C42' },
-  yellow: { light: '#FFFFBA', dark: '#BFA900' },
-  green: { light: '#BFFCC6', dark: '#228B22' },
-  teal: { light: '#B2F7EF', dark: '#008080' },
-  blue: { light: '#B5D0FF', dark: '#22577A' },
-  indigo: { light: '#C3C9E9', dark: '#3F51B5' },
-  purple: { light: '#E2C2FF', dark: '#7C3AED' },
-  pink: { light: '#FFB7E5', dark: '#C2185B' },
-  brown: { light: '#EAD2B7', dark: '#8D5524' },
+  red: { light: '#f3b7bb', dark: '#a03538' },
+  orange: { light: '#fccfb3', dark: '#aa6343' },
+  yellow: { light: '#f7f7c9', dark: '#95872c' },
+  green: { light: '#ccfbca', dark: '#366c29' },
+  teal: { light: '#c1f5ef', dark: '#2e6a6c' },
+  blue: { light: '#bacffb', dark: '#2c4f6d' },
+  indigo: { light: '#bbbdef', dark: '#40418e' },
+  purple: { light: '#ddc3fa', dark: '#704ac0' },
+  pink: { light: '#f4bae3', dark: '#8d2f50' },
+  brown: { light: '#b0a187', dark: '#614423' },
 };
 
 export function getColor(colorName: string, type: 'light' | 'dark') {
