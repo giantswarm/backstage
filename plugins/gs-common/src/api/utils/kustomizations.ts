@@ -44,6 +44,6 @@ export function getKustomizationSourceRef(kustomization: Kustomization) {
     apiVersion,
     kind,
     name,
-    namespace: namespace ?? 'default',
+    namespace: namespace ?? kustomization.metadata.namespace,
   };
 }
