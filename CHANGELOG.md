@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.76.1] - 2025-06-11
 
+In this release, source reference namespace for Kustomization objects has been fixed.
+
 See [./docs/releases/v0.76.1-changelog.md](./docs/releases/v0.76.1-changelog.md) for more information.
 
 ## [0.76.0] - 2025-06-03
