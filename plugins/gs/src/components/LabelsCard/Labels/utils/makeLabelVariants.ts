@@ -9,7 +9,6 @@ const availableVariants = [
   'green',
   'teal',
   'blue',
-  'indigo',
   'purple',
   'pink',
   'brown',

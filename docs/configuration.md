@@ -205,7 +205,7 @@ Each entry in `wellKnownLabels` supports the following properties:
   - Maps label values to display values. If a label's value matches a key in this map, it will be replaced with the mapped value. If not, the original value is shown.
 - **variant** (string, optional):
   - Applies additional visual styles to the label. Available variants are:
-    `gray`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple`, `pink`, `brown`.
+    `gray`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`, `brown`.
   - See [`makeLabelVariants.ts`](../plugins/gs/src/components/LabelsCard/Labels/utils/makeLabelVariants.ts) for details.
 
 **Note:**
