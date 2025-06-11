@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.77.0] - 2025-06-11
 
+In this release, a possibility to configure how labels of Kubernetes resources are being displayed has been added.
+
 See [./docs/releases/v0.77.0-changelog.md](./docs/releases/v0.77.0-changelog.md) for more information.
 
 ## [0.76.1] - 2025-06-11
