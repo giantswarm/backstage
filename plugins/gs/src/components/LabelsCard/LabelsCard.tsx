@@ -19,13 +19,13 @@ export const LabelsCard = ({ labels }: LabelsCardProps) => {
             <FormControlLabel
               control={
                 <Switch
-                  checked={displayRawLabels}
+                  checked={!displayRawLabels}
                   onChange={() => {
                     setDisplayRawLabels(!displayRawLabels);
                   }}
                 />
               }
-              label="Display raw labels"
+              label="Friendly labels"
             />
           </FormGroup>
         </Box>
