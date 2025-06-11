@@ -2,6 +2,9 @@ export interface Config {
   /** @visibility frontend */
   gs?: {
     /** @visibility frontend */
+    adminGroups?: string[];
+
+    /** @visibility frontend */
     authProvider: string;
 
     /** @deepVisibility frontend */
@@ -53,18 +56,9 @@ export interface Config {
         enabled: boolean;
       };
     };
-    /** @deepVisibility frontend */
-    kubernetesVersions?: {
-      [minorVersion: string]: {
-        eolDate: string;
-        minorVersion: string;
-      };
-    };
-    /** @visibility frontend */
-    adminGroups?: string[];
 
     /** @deepVisibility frontend */
-    wellKnownLabels?: {
+    friendlyLabels?: {
       label: string;
       key?: string;
       valueMap?: {
@@ -72,6 +66,14 @@ export interface Config {
       };
       variant?: string;
     }[];
+
+    /** @deepVisibility frontend */
+    kubernetesVersions?: {
+      [minorVersion: string]: {
+        eolDate: string;
+        minorVersion: string;
+      };
+    };
   };
 
   auth?: {

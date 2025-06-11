@@ -14,7 +14,7 @@ const defaultLabelsConfig: LabelConfig[] = [
 ];
 
 export function getLabelsConfig(configApi: ConfigApi) {
-  const labelsConfig = configApi.getOptionalConfigArray('gs.wellKnownLabels');
+  const labelsConfig = configApi.getOptionalConfigArray('gs.friendlyLabels');
   if (!labelsConfig) {
     return defaultLabelsConfig;
   }

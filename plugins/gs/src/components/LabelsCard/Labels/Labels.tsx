@@ -74,7 +74,7 @@ export const Labels = ({ labels, displayRawLabels = false }: LabelsProps) => {
   if (labelsWithDisplayInfo.length === 0) {
     return (
       <Typography variant="body2">
-        No labels match well known labels configuration.
+        No labels match "gs.friendlyLabels" configuration.
       </Typography>
     );
   }

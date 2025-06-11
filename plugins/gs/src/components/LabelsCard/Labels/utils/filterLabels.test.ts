@@ -25,7 +25,7 @@ describe('filterLabels', () => {
     expect(result).toEqual([]);
   });
 
-  describe('filters labels to only well-known ones', () => {
+  describe('filters labels to only configured ones', () => {
     it('by exact key:value combination', () => {
       const config: LabelConfig[] = [
         { label: 'env:prod' },

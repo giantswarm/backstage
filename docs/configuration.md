@@ -176,12 +176,12 @@ The following optional features are available:
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
 
-## Well known labels
+## Friendly labels
 
-The `wellKnownLabels` configuration allows you to control which Kubernetes resource labels are displayed and how they are formatted in the UI. Only labels matching the configured patterns will be shown. If no configuration is provided, the following default is used:
+The `friendlyLabels` configuration allows you to control which Kubernetes resource labels are displayed and how they are formatted in the UI. Only labels matching the configured patterns will be shown. If no configuration is provided, the following default is used:
 
 ```yaml
-wellKnownLabels:
+friendlyLabels:
   - label: 'giantswarm.io/service-priority'
     key: 'Service priority'
     valueMap:
@@ -192,7 +192,7 @@ wellKnownLabels:
 
 ### Configuration options
 
-Each entry in `wellKnownLabels` supports the following properties:
+Each entry in `friendlyLabels` supports the following properties:
 
 - **label** (string, required):
   - Used to match labels on resources. Can be:
@@ -210,14 +210,14 @@ Each entry in `wellKnownLabels` supports the following properties:
 
 **Note:**
 
-- The order of entries in `wellKnownLabels` is important. Labels are matched and displayed in the order they appear in the configuration.
+- The order of entries in `friendlyLabels` is important. Labels are matched and displayed in the order they appear in the configuration.
 - Only labels matching a configured entry will be shown.
 
 #### Example configuration
 
 ```yaml
 gs:
-  wellKnownLabels:
+  friendlyLabels:
     - label: 'giantswarm.io/service-priority'
       key: 'Service priority'
       valueMap:
