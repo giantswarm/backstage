@@ -328,7 +328,7 @@
       "type": "object",
       "properties": {
         "engine": {
-          "type": "enum",
+          "type": "string",
           "enum": ["postgresql", "sqlite"],
           "default": "sqlite"
         },
