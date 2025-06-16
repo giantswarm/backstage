@@ -43,13 +43,15 @@ backend:
     methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
     credentials: true
   database:
-    client: pg
-    pluginDivisionMode: schema
-    connection:
-      host: '127.0.0.1'
-      port: '5432'
-      user: ${POSTGRES_USER}
-      password: ${POSTGRES_PASSWORD}
+    client: better-sqlite3
+    connection: ':memory:'
+    # client: pg
+    # pluginDivisionMode: schema
+    # connection:
+    #   host: '127.0.0.1'
+    #   port: '5432'
+    #   user: ${POSTGRES_USER}
+    #   password: ${POSTGRES_PASSWORD}
 
   cache:
     store: memory
