@@ -1,13 +1,14 @@
 import { LabelConfig } from './types';
 
 const keyValuePredicate = (key: string, value: string) => {
-  return (labelConfig: LabelConfig) => labelConfig.label === `${key}:${value}`;
+  return (labelConfig: LabelConfig) =>
+    labelConfig.selector === `${key}:${value}`;
 };
 
 const keyPatternPredicate = (key: string) => {
   return (labelConfig: LabelConfig) => {
     const labelRegExp = new RegExp(
-      `^${labelConfig.label.replace(/\*/g, '.*')}$`,
+      `^${labelConfig.selector.replace(/\*/g, '.*')}$`,
     );
     return labelRegExp.test(key);
   };

@@ -5,6 +5,7 @@ import {
   getDefaultLabelVariant,
   isValidLabelVariant,
 } from './utils/makeLabelVariants';
+import { LabelConfig } from './utils/types';
 
 const palette = makeLabelVariants();
 
@@ -13,8 +14,7 @@ const useStyles = makeStyles<Theme, { variant: LabelVariant }>(theme => {
 
   return {
     label: {
-      display: 'flex',
-      justifyContent: 'space-between',
+      display: 'inline-flex',
       borderRadius: theme.shape.borderRadius,
       border: props => `1px solid ${currentPalette[props.variant].borderColor}`,
       overflow: 'hidden',
@@ -62,19 +62,27 @@ const Label = ({ labelKey, labelValue, labelVariant }: LabelProps) => {
 
 type LabelsProps = {
   labels: Record<string, string>;
-  displayRawLabels: boolean;
+  labelsConfig: LabelConfig[];
+  wrapItems?: boolean;
+  displayFriendlyItems?: boolean;
 };
 
-export const Labels = ({ labels, displayRawLabels = false }: LabelsProps) => {
+export const Labels = ({
+  labels,
+  labelsConfig,
+  wrapItems = true,
+  displayFriendlyItems = true,
+}: LabelsProps) => {
   const labelsWithDisplayInfo = useLabelsWithDisplayInfo(
     labels,
-    displayRawLabels,
+    displayFriendlyItems,
+    labelsConfig,
   );
 
   if (labelsWithDisplayInfo.length === 0) {
     return (
       <Typography variant="body2">
-        No labels match "gs.friendlyLabels" configuration.
+        No items match provided configuration.
       </Typography>
     );
   }
@@ -82,10 +90,12 @@ export const Labels = ({ labels, displayRawLabels = false }: LabelsProps) => {
   return (
     <Grid container spacing={1}>
       {labelsWithDisplayInfo.map(label => (
-        <Grid item key={label.key}>
+        <Grid item key={label.key} xs={wrapItems ? undefined : 12}>
           <Label
-            labelKey={displayRawLabels ? label.key : label.formattedKey}
-            labelValue={displayRawLabels ? label.value : label.formattedValue}
+            labelKey={displayFriendlyItems ? label.formattedKey : label.key}
+            labelValue={
+              displayFriendlyItems ? label.formattedValue : label.value
+            }
             labelVariant={label.variant}
           />
         </Grid>

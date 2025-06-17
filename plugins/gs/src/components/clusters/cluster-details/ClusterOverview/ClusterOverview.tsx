@@ -16,6 +16,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common';
 import { GitOpsCard } from '../../../GitOpsCard';
 import { useShowErrors } from '../../../Errors/useErrors';
+import { ClusterAnnotationsCard } from './ClusterAnnotationsCard';
 
 export const ClusterOverview = () => {
   const { cluster, installationName } = useCurrentCluster();
@@ -54,9 +55,6 @@ export const ClusterOverview = () => {
           <Grid item xs={12}>
             <ClusterPolicyComplianceCard />
           </Grid>
-          <Grid item xs={12}>
-            <ClusterLabelsCard />
-          </Grid>
         </Grid>
       </Grid>
       <Grid item md={6} xs={12}>
@@ -74,6 +72,16 @@ export const ClusterOverview = () => {
           )}
           <Grid item xs={12}>
             <ClusterAccessCard />
+          </Grid>
+        </Grid>
+      </Grid>
+      <Grid item xs={12}>
+        <Grid item container spacing={3}>
+          <Grid item xs={6}>
+            <ClusterLabelsCard />
+          </Grid>
+          <Grid item xs={6}>
+            <ClusterAnnotationsCard />
           </Grid>
         </Grid>
       </Grid>

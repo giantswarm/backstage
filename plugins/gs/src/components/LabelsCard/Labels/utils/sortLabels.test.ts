@@ -3,10 +3,10 @@ import { Label, LabelConfig } from './types';
 
 describe('sortLabels', () => {
   const labelsConfig: LabelConfig[] = [
-    { label: 'env:prod' },
-    { label: 'test.io*' },
-    { label: 'giantswarm.io*' },
-    { label: 'app' },
+    { selector: 'env:prod' },
+    { selector: 'test.io*' },
+    { selector: 'giantswarm.io*' },
+    { selector: 'app' },
   ];
 
   it('sorts by config order', () => {

@@ -62,6 +62,10 @@ export function getClusterLabels(cluster: Cluster) {
   return cluster.metadata.labels;
 }
 
+export function getClusterAnnotations(cluster: Cluster) {
+  return cluster.metadata.annotations;
+}
+
 export function getClusterName(cluster: Cluster) {
   return cluster.metadata.name;
 }
