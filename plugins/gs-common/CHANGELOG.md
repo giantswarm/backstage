@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.17.0
+
+### Minor Changes
+
+- 7eb690b: Added possibility to configure how Kubernetes resources annotations are being displayed.
+
 ## 0.16.2
 
 ### Patch Changes
