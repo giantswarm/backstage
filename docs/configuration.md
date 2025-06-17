@@ -205,8 +205,11 @@ Each entry in `friendlyLabels` or `friendlyAnnotations` supports the following p
   - Overrides how the label/annotation key is displayed in the UI for matching items. If set, replaces the original key.
 - **valueMap** (object, optional):
   - Maps label/annotation values to display values. If an item's value matches a key in this map, it will be replaced with the mapped value. If not, the original value is shown.
+
+Properties applicable only for `friendlyLabels` configuration:
+
 - **variant** (string, optional):
-  - Applies additional visual styles to the label/annotation. Available variants are:
+  - Applies additional visual styles to the label. Available variants are:
     `gray`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`, `brown`.
   - See [`makeLabelVariants.ts`](../plugins/gs/src/components/LabelsCard/Labels/utils/makeLabelVariants.ts) for details.
 
@@ -221,8 +224,7 @@ Each entry in `friendlyLabels` or `friendlyAnnotations` supports the following p
 gs:
   friendlyAnnotations:
     - selector: 'cluster.giantswarm.io/description'
-      key: 'Description'
-      variant: 'blue'
+      key: 'Cluster description'
   friendlyLabels:
     - selector: 'giantswarm.io/service-priority'
       key: 'Service priority'

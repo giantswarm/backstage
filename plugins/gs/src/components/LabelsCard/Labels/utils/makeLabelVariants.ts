@@ -1,7 +1,7 @@
 import { colord } from 'colord';
 import { getColor } from './palette';
 
-const availableVariants = [
+export const availableVariants = [
   'gray',
   'red',
   'orange',

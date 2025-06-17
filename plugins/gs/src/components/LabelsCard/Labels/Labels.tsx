@@ -6,25 +6,36 @@ import {
   isValidLabelVariant,
 } from './utils/makeLabelVariants';
 import { LabelConfig } from './utils/types';
+import classNames from 'classnames';
 
 const palette = makeLabelVariants();
 
-const useStyles = makeStyles<Theme, { variant: LabelVariant }>(theme => {
-  const currentPalette = palette[theme.palette.type];
+const useLabelStyles = makeStyles<Theme, { variant: LabelVariant }>(theme => {
+  const colors = palette[theme.palette.type];
 
   return {
-    label: {
+    root: {
       display: 'inline-flex',
+      border: '1px solid transparent',
+    },
+    rootKindLabel: {
+      borderColor: props => colors[props.variant].borderColor,
       borderRadius: theme.shape.borderRadius,
-      border: props => `1px solid ${currentPalette[props.variant].borderColor}`,
       overflow: 'hidden',
     },
-    labelKey: {
-      backgroundColor: props =>
-        currentPalette[props.variant].keyBackgroundColor,
+    rootKindAnnotation: {},
+    key: {
       padding: theme.spacing(1),
+      '$rootKindLabel &': {
+        backgroundColor: props => colors[props.variant].keyBackgroundColor,
+      },
+      '$rootKindAnnotation &': {
+        minWidth: '250px',
+        maxWidth: '250px',
+        wordBreak: 'break-word',
+      },
     },
-    labelValue: {
+    value: {
       padding: theme.spacing(1),
     },
   };
@@ -34,25 +45,37 @@ type LabelProps = {
   labelKey: string;
   labelValue?: string;
   labelVariant?: LabelVariant;
+  labelKind?: 'label' | 'annotation';
 };
 
-const Label = ({ labelKey, labelValue, labelVariant }: LabelProps) => {
+const Label = ({
+  labelKey,
+  labelValue,
+  labelVariant,
+  labelKind = 'label',
+}: LabelProps) => {
   const variant =
     labelVariant && isValidLabelVariant(labelVariant)
       ? labelVariant
       : getDefaultLabelVariant();
 
-  const classes = useStyles({ variant });
+  const classes = useLabelStyles({ variant });
 
   return (
-    <Box className={classes.label} alignItems="baseline">
-      <Box className={classes.labelKey}>
+    <Box
+      className={classNames(classes.root, {
+        [classes.rootKindLabel]: labelKind === 'label',
+        [classes.rootKindAnnotation]: labelKind === 'annotation',
+      })}
+      alignItems="baseline"
+    >
+      <Box className={classes.key}>
         <Typography variant="subtitle2" component="p">
           {labelKey}
         </Typography>
       </Box>
       {labelValue ? (
-        <Box className={classes.labelValue}>
+        <Box className={classes.value}>
           <Typography variant="body2">{labelValue}</Typography>
         </Box>
       ) : null}
@@ -65,6 +88,7 @@ type LabelsProps = {
   labelsConfig: LabelConfig[];
   wrapItems?: boolean;
   displayFriendlyItems?: boolean;
+  labelKind?: 'label' | 'annotation';
 };
 
 export const Labels = ({
@@ -72,6 +96,7 @@ export const Labels = ({
   labelsConfig,
   wrapItems = true,
   displayFriendlyItems = true,
+  labelKind = 'label',
 }: LabelsProps) => {
   const labelsWithDisplayInfo = useLabelsWithDisplayInfo(
     labels,
@@ -97,6 +122,7 @@ export const Labels = ({
               displayFriendlyItems ? label.formattedValue : label.value
             }
             labelVariant={label.variant}
+            labelKind={labelKind}
           />
         </Grid>
       ))}

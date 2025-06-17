@@ -64,7 +64,6 @@ export interface Config {
       valueMap?: {
         [v: string]: string;
       };
-      variant?: string;
     }[];
 
     /** @deepVisibility frontend */

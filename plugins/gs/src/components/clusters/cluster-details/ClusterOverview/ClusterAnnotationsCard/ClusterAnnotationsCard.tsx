@@ -20,6 +20,7 @@ export function ClusterAnnotationsCard() {
     <LabelsCard
       labels={annotations}
       labelsConfig={annotationsConfig}
+      labelKind="annotation"
       title="Annotations"
       wrapItems={false}
       friendlyItemsControlLabel="Friendly annotations"

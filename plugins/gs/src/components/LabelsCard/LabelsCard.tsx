@@ -10,6 +10,7 @@ type LabelsCardProps = {
   title?: string;
   wrapItems?: boolean;
   friendlyItemsControlLabel?: string;
+  labelKind?: 'label' | 'annotation';
 };
 
 export const LabelsCard = ({
@@ -18,6 +19,7 @@ export const LabelsCard = ({
   title = 'Labels',
   wrapItems = true,
   friendlyItemsControlLabel = 'Friendly labels',
+  labelKind = 'label',
 }: LabelsCardProps) => {
   const [displayFriendlyItems, setDisplayFriendlyItems] = useState(true);
 
@@ -47,6 +49,7 @@ export const LabelsCard = ({
         labelsConfig={labelsConfig}
         wrapItems={wrapItems}
         displayFriendlyItems={displayFriendlyItems}
+        labelKind={labelKind}
       />
     </InfoCard>
   );
