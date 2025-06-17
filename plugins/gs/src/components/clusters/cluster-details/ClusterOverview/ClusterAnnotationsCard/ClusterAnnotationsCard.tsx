@@ -1,4 +1,3 @@
-import { Typography } from '@material-ui/core';
 import { getClusterAnnotations } from '@giantswarm/backstage-plugin-gs-common';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { LabelsCard } from '../../../../LabelsCard';
@@ -9,12 +8,6 @@ export function ClusterAnnotationsCard() {
   const annotations = getClusterAnnotations(cluster);
   const annotationsConfig =
     useFriendlyItemsConfiguration('gs.friendlyAnnotations') ?? [];
-
-  if (!annotations) {
-    return (
-      <Typography variant="body2">This cluster has no annotations.</Typography>
-    );
-  }
 
   return (
     <LabelsCard

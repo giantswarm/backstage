@@ -104,10 +104,11 @@ export const Labels = ({
     labelsConfig,
   );
 
-  if (labelsWithDisplayInfo.length === 0) {
+  if (displayFriendlyItems && labelsWithDisplayInfo.length === 0) {
     return (
       <Typography variant="body2">
-        No items match provided configuration.
+        No {labelKind === 'label' ? 'labels' : 'annotations'} match the friendly{' '}
+        {labelKind === 'label' ? 'labels' : 'annotations'} configured.
       </Typography>
     );
   }
