@@ -77,10 +77,10 @@ export const ClusterOverview = () => {
       </Grid>
       <Grid item xs={12}>
         <Grid item container spacing={3}>
-          <Grid item xs={6}>
+          <Grid item md={6} xs={12}>
             <ClusterLabelsCard />
           </Grid>
-          <Grid item xs={6}>
+          <Grid item md={6} xs={12}>
             <ClusterAnnotationsCard />
           </Grid>
         </Grid>
