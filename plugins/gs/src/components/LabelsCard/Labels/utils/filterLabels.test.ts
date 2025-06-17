@@ -11,8 +11,8 @@ describe('filterLabels', () => {
   ];
 
   const labelsConfig: LabelConfig[] = [
-    { label: 'env:prod' },
-    { label: 'team:giantswarm' },
+    { selector: 'env:prod' },
+    { selector: 'team:giantswarm' },
   ];
 
   it('returns an empty array if no labels are provided', () => {
@@ -28,8 +28,8 @@ describe('filterLabels', () => {
   describe('filters labels to only configured ones', () => {
     it('by exact key:value combination', () => {
       const config: LabelConfig[] = [
-        { label: 'env:prod' },
-        { label: 'team:giantswarm' },
+        { selector: 'env:prod' },
+        { selector: 'team:giantswarm' },
       ];
       const result = filterLabels(labels, config);
       expect(result).toEqual([
@@ -39,7 +39,7 @@ describe('filterLabels', () => {
     });
 
     it('by key pattern (wildcard)', () => {
-      const config: LabelConfig[] = [{ label: 'giantswarm.io/*' }];
+      const config: LabelConfig[] = [{ selector: 'giantswarm.io/*' }];
       const result = filterLabels(labels, config);
       expect(result).toEqual([
         { key: 'giantswarm.io/owner', value: 'alice' },
@@ -49,8 +49,8 @@ describe('filterLabels', () => {
 
     it('by both exact key:value and key pattern', () => {
       const config: LabelConfig[] = [
-        { label: 'env:prod' },
-        { label: 'giantswarm.io/*' },
+        { selector: 'env:prod' },
+        { selector: 'giantswarm.io/*' },
       ];
       const result = filterLabels(labels, config);
       expect(result).toEqual([

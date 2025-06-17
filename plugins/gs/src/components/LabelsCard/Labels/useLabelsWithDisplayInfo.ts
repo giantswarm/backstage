@@ -1,32 +1,24 @@
 import { useMemo } from 'react';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
-import {
-  addDisplayInfo,
-  filterLabels,
-  getLabelsConfig,
-  sortLabels,
-} from './utils';
-import { LabelWithDisplayInfo } from './utils/types';
+import { addDisplayInfo, filterLabels, sortLabels } from './utils';
+import { LabelConfig, LabelWithDisplayInfo } from './utils/types';
 
 export function useLabelsWithDisplayInfo(
   labelsMap: Record<string, string>,
-  displayRawLabels: boolean = false,
+  displayFriendlyItems: boolean = true,
+  labelsConfig: LabelConfig[],
 ): LabelWithDisplayInfo[] {
-  const configApi = useApi(configApiRef);
-
   return useMemo(() => {
     let labels = Object.entries(labelsMap).map(([key, value]) => ({
       key,
       value,
     }));
-    if (displayRawLabels) {
+    if (!displayFriendlyItems) {
       return addDisplayInfo(labels, []);
     }
 
-    const labelsConfig = getLabelsConfig(configApi);
     labels = filterLabels(labels, labelsConfig);
     labels = sortLabels(labels, labelsConfig);
 
     return addDisplayInfo(labels, labelsConfig);
-  }, [configApi, displayRawLabels, labelsMap]);
+  }, [displayFriendlyItems, labelsConfig, labelsMap]);
 }

@@ -12,7 +12,7 @@ export type LabelWithDisplayInfo = Label & {
 };
 
 export type LabelConfig = {
-  label: string;
+  selector: string;
   key?: string;
   valueMap?: Record<string, string>;
   variant?: LabelVariant;

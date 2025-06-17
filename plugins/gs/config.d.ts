@@ -58,8 +58,17 @@ export interface Config {
     };
 
     /** @deepVisibility frontend */
+    friendlyAnnotations?: {
+      selector: string;
+      key?: string;
+      valueMap?: {
+        [v: string]: string;
+      };
+    }[];
+
+    /** @deepVisibility frontend */
     friendlyLabels?: {
-      label: string;
+      selector: string;
       key?: string;
       valueMap?: {
         [v: string]: string;

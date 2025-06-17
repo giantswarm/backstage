@@ -4,7 +4,7 @@ import { Label, LabelConfig } from './types';
 describe('addDisplayInfo', () => {
   it('should set formattedKey from config.key', () => {
     const labels: Label[] = [{ key: 'env', value: 'prod' }];
-    const config: LabelConfig[] = [{ label: 'env', key: 'Environment' }];
+    const config: LabelConfig[] = [{ selector: 'env', key: 'Environment' }];
     const result = addDisplayInfo(labels, config);
     expect(result[0].formattedKey).toBe('Environment');
   });
@@ -13,7 +13,7 @@ describe('addDisplayInfo', () => {
     const labels: Label[] = [{ key: 'priority', value: '1' }];
     const config: LabelConfig[] = [
       {
-        label: 'priority',
+        selector: 'priority',
         valueMap: { '2': 'High', '1': 'Medium', '0': 'Low' },
       },
     ];
@@ -25,7 +25,7 @@ describe('addDisplayInfo', () => {
     const labels: Label[] = [{ key: 'priority', value: '3' }];
     const config: LabelConfig[] = [
       {
-        label: 'priority',
+        selector: 'priority',
         valueMap: { '2': 'High', '1': 'Medium', '0': 'Low' },
       },
     ];
@@ -37,7 +37,7 @@ describe('addDisplayInfo', () => {
     const labels: Label[] = [{ key: 'priority', value: '1' }];
     const config: LabelConfig[] = [
       {
-        label: 'priority',
+        selector: 'priority',
         variant: 'warning',
       },
     ];
@@ -49,7 +49,7 @@ describe('addDisplayInfo', () => {
     const labels: Label[] = [{ key: 'priority', value: '1' }];
     const config: LabelConfig[] = [
       {
-        label: 'priority',
+        selector: 'priority',
         key: 'Priority',
         valueMap: { '2': 'High', '1': 'Medium', '0': 'Low' },
         variant: 'warning',
@@ -67,9 +67,9 @@ describe('addDisplayInfo', () => {
       { key: 'priority', value: '1' },
     ];
     const config: LabelConfig[] = [
-      { label: 'env', key: 'Environment' },
+      { selector: 'env', key: 'Environment' },
       {
-        label: 'priority',
+        selector: 'priority',
         valueMap: { '2': 'High', '1': 'Medium', '0': 'Low' },
       },
     ];
@@ -80,7 +80,7 @@ describe('addDisplayInfo', () => {
 
   it('should use original key and value if no config matches', () => {
     const labels: Label[] = [{ key: 'foo', value: 'bar' }];
-    const config: LabelConfig[] = [{ label: 'other' }];
+    const config: LabelConfig[] = [{ selector: 'other' }];
     const result = addDisplayInfo(labels, config);
     expect(result[0].formattedKey).toBe('foo');
     expect(result[0].formattedValue).toBe('bar');

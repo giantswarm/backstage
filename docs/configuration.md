@@ -176,9 +176,9 @@ The following optional features are available:
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
 
-## Friendly labels
+## Friendly labels and annotations
 
-The `friendlyLabels` configuration allows you to control which Kubernetes resource labels are displayed and how they are formatted in the UI. Only labels matching the configured patterns will be shown. If no configuration is provided, the following default is used:
+The `friendlyLabels` and `friendlyAnnotations` configuration allows you to control which Kubernetes resource labels/annotations are displayed and how they are formatted in the UI. Only items matching the configured patterns will be shown. If no configuration is provided, the following default is used for labels:
 
 ```yaml
 friendlyLabels:
@@ -190,19 +190,24 @@ friendlyLabels:
       lowest: 'Lowest'
 ```
 
+For annotations, there is no default configuration.
+
 ### Configuration options
 
-Each entry in `friendlyLabels` supports the following properties:
+Each entry in `friendlyLabels` or `friendlyAnnotations` supports the following properties:
 
-- **label** (string, required):
-  - Used to match labels on resources. Can be:
+- **selector** (string, required):
+  - Used to match labels/annotations on resources. Can be:
     - An exact key (e.g. `giantswarm.io/service-priority`)
     - A key-value pair (e.g. `giantswarm.io/service-priority:highest`)
-    - A pattern (e.g. `giantswarm.io*`) to match multiple labels by key prefix.
+    - A pattern (e.g. `giantswarm.io*`) to match multiple labels/annotations by key prefix.
 - **key** (string, optional):
-  - Overrides how the label key is displayed in the UI for matching labels. If set, replaces the original key.
+  - Overrides how the label/annotation key is displayed in the UI for matching items. If set, replaces the original key.
 - **valueMap** (object, optional):
-  - Maps label values to display values. If a label's value matches a key in this map, it will be replaced with the mapped value. If not, the original value is shown.
+  - Maps label/annotation values to display values. If an item's value matches a key in this map, it will be replaced with the mapped value. If not, the original value is shown.
+
+Properties applicable only for `friendlyLabels` configuration:
+
 - **variant** (string, optional):
   - Applies additional visual styles to the label. Available variants are:
     `gray`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`, `brown`.
@@ -210,32 +215,35 @@ Each entry in `friendlyLabels` supports the following properties:
 
 **Note:**
 
-- The order of entries in `friendlyLabels` is important. Labels are matched and displayed in the order they appear in the configuration.
-- Only labels matching a configured entry will be shown.
+- The order of entries in `friendlyLabels` or `friendlyAnnotations` is important. Items are matched and displayed in the order they appear in the configuration.
+- Only labels/annotations matching a configured entry will be shown.
 
 #### Example configuration
 
 ```yaml
 gs:
+  friendlyAnnotations:
+    - selector: 'cluster.giantswarm.io/description'
+      key: 'Cluster description'
   friendlyLabels:
-    - label: 'giantswarm.io/service-priority'
+    - selector: 'giantswarm.io/service-priority'
       key: 'Service priority'
       valueMap:
         highest: 'Highest'
         medium: 'Medium'
         lowest: 'Lowest'
-    - label: 'environment'
+    - selector: 'environment'
       key: 'Environment'
       valueMap:
         prod: 'Production'
         dev: 'Development'
       variant: 'green'
-    - label: 'giantswarm.io*'
+    - selector: 'giantswarm.io*'
       variant: 'blue'
 ```
 
 This configuration will:
 
-- Show only the specified labels.
+- Show only the specified labels and annotations.
 - Display custom keys and values where configured.
 - Apply visual variants for additional styling.
