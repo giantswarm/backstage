@@ -1,17 +1,12 @@
 import { Grid, Typography } from '@material-ui/core';
-import { AppDetails } from '../../deployments/AppDetails';
+import { App } from '@giantswarm/backstage-plugin-gs-common';
+import { AppStatus } from '../../deployments/deployment-details/DeploymentOverview/DeploymentStatusCard/AppStatus';
 
 type ClusterAppStatusProps = {
-  installationName: string;
-  name: string;
-  namespace: string;
+  app: App;
 };
 
-export const ClusterAppStatus = ({
-  installationName,
-  name,
-  namespace,
-}: ClusterAppStatusProps) => {
+export const ClusterAppStatus = ({ app }: ClusterAppStatusProps) => {
   return (
     <Grid container spacing={3} alignItems="stretch">
       <Grid item md={6} xs={12}>
@@ -21,18 +16,14 @@ export const ClusterAppStatus = ({
               Cluster creation is in progress.
             </Typography>
             <Typography variant="subtitle1">
-              Below are details about the cluster App resource.
+              Below are details about the cluster App resource status.
             </Typography>
             <Typography variant="subtitle1">
               Reload the page to see the latest status.
             </Typography>
           </Grid>
           <Grid item xs={12}>
-            <AppDetails
-              installationName={installationName}
-              name={name}
-              namespace={namespace}
-            />
+            <AppStatus app={app} />
           </Grid>
         </Grid>
       </Grid>

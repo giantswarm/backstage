@@ -1,0 +1,1 @@
+export { DeploymentAnnotationsCard } from './DeploymentAnnotationsCard';

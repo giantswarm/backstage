@@ -1,7 +1,7 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 
 const typedUrl = (
-  baseUrl: string,
+  baseDomain: string,
   dashboard: string,
   clusterName: string,
   namespace: string,
@@ -15,7 +15,7 @@ const typedUrl = (
 
   const searchParams = new URLSearchParams(queryStringData);
 
-  return `${baseUrl.replace(/\/$/, '')}${dashboard}?${searchParams.toString()}`;
+  return `https://grafana.${baseDomain}${dashboard}?${searchParams.toString()}`;
 };
 
 export const useGrafanaDashboardLink = (
@@ -26,13 +26,19 @@ export const useGrafanaDashboardLink = (
   applicationName: string,
 ): string | undefined => {
   const config = useApi(configApiRef);
-  const baseUrl = config.getOptionalString(
-    `gs.installations.${installationName}.grafanaUrl`,
+  const baseDomain = config.getOptionalString(
+    `gs.installations.${installationName}.baseDomain`,
   );
 
-  if (!baseUrl) {
+  if (!baseDomain) {
     return undefined;
   }
 
-  return typedUrl(baseUrl, dashboard, clusterName, namespace, applicationName);
+  return typedUrl(
+    baseDomain,
+    dashboard,
+    clusterName,
+    namespace,
+    applicationName,
+  );
 };

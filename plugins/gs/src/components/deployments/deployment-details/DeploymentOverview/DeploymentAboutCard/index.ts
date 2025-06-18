@@ -1,0 +1,1 @@
+export { DeploymentAboutCard } from './DeploymentAboutCard';

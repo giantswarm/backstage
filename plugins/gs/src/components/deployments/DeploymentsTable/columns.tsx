@@ -2,7 +2,6 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
-import { DEPLOYMENT_DETAILS_PANE_ID, useDetailsPane } from '../../hooks';
 import {
   semverCompareSort,
   sortAndFilterOptions,
@@ -10,12 +9,16 @@ import {
 import { DateComponent, NotAvailable, Version } from '../../UI';
 import { Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
-import { clusterDetailsRouteRef } from '../../../routes';
+import {
+  clusterDetailsRouteRef,
+  deploymentDetailsRouteRef,
+} from '../../../routes';
 import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
 import { isTableColumnHidden } from '../../utils/isTableColumnHidden';
+import { formatDeploymentType } from '../utils';
 
 export const DeploymentColumns = {
   name: 'name',
@@ -34,7 +37,6 @@ export const DeploymentColumns = {
 export const getInitialColumns = ({
   visibleColumns,
   context = 'deployments-page',
-  baseRouteRef,
   grafanaDashboard,
   ingressHost,
   sourceLocation,
@@ -54,18 +56,17 @@ export const getInitialColumns = ({
       defaultSort: 'asc',
       render: row => {
         const LinkWrapper = () => {
-          const { getRoute } = useDetailsPane(DEPLOYMENT_DETAILS_PANE_ID);
-          const baseRoute = useRouteRef(baseRouteRef);
-          const to = getRoute(baseRoute(), {
-            installationName: row.installationName,
-            apiVersion: row.apiVersion,
-            kind: row.kind,
-            namespace: row.namespace,
-            name: row.name,
-          });
-
+          const routeLink = useRouteRef(deploymentDetailsRouteRef);
           return (
-            <Link component={RouterLink} to={to}>
+            <Link
+              component={RouterLink}
+              to={routeLink({
+                installationName: row.installationName,
+                kind: row.kind,
+                namespace: row.namespace ?? 'default',
+                name: row.name,
+              })}
+            >
               <Typography variant="inherit" noWrap>
                 {row.name}
               </Typography>
@@ -141,7 +142,7 @@ export const getInitialColumns = ({
       title: 'Type',
       field: DeploymentColumns.kind,
       render: row => {
-        const label = row.kind === 'app' ? 'App' : 'HelmRelease';
+        const label = formatDeploymentType(row.kind);
 
         return (
           <Typography variant="inherit" noWrap>

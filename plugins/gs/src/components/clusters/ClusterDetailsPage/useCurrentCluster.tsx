@@ -23,7 +23,7 @@ export interface AsyncClusterProviderProps {
 }
 
 /**
- * Provides a loaded cluster to be picked up by the `useCluster` hook.
+ * Provides a loaded cluster to be picked up by the `useCurrentCluster` hook.
  *
  * @public
  */
@@ -49,6 +49,7 @@ export const AsyncClusterProvider = ({
 export function useCurrentCluster(): {
   installationName: string;
   cluster: Cluster;
+  clusterApp: App;
 } {
   const value = useContext(ClusterContext);
 
@@ -56,13 +57,17 @@ export function useCurrentCluster(): {
     throw new Error('ClusterContext not available');
   }
 
-  if (!value.cluster) {
+  if (!value.cluster || !value.clusterApp) {
     throw new Error(
-      'useCluster hook is being called outside of an ClusterLayout where the cluster has not been loaded. If this is intentional, please use useAsyncCluster instead.',
+      'useCurrentCluster hook is being called outside of an ClusterLayout where the cluster has not been loaded. If this is intentional, please use useAsyncCluster instead.',
     );
   }
 
-  return { installationName: value.installationName, cluster: value.cluster };
+  return {
+    installationName: value.installationName,
+    cluster: value.cluster,
+    clusterApp: value.clusterApp,
+  };
 }
 
 /**

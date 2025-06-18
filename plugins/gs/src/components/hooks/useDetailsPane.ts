@@ -8,7 +8,6 @@ type DetailsPaneParams = {
   name: string;
 };
 
-export const DEPLOYMENT_DETAILS_PANE_ID = 'deploymentDetails';
 export const KRATIX_RESOURCE_REQUEST_DETAILS_PANE_ID =
   'kratixResourceRequestDetails';
 

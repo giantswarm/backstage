@@ -1,0 +1,1 @@
+export { DeploymentGitOpsCard } from './DeploymentGitOpsCard';

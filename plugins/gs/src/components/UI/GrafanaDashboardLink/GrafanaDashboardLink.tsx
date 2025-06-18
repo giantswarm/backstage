@@ -40,7 +40,7 @@ export const GrafanaDashboardLink = ({
     applicationName,
   );
   if (!linkUrl) {
-    disabledTitle = 'Grafana URL is not configured for this installation.';
+    disabledTitle = 'Base domain is not configured for this installation.';
   }
 
   const el = (

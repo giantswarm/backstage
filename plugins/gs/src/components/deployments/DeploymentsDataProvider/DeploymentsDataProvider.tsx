@@ -75,7 +75,7 @@ export const DeploymentsDataProvider = ({
       persistToURL: deploymentNames ? false : true,
     });
 
-  const catalogEntitiesMap = useCatalogEntitiesForDeployments();
+  const { catalogEntitiesMap } = useCatalogEntitiesForDeployments();
 
   const {
     resources: appResources,

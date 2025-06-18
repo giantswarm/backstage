@@ -1,0 +1,1 @@
+export { DeploymentLabelsCard } from './DeploymentLabelsCard';

@@ -1,1 +1,0 @@
-export { HelmReleaseDetails } from './HelmReleaseDetails';

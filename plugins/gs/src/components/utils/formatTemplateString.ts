@@ -72,11 +72,9 @@ export function formatTemplateString(template: string, options: Options = {}) {
     const placeholder = placeholderMatch[0];
 
     if (CURRENT_USER_PLACEHOLDER_REGEXP.test(placeholder)) {
-      newTemplate = replaceCurrentUserPlaceholder(
-        newTemplate,
-        placeholder,
-        currentUser ?? '',
-      );
+      newTemplate = currentUser
+        ? replaceCurrentUserPlaceholder(newTemplate, placeholder, currentUser)
+        : newTemplate;
     }
 
     if (GENERATE_UID_PLACEHOLDER_REGEXP.test(placeholder)) {
@@ -86,6 +84,10 @@ export function formatTemplateString(template: string, options: Options = {}) {
     if (DATA_VALUE_PLACEHOLDER_REGEXP.test(placeholder)) {
       newTemplate = replaceDataValuePlaceholder(newTemplate, placeholder, data);
     }
+  }
+
+  if (placeholderRegexp.test(newTemplate)) {
+    return null;
   }
 
   return newTemplate;

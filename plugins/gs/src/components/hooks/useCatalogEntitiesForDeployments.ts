@@ -1,36 +1,49 @@
 import { useMemo } from 'react';
-import useAsync from 'react-use/esm/useAsync';
 import { useApi } from '@backstage/core-plugin-api';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
 import { getDeploymentNamesFromEntity } from '../utils/entity';
 import { stringifyEntityRef } from '@backstage/catalog-model';
+import { useQuery } from '@tanstack/react-query';
 
 export function useCatalogEntitiesForDeployments() {
   const catalogApi = useApi(catalogApiRef);
-  const { value: catalogEntities } = useAsync(async () => {
-    const entities = await catalogApi.getEntities({
-      filter: { kind: 'component' },
-    });
 
-    return entities.items;
+  const { data: catalogEntities } = useQuery({
+    queryKey: ['catalog-entities', 'kind', 'component'],
+    queryFn: () =>
+      catalogApi.getEntities({
+        filter: { kind: 'component' },
+      }),
+    select: data => data.items,
   });
 
   return useMemo(() => {
     if (!catalogEntities) {
-      return {};
+      return {
+        catalogEntities: [],
+        catalogEntitiesMap: {},
+      };
     }
 
-    return catalogEntities.reduce((acc: Record<string, string>, entity) => {
-      const entityDeploymentNames = getDeploymentNamesFromEntity(entity);
-      if (!entityDeploymentNames) {
+    const catalogEntitiesMap = catalogEntities.reduce(
+      (acc: Record<string, string>, entity) => {
+        const entityDeploymentNames = getDeploymentNamesFromEntity(entity);
+        if (!entityDeploymentNames) {
+          return acc;
+        }
+
+        entityDeploymentNames.forEach(deploymentName => {
+          acc[deploymentName] = stringifyEntityRef(entity);
+        });
+
         return acc;
-      }
+      },
+      {},
+    );
 
-      entityDeploymentNames.forEach(deploymentName => {
-        acc[deploymentName] = stringifyEntityRef(entity);
-      });
-
-      return acc;
-    }, {});
+    return {
+      catalogEntities,
+      catalogEntitiesMap,
+    };
   }, [catalogEntities]);
 }

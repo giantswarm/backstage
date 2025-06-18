@@ -72,7 +72,7 @@ export const useGitOpsSourceLink = ({
         },
       });
 
-      return new URL(formattedUrl).toString();
+      return formattedUrl ? new URL(formattedUrl).toString() : undefined;
     }
   }
 
