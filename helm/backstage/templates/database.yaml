@@ -65,4 +65,13 @@ spec:
   instances: 2
   storage:
     size: {{ .Values.database.postgresql.storageSize }}
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+      ephemeral-storage: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+      ephemeral-storage: 2Gi
 {{- end }}
