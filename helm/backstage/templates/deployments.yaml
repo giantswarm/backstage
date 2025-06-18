@@ -18,6 +18,7 @@ spec:
       labels:
         app: {{ .Values.name }}
         component: backstage
+        app.kubernetes.io/instance: {{ .Chart.Name }}
         {{- include "labels.backstage" $ | nindent 8 }}
     spec:
       affinity:
@@ -83,8 +84,30 @@ spec:
                 name: {{ . }}
             {{- end }}
           env:
-          - name: VERSION
-            value: "{{ .Chart.AppVersion }}"
+            - name: VERSION
+              value: "{{ .Chart.AppVersion }}"
+            {{- if eq .Values.database.engine "postgresql" }}
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-app
+                  key: host
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-app
+                  key: port
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-app
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-app
+                  key: password
+            {{- end }}
           {{- if .Values.backstage.extraEnvVars }}
           {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 10 }}
           {{- end }}
@@ -114,6 +137,11 @@ spec:
             - name: backstage-shared-config
               mountPath: "/app/shared-config.yaml"
               subPath: shared-config.yaml
+            {{- end }}
+            {{- if eq .Values.database.engine "postgresql" }}
+            - name: database-server-ca
+              mountPath: /app/database-ca-certificate/ca.crt
+              subPath: ca.crt
             {{- end }}
             {{- if .Values.pluginKeys }}
             {{- range .Values.pluginKeys }}
@@ -167,6 +195,11 @@ spec:
         - name: backstage-shared-config
           configMap:
             name: {{ .Values.name }}-shared-config-configmap
+        {{- end }}
+        {{- if eq .Values.database.engine "postgresql" }}
+        - name: database-server-ca
+          secret:
+            secretName: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-ca
         {{- end }}
         {{- if .Values.pluginKeys }}
         {{- range .Values.pluginKeys }}

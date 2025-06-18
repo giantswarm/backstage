@@ -56,3 +56,9 @@ resources:
   limits:
     cpu: 500m
     memory: 600M
+database:
+  engine: postgresql
+  postgresql:
+    clusterNameSuffix: cnpg
+    image: postgresql:15
+    storageSize: 10Gi

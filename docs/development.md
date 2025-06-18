@@ -53,6 +53,20 @@ This is the recommended way if you want to get started simply, but it may not pr
 4. A **local configuration file** named `/app-config.local.yaml`. Please copy
    `/app-config.local.yaml.example` for that purpose.
 
+### Database
+
+```
+docker run --rm -ti \
+	--name backstage-postgres \
+	-e POSTGRES_USER=backstage \
+	-e POSTGRES_DB=backstage \
+	-e POSTGRES_PASSWORD=secret-password \
+	-e PGDATA=/var/lib/postgresql/data/pgdata \
+	-v $PWD/volumes/postgres-data:/var/lib/postgresql/data \
+  -p 5432:5432 \
+	postgres:17.5
+```
+
 ## Running the app locally
 
 ### Loading `.env`
