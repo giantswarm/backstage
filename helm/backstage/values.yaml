@@ -102,9 +102,9 @@ database:
 
     # -- Size of the database volume
     # @schema
-    # default: 20Gi
+    # default: 5Gi
     # @schema
-    storageSize: 20Gi
+    storageSize: 5Gi
 
     # -- PostgreSQL container image to use (.registry.domain will be prepended)
     image: giantswarm/postgresql-cnpg:17.5@sha256:a584c18aa3d292b5bec7d0bce76b26edcd0a53555adbf607d14b145191a7b7fd
