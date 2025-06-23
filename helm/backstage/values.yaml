@@ -20,11 +20,11 @@ resources:
   verticalPodAutoscaler:
     enabled: true
   requests:
-    cpu: 30m
-    memory: 300M
+    cpu: 20m
+    memory: 250Mi
   limits:
     cpu: 500m
-    memory: 600M
+    memory: 600Mi
 
 authSessionSecret: ''
 
@@ -83,6 +83,31 @@ sharedConfig: {}
 # Can be used to assign pods to the node pool. E.g. - giantswarm.io/machine-deployment: a1b2c
 # Docs - https://docs.giantswarm.io/advanced/node-pools/#assigning-workloads
 nodeSelector: {}
+
+database:
+  # -- Database engine
+  # @schema
+  # default: sqlite
+  # enum: [sqlite,postgresql]
+  # @schema
+  engine: sqlite
+
+  # -- Settings for engine = "postgresql"
+  postgresql:
+    # -- PostgreSQL cluster name suffix
+    # @schema
+    # default: cnpg
+    # @schema
+    clusterNameSuffix: cnpg
+
+    # -- Size of the database volume
+    # @schema
+    # default: 5Gi
+    # @schema
+    storageSize: 5Gi
+
+    # -- PostgreSQL container image to use (.registry.domain will be prepended)
+    image: giantswarm/postgresql-cnpg:17.5@sha256:a584c18aa3d292b5bec7d0bce76b26edcd0a53555adbf607d14b145191a7b7fd
 
 # Upstream Backstage chart configuration
 # https://github.com/backstage/charts/blob/main/charts/backstage/values.yaml
