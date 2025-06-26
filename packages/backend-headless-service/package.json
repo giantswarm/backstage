@@ -25,7 +25,7 @@
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.10.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.9.0",
     "@internal/backend-common": "workspace:^",
-    "better-sqlite3": "^11.0.0",
+    "better-sqlite3": "^12.0.0",
     "express": "^4.17.1",
     "express-promise-router": "^4.1.0",
     "global-agent": "^3.0.0",
