@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-scaffolder-backend-module-gs
 
+## 0.10.0
+
+### Minor Changes
+
+- 2294710: Updated Backstage to v1.40.1.
+
 ## 0.9.0
 
 ### Minor Changes

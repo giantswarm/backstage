@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-techdocs-backend-module-gs
 
+## 0.9.0
+
+### Minor Changes
+
+- 2294710: Updated Backstage to v1.40.1.
+
 ## 0.8.0
 
 ### Minor Changes

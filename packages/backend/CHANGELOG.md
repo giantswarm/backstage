@@ -1,5 +1,19 @@
 # backend
 
+## 0.11.0
+
+### Minor Changes
+
+- 2294710: Updated Backstage to v1.40.1.
+
+### Patch Changes
+
+- Updated dependencies [2294710]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.11.0
+  - @internal/backend-common@0.3.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.10.0
+  - @giantswarm/backstage-plugin-techdocs-backend-module-gs@0.9.0
+
 ## 0.10.0
 
 ### Minor Changes

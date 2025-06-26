@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.18.0
+
+### Minor Changes
+
+- 2294710: Updated Backstage to v1.40.1.
+
 ## 0.17.0
 
 ### Minor Changes
