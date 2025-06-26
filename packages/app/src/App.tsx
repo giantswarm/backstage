@@ -111,9 +111,6 @@ const routes = (
     <Route path="/" element={<HomepageCompositionRoot />}>
       <HomePage />
     </Route>
-    <Route path="/catalog" element={<CatalogIndexPage />}>
-      <GSCustomCatalogPage />
-    </Route>
     <Route
       path="/installations"
       element={
@@ -123,6 +120,9 @@ const routes = (
       }
     >
       <GSInstallationsPage />
+    </Route>
+    <Route path="/catalog" element={<CatalogIndexPage />}>
+      <GSCustomCatalogPage />
     </Route>
     <Route
       path="/catalog/:namespace/:kind/:name"
