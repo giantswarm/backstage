@@ -50,6 +50,40 @@ The icon parameter can be:
 - A custom icon name from the list of [supported icons](https://github.com/giantswarm/backstage/blob/main/plugins/gs/src/assets/icons/CustomIcons.tsx]), e.g. `BackstageIcon`.
 - A [Material UI](https://v4.mui.com/components/material-icons/#material-icons) icon name, e.g. `GitHub`.
 
+## Deployment details page resources
+
+The deployment details page allows you to configure resource links.
+
+### Configuration example
+
+Below is an example configuration for the links on the deployment details page:
+
+```yaml
+gs:
+  deploymentDetails:
+    resources:
+      - label: 'Grafana \n dashboard'
+        icon: 'GrafanaIcon'
+        url: 'https://grafana.${{BASE_DOMAIN}}/d/abcdefghijklmn/web-application-vitals?var-cluster=${{APP_CLUSTER_NAME}}&var-namespace=${{APP_NAMESPACE}}&var-application=${{APP_NAME}}'
+```
+
+### URL Templating
+
+The `url` parameter supports templating with the following placeholders:
+
+- `APP_CLUSTER_NAME` - name of the deployment target cluster.
+- `APP_NAME` - name of the deployment.
+- `APP_NAMESPACE` - namespace of the deployment.
+- `BASE_DOMAIN` - base domain of the management cluster.
+- `MC_NAME` - name of the management cluster.
+
+### Icon Configuration
+
+The icon parameter can be:
+
+- A custom icon name from the list of [supported icons](https://github.com/giantswarm/backstage/blob/main/plugins/gs/src/assets/icons/CustomIcons.tsx]), e.g. `BackstageIcon`.
+- A [Material UI](https://v4.mui.com/components/material-icons/#material-icons) icon name, e.g. `GitHub`.
+
 ## GitOps repositories
 
 The plugin allows you to format links to your GitOps sources. A link is being formatted based on a template string provided via configuration:

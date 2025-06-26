@@ -22,6 +22,12 @@ export const deploymentsRouteRef = createRouteRef({
   id: 'gs-deployments',
 });
 
+export const deploymentDetailsRouteRef = createSubRouteRef({
+  id: 'gs-deployments/deployment-details',
+  path: '/:installationName/:kind/:namespace/:name/*',
+  parent: deploymentsRouteRef,
+});
+
 export const entityDeploymentsRouteRef = createRouteRef({
   id: 'gs-entity-deployments',
 });

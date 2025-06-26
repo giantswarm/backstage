@@ -4,87 +4,43 @@ import { ClusterAccessCard } from './ClusterAccessCard';
 import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 import { ClusterLabelsCard } from './ClusterLabelsCard';
 import { ClusterToolsCard } from './ClusterToolsCard';
-import { useResource } from '../../../hooks';
-import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
-import {
-  App,
-  AppKind,
-  getClusterName,
-  getClusterNamespace,
-  hasClusterAppLabel,
-  isAppManagedByFlux,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { GitOpsCard } from '../../../GitOpsCard';
-import { useShowErrors } from '../../../Errors/useErrors';
 import { ClusterAnnotationsCard } from './ClusterAnnotationsCard';
+import { ClusterGitOpsCard } from './ClusterGitOpsCard';
+import { GridItem } from '../../../UI';
 
-export const ClusterOverview = () => {
-  const { cluster, installationName } = useCurrentCluster();
-  const hasClusterApp = hasClusterAppLabel(cluster);
-  const clusterAppName = getClusterName(cluster);
-  const clusterAppNamespace = getClusterNamespace(cluster);
-  const {
-    data: clusterApp,
-    errors: clusterAppErrors,
-    queryErrorMessage: clusterAppQueryErrorMessage,
-  } = useResource<App>(
-    {
-      kind: AppKind,
-      installationName,
-      name: clusterAppName!,
-      namespace: clusterAppNamespace,
-    },
-    {
-      enabled: hasClusterApp,
-    },
-  );
+export const ClusterOverview = () => (
+  <Grid container spacing={3} alignItems="stretch">
+    {/* Left column section */}
+    <GridItem md={6} xs={12}>
+      <GridItem container spacing={3}>
+        <GridItem xs={12}>
+          <ClusterAboutCard />
+        </GridItem>
+        <GridItem xs={12}>
+          <ClusterPolicyComplianceCard />
+        </GridItem>
+        <GridItem xs={12}>
+          <ClusterLabelsCard />
+        </GridItem>
+        <GridItem xs={12}>
+          <ClusterAnnotationsCard />
+        </GridItem>
+      </GridItem>
+    </GridItem>
 
-  useShowErrors(clusterAppErrors, {
-    message: clusterAppQueryErrorMessage,
-  });
-
-  const isGitOpsManaged = clusterApp && isAppManagedByFlux(clusterApp);
-
-  return (
-    <Grid container spacing={3} alignItems="stretch">
-      <Grid item md={6} xs={12}>
-        <Grid item container spacing={3}>
-          <Grid item xs={12}>
-            <ClusterAboutCard />
-          </Grid>
-          <Grid item xs={12}>
-            <ClusterPolicyComplianceCard />
-          </Grid>
-        </Grid>
-      </Grid>
-      <Grid item md={6} xs={12}>
-        <Grid item container spacing={3}>
-          <Grid item xs={12}>
-            <ClusterToolsCard />
-          </Grid>
-          {isGitOpsManaged && (
-            <Grid item xs={12}>
-              <GitOpsCard
-                deployment={clusterApp}
-                installationName={installationName}
-              />
-            </Grid>
-          )}
-          <Grid item xs={12}>
-            <ClusterAccessCard />
-          </Grid>
-        </Grid>
-      </Grid>
-      <Grid item xs={12}>
-        <Grid item container spacing={3}>
-          <Grid item md={6} xs={12}>
-            <ClusterLabelsCard />
-          </Grid>
-          <Grid item md={6} xs={12}>
-            <ClusterAnnotationsCard />
-          </Grid>
-        </Grid>
-      </Grid>
-    </Grid>
-  );
-};
+    {/* Right column section */}
+    <GridItem md={6} xs={12}>
+      <GridItem container spacing={3}>
+        <GridItem xs={12}>
+          <ClusterToolsCard />
+        </GridItem>
+        <GridItem xs={12}>
+          <ClusterGitOpsCard />
+        </GridItem>
+        <GridItem xs={12}>
+          <ClusterAccessCard />
+        </GridItem>
+      </GridItem>
+    </GridItem>
+  </Grid>
+);

@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@material-ui/core';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { Toolkit } from '../../../../UI';
+import { type Tool, Toolkit } from '../../../../UI';
 import { isManagementCluster } from '@giantswarm/backstage-plugin-gs-common';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { formatTemplateString } from '../../../../utils/formatTemplateString';
@@ -70,10 +70,15 @@ export function ClusterToolsCard() {
     icon: link.icon,
   }));
 
+  const filteredTools = tools.filter(tool => Boolean(tool.url)) as Tool[];
+  if (filteredTools.length === 0) {
+    return null;
+  }
+
   return (
     <Card>
       <CardContent>
-        <Toolkit tools={tools} />
+        <Toolkit tools={filteredTools} />
       </CardContent>
     </Card>
   );

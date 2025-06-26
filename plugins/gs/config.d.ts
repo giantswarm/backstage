@@ -18,6 +18,15 @@ export interface Config {
     };
 
     /** @deepVisibility frontend */
+    deploymentDetails?: {
+      resources?: {
+        label: string;
+        icon: string;
+        url: string;
+      }[];
+    };
+
+    /** @deepVisibility frontend */
     gitopsRepositories?: {
       targetUrl: string;
       gitRepositoryUrlPattern: string;
@@ -40,7 +49,6 @@ export interface Config {
         apiEndpoint: string;
         authProvider: string;
         oidcTokenProvider?: string;
-        grafanaUrl?: string;
         backendUrl?: string;
         baseDomain?: string;
         region?: string;

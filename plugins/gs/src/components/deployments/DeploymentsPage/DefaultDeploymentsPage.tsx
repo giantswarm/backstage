@@ -2,10 +2,6 @@ import { Content, Header, Page } from '@backstage/core-components';
 import { ReactNode } from 'react';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
-import { DetailsPane } from '../../UI';
-import { AppDetails } from '../AppDetails';
-import { HelmReleaseDetails } from '../HelmReleaseDetails';
-import { DEPLOYMENT_DETAILS_PANE_ID } from '../../hooks';
 import { deploymentsRouteRef } from '../../../routes';
 import { FiltersLayout } from '../../FiltersLayout';
 import { DefaultFilters } from './DefaultFilters';
@@ -53,32 +49,7 @@ export function DefaultDeploymentsPage(props: DefaultDeploymentsPageProps) {
   return (
     <BaseDeploymentsPage
       filters={filters ?? <DefaultFilters />}
-      content={
-        <>
-          <DeploymentsTable baseRouteRef={deploymentsRouteRef} />
-          <DetailsPane
-            paneId={DEPLOYMENT_DETAILS_PANE_ID}
-            render={({ kind, installationName, name, namespace }) => (
-              <>
-                {kind === 'app' && (
-                  <AppDetails
-                    installationName={installationName}
-                    name={name}
-                    namespace={namespace}
-                  />
-                )}
-                {kind === 'helmrelease' && (
-                  <HelmReleaseDetails
-                    installationName={installationName}
-                    name={name}
-                    namespace={namespace}
-                  />
-                )}
-              </>
-            )}
-          />
-        </>
-      }
+      content={<DeploymentsTable baseRouteRef={deploymentsRouteRef} />}
     />
   );
 }

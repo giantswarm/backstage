@@ -105,11 +105,7 @@ const PageContent = ({
     return (
       <Content>
         {clusterApp ? (
-          <ClusterAppStatus
-            installationName={installationName}
-            name={clusterApp.metadata.name}
-            namespace={clusterApp.metadata.namespace ?? ''}
-          />
+          <ClusterAppStatus app={clusterApp} />
         ) : (
           <Alert severity="error">{error.toString()}</Alert>
         )}
