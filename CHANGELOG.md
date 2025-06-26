@@ -7,6 +7,13 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.80.0] - 2025-06-26
 
+In this release:
+
+- Backstage was updated to v1.40.1.
+- Custom auth connector implementation was cleaned up.
+- Catalog routing issue was fixed.
+- Other dependencies were updated.
+
 See [./docs/releases/v0.80.0-changelog.md](./docs/releases/v0.80.0-changelog.md) for more information.
 
 ## [0.79.0] - 2025-06-26
