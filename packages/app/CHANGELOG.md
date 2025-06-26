@@ -1,5 +1,18 @@
 # app
 
+## 0.17.0
+
+### Minor Changes
+
+- 2294710: Updated Backstage to v1.40.1.
+
+### Patch Changes
+
+- dc8295d: Fixed catalog routing.
+- Updated dependencies [b4f69e9]
+- Updated dependencies [2294710]
+  - @giantswarm/backstage-plugin-gs@0.38.0
+
 ## 0.16.5
 
 ### Patch Changes

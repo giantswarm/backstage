@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.11.0
+
+### Minor Changes
+
+- 2294710: Updated Backstage to v1.40.1.
+
 ## 0.10.2
 
 ### Patch Changes

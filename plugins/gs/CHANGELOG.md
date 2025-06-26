@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.38.0
+
+### Minor Changes
+
+- 2294710: Updated Backstage to v1.40.1.
+
+### Patch Changes
+
+- b4f69e9: Cleaned up custom auth connector implementation.
+- Updated dependencies [2294710]
+  - @giantswarm/backstage-plugin-gs-common@0.18.0
+
 ## 0.37.0
 
 ### Minor Changes
