@@ -28,7 +28,7 @@
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/plugin-auth-backend": "backstage:^",
-    "@backstage/plugin-auth-backend-module-oidc-provider": "^0.4.2",
+    "@backstage/plugin-auth-backend-module-oidc-provider": "backstage:^",
     "@backstage/plugin-auth-node": "backstage:^",
     "express": "^4.21.1",
     "node-fetch": "^3.3.2"
