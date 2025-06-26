@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.37.0
+
+### Minor Changes
+
+- 46ae127: Added deployment details page.
+
+### Patch Changes
+
+- 7307756: Fixed alerts dashboard link.
+
 ## 0.36.0
 
 ### Minor Changes
