@@ -15,7 +15,7 @@ const defaultLinks = [
   {
     label: 'Alerts',
     icon: 'NotificationsNone',
-    url: 'https://grafana.${{BASE_DOMAIN}}/alerting',
+    url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2',
   },
   {
     label: 'Web UI',
