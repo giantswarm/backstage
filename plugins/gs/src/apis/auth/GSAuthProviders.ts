@@ -1,5 +1,8 @@
-import { OAuthApiCreateOptions } from '@backstage/core-app-api';
-import { default as CustomOAuth2 } from './overrides/oauth2/OAuth2';
+import {
+  OAuth2,
+  OAuth2Session,
+  OAuthApiCreateOptions,
+} from '@backstage/core-app-api';
 import {
   ConfigApi,
   DiscoveryApi,
@@ -12,9 +15,9 @@ import {
   gsAuthProvidersApiRef,
 } from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
+import { DefaultAuthConnector } from './DefaultAuthConnector';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
-const CUSTOM_OIDC_PROVIDER_NAME_PREFIX = 'gs-';
 
 /**
  * A client for authenticating towards Giant Swarm Management APIs.
@@ -63,24 +66,18 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       const oidcTokenProvider =
         installationConfig.getOptionalString('oidcTokenProvider');
 
-      if (!oidcTokenProvider) {
+      if (
+        !oidcTokenProvider ||
+        !oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)
+      ) {
         throw new Error(
           `OIDC token provider is not configured for installation "${installationName}".`,
         );
       }
 
-      let providerDisplayName = oidcTokenProvider;
-      if (oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)) {
-        providerDisplayName = oidcTokenProvider.split(
-          OIDC_PROVIDER_NAME_PREFIX,
-        )[1];
-      } else if (
-        oidcTokenProvider.startsWith(CUSTOM_OIDC_PROVIDER_NAME_PREFIX)
-      ) {
-        providerDisplayName = oidcTokenProvider.split(
-          CUSTOM_OIDC_PROVIDER_NAME_PREFIX,
-        )[1];
-      }
+      const providerDisplayName = oidcTokenProvider.split(
+        OIDC_PROVIDER_NAME_PREFIX,
+      )[1];
 
       return {
         providerName: oidcTokenProvider,
@@ -93,18 +90,57 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private createAuthApis() {
     const entries = this.authProviders.map(
       ({ providerName, providerDisplayName }) => {
+        const authConnector = new DefaultAuthConnector({
+          configApi: this.configApi,
+          discoveryApi: this.discoveryApi,
+          oauthRequestApi: this.oauthRequestApi,
+          environment:
+            this.configApi?.getOptionalString('auth.environment') ??
+            'development',
+          provider: {
+            id: providerName,
+            title: providerDisplayName,
+            icon: GiantSwarmIcon,
+          },
+          sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
+            const session: OAuth2Session = {
+              ...res,
+              providerInfo: {
+                idToken: res.providerInfo.idToken,
+                accessToken: res.providerInfo.accessToken,
+                scopes: OAuth2.normalizeScopes(res.providerInfo.scope),
+                expiresAt: res.providerInfo.expiresInSeconds
+                  ? new Date(
+                      Date.now() + res.providerInfo.expiresInSeconds * 1000,
+                    )
+                  : undefined,
+              },
+            };
+            if (backstageIdentity) {
+              session.backstageIdentity = {
+                token: backstageIdentity.token,
+                identity: backstageIdentity.identity,
+                expiresAt: backstageIdentity.expiresInSeconds
+                  ? new Date(
+                      Date.now() + backstageIdentity.expiresInSeconds * 1000,
+                    )
+                  : undefined,
+              };
+            }
+            return session;
+          },
+          popupOptions: {
+            size: {
+              width: 600,
+              height: 600,
+            },
+          },
+        });
+
         return [
           providerName,
-          CustomOAuth2.create({
-            configApi: this.configApi,
-            discoveryApi: this.discoveryApi,
-            oauthRequestApi: this.oauthRequestApi,
-            provider: {
-              id: providerName,
-              title: providerDisplayName,
-              icon: GiantSwarmIcon,
-            },
-            environment: this.configApi?.getOptionalString('auth.environment'),
+          OAuth2.create({
+            authConnector,
             defaultScopes: [
               'openid',
               'profile',
@@ -114,12 +150,6 @@ export class GSAuthProviders implements GSAuthProvidersApi {
               'federated:id',
               'audience:server:client_id:dex-k8s-authenticator',
             ],
-            popupOptions: {
-              size: {
-                width: 600,
-                height: 600,
-              },
-            },
           }),
         ];
       },
