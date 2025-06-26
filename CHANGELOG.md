@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.79.0] - 2025-06-26
 
+In this release:
+
+- The new page with the details about a deployment has been added. The old deployment details popup has been deleted.
+- Grafana alerts link on the cluster details page has been fixed with the correct organization id parameter.
+
 See [./docs/releases/v0.79.0-changelog.md](./docs/releases/v0.79.0-changelog.md) for more information.
 
 ## [0.78.0] - 2025-06-17
