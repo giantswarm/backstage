@@ -29,7 +29,6 @@ This is the recommended way if you want to get started simply, but it may not pr
 ### Prerequisites
 
 1. Have **NodeJS** installed in the right version. Here is how to manage this:
-
    - Look for the key `"engines"` in [/package.json](../package.json) to find
      out which major versions are supported.
    - You can use `nvm` to install, update, and switch NodeJS version in your
@@ -41,7 +40,6 @@ This is the recommended way if you want to get started simply, but it may not pr
    `npm install --global yarn` to install it.
 
 3. **Credentials from 1Password**:
-
    - **GitHub OAuth credentials**: You'll have to create a file
      `/github-app-development-credentials.yaml` in the clone repository, which
      for security reasons is not checked in with the repository. Find the

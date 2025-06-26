@@ -90,7 +90,6 @@ The plugin allows you to format links to your GitOps sources. A link is being fo
 
 - **targetUrl**:  
   A template string used for formatting. It can include placeholders wrapped in `${{ }}`. Values that can be used:
-
   - `PATH`: Path of the resource in target repository. The value is taken from `.spec.path` field of a corresponding Kustomization resource;
   - `REVISION`: Commit reference. The value is taken from the `.status.artifact.revision` field of a corresponding GitRepository resource;
   - Additional values can be derived from the `.spec.url` field of a corresponding GitRepository resource using regex groups.

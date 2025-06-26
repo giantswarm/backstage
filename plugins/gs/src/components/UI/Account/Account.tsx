@@ -9,9 +9,9 @@ type AccountProps = {
 export const Account = ({ accountId, accountUrl }: AccountProps) => {
   const accountComponent = (
     <Box display="flex" alignItems="center" gridGap={3}>
-      {accountId
-        .match(/.{1,4}/g)
-        ?.map((group, idx) => <Typography key={idx}>{group}</Typography>)}
+      {accountId.match(/.{1,4}/g)?.map((group, idx) => (
+        <Typography key={idx}>{group}</Typography>
+      ))}
     </Box>
   );
 
