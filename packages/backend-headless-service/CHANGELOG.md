@@ -1,5 +1,11 @@
 # backend-headless-service
 
+## 0.3.1
+
+### Patch Changes
+
+- d7a5609: Fixed helm chart for extraEnvVars
+
 ## 0.3.0
 
 ### Minor Changes
