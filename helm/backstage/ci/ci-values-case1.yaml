@@ -47,6 +47,11 @@ backstage:
   command: ['node', 'packages/backend']
   args: []
   extraAppConfig: []
+  extraEnvVars:
+    - name: GLOBAL_AGENT_HTTP_PROXY
+      value: http://12.34.56.78:3128
+    - name: GLOBAL_AGENT_NO_PROXY
+      value: 127.0.0.1,*.example.com
 resources:
   verticalPodAutoscaler:
     enabled: true

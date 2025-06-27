@@ -108,9 +108,9 @@ spec:
                   name: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-app
                   key: password
             {{- end }}
-          {{- if .Values.backstage.extraEnvVars }}
-          {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 10 }}
-          {{- end }}
+            {{- if .Values.backstage.extraEnvVars }}
+            {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
           volumeMounts:
             {{- if .Values.githubAppCredentials }}
             - name: github-app-credentials
