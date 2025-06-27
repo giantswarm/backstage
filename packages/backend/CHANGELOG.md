@@ -1,5 +1,11 @@
 # backend
 
+## 0.11.1
+
+### Patch Changes
+
+- d7a5609: Fixed helm chart for extraEnvVars
+
 ## 0.11.0
 
 ### Minor Changes
