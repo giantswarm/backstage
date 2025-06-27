@@ -47,6 +47,9 @@ backstage:
   command: ['node', 'packages/backend']
   args: []
   extraAppConfig: []
+  extraEnvVars:
+    - name: VAR_NAME
+      value: value of the variable
 resources:
   verticalPodAutoscaler:
     enabled: true
