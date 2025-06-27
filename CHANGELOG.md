@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.80.1] - 2025-06-27
 
+This releases fixes a problem where the chart would not render when `.backstage.extraEnvVars` was set.
+
 See [./docs/releases/v0.80.1-changelog.md](./docs/releases/v0.80.1-changelog.md) for more information.
 
 ## [0.80.0] - 2025-06-26
