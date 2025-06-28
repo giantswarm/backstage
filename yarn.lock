@@ -1312,9 +1312,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:^0.3.0":
-  version: 0.3.1
-  resolution: "@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:0.3.1"
+"@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:^0.4.0":
+  version: 0.4.0
+  resolution: "@aws/aws-core-plugin-for-backstage-scaffolder-actions@npm:0.4.0"
   dependencies:
     "@aws-sdk/client-cloudcontrol": "npm:^3.511.0"
     "@aws-sdk/client-codecommit": "npm:^3.511.0"
@@ -1330,7 +1330,7 @@ __metadata:
     fs-extra: "npm:^11.2.0"
     glob: "npm:^11.0.0"
     zod: "npm:^3.22.4"
-  checksum: 10c0/b521976ca6e1d57da341e1c5355f08ad74b62241e09b4f95cace781eb58136d6ef828e292ec12554a0fea77b748c91ba22a282a6521c88a5548786411a7bf5f2
+  checksum: 10c0/83b2116bb2d91ad7ee23eb2166df5a8c04a907fa019442b15957250e79d60ff472a97dd1ca0d9b0620667b6d56744a30467ad69120acadc6c47579f8bf69c43f
   languageName: node
   linkType: hard
 
@@ -18096,7 +18096,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "backend-headless-service@workspace:packages/backend-headless-service"
   dependencies:
-    "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.3.0"
+    "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.4.0"
     "@backstage/backend-defaults": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/plugin-auth-backend": "backstage:^"
@@ -18120,7 +18120,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "backend@workspace:packages/backend"
   dependencies:
-    "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.3.0"
+    "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "npm:^0.4.0"
     "@backstage/backend-defaults": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/plugin-app-backend": "backstage:^"
