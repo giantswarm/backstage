@@ -50,7 +50,7 @@
     "@material-ui/icons": "^4.9.1",
     "@roadiehq/backstage-plugin-github-pull-requests": "^3.0.0",
     "@sentry/react": "^9.0.0",
-    "@typedigital/telemetrydeck-react": "^0.3.0",
+    "@typedigital/telemetrydeck-react": "^0.4.0",
     "crypto-js": "^4.2.0",
     "history": "^5.0.0",
     "react": "^18.0.2",
