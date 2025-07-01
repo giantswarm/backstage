@@ -111,16 +111,6 @@ const routes = (
     <Route path="/" element={<HomepageCompositionRoot />}>
       <HomePage />
     </Route>
-    <Route
-      path="/installations"
-      element={
-        <GSFeatureEnabled feature="installationsPage">
-          <CatalogIndexPage />
-        </GSFeatureEnabled>
-      }
-    >
-      <GSInstallationsPage />
-    </Route>
     <Route path="/catalog" element={<CatalogIndexPage />}>
       <GSCustomCatalogPage />
     </Route>
@@ -135,7 +125,6 @@ const routes = (
       path="/docs/:namespace/:kind/:name/*"
       element={<TechDocsReaderPage />}
     />
-
     <Route
       path="/create"
       element={
@@ -188,6 +177,14 @@ const routes = (
       element={
         <GSFeatureEnabled feature="deploymentsPage">
           <GSDeploymentsPage />
+        </GSFeatureEnabled>
+      }
+    />
+    <Route
+      path="/installations"
+      element={
+        <GSFeatureEnabled feature="installationsPage">
+          <GSInstallationsPage />
         </GSFeatureEnabled>
       }
     />
