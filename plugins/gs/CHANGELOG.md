@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.38.1
+
+### Patch Changes
+
+- b2171b9: Fixed ReleasePicker scaffolder field to correctly format release version.
+
 ## 0.38.0
 
 ### Minor Changes
