@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.80.2] - 2025-07-03
 
+In this release:
+
+- ReleasePicker scaffolder field was fixed to correctly format release version.
+- Catalog routing issue was fixed.
+
 See [./docs/releases/v0.80.2-changelog.md](./docs/releases/v0.80.2-changelog.md) for more information.
 
 ## [0.80.1] - 2025-06-27
