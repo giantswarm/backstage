@@ -1,10 +1,8 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import useAsync from 'react-use/esm/useAsync';
 import { jwtDecode } from 'jwt-decode';
-import {
-  kubernetesApiRef,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes-react';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { kubernetesAuthProvidersApiRef } from '../../apis/kubernetes';
 
 type JWT = {
   groups: string[];

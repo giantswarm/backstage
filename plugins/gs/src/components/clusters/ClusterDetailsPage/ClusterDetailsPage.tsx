@@ -3,8 +3,10 @@ import { ClusterLayout } from '../ClusterLayout';
 import { ClusterOverview } from '../cluster-details/ClusterOverview';
 import { ClusterSSHAccess } from '../cluster-details/ClusterSSHAccess';
 import { ErrorsProvider } from '../../Errors';
+import { ErrorsProvider as KubernetesErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { InstallationsProvider } from '../../installations/InstallationsProvider';
+import { ClusterDeployments } from '../cluster-details/ClusterDeployments';
 
 export const ClusterDetailsPage = () => {
   return (
@@ -17,6 +19,7 @@ export const ClusterDetailsPage = () => {
                 <ClusterOverview />
               </ErrorsProvider>
             </ClusterLayout.Route>
+
             <ClusterLayout.Route
               path="/ssh-access"
               title="SSH access"
@@ -25,6 +28,16 @@ export const ClusterDetailsPage = () => {
               <ErrorsProvider>
                 <ClusterSSHAccess />
               </ErrorsProvider>
+            </ClusterLayout.Route>
+
+            <ClusterLayout.Route
+              path="/deployments"
+              title="Deployments"
+              if={({ cluster }) => cluster.metadata.name.includes('pinniped')}
+            >
+              <KubernetesErrorsProvider>
+                <ClusterDeployments />
+              </KubernetesErrorsProvider>
             </ClusterLayout.Route>
           </ClusterLayout>
         </AsyncClusterProvider>

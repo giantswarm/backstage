@@ -51,6 +51,10 @@ type Options<AuthSession> = {
    */
   provider: AuthProviderInfo;
   /**
+   * Audience to be used for the auth request.
+   */
+  audience?: string;
+  /**
    * API used to instantiate an auth requester.
    */
   oauthRequestApi: OAuthRequestApi;
@@ -87,6 +91,7 @@ export class DefaultAuthConnector<AuthSession>
   private readonly discoveryApi: DiscoveryApi;
   private readonly environment: string;
   private readonly provider: AuthProviderInfo;
+  private readonly audience: string | undefined;
   private readonly joinScopesFunc: (scopes: Set<string>) => string;
   private readonly authRequester: OAuthRequester<AuthSession>;
   private readonly sessionTransform: (response: any) => Promise<AuthSession>;
@@ -98,6 +103,7 @@ export class DefaultAuthConnector<AuthSession>
       discoveryApi,
       environment,
       provider,
+      audience,
       joinScopes = defaultJoinScopes,
       oauthRequestApi,
       sessionTransform = id => id,
@@ -130,6 +136,7 @@ export class DefaultAuthConnector<AuthSession>
     this.discoveryApi = discoveryApi;
     this.environment = environment;
     this.provider = provider;
+    this.audience = audience;
     this.joinScopesFunc = joinScopes;
     this.sessionTransform = sessionTransform;
     this.popupOptions = popupOptions;
@@ -258,6 +265,7 @@ export class DefaultAuthConnector<AuthSession>
     const queryString = this.buildQueryString({
       ...query,
       env: this.environment,
+      audience: this.audience,
     });
 
     return `${baseUrl}/${this.provider.id}${path}${queryString}`;

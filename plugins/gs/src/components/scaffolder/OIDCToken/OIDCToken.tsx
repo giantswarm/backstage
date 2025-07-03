@@ -2,12 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import { oidcTokenInstallation, OIDCTokenProps } from './schema';
-import {
-  kubernetesApiRef,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes-react';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useApi } from '@backstage/core-plugin-api';
 import { get } from 'lodash';
+import { kubernetesAuthProvidersApiRef } from '../../../apis/kubernetes';
 
 type OIDCTokenFieldProps = {
   id?: string;

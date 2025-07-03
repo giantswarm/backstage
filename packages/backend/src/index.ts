@@ -1,6 +1,7 @@
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
 import { rootLogger } from '@internal/backend-common';
+import { gsServiceFactory } from '@giantswarm/backstage-plugin-gs-node';
 
 const backend = createBackend();
 
@@ -55,5 +56,15 @@ backend.add(import('@backstage/plugin-search-backend-module-techdocs'));
 
 // kubernetes plugin
 backend.add(import('@backstage/plugin-kubernetes-backend'));
+backend.add(
+  import('@giantswarm/backstage-plugin-kubernetes-backend-module-gs'),
+);
+backend.add(
+  import('@giantswarm/backstage-plugin-kubernetes-backend-module-pinniped'),
+);
+
+// gs plugin
+backend.add(gsServiceFactory);
+backend.add(import('@giantswarm/backstage-plugin-gs-backend'));
 
 backend.start();

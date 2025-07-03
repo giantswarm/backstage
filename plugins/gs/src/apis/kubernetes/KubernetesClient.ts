@@ -1,31 +1,29 @@
 import {
   KubernetesApi,
-  KubernetesAuthProvidersApi,
   KubernetesBackendClient,
 } from '@backstage/plugin-kubernetes-react';
-import { ClusterConfiguration } from './types';
-import { ConfigApi, DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
+import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import {
   KubernetesRequestBody,
   ObjectsByEntityResponse,
   WorkloadsByEntityRequest,
   CustomObjectsByEntityRequest,
 } from '@backstage/plugin-kubernetes-common';
+import { KubernetesAuthProvidersApi } from './KubernetesAuthProviders';
+import { GSServiceApi } from '../service';
 
 export class KubernetesClient implements KubernetesApi {
   private readonly backendClient: KubernetesBackendClient;
-  private readonly configApi: ConfigApi;
   private readonly fetchApi: FetchApi;
+  private readonly discoveryApi: DiscoveryApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
-  private readonly clusters: {
-    [clusterName: string]: ClusterConfiguration;
-  } = {};
+  private readonly gsServiceApi: GSServiceApi;
 
   constructor(options: {
-    configApi: ConfigApi;
     discoveryApi: DiscoveryApi;
     fetchApi: FetchApi;
     kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
+    gsServiceApi: GSServiceApi;
   }) {
     this.backendClient = new KubernetesBackendClient({
       discoveryApi: options.discoveryApi,
@@ -33,32 +31,10 @@ export class KubernetesClient implements KubernetesApi {
       kubernetesAuthProvidersApi: options.kubernetesAuthProvidersApi,
     });
 
-    this.configApi = options.configApi;
     this.fetchApi = options.fetchApi;
+    this.discoveryApi = options.discoveryApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
-
-    const installationsConfig =
-      this.configApi.getOptionalConfig('gs.installations');
-    if (installationsConfig) {
-      const clusters: {
-        [clusterName: string]: ClusterConfiguration;
-      } = {};
-
-      const installationNames = installationsConfig.keys();
-      for (const installationName of installationNames) {
-        const installationConfig =
-          installationsConfig.getConfig(installationName);
-        clusters[installationName] = {
-          name: installationName,
-          apiEndpoint: installationConfig.getString('apiEndpoint'),
-          authProvider: installationConfig.getString('authProvider'),
-          oidcTokenProvider:
-            installationConfig.getOptionalString('oidcTokenProvider'),
-        };
-      }
-
-      this.clusters = clusters;
-    }
+    this.gsServiceApi = options.gsServiceApi;
   }
 
   getObjectsByEntity(
@@ -70,24 +46,7 @@ export class KubernetesClient implements KubernetesApi {
   getClusters(): Promise<
     { name: string; authProvider: string; oidcTokenProvider?: string }[]
   > {
-    const installationsConfig =
-      this.configApi.getOptionalConfig('gs.installations');
-    if (!installationsConfig) {
-      throw new Error(`Missing gs.installations configuration`);
-    }
-
-    const installations = this.configApi.getConfig('gs.installations').keys();
-    const clusters = installations.map(installation => {
-      const installationConfig = installationsConfig.getConfig(installation);
-      return {
-        name: installation,
-        authProvider: installationConfig.getString('authProvider'),
-        oidcTokenProvider:
-          installationConfig.getOptionalString('oidcTokenProvider'),
-      };
-    });
-
-    return Promise.resolve(clusters);
+    return this.backendClient.getClusters();
   }
 
   getWorkloadsByEntity(
@@ -105,16 +64,44 @@ export class KubernetesClient implements KubernetesApi {
   private async getCredentials(
     authProvider: string,
     oidcTokenProvider?: string,
+    audience?: string,
   ): Promise<{ token?: string }> {
-    return await this.kubernetesAuthProvidersApi.getCredentials(
-      authProvider === 'oidc'
-        ? `${authProvider}.${oidcTokenProvider}`
-        : authProvider,
-    );
+    if (authProvider === 'oidc') {
+      return await this.kubernetesAuthProvidersApi.getCredentials(
+        `${authProvider}.${oidcTokenProvider}`,
+      );
+    }
+
+    if (authProvider === 'pinniped') {
+      return await this.kubernetesAuthProvidersApi.getCredentials(
+        `${authProvider}.${oidcTokenProvider}`,
+        audience,
+      );
+    }
+
+    return await this.kubernetesAuthProvidersApi.getCredentials(authProvider);
   }
 
-  async getCluster(clusterName: string): Promise<ClusterConfiguration> {
-    return this.clusters[clusterName];
+  async getCluster(clusterName: string): Promise<{
+    name: string;
+    authProvider: string;
+    oidcTokenProvider?: string;
+  }> {
+    let cluster = null;
+    try {
+      cluster = await this.backendClient.getCluster(clusterName);
+    } catch (error) {
+      const installationName = clusterName.split('-')[0];
+      if (installationName) {
+        await this.updateClusters(installationName);
+      }
+      cluster = await this.backendClient.getCluster(clusterName);
+      if (!cluster) {
+        return Promise.reject(error);
+      }
+    }
+
+    return Promise.resolve(cluster);
   }
 
   async proxy(options: {
@@ -123,24 +110,94 @@ export class KubernetesClient implements KubernetesApi {
     init?: RequestInit;
   }): Promise<Response> {
     const cluster = await this.getCluster(options.clusterName);
-
     if (!cluster) {
       throw new Error(`Cluster ${options.clusterName} not found`);
     }
 
-    const { apiEndpoint, authProvider, oidcTokenProvider } = cluster;
+    const { authProvider, oidcTokenProvider } = cluster;
+
+    const kubernetesCredentials = await this.getCredentials(
+      authProvider,
+      oidcTokenProvider,
+      options.clusterName,
+    );
+
+    const url = `${await this.discoveryApi.getBaseUrl('kubernetes')}/proxy${
+      options.path
+    }`;
+    const headers = KubernetesClient.getKubernetesHeaders(
+      options,
+      kubernetesCredentials?.token,
+      authProvider,
+      oidcTokenProvider,
+    );
+
+    return await this.fetchApi.fetch(url, { ...options.init, headers });
+  }
+
+  private static getKubernetesHeaders(
+    options: {
+      clusterName: string;
+      path: string;
+      init?: RequestInit;
+    },
+    k8sToken: string | undefined,
+    authProvider: string,
+    oidcTokenProvider: string | undefined,
+  ) {
+    const kubernetesAuthHeader =
+      KubernetesClient.getKubernetesAuthHeaderByAuthProvider(
+        authProvider,
+        oidcTokenProvider,
+      );
+    return {
+      ...options.init?.headers,
+      [`Backstage-Kubernetes-Cluster`]: options.clusterName,
+      ...(k8sToken && {
+        [kubernetesAuthHeader]: k8sToken,
+      }),
+    };
+  }
+
+  private static getKubernetesAuthHeaderByAuthProvider(
+    authProvider: string,
+    oidcTokenProvider: string | undefined,
+  ): string {
+    let header: string = 'Backstage-Kubernetes-Authorization';
+
+    header = header.concat('-', authProvider);
+
+    if (oidcTokenProvider) header = header.concat('-', oidcTokenProvider);
+
+    return header;
+  }
+
+  private async updateClusters(installationName: string): Promise<void> {
+    const cluster = await this.getCluster(installationName);
+    if (!cluster) {
+      throw new Error(`Cluster ${installationName} not found`);
+    }
+
+    const { name, authProvider, oidcTokenProvider } = cluster;
 
     const kubernetesCredentials = await this.getCredentials(
       authProvider,
       oidcTokenProvider,
     );
 
-    const url = `${apiEndpoint}${options.path}`;
-    const headers = {
-      Authorization: `Bearer ${kubernetesCredentials.token}`,
-      'Content-Type': 'application/json',
-    };
+    const kubernetesHeaders = KubernetesClient.getKubernetesHeaders(
+      {
+        clusterName: name,
+        path: '',
+      },
+      kubernetesCredentials?.token,
+      authProvider,
+      oidcTokenProvider,
+    ) as Record<string, string>;
 
-    return await this.fetchApi.fetch(url, { ...options.init, headers });
+    return await this.gsServiceApi.updateClusters(
+      installationName,
+      kubernetesHeaders,
+    );
   }
 }
