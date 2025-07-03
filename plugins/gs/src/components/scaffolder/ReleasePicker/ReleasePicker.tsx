@@ -119,7 +119,7 @@ export const ReleasePicker = ({
         return;
       }
 
-      onChange(getReleaseName(selectedRelease));
+      onChange(getReleaseVersion(selectedRelease));
     },
     [onChange],
   );
