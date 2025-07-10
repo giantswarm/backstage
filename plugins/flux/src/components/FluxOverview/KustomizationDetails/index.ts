@@ -1,0 +1,1 @@
+export { KustomizationDetails } from './KustomizationDetails';

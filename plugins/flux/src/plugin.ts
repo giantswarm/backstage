@@ -15,8 +15,7 @@ export const fluxPlugin = createPlugin({
 export const FluxPage = fluxPlugin.provide(
   createRoutableExtension({
     name: 'FluxPage',
-    component: () =>
-      import('./components/ExampleComponent').then(m => m.ExampleComponent),
+    component: () => import('./components/FluxPage').then(m => m.FluxPage),
     mountPoint: rootRouteRef,
   }),
 );

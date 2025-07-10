@@ -1,8 +1,9 @@
 {
-  "name": "@giantswarm/backstage-plugin-flux",
+  "name": "@giantswarm/backstage-plugin-ui-react",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "private": true,
+  "description": "Web library for the ui plugin",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -11,8 +12,8 @@
     "types": "dist/index.d.ts"
   },
   "backstage": {
-    "role": "frontend-plugin",
-    "pluginId": "flux"
+    "role": "web-library",
+    "pluginId": "ui"
   },
   "sideEffects": false,
   "scripts": {
@@ -25,34 +26,20 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@backstage/core-components": "^0.17.2",
     "@backstage/core-plugin-api": "^1.9.4",
-    "@backstage/plugin-kubernetes-react": "^0.5.8",
-    "@backstage/theme": "^0.6.4",
-    "@giantswarm/backstage-plugin-gs-common": "workspace:^",
-    "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
-    "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-ui/core": "^4.9.13",
-    "@material-ui/icons": "^4.9.1",
-    "@material-ui/lab": "^4.0.0-alpha.61",
-    "@tanstack/react-query": "^5.82.0",
     "classnames": "^2.5.1",
-    "colord": "^2.9.3",
-    "react-use": "^17.2.4"
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0"
   },
   "peerDependencies": {
-    "react": "^16.13.1 || ^17.0.0 || ^18.0.0",
-    "react-router-dom": "*"
+    "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },
   "devDependencies": {
     "@backstage/cli": "^0.33.0",
-    "@backstage/core-app-api": "^1.17.0",
-    "@backstage/dev-utils": "^1.1.11",
     "@backstage/test-utils": "^1.7.8",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
-    "@testing-library/user-event": "^14.0.0",
-    "msw": "^1.0.0",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },
   "files": [

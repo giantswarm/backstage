@@ -1,0 +1,1 @@
+export { useClustersInfo } from './useClustersInfo';
