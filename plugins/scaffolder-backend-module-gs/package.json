@@ -29,7 +29,7 @@
     "@backstage/errors": "backstage:^",
     "@backstage/plugin-scaffolder-node": "backstage:^",
     "js-yaml": "^4.1.0",
-    "zod": "^3.24.2"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",

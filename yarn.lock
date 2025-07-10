@@ -9315,7 +9315,7 @@ __metadata:
     semver: "npm:^7.6.0"
     use-local-storage-state: "npm:^19.1.0"
     zen-observable: "npm:^0.10.0"
-    zod: "npm:^3.22.4"
+    zod: "npm:^4.0.0"
   peerDependencies:
     react: ^18.0.2
     react-router-dom: ^6.20.0
@@ -9334,7 +9334,7 @@ __metadata:
     "@backstage/plugin-scaffolder-node": "backstage:^"
     "@types/js-yaml": "npm:^4"
     js-yaml: "npm:^4.1.0"
-    zod: "npm:^3.24.2"
+    zod: "npm:^4.0.0"
   languageName: unknown
   linkType: soft
 
@@ -36364,6 +36364,13 @@ __metadata:
   version: 3.25.67
   resolution: "zod@npm:3.25.67"
   checksum: 10c0/80a0cab3033272c4ab9312198081f0c4ea88e9673c059aa36dc32024906363729db54bdb78f3dc9d5529bd1601f74974d5a56c0a23e40c6f04a9270c9ff22336
+  languageName: node
+  linkType: hard
+
+"zod@npm:^4.0.0":
+  version: 4.0.1
+  resolution: "zod@npm:4.0.1"
+  checksum: 10c0/c825c529d4cf138229c771b34aeb4ddf0805e15b75f4c0bde38b8b0a1fc2602c7bacf9a539f052243bce62e622c41a7c9fb9a9e90fac30ddef1470ac47f8f870
   languageName: node
   linkType: hard
 

@@ -63,7 +63,7 @@
     "semver": "^7.6.0",
     "use-local-storage-state": "^19.1.0",
     "zen-observable": "^0.10.0",
-    "zod": "^3.22.4"
+    "zod": "^4.0.0"
   },
   "peerDependencies": {
     "react": "^18.0.2",
