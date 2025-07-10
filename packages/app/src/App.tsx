@@ -56,6 +56,7 @@ import {
   GSDeploymentsPage,
   GSContext,
 } from '@giantswarm/backstage-plugin-gs';
+import { FluxPage } from '@giantswarm/backstage-plugin-flux';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
@@ -188,6 +189,7 @@ const routes = (
         </GSFeatureEnabled>
       }
     />
+    <Route path="/flux" element={<FluxPage />} />
   </FlatRoutes>
 );
 
