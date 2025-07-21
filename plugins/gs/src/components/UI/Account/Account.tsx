@@ -4,26 +4,31 @@ import { makeStyles } from '@material-ui/core/styles';
 
 const useStyles = makeStyles(() => ({
   accountId: {
-    fontFamily: 'monospace',
     position: 'relative',
     userSelect: 'text',
-    // Hide the actual content (this will contain the unformatted version for copying)
     color: 'transparent',
-    // Use ::before to display the formatted version
+    whiteSpace: 'nowrap',
+    display: 'inline-block',
+    letterSpacing: '0.7px',
+
     '&::before': {
       content: 'attr(data-formatted)',
       position: 'absolute',
       top: 0,
       left: 0,
-      color: 'inherit',
-      // Prevent selection of the pseudo-element
+      color: 'white',
       userSelect: 'none',
       pointerEvents: 'none',
+      whiteSpace: 'nowrap',
+      letterSpacing: 'normal',
     },
-    // Make sure the underlying text (for copying) maintains the same dimensions
-    whiteSpace: 'nowrap',
   },
 }));
+
+// Format the account ID for visual display with spaces every 4 characters
+const formatAccountIdForDisplay = (id: string) => {
+  return id.replace(/(.{4})/g, '$1 ').trim();
+};
 
 type AccountProps = {
   accountId: string;
@@ -32,16 +37,14 @@ type AccountProps = {
 
 export const Account = ({ accountId, accountUrl }: AccountProps) => {
   const classes = useStyles();
-  
-  // Format the account ID for visual display with spaces every 4 characters
-  const formatAccountIdForDisplay = (id: string) => {
-    return id.replace(/(.{4})/g, '$1 ').trim();
-  };
+
+  const formattedAccountId = formatAccountIdForDisplay(accountId);
 
   const accountComponent = (
-    <Typography 
+    <Typography
+      variant="body2"
       className={classes.accountId}
-      data-formatted={formatAccountIdForDisplay(accountId)}
+      data-formatted={formattedAccountId}
     >
       {accountId}
     </Typography>
