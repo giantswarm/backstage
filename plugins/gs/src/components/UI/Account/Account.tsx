@@ -22,6 +22,10 @@ const useStyles = makeStyles(() => ({
       whiteSpace: 'nowrap',
       letterSpacing: 'normal',
     },
+
+    'a &:hover::before': {
+      textDecoration: 'underline',
+    },
   },
 }));
 
