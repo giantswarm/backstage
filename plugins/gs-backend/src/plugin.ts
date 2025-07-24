@@ -3,8 +3,14 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { catalogServiceRef } from '@backstage/plugin-catalog-node';
-import { createFindScaffolderTemplatesAction } from './actions/createFindScaffolderTemplatesAction';
 import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
+import {
+  createFindScaffolderTemplatesAction,
+  createRetrieveScaffolderTemplateAction,
+  createValidateTemplateValuesAction,
+  createRunScaffolderTemplateAction,
+  createGetScaffolderTaskAction,
+} from './actions';
 
 /**
  * gsPlugin backend plugin
@@ -17,16 +23,32 @@ export const gsPlugin = createBackendPlugin({
     env.registerInit({
       deps: {
         logger: coreServices.logger,
-        httpAuth: coreServices.httpAuth,
-        httpRouter: coreServices.httpRouter,
         catalog: catalogServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
       },
-      async init({ catalog, actionsRegistry }) {
+      async init({ logger, catalog, actionsRegistry }) {
+        // Register all scaffolder actions
         createFindScaffolderTemplatesAction({
           catalog,
           actionsRegistry,
         });
+        createRetrieveScaffolderTemplateAction({
+          catalog,
+          actionsRegistry,
+        });
+        createValidateTemplateValuesAction({
+          catalog,
+          actionsRegistry,
+        });
+        createRunScaffolderTemplateAction({
+          catalog,
+          actionsRegistry,
+        });
+        createGetScaffolderTaskAction({ actionsRegistry });
+
+        logger.info(
+          'Successfully registered all scaffolder actions as MCP tools',
+        );
       },
     });
   },

@@ -9427,6 +9427,7 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/plugin-catalog-node": "backstage:^"
+    "@backstage/types": "npm:^1.2.1"
     "@types/express": "npm:^4.17.6"
     "@types/supertest": "npm:^2.0.12"
     express: "npm:^4.17.1"

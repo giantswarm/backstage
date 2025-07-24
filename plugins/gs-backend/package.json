@@ -30,6 +30,7 @@
     "@backstage/catalog-model": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
+    "@backstage/types": "^1.2.1",
     "express": "^4.17.1",
     "express-promise-router": "^4.1.0",
     "zod": "^3.22.4"
