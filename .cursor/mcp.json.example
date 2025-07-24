@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "muster": {
+            "command": "muster",
+            "args": [
+                "standalone",
+                "--config-path",
+                "~/.config/muster"
+            ]
+        }
+    }
+}
