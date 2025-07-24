@@ -59,4 +59,5 @@ backend.add(import('@backstage/plugin-kubernetes-backend'));
 // MCP actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
+backend.add(import('@giantswarm/backstage-plugin-gs-backend'));
 backend.start();
