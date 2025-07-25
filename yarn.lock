@@ -9429,9 +9429,11 @@ __metadata:
     "@backstage/plugin-catalog-node": "backstage:^"
     "@backstage/types": "npm:^1.2.1"
     "@types/express": "npm:^4.17.6"
+    "@types/qs": "npm:^6"
     "@types/supertest": "npm:^2.0.12"
     express: "npm:^4.17.1"
     express-promise-router: "npm:^4.1.0"
+    qs: "npm:^6.14.0"
     supertest: "npm:^6.2.4"
     zod: "npm:^3.22.4"
   languageName: unknown

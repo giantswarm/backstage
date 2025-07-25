@@ -2,6 +2,33 @@ import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { CatalogService } from '@backstage/plugin-catalog-node';
 
+// Recursively remove all properties that start with "ui:" prefix from the spec
+function removeUiProps(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(removeUiProps);
+  } else if (obj && typeof obj === 'object') {
+    // If the object has a property 'ui:widget' set to 'hidden', remove this property entirely
+    if (
+      Object.prototype.hasOwnProperty.call(obj, 'ui:widget') &&
+      obj['ui:widget'] === 'hidden'
+    ) {
+      return undefined;
+    }
+
+    return Object.entries(obj).reduce((acc, [key, value]) => {
+      if (!key.startsWith('ui:')) {
+        const cleanedValue = removeUiProps(value);
+        // Only add the property if the cleaned value is not undefined
+        if (cleanedValue !== undefined) {
+          acc[key] = cleanedValue;
+        }
+      }
+      return acc;
+    }, {} as any);
+  }
+  return obj;
+}
+
 interface CreateRetrieveScaffolderTemplateActionOptions {
   catalog: CatalogService;
   actionsRegistry: ActionsRegistryService;
@@ -66,8 +93,10 @@ export function createRetrieveScaffolderTemplateAction({
           name: entity.metadata.name,
         });
 
+        const filteredSpec = removeUiProps(entity.spec);
+
         // Return the template specification as a JSON string
-        const spec = JSON.stringify(entity.spec || {}, null, 2);
+        const spec = JSON.stringify(filteredSpec || {}, null, 2);
 
         logger.info(`Successfully retrieved template: ${entityRef}`);
 

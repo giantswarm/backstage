@@ -1,11 +1,16 @@
+import { AuthService, DiscoveryService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
 
 interface CreateGetScaffolderTaskActionOptions {
   actionsRegistry: ActionsRegistryService;
+  auth: AuthService;
+  discovery: DiscoveryService;
 }
 
 export function createGetScaffolderTaskAction({
   actionsRegistry,
+  auth,
+  discovery,
 }: CreateGetScaffolderTaskActionOptions) {
   actionsRegistry.register({
     name: 'get-scaffolder-task',
@@ -24,7 +29,7 @@ export function createGetScaffolderTaskAction({
             id: zodSchema.string(),
             status: zodSchema.string(),
             createdAt: zodSchema.string(),
-            completedAt: zodSchema.string().optional(),
+            lastHeartbeatAt: zodSchema.string(),
             spec: zodSchema.record(zodSchema.unknown()),
             output: zodSchema.record(zodSchema.unknown()).optional(),
             error: zodSchema.string().optional(),
@@ -36,44 +41,56 @@ export function createGetScaffolderTaskAction({
       idempotent: true,
       destructive: false,
     },
-    action: async ({ input, logger }) => {
+    action: async ({ input, logger, credentials }) => {
       logger.info(`Retrieving scaffolder task: ${input.id}`);
 
       try {
-        // For now, we'll simulate the scaffolder task retrieval
-        // In a real implementation, you would integrate with the scaffolder backend
-        // This is a placeholder that demonstrates the structure
+        const { token } = await auth.getPluginRequestToken({
+          onBehalfOf: credentials,
+          targetPluginId: 'scaffolder',
+        });
 
-        // Normally you would call the scaffolder API here with something like:
-        // const scaffolderClient = new ScaffolderClient({ ... });
-        // const task = await scaffolderClient.getTask(input.id);
-
-        // For this implementation, we'll return a mock task response
-        const mockTask = {
-          id: input.id,
-          status: 'completed', // Could be: 'pending', 'running', 'completed', 'failed'
-          createdAt: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
-          completedAt: new Date().toISOString(),
-          spec: {
-            templateRef: 'template:default/example-template',
-            values: {
-              name: 'example-project',
-              description: 'An example project',
+        // Make the actual POST request to the scaffolder backend
+        const scaffolderBaseUrl = await discovery.getBaseUrl('scaffolder');
+        const response = await fetch(
+          `${scaffolderBaseUrl}/v2/tasks/${input.id}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
             },
           },
-          output: {
-            entityRef: 'component:default/example-project',
-            repositoryUrl: 'https://github.com/example/example-project',
-          },
+        );
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new Error(
+            `Scaffolder API request failed with status ${response.status}: ${errorBody}`,
+          );
+        }
+
+        const responseData = await response.json();
+
+        console.log('responseData', responseData);
+        console.log('responseData.spec.output', responseData.spec.output);
+
+        const task = {
+          id: responseData.id,
+          status: responseData.status,
+          createdAt: responseData.createdAt,
+          lastHeartbeatAt: responseData.lastHeartbeatAt,
+          spec: responseData.spec,
+          output: responseData.spec.output,
         };
 
         logger.info(
-          `Retrieved scaffolder task ${input.id} with status: ${mockTask.status}`,
+          `Retrieved scaffolder task ${task.id} with status: ${task.status}`,
         );
 
         return {
           output: {
-            task: mockTask,
+            task,
           },
         };
       } catch (error) {

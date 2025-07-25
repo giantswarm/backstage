@@ -1,13 +1,18 @@
+import { AuthService, DiscoveryService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
 import { parseEntityRef } from '@backstage/catalog-model';
 import { CatalogService } from '@backstage/plugin-catalog-node';
 
 interface CreateRunScaffolderTemplateActionOptions {
+  discovery: DiscoveryService;
   catalog: CatalogService;
   actionsRegistry: ActionsRegistryService;
+  auth: AuthService;
 }
 
 export function createRunScaffolderTemplateAction({
+  auth,
+  discovery,
   catalog,
   actionsRegistry,
 }: CreateRunScaffolderTemplateActionOptions) {
@@ -63,31 +68,63 @@ export function createRunScaffolderTemplateAction({
           );
         }
 
-        // For now, we'll simulate the scaffolder task creation
-        // In a real implementation, you would integrate with the scaffolder backend
-        // This is a placeholder that demonstrates the structure
-        const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        console.log('input', input.values);
 
-        // Normally you would call the scaffolder API here with something like:
-        // const scaffolderClient = new ScaffolderClient({ ... });
-        // const response = await scaffolderClient.scaffold({
-        //   templateRef: input.templateRef,
-        //   values: input.values,
-        //   secrets: input.secrets,
-        // });
+        console.log('secrets', input.secrets);
 
-        // For this implementation, we'll log the action and return a mock response
-        logger.info(
-          `Would execute template ${input.templateRef} with values:`,
-          {
-            templateRef: input.templateRef,
-            valuesKeys: Object.keys(input.values),
-            secretsKeys: input.secrets ? Object.keys(input.secrets) : [],
-            skipValidation: input.skipValidation,
+        // Prepare the request payload for the scaffolder API
+        const requestPayload: any = {
+          templateRef: input.templateRef,
+          values: input.values,
+        };
+
+        // Add optional parameters if provided
+        if (input.secrets) {
+          requestPayload.secrets = input.secrets;
+        }
+
+        if (input.skipValidation !== undefined) {
+          requestPayload.skipValidation = input.skipValidation;
+        }
+
+        logger.info(`Executing template ${input.templateRef} with values:`, {
+          templateRef: input.templateRef,
+          valuesKeys: Object.keys(input.values),
+          secretsKeys: input.secrets ? Object.keys(input.secrets) : [],
+          skipValidation: input.skipValidation,
+        });
+
+        const { token } = await auth.getPluginRequestToken({
+          onBehalfOf: credentials,
+          targetPluginId: 'scaffolder',
+        });
+
+        // Make the actual POST request to the scaffolder backend
+        const scaffolderBaseUrl = await discovery.getBaseUrl('scaffolder');
+        const response = await fetch(`${scaffolderBaseUrl}/v2/tasks`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
           },
-        );
+          body: JSON.stringify(requestPayload),
+        });
 
-        const taskUrl = `/scaffolder/tasks/${taskId}`;
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new Error(
+            `Scaffolder API request failed with status ${response.status}: ${errorBody}`,
+          );
+        }
+
+        const responseData = await response.json();
+        const taskId = responseData.id;
+
+        if (!taskId) {
+          throw new Error('No task ID returned from scaffolder API');
+        }
+
+        const taskUrl = `${scaffolderBaseUrl}/v2/tasks/${taskId}`;
 
         logger.info(
           `Scaffolder template execution initiated. Task ID: ${taskId}`,

@@ -10,6 +10,7 @@ import {
   createValidateTemplateValuesAction,
   createRunScaffolderTemplateAction,
   createGetScaffolderTaskAction,
+  createMonitorScaffolderTaskAction,
 } from './actions';
 
 /**
@@ -22,11 +23,13 @@ export const gsPlugin = createBackendPlugin({
   register(env) {
     env.registerInit({
       deps: {
+        auth: coreServices.auth,
         logger: coreServices.logger,
+        discovery: coreServices.discovery,
         catalog: catalogServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
       },
-      async init({ logger, catalog, actionsRegistry }) {
+      async init({ auth, logger, discovery, catalog, actionsRegistry }) {
         // Register all scaffolder actions
         createFindScaffolderTemplatesAction({
           catalog,
@@ -41,10 +44,21 @@ export const gsPlugin = createBackendPlugin({
           actionsRegistry,
         });
         createRunScaffolderTemplateAction({
+          discovery,
           catalog,
           actionsRegistry,
+          auth,
         });
-        createGetScaffolderTaskAction({ actionsRegistry });
+        createGetScaffolderTaskAction({
+          actionsRegistry,
+          auth,
+          discovery,
+        });
+        createMonitorScaffolderTaskAction({
+          actionsRegistry,
+          auth,
+          discovery,
+        });
 
         logger.info(
           'Successfully registered all scaffolder actions as MCP tools',
