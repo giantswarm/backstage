@@ -1,12 +1,10 @@
 {
-    "mcpServers": {
-        "muster": {
-            "command": "muster",
-            "args": [
-                "standalone",
-                "--config-path",
-                "~/.config/muster"
-            ]
-        }
+  "mcpServers": {
+    "backstage-actions": {
+      "url": "https://backstage.demotechinc.net/api/mcp-actions/v1",
+      "headers": {
+        "Authorization": "Bearer MCP_TOKEN"
+      }
     }
+  }
 }
