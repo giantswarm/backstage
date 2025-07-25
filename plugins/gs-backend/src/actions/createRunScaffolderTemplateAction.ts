@@ -68,10 +68,6 @@ export function createRunScaffolderTemplateAction({
           );
         }
 
-        console.log('input', input.values);
-
-        console.log('secrets', input.secrets);
-
         // Prepare the request payload for the scaffolder API
         const requestPayload: any = {
           templateRef: input.templateRef,

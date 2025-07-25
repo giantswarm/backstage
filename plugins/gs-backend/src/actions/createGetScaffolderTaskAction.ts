@@ -72,9 +72,6 @@ export function createGetScaffolderTaskAction({
 
         const responseData = await response.json();
 
-        console.log('responseData', responseData);
-        console.log('responseData.spec.output', responseData.spec.output);
-
         const task = {
           id: responseData.id,
           status: responseData.status,

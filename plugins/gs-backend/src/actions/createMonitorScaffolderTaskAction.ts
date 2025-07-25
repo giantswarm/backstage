@@ -106,10 +106,6 @@ export function createMonitorScaffolderTaskAction({
           };
         }
 
-        console.log('responseData', responseData);
-
-        console.log('result', result);
-
         logger.info(`Retrieved events for scaffolder task ${input.id}`);
 
         return {
