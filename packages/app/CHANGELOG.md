@@ -1,5 +1,13 @@
 # app
 
+## 0.17.1
+
+### Patch Changes
+
+- 55b7f9b: Fixed catalog routing issue.
+- Updated dependencies [b2171b9]
+  - @giantswarm/backstage-plugin-gs@0.38.1
+
 ## 0.17.0
 
 ### Minor Changes
