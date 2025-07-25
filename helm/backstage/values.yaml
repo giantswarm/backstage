@@ -157,3 +157,6 @@ ingress:
   hostnames: []
 
 pluginKeys: []
+
+mcp:
+  token: ''

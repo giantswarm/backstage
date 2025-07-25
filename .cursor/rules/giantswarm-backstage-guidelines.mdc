@@ -1,0 +1,14 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+# Software Templates (Scaffolder) Guidelines
+
+- Before executing a template ensure all the required inputs are provided by a user. Do not generate an input value by itself unless you specifically asked to.
+- If a value is not required, use default value if it exists or don't set it at all.
+- When all inputs are collected, run template inputs validation, show the result, print all the collected inputs and ask for approval to continue. If some inputs are missing or invalid, itterate by asking a user to provide more information.
+- If some inputs relate to Backstage catalog entities (for example an owner input), try to find a corresponding catalog entity and use entity reference as a value in aformat of `kind:namespace/name`.
+- After template execution or when asked for template execution status, to show the results, monitor scaffolder task status for some time until get completed status. Show results from the task output.
+- When displaying catalog entity references, for example resource:default/example-service, display them as links to the Backstage instance https://backstage.demotechinc.net/catalog/default/resource/example-service.
