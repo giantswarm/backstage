@@ -219,6 +219,14 @@
         }
       }
     },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        }
+      }
+    },
     "name": {
       "type": "string"
     },
