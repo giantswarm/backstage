@@ -1,6 +1,8 @@
 import {
+  HelmRelease,
+  Kustomization,
   useClustersInfo,
-  useKustomizations,
+  useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
@@ -28,7 +30,12 @@ export const FluxOverview = () => {
 
   const cluster = 'golem';
   const { resources: kustomizations, isLoading: isLoadingKustomizations } =
-    useKustomizations(cluster, { refetchInterval });
+    useResources(cluster, Kustomization, { refetchInterval });
+
+  const { resources: helmReleases, isLoading: isLoadingHelmReleases } =
+    useResources(cluster, HelmRelease, { refetchInterval });
+
+  const isLoadingResources = isLoadingKustomizations || isLoadingHelmReleases;
 
   useEffect(() => {
     const reconciling = kustomizations.some(k => k.isReconciling());
@@ -53,8 +60,8 @@ export const FluxOverview = () => {
     : undefined;
 
   const treeBuilder = useMemo(
-    () => new KustomizationTreeBuilder(kustomizations),
-    [kustomizations],
+    () => new KustomizationTreeBuilder(kustomizations, helmReleases),
+    [helmReleases, kustomizations],
   );
 
   return (
@@ -72,7 +79,7 @@ export const FluxOverview = () => {
           <Content
             treeBuilder={treeBuilder}
             compactView={compactView}
-            isLoadingKustomizations={isLoadingKustomizations}
+            isLoadingResources={isLoadingResources}
           />
         }
         details={
@@ -82,7 +89,7 @@ export const FluxOverview = () => {
               kustomization={selectedKustomization}
               treeBuilder={treeBuilder}
               allKustomizations={kustomizations}
-              isLoadingKustomizations={isLoadingKustomizations}
+              isLoadingResources={isLoadingResources}
             />
           )
         }

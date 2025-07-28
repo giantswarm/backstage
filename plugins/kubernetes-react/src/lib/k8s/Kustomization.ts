@@ -29,11 +29,8 @@ export interface KustomizationInterface extends KubeObjectInterface {
         v: string;
       }[];
     };
-    lastAppliedOriginRevision?: string;
     lastAppliedRevision?: string;
     lastAttemptedRevision?: string;
-    lastHandledReconcileAt?: string;
-    observedGeneration?: number;
   };
 }
 
@@ -63,6 +60,10 @@ export class Kustomization extends KubeObject<KustomizationInterface> {
     return this.jsonData.status?.conditions;
   }
 
+  getLastAppliedRevision() {
+    return this.jsonData.status?.lastAppliedRevision;
+  }
+
   findReadyCondition() {
     const conditions = this.getStatusConditions();
     if (!conditions) {
@@ -70,10 +71,6 @@ export class Kustomization extends KubeObject<KustomizationInterface> {
     }
 
     return conditions.find(c => c.type === 'Ready');
-  }
-
-  getLastAppliedRevision() {
-    return this.jsonData.status?.lastAppliedRevision;
   }
 
   isReconciling() {

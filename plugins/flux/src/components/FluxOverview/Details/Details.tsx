@@ -13,7 +13,7 @@ type DetailsProps = {
   kustomization?: Kustomization;
   allKustomizations: Kustomization[];
   treeBuilder: KustomizationTreeBuilder;
-  isLoadingKustomizations: boolean;
+  isLoadingResources: boolean;
 };
 
 export const Details = ({
@@ -21,9 +21,9 @@ export const Details = ({
   kustomization,
   allKustomizations,
   treeBuilder,
-  isLoadingKustomizations,
+  isLoadingResources,
 }: DetailsProps) => {
-  if (isLoadingKustomizations) {
+  if (isLoadingResources) {
     return <Progress />;
   }
 

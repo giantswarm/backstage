@@ -1,21 +1,21 @@
 import { useMemo } from 'react';
 import { QueryOptions, useListResources } from './useListResources';
-import {
-  Kustomization,
-  KustomizationInterface,
-} from '../lib/k8s/Kustomization';
+import { KubeObject, KubeObjectInterface } from '../lib/k8s/KubeObject';
 
-export function useKustomizations(
+export function useResources<R extends KubeObject<any>>(
   clusters: string | string[],
+  ResourceClass: (new (json: any, cluster: string) => R) & {
+    getGVK(): { apiVersion: string; group: string; plural: string };
+  },
   options?: QueryOptions,
 ) {
   const selectedClusters = [clusters].flat().filter(Boolean) as string[];
 
   const clustersGVKs = Object.fromEntries(
-    selectedClusters.map(c => [c, Kustomization.getGVK()]),
+    selectedClusters.map(c => [c, ResourceClass.getGVK()]),
   );
 
-  const queriesInfo = useListResources<KustomizationInterface>(
+  const queriesInfo = useListResources<KubeObjectInterface>(
     selectedClusters,
     clustersGVKs,
     undefined,
@@ -24,9 +24,9 @@ export function useKustomizations(
 
   const resources = useMemo(() => {
     return queriesInfo.clustersData.flatMap(({ cluster, data }) =>
-      data.map(resource => new Kustomization(resource, cluster)),
+      data.map(resource => new ResourceClass(resource, cluster)),
     );
-  }, [queriesInfo.clustersData]);
+  }, [queriesInfo.clustersData, ResourceClass]);
 
   return {
     ...queriesInfo,

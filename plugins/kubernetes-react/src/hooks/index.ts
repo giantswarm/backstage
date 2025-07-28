@@ -1,2 +1,2 @@
 export * from './useClustersInfo';
-export * from './useKustomizations';
+export * from './useResources';

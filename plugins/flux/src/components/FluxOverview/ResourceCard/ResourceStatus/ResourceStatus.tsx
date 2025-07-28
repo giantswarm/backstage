@@ -14,12 +14,14 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const KustomizationStatus = ({
-  kustomization,
-}: {
-  kustomization: Kustomization;
-}) => {
-  const readyCondition = kustomization.findReadyCondition();
+type ResourceStatusProps = {
+  resource: Kustomization | HelmRelease;
+};
+
+export const ResourceStatus = ({ resource }: ResourceStatusProps) => {
+  const classes = useStyles();
+
+  const readyCondition = resource.findReadyCondition();
 
   const status = useRef(readyCondition?.status || 'Unknown');
 
@@ -44,32 +46,13 @@ const KustomizationStatus = ({
     elText = 'Not ready';
     elStatus = 'error';
   }
-  if (kustomization.isReconciling()) {
+  if (resource.isReconciling()) {
     elText += ', reconciling';
   }
 
-  return <Status text={elText} status={elStatus} />;
-};
-
-const HelmReleaseStatus = ({ helmRelease }: { helmRelease: HelmRelease }) => {
-  return <Status text="Not ready" status="error" />;
-};
-
-type ResourceStatusProps = {
-  resource: Kustomization | HelmRelease;
-};
-
-export const ResourceStatus = ({ resource }: ResourceStatusProps) => {
-  const classes = useStyles();
-
   return (
     <Box className={classes.root}>
-      {resource.getKind() === Kustomization.kind ? (
-        <KustomizationStatus kustomization={resource as Kustomization} />
-      ) : null}
-      {resource.getKind() === HelmRelease.kind ? (
-        <HelmReleaseStatus helmRelease={resource as HelmRelease} />
-      ) : null}
+      <Status text={elText} status={elStatus} />
     </Box>
   );
 };

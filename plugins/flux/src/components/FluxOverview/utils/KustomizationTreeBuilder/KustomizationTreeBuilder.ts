@@ -28,9 +28,10 @@ export interface KustomizationTreeNode {
 
 export class KustomizationTreeBuilder {
   private kustomizations: Map<string, Kustomization> = new Map();
+  private helmReleases: Map<string, HelmRelease> = new Map();
   private inventories: Map<string, ObjectMetadata[] | undefined> = new Map();
 
-  constructor(kustomizations: Kustomization[]) {
+  constructor(kustomizations: Kustomization[], helmReleases: HelmRelease[]) {
     // Index kustomizations by their identifier
     kustomizations.forEach(k => {
       const key = this.getKey(k.getName(), k.getNamespace());
@@ -42,6 +43,11 @@ export class KustomizationTreeBuilder {
         ? parseInventoryEntries(k, inventory.entries)
         : undefined;
       this.inventories.set(key, inventoryEntries);
+    });
+
+    helmReleases.forEach(h => {
+      const key = this.getKey(h.getName(), h.getNamespace());
+      this.helmReleases.set(key, h);
     });
   }
 
@@ -141,8 +147,8 @@ export class KustomizationTreeBuilder {
 
       if (child.kind === HelmRelease.kind) {
         const childHelmReleaseKey = this.getKey(child.name, child.namespace);
-        // const childHelmRelease = this.helmReleases.get(childHelmReleaseKey);
-        const childHelmRelease = undefined;
+        const childHelmRelease = this.helmReleases.get(childHelmReleaseKey);
+
         return {
           id: `helmrelease-${child.name}`,
           nodeData: {
@@ -153,7 +159,7 @@ export class KustomizationTreeBuilder {
           },
           children: [],
           level,
-          displayInCompactView: child.group.endsWith(COMPACT_GROUP),
+          displayInCompactView: true,
         };
       }
 

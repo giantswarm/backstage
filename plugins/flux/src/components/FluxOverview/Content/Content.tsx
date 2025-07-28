@@ -6,17 +6,17 @@ import { Progress } from '@backstage/core-components';
 type ContentProps = {
   treeBuilder: KustomizationTreeBuilder;
   compactView: boolean;
-  isLoadingKustomizations: boolean;
+  isLoadingResources: boolean;
 };
 
 export const Content = ({
   treeBuilder,
   compactView,
-  isLoadingKustomizations,
+  isLoadingResources,
 }: ContentProps) => {
   const tree = useMemo(() => treeBuilder.buildTree(), [treeBuilder]);
 
-  if (isLoadingKustomizations) {
+  if (isLoadingResources) {
     return <Progress />;
   }
 
