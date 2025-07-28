@@ -4,11 +4,12 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Layout } from './Layout';
-import { OverviewTree } from './OverviewTree';
-import { KustomizationDetails } from './KustomizationDetails';
 import { Menu } from './Menu';
+import { useSelectedKustomization } from './useSelectedKustomization';
+import { Details } from './Details';
+import { Content } from './Content';
 
 export const FluxOverview = () => {
   const [compactView, setCompactView] = useState(true);
@@ -23,8 +24,20 @@ export const FluxOverview = () => {
   const { resources: kustomizations, isLoading: isLoadingKustomizations } =
     useKustomizations(cluster);
 
-  const treeBuilder = new KustomizationTreeBuilder(kustomizations);
-  const tree = treeBuilder.buildTree();
+  const selectedKustomizationRef = useSelectedKustomization();
+  const selectedKustomization = selectedKustomizationRef
+    ? kustomizations.find(
+        k =>
+          k.cluster === selectedKustomizationRef.cluster &&
+          k.getNamespace() === selectedKustomizationRef.namespace &&
+          k.getName() === selectedKustomizationRef.name,
+      )
+    : undefined;
+
+  const treeBuilder = useMemo(
+    () => new KustomizationTreeBuilder(kustomizations),
+    [kustomizations],
+  );
 
   return (
     <Box display="flex" flexDirection="column">
@@ -37,13 +50,23 @@ export const FluxOverview = () => {
       />
 
       <Layout
-        content={<OverviewTree tree={tree} compactView={compactView} />}
-        details={
-          <KustomizationDetails
+        content={
+          <Content
             treeBuilder={treeBuilder}
-            kustomizations={kustomizations}
-            isLoading={isLoadingKustomizations}
+            compactView={compactView}
+            isLoadingKustomizations={isLoadingKustomizations}
           />
+        }
+        details={
+          selectedKustomizationRef && (
+            <Details
+              kustomizationRef={selectedKustomizationRef}
+              kustomization={selectedKustomization}
+              treeBuilder={treeBuilder}
+              allKustomizations={kustomizations}
+              isLoadingKustomizations={isLoadingKustomizations}
+            />
+          )
         }
       />
     </Box>

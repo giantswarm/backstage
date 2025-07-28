@@ -1,5 +1,3 @@
-import { useSearchParams } from 'react-router-dom';
-import { Progress } from '@backstage/core-components';
 import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Grid, makeStyles } from '@material-ui/core';
 import { ResourceCard } from '../ResourceCard';
@@ -18,37 +16,17 @@ const useStyles = makeStyles(theme => ({
 }));
 
 type KustomizationDetailsProps = {
+  kustomization: Kustomization;
+  allKustomizations: Kustomization[];
   treeBuilder: KustomizationTreeBuilder;
-  kustomizations: Kustomization[];
-  isLoading: boolean;
 };
 
 export const KustomizationDetails = ({
+  kustomization,
   treeBuilder,
-  kustomizations,
-  isLoading,
+  allKustomizations,
 }: KustomizationDetailsProps) => {
-  const [searchParams] = useSearchParams();
   const classes = useStyles();
-  const cluster = searchParams.get('cluster');
-  const kind = searchParams.get('kind');
-  const namespace = searchParams.get('namespace');
-  const name = searchParams.get('name');
-
-  if (isLoading) {
-    return <Progress />;
-  }
-
-  const kustomization = kustomizations.find(
-    k => k.getNamespace() === namespace && k.getName() === name,
-  );
-  if (!kustomization) {
-    return (
-      <div>
-        Kustomization {namespace}/{name} in cluster {cluster} not found.
-      </div>
-    );
-  }
 
   const parentKustomization =
     treeBuilder.findParentKustomization(kustomization);
@@ -57,7 +35,7 @@ export const KustomizationDetails = ({
   const dependencies = dependsOn
     ? (dependsOn
         .map(d =>
-          kustomizations.find(
+          allKustomizations.find(
             k =>
               k.getName() === d.name &&
               k.getNamespace() ===

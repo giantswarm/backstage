@@ -11,7 +11,7 @@ const useStyles = makeStyles(() => ({
 
 type LayoutProps = {
   content: ReactNode;
-  details: ReactNode;
+  details?: ReactNode;
 };
 
 export const Layout = ({ content, details }: LayoutProps) => {
@@ -22,9 +22,11 @@ export const Layout = ({ content, details }: LayoutProps) => {
       <Grid item xs={12} lg={6}>
         {content}
       </Grid>
-      <Grid item xs={12} lg={6} className={classes.details}>
-        {details}
-      </Grid>
+      {details && (
+        <Grid item xs={12} lg={6} className={classes.details}>
+          {details}
+        </Grid>
+      )}
     </Grid>
   );
 };
