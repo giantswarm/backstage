@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
-import { useListResources } from './useListResources';
+import { QueryOptions, useListResources } from './useListResources';
 import {
   Kustomization,
   KustomizationInterface,
 } from '../lib/k8s/Kustomization';
 
-export function useKustomizations(clusters: string | string[]) {
+export function useKustomizations(
+  clusters: string | string[],
+  options?: QueryOptions,
+) {
   const selectedClusters = [clusters].flat().filter(Boolean) as string[];
 
   const clustersGVKs = Object.fromEntries(
@@ -15,6 +18,8 @@ export function useKustomizations(clusters: string | string[]) {
   const queriesInfo = useListResources<KustomizationInterface>(
     selectedClusters,
     clustersGVKs,
+    undefined,
+    options,
   );
 
   const resources = useMemo(() => {

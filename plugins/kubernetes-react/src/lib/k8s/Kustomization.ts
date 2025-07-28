@@ -63,7 +63,7 @@ export class Kustomization extends KubeObject<KustomizationInterface> {
     return this.jsonData.status?.conditions;
   }
 
-  findStatusCondition() {
+  findReadyCondition() {
     const conditions = this.getStatusConditions();
     if (!conditions) {
       return undefined;
@@ -74,5 +74,14 @@ export class Kustomization extends KubeObject<KustomizationInterface> {
 
   getLastAppliedRevision() {
     return this.jsonData.status?.lastAppliedRevision;
+  }
+
+  isReconciling() {
+    const readyCondition = this.findReadyCondition();
+
+    return (
+      readyCondition?.status === 'Unknown' &&
+      readyCondition?.reason === 'Progressing'
+    );
   }
 }

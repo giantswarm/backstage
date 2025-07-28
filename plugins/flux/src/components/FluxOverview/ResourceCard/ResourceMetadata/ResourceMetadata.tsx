@@ -20,7 +20,7 @@ const KustomizationMetadata = ({
   kustomization: Kustomization;
 }) => {
   const revision = kustomization.getLastAppliedRevision();
-  const readyCondition = kustomization.findStatusCondition();
+  const readyCondition = kustomization.findReadyCondition();
 
   const metadata: { [key: string]: any } = {
     Path: kustomization.getPath(),

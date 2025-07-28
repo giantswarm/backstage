@@ -1,5 +1,5 @@
 import { useApi } from '@backstage/core-plugin-api';
-import { useQueries } from '@tanstack/react-query';
+import { Query, useQueries } from '@tanstack/react-query';
 import type { List } from '@giantswarm/backstage-plugin-gs-common';
 import { mapQueriesToClusters } from './utils/queries';
 import { getK8sListPath } from './utils/k8sPath';
@@ -7,10 +7,19 @@ import { getK8sListPath } from './utils/k8sPath';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 
+export type QueryOptions = {
+  enabled?: boolean;
+  refetchInterval?:
+    | number
+    | false
+    | ((query: Query) => number | false | undefined);
+};
+
 export function useListResources<T>(
   clusters: string[],
   installationsGVKs: { [installationName: string]: CustomResourceMatcher },
   namespace?: string,
+  options: QueryOptions = {},
 ) {
   const kubernetesApi = useApi(kubernetesApiRef);
 
@@ -21,6 +30,7 @@ export function useListResources<T>(
       return {
         queryKey: [installationName, gvk.plural],
         queryFn: async () => {
+          console.log('fetching', installationName, gvk.plural);
           const response = await kubernetesApi.proxy({
             clusterName: installationName,
             path,
@@ -41,6 +51,7 @@ export function useListResources<T>(
 
           return list.items;
         },
+        ...options,
       };
     }),
     combine: results => mapQueriesToClusters(clusters, results),

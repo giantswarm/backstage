@@ -4,6 +4,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, makeStyles } from '@material-ui/core';
 import { Status } from '../../../UI/Status';
+import { useEffect, useRef } from 'react';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -18,7 +19,36 @@ const KustomizationStatus = ({
 }: {
   kustomization: Kustomization;
 }) => {
-  return <Status text="Ready" status="ok" />;
+  const readyCondition = kustomization.findReadyCondition();
+
+  const status = useRef(readyCondition?.status || 'Unknown');
+
+  useEffect(() => {
+    if (
+      !readyCondition?.status ||
+      readyCondition.status === status.current ||
+      readyCondition.status === 'Unknown'
+    ) {
+      return;
+    }
+
+    status.current = readyCondition.status;
+  }, [readyCondition?.status]);
+
+  let elText = 'Unknown';
+  let elStatus: 'aborted' | 'ok' | 'error' = 'aborted';
+  if (status.current === 'True') {
+    elText = 'Ready';
+    elStatus = 'ok';
+  } else if (status.current === 'False') {
+    elText = 'Not ready';
+    elStatus = 'error';
+  }
+  if (kustomization.isReconciling()) {
+    elText += ', reconciling';
+  }
+
+  return <Status text={elText} status={elStatus} />;
 };
 
 const HelmReleaseStatus = ({ helmRelease }: { helmRelease: HelmRelease }) => {

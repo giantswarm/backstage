@@ -4,15 +4,21 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Layout } from './Layout';
 import { Menu } from './Menu';
 import { useSelectedKustomization } from './useSelectedKustomization';
 import { Details } from './Details';
 import { Content } from './Content';
 
+const RECONCILING_INTERVAL = 3000;
+const NON_RECONCILING_INTERVAL = 15000;
+
 export const FluxOverview = () => {
   const [compactView, setCompactView] = useState(true);
+  const [refetchInterval, setRefetchInterval] = useState(
+    NON_RECONCILING_INTERVAL,
+  );
 
   const { clusters, selectedCluster, setSelectedCluster } = useClustersInfo();
 
@@ -22,7 +28,19 @@ export const FluxOverview = () => {
 
   const cluster = 'golem';
   const { resources: kustomizations, isLoading: isLoadingKustomizations } =
-    useKustomizations(cluster);
+    useKustomizations(cluster, { refetchInterval });
+
+  useEffect(() => {
+    const reconciling = kustomizations.some(k => k.isReconciling());
+
+    const newInterval = reconciling
+      ? RECONCILING_INTERVAL
+      : NON_RECONCILING_INTERVAL;
+
+    if (newInterval !== refetchInterval) {
+      setRefetchInterval(newInterval);
+    }
+  }, [kustomizations, refetchInterval]);
 
   const selectedKustomizationRef = useSelectedKustomization();
   const selectedKustomization = selectedKustomizationRef
