@@ -20,7 +20,7 @@ function getResourceColorVariant(kind: string) {
       variant = 'purple';
       break;
     case 'HelmRelease':
-      variant = 'green';
+      variant = 'pink';
       break;
     case 'HelmRepository':
       variant = 'blue';

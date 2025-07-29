@@ -9,7 +9,7 @@ import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
 import { useEffect, useMemo, useState } from 'react';
 import { Layout } from './Layout';
 import { Menu } from './Menu';
-import { useSelectedKustomization } from './useSelectedKustomization';
+import { useSelectedResource } from './useSelectedResource';
 import { Details } from './Details';
 import { Content } from './Content';
 
@@ -49,15 +49,28 @@ export const FluxOverview = () => {
     }
   }, [kustomizations, refetchInterval]);
 
-  const selectedKustomizationRef = useSelectedKustomization();
-  const selectedKustomization = selectedKustomizationRef
-    ? kustomizations.find(
+  const selectedResourceRef = useSelectedResource();
+  const selectedResource = useMemo(() => {
+    if (!selectedResourceRef) {
+      return undefined;
+    }
+
+    if (selectedResourceRef.kind === Kustomization.kind.toLowerCase()) {
+      return kustomizations.find(
         k =>
-          k.cluster === selectedKustomizationRef.cluster &&
-          k.getNamespace() === selectedKustomizationRef.namespace &&
-          k.getName() === selectedKustomizationRef.name,
-      )
-    : undefined;
+          k.cluster === selectedResourceRef.cluster &&
+          k.getNamespace() === selectedResourceRef.namespace &&
+          k.getName() === selectedResourceRef.name,
+      );
+    }
+
+    return helmReleases.find(
+      h =>
+        h.cluster === selectedResourceRef.cluster &&
+        h.getNamespace() === selectedResourceRef.namespace &&
+        h.getName() === selectedResourceRef.name,
+    );
+  }, [selectedResourceRef, kustomizations, helmReleases]);
 
   const treeBuilder = useMemo(
     () => new KustomizationTreeBuilder(kustomizations, helmReleases),
@@ -77,18 +90,20 @@ export const FluxOverview = () => {
       <Layout
         content={
           <Content
+            selectedResourceRef={selectedResourceRef}
             treeBuilder={treeBuilder}
             compactView={compactView}
             isLoadingResources={isLoadingResources}
           />
         }
         details={
-          selectedKustomizationRef && (
+          selectedResourceRef && (
             <Details
-              kustomizationRef={selectedKustomizationRef}
-              kustomization={selectedKustomization}
+              resourceRef={selectedResourceRef}
+              resource={selectedResource}
               treeBuilder={treeBuilder}
               allKustomizations={kustomizations}
+              allHelmReleases={helmReleases}
               isLoadingResources={isLoadingResources}
             />
           )

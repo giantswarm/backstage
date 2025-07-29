@@ -1,46 +1,87 @@
+import classNames from 'classnames';
 import { Progress } from '@backstage/core-components';
-import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  HelmRelease,
+  Kustomization,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { Box, makeStyles, Typography } from '@material-ui/core';
 import { KustomizationDetails } from '../KustomizationDetails';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
+import { HelmReleaseDetails } from '../HelmReleaseDetails';
+
+const useStyles = makeStyles(theme => ({
+  root: {
+    padding: theme.spacing(2, 3),
+    backgroundColor: theme.palette.grey[200],
+    borderRadius: theme.shape.borderRadius,
+    boxShadow: theme.shadows[1],
+    overflowY: 'auto',
+  },
+  fullHeight: {
+    height: '100%',
+  },
+}));
 
 type DetailsProps = {
-  kustomizationRef: {
+  resourceRef: {
     cluster: string;
     namespace: string;
     name: string;
     kind: string;
   };
-  kustomization?: Kustomization;
+  resource?: Kustomization | HelmRelease;
   allKustomizations: Kustomization[];
+  allHelmReleases: HelmRelease[];
   treeBuilder: KustomizationTreeBuilder;
   isLoadingResources: boolean;
 };
 
 export const Details = ({
-  kustomizationRef,
-  kustomization,
+  resourceRef,
+  resource,
   allKustomizations,
+  allHelmReleases,
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
+  const classes = useStyles();
+
   if (isLoadingResources) {
     return <Progress />;
   }
 
-  if (!kustomization) {
+  if (!resource) {
     return (
-      <div>
-        Kustomization {kustomizationRef.namespace}/{kustomizationRef.name} in
-        cluster {kustomizationRef.cluster} not found.
-      </div>
+      <Box className={classes.root}>
+        <Typography variant="body1">
+          {resourceRef.kind === Kustomization.kind.toLowerCase()
+            ? 'Kustomization'
+            : 'HelmRelease'}{' '}
+          <strong>
+            {resourceRef.namespace}/{resourceRef.name}
+          </strong>{' '}
+          in cluster <strong>{resourceRef.cluster}</strong> not found.
+        </Typography>
+      </Box>
     );
   }
 
   return (
-    <KustomizationDetails
-      kustomization={kustomization}
-      allKustomizations={allKustomizations}
-      treeBuilder={treeBuilder}
-    />
+    <Box className={classNames(classes.root, classes.fullHeight)}>
+      {resource.getKind() === Kustomization.kind && (
+        <KustomizationDetails
+          kustomization={resource as Kustomization}
+          allKustomizations={allKustomizations}
+          treeBuilder={treeBuilder}
+        />
+      )}
+      {resource.getKind() === HelmRelease.kind && (
+        <HelmReleaseDetails
+          helmRelease={resource as HelmRelease}
+          allHelmReleases={allHelmReleases}
+          treeBuilder={treeBuilder}
+        />
+      )}
+    </Box>
   );
 };

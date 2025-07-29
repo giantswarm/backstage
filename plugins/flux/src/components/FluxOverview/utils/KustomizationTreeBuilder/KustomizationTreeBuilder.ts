@@ -201,13 +201,15 @@ export class KustomizationTreeBuilder {
     return roots.map(root => this.buildSubtree(root, 0, new Set()));
   }
 
-  findParentKustomization(kustomization: Kustomization): Kustomization | null {
+  findParentKustomization(
+    resource: Kustomization | HelmRelease,
+  ): Kustomization | null {
     for (const [key, inventoryEntries] of this.inventories.entries()) {
       const matchingInventoryEntry = inventoryEntries?.find(
         entry =>
-          entry.kind === kustomization.getKind() &&
-          entry.name === kustomization.getName() &&
-          entry.namespace === kustomization.getNamespace(),
+          entry.kind === resource.getKind() &&
+          entry.name === resource.getName() &&
+          entry.namespace === resource.getNamespace(),
       );
       if (matchingInventoryEntry) {
         const matchingKustomization = this.kustomizations.get(key);

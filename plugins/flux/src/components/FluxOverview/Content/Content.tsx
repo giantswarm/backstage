@@ -4,12 +4,19 @@ import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Progress } from '@backstage/core-components';
 
 type ContentProps = {
+  selectedResourceRef: {
+    cluster: string;
+    namespace: string;
+    name: string;
+    kind: string;
+  } | null;
   treeBuilder: KustomizationTreeBuilder;
   compactView: boolean;
   isLoadingResources: boolean;
 };
 
 export const Content = ({
+  selectedResourceRef,
   treeBuilder,
   compactView,
   isLoadingResources,
@@ -20,5 +27,11 @@ export const Content = ({
     return <Progress />;
   }
 
-  return <OverviewTree tree={tree} compactView={compactView} />;
+  return (
+    <OverviewTree
+      tree={tree}
+      compactView={compactView}
+      selectedResourceRef={selectedResourceRef}
+    />
+  );
 };

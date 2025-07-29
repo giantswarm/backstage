@@ -70,7 +70,6 @@ type Node<T extends NodeData> = {
 };
 
 type RenderNodeFn<T extends NodeData> = (
-  nodeId: string,
   nodeData: T,
   options: {
     expandable: boolean;
@@ -120,7 +119,7 @@ function TreeNode<T extends NodeData>({
         }
       >
         {renderNode ? (
-          renderNode(node.id, node.nodeData, {
+          renderNode(node.nodeData, {
             expandable,
             expanded,
             onExpand: handleExpand,

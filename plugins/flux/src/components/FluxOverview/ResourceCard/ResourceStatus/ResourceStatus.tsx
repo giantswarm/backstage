@@ -1,10 +1,5 @@
-import {
-  HelmRelease,
-  Kustomization,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, makeStyles } from '@material-ui/core';
 import { Status } from '../../../UI/Status';
-import { useEffect, useRef } from 'react';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -15,38 +10,26 @@ const useStyles = makeStyles(theme => ({
 }));
 
 type ResourceStatusProps = {
-  resource: Kustomization | HelmRelease;
+  readyStatus: 'True' | 'False' | 'Unknown';
+  isReconciling: boolean;
 };
 
-export const ResourceStatus = ({ resource }: ResourceStatusProps) => {
+export const ResourceStatus = ({
+  readyStatus,
+  isReconciling,
+}: ResourceStatusProps) => {
   const classes = useStyles();
-
-  const readyCondition = resource.findReadyCondition();
-
-  const status = useRef(readyCondition?.status || 'Unknown');
-
-  useEffect(() => {
-    if (
-      !readyCondition?.status ||
-      readyCondition.status === status.current ||
-      readyCondition.status === 'Unknown'
-    ) {
-      return;
-    }
-
-    status.current = readyCondition.status;
-  }, [readyCondition?.status]);
 
   let elText = 'Unknown';
   let elStatus: 'aborted' | 'ok' | 'error' = 'aborted';
-  if (status.current === 'True') {
+  if (readyStatus === 'True') {
     elText = 'Ready';
     elStatus = 'ok';
-  } else if (status.current === 'False') {
+  } else if (readyStatus === 'False') {
     elText = 'Not ready';
     elStatus = 'error';
   }
-  if (resource.isReconciling()) {
+  if (isReconciling) {
     elText += ', reconciling';
   }
 

@@ -1,35 +1,33 @@
-import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Grid } from '@material-ui/core';
 import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
 
-type KustomizationDetailsProps = {
-  kustomization: Kustomization;
-  allKustomizations: Kustomization[];
+type HelmReleaseDetailsProps = {
+  helmRelease: HelmRelease;
+  allHelmReleases: HelmRelease[];
   treeBuilder: KustomizationTreeBuilder;
 };
 
-export const KustomizationDetails = ({
-  kustomization,
+export const HelmReleaseDetails = ({
+  helmRelease,
   treeBuilder,
-  allKustomizations,
-}: KustomizationDetailsProps) => {
-  const parentKustomization =
-    treeBuilder.findParentKustomization(kustomization);
+  allHelmReleases,
+}: HelmReleaseDetailsProps) => {
+  const parentKustomization = treeBuilder.findParentKustomization(helmRelease);
 
-  const dependsOn = kustomization.getDependsOn();
+  const dependsOn = helmRelease.getDependsOn();
   const dependencies = dependsOn
     ? (dependsOn
         .map(d =>
-          allKustomizations.find(
+          allHelmReleases.find(
             k =>
               k.getName() === d.name &&
-              k.getNamespace() ===
-                (d.namespace ?? kustomization.getNamespace()),
+              k.getNamespace() === (d.namespace ?? helmRelease.getNamespace()),
           ),
         )
-        .filter(k => Boolean(k)) as Kustomization[])
+        .filter(k => Boolean(k)) as HelmRelease[])
     : null;
 
   return (
@@ -37,7 +35,7 @@ export const KustomizationDetails = ({
       <Section heading="Source"></Section>
 
       {parentKustomization ? (
-        <Section heading="Parent Kustomization">
+        <Section heading="Kustomization">
           <ResourceCard
             cluster={parentKustomization.cluster}
             kind={parentKustomization.getKind()}
@@ -48,16 +46,17 @@ export const KustomizationDetails = ({
         </Section>
       ) : null}
 
-      <Section heading="This Kustomization">
+      <Section heading="This HelmRelease">
         <ResourceCard
-          cluster={kustomization.cluster}
-          kind={kustomization.getKind()}
-          name={kustomization.getName()}
-          namespace={kustomization.getNamespace()}
-          resource={kustomization}
+          cluster={helmRelease.cluster}
+          kind={helmRelease.getKind()}
+          name={helmRelease.getName()}
+          namespace={helmRelease.getNamespace()}
+          resource={helmRelease}
           highlighted
         />
       </Section>
+
       {dependencies ? (
         <Section heading="Dependencies">
           <Grid container spacing={3}>

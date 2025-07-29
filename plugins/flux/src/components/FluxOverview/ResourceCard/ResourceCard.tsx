@@ -8,6 +8,7 @@ import { ResourceStatus } from './ResourceStatus';
 import classNames from 'classnames';
 import { ResourceMetadata } from './ResourceMetadata';
 import { colord } from 'colord';
+import { useResourceStatus } from './ResourceStatus/useResourceStatus';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -88,8 +89,13 @@ export const ResourceCard = ({
   highlighted,
   error,
 }: ResourceCardProps) => {
+  const { readyStatus, isReconciling } = useResourceStatus(resource);
+
   return (
-    <ResourceWrapper highlighted={highlighted} error={error}>
+    <ResourceWrapper
+      highlighted={highlighted}
+      error={readyStatus === 'False' || error}
+    >
       <Box
         display="flex"
         flexDirection="column"
@@ -107,7 +113,12 @@ export const ResourceCard = ({
 
         {resource && <ResourceMetadata resource={resource} />}
 
-        {resource && <ResourceStatus resource={resource} />}
+        {resource && (
+          <ResourceStatus
+            readyStatus={readyStatus}
+            isReconciling={isReconciling}
+          />
+        )}
       </Box>
     </ResourceWrapper>
   );

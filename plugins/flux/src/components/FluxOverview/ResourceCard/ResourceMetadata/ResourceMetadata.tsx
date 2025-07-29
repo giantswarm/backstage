@@ -44,6 +44,28 @@ const KustomizationMetadata = ({
   );
 };
 
+const HelmReleaseMetadata = ({ helmRelease }: { helmRelease: HelmRelease }) => {
+  const readyCondition = helmRelease.findReadyCondition();
+
+  const metadata: { [key: string]: any } = {};
+
+  if (readyCondition) {
+    metadata.Status = (
+      <>
+        Last reconciled at{' '}
+        <DateComponent value={readyCondition.lastTransitionTime} />
+      </>
+    );
+    metadata.Message = <ConditionMessage message={readyCondition.message} />;
+  } else {
+    metadata.Status = 'Unknown';
+  }
+
+  return (
+    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="60px" />
+  );
+};
+
 type ResourceMetadataProps = {
   resource: Kustomization | HelmRelease;
 };
@@ -55,6 +77,9 @@ export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
     <Box className={classes.root} mt={3} px={2}>
       {resource.getKind() === Kustomization.kind ? (
         <KustomizationMetadata kustomization={resource as Kustomization} />
+      ) : null}
+      {resource.getKind() === HelmRelease.kind ? (
+        <HelmReleaseMetadata helmRelease={resource as HelmRelease} />
       ) : null}
     </Box>
   );

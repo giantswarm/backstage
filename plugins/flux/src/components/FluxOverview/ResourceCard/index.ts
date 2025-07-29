@@ -1,3 +1,3 @@
 export { ResourceCard, ResourceWrapper } from './ResourceCard';
 export { ResourceInfo } from './ResourceInfo';
-export { ResourceStatus } from './ResourceStatus';
+export { ResourceStatus, useResourceStatus } from './ResourceStatus';
