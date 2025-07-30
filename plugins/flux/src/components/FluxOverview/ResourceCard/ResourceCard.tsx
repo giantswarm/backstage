@@ -1,6 +1,9 @@
 import {
+  GitRepository,
   HelmRelease,
+  HelmRepository,
   Kustomization,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, makeStyles, Paper, PaperProps } from '@material-ui/core';
 import { ResourceInfo } from './ResourceInfo';
@@ -74,7 +77,12 @@ type ResourceCardProps = {
   kind: string;
   cluster: string;
   targetCluster?: string;
-  resource?: Kustomization | HelmRelease;
+  resource?:
+    | Kustomization
+    | HelmRelease
+    | GitRepository
+    | OCIRepository
+    | HelmRepository;
   highlighted?: boolean;
   error?: boolean;
 };

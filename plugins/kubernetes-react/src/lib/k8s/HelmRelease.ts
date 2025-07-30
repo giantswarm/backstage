@@ -2,6 +2,42 @@ import { KubeObject, KubeObjectInterface } from './KubeObject';
 
 export interface HelmReleaseInterface extends KubeObjectInterface {
   spec?: {
+    chart: {
+      metadata?: {
+        annotations?: {
+          [k: string]: string;
+        };
+        labels?: {
+          [k: string]: string;
+        };
+      };
+      spec: {
+        chart: string;
+        interval?: string;
+        reconcileStrategy?: 'ChartVersion' | 'Revision';
+        sourceRef: {
+          apiVersion?: string;
+          kind: 'HelmRepository' | 'GitRepository' | 'Bucket';
+          name: string;
+          namespace?: string;
+        };
+        valuesFile?: string;
+        valuesFiles?: string[];
+        verify?: {
+          provider: 'cosign';
+          secretRef?: {
+            name: string;
+          };
+        };
+        version?: string;
+      };
+    };
+    chartRef?: {
+      apiVersion?: string;
+      kind: 'OCIRepository' | 'HelmChart';
+      name: string;
+      namespace?: string;
+    };
     dependsOn?: {
       name: string;
       namespace?: string;
@@ -48,6 +84,14 @@ export class HelmRelease extends KubeObject<HelmReleaseInterface> {
 
   getLastAppliedRevision() {
     return this.jsonData.status?.lastAppliedRevision;
+  }
+
+  getChart() {
+    return this.jsonData.spec?.chart;
+  }
+
+  getChartRef() {
+    return this.jsonData.spec?.chartRef;
   }
 
   findReadyCondition() {

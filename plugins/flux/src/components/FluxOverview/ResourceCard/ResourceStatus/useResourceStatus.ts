@@ -1,10 +1,20 @@
 import {
+  GitRepository,
   HelmRelease,
+  HelmRepository,
   Kustomization,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEffect, useRef } from 'react';
 
-export function useResourceStatus(resource?: Kustomization | HelmRelease) {
+export function useResourceStatus(
+  resource?:
+    | Kustomization
+    | HelmRelease
+    | GitRepository
+    | OCIRepository
+    | HelmRepository,
+) {
   const readyCondition = resource?.findReadyCondition();
 
   const status = useRef(readyCondition?.status || 'Unknown');

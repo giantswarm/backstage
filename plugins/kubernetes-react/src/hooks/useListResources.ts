@@ -1,42 +1,37 @@
 import { useApi } from '@backstage/core-plugin-api';
-import { Query, useQueries } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import type { List } from '@giantswarm/backstage-plugin-gs-common';
 import { mapQueriesToClusters } from './utils/queries';
 import { getK8sListPath } from './utils/k8sPath';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
-
-export type QueryOptions = {
-  enabled?: boolean;
-  refetchInterval?:
-    | number
-    | false
-    | ((query: Query) => number | false | undefined);
-};
+import { QueryOptions } from './types';
 
 export function useListResources<T>(
   clusters: string[],
-  installationsGVKs: { [installationName: string]: CustomResourceMatcher },
-  namespace?: string,
-  options: QueryOptions = {},
+  clustersGVKs: { [cluster: string]: CustomResourceMatcher },
+  options: {
+    namespace?: string;
+  },
+  queryOptions: QueryOptions<T[]> = {},
 ) {
   const kubernetesApi = useApi(kubernetesApiRef);
 
   return useQueries({
-    queries: clusters.map(installationName => {
-      const gvk = installationsGVKs[installationName];
-      const path = getK8sListPath(gvk, namespace);
+    queries: clusters.map(cluster => {
+      const gvk = clustersGVKs[cluster];
+      const path = getK8sListPath(gvk, options.namespace);
       return {
-        queryKey: [installationName, gvk.plural],
+        queryKey: [cluster, 'list', gvk.plural],
         queryFn: async () => {
           const response = await kubernetesApi.proxy({
-            clusterName: installationName,
+            clusterName: cluster,
             path,
           });
 
           if (!response.ok) {
             const error = new Error(
-              `Failed to fetch resources from ${installationName} at ${path}. Reason: ${response.statusText}.`,
+              `Failed to fetch resources from ${cluster} at ${path}. Reason: ${response.statusText}.`,
             );
             error.name =
               response.status === 403 ? 'ForbiddenError' : error.name;
@@ -49,7 +44,7 @@ export function useListResources<T>(
 
           return list.items;
         },
-        ...options,
+        ...queryOptions,
       };
     }),
     combine: results => mapQueriesToClusters(clusters, results),

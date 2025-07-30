@@ -1,6 +1,9 @@
 import {
+  GitRepository,
   HelmRelease,
+  HelmRepository,
   Kustomization,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ConditionMessage,
@@ -66,8 +69,75 @@ const HelmReleaseMetadata = ({ helmRelease }: { helmRelease: HelmRelease }) => {
   );
 };
 
+const RepositoryMetadata = ({
+  repository,
+}: {
+  repository: GitRepository | OCIRepository | HelmRepository;
+}) => {
+  const metadata: { [key: string]: any } = {
+    URL: repository.getURL(),
+  };
+
+  if (repository instanceof GitRepository) {
+    const reference = repository.getReference();
+    if (reference?.tag) {
+      metadata.Tag = reference.tag;
+    } else if (reference?.semver) {
+      metadata.Tag = reference.semver;
+    } else if (reference?.branch) {
+      metadata.Branch = reference.branch;
+    }
+  }
+  if (repository instanceof OCIRepository) {
+    const reference = repository.getReference();
+    if (reference?.tag) {
+      metadata.Tag = reference.tag;
+    } else if (reference?.semver) {
+      metadata.Tag = reference.semver;
+    } else if (reference?.digest) {
+      metadata.Digest = reference.digest;
+    }
+  }
+
+  const revision = repository.getRevision();
+  if (revision) {
+    metadata.Revision = revision;
+  }
+
+  const readyCondition = repository.findReadyCondition();
+  if (readyCondition) {
+    if (readyCondition.status === 'False') {
+      metadata.Status = (
+        <>
+          Last reconciliation failed at{' '}
+          <DateComponent value={readyCondition.lastTransitionTime} />
+        </>
+      );
+    } else {
+      metadata.Status = (
+        <>
+          Last reconciled at{' '}
+          <DateComponent value={readyCondition.lastTransitionTime} />
+        </>
+      );
+    }
+    metadata.Message = <ConditionMessage message={readyCondition.message} />;
+  } else {
+    metadata.Status = 'Unknown';
+  }
+
+  return (
+    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="60px" />
+  );
+};
+
 type ResourceMetadataProps = {
-  resource: Kustomization | HelmRelease;
+  resource:
+    | Kustomization
+    | HelmRelease
+    | GitRepository
+    | OCIRepository
+    | HelmRepository;
 };
 
 export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
@@ -80,6 +150,15 @@ export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
       ) : null}
       {resource.getKind() === HelmRelease.kind ? (
         <HelmReleaseMetadata helmRelease={resource as HelmRelease} />
+      ) : null}
+      {resource.getKind() === GitRepository.kind ||
+      resource.getKind() === OCIRepository.kind ||
+      resource.getKind() === HelmRepository.kind ? (
+        <RepositoryMetadata
+          repository={
+            resource as GitRepository | OCIRepository | HelmRepository
+          }
+        />
       ) : null}
     </Box>
   );

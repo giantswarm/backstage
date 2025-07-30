@@ -13,6 +13,12 @@ export interface KustomizationInterface extends KubeObjectInterface {
       };
     };
     path?: string;
+    sourceRef: {
+      apiVersion?: string;
+      kind: 'OCIRepository' | 'GitRepository' | 'Bucket';
+      name: string;
+      namespace?: string;
+    };
   };
   status?: {
     conditions?: {
@@ -54,6 +60,10 @@ export class Kustomization extends KubeObject<KustomizationInterface> {
 
   getPath() {
     return this.jsonData.spec?.path;
+  }
+
+  getSourceRef() {
+    return this.jsonData.spec?.sourceRef;
   }
 
   getStatusConditions() {
