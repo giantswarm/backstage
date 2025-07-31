@@ -59,7 +59,8 @@ export const ResourceNode = ({
   onExpand,
 }: ResourceNodeProps) => {
   const classes = useStyles();
-  const { readyStatus, isReconciling } = useResourceStatus(resource);
+  const { readyStatus, isReconciling, isSuspended } =
+    useResourceStatus(resource);
 
   return (
     <ResourceWrapper
@@ -101,6 +102,7 @@ export const ResourceNode = ({
             <ResourceStatus
               readyStatus={readyStatus}
               isReconciling={isReconciling}
+              isSuspended={isSuspended}
             />
           )}
         </Box>

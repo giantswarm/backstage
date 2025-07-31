@@ -97,7 +97,8 @@ export const ResourceCard = ({
   highlighted,
   error,
 }: ResourceCardProps) => {
-  const { readyStatus, isReconciling } = useResourceStatus(resource);
+  const { readyStatus, isReconciling, isSuspended } =
+    useResourceStatus(resource);
 
   return (
     <ResourceWrapper
@@ -125,6 +126,7 @@ export const ResourceCard = ({
           <ResourceStatus
             readyStatus={readyStatus}
             isReconciling={isReconciling}
+            isSuspended={isSuspended}
           />
         )}
       </Box>

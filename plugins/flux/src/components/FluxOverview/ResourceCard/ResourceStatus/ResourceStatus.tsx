@@ -12,11 +12,13 @@ const useStyles = makeStyles(theme => ({
 type ResourceStatusProps = {
   readyStatus: 'True' | 'False' | 'Unknown';
   isReconciling: boolean;
+  isSuspended: boolean;
 };
 
 export const ResourceStatus = ({
   readyStatus,
   isReconciling,
+  isSuspended,
 }: ResourceStatusProps) => {
   const classes = useStyles();
 
@@ -31,6 +33,11 @@ export const ResourceStatus = ({
   }
   if (isReconciling) {
     elText += ', reconciling';
+  }
+
+  if (isSuspended) {
+    elText = 'Suspended';
+    elStatus = 'aborted';
   }
 
   return (

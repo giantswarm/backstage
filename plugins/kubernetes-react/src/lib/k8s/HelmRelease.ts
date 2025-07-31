@@ -111,4 +111,8 @@ export class HelmRelease extends KubeObject<HelmReleaseInterface> {
       readyCondition?.reason === 'Progressing'
     );
   }
+
+  isSuspended() {
+    return Boolean(this.jsonData.spec?.suspend);
+  }
 }

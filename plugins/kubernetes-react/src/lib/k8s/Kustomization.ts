@@ -19,6 +19,7 @@ export interface KustomizationInterface extends KubeObjectInterface {
       name: string;
       namespace?: string;
     };
+    suspend?: boolean;
   };
   status?: {
     conditions?: {
@@ -90,5 +91,9 @@ export class Kustomization extends KubeObject<KustomizationInterface> {
       readyCondition?.status === 'Unknown' &&
       readyCondition?.reason === 'Progressing'
     );
+  }
+
+  isSuspended() {
+    return Boolean(this.jsonData.spec?.suspend);
   }
 }

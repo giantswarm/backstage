@@ -8,6 +8,7 @@ export interface OCIRepositoryInterface extends KubeObjectInterface {
       semverFilter?: string;
       tag?: string;
     };
+    suspend?: boolean;
     url: string;
   };
   status?: {
@@ -62,5 +63,9 @@ export class OCIRepository extends KubeObject<OCIRepositoryInterface> {
       readyCondition?.status === 'Unknown' &&
       readyCondition?.reason === 'Progressing'
     );
+  }
+
+  isSuspended() {
+    return Boolean(this.jsonData.spec?.suspend);
   }
 }

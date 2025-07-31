@@ -34,5 +34,6 @@ export function useResourceStatus(
   return {
     readyStatus: status.current,
     isReconciling: Boolean(resource?.isReconciling()),
+    isSuspended: Boolean(resource?.isSuspended()),
   };
 }

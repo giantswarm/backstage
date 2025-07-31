@@ -3,6 +3,7 @@ import { KubeObject, KubeObjectInterface } from './KubeObject';
 export interface HelmRepositoryInterface extends KubeObjectInterface {
   spec?: {
     url: string;
+    suspend?: boolean;
   };
   status?: {
     artifact?: {
@@ -53,5 +54,9 @@ export class HelmRepository extends KubeObject<HelmRepositoryInterface> {
       readyCondition?.status === 'Unknown' &&
       readyCondition?.reason === 'Progressing'
     );
+  }
+
+  isSuspended() {
+    return Boolean(this.jsonData.spec?.suspend);
   }
 }

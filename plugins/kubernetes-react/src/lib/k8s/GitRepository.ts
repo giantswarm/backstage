@@ -9,6 +9,7 @@ export interface GitRepositoryInterface extends KubeObjectInterface {
       semver?: string;
       tag?: string;
     };
+    suspend?: boolean;
     url: string;
   };
   status?: {
@@ -64,5 +65,9 @@ export class GitRepository extends KubeObject<GitRepositoryInterface> {
       readyCondition?.status === 'Unknown' &&
       readyCondition?.reason === 'Progressing'
     );
+  }
+
+  isSuspended() {
+    return Boolean(this.jsonData.spec?.suspend);
   }
 }
