@@ -2,46 +2,45 @@ import {
   GitRepository,
   Kustomization,
   OCIRepository,
-  useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Grid } from '@material-ui/core';
 import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
-import { Progress } from '@backstage/core-components';
 
-function useSource(kustomization: Kustomization): {
-  resource?: GitRepository | OCIRepository;
-  isLoading: boolean;
-} {
+function useSource(
+  kustomization: Kustomization,
+  allGitRepositories: GitRepository[],
+  allOCIRepositories: OCIRepository[],
+): GitRepository | OCIRepository | undefined {
   const sourceRef = kustomization.getSourceRef();
-
-  let SourceClass: typeof GitRepository | typeof OCIRepository | undefined;
-  if (sourceRef?.kind === 'GitRepository') {
-    SourceClass = GitRepository;
-  }
-  if (sourceRef?.kind === 'OCIRepository') {
-    SourceClass = OCIRepository;
+  if (!sourceRef) {
+    return undefined;
   }
 
-  const { resource, isLoading: isLoading } = useResource(
-    kustomization.cluster,
-    SourceClass!,
-    {
-      name: sourceRef!.name,
-      namespace: sourceRef!.namespace ?? kustomization.getNamespace(),
-    },
-    {
-      enabled: Boolean(SourceClass),
-    },
-  );
+  const name = sourceRef.name;
+  const namespace = sourceRef.namespace ?? kustomization.getNamespace();
 
-  return { resource, isLoading };
+  if (sourceRef?.kind === GitRepository.kind) {
+    return allGitRepositories.find(
+      r => r.getName() === name && r.getNamespace() === namespace,
+    );
+  }
+
+  if (sourceRef?.kind === OCIRepository.kind) {
+    return allOCIRepositories.find(
+      r => r.getName() === name && r.getNamespace() === namespace,
+    );
+  }
+
+  return undefined;
 }
 
 type KustomizationDetailsProps = {
   kustomization: Kustomization;
   allKustomizations: Kustomization[];
+  allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
   treeBuilder: KustomizationTreeBuilder;
 };
 
@@ -49,8 +48,14 @@ export const KustomizationDetails = ({
   kustomization,
   treeBuilder,
   allKustomizations,
+  allGitRepositories,
+  allOCIRepositories,
 }: KustomizationDetailsProps) => {
-  const { resource: source } = useSource(kustomization);
+  const source = useSource(
+    kustomization,
+    allGitRepositories,
+    allOCIRepositories,
+  );
 
   const parentKustomization =
     treeBuilder.findParentKustomization(kustomization);
@@ -71,8 +76,8 @@ export const KustomizationDetails = ({
 
   return (
     <Box>
-      <Section heading="Source">
-        {source ? (
+      {source ? (
+        <Section heading="Source">
           <ResourceCard
             cluster={source.cluster}
             kind={source.getKind()}
@@ -80,10 +85,8 @@ export const KustomizationDetails = ({
             namespace={source.getNamespace()}
             resource={source}
           />
-        ) : (
-          <Progress />
-        )}
-      </Section>
+        </Section>
+      ) : null}
 
       {parentKustomization ? (
         <Section heading="Parent Kustomization">

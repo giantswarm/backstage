@@ -3,74 +3,72 @@ import {
   HelmRelease,
   HelmRepository,
   OCIRepository,
-  useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Grid } from '@material-ui/core';
 import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
-import { Progress } from '@backstage/core-components';
 
-function useSource(helmRelease: HelmRelease): {
-  resource?: GitRepository | OCIRepository | HelmRepository;
-  isLoading: boolean;
-} {
-  let SourceClass:
-    | typeof OCIRepository
-    | typeof GitRepository
-    | typeof HelmRepository
-    | undefined;
-  let name: string = '';
-  let namespace: string | undefined;
-
+function useSource(
+  helmRelease: HelmRelease,
+  allOCIRepositories: OCIRepository[],
+  allGitRepositories: GitRepository[],
+  allHelmRepositories: HelmRepository[],
+): GitRepository | OCIRepository | HelmRepository | undefined {
   const chart = helmRelease.getChart();
   const chartRef = helmRelease.getChartRef();
   if (!chart && chartRef) {
-    if (chartRef.kind === 'OCIRepository') {
-      SourceClass = OCIRepository;
-      name = chartRef.name;
-      namespace = chartRef.namespace ?? helmRelease.getNamespace();
+    if (chartRef.kind === OCIRepository.kind) {
+      const name = chartRef.name;
+      const namespace = chartRef.namespace ?? helmRelease.getNamespace();
+      return allOCIRepositories.find(
+        r => r.getName() === name && r.getNamespace() === namespace,
+      );
     }
   }
 
   if (chart && chart.spec && chart.spec.sourceRef) {
+    const name = chart.spec.sourceRef.name;
+    const namespace =
+      chart.spec.sourceRef.namespace ?? helmRelease.getNamespace();
     if (chart.spec.sourceRef.kind === 'GitRepository') {
-      SourceClass = GitRepository;
+      return allGitRepositories.find(
+        r => r.getName() === name && r.getNamespace() === namespace,
+      );
     }
     if (chart.spec.sourceRef.kind === 'HelmRepository') {
-      SourceClass = HelmRepository;
+      return allHelmRepositories.find(
+        r => r.getName() === name && r.getNamespace() === namespace,
+      );
     }
-    name = chart.spec.sourceRef.name;
-    namespace = chart.spec.sourceRef.namespace ?? helmRelease.getNamespace();
   }
 
-  const { resource, isLoading: isLoading } = useResource(
-    helmRelease.cluster,
-    SourceClass!,
-    {
-      name,
-      namespace,
-    },
-    {
-      enabled: Boolean(SourceClass),
-    },
-  );
-
-  return { resource, isLoading };
+  return undefined;
 }
 
 type HelmReleaseDetailsProps = {
   helmRelease: HelmRelease;
   allHelmReleases: HelmRelease[];
   treeBuilder: KustomizationTreeBuilder;
+  allOCIRepositories: OCIRepository[];
+  allGitRepositories: GitRepository[];
+  allHelmRepositories: HelmRepository[];
 };
 
 export const HelmReleaseDetails = ({
   helmRelease,
   treeBuilder,
   allHelmReleases,
+  allOCIRepositories,
+  allGitRepositories,
+  allHelmRepositories,
 }: HelmReleaseDetailsProps) => {
-  const { resource: source } = useSource(helmRelease);
+  const source = useSource(
+    helmRelease,
+    allOCIRepositories,
+    allGitRepositories,
+    allHelmRepositories,
+  );
 
   const parentKustomization = treeBuilder.findParentKustomization(helmRelease);
 
@@ -89,8 +87,8 @@ export const HelmReleaseDetails = ({
 
   return (
     <Box>
-      <Section heading="Source">
-        {source ? (
+      {source ? (
+        <Section heading="Source">
           <ResourceCard
             cluster={source.cluster}
             kind={source.getKind()}
@@ -98,10 +96,8 @@ export const HelmReleaseDetails = ({
             namespace={source.getNamespace()}
             resource={source}
           />
-        ) : (
-          <Progress />
-        )}
-      </Section>
+        </Section>
+      ) : null}
 
       {parentKustomization ? (
         <Section heading="Kustomization">

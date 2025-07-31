@@ -1,8 +1,11 @@
 import classNames from 'classnames';
 import { Progress } from '@backstage/core-components';
 import {
+  GitRepository,
   HelmRelease,
+  HelmRepository,
   Kustomization,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { KustomizationDetails } from '../KustomizationDetails';
@@ -32,6 +35,9 @@ type DetailsProps = {
   resource?: Kustomization | HelmRelease;
   allKustomizations: Kustomization[];
   allHelmReleases: HelmRelease[];
+  allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
+  allHelmRepositories: HelmRepository[];
   treeBuilder: KustomizationTreeBuilder;
   isLoadingResources: boolean;
 };
@@ -41,6 +47,9 @@ export const Details = ({
   resource,
   allKustomizations,
   allHelmReleases,
+  allGitRepositories,
+  allOCIRepositories,
+  allHelmRepositories,
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
@@ -72,6 +81,8 @@ export const Details = ({
         <KustomizationDetails
           kustomization={resource as Kustomization}
           allKustomizations={allKustomizations}
+          allGitRepositories={allGitRepositories}
+          allOCIRepositories={allOCIRepositories}
           treeBuilder={treeBuilder}
         />
       )}
@@ -79,6 +90,9 @@ export const Details = ({
         <HelmReleaseDetails
           helmRelease={resource as HelmRelease}
           allHelmReleases={allHelmReleases}
+          allGitRepositories={allGitRepositories}
+          allOCIRepositories={allOCIRepositories}
+          allHelmRepositories={allHelmRepositories}
           treeBuilder={treeBuilder}
         />
       )}
