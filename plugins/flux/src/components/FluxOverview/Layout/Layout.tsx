@@ -45,13 +45,7 @@ export const Layout = ({ content, details, onDetailsClose }: LayoutProps) => {
           {content}
         </Grid>
       </Grid>
-      <Drawer
-        open={Boolean(details)}
-        anchor="right"
-        disableAutoFocus
-        keepMounted
-        variant="persistent"
-      >
+      <Drawer open={Boolean(details)} anchor="right" variant="persistent">
         <Box className={classes.drawerContent}>
           <IconButton
             className={classes.drawerCloseButton}

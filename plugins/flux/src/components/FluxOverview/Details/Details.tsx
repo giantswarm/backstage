@@ -1,4 +1,3 @@
-import classNames from 'classnames';
 import { Progress } from '@backstage/core-components';
 import {
   GitRepository,
@@ -61,7 +60,7 @@ export const Details = ({
   }
 
   return (
-    <Box className={classNames(classes.root, classes.fullHeight)}>
+    <Box>
       {resource.getKind() === Kustomization.kind && (
         <KustomizationDetails
           kustomization={resource as Kustomization}

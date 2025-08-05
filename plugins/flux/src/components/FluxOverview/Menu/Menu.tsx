@@ -27,14 +27,16 @@ export const Menu = ({
             onChange={onSelectedClusterChange}
           />
         </Grid>
-        <Grid item xs={12} md={9}>
-          <Box mt={{ md: '27px' }}>
-            <CompactViewSwitch
-              value={compactView}
-              onChange={onCompactViewChange}
-            />
-          </Box>
-        </Grid>
+        {Boolean(selectedCluster) ? (
+          <Grid item xs={12} md={9}>
+            <Box mt={{ md: '27px' }}>
+              <CompactViewSwitch
+                value={compactView}
+                onChange={onCompactViewChange}
+              />
+            </Box>
+          </Grid>
+        ) : null}
       </Grid>
     </Box>
   );

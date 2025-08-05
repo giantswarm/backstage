@@ -55,7 +55,7 @@ export const ClusterSelector = ({
     <Autocomplete
       label="Cluster"
       items={items}
-      selectedValue={selectedCluster}
+      selectedValue={selectedCluster ?? null}
       onChange={handleChange}
     />
   );

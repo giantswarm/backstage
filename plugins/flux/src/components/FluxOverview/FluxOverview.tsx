@@ -11,6 +11,7 @@ import { useSelectedResource } from './useSelectedResource';
 import { Details } from './Details';
 import { Content } from './Content';
 import { useFluxResources } from './useFluxResources';
+import { EmptyState } from '@backstage/core-components';
 
 export const FluxOverview = () => {
   const [compactView, setCompactView] = useState(true);
@@ -21,7 +22,7 @@ export const FluxOverview = () => {
     setSelectedCluster(selectedItem);
   };
 
-  const cluster = 'golem';
+  const cluster = selectedCluster;
   const {
     kustomizations,
     helmReleases,
@@ -84,6 +85,14 @@ export const FluxOverview = () => {
         compactView={compactView}
         onCompactViewChange={() => setCompactView(!compactView)}
       />
+
+      {!Boolean(cluster) ? (
+        <EmptyState
+          missing="info"
+          title="No information to display"
+          description="Please select a cluster to view Flux resources."
+        />
+      ) : null}
 
       <Layout
         content={

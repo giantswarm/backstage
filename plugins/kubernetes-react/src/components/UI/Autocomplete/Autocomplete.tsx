@@ -204,7 +204,7 @@ export const Autocomplete = ({
 }: AutocompleteProps) => {
   const value = useMemo(() => {
     if (!selectedValue) {
-      return undefined;
+      return null;
     }
 
     if (Array.isArray(selectedValue)) {
@@ -212,14 +212,6 @@ export const Autocomplete = ({
     }
 
     return items.find(item => item.value === selectedValue);
-
-    // return selectedValue
-    //   .map(selectedValue => items.find(item => item.value === selectedValue))
-    //   .filter(Boolean) as {
-    //   label: string;
-    //   value: string;
-    // }[];
-    // return items.filter(item => selectedValue.includes(item.value));
   }, [items, selectedValue]);
 
   return (
