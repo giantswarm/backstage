@@ -25,7 +25,7 @@ type DetailsProps = {
   allGitRepositories: GitRepository[];
   allOCIRepositories: OCIRepository[];
   allHelmRepositories: HelmRepository[];
-  treeBuilder: KustomizationTreeBuilder;
+  treeBuilder?: KustomizationTreeBuilder;
   isLoadingResources: boolean;
 };
 
@@ -40,7 +40,7 @@ export const Details = ({
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
-  if (isLoadingResources) {
+  if (isLoadingResources || !treeBuilder) {
     return <Progress />;
   }
 
