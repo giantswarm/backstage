@@ -11,11 +11,7 @@ import {
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { Box, makeStyles } from '@material-ui/core';
-
-const useStyles = makeStyles(theme => ({
-  root: {},
-}));
+import { Box } from '@material-ui/core';
 
 const KustomizationMetadata = ({
   kustomization,
@@ -43,7 +39,7 @@ const KustomizationMetadata = ({
   }
 
   return (
-    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="60px" />
+    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="76px" />
   );
 };
 
@@ -65,7 +61,7 @@ const HelmReleaseMetadata = ({ helmRelease }: { helmRelease: HelmRelease }) => {
   }
 
   return (
-    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="60px" />
+    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="76px" />
   );
 };
 
@@ -127,7 +123,7 @@ const RepositoryMetadata = ({
   }
 
   return (
-    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="60px" />
+    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="76px" />
   );
 };
 
@@ -141,10 +137,8 @@ type ResourceMetadataProps = {
 };
 
 export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
-  const classes = useStyles();
-
   return (
-    <Box className={classes.root} mt={3} px={2}>
+    <Box mt={3} px={2}>
       {resource.getKind() === Kustomization.kind ? (
         <KustomizationMetadata kustomization={resource as Kustomization} />
       ) : null}

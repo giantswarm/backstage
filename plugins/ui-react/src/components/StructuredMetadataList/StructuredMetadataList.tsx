@@ -13,6 +13,9 @@ const useStyles = makeStyles(() => ({
   itemRow: {
     flexDirection: 'row',
   },
+  value: {
+    wordBreak: 'break-word',
+  },
 }));
 
 const CONTAINER_LAYOUT_BREAKPOINT = 500;
@@ -29,26 +32,32 @@ export const StructuredMetadataList = ({
   const classes = useStyles();
   const [containerRef, dimensions] = useContainerDimensions();
 
+  const rowLayout =
+    Boolean(fixedKeyColumnWidth) &&
+    dimensions.width >= CONTAINER_LAYOUT_BREAKPOINT;
+
   return (
     <Box>
       <Grid container direction="column" ref={containerRef}>
         {Object.entries(metadata).map(([key, value]) => (
-          <Grid item key={key}>
+          <Grid item xs={12} key={key}>
             <Box
               className={classNames(classes.item, {
-                [classes.itemRow]:
-                  dimensions.width >= CONTAINER_LAYOUT_BREAKPOINT,
+                [classes.itemRow]: rowLayout,
               })}
             >
-              <Box
-                minWidth={fixedKeyColumnWidth ? fixedKeyColumnWidth : undefined}
-                mr={2}
-              >
+              <Box width={rowLayout ? fixedKeyColumnWidth : '100%'}>
                 <Typography variant="subtitle2">{key}</Typography>
               </Box>
-              <Box>
+              <Box
+                width={
+                  rowLayout ? `calc(100% - ${fixedKeyColumnWidth})` : '100%'
+                }
+              >
                 {typeof value === 'string' ? (
-                  <Typography variant="body2">{value}</Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {value}
+                  </Typography>
                 ) : (
                   value
                 )}
