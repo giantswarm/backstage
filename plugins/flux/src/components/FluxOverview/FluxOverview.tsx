@@ -31,7 +31,7 @@ export const FluxOverview = () => {
     isLoading,
   } = useFluxResources(cluster);
 
-  const selectedResourceRef = useSelectedResource();
+  const { selectedResourceRef, clearSelectedResource } = useSelectedResource();
   const selectedResource = useMemo(() => {
     if (!selectedResourceRef) {
       return undefined;
@@ -109,6 +109,7 @@ export const FluxOverview = () => {
             />
           )
         }
+        onDetailsClose={() => clearSelectedResource()}
       />
     </Box>
   );

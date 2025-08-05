@@ -7,23 +7,10 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, makeStyles, Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { KustomizationDetails } from '../KustomizationDetails';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
-
-const useStyles = makeStyles(theme => ({
-  root: {
-    padding: theme.spacing(2, 3),
-    backgroundColor: theme.palette.grey[200],
-    borderRadius: theme.shape.borderRadius,
-    boxShadow: theme.shadows[1],
-    overflowY: 'auto',
-  },
-  fullHeight: {
-    height: '100%',
-  },
-}));
 
 type DetailsProps = {
   resourceRef: {
@@ -53,15 +40,13 @@ export const Details = ({
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
-  const classes = useStyles();
-
   if (isLoadingResources) {
     return <Progress />;
   }
 
   if (!resource) {
     return (
-      <Box className={classes.root}>
+      <Box>
         <Typography variant="body1">
           {resourceRef.kind === Kustomization.kind.toLowerCase()
             ? 'Kustomization'
