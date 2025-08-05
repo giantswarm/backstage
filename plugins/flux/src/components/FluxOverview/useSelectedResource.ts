@@ -8,7 +8,7 @@ export function useSelectedResource() {
   const name = searchParams.get('name');
 
   if (!cluster || !kind || !namespace || !name) {
-    return null;
+    return undefined;
   }
 
   return { cluster, kind, namespace, name };

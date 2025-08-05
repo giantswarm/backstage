@@ -1,6 +1,9 @@
 import {
+  GitRepository,
   HelmRelease,
+  HelmRepository,
   Kustomization,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ObjectMetadata,
@@ -30,9 +33,17 @@ export class KustomizationTreeBuilder {
   private kustomizations: Map<string, Kustomization> = new Map();
   private helmReleases: Map<string, HelmRelease> = new Map();
   private inventories: Map<string, ObjectMetadata[] | undefined> = new Map();
+  private gitRepositories: Map<string, GitRepository> = new Map();
+  private ociRepositories: Map<string, OCIRepository> = new Map();
+  private helmRepositories: Map<string, HelmRepository> = new Map();
 
-  constructor(kustomizations: Kustomization[], helmReleases: HelmRelease[]) {
-    // Index kustomizations by their identifier
+  constructor(
+    kustomizations: Kustomization[],
+    helmReleases: HelmRelease[],
+    gitRepositories: GitRepository[],
+    ociRepositories: OCIRepository[],
+    helmRepositories: HelmRepository[],
+  ) {
     kustomizations.forEach(k => {
       const key = this.getKey(k.getName(), k.getNamespace());
 
@@ -48,6 +59,21 @@ export class KustomizationTreeBuilder {
     helmReleases.forEach(h => {
       const key = this.getKey(h.getName(), h.getNamespace());
       this.helmReleases.set(key, h);
+    });
+
+    gitRepositories.forEach(g => {
+      const key = this.getKey(g.getName(), g.getNamespace());
+      this.gitRepositories.set(key, g);
+    });
+
+    ociRepositories.forEach(o => {
+      const key = this.getKey(o.getName(), o.getNamespace());
+      this.ociRepositories.set(key, o);
+    });
+
+    helmRepositories.forEach(h => {
+      const key = this.getKey(h.getName(), h.getNamespace());
+      this.helmRepositories.set(key, h);
     });
   }
 
@@ -80,14 +106,6 @@ export class KustomizationTreeBuilder {
     if (!inventoryEntries) {
       return [];
     }
-
-    // return Array.from(this.kustomizations.values()).filter(k =>
-    //   Boolean(
-    //     inventoryEntries.find(
-    //       e => e.kind === k.getKind() && e.name === k.getName(),
-    //     ),
-    //   ),
-    // );
     return inventoryEntries;
   }
 
@@ -145,22 +163,24 @@ export class KustomizationTreeBuilder {
         }
       }
 
+      let childResource:
+        | HelmRelease
+        | HelmRepository
+        | GitRepository
+        | OCIRepository
+        | undefined;
+      const childKey = this.getKey(child.name, child.namespace);
       if (child.kind === HelmRelease.kind) {
-        const childHelmReleaseKey = this.getKey(child.name, child.namespace);
-        const childHelmRelease = this.helmReleases.get(childHelmReleaseKey);
-
-        return {
-          id: `helmrelease-${child.name}`,
-          nodeData: {
-            ...child,
-            label: child.name,
-            cluster: kustomization.cluster,
-            resource: childHelmRelease,
-          },
-          children: [],
-          level,
-          displayInCompactView: true,
-        };
+        childResource = this.helmReleases.get(childKey);
+      }
+      if (child.kind === HelmRepository.kind) {
+        childResource = this.helmRepositories.get(childKey);
+      }
+      if (child.kind === GitRepository.kind) {
+        childResource = this.gitRepositories.get(childKey);
+      }
+      if (child.kind === OCIRepository.kind) {
+        childResource = this.ociRepositories.get(childKey);
       }
 
       return {
@@ -169,6 +189,7 @@ export class KustomizationTreeBuilder {
           ...child,
           label: child.name,
           cluster: kustomization.cluster,
+          resource: childResource,
         },
         children: [],
         level,

@@ -4,13 +4,13 @@ import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Progress } from '@backstage/core-components';
 
 type ContentProps = {
-  selectedResourceRef: {
+  selectedResourceRef?: {
     cluster: string;
     namespace: string;
     name: string;
     kind: string;
-  } | null;
-  treeBuilder: KustomizationTreeBuilder;
+  };
+  treeBuilder?: KustomizationTreeBuilder;
   compactView: boolean;
   isLoadingResources: boolean;
 };
@@ -21,9 +21,9 @@ export const Content = ({
   compactView,
   isLoadingResources,
 }: ContentProps) => {
-  const tree = useMemo(() => treeBuilder.buildTree(), [treeBuilder]);
+  const tree = useMemo(() => treeBuilder?.buildTree(), [treeBuilder]);
 
-  if (isLoadingResources) {
+  if (isLoadingResources || !tree) {
     return <Progress />;
   }
 

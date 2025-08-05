@@ -68,7 +68,6 @@ export function useFluxResources(cluster: string) {
   });
 
   useEffect(() => {
-    console.log('USE EFFECT');
     if (kustomizationsErrors.length > 0) {
       setKustomizationsEnabled(false);
     }

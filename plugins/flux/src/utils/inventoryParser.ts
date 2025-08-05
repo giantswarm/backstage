@@ -3,7 +3,7 @@
  * Based on the Go implementation in fluxcd/cli-utils
  */
 
-import { Kustomization } from '../lib/k8s/Kustomization';
+import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export interface ObjectMetadata {
   group: string;

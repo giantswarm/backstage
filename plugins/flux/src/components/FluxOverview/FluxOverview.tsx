@@ -54,10 +54,26 @@ export const FluxOverview = () => {
     );
   }, [selectedResourceRef, kustomizations, helmReleases]);
 
-  const treeBuilder = useMemo(
-    () => new KustomizationTreeBuilder(kustomizations, helmReleases),
-    [helmReleases, kustomizations],
-  );
+  const treeBuilder = useMemo(() => {
+    if (isLoading) {
+      return undefined;
+    }
+
+    return new KustomizationTreeBuilder(
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+    );
+  }, [
+    kustomizations,
+    helmReleases,
+    gitRepositories,
+    ociRepositories,
+    helmRepositories,
+    isLoading,
+  ]);
 
   return (
     <Box display="flex" flexDirection="column">
