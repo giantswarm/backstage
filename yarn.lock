@@ -9430,7 +9430,23 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-flux@npm:^0.1.0, @giantswarm/backstage-plugin-flux@workspace:^, @giantswarm/backstage-plugin-flux@workspace:plugins/flux":
+"@giantswarm/backstage-plugin-flux-react@npm:^0.1.0, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react"
+  dependencies:
+    "@backstage/cli": "npm:^0.33.0"
+    "@backstage/core-plugin-api": "npm:^1.9.4"
+    "@backstage/test-utils": "npm:^1.7.8"
+    "@material-ui/core": "npm:^4.9.13"
+    "@testing-library/jest-dom": "npm:^6.0.0"
+    "@testing-library/react": "npm:^14.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+  languageName: unknown
+  linkType: soft
+
+"@giantswarm/backstage-plugin-flux@npm:^0.1.0, @giantswarm/backstage-plugin-flux@workspace:plugins/flux":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-flux@workspace:plugins/flux"
   dependencies:
@@ -9442,7 +9458,6 @@ __metadata:
     "@backstage/plugin-kubernetes-react": "npm:^0.5.8"
     "@backstage/test-utils": "npm:^1.7.8"
     "@backstage/theme": "npm:^0.6.4"
-    "@giantswarm/backstage-plugin-gs-common": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.9.13"
@@ -9463,7 +9478,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-gs-common@npm:^0.18.0, @giantswarm/backstage-plugin-gs-common@workspace:^, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
+"@giantswarm/backstage-plugin-gs-common@npm:^0.18.0, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
   dependencies:
@@ -9503,7 +9518,7 @@ __metadata:
     "@backstage/test-utils": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@backstage/types": "backstage:^"
-    "@giantswarm/backstage-plugin-flux": "workspace:^"
+    "@giantswarm/backstage-plugin-flux-react": "npm:^0.1.0"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.18.0"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
