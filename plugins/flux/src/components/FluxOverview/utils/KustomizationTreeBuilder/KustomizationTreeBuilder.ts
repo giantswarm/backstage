@@ -128,6 +128,7 @@ export class KustomizationTreeBuilder {
 
     if (visited.has(key)) {
       // Circular dependency detected - return node without children
+      // eslint-disable-next-line no-console
       console.warn(`Circular dependency detected for: ${key}`);
 
       const targetCluster = findTargetClusterName(kustomization);
