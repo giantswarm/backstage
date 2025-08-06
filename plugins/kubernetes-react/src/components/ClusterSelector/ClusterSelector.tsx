@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useLocation } from 'react-router-dom';
 import qs from 'qs';
-import { Autocomplete } from '../UI/Autocomplete';
+import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
 
 type ClusterSelectorProps = {
   clusters: string[];
