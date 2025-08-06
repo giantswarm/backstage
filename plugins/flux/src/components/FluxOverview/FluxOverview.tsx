@@ -18,10 +18,6 @@ export const FluxOverview = () => {
 
   const { clusters, selectedCluster, setSelectedCluster } = useClustersInfo();
 
-  const handleSelectedClusterChange = (selectedItem: string | null) => {
-    setSelectedCluster(selectedItem);
-  };
-
   const cluster = selectedCluster;
   const {
     kustomizations,
@@ -54,6 +50,11 @@ export const FluxOverview = () => {
         h.getName() === selectedResourceRef.name,
     );
   }, [selectedResourceRef, kustomizations, helmReleases]);
+
+  const handleSelectedClusterChange = (selectedItem: string | null) => {
+    clearSelectedResource();
+    setSelectedCluster(selectedItem);
+  };
 
   const treeBuilder = useMemo(() => {
     if (isLoading) {
