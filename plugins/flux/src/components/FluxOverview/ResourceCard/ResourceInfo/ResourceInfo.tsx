@@ -11,6 +11,12 @@ const useStyles = makeStyles(theme => ({
   heading: {
     marginBottom: theme.spacing(1),
   },
+  chips: {
+    margin: '-2px 0',
+  },
+  chip: {
+    margin: '2px 0',
+  },
 }));
 
 function getResourceColorVariant(kind: string) {
@@ -62,12 +68,13 @@ export const ResourceInfo = ({
         {name}
       </Typography>
 
-      <Box>
-        <Chip label={kind} variant={colorVariant} />
+      <Box className={classes.chips}>
+        <Chip label={kind} variant={colorVariant} className={classes.chip} />
         {' in '}
         <Chip
           label={<IconText icon={ManagementClusterIcon}>{cluster}</IconText>}
           variant="gray"
+          className={classes.chip}
         />
         {namespace ? (
           <>
@@ -75,6 +82,7 @@ export const ResourceInfo = ({
             <Chip
               label={<IconText icon={LocalOfferIcon}>{namespace}</IconText>}
               variant="gray"
+              className={classes.chip}
             />
           </>
         ) : null}
@@ -86,6 +94,7 @@ export const ResourceInfo = ({
                 <IconText icon={WorkloadClusterIcon}>{targetCluster}</IconText>
               }
               variant="gray"
+              className={classes.chip}
             />
           </>
         ) : null}

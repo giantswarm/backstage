@@ -21,10 +21,11 @@ const useStyles = makeStyles<Theme, { variant: ColorVariant }>(theme => {
 type ChipProps = {
   variant: ColorVariant;
   label: ReactNode;
+  className?: string;
 };
 
-export const Chip = ({ label, variant }: ChipProps) => {
+export const Chip = ({ label, variant, className }: ChipProps) => {
   const classes = useStyles({ variant });
 
-  return <Box className={classNames(classes.root)}>{label}</Box>;
+  return <Box className={classNames(classes.root, className)}>{label}</Box>;
 };
