@@ -10,9 +10,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 In this release:
 
 ### Added
+
 - Flux overview UI has been added.
 
 ### Fixed
+
 - AWS Account ID copy-paste issue in the Clusters table has been fixe.
 
 See [./docs/releases/v0.81.0-changelog.md](./docs/releases/v0.81.0-changelog.md) for more information.
