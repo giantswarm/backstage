@@ -1,9 +1,9 @@
 /**
  * This file was automatically generated, PLEASE DO NOT MODIFY IT BY HAND.
  */
-  
-  import * as metav1 from '../../metav1';
-  
+
+import * as metav1 from '../../metav1';
+
 /**
  * HelmRelease is the Schema for the helmreleases API
  */

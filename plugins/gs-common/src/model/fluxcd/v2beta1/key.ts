@@ -3,10 +3,9 @@
  */
 
 export const HelmReleaseApiVersion = 'helm.toolkit.fluxcd.io/v2beta1';
-  
+
 export const HelmReleaseGVK = {
-    apiVersion: 'v2beta1',
-    group: 'helm.toolkit.fluxcd.io',
-    plural: 'helmreleases',
-  };
-  
+  apiVersion: 'v2beta1',
+  group: 'helm.toolkit.fluxcd.io',
+  plural: 'helmreleases',
+};
