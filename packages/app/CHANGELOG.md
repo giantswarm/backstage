@@ -1,5 +1,18 @@
 # app
 
+## 0.18.0
+
+### Minor Changes
+
+- 8685deb: Added Flux overview UI.
+
+### Patch Changes
+
+- Updated dependencies [cbdf4f6]
+- Updated dependencies [8685deb]
+  - @giantswarm/backstage-plugin-gs@0.39.0
+  - @giantswarm/backstage-plugin-flux@0.2.0
+
 ## 0.17.1
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.19.0
+
+### Minor Changes
+
+- 8685deb: Added Flux overview UI.
+
 ## 0.18.0
 
 ### Minor Changes
