@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.39.0
+
+### Minor Changes
+
+- 8685deb: Added Flux overview UI.
+
+### Patch Changes
+
+- cbdf4f6: Fixed AWS Account ID copy-paste issue in clusters table.
+- Updated dependencies [8685deb]
+  - @giantswarm/backstage-plugin-flux-react@0.2.0
+  - @giantswarm/backstage-plugin-gs-common@0.19.0
+
 ## 0.38.1
 
 ### Patch Changes
