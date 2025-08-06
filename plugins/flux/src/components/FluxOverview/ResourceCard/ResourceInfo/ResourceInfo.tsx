@@ -2,10 +2,7 @@ import { Box, makeStyles, Typography } from '@material-ui/core';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
 import { ColorVariant } from '../../../UI/colors/makeColorVariants';
 import { Chip, IconText } from '../../../UI';
-import {
-  ManagementClusterIcon,
-  WorkloadClusterIcon,
-} from '../../../../assets/icons';
+import { WorkloadClusterIcon } from '../../../../assets/icons';
 
 const useStyles = makeStyles(theme => ({
   heading: {
@@ -55,7 +52,6 @@ export const ResourceInfo = ({
   kind,
   name,
   namespace,
-  cluster,
   targetCluster,
 }: ResourceInfoProps) => {
   const classes = useStyles();
@@ -71,11 +67,6 @@ export const ResourceInfo = ({
       <Box className={classes.chips}>
         <Chip label={kind} variant={colorVariant} className={classes.chip} />
         {' in '}
-        <Chip
-          label={<IconText icon={ManagementClusterIcon}>{cluster}</IconText>}
-          variant="gray"
-          className={classes.chip}
-        />
         {namespace ? (
           <>
             {' '}
