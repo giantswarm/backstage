@@ -1,0 +1,1 @@
+export { StructuredMetadataList } from './StructuredMetadataList';

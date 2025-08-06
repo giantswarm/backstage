@@ -1,0 +1,53 @@
+{
+  "name": "@giantswarm/backstage-plugin-kubernetes-react",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "description": "Web library for the GS Kubernetes plugin",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "publishConfig": {
+    "access": "public",
+    "main": "dist/index.esm.js",
+    "types": "dist/index.d.ts"
+  },
+  "backstage": {
+    "role": "web-library",
+    "pluginId": "kubernetes"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "start": "backstage-cli package start",
+    "build": "backstage-cli package build",
+    "lint": "backstage-cli package lint",
+    "test": "backstage-cli package test",
+    "clean": "backstage-cli package clean",
+    "prepack": "backstage-cli package prepack",
+    "postpack": "backstage-cli package postpack"
+  },
+  "dependencies": {
+    "@backstage/core-plugin-api": "^1.9.4",
+    "@backstage/plugin-kubernetes-react": "^0.5.9",
+    "@giantswarm/backstage-plugin-ui-react": "workspace:^",
+    "@material-ui/core": "^4.9.13",
+    "qs": "^6.14.0",
+    "react-use": "^17.6.0",
+    "use-local-storage-state": "^19.5.0"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^16.13.1 || ^17.0.0 || ^18.0.0",
+    "react-router-dom": "*"
+  },
+  "devDependencies": {
+    "@backstage/cli": "^0.33.0",
+    "@backstage/test-utils": "^1.7.8",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/react": "^14.0.0",
+    "@types/qs": "^6",
+    "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

@@ -17,3 +17,11 @@ export const GitRepositoryGVK = {
   group: 'source.toolkit.fluxcd.io',
   plural: 'gitrepositories',
 };
+
+export const OCIRepositoryApiVersion = 'source.toolkit.fluxcd.io/v1';
+
+export const OCIRepositoryGVK = {
+  apiVersion: 'v1',
+  group: 'source.toolkit.fluxcd.io',
+  plural: 'ocirepositories',
+};

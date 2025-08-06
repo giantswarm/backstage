@@ -3,6 +3,7 @@ import { FeatureEnabled } from '../FeatureEnabled';
 import ApartmentIcon from '@material-ui/icons/Apartment';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import StorageIcon from '@material-ui/icons/Storage';
+import { FluxIcon } from '@giantswarm/backstage-plugin-flux-react';
 
 export const MainMenu = () => {
   return (
@@ -25,6 +26,10 @@ export const MainMenu = () => {
           to="installations"
           text="Installations"
         />
+      </FeatureEnabled>
+
+      <FeatureEnabled feature="fluxPage">
+        <SidebarItem icon={FluxIcon} to="flux" text="Flux" />
       </FeatureEnabled>
     </SidebarGroup>
   );

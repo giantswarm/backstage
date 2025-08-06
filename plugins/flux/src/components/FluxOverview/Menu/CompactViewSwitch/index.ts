@@ -1,0 +1,1 @@
+export { CompactViewSwitch } from './CompactViewSwitch';
