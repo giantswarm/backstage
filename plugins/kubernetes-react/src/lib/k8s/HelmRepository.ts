@@ -21,7 +21,7 @@ export interface HelmRepositoryInterface extends KubeObjectInterface {
 }
 
 export class HelmRepository extends KubeObject<HelmRepositoryInterface> {
-  static apiVersion = 'v1';
+  static apiVersion = 'v1beta2';
   static group = 'source.toolkit.fluxcd.io';
   static kind = 'HelmRepository' as const;
   static plural = 'helmrepositories';
