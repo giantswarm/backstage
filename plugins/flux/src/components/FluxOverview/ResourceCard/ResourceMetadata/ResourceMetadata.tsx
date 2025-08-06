@@ -29,8 +29,8 @@ const KustomizationMetadata = ({
   if (readyCondition) {
     metadata.Status = (
       <>
-        Last reconciled at{' '}
-        <DateComponent value={readyCondition.lastTransitionTime} />
+        Last reconciled{' '}
+        <DateComponent value={readyCondition.lastTransitionTime} relative />
       </>
     );
     metadata.Message = <ConditionMessage message={readyCondition.message} />;
@@ -51,8 +51,8 @@ const HelmReleaseMetadata = ({ helmRelease }: { helmRelease: HelmRelease }) => {
   if (readyCondition) {
     metadata.Status = (
       <>
-        Last reconciled at{' '}
-        <DateComponent value={readyCondition.lastTransitionTime} />
+        Last reconciled{' '}
+        <DateComponent value={readyCondition.lastTransitionTime} relative />
       </>
     );
     metadata.Message = <ConditionMessage message={readyCondition.message} />;
@@ -105,15 +105,15 @@ const RepositoryMetadata = ({
     if (readyCondition.status === 'False') {
       metadata.Status = (
         <>
-          Last reconciliation failed at{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} />
+          Last reconciliation failed{' '}
+          <DateComponent value={readyCondition.lastTransitionTime} relative />
         </>
       );
     } else {
       metadata.Status = (
         <>
-          Last reconciled at{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} />
+          Last reconciled{' '}
+          <DateComponent value={readyCondition.lastTransitionTime} relative />
         </>
       );
     }
