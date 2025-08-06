@@ -3,15 +3,9 @@ import { Box, Drawer, Grid, IconButton, makeStyles } from '@material-ui/core';
 import CloseIcon from '@material-ui/icons/Close';
 
 const useStyles = makeStyles(theme => ({
-  details: {
-    height: '100vh',
-    position: 'sticky',
-    top: 0,
-  },
   drawerContent: {
     padding: theme.spacing(3, 3, 6, 3),
     position: 'relative',
-    backgroundColor: theme.palette.grey[200],
     width: '95vw',
 
     [theme.breakpoints.up('md')]: {
@@ -45,7 +39,16 @@ export const Layout = ({ content, details, onDetailsClose }: LayoutProps) => {
           {content}
         </Grid>
       </Grid>
-      <Drawer open={Boolean(details)} anchor="right" variant="persistent">
+      <Drawer
+        open={Boolean(details)}
+        anchor="right"
+        variant="persistent"
+        PaperProps={{
+          style: {
+            backgroundColor: '#eee',
+          },
+        }}
+      >
         <Box className={classes.drawerContent}>
           <IconButton
             className={classes.drawerCloseButton}
