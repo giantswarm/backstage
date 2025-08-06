@@ -1,6 +1,9 @@
 import {
+  GitRepository,
   HelmRelease,
+  HelmRepository,
   Kustomization,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Button, makeStyles } from '@material-ui/core';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
@@ -37,7 +40,12 @@ type ResourceNodeProps = {
   kind: string;
   cluster: string;
   targetCluster?: string;
-  resource?: Kustomization | HelmRelease;
+  resource?:
+    | Kustomization
+    | HelmRelease
+    | GitRepository
+    | OCIRepository
+    | HelmRepository;
   highlighted?: boolean;
   error?: boolean;
   expandable: boolean;

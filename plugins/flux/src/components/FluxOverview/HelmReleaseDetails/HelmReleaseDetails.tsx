@@ -8,6 +8,7 @@ import { Box, Grid } from '@material-ui/core';
 import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
+import { findTargetClusterName } from '../../../utils/findTargetClusterName';
 
 function useSource(
   helmRelease: HelmRelease,
@@ -106,6 +107,7 @@ export const HelmReleaseDetails = ({
             kind={parentKustomization.getKind()}
             name={parentKustomization.getName()}
             namespace={parentKustomization.getNamespace()}
+            targetCluster={findTargetClusterName(parentKustomization)}
             resource={parentKustomization}
           />
         </Section>
@@ -117,6 +119,7 @@ export const HelmReleaseDetails = ({
           kind={helmRelease.getKind()}
           name={helmRelease.getName()}
           namespace={helmRelease.getNamespace()}
+          targetCluster={findTargetClusterName(helmRelease)}
           resource={helmRelease}
           highlighted
         />
@@ -132,6 +135,7 @@ export const HelmReleaseDetails = ({
                   kind={resource.getKind()}
                   name={resource.getName()}
                   namespace={resource.getNamespace()}
+                  targetCluster={findTargetClusterName(resource)}
                   resource={resource}
                 />
               </Grid>

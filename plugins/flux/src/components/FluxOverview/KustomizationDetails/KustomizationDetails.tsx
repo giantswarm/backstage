@@ -7,6 +7,7 @@ import { Box, Grid } from '@material-ui/core';
 import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
+import { findTargetClusterName } from '../../../utils/findTargetClusterName';
 
 function useSource(
   kustomization: Kustomization,
@@ -95,6 +96,7 @@ export const KustomizationDetails = ({
             kind={parentKustomization.getKind()}
             name={parentKustomization.getName()}
             namespace={parentKustomization.getNamespace()}
+            targetCluster={findTargetClusterName(parentKustomization)}
             resource={parentKustomization}
           />
         </Section>
@@ -106,6 +108,7 @@ export const KustomizationDetails = ({
           kind={kustomization.getKind()}
           name={kustomization.getName()}
           namespace={kustomization.getNamespace()}
+          targetCluster={findTargetClusterName(kustomization)}
           resource={kustomization}
           highlighted
         />
@@ -120,6 +123,7 @@ export const KustomizationDetails = ({
                   kind={resource.getKind()}
                   name={resource.getName()}
                   namespace={resource.getNamespace()}
+                  targetCluster={findTargetClusterName(resource)}
                   resource={resource}
                 />
               </Grid>

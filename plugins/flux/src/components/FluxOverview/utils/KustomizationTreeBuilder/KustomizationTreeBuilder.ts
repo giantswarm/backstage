@@ -9,6 +9,7 @@ import {
   ObjectMetadata,
   parseInventoryEntries,
 } from '../../../../utils/inventoryParser';
+import { findTargetClusterName } from '../../../../utils/findTargetClusterName';
 
 const COMPACT_GROUP = 'toolkit.fluxcd.io';
 
@@ -21,7 +22,12 @@ export interface KustomizationTreeNode {
     namespace?: string;
     cluster: string;
     targetCluster?: string;
-    resource?: Kustomization | HelmRelease;
+    resource?:
+      | Kustomization
+      | HelmRelease
+      | GitRepository
+      | OCIRepository
+      | HelmRepository;
     inventoryEntries?: ObjectMetadata[];
   };
   children: KustomizationTreeNode[];
@@ -124,6 +130,8 @@ export class KustomizationTreeBuilder {
       // Circular dependency detected - return node without children
       console.warn(`Circular dependency detected for: ${key}`);
 
+      const targetCluster = findTargetClusterName(kustomization);
+
       return {
         id: `kustomization-${kustomization.getName()}`,
         nodeData: {
@@ -132,9 +140,7 @@ export class KustomizationTreeBuilder {
           name: kustomization.getName(),
           namespace: kustomization.getNamespace(),
           cluster: kustomization.cluster,
-          targetCluster: kustomization.getKubeConfig()
-            ? 'remote-cl'
-            : undefined,
+          targetCluster,
           resource: kustomization,
           inventoryEntries,
         },
@@ -183,6 +189,11 @@ export class KustomizationTreeBuilder {
         childResource = this.ociRepositories.get(childKey);
       }
 
+      const targetCluster =
+        childResource instanceof HelmRelease
+          ? findTargetClusterName(childResource)
+          : undefined;
+
       return {
         id: `${child.kind}-${child.name}`,
         nodeData: {
@@ -190,6 +201,7 @@ export class KustomizationTreeBuilder {
           label: child.name,
           cluster: kustomization.cluster,
           resource: childResource,
+          targetCluster,
         },
         children: [],
         level,
@@ -199,6 +211,8 @@ export class KustomizationTreeBuilder {
 
     visited.delete(key);
 
+    const targetCluster = findTargetClusterName(kustomization);
+
     return {
       id: `kustomization-${kustomization.getName()}`,
       nodeData: {
@@ -207,7 +221,7 @@ export class KustomizationTreeBuilder {
         name: kustomization.getName(),
         namespace: kustomization.getNamespace(),
         cluster: kustomization.cluster,
-        targetCluster: kustomization.getKubeConfig() ? 'remote-cl' : undefined,
+        targetCluster,
         resource: kustomization,
         inventoryEntries,
       },
