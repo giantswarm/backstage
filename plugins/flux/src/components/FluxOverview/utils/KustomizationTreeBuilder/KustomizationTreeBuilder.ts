@@ -13,27 +13,29 @@ import { findTargetClusterName } from '../../../../utils/findTargetClusterName';
 
 const COMPACT_GROUP = 'toolkit.fluxcd.io';
 
-export interface KustomizationTreeNode {
+export type KustomizationTreeNodeData = {
+  label: string;
+  kind: string;
+  name: string;
+  namespace?: string;
+  cluster: string;
+  targetCluster?: string;
+  resource?:
+    | Kustomization
+    | HelmRelease
+    | GitRepository
+    | OCIRepository
+    | HelmRepository;
+  hasChildren: boolean;
+  hasChildrenInCompactView: boolean;
+};
+
+export type KustomizationTreeNode = {
   id: string;
-  nodeData: {
-    label: string;
-    kind: string;
-    name: string;
-    namespace?: string;
-    cluster: string;
-    targetCluster?: string;
-    resource?:
-      | Kustomization
-      | HelmRelease
-      | GitRepository
-      | OCIRepository
-      | HelmRepository;
-    inventoryEntries?: ObjectMetadata[];
-  };
+  nodeData: KustomizationTreeNodeData;
   children: KustomizationTreeNode[];
-  level: number;
   displayInCompactView: boolean;
-}
+};
 
 export class KustomizationTreeBuilder {
   private kustomizations: Map<string, Kustomization> = new Map();
@@ -117,15 +119,12 @@ export class KustomizationTreeBuilder {
 
   private buildSubtree(
     kustomization: Kustomization,
-    level: number,
     visited: Set<string>,
   ): KustomizationTreeNode {
     const key = this.getKey(
       kustomization.getName(),
       kustomization.getNamespace(),
     );
-    const inventoryEntries = this.inventories.get(key);
-
     if (visited.has(key)) {
       // Circular dependency detected - return node without children
       // eslint-disable-next-line no-console
@@ -134,7 +133,7 @@ export class KustomizationTreeBuilder {
       const targetCluster = findTargetClusterName(kustomization);
 
       return {
-        id: `kustomization-${kustomization.getName()}`,
+        id: `kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
         nodeData: {
           label: kustomization.getName(),
           kind: kustomization.getKind(),
@@ -143,10 +142,10 @@ export class KustomizationTreeBuilder {
           cluster: kustomization.cluster,
           targetCluster,
           resource: kustomization,
-          inventoryEntries,
+          hasChildren: false,
+          hasChildrenInCompactView: false,
         },
         children: [],
-        level,
         displayInCompactView: true,
       };
     }
@@ -162,11 +161,7 @@ export class KustomizationTreeBuilder {
           childKustomizationKey,
         );
         if (childKustomization) {
-          return this.buildSubtree(
-            childKustomization,
-            level + 1,
-            new Set(visited),
-          );
+          return this.buildSubtree(childKustomization, new Set(visited));
         }
       }
 
@@ -196,16 +191,17 @@ export class KustomizationTreeBuilder {
           : undefined;
 
       return {
-        id: `${child.kind}-${child.name}`,
+        id: `${child.kind}-${child.namespace}-${child.name}`,
         nodeData: {
           ...child,
           label: child.name,
           cluster: kustomization.cluster,
           resource: childResource,
           targetCluster,
+          hasChildren: false,
+          hasChildrenInCompactView: false,
         },
         children: [],
-        level,
         displayInCompactView: child.group.endsWith(COMPACT_GROUP),
       };
     });
@@ -215,7 +211,7 @@ export class KustomizationTreeBuilder {
     const targetCluster = findTargetClusterName(kustomization);
 
     return {
-      id: `kustomization-${kustomization.getName()}`,
+      id: `kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
       nodeData: {
         label: kustomization.getName(),
         kind: kustomization.getKind(),
@@ -224,17 +220,17 @@ export class KustomizationTreeBuilder {
         cluster: kustomization.cluster,
         targetCluster,
         resource: kustomization,
-        inventoryEntries,
+        hasChildren: children.length > 0,
+        hasChildrenInCompactView: children.some(r => r.displayInCompactView),
       },
       children,
-      level,
       displayInCompactView: true,
     };
   }
 
   buildTree(): KustomizationTreeNode[] {
     const roots = this.findRoots();
-    return roots.map(root => this.buildSubtree(root, 0, new Set()));
+    return roots.map(root => this.buildSubtree(root, new Set()));
   }
 
   findParentKustomization(

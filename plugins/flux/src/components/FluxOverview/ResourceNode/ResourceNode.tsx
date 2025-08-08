@@ -16,6 +16,7 @@ import { ResourceWrapper } from '../ResourceCard';
 const useStyles = makeStyles(theme => ({
   node: {
     maxWidth: '560px',
+    minWidth: '560px',
   },
   expandButton: {
     alignItems: 'flex-start',
@@ -97,6 +98,7 @@ export const ResourceNode = ({
           flexGrow={1}
           p={2}
           pl={expandable ? 1 : 2}
+          width="100%"
         >
           <ResourceInfo
             kind={kind}

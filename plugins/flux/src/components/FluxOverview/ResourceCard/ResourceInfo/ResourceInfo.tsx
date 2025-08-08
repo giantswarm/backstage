@@ -7,6 +7,10 @@ import { WorkloadClusterIcon } from '../../../../assets/icons';
 const useStyles = makeStyles(theme => ({
   heading: {
     marginBottom: theme.spacing(1),
+    textOverflow: 'ellipsis',
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    width: '100%',
   },
   chips: {
     margin: '-2px 0',
@@ -59,17 +63,16 @@ export const ResourceInfo = ({
   const colorVariant = getResourceColorVariant(kind);
 
   return (
-    <Box display="flex" flexDirection="column">
+    <Box display="flex" flexDirection="column" width="100%">
       <Typography variant="h6" className={classes.heading}>
         {name}
       </Typography>
 
       <Box className={classes.chips}>
         <Chip label={kind} variant={colorVariant} className={classes.chip} />
-        {' in '}
         {namespace ? (
           <>
-            {' '}
+            {' in '}
             <Chip
               label={<IconText icon={LocalOfferIcon}>{namespace}</IconText>}
               variant="gray"
