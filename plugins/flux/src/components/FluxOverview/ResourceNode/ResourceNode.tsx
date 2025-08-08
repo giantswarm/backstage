@@ -97,6 +97,7 @@ export const ResourceNode = ({
           flexGrow={1}
           p={2}
           pl={expandable ? 1 : 2}
+          width="100%"
         >
           <ResourceInfo
             kind={kind}

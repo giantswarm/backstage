@@ -2,18 +2,41 @@ import {
   Kustomization,
   useClustersInfo,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box } from '@material-ui/core';
+import { Box, Drawer, IconButton, makeStyles } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
 import { useMemo, useState } from 'react';
-import { Layout } from './Layout';
 import { Menu } from './Menu';
 import { useSelectedResource } from './useSelectedResource';
 import { Details } from './Details';
-import { Content } from './Content';
 import { useFluxResources } from './useFluxResources';
-import { EmptyState } from '@backstage/core-components';
+import { EmptyState, Progress } from '@backstage/core-components';
+import CloseIcon from '@material-ui/icons/Close';
+import { ContentContainer } from './ContentContainer';
+import { OverviewTree } from './OverviewTree';
+
+const useStyles = makeStyles(theme => ({
+  drawerContent: {
+    padding: theme.spacing(3, 3, 6, 3),
+    position: 'relative',
+    width: '95vw',
+
+    [theme.breakpoints.up('md')]: {
+      width: '60vw',
+    },
+
+    [theme.breakpoints.up('lg')]: {
+      width: '45vw',
+    },
+  },
+  drawerCloseButton: {
+    position: 'absolute',
+    top: theme.spacing(1),
+    right: theme.spacing(1),
+  },
+}));
 
 export const FluxOverview = () => {
+  const classes = useStyles();
   const [compactView, setCompactView] = useState(true);
 
   const { clusters, selectedCluster, setSelectedCluster } = useClustersInfo();
@@ -56,18 +79,20 @@ export const FluxOverview = () => {
     setSelectedCluster(selectedItem);
   };
 
-  const treeBuilder = useMemo(() => {
-    if (isLoading) {
-      return undefined;
+  const { treeBuilder, tree } = useMemo(() => {
+    if (isLoading || kustomizations.length === 0) {
+      return { treeBuilder: undefined, tree: undefined };
     }
 
-    return new KustomizationTreeBuilder(
+    const builder = new KustomizationTreeBuilder(
       kustomizations,
       helmReleases,
       gitRepositories,
       ociRepositories,
       helmRepositories,
     );
+
+    return { treeBuilder: builder, tree: builder.buildTree() };
   }, [
     kustomizations,
     helmReleases,
@@ -78,7 +103,7 @@ export const FluxOverview = () => {
   ]);
 
   return (
-    <Box display="flex" flexDirection="column">
+    <Box display="flex" flexDirection="column" height="100%">
       <Menu
         clusters={clusters}
         selectedCluster={selectedCluster}
@@ -95,17 +120,43 @@ export const FluxOverview = () => {
         />
       ) : null}
 
-      <Layout
-        content={
-          <Content
-            selectedResourceRef={selectedResourceRef}
-            treeBuilder={treeBuilder}
-            compactView={compactView}
-            isLoadingResources={isLoading}
-          />
-        }
-        details={
-          selectedResourceRef && (
+      {tree ? (
+        <ContentContainer
+          renderContent={containerHeight => (
+            <OverviewTree
+              tree={tree}
+              compactView={compactView}
+              selectedResourceRef={selectedResourceRef}
+              height={containerHeight}
+            />
+          )}
+        />
+      ) : (
+        <Progress />
+      )}
+
+      <Drawer
+        open={Boolean(selectedResourceRef)}
+        anchor="right"
+        variant="persistent"
+        PaperProps={{
+          style: {
+            backgroundColor: '#eee',
+          },
+        }}
+      >
+        <Box className={classes.drawerContent}>
+          <IconButton
+            className={classes.drawerCloseButton}
+            aria-label="Close resource details"
+            onClick={() => {
+              clearSelectedResource();
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+
+          {selectedResourceRef ? (
             <Details
               resourceRef={selectedResourceRef}
               resource={selectedResource}
@@ -117,10 +168,9 @@ export const FluxOverview = () => {
               allHelmRepositories={helmRepositories}
               isLoadingResources={isLoading}
             />
-          )
-        }
-        onDetailsClose={() => clearSelectedResource()}
-      />
+          ) : null}
+        </Box>
+      </Drawer>
     </Box>
   );
 };
