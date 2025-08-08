@@ -134,7 +134,13 @@ const Node = ({
         paddingBottom: 8,
       }}
     >
-      {detailsPath ? <Link to={detailsPath}>{el}</Link> : el}
+      {detailsPath ? (
+        <Link to={detailsPath} style={{ display: 'inline-block' }}>
+          {el}
+        </Link>
+      ) : (
+        el
+      )}
     </div>
   );
 };
