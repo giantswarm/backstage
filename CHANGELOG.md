@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.81.1] - 2025-08-08
 
+In this release:
+
+### Changed
+
+- Flux overview UI performance improvements have been implemented.
+
 See [./docs/releases/v0.81.1-changelog.md](./docs/releases/v0.81.1-changelog.md) for more information.
 
 ## [0.81.0] - 2025-08-06
