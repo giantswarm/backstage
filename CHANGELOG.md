@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.81.2] - 2025-08-11
 
+### Fixed
+
+- Dark theme styles have been fixed in Flux overview UI.
+
 See [./docs/releases/v0.81.2-changelog.md](./docs/releases/v0.81.2-changelog.md) for more information.
 
 ## [0.81.1] - 2025-08-08
