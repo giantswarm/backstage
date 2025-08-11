@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-flux
 
+## 0.2.1
+
+### Patch Changes
+
+- 835c08f: Fixed dark theme colors.
+
 ## 0.2.0
 
 ### Minor Changes
