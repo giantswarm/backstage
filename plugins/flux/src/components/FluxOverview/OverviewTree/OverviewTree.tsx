@@ -45,7 +45,7 @@ const getNodeData = (
   return {
     data: {
       id: node.id.toString(),
-      isOpenByDefault: false,
+      isOpenByDefault: true,
       nestingLevel,
       label: node.nodeData.label,
       kind: node.nodeData.kind,
