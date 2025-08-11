@@ -35,11 +35,11 @@ const useStyles = makeStyles(theme => {
         backgroundColor: colors.error.backgroundColorHover,
       },
     },
-    rootSuspended: {
-      backgroundColor: colors.suspended.backgroundColor,
+    rootInactive: {
+      backgroundColor: colors.inactive.backgroundColor,
 
       'a:hover > &': {
-        backgroundColor: colors.suspended.backgroundColorHover,
+        backgroundColor: colors.inactive.backgroundColorHover,
       },
     },
     rootHighlighted: {
@@ -49,8 +49,8 @@ const useStyles = makeStyles(theme => {
         borderColor: colors.error.borderColor,
       },
 
-      '&$rootSuspended': {
-        borderColor: colors.suspended.borderColor,
+      '&$rootInactive': {
+        borderColor: colors.inactive.borderColor,
       },
     },
   };
@@ -59,13 +59,13 @@ const useStyles = makeStyles(theme => {
 type ResourceWrapperProps = PaperProps & {
   highlighted?: boolean;
   error?: boolean;
-  suspended?: boolean;
+  inactive?: boolean;
 };
 
 export const ResourceWrapper = ({
   highlighted,
   error,
-  suspended,
+  inactive,
   className,
   children,
   ...props
@@ -80,7 +80,7 @@ export const ResourceWrapper = ({
         {
           [classes.rootHighlighted]: highlighted,
           [classes.rootError]: error,
-          [classes.rootSuspended]: suspended,
+          [classes.rootInactive]: inactive,
         },
         className,
       )}
@@ -123,7 +123,7 @@ export const ResourceCard = ({
     <ResourceWrapper
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
-      suspended={isSuspended}
+      inactive={isSuspended}
     >
       <Box
         display="flex"
@@ -138,7 +138,7 @@ export const ResourceCard = ({
           namespace={namespace}
           cluster={cluster}
           targetCluster={targetCluster}
-          isSuspended={isSuspended}
+          inactive={isSuspended}
         />
 
         {resource && <ResourceMetadata resource={resource} />}

@@ -1,7 +1,7 @@
 import { colord } from 'colord';
 import { getColor } from './palette';
 
-const availableVariants = ['default', 'error', 'suspended'] as const;
+const availableVariants = ['default', 'error', 'inactive'] as const;
 
 export type ColorVariant = (typeof availableVariants)[number];
 

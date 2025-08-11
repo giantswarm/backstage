@@ -13,7 +13,7 @@ const useStyles = makeStyles(theme => ({
     whiteSpace: 'nowrap',
     width: '100%',
   },
-  headingSuspended: {
+  headingInactive: {
     color: theme.palette.type === 'light' ? '#444' : '#909090',
   },
   chips: {
@@ -54,7 +54,7 @@ type ResourceInfoProps = {
   namespace?: string;
   cluster: string;
   targetCluster?: string;
-  isSuspended?: boolean;
+  inactive?: boolean;
 };
 
 export const ResourceInfo = ({
@@ -62,7 +62,7 @@ export const ResourceInfo = ({
   name,
   namespace,
   targetCluster,
-  isSuspended,
+  inactive,
 }: ResourceInfoProps) => {
   const classes = useStyles();
 
@@ -73,7 +73,7 @@ export const ResourceInfo = ({
       <Typography
         variant="h6"
         className={classNames(classes.heading, {
-          [classes.headingSuspended]: isSuspended,
+          [classes.headingInactive]: inactive,
         })}
       >
         {name}
