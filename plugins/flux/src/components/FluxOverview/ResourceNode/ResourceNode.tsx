@@ -22,7 +22,7 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'flex-start',
     padding: theme.spacing(1),
     paddingTop: '21px',
-    minWidth: 0,
+    minWidth: '40px',
 
     '& svg': {
       transition: theme.transitions.create('transform'),
@@ -98,7 +98,8 @@ export const ResourceNode = ({
           position="relative"
           flexGrow={1}
           p={2}
-          pl={expandable ? 1 : 2}
+          pl={1}
+          ml={expandable ? 0 : '40px'}
           width="100%"
         >
           <ResourceInfo
