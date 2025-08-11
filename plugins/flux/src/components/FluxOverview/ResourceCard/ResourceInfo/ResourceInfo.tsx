@@ -3,6 +3,7 @@ import LocalOfferIcon from '@material-ui/icons/LocalOffer';
 import { ColorVariant } from '../../../UI/colors/makeColorVariants';
 import { Chip, IconText } from '../../../UI';
 import { WorkloadClusterIcon } from '../../../../assets/icons';
+import classNames from 'classnames';
 
 const useStyles = makeStyles(theme => ({
   heading: {
@@ -11,6 +12,9 @@ const useStyles = makeStyles(theme => ({
     overflow: 'hidden',
     whiteSpace: 'nowrap',
     width: '100%',
+  },
+  headingInactive: {
+    color: theme.palette.type === 'light' ? '#444' : '#909090',
   },
   chips: {
     margin: '-2px 0',
@@ -50,6 +54,7 @@ type ResourceInfoProps = {
   namespace?: string;
   cluster: string;
   targetCluster?: string;
+  inactive?: boolean;
 };
 
 export const ResourceInfo = ({
@@ -57,6 +62,7 @@ export const ResourceInfo = ({
   name,
   namespace,
   targetCluster,
+  inactive,
 }: ResourceInfoProps) => {
   const classes = useStyles();
 
@@ -64,7 +70,12 @@ export const ResourceInfo = ({
 
   return (
     <Box display="flex" flexDirection="column" width="100%">
-      <Typography variant="h6" className={classes.heading}>
+      <Typography
+        variant="h6"
+        className={classNames(classes.heading, {
+          [classes.headingInactive]: inactive,
+        })}
+      >
         {name}
       </Typography>
 
