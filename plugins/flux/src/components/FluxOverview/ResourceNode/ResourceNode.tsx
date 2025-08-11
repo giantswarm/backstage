@@ -76,6 +76,7 @@ export const ResourceNode = ({
       className={classes.node}
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
+      suspended={isSuspended}
     >
       <Box display="flex">
         {expandable ? (
@@ -106,6 +107,7 @@ export const ResourceNode = ({
             namespace={namespace}
             cluster={cluster}
             targetCluster={targetCluster}
+            isSuspended={isSuspended}
           />
 
           {resource && (

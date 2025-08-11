@@ -15,6 +15,9 @@ import { ContentContainer } from './ContentContainer';
 import { OverviewTree } from './OverviewTree';
 
 const useStyles = makeStyles(theme => ({
+  drawerPaper: {
+    backgroundColor: theme.palette.type === 'light' ? '#eee' : '#3a3a3a',
+  },
   drawerContent: {
     padding: theme.spacing(3, 3, 6, 3),
     position: 'relative',
@@ -140,9 +143,7 @@ export const FluxOverview = () => {
         anchor="right"
         variant="persistent"
         PaperProps={{
-          style: {
-            backgroundColor: '#eee',
-          },
+          className: classes.drawerPaper,
         }}
       >
         <Box className={classes.drawerContent}>

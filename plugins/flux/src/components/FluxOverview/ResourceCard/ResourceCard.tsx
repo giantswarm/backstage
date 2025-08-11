@@ -10,44 +10,62 @@ import { ResourceInfo } from './ResourceInfo';
 import { ResourceStatus } from './ResourceStatus';
 import classNames from 'classnames';
 import { ResourceMetadata } from './ResourceMetadata';
-import { colord } from 'colord';
 import { useResourceStatus } from './ResourceStatus/useResourceStatus';
+import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
 
-const useStyles = makeStyles(theme => ({
-  root: {
-    position: 'relative',
-    border: '1px solid transparent',
+const palette = makeResourceCardColorVariants();
 
-    'a:hover > &': {
-      backgroundColor: theme.palette.grey[50],
+const useStyles = makeStyles(theme => {
+  const colors = palette[theme.palette.type];
+
+  return {
+    root: {
+      position: 'relative',
+      border: '1px solid transparent',
+      backgroundColor: colors.default.backgroundColor,
+
+      'a:hover > &': {
+        backgroundColor: colors.default.backgroundColorHover,
+      },
     },
-  },
-  rootError: {
-    backgroundColor: theme.palette.errorBackground,
+    rootError: {
+      backgroundColor: colors.error.backgroundColor,
 
-    'a:hover > &': {
-      backgroundColor: colord(theme.palette.errorBackground)
-        .darken(0.01)
-        .toHex(),
+      'a:hover > &': {
+        backgroundColor: colors.error.backgroundColorHover,
+      },
     },
-  },
-  rootHighlighted: {
-    borderColor: theme.palette.grey[500],
+    rootSuspended: {
+      backgroundColor: colors.suspended.backgroundColor,
 
-    '&$rootError': {
-      borderColor: theme.palette.error.light,
+      'a:hover > &': {
+        backgroundColor: colors.suspended.backgroundColorHover,
+      },
     },
-  },
-}));
+    rootHighlighted: {
+      borderColor: colors.default.borderColor,
+
+      '&$rootError': {
+        borderColor: colors.error.borderColor,
+      },
+
+      '&$rootSuspended': {
+        borderColor: colors.suspended.borderColor,
+      },
+    },
+  };
+});
 
 type ResourceWrapperProps = PaperProps & {
   highlighted?: boolean;
   error?: boolean;
+  suspended?: boolean;
 };
 
 export const ResourceWrapper = ({
   highlighted,
   error,
+  suspended,
   className,
   children,
   ...props
@@ -62,6 +80,7 @@ export const ResourceWrapper = ({
         {
           [classes.rootHighlighted]: highlighted,
           [classes.rootError]: error,
+          [classes.rootSuspended]: suspended,
         },
         className,
       )}
@@ -104,6 +123,7 @@ export const ResourceCard = ({
     <ResourceWrapper
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
+      suspended={isSuspended}
     >
       <Box
         display="flex"
@@ -118,6 +138,7 @@ export const ResourceCard = ({
           namespace={namespace}
           cluster={cluster}
           targetCluster={targetCluster}
+          isSuspended={isSuspended}
         />
 
         {resource && <ResourceMetadata resource={resource} />}
