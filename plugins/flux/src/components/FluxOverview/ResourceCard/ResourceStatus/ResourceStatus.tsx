@@ -1,11 +1,9 @@
 import { Box, makeStyles } from '@material-ui/core';
 import { Status } from '../../../UI/Status';
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles(() => ({
   root: {
-    position: 'absolute',
-    top: theme.spacing(1),
-    right: theme.spacing(2),
+    whiteSpace: 'nowrap',
   },
 }));
 

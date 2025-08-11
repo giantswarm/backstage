@@ -1,0 +1,1 @@
+export { ResourceChips } from './ResourceChips';

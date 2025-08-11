@@ -130,8 +130,8 @@ const Node = ({
       style={{
         ...style,
         paddingLeft: 32 * data.nestingLevel,
-        paddingTop: 8,
-        paddingBottom: 8,
+        paddingTop: 4,
+        paddingBottom: 4,
       }}
     >
       {detailsPath ? (
@@ -196,7 +196,7 @@ export const OverviewTree = ({
     <Tree
       async
       treeWalker={treeWalker}
-      itemSize={120}
+      itemSize={100}
       itemData={{
         basePath,
         selectedResourceRef,
