@@ -10,7 +10,7 @@ import classNames from 'classnames';
 import { ResourceMetadata } from './ResourceMetadata';
 import { useResourceStatus } from './ResourceStatus/useResourceStatus';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
-import { ResourceInfo } from './ResourceInfo/ResourceInfo';
+import { ResourceInfo } from './ResourceInfo';
 
 const palette = makeResourceCardColorVariants();
 
