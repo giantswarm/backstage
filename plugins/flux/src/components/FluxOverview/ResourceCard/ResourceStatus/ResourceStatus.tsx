@@ -9,12 +9,14 @@ const useStyles = makeStyles(() => ({
 
 type ResourceStatusProps = {
   readyStatus: 'True' | 'False' | 'Unknown';
+  isDependencyNotReady: boolean;
   isReconciling: boolean;
   isSuspended: boolean;
 };
 
 export const ResourceStatus = ({
   readyStatus,
+  isDependencyNotReady,
   isReconciling,
   isSuspended,
 }: ResourceStatusProps) => {
@@ -25,8 +27,11 @@ export const ResourceStatus = ({
   if (readyStatus === 'True') {
     elText = 'Ready';
     elStatus = 'ok';
-  } else if (readyStatus === 'False') {
+  } else if (readyStatus === 'False' && !isDependencyNotReady) {
     elText = 'Not ready';
+    elStatus = 'error';
+  } else if (readyStatus === 'False' && isDependencyNotReady) {
+    elText = 'Not ready (dep)';
     elStatus = 'error';
   }
   if (isReconciling) {

@@ -22,6 +22,7 @@ type ResourceInfoProps = {
     | OCIRepository
     | HelmRepository;
   readyStatus: 'True' | 'False' | 'Unknown';
+  isDependencyNotReady: boolean;
   isReconciling: boolean;
   isSuspended: boolean;
   nowrap?: boolean;
@@ -34,10 +35,13 @@ export const ResourceInfo = ({
   targetCluster,
   resource,
   readyStatus,
+  isDependencyNotReady,
   isReconciling,
   isSuspended,
   nowrap = false,
 }: ResourceInfoProps) => {
+  const inactive = isSuspended || isDependencyNotReady;
+
   return (
     <Box>
       <Box
@@ -46,11 +50,12 @@ export const ResourceInfo = ({
         justifyContent="space-between"
         mb={0.5}
       >
-        <ResourceHeading name={name} inactive={isSuspended} nowrap={nowrap} />
+        <ResourceHeading name={name} inactive={inactive} nowrap={nowrap} />
 
         {resource && (
           <ResourceStatus
             readyStatus={readyStatus}
+            isDependencyNotReady={isDependencyNotReady}
             isReconciling={isReconciling}
             isSuspended={isSuspended}
           />

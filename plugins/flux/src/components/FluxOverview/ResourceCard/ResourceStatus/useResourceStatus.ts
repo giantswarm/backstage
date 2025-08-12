@@ -35,6 +35,7 @@ export function useResourceStatus(
 
   return {
     readyStatus,
+    isDependencyNotReady: readyCondition?.reason === 'DependencyNotReady',
     isReconciling: Boolean(resource?.isReconciling()),
     isSuspended: Boolean(resource?.isSuspended()),
   };

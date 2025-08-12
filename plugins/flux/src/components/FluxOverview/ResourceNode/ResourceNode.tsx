@@ -68,15 +68,17 @@ export const ResourceNode = ({
   onExpand,
 }: ResourceNodeProps) => {
   const classes = useStyles();
-  const { readyStatus, isReconciling, isSuspended } =
+  const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
     useResourceStatus(resource);
+
+  const inactive = isSuspended || isDependencyNotReady;
 
   return (
     <ResourceWrapper
       className={classes.node}
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
-      inactive={isSuspended}
+      inactive={inactive}
     >
       <Box display="flex">
         {expandable ? (
@@ -108,6 +110,7 @@ export const ResourceNode = ({
             namespace={namespace}
             targetCluster={targetCluster}
             readyStatus={readyStatus}
+            isDependencyNotReady={isDependencyNotReady}
             isReconciling={isReconciling}
             isSuspended={isSuspended}
             resource={resource}
