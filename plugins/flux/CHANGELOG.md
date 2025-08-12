@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-flux
 
+## 0.2.3
+
+### Patch Changes
+
+- 8dc3086: Fixed Flux resource status transition.
+
 ## 0.2.2
 
 ### Patch Changes
