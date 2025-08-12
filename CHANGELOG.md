@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.81.3-changelog.md](./docs/releases/v0.81.3-changelog.md) for more information.
+
 ## [0.81.2] - 2025-08-11
 
 ### Fixed
