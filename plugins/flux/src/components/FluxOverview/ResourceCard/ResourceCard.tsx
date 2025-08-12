@@ -106,14 +106,16 @@ export const ResourceCard = ({
   highlighted,
   error,
 }: ResourceCardProps) => {
-  const { readyStatus, isReconciling, isSuspended } =
+  const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
     useResourceStatus(resource);
+
+  const inactive = isSuspended || isDependencyNotReady;
 
   return (
     <ResourceWrapper
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
-      inactive={isSuspended}
+      inactive={inactive}
     >
       <Box display="flex" flexDirection="column" flexGrow={1} p={2} pt={1}>
         <ResourceInfo
@@ -122,6 +124,7 @@ export const ResourceCard = ({
           namespace={namespace}
           targetCluster={targetCluster}
           readyStatus={readyStatus}
+          isDependencyNotReady={isDependencyNotReady}
           isReconciling={isReconciling}
           isSuspended={isSuspended}
           resource={resource}
