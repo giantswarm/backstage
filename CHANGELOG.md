@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.81.4] - 2025-08-12
 
+### Fixed
+
+- Flux overview resource status transition from "Not ready" to "Ready" has been fixed.
+
 See [./docs/releases/v0.81.4-changelog.md](./docs/releases/v0.81.4-changelog.md) for more information.
 
 ## [0.81.3] - 2025-08-12
