@@ -20,22 +20,42 @@ export function useResourceStatus(
   const [readyStatus, setReadyStatus] = useState(
     readyCondition?.status || 'Unknown',
   );
+  const [isDependencyNotReady, setIsDependencyNotReady] = useState(
+    readyCondition?.reason === 'DependencyNotReady',
+  );
 
   useEffect(() => {
+    // Skip state update if no status or reconciliation is in progress
     if (
       !readyCondition?.status ||
-      readyCondition.status === readyStatus ||
-      readyCondition.status === 'Unknown'
+      (readyCondition.status === 'Unknown' &&
+        readyCondition.reason === 'Progressing')
+    ) {
+      return;
+    }
+
+    const newReadyStatus = readyCondition.status;
+    const newIsDependencyNotReady =
+      readyCondition.reason === 'DependencyNotReady';
+    if (
+      newReadyStatus === readyStatus &&
+      newIsDependencyNotReady === isDependencyNotReady
     ) {
       return;
     }
 
     setReadyStatus(readyCondition.status);
-  }, [readyCondition?.status, readyStatus]);
+    setIsDependencyNotReady(readyCondition.reason === 'DependencyNotReady');
+  }, [
+    isDependencyNotReady,
+    readyCondition?.reason,
+    readyCondition?.status,
+    readyStatus,
+  ]);
 
   return {
     readyStatus,
-    isDependencyNotReady: readyCondition?.reason === 'DependencyNotReady',
+    isDependencyNotReady,
     isReconciling: Boolean(resource?.isReconciling()),
     isSuspended: Boolean(resource?.isSuspended()),
   };
