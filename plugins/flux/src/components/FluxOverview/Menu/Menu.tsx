@@ -18,7 +18,7 @@ export const Menu = ({
   onCompactViewChange,
 }: MenuProps) => {
   return (
-    <Box mb={4}>
+    <Box mb={3}>
       <Grid container spacing={3}>
         <Grid item xs={12} md={3}>
           <ClusterSelector

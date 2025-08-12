@@ -99,8 +99,7 @@ export const ResourceNode = ({
           flexGrow={1}
           p={2}
           pt={1}
-          pl={1}
-          ml={expandable ? 0 : '40px'}
+          pl={expandable ? 1 : '48px'}
           width="100%"
         >
           <ResourceInfo
@@ -112,6 +111,7 @@ export const ResourceNode = ({
             isReconciling={isReconciling}
             isSuspended={isSuspended}
             resource={resource}
+            nowrap
           />
         </Box>
       </Box>

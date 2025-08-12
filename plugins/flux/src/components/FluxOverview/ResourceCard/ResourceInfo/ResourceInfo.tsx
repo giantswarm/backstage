@@ -24,6 +24,7 @@ type ResourceInfoProps = {
   readyStatus: 'True' | 'False' | 'Unknown';
   isReconciling: boolean;
   isSuspended: boolean;
+  nowrap?: boolean;
 };
 
 export const ResourceInfo = ({
@@ -35,11 +36,17 @@ export const ResourceInfo = ({
   readyStatus,
   isReconciling,
   isSuspended,
+  nowrap = false,
 }: ResourceInfoProps) => {
   return (
     <Box>
-      <Box display="flex" alignItems="baseline" mb={0.5}>
-        <ResourceHeading name={name} inactive={isSuspended} />
+      <Box
+        display="flex"
+        alignItems="baseline"
+        justifyContent="space-between"
+        mb={0.5}
+      >
+        <ResourceHeading name={name} inactive={isSuspended} nowrap={nowrap} />
 
         {resource && (
           <ResourceStatus

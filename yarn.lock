@@ -9595,6 +9595,7 @@ __metadata:
     colord: "npm:^2.9.3"
     msw: "npm:^1.0.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+    react-middle-ellipsis: "npm:^1.2.2"
     react-use: "npm:^17.2.4"
     react-vtree: "npm:^3.0.0-beta.0"
     react-window: "npm:^1.8.11"
@@ -32027,6 +32028,16 @@ __metadata:
   version: 1.1.0
   resolution: "react-merge-refs@npm:1.1.0"
   checksum: 10c0/afb937156d834a058e5021535a63fd8a35984365c38b613478c31186da920b3b469e38b0b161a2075fbf5db7118fb8e96bb8a52a563f271d8f8f166fe8ffe2a4
+  languageName: node
+  linkType: hard
+
+"react-middle-ellipsis@npm:^1.2.2":
+  version: 1.2.2
+  resolution: "react-middle-ellipsis@npm:1.2.2"
+  peerDependencies:
+    react: ^16.8 || ^17 || ^18
+    react-dom: ^16.8 || ^17 || ^18
+  checksum: 10c0/f3f71f3cb68471af9a67e57976b5fb64992b42f54b6e332856bb17e3696ba4016561a574f3cb4727508aa603b76be7f7e206102d8922e816233ac2de4f885b55
   languageName: node
   linkType: hard
 
