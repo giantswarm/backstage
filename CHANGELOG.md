@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.81.3] - 2025-08-12
 
+### Changed
+
+- Flux overview tree is now expanded by default.
+- Flux resource in "not ready" status when dependency is no ready is now being displayed in inactive state.
+- Visual improvements have been added. 
+
 See [./docs/releases/v0.81.3-changelog.md](./docs/releases/v0.81.3-changelog.md) for more information.
 
 ## [0.81.2] - 2025-08-11
