@@ -42,15 +42,7 @@ const useStyles = makeStyles(theme => {
       },
     },
     rootHighlighted: {
-      borderColor: colors.default.borderColor,
-
-      '&$rootError': {
-        borderColor: colors.error.borderColor,
-      },
-
-      '&$rootInactive': {
-        borderColor: colors.inactive.borderColor,
-      },
+      borderColor: theme.palette.type === 'light' ? '#000' : '#fff',
     },
   };
 });
