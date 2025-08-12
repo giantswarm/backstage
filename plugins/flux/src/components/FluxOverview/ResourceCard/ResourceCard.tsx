@@ -6,12 +6,11 @@ import {
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, makeStyles, Paper, PaperProps } from '@material-ui/core';
-import { ResourceInfo } from './ResourceInfo';
-import { ResourceStatus } from './ResourceStatus';
 import classNames from 'classnames';
 import { ResourceMetadata } from './ResourceMetadata';
 import { useResourceStatus } from './ResourceStatus/useResourceStatus';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
+import { ResourceInfo } from './ResourceInfo';
 
 const palette = makeResourceCardColorVariants();
 
@@ -43,15 +42,7 @@ const useStyles = makeStyles(theme => {
       },
     },
     rootHighlighted: {
-      borderColor: colors.default.borderColor,
-
-      '&$rootError': {
-        borderColor: colors.error.borderColor,
-      },
-
-      '&$rootInactive': {
-        borderColor: colors.inactive.borderColor,
-      },
+      borderColor: theme.palette.type === 'light' ? '#000' : '#fff',
     },
   };
 });
@@ -110,7 +101,6 @@ export const ResourceCard = ({
   name,
   namespace,
   kind,
-  cluster,
   targetCluster,
   resource,
   highlighted,
@@ -125,31 +115,18 @@ export const ResourceCard = ({
       error={readyStatus === 'False' || error}
       inactive={isSuspended}
     >
-      <Box
-        display="flex"
-        flexDirection="column"
-        position="relative"
-        flexGrow={1}
-        p={2}
-      >
+      <Box display="flex" flexDirection="column" flexGrow={1} p={2} pt={1}>
         <ResourceInfo
-          kind={kind}
           name={name}
+          kind={kind}
           namespace={namespace}
-          cluster={cluster}
           targetCluster={targetCluster}
-          inactive={isSuspended}
+          readyStatus={readyStatus}
+          isReconciling={isReconciling}
+          isSuspended={isSuspended}
+          resource={resource}
         />
-
         {resource && <ResourceMetadata resource={resource} />}
-
-        {resource && (
-          <ResourceStatus
-            readyStatus={readyStatus}
-            isReconciling={isReconciling}
-            isSuspended={isSuspended}
-          />
-        )}
       </Box>
     </ResourceWrapper>
   );

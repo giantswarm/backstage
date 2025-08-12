@@ -5,7 +5,7 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 export function useResourceStatus(
   resource?:
@@ -17,22 +17,24 @@ export function useResourceStatus(
 ) {
   const readyCondition = resource?.findReadyCondition();
 
-  const status = useRef(readyCondition?.status || 'Unknown');
+  const [readyStatus, setReadyStatus] = useState(
+    readyCondition?.status || 'Unknown',
+  );
 
   useEffect(() => {
     if (
       !readyCondition?.status ||
-      readyCondition.status === status.current ||
+      readyCondition.status === readyStatus ||
       readyCondition.status === 'Unknown'
     ) {
       return;
     }
 
-    status.current = readyCondition.status;
-  }, [readyCondition?.status]);
+    setReadyStatus(readyCondition.status);
+  }, [readyCondition?.status, readyStatus]);
 
   return {
-    readyStatus: status.current,
+    readyStatus,
     isReconciling: Boolean(resource?.isReconciling()),
     isSuspended: Boolean(resource?.isSuspended()),
   };

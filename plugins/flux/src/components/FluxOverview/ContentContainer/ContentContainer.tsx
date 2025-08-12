@@ -17,7 +17,7 @@ const useStyles = makeStyles(theme => {
         left: 0,
         top: 0,
         right: theme.spacing(2),
-        height: theme.spacing(1),
+        height: theme.spacing(0.5),
         background: `linear-gradient(to bottom, ${bodyBackgroundColor}, transparent)`,
       },
 
@@ -28,7 +28,7 @@ const useStyles = makeStyles(theme => {
         left: 0,
         bottom: 0,
         right: theme.spacing(2),
-        height: theme.spacing(1),
+        height: theme.spacing(0.5),
         background: `linear-gradient(to top, ${bodyBackgroundColor}, transparent)`,
       },
     },

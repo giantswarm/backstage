@@ -7,11 +7,12 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Button, makeStyles } from '@material-ui/core';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
-import { ResourceInfo } from '../ResourceCard';
-import { ResourceStatus } from '../ResourceCard';
 import classNames from 'classnames';
-import { useResourceStatus } from '../ResourceCard';
-import { ResourceWrapper } from '../ResourceCard';
+import {
+  ResourceInfo,
+  ResourceWrapper,
+  useResourceStatus,
+} from '../ResourceCard';
 
 const useStyles = makeStyles(theme => ({
   node: {
@@ -21,7 +22,7 @@ const useStyles = makeStyles(theme => ({
   expandButton: {
     alignItems: 'flex-start',
     padding: theme.spacing(1),
-    paddingTop: '21px',
+    paddingTop: '13px',
     minWidth: '40px',
 
     '& svg': {
@@ -58,7 +59,6 @@ export const ResourceNode = ({
   name,
   namespace,
   kind,
-  cluster,
   targetCluster,
   resource,
   highlighted,
@@ -95,29 +95,24 @@ export const ResourceNode = ({
         ) : null}
         <Box
           display="flex"
-          position="relative"
+          flexDirection="column"
           flexGrow={1}
           p={2}
-          pl={1}
-          ml={expandable ? 0 : '40px'}
+          pt={1}
+          pl={expandable ? 1 : '48px'}
           width="100%"
         >
           <ResourceInfo
-            kind={kind}
             name={name}
+            kind={kind}
             namespace={namespace}
-            cluster={cluster}
             targetCluster={targetCluster}
-            inactive={isSuspended}
+            readyStatus={readyStatus}
+            isReconciling={isReconciling}
+            isSuspended={isSuspended}
+            resource={resource}
+            nowrap
           />
-
-          {resource && (
-            <ResourceStatus
-              readyStatus={readyStatus}
-              isReconciling={isReconciling}
-              isSuspended={isSuspended}
-            />
-          )}
         </Box>
       </Box>
     </ResourceWrapper>
