@@ -1,13 +1,13 @@
 import { useContext } from 'react';
 import {
-  assertClustersInfoContext,
-  ClustersInfoContext,
-} from '../../components/ClustersInfoProvider';
+  assertKubernetesClustersInfoContext,
+  KubernetesClustersInfoContext,
+} from '../../components/KubernetesClustersInfoProvider';
 
 export function useClustersInfo() {
-  const context = useContext(ClustersInfoContext);
+  const context = useContext(KubernetesClustersInfoContext);
 
-  assertClustersInfoContext(context);
+  assertKubernetesClustersInfoContext(context);
 
   return context;
 }

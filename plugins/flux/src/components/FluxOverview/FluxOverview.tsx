@@ -38,22 +38,8 @@ const useStyles = makeStyles(theme => ({
 export const FluxOverview = () => {
   const classes = useStyles();
   const [compactView, setCompactView] = useState(true);
-
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
-  const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
-  // console.log('selectedClusters', selectedClusters);
 
-  // const {
-  //   clusters,
-  //   // selectedCluster,
-  //   // setSelectedCluster,
-  //   // selectedClusters,
-  //   // setSelectedClusters,
-  // } = useClustersInfo();
-  // console.log('clusters', clusters);
-  // console.log('selectedCluster', selectedCluster);
-
-  const cluster = selectedCluster;
   const {
     kustomizations,
     helmReleases,
@@ -61,7 +47,7 @@ export const FluxOverview = () => {
     ociRepositories,
     helmRepositories,
     isLoading,
-  } = useFluxResources(cluster);
+  } = useFluxResources(selectedCluster);
 
   const { selectedResourceRef, clearSelectedResource } = useSelectedResource();
   const selectedResource = useMemo(() => {
@@ -88,19 +74,9 @@ export const FluxOverview = () => {
 
   const handleSelectedClusterChange = useCallback(
     (selectedItem: string | null) => {
-      console.log('handleSelectedClusterChange', selectedItem);
-      // clearSelectedResource();
       setSelectedCluster(selectedItem);
     },
     [setSelectedCluster],
-  );
-
-  const handleSelectedClustersChange = useCallback(
-    (selectedItems: string[]) => {
-      console.log('handleSelectedClustersChange', selectedItems);
-      setSelectedClusters(selectedItems);
-    },
-    [setSelectedClusters],
   );
 
   const { treeBuilder, tree } = useMemo(() => {
@@ -129,16 +105,12 @@ export const FluxOverview = () => {
   return (
     <Box display="flex" flexDirection="column" height="100%">
       <Menu
-        // clusters={clusters}
-        // selectedCluster={selectedCluster}
         onSelectedClusterChange={handleSelectedClusterChange}
-        // selectedClusters={selectedClusters}
-        onSelectedClustersChange={handleSelectedClustersChange}
         compactView={compactView}
         onCompactViewChange={() => setCompactView(!compactView)}
       />
 
-      {!Boolean(cluster) ? (
+      {!Boolean(selectedCluster) ? (
         <EmptyState
           missing="info"
           title="No information to display"

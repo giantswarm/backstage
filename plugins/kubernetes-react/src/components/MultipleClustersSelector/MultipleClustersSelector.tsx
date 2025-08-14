@@ -64,7 +64,7 @@ export const MultipleClustersSelector = ({
   persistToURL = true,
   onChange,
 }: MultipleClustersSelectorProps) => {
-  const { clusters, isLoadingClusters } = useClustersInfo();
+  const { clusters, isLoadingClusters, disabledClusters } = useClustersInfo();
 
   const { value, setValue } = useValue({
     persistToLocalStorage,
@@ -104,6 +104,7 @@ export const MultipleClustersSelector = ({
     <Autocomplete
       label="Clusters"
       items={items}
+      disabledItems={disabledClusters}
       selectedValue={selectedClusters}
       onChange={handleChange}
       disabled={isLoadingClusters}

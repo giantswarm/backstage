@@ -1,26 +1,15 @@
-import {
-  SingleClusterSelector,
-  MultipleClustersSelector,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { SingleClusterSelector } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Grid } from '@material-ui/core';
 import { CompactViewSwitch } from './CompactViewSwitch';
 
 type MenuProps = {
-  // clusters: string[];
-  // selectedCluster: string | null;
   onSelectedClusterChange: (selectedCluster: string | null) => void;
-  // selectedClusters: string[];
-  onSelectedClustersChange: (selectedClusters: string[]) => void;
   compactView: boolean;
   onCompactViewChange: () => void;
 };
 
 export const Menu = ({
-  // clusters,
-  // selectedCluster,
   onSelectedClusterChange,
-  // selectedClusters,
-  onSelectedClustersChange,
   compactView,
   onCompactViewChange,
 }: MenuProps) => {
@@ -30,10 +19,6 @@ export const Menu = ({
         <Grid item xs={12} md={3}>
           <SingleClusterSelector onChange={onSelectedClusterChange} />
         </Grid>
-        {/* <Grid item xs={12} md={3}>
-          <MultipleClustersSelector onChange={onSelectedClustersChange} />
-        </Grid> */}
-        {/* {Boolean(selectedCluster) ? ( */}
         <Grid item xs={12} md={9}>
           <Box mt={{ md: '27px' }}>
             <CompactViewSwitch
@@ -42,7 +27,6 @@ export const Menu = ({
             />
           </Box>
         </Grid>
-        {/* ) : null} */}
       </Grid>
     </Box>
   );

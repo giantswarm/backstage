@@ -4,9 +4,12 @@ import {
   QueryClientConfig,
   QueryClientProvider,
 } from '@tanstack/react-query';
-import { ClustersInfoProvider } from './ClustersInfoProvider';
 
-export const KubernetesContext = ({ children }: { children: ReactNode }) => {
+export const KubernetesQueryClientProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => {
   const queryOptions: QueryClientConfig = useMemo(
     () => ({
       defaultOptions: {
@@ -42,8 +45,6 @@ export const KubernetesContext = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ClustersInfoProvider>{children}</ClustersInfoProvider>
-    </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 };

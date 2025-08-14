@@ -56,7 +56,7 @@ export const SingleClusterSelector = ({
   persistToURL = true,
   onChange,
 }: ClusterSelectorProps) => {
-  const { clusters, isLoadingClusters } = useClustersInfo();
+  const { clusters, isLoadingClusters, disabledClusters } = useClustersInfo();
 
   const { value, setValue } = useValue({
     persistToLocalStorage,
@@ -93,6 +93,7 @@ export const SingleClusterSelector = ({
     <Autocomplete
       label="Cluster"
       items={items}
+      disabledItems={disabledClusters}
       selectedValue={selectedCluster}
       onChange={handleChange}
       disabled={isLoadingClusters}

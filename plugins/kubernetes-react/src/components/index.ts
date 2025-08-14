@@ -1,3 +1,4 @@
 export { SingleClusterSelector } from './SingleClusterSelector';
 export { MultipleClustersSelector } from './MultipleClustersSelector';
-export { KubernetesContext } from './KubernetesContext';
+export { KubernetesClustersInfoProvider } from './KubernetesClustersInfoProvider';
+export { KubernetesQueryClientProvider } from './KubernetesQueryClientProvider';
