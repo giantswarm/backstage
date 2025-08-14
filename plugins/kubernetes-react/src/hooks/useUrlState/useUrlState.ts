@@ -1,53 +1,35 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import useDebounce from 'react-use/esm/useDebounce';
 import qs from 'qs';
 
 function useQueryParameters(key: string) {
-  const location = useLocation();
   const parsed = qs.parse(location.search, {
     ignoreQueryPrefix: true,
+    allowEmptyArrays: true,
   });
-  // return parsed[key] as string | string[] | undefined;
 
   const queryParameter = parsed[key];
   const queryParameters = [queryParameter].flat().filter(Boolean) as string[];
-  const resetValue = Array.isArray(queryParameter) && queryParameter[0] === '';
 
-  return { queryParameters, resetValue };
+  return {
+    queryParameters,
+  };
 }
 
-export function useUrlState(key: string) {
-  // const location = useLocation();
-  const { queryParameters, resetValue } = useQueryParameters(key);
+export function useUrlState(
+  key: string,
+  { multiple }: { multiple: boolean } = { multiple: false },
+) {
+  const { queryParameters } = useQueryParameters(key);
   const [value, setValue] = useState<string[]>(queryParameters);
 
-  // useEffect(() => {
-  //   if (resetValue || queryParameters.length) {
-  //     setValue([]);
-  //   }
-  // }, [resetValue]);
-
-  // useEffect(() => {
-  //   if (queryParameter !== value) {
-  //     setValue(queryParameter);
-  //   }
-  // }, [queryParameter, value]);
-
   useEffect(() => {
-    // if (!value) {
-    //   console.log('DISABLED', location.search);
-    //   return;
-    // }
-    console.log('use debounce value', value, location.search);
-
-    const queryParams =
-      Array.isArray(value) && value.length === 0 ? undefined : value;
+    const queryParams = multiple ? value : value[0];
 
     const oldParams = qs.parse(location.search, {
       ignoreQueryPrefix: true,
+      allowEmptyArrays: true,
     });
-    console.log('oldParams', oldParams, location.search);
+
     const newParams = qs.stringify(
       {
         ...oldParams,
@@ -59,14 +41,12 @@ export function useUrlState(key: string) {
         allowEmptyArrays: true,
       },
     );
-    // console.log('newParams', newParams);
-    // console.log('location.search', location.search);
+
     if (newParams !== location.search) {
-      console.log('setting newParams to URL', newParams);
       const newUrl = `${window.location.pathname}${newParams}`;
       window.history?.replaceState(null, document.title, newUrl);
     }
-  }, [key, value]);
+  }, [key, multiple, value]);
 
   return useMemo(
     () => ({

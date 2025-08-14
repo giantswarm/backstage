@@ -1,7 +1,4 @@
-import {
-  Kustomization,
-  useClustersInfo,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Drawer, IconButton, makeStyles } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
 import { useCallback, useMemo, useState } from 'react';
@@ -43,14 +40,16 @@ export const FluxOverview = () => {
   const [compactView, setCompactView] = useState(true);
 
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
+  // console.log('selectedClusters', selectedClusters);
 
-  const {
-    clusters,
-    // selectedCluster,
-    // setSelectedCluster,
-    // selectedClusters,
-    // setSelectedClusters,
-  } = useClustersInfo();
+  // const {
+  //   clusters,
+  //   // selectedCluster,
+  //   // setSelectedCluster,
+  //   // selectedClusters,
+  //   // setSelectedClusters,
+  // } = useClustersInfo();
   // console.log('clusters', clusters);
   // console.log('selectedCluster', selectedCluster);
 
@@ -96,13 +95,13 @@ export const FluxOverview = () => {
     [setSelectedCluster],
   );
 
-  // const handleSelectedClustersChange = useCallback(
-  //   (selectedItems: string[]) => {
-  //     console.log('handleSelectedClustersChange', selectedItems);
-  //     setSelectedClusters(selectedItems);
-  //   },
-  //   [setSelectedClusters],
-  // );
+  const handleSelectedClustersChange = useCallback(
+    (selectedItems: string[]) => {
+      console.log('handleSelectedClustersChange', selectedItems);
+      setSelectedClusters(selectedItems);
+    },
+    [setSelectedClusters],
+  );
 
   const { treeBuilder, tree } = useMemo(() => {
     if (isLoading || kustomizations.length === 0) {
@@ -134,7 +133,7 @@ export const FluxOverview = () => {
         // selectedCluster={selectedCluster}
         onSelectedClusterChange={handleSelectedClusterChange}
         // selectedClusters={selectedClusters}
-        // onSelectedClustersChange={handleSelectedClustersChange}
+        onSelectedClustersChange={handleSelectedClustersChange}
         compactView={compactView}
         onCompactViewChange={() => setCompactView(!compactView)}
       />

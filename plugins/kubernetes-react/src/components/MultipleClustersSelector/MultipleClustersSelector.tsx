@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
 import { useClustersInfo } from '../../hooks';
@@ -11,16 +11,17 @@ function useValue({
   persistToLocalStorage: boolean;
   persistToURL: boolean;
 }) {
-  const [valueFromState, setValueToState] = useState<string | null>(null);
+  const [valueFromState, setValueToState] = useState<string[]>([]);
 
   const [valueFromLocalStorage, setValueToLocalStorage] = useLocalStorageState<
-    string | null
-  >('gs-kubernetes-cluster', {
-    defaultValue: null,
+    string[]
+  >('gs-kubernetes-clusters', {
+    defaultValue: [],
   });
-  const { value: clusterParams, setValue: setValueToURL } =
-    useUrlState('cluster');
-  const valueFromURL: string | null = clusterParams[0] ?? null;
+  const { value: valueFromURL, setValue: setValueToURL } = useUrlState(
+    'clusters',
+    { multiple: true },
+  );
 
   let value = valueFromState;
   if (persistToLocalStorage && valueFromLocalStorage) {
@@ -30,14 +31,21 @@ function useValue({
     value = valueFromURL;
   }
 
-  const setValue = (newValue: string | null) => {
-    if (newValue !== valueFromState) {
+  const setValue = (newValue: string[]) => {
+    const newValueHash = JSON.stringify(newValue.sort());
+    const valueFromStateHash = JSON.stringify(valueFromState.sort());
+    const valueFromLocalStorageHash = JSON.stringify(
+      valueFromLocalStorage.sort(),
+    );
+    const valueFromURLHash = JSON.stringify(valueFromURL.sort());
+
+    if (newValueHash !== valueFromStateHash) {
       setValueToState(newValue);
     }
-    if (persistToLocalStorage && newValue !== valueFromLocalStorage) {
+    if (persistToLocalStorage && newValueHash !== valueFromLocalStorageHash) {
       setValueToLocalStorage(newValue);
     }
-    if (persistToURL && newValue !== valueFromURL) {
+    if (persistToURL && newValueHash !== valueFromURLHash) {
       setValueToURL(newValue);
     }
   };
@@ -45,17 +53,17 @@ function useValue({
   return { value, setValue };
 }
 
-type ClusterSelectorProps = {
+type MultipleClustersSelectorProps = {
   persistToLocalStorage?: boolean;
   persistToURL?: boolean;
-  onChange?: (selectedCluster: string | null) => void;
+  onChange?: (selectedClusters: string[]) => void;
 };
 
-export const SingleClusterSelector = ({
+export const MultipleClustersSelector = ({
   persistToLocalStorage = true,
   persistToURL = true,
   onChange,
-}: ClusterSelectorProps) => {
+}: MultipleClustersSelectorProps) => {
   const { clusters, isLoadingClusters } = useClustersInfo();
 
   const { value, setValue } = useValue({
@@ -63,26 +71,29 @@ export const SingleClusterSelector = ({
     persistToURL,
   });
 
-  const selectedCluster = clusters.find(cluster => cluster === value) ?? null;
+  const selectedClusters = useMemo(
+    () => clusters.filter(cluster => value.includes(cluster)),
+    [clusters, value],
+  );
 
   useEffect(() => {
     if (isLoadingClusters) {
       return;
     }
 
-    setValue(selectedCluster);
-  }, [isLoadingClusters, selectedCluster, setValue]);
+    setValue(selectedClusters);
+  }, [isLoadingClusters, selectedClusters, setValue]);
 
   const handleChange = (newValue: string | string[] | null) => {
-    const newItem = Array.isArray(newValue) ? newValue[0] : newValue;
-    setValue(newItem);
+    const newItems = [newValue].flat().filter(Boolean) as string[];
+    setValue(newItems);
   };
 
   useEffect(() => {
     if (onChange) {
-      onChange(selectedCluster);
+      onChange(selectedClusters);
     }
-  }, [selectedCluster, onChange]);
+  }, [selectedClusters, onChange]);
 
   const items = clusters.map(cluster => ({
     label: cluster,
@@ -91,11 +102,12 @@ export const SingleClusterSelector = ({
 
   return (
     <Autocomplete
-      label="Cluster"
+      label="Clusters"
       items={items}
-      selectedValue={selectedCluster}
+      selectedValue={selectedClusters}
       onChange={handleChange}
       disabled={isLoadingClusters}
+      multiple
     />
   );
 };

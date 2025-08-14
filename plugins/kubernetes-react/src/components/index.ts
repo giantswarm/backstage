@@ -1,3 +1,3 @@
 export { SingleClusterSelector } from './SingleClusterSelector';
-export { ClustersSelector } from './ClustersSelector';
+export { MultipleClustersSelector } from './MultipleClustersSelector';
 export { KubernetesContext } from './KubernetesContext';
