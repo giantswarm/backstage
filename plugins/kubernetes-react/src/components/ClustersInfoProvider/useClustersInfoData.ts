@@ -3,12 +3,17 @@ import useAsync from 'react-use/esm/useAsync';
 import useLocalStorageState from 'use-local-storage-state';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { useUrlState } from './useUrlState';
 // import { useQuery } from '@tanstack/react-query';
 
 const disabledClusters: string[] = [];
 const isLoadingDisabledClusters = false;
 
-export const useClustersInfoData = (): {
+export const useClustersInfoData = ({
+  persistToURL,
+}: {
+  persistToURL: boolean;
+}): {
   clusters: string[];
   isLoadingClusters: boolean;
   activeClusters: string[];
@@ -18,18 +23,50 @@ export const useClustersInfoData = (): {
   selectedCluster: string | null;
   setSelectedCluster: (item: string | null) => void;
 } => {
-  const [savedClusters, setSavedClusters] = useLocalStorageState<string[]>(
-    'gs-kubernetes-clusters',
-    {
+  const kubernetesApi = useApi(kubernetesApiRef);
+  const { value: clusters, loading: isLoadingClusters } = useAsync(async () => {
+    const kuberentesClusters = await kubernetesApi.getClusters();
+
+    return kuberentesClusters.map(c => c.name);
+  });
+
+  const [clustersFromLocalStorage, setClustersToLocalStorage] =
+    useLocalStorageState<string[]>('gs-kubernetes-clusters', {
       defaultValue: [],
-    },
-  );
-  const [savedCluster, setSavedCluster] = useLocalStorageState<string | null>(
-    'gs-kubernetes-cluster',
-    {
+    });
+  const { value: clustersParams, setValue: setClustersToURL } =
+    useUrlState('clusters');
+  const clustersFromURL: string[] | undefined = clustersParams;
+  console.log('clustersFromURL', clustersFromURL);
+
+  const [clusterFromLocalStorage, setClusterToLocalStorage] =
+    useLocalStorageState<string | null>('gs-kubernetes-cluster', {
       defaultValue: null,
-    },
-  );
+    });
+  const { value: clusterParams, setValue: setClusterToURL } =
+    useUrlState('cluster');
+  const clusterFromURL: string | null = clusterParams[0] ?? null;
+  console.log('clusterFromURL', clusterFromURL);
+
+  // useEffect(() => {
+  //   console.log('sync');
+  //   if (clusterValue && clusterValue !== clusterFromURL) {
+  //     console.log('sync to url');
+  //     setClusterToURL(clusterValue);
+  //   }
+
+  //   if (clusterValue && clusterValue !== clusterFromLocalStorage) {
+  //     console.log('sync to local storage');
+  //     setClusterToLocalStorage(clusterValue);
+  //   }
+  // }, [
+  //   clusterValue,
+  //   setClusterToURL,
+  //   setClusterToLocalStorage,
+  //   clusterFromURL,
+  //   clusterFromLocalStorage,
+  // ]);
+
   // const configApi = useApi(configApiRef);
   // const installationsConfig = configApi.getOptionalConfig('gs.installations');
   // if (!installationsConfig) {
@@ -38,32 +75,29 @@ export const useClustersInfoData = (): {
 
   // const installations = configApi.getConfig('gs.installations').keys();
 
-  const kubernetesApi = useApi(kubernetesApiRef);
-  const { value: clusters, loading: isLoadingClusters } = useAsync(async () => {
-    const kuberentesClusters = await kubernetesApi.getClusters();
-
-    return kuberentesClusters.map(c => c.name);
-  });
-
+  const clustersValue = clustersFromURL ?? clustersFromLocalStorage;
   const selectedClusters = useMemo(() => {
     if (!clusters) {
       return [];
     }
 
-    return clusters.filter(cluster => savedClusters.includes(cluster));
-  }, [clusters, savedClusters]);
+    return clusters.filter(cluster => clustersValue.includes(cluster));
+  }, [clusters, clustersValue]);
 
+  const clusterValue = clusterFromURL ?? clusterFromLocalStorage;
   const selectedCluster = clusters
-    ? (clusters.find(cluster => cluster === savedCluster) ?? null)
+    ? (clusters.find(cluster => cluster === clusterValue) ?? null)
     : null;
 
   const setSelectedClusters = (items: string[]) => {
     const itemsToSave = [items].flat().filter(Boolean) as string[];
-    setSavedClusters(itemsToSave);
+    setClustersToLocalStorage(itemsToSave);
+    setClustersToURL(itemsToSave);
   };
 
   const setSelectedCluster = (item: string | null) => {
-    setSavedCluster(item);
+    setClusterToLocalStorage(item);
+    setClusterToURL(item);
   };
 
   useEffect(() => {
@@ -73,22 +107,43 @@ export const useClustersInfoData = (): {
 
     if (
       JSON.stringify(selectedClusters.sort()) !==
-      JSON.stringify(savedClusters.sort())
+      JSON.stringify(clustersFromLocalStorage.sort())
     ) {
-      setSavedClusters(selectedClusters);
+      console.log('sync clusters to local storage');
+      setClustersToLocalStorage(selectedClusters);
     }
 
-    if (selectedCluster !== savedCluster) {
-      setSavedCluster(selectedCluster);
+    if (
+      JSON.stringify(selectedClusters.sort()) !==
+      JSON.stringify(clustersFromURL.sort())
+    ) {
+      console.log('sync clusters to url');
+      setClustersToURL(selectedClusters);
+    }
+
+    //   // console.log('selectedCluster', selectedCluster);
+    //   // console.log('clusterFromLocalStorage', clusterFromLocalStorage);
+    if (selectedCluster !== clusterFromLocalStorage) {
+      console.log('sync cluster to local storage');
+      setClusterToLocalStorage(selectedCluster);
+    }
+
+    if (selectedCluster !== clusterFromURL) {
+      console.log('sync cluster to url');
+      setClusterToURL(selectedCluster);
     }
   }, [
-    selectedClusters,
-    savedClusters,
-    setSavedClusters,
-    selectedCluster,
-    savedCluster,
-    setSavedCluster,
+    clusterFromLocalStorage,
+    clusterFromURL,
     clusters,
+    clustersFromLocalStorage,
+    clustersFromURL,
+    selectedCluster,
+    selectedClusters,
+    setClusterToLocalStorage,
+    setClusterToURL,
+    setClustersToLocalStorage,
+    setClustersToURL,
   ]);
 
   const activeClusters = useMemo(() => {

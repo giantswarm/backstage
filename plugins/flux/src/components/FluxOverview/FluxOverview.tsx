@@ -42,7 +42,15 @@ export const FluxOverview = () => {
   const classes = useStyles();
   const [compactView, setCompactView] = useState(true);
 
-  const { clusters, selectedCluster, setSelectedCluster } = useClustersInfo();
+  const {
+    clusters,
+    selectedCluster,
+    setSelectedCluster,
+    selectedClusters,
+    setSelectedClusters,
+  } = useClustersInfo();
+  // console.log('clusters', clusters);
+  // console.log('selectedCluster', selectedCluster);
 
   const cluster = selectedCluster;
   const {
@@ -78,8 +86,14 @@ export const FluxOverview = () => {
   }, [selectedResourceRef, kustomizations, helmReleases]);
 
   const handleSelectedClusterChange = (selectedItem: string | null) => {
-    clearSelectedResource();
+    console.log('handleSelectedClusterChange', selectedItem);
+    // clearSelectedResource();
     setSelectedCluster(selectedItem);
+  };
+
+  const handleSelectedClustersChange = (selectedItems: string[]) => {
+    console.log('handleSelectedClustersChange', selectedItems);
+    setSelectedClusters(selectedItems);
   };
 
   const { treeBuilder, tree } = useMemo(() => {
@@ -111,6 +125,8 @@ export const FluxOverview = () => {
         clusters={clusters}
         selectedCluster={selectedCluster}
         onSelectedClusterChange={handleSelectedClusterChange}
+        selectedClusters={selectedClusters}
+        onSelectedClustersChange={handleSelectedClustersChange}
         compactView={compactView}
         onCompactViewChange={() => setCompactView(!compactView)}
       />
@@ -134,9 +150,9 @@ export const FluxOverview = () => {
             />
           )}
         />
-      ) : (
-        <Progress />
-      )}
+      ) : null}
+
+      {isLoading ? <Progress /> : null}
 
       <Drawer
         open={Boolean(selectedResourceRef)}

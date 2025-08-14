@@ -1,26 +1,22 @@
 import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
 
-type ClusterSelectorProps = {
+type ClustersSelectorProps = {
   clusters: string[];
-  selectedCluster: string | null;
-  onChange?: (selectedCluster: string | null) => void;
+  selectedClusters: string[];
+  onChange?: (selectedClusters: string[]) => void;
 };
 
-export const ClusterSelector = ({
+export const ClustersSelector = ({
   clusters,
-  selectedCluster,
+  selectedClusters,
   onChange,
-}: ClusterSelectorProps) => {
+}: ClustersSelectorProps) => {
   const handleChange = (newValue: string | string[] | null) => {
     if (!onChange) {
       return;
     }
 
-    if (Array.isArray(newValue)) {
-      onChange(newValue[0] ?? null);
-    } else {
-      onChange(newValue);
-    }
+    onChange(newValue as string[]);
   };
 
   const items = clusters.map(cluster => ({
@@ -30,10 +26,11 @@ export const ClusterSelector = ({
 
   return (
     <Autocomplete
-      label="Cluster"
+      label="Clusters"
       items={items}
-      selectedValue={selectedCluster ?? null}
+      selectedValue={selectedClusters}
       onChange={handleChange}
+      multiple
     />
   );
 };

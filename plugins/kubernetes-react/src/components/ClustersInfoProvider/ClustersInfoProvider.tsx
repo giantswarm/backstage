@@ -28,7 +28,9 @@ export interface ClustersInfoProviderProps {
 export const ClustersInfoProvider = ({
   children,
 }: ClustersInfoProviderProps) => {
-  const clustersInfo = useClustersInfoData();
+  const clustersInfo = useClustersInfoData({
+    persistToURL: true,
+  });
 
   return (
     <ClustersInfoContext.Provider value={clustersInfo}>
