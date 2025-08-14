@@ -26,17 +26,29 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@backstage/core-plugin-api": "^1.9.4",
-    "@material-ui/core": "^4.9.13"
+    "@backstage/core-components": "backstage:^",
+    "@backstage/core-plugin-api": "backstage:^",
+    "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
+    "@material-ui/core": "^4.9.13",
+    "@material-ui/icons": "^4.9.1",
+    "@tanstack/react-query": "^5.82.0",
+    "classnames": "^2.5.1",
+    "colord": "^2.9.3",
+    "react-middle-ellipsis": "^1.2.2",
+    "react-use": "^17.2.4",
+    "react-vtree": "^3.0.0-beta.0",
+    "react-window": "^1.8.11"
   },
   "peerDependencies": {
-    "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
+    "react": "^16.13.1 || ^17.0.0 || ^18.0.0",
+    "react-router-dom": "*"
   },
   "devDependencies": {
-    "@backstage/cli": "^0.33.0",
-    "@backstage/test-utils": "^1.7.8",
+    "@backstage/cli": "backstage:^",
+    "@backstage/test-utils": "backstage:^",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
+    "@types/react-window": "^1",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },
   "files": [

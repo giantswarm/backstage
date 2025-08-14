@@ -10,6 +10,7 @@ import { EmptyState, Progress } from '@backstage/core-components';
 import CloseIcon from '@material-ui/icons/Close';
 import { ContentContainer } from './ContentContainer';
 import { OverviewTree } from './OverviewTree';
+import { RouteRef } from '@backstage/core-plugin-api';
 
 const useStyles = makeStyles(theme => ({
   drawerPaper: {
@@ -35,7 +36,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export const FluxOverview = () => {
+export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
   const classes = useStyles();
   const [compactView, setCompactView] = useState(true);
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
@@ -126,6 +127,7 @@ export const FluxOverview = () => {
               compactView={compactView}
               selectedResourceRef={selectedResourceRef}
               height={containerHeight}
+              routeRef={routeRef}
             />
           )}
         />

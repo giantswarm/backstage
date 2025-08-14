@@ -3,7 +3,8 @@ import {
   KubernetesQueryClientProvider,
   KubernetesClustersInfoProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { FluxOverview } from '../FluxOverview';
+import { FluxOverview } from '@giantswarm/backstage-plugin-flux-react';
+import { rootRouteRef } from '../../routes';
 
 export const FluxPage = () => {
   return (
@@ -12,7 +13,7 @@ export const FluxPage = () => {
         <Page themeId="service">
           <Header title="Flux Overview" subtitle="Overview of Flux resources" />
           <Content>
-            <FluxOverview />
+            <FluxOverview routeRef={rootRouteRef} />
           </Content>
         </Page>
       </KubernetesClustersInfoProvider>

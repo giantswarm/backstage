@@ -1,10 +1,9 @@
 import { Link } from 'react-router-dom';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
 import {
   KustomizationTreeNode,
   KustomizationTreeNodeData,
 } from '../utils/KustomizationTreeBuilder';
-import { rootRouteRef } from '../../../routes';
 import {
   HelmRelease,
   Kustomization,
@@ -155,6 +154,7 @@ type OverviewTreeProps = {
     kind: string;
   };
   height: number;
+  routeRef: RouteRef;
 };
 
 export const OverviewTree = ({
@@ -162,8 +162,9 @@ export const OverviewTree = ({
   compactView,
   selectedResourceRef,
   height,
+  routeRef,
 }: OverviewTreeProps) => {
-  const getBasePath = useRouteRef(rootRouteRef);
+  const getBasePath = useRouteRef(routeRef);
   const basePath = getBasePath();
 
   const treeNodes = tree;
