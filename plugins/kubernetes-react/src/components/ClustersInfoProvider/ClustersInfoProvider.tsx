@@ -3,12 +3,13 @@ import { useClustersInfoData } from './useClustersInfoData';
 
 export type ClustersInfo = {
   clusters: string[];
-  activeClusters: string[];
-  activeCluster: string | null;
-  selectedClusters: string[];
-  selectedCluster: string | null;
-  setSelectedClusters: (items: string[]) => void;
-  setSelectedCluster: (items: string | null) => void;
+  // activeClusters: string[];
+  // activeCluster: string | null;
+  // selectedClusters: string[];
+  // selectedCluster: string | null;
+  // setSelectedClusters: (items: string[]) => void;
+  // setSelectedCluster: (items: string | null) => void;
+  isLoadingClusters: boolean;
 };
 
 export const ClustersInfoContext = createContext<ClustersInfo | null>(null);

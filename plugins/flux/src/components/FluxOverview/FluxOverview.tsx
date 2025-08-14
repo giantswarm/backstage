@@ -4,7 +4,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Drawer, IconButton, makeStyles } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Menu } from './Menu';
 import { useSelectedResource } from './useSelectedResource';
 import { Details } from './Details';
@@ -42,12 +42,14 @@ export const FluxOverview = () => {
   const classes = useStyles();
   const [compactView, setCompactView] = useState(true);
 
+  const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+
   const {
     clusters,
-    selectedCluster,
-    setSelectedCluster,
-    selectedClusters,
-    setSelectedClusters,
+    // selectedCluster,
+    // setSelectedCluster,
+    // selectedClusters,
+    // setSelectedClusters,
   } = useClustersInfo();
   // console.log('clusters', clusters);
   // console.log('selectedCluster', selectedCluster);
@@ -85,16 +87,22 @@ export const FluxOverview = () => {
     );
   }, [selectedResourceRef, kustomizations, helmReleases]);
 
-  const handleSelectedClusterChange = (selectedItem: string | null) => {
-    console.log('handleSelectedClusterChange', selectedItem);
-    // clearSelectedResource();
-    setSelectedCluster(selectedItem);
-  };
+  const handleSelectedClusterChange = useCallback(
+    (selectedItem: string | null) => {
+      console.log('handleSelectedClusterChange', selectedItem);
+      // clearSelectedResource();
+      setSelectedCluster(selectedItem);
+    },
+    [setSelectedCluster],
+  );
 
-  const handleSelectedClustersChange = (selectedItems: string[]) => {
-    console.log('handleSelectedClustersChange', selectedItems);
-    setSelectedClusters(selectedItems);
-  };
+  // const handleSelectedClustersChange = useCallback(
+  //   (selectedItems: string[]) => {
+  //     console.log('handleSelectedClustersChange', selectedItems);
+  //     setSelectedClusters(selectedItems);
+  //   },
+  //   [setSelectedClusters],
+  // );
 
   const { treeBuilder, tree } = useMemo(() => {
     if (isLoading || kustomizations.length === 0) {
@@ -122,11 +130,11 @@ export const FluxOverview = () => {
   return (
     <Box display="flex" flexDirection="column" height="100%">
       <Menu
-        clusters={clusters}
-        selectedCluster={selectedCluster}
+        // clusters={clusters}
+        // selectedCluster={selectedCluster}
         onSelectedClusterChange={handleSelectedClusterChange}
-        selectedClusters={selectedClusters}
-        onSelectedClustersChange={handleSelectedClustersChange}
+        // selectedClusters={selectedClusters}
+        // onSelectedClustersChange={handleSelectedClustersChange}
         compactView={compactView}
         onCompactViewChange={() => setCompactView(!compactView)}
       />

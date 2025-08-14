@@ -1,26 +1,26 @@
 import {
-  ClusterSelector,
+  SingleClusterSelector,
   ClustersSelector,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Grid } from '@material-ui/core';
 import { CompactViewSwitch } from './CompactViewSwitch';
 
 type MenuProps = {
-  clusters: string[];
-  selectedCluster: string | null;
+  // clusters: string[];
+  // selectedCluster: string | null;
   onSelectedClusterChange: (selectedCluster: string | null) => void;
-  selectedClusters: string[];
-  onSelectedClustersChange: (selectedClusters: string[]) => void;
+  // selectedClusters: string[];
+  // onSelectedClustersChange: (selectedClusters: string[]) => void;
   compactView: boolean;
   onCompactViewChange: () => void;
 };
 
 export const Menu = ({
-  clusters,
-  selectedCluster,
+  // clusters,
+  // selectedCluster,
   onSelectedClusterChange,
-  selectedClusters,
-  onSelectedClustersChange,
+  // selectedClusters,
+  // onSelectedClustersChange,
   compactView,
   onCompactViewChange,
 }: MenuProps) => {
@@ -28,29 +28,25 @@ export const Menu = ({
     <Box mb={3}>
       <Grid container spacing={3}>
         <Grid item xs={12} md={3}>
-          <ClusterSelector
-            clusters={clusters}
-            selectedCluster={selectedCluster}
-            onChange={onSelectedClusterChange}
-          />
+          <SingleClusterSelector onChange={onSelectedClusterChange} />
         </Grid>
-        <Grid item xs={12} md={3}>
+        {/* <Grid item xs={12} md={3}>
           <ClustersSelector
             clusters={clusters}
             selectedClusters={selectedClusters}
             onChange={onSelectedClustersChange}
           />
+        </Grid> */}
+        {/* {Boolean(selectedCluster) ? ( */}
+        <Grid item xs={12} md={9}>
+          <Box mt={{ md: '27px' }}>
+            <CompactViewSwitch
+              value={compactView}
+              onChange={onCompactViewChange}
+            />
+          </Box>
         </Grid>
-        {Boolean(selectedCluster) ? (
-          <Grid item xs={12} md={9}>
-            <Box mt={{ md: '27px' }}>
-              <CompactViewSwitch
-                value={compactView}
-                onChange={onCompactViewChange}
-              />
-            </Box>
-          </Grid>
-        ) : null}
+        {/* ) : null} */}
       </Grid>
     </Box>
   );
