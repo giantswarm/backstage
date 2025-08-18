@@ -28,7 +28,9 @@
     "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",
-    "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
+    "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
+    "@giantswarm/backstage-plugin-ui-react": "workspace:^",
+    "@material-ui/core": "^4.12.4"
   },
   "peerDependencies": {
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0",

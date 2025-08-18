@@ -11,6 +11,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import { ContentContainer } from './ContentContainer';
 import { OverviewTree } from './OverviewTree';
 import { RouteRef } from '@backstage/core-plugin-api';
+import { useFluxOverviewData } from '../FluxOverviewDataProvider';
 
 const useStyles = makeStyles(theme => ({
   drawerPaper: {
@@ -38,8 +39,18 @@ const useStyles = makeStyles(theme => ({
 
 export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
   const classes = useStyles();
-  const [compactView, setCompactView] = useState(true);
-  const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const compactView = true;
+  // const [compactView, setCompactView] = useState(true);
+  // const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+
+  // const {
+  //   kustomizations,
+  //   helmReleases,
+  //   gitRepositories,
+  //   ociRepositories,
+  //   helmRepositories,
+  //   isLoading,
+  // } = useFluxResources(selectedCluster);
 
   const {
     kustomizations,
@@ -48,7 +59,7 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
     ociRepositories,
     helmRepositories,
     isLoading,
-  } = useFluxResources(selectedCluster);
+  } = useFluxOverviewData();
 
   const { selectedResourceRef, clearSelectedResource } = useSelectedResource();
   const selectedResource = useMemo(() => {
@@ -73,12 +84,12 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
     );
   }, [selectedResourceRef, kustomizations, helmReleases]);
 
-  const handleSelectedClusterChange = useCallback(
-    (selectedItem: string | null) => {
-      setSelectedCluster(selectedItem);
-    },
-    [setSelectedCluster],
-  );
+  // const handleSelectedClusterChange = useCallback(
+  //   (selectedItem: string | null) => {
+  //     setSelectedCluster(selectedItem);
+  //   },
+  //   [setSelectedCluster],
+  // );
 
   const { treeBuilder, tree } = useMemo(() => {
     if (isLoading || kustomizations.length === 0) {
@@ -105,13 +116,22 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
 
   return (
     <Box display="flex" flexDirection="column" height="100%">
-      <Menu
+      {/* <Menu
         onSelectedClusterChange={handleSelectedClusterChange}
         compactView={compactView}
         onCompactViewChange={() => setCompactView(!compactView)}
-      />
+      /> */}
 
-      {!Boolean(selectedCluster) ? (
+      {/* {!Boolean(selectedCluster) ? (
+        <EmptyState
+          missing="info"
+          title="No information to display"
+          description="Please select a cluster to view Flux resources."
+        />
+      ) : null} */}
+      {isLoading ? <Progress /> : null}
+
+      {!isLoading && !tree ? (
         <EmptyState
           missing="info"
           title="No information to display"
@@ -132,8 +152,6 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
           )}
         />
       ) : null}
-
-      {isLoading ? <Progress /> : null}
 
       <Drawer
         open={Boolean(selectedResourceRef)}

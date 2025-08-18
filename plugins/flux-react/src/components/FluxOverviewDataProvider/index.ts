@@ -1,4 +1,3 @@
-export { FluxOverview } from './FluxOverview';
 export {
   FluxOverviewDataProvider,
   useFluxOverviewData,

@@ -1,22 +1,8 @@
-import { Header, Page, Content } from '@backstage/core-components';
-import {
-  KubernetesQueryClientProvider,
-  KubernetesClustersInfoProvider,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
-import { FluxOverview } from '@giantswarm/backstage-plugin-flux-react';
-import { rootRouteRef } from '../../routes';
+import { useOutlet } from 'react-router-dom';
+import { DefaultFluxPage, DefaultFluxPageProps } from './DefaultFluxPage';
 
-export const FluxPage = () => {
-  return (
-    <KubernetesQueryClientProvider>
-      <KubernetesClustersInfoProvider>
-        <Page themeId="service">
-          <Header title="Flux Overview" subtitle="Overview of Flux resources" />
-          <Content>
-            <FluxOverview routeRef={rootRouteRef} />
-          </Content>
-        </Page>
-      </KubernetesClustersInfoProvider>
-    </KubernetesQueryClientProvider>
-  );
-};
+export function FluxPage(props: DefaultFluxPageProps) {
+  const outlet = useOutlet();
+
+  return outlet || <DefaultFluxPage {...props} />;
+}

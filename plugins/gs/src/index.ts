@@ -22,6 +22,7 @@ export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
+export { CustomFluxPage as GSCustomFluxPage } from './components/flux/CustomFluxPage';
 export { EntityInstallationDetailsCard as EntityGSInstallationDetailsCard } from './components/catalog/EntityInstallationDetailsCard';
 export { EntityKratixResourcesCard as EntityGSKratixResourcesCard } from './components/catalog/EntityKratixResourcesCard';
 export { EntityKratixStatusCard as EntityGSKratixStatusCard } from './components/catalog/EntityKratixStatusCard';

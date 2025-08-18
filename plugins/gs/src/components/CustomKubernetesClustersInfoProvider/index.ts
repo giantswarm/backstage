@@ -1,0 +1,1 @@
+export { CustomKubernetesClustersInfoProvider } from './CustomKubernetesClustersInfoProvider';
