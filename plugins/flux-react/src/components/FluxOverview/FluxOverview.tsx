@@ -1,11 +1,9 @@
 import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Drawer, IconButton, makeStyles } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
-import { useCallback, useMemo, useState } from 'react';
-import { Menu } from './Menu';
+import { useMemo } from 'react';
 import { useSelectedResource } from './useSelectedResource';
 import { Details } from './Details';
-import { useFluxResources } from './useFluxResources';
 import { EmptyState, Progress } from '@backstage/core-components';
 import CloseIcon from '@material-ui/icons/Close';
 import { ContentContainer } from './ContentContainer';
@@ -39,17 +37,6 @@ const useStyles = makeStyles(theme => ({
 
 export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
   const classes = useStyles();
-  // const [compactView, setCompactView] = useState(true);
-  // const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
-
-  // const {
-  //   kustomizations,
-  //   helmReleases,
-  //   gitRepositories,
-  //   ociRepositories,
-  //   helmRepositories,
-  //   isLoading,
-  // } = useFluxResources(selectedCluster);
 
   const {
     kustomizations,
@@ -86,13 +73,6 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
     );
   }, [selectedResourceRef, kustomizations, helmReleases]);
 
-  // const handleSelectedClusterChange = useCallback(
-  //   (selectedItem: string | null) => {
-  //     setSelectedCluster(selectedItem);
-  //   },
-  //   [setSelectedCluster],
-  // );
-
   const { treeBuilder, tree } = useMemo(() => {
     if (isLoading || kustomizations.length === 0) {
       return { treeBuilder: undefined, tree: undefined };
@@ -118,19 +98,6 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
 
   return (
     <Box display="flex" flexDirection="column" height="100%">
-      {/* <Menu
-        onSelectedClusterChange={handleSelectedClusterChange}
-        compactView={compactView}
-        onCompactViewChange={() => setCompactView(!compactView)}
-      /> */}
-
-      {/* {!Boolean(selectedCluster) ? (
-        <EmptyState
-          missing="info"
-          title="No information to display"
-          description="Please select a cluster to view Flux resources."
-        />
-      ) : null} */}
       {isLoading ? <Progress /> : null}
 
       {!isLoading && !tree ? (
