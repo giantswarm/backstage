@@ -39,7 +39,6 @@ const useStyles = makeStyles(theme => ({
 
 export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
   const classes = useStyles();
-  const compactView = true;
   // const [compactView, setCompactView] = useState(true);
   // const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
 
@@ -59,7 +58,10 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
     ociRepositories,
     helmRepositories,
     isLoading,
+    resourceType,
   } = useFluxOverviewData();
+
+  const compactView = resourceType === 'flux';
 
   const { selectedResourceRef, clearSelectedResource } = useSelectedResource();
   const selectedResource = useMemo(() => {

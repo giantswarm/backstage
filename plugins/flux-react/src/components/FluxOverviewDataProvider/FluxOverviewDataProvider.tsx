@@ -9,6 +9,8 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResources } from './useFluxResources';
 
+export type ResourceType = 'all' | 'flux';
+
 export type FluxOverviewData = {
   kustomizations: Kustomization[];
   helmReleases: HelmRelease[];
@@ -17,6 +19,8 @@ export type FluxOverviewData = {
   helmRepositories: HelmRepository[];
   isLoading: boolean;
   setSelectedCluster: (cluster: string | null) => void;
+  resourceType: ResourceType;
+  setResourceType: (resourceType: ResourceType) => void;
 };
 
 const FluxOverviewDataContext = createContext<FluxOverviewData | undefined>(
@@ -41,6 +45,7 @@ export const FluxOverviewDataProvider = ({
   children,
 }: FluxOverviewDataProviderProps) => {
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [resourceType, setResourceType] = useState<ResourceType>('flux');
 
   const {
     kustomizations,
@@ -75,6 +80,8 @@ export const FluxOverviewDataProvider = ({
       helmRepositories,
       isLoading,
       setSelectedCluster,
+      resourceType,
+      setResourceType,
     };
   }, [
     kustomizations,
@@ -84,6 +91,8 @@ export const FluxOverviewDataProvider = ({
     helmRepositories,
     isLoading,
     setSelectedCluster,
+    resourceType,
+    setResourceType,
   ]);
 
   return (
