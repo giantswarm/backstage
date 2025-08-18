@@ -9,14 +9,15 @@ import { useDisabledInstallations } from '../../../../hooks';
 
 export const ClusterPicker = () => {
   const { clusters, isLoadingClusters } = useClustersInfo();
-  const { disabledInstallations } = useDisabledInstallations();
-  const { setSelectedCluster } = useFluxOverviewData();
+  const { disabledInstallations, isLoading: isLoadingDisabledClusters } =
+    useDisabledInstallations();
+  const { setActiveCluster } = useFluxOverviewData();
 
-  const handleSelectedClusterChange = useCallback(
+  const handleActiveClusterChange = useCallback(
     (selectedItem: string | null) => {
-      setSelectedCluster(selectedItem);
+      setActiveCluster(selectedItem);
     },
-    [setSelectedCluster],
+    [setActiveCluster],
   );
 
   if (clusters.length <= 1) {
@@ -28,8 +29,9 @@ export const ClusterPicker = () => {
       <SingleClusterSelector
         clusters={clusters}
         disabledClusters={disabledInstallations}
+        isLoadingDisabledClusters={isLoadingDisabledClusters}
         disabled={isLoadingClusters}
-        onChange={handleSelectedClusterChange}
+        onActiveClusterChange={handleActiveClusterChange}
       />
     </Box>
   );

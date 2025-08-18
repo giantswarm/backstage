@@ -1,5 +1,6 @@
-import { Content, Header, Page } from '@backstage/core-components';
 import { ReactNode } from 'react';
+import { Content, Header, Page } from '@backstage/core-components';
+import { KubernetesQueryClientProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { deploymentsRouteRef } from '../../../routes';
@@ -25,14 +26,16 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
         subtitle="Instances of your applications deployed to Kubernetes clusters"
       />
       <Content>
-        <ErrorsProvider>
-          <DeploymentsDataProvider>
-            <FiltersLayout>
-              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-              <FiltersLayout.Content>{content}</FiltersLayout.Content>
-            </FiltersLayout>
-          </DeploymentsDataProvider>
-        </ErrorsProvider>
+        <KubernetesQueryClientProvider>
+          <ErrorsProvider>
+            <DeploymentsDataProvider>
+              <FiltersLayout>
+                <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+                <FiltersLayout.Content>{content}</FiltersLayout.Content>
+              </FiltersLayout>
+            </DeploymentsDataProvider>
+          </ErrorsProvider>
+        </KubernetesQueryClientProvider>
       </Content>
     </Page>
   );

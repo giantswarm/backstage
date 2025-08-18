@@ -17,8 +17,10 @@ function useValue({
   >('gs-kubernetes-cluster', {
     defaultValue: null,
   });
-  const { value: clusterParams, setValue: setValueToURL } =
-    useUrlState('cluster');
+  const { value: clusterParams, setValue: setValueToURL } = useUrlState(
+    'cluster',
+    { enabled: persistToURL },
+  );
   const valueFromURL: string | null = clusterParams[0] ?? null;
 
   let value = valueFromState;
@@ -45,24 +47,26 @@ function useValue({
 }
 
 type ClusterSelectorProps = {
+  label?: string;
   clusters?: string[];
   disabledClusters?: string[];
+  isLoadingDisabledClusters?: boolean;
   disabled?: boolean;
   persistToLocalStorage?: boolean;
   persistToURL?: boolean;
-  onChange?: (selectedCluster: string | null) => void;
+  onActiveClusterChange?: (selectedCluster: string | null) => void;
 };
 
 export const SingleClusterSelector = ({
+  label = 'Cluster',
   clusters = [],
   disabledClusters = [],
+  isLoadingDisabledClusters = false,
   disabled = false,
   persistToLocalStorage = true,
   persistToURL = true,
-  onChange,
+  onActiveClusterChange,
 }: ClusterSelectorProps) => {
-  // const { clusters, isLoadingClusters } = useClustersInfo();
-
   const { value, setValue } = useValue({
     persistToLocalStorage,
     persistToURL,
@@ -83,11 +87,17 @@ export const SingleClusterSelector = ({
     setValue(newItem);
   };
 
+  const activeCluster =
+    isLoadingDisabledClusters ||
+    (selectedCluster && disabledClusters.includes(selectedCluster))
+      ? null
+      : selectedCluster;
+
   useEffect(() => {
-    if (onChange) {
-      onChange(selectedCluster);
+    if (onActiveClusterChange) {
+      onActiveClusterChange(activeCluster);
     }
-  }, [selectedCluster, onChange]);
+  }, [activeCluster, onActiveClusterChange]);
 
   const items = clusters.map(cluster => ({
     label: cluster,
@@ -96,7 +106,7 @@ export const SingleClusterSelector = ({
 
   return (
     <Autocomplete
-      label="Cluster"
+      label={label}
       items={items}
       disabledItems={disabledClusters}
       selectedValue={selectedCluster}

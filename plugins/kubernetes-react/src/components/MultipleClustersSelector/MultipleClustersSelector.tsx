@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
-import { useClustersInfo } from '../../hooks';
 import { useUrlState } from '../../hooks/useUrlState';
 
 function useValue({
   persistToLocalStorage,
   persistToURL,
+  urlParameterName,
 }: {
   persistToLocalStorage: boolean;
   persistToURL: boolean;
+  urlParameterName: string;
 }) {
   const [valueFromState, setValueToState] = useState<string[]>([]);
 
@@ -19,8 +20,8 @@ function useValue({
     defaultValue: [],
   });
   const { value: valueFromURL, setValue: setValueToURL } = useUrlState(
-    'clusters',
-    { multiple: true },
+    urlParameterName,
+    { multiple: true, enabled: persistToURL },
   );
 
   let value = valueFromState;
@@ -54,46 +55,74 @@ function useValue({
 }
 
 type MultipleClustersSelectorProps = {
+  label?: string;
+  clusters?: string[];
+  disabledClusters?: string[];
+  isLoadingDisabledClusters?: boolean;
+  disabled?: boolean;
   persistToLocalStorage?: boolean;
   persistToURL?: boolean;
-  onChange?: (selectedClusters: string[]) => void;
+  urlParameterName?: string;
+  onActiveClustersChange?: (selectedClusters: string[]) => void;
 };
 
 export const MultipleClustersSelector = ({
+  label = 'Clusters',
+  clusters = [],
+  disabledClusters = [],
+  isLoadingDisabledClusters = false,
+  disabled = false,
   persistToLocalStorage = true,
   persistToURL = true,
-  onChange,
+  urlParameterName = 'clusters',
+  onActiveClustersChange,
 }: MultipleClustersSelectorProps) => {
-  const { clusters, isLoadingClusters, disabledClusters } = useClustersInfo();
-
   const { value, setValue } = useValue({
     persistToLocalStorage,
     persistToURL,
+    urlParameterName,
   });
 
-  const selectedClusters = useMemo(
-    () => clusters.filter(cluster => value.includes(cluster)),
-    [clusters, value],
-  );
+  const selectedClusters = useMemo(() => {
+    return clusters.filter(cluster => value.includes(cluster));
+  }, [clusters, value]);
 
   useEffect(() => {
-    if (isLoadingClusters) {
+    if (disabled) {
       return;
     }
 
     setValue(selectedClusters);
-  }, [isLoadingClusters, selectedClusters, setValue]);
+  }, [disabled, selectedClusters, setValue]);
 
   const handleChange = (newValue: string | string[] | null) => {
     const newItems = [newValue].flat().filter(Boolean) as string[];
     setValue(newItems);
   };
 
-  useEffect(() => {
-    if (onChange) {
-      onChange(selectedClusters);
+  const activeClusters = useMemo(() => {
+    const allSelectedClusters =
+      clusters.length === 1 || selectedClusters.length === 0
+        ? clusters
+        : selectedClusters;
+
+    if (
+      allSelectedClusters.some(cluster => disabledClusters.includes(cluster)) &&
+      isLoadingDisabledClusters
+    ) {
+      return []; // Some selected clusters are potentially disabled, waiting for status check to complete
     }
-  }, [selectedClusters, onChange]);
+
+    return allSelectedClusters.filter(
+      cluster => !disabledClusters.includes(cluster),
+    );
+  }, [clusters, disabledClusters, isLoadingDisabledClusters, selectedClusters]);
+
+  useEffect(() => {
+    if (onActiveClustersChange) {
+      onActiveClustersChange(activeClusters);
+    }
+  }, [activeClusters, onActiveClustersChange]);
 
   const items = clusters.map(cluster => ({
     label: cluster,
@@ -102,12 +131,12 @@ export const MultipleClustersSelector = ({
 
   return (
     <Autocomplete
-      label="Clusters"
+      label={label}
       items={items}
       disabledItems={disabledClusters}
       selectedValue={selectedClusters}
       onChange={handleChange}
-      disabled={isLoadingClusters}
+      disabled={disabled}
       multiple
     />
   );

@@ -1,30 +1,38 @@
 import { Box } from '@material-ui/core';
-import { InstallationsSelector } from '../../InstallationsSelector';
-import { useInstallations } from '../../../hooks';
+import {
+  MultipleClustersSelector,
+  useClustersInfo,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useDisabledInstallations } from '../../../hooks';
 
-export const InstallationPicker = () => {
-  const {
-    installations,
-    selectedInstallations,
-    disabledInstallations,
-    setSelectedInstallations,
-  } = useInstallations();
+type InstallationPickerProps = {
+  onActiveInstallationsChange: (installations: string[]) => void;
+  persistToURL?: boolean;
+};
 
-  const handleSelectedInstallationsChange = (selectedItems: string[]) => {
-    setSelectedInstallations(selectedItems);
-  };
+export const InstallationPicker = ({
+  onActiveInstallationsChange,
+  persistToURL,
+}: InstallationPickerProps) => {
+  const { clusters, isLoadingClusters } = useClustersInfo();
+  const { disabledInstallations, isLoading: isLoadingDisabledInstallations } =
+    useDisabledInstallations();
 
-  if (installations.length <= 1) {
+  if (clusters.length <= 1) {
     return null;
   }
 
   return (
     <Box pb={1} pt={1}>
-      <InstallationsSelector
-        installations={installations}
-        selectedInstallations={selectedInstallations}
-        disabledInstallations={disabledInstallations}
-        onChange={handleSelectedInstallationsChange}
+      <MultipleClustersSelector
+        label="Installations"
+        persistToURL={persistToURL}
+        urlParameterName="installations"
+        clusters={clusters}
+        disabledClusters={disabledInstallations}
+        isLoadingDisabledClusters={isLoadingDisabledInstallations}
+        disabled={isLoadingClusters}
+        onActiveClustersChange={onActiveInstallationsChange}
       />
     </Box>
   );

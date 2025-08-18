@@ -1,5 +1,6 @@
-import { Content, Header, Page } from '@backstage/core-components';
 import { ReactNode } from 'react';
+import { Content, Header, Page } from '@backstage/core-components';
+import { KubernetesQueryClientProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';
 import { ClustersDataProvider } from '../ClustersDataProvider';
@@ -21,14 +22,16 @@ export function BaseClustersPage(props: BaseClustersPageProps) {
         subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters."
       />
       <Content>
-        <ErrorsProvider>
-          <ClustersDataProvider>
-            <FiltersLayout>
-              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-              <FiltersLayout.Content>{content}</FiltersLayout.Content>
-            </FiltersLayout>
-          </ClustersDataProvider>
-        </ErrorsProvider>
+        <KubernetesQueryClientProvider>
+          <ErrorsProvider>
+            <ClustersDataProvider>
+              <FiltersLayout>
+                <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+                <FiltersLayout.Content>{content}</FiltersLayout.Content>
+              </FiltersLayout>
+            </ClustersDataProvider>
+          </ErrorsProvider>
+        </KubernetesQueryClientProvider>
       </Content>
     </Page>
   );

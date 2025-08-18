@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
 } from 'react';
 import {
   getAppChartName,
@@ -45,6 +46,7 @@ export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   filteredData: DeploymentData[];
   isLoading: boolean;
   retry: () => void;
+  setActiveInstallations: (installations: string[]) => void;
 };
 
 const DeploymentsDataContext = createContext<DeploymentsData | undefined>(
@@ -70,6 +72,8 @@ export const DeploymentsDataProvider = ({
   deploymentNames,
   children,
 }: DeploymentsDataProviderProps) => {
+  const [activeInstallations, setActiveInstallations] = useState<string[]>([]);
+
   const { filters, queryParameters, updateFilters } =
     useFilters<DefaultDeploymentFilters>({
       persistToURL: deploymentNames ? false : true,
@@ -82,14 +86,14 @@ export const DeploymentsDataProvider = ({
     errors: appErrors,
     isLoading: isLoadingApps,
     retry: retryApps,
-  } = useApps();
+  } = useApps(activeInstallations);
 
   const {
     resources: helmReleaseResources,
     errors: helmReleaseErrors,
     isLoading: isLoadingHelmReleases,
     retry: retryHelmReleases,
-  } = useHelmReleases();
+  } = useHelmReleases(activeInstallations);
 
   const isLoading = isLoadingApps || isLoadingHelmReleases;
 
@@ -150,6 +154,7 @@ export const DeploymentsDataProvider = ({
       filteredData: filteredData,
       isLoading,
       retry,
+      setActiveInstallations,
 
       filters,
       queryParameters,

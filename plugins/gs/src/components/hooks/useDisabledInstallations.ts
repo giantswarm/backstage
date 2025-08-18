@@ -1,6 +1,7 @@
 import { fetchApiRef, useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { DiscoveryApiClient } from '../../apis/discovery/DiscoveryApiClient';
+import { useMemo } from 'react';
 
 const STATUS_CHECK_TIMEOUT = 5000;
 const STATUS_CHECK_INTERVAL = 20000;
@@ -31,14 +32,14 @@ export const useDisabledInstallations = () => {
     refetchInterval: STATUS_CHECK_INTERVAL,
   });
 
-  const installationsWithBaseUrlOverrides = Object.keys(baseUrlOverrides);
+  const disabledInstallations = useMemo(() => {
+    const installationsWithBaseUrlOverrides = Object.keys(baseUrlOverrides);
 
-  const disabledInstallations = installationsWithBaseUrlOverrides.filter(
-    installationName => {
+    return installationsWithBaseUrlOverrides.filter(installationName => {
       const endpoint = baseUrlOverrides[installationName];
       return !endpointStatuses || endpointStatuses[endpoint] === false;
-    },
-  );
+    });
+  }, [baseUrlOverrides, endpointStatuses]);
 
   return {
     isLoading,

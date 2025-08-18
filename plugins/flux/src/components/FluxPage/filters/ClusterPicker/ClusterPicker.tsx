@@ -10,7 +10,7 @@ export const ClusterPicker = () => {
   const { clusters } = useClustersInfo();
   const { setSelectedCluster } = useFluxOverviewData();
 
-  const handleSelectedClusterChange = useCallback(
+  const handleActiveClusterChange = useCallback(
     (selectedItem: string | null) => {
       setSelectedCluster(selectedItem);
     },
@@ -23,7 +23,9 @@ export const ClusterPicker = () => {
 
   return (
     <Box pb={1} pt={1}>
-      <SingleClusterSelector onChange={handleSelectedClusterChange} />
+      <SingleClusterSelector
+        onActiveClusterChange={handleActiveClusterChange}
+      />
     </Box>
   );
 };

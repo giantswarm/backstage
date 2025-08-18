@@ -18,7 +18,7 @@ export type FluxOverviewData = {
   ociRepositories: OCIRepository[];
   helmRepositories: HelmRepository[];
   isLoading: boolean;
-  setSelectedCluster: (cluster: string | null) => void;
+  setActiveCluster: (cluster: string | null) => void;
   resourceType: ResourceType;
   setResourceType: (resourceType: ResourceType) => void;
 };
@@ -44,7 +44,7 @@ type FluxOverviewDataProviderProps = {
 export const FluxOverviewDataProvider = ({
   children,
 }: FluxOverviewDataProviderProps) => {
-  const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [activeCluster, setActiveCluster] = useState<string | null>(null);
   const [resourceType, setResourceType] = useState<ResourceType>('flux');
 
   const {
@@ -54,7 +54,7 @@ export const FluxOverviewDataProvider = ({
     ociRepositories,
     helmRepositories,
     isLoading,
-  } = useFluxResources(selectedCluster);
+  } = useFluxResources(activeCluster);
 
   // const errors = useMemo(() => {
   //   return [
@@ -79,7 +79,7 @@ export const FluxOverviewDataProvider = ({
       ociRepositories,
       helmRepositories,
       isLoading,
-      setSelectedCluster,
+      setActiveCluster,
       resourceType,
       setResourceType,
     };
@@ -90,7 +90,7 @@ export const FluxOverviewDataProvider = ({
     ociRepositories,
     helmRepositories,
     isLoading,
-    setSelectedCluster,
+    setActiveCluster,
     resourceType,
     setResourceType,
   ]);

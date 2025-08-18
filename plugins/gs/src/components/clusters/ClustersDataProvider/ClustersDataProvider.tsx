@@ -43,6 +43,7 @@ export type ClustersData = FiltersData<DefaultClusterFilters> & {
   retry: () => void;
   visibleColumns: string[];
   setVisibleColumns: (columns: string[]) => void;
+  setActiveInstallations: (installations: string[]) => void;
 };
 
 const ClustersDataContext = createContext<ClustersData | undefined>(undefined);
@@ -64,6 +65,7 @@ type ClustersDataProviderProps = {
 export const ClustersDataProvider = ({
   children,
 }: ClustersDataProviderProps) => {
+  const [activeInstallations, setActiveInstallations] = useState<string[]>([]);
   const { filters, queryParameters, updateFilters } =
     useFilters<DefaultClusterFilters>();
 
@@ -74,7 +76,7 @@ export const ClustersDataProvider = ({
     errors: clusterErrors,
     isLoading: isLoadingClusters,
     retry,
-  } = useClusters();
+  } = useClusters(activeInstallations);
 
   const controlPlanesRequired = visibleColumns.includes(
     ClusterColumns.kubernetesVersion,
@@ -215,6 +217,7 @@ export const ClustersDataProvider = ({
       retry,
       visibleColumns,
       setVisibleColumns,
+      setActiveInstallations,
 
       filters,
       queryParameters,

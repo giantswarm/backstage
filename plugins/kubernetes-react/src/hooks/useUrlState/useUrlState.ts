@@ -17,12 +17,19 @@ function useQueryParameters(key: string) {
 
 export function useUrlState(
   key: string,
-  { multiple }: { multiple: boolean } = { multiple: false },
+  { multiple, enabled }: { multiple: boolean; enabled: boolean } = {
+    multiple: false,
+    enabled: true,
+  },
 ) {
   const { queryParameters } = useQueryParameters(key);
   const [value, setValue] = useState<string[]>(queryParameters);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const queryParams = multiple ? value : value[0];
 
     const oldParams = qs.parse(location.search, {
@@ -46,7 +53,7 @@ export function useUrlState(
       const newUrl = `${window.location.pathname}${newParams}`;
       window.history?.replaceState(null, document.title, newUrl);
     }
-  }, [key, multiple, value]);
+  }, [key, multiple, value, enabled]);
 
   return useMemo(
     () => ({
