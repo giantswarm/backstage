@@ -30,7 +30,7 @@ export const Filters = (props: {
         onClick={() => setFilterDrawerOpen(true)}
         startIcon={<FilterListIcon />}
       >
-        Button Title
+        Filters
       </Button>
       <Drawer
         open={filterDrawerOpen}
@@ -40,13 +40,13 @@ export const Filters = (props: {
         keepMounted
         variant="temporary"
       >
-        <Box m={2}>
+        <Box m={2} width="300px">
           <Typography
             variant="h6"
             component="h2"
             style={{ marginBottom: theme.spacing(1) }}
           >
-            Title
+            Filters
           </Typography>
           {props.children}
         </Box>
