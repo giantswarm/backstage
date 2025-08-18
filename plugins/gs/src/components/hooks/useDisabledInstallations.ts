@@ -1,12 +1,10 @@
-import { KubernetesClustersInfoProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { fetchApiRef, useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { DiscoveryApiClient } from '../../apis/discovery/DiscoveryApiClient';
 
 const STATUS_CHECK_TIMEOUT = 5000;
 const STATUS_CHECK_INTERVAL = 20000;
-
-const useDisabledInstallations = () => {
+export const useDisabledInstallations = () => {
   const fetchApi = useApi(fetchApiRef);
   const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides();
   const uniqueEndpoints = Array.from(new Set(Object.values(baseUrlOverrides)));
@@ -46,18 +44,4 @@ const useDisabledInstallations = () => {
     isLoading,
     disabledInstallations,
   };
-};
-
-export const CustomKubernetesClustersInfoProvider = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
-  const { disabledInstallations } = useDisabledInstallations();
-
-  return (
-    <KubernetesClustersInfoProvider disabledClusters={disabledInstallations}>
-      {children}
-    </KubernetesClustersInfoProvider>
-  );
 };

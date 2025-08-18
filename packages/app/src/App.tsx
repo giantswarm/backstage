@@ -198,7 +198,7 @@ const routes = (
         </GSFeatureEnabled>
       }
     >
-      {/* <GSCustomFluxPage /> */}
+      <GSCustomFluxPage />
     </Route>
   </FlatRoutes>
 );

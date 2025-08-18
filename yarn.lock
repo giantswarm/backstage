@@ -9592,6 +9592,7 @@ __metadata:
     "@backstage/test-utils": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@backstage/types": "backstage:^"
+    "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "npm:^0.2.0"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.19.0"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"

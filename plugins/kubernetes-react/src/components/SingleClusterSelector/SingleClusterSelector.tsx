@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
-import { useClustersInfo } from '../../hooks';
 import { useUrlState } from '../../hooks/useUrlState';
 
 function useValue({
@@ -46,17 +45,23 @@ function useValue({
 }
 
 type ClusterSelectorProps = {
+  clusters?: string[];
+  disabledClusters?: string[];
+  disabled?: boolean;
   persistToLocalStorage?: boolean;
   persistToURL?: boolean;
   onChange?: (selectedCluster: string | null) => void;
 };
 
 export const SingleClusterSelector = ({
+  clusters = [],
+  disabledClusters = [],
+  disabled = false,
   persistToLocalStorage = true,
   persistToURL = true,
   onChange,
 }: ClusterSelectorProps) => {
-  const { clusters, isLoadingClusters, disabledClusters } = useClustersInfo();
+  // const { clusters, isLoadingClusters } = useClustersInfo();
 
   const { value, setValue } = useValue({
     persistToLocalStorage,
@@ -66,12 +71,12 @@ export const SingleClusterSelector = ({
   const selectedCluster = clusters.find(cluster => cluster === value) ?? null;
 
   useEffect(() => {
-    if (isLoadingClusters) {
+    if (disabled) {
       return;
     }
 
     setValue(selectedCluster);
-  }, [isLoadingClusters, selectedCluster, setValue]);
+  }, [disabled, selectedCluster, setValue]);
 
   const handleChange = (newValue: string | string[] | null) => {
     const newItem = Array.isArray(newValue) ? newValue[0] : newValue;
@@ -96,7 +101,7 @@ export const SingleClusterSelector = ({
       disabledItems={disabledClusters}
       selectedValue={selectedCluster}
       onChange={handleChange}
-      disabled={isLoadingClusters}
+      disabled={disabled}
     />
   );
 };

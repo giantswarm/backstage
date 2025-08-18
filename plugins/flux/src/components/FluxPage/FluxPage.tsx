@@ -1,8 +1,8 @@
 import { useOutlet } from 'react-router-dom';
-import { DefaultFluxPage, DefaultFluxPageProps } from './DefaultFluxPage';
+import { DefaultFluxPage } from './DefaultFluxPage';
 
-export function FluxPage(props: DefaultFluxPageProps) {
+export function FluxPage() {
   const outlet = useOutlet();
 
-  return outlet || <DefaultFluxPage {...props} />;
+  return outlet || <DefaultFluxPage />;
 }

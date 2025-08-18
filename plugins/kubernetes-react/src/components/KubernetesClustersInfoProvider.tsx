@@ -38,22 +38,6 @@ export const KubernetesClustersInfoProvider = ({
     },
   });
 
-  // const { data: disabledClustersData, isLoading: isLoadingDisabledClusters } =
-  //   useQuery({
-  //     queryKey: ['disabledClusters'],
-  //     queryFn: async () => {
-  //       if (!disabledClusters) {
-  //         return [];
-  //       }
-
-  //       if (Array.isArray(disabledClusters)) {
-  //         return disabledClusters;
-  //       }
-
-  //       return await disabledClusters();
-  //     },
-  //   });
-
   const clustersInfo = {
     clusters: clusters ?? [],
     isLoadingClusters,
