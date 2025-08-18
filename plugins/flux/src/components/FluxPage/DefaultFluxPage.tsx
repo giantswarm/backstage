@@ -1,9 +1,6 @@
 import { ReactNode } from 'react';
 import { Content, Header, Page } from '@backstage/core-components';
-import {
-  KubernetesQueryClientProvider,
-  KubernetesClustersInfoProvider,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { KubernetesQueryClientProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   FluxOverview,
   FluxOverviewDataProvider,
@@ -34,16 +31,14 @@ export function BaseFluxPage(props: BaseFluxPageProps) {
       <Header title="Flux Overview" subtitle="Overview of Flux resources" />
       <Content className={classes.content}>
         <KubernetesQueryClientProvider>
-          <KubernetesClustersInfoProvider>
-            <ErrorsProvider>
-              <FluxOverviewDataProvider>
-                <FiltersLayout fullHeight>
-                  <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-                  <FiltersLayout.Content>{content}</FiltersLayout.Content>
-                </FiltersLayout>
-              </FluxOverviewDataProvider>
-            </ErrorsProvider>
-          </KubernetesClustersInfoProvider>
+          <ErrorsProvider>
+            <FluxOverviewDataProvider>
+              <FiltersLayout fullHeight>
+                <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+                <FiltersLayout.Content>{content}</FiltersLayout.Content>
+              </FiltersLayout>
+            </FluxOverviewDataProvider>
+          </ErrorsProvider>
         </KubernetesQueryClientProvider>
       </Content>
     </Page>
