@@ -6,9 +6,11 @@ import { useUrlState } from '../../hooks/useUrlState';
 function useValue({
   persistToLocalStorage,
   persistToURL,
+  urlParameterName,
 }: {
   persistToLocalStorage: boolean;
   persistToURL: boolean;
+  urlParameterName: string;
 }) {
   const [valueFromState, setValueToState] = useState<string | null>(null);
 
@@ -18,7 +20,7 @@ function useValue({
     defaultValue: null,
   });
   const { value: clusterParams, setValue: setValueToURL } = useUrlState(
-    'cluster',
+    urlParameterName,
     { enabled: persistToURL },
   );
   const valueFromURL: string | null = clusterParams[0] ?? null;
@@ -54,6 +56,7 @@ type ClusterSelectorProps = {
   disabled?: boolean;
   persistToLocalStorage?: boolean;
   persistToURL?: boolean;
+  urlParameterName?: string;
   onActiveClusterChange?: (selectedCluster: string | null) => void;
 };
 
@@ -65,11 +68,13 @@ export const SingleClusterSelector = ({
   disabled = false,
   persistToLocalStorage = true,
   persistToURL = true,
+  urlParameterName = 'cluster',
   onActiveClusterChange,
 }: ClusterSelectorProps) => {
   const { value, setValue } = useValue({
     persistToLocalStorage,
     persistToURL,
+    urlParameterName,
   });
 
   const selectedCluster = clusters.find(cluster => cluster === value) ?? null;

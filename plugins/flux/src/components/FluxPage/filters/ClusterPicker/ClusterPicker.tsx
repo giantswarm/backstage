@@ -8,13 +8,13 @@ import { useFluxOverviewData } from '@giantswarm/backstage-plugin-flux-react';
 
 export const ClusterPicker = () => {
   const { clusters } = useClustersInfo();
-  const { setSelectedCluster } = useFluxOverviewData();
+  const { setActiveCluster } = useFluxOverviewData();
 
   const handleActiveClusterChange = useCallback(
     (selectedItem: string | null) => {
-      setSelectedCluster(selectedItem);
+      setActiveCluster(selectedItem);
     },
-    [setSelectedCluster],
+    [setActiveCluster],
   );
 
   if (clusters.length <= 1) {

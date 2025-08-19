@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import qs from 'qs';
-import { useSearchParams } from 'react-router-dom';
 
 function useQueryParameters(key: string) {
   const parsed = qs.parse(location.search, {
@@ -18,7 +17,7 @@ function useQueryParameters(key: string) {
 
 export function useUrlState(
   key: string,
-  { multiple, enabled }: { multiple: boolean; enabled: boolean } = {
+  { multiple, enabled }: { multiple?: boolean; enabled?: boolean } = {
     multiple: false,
     enabled: true,
   },

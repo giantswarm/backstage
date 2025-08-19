@@ -118,10 +118,7 @@ export function SingleSelect(props: SingleSelectProps) {
     setValue(selected || null);
   }, [selected]);
 
-  const handleChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-    checked: boolean,
-  ) => {
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedItem = event.target.value;
 
     setValue(selectedItem);
