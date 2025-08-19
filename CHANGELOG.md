@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.82.1] - 2025-08-19
 
+### Fixed
+
+- Fixed Kubernetes client clusters retrieval method.
+- Fallback to the old local storage key for selected Kubernetes clusters.
+
 See [./docs/releases/v0.82.1-changelog.md](./docs/releases/v0.82.1-changelog.md) for more information.
 
 ## [0.82.0] - 2025-08-19
