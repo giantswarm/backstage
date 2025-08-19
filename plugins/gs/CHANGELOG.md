@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.40.0
+
+### Minor Changes
+
+- 043fa87: Use filters layout for Flux overview UI.
+
+### Patch Changes
+
+- Updated dependencies [043fa87]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.3.0
+  - @giantswarm/backstage-plugin-flux-react@0.3.0
+  - @giantswarm/backstage-plugin-flux@0.3.0
+
 ## 0.39.0
 
 ### Minor Changes
