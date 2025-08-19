@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.82.2] - 2025-08-19
 
+### Changed
+
+- Changed ordering for resources in the Flux overview tree.
+- Reordered sections in the Flux resource details panel.
+
 See [./docs/releases/v0.82.2-changelog.md](./docs/releases/v0.82.2-changelog.md) for more information.
 
 ## [0.82.1] - 2025-08-19
