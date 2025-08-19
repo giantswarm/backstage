@@ -88,17 +88,17 @@ export const HelmReleaseDetails = ({
 
   return (
     <Box>
-      {source ? (
-        <Section heading="Source">
-          <ResourceCard
-            cluster={source.cluster}
-            kind={source.getKind()}
-            name={source.getName()}
-            namespace={source.getNamespace()}
-            resource={source}
-          />
-        </Section>
-      ) : null}
+      <Section heading="This HelmRelease">
+        <ResourceCard
+          cluster={helmRelease.cluster}
+          kind={helmRelease.getKind()}
+          name={helmRelease.getName()}
+          namespace={helmRelease.getNamespace()}
+          targetCluster={findTargetClusterName(helmRelease)}
+          resource={helmRelease}
+          highlighted
+        />
+      </Section>
 
       {parentKustomization ? (
         <Section heading="Kustomization">
@@ -113,17 +113,17 @@ export const HelmReleaseDetails = ({
         </Section>
       ) : null}
 
-      <Section heading="This HelmRelease">
-        <ResourceCard
-          cluster={helmRelease.cluster}
-          kind={helmRelease.getKind()}
-          name={helmRelease.getName()}
-          namespace={helmRelease.getNamespace()}
-          targetCluster={findTargetClusterName(helmRelease)}
-          resource={helmRelease}
-          highlighted
-        />
-      </Section>
+      {source ? (
+        <Section heading="Source">
+          <ResourceCard
+            cluster={source.cluster}
+            kind={source.getKind()}
+            name={source.getName()}
+            namespace={source.getNamespace()}
+            resource={source}
+          />
+        </Section>
+      ) : null}
 
       {dependencies ? (
         <Section heading="Dependencies">
