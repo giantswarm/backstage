@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.82.0] - 2025-08-19
 
+### Changed
+
+- Flux overview page layout has been changed.
+
 See [./docs/releases/v0.82.0-changelog.md](./docs/releases/v0.82.0-changelog.md) for more information.
 
 ## [0.81.4] - 2025-08-12
