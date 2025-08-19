@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.82.0] - 2025-08-19
+
+### Changed
+
+- Flux overview page layout has been changed.
+
+See [./docs/releases/v0.82.0-changelog.md](./docs/releases/v0.82.0-changelog.md) for more information.
+
 ## [0.81.4] - 2025-08-12
 
 ### Fixed
@@ -1378,7 +1386,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.81.4...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.82.0...HEAD
+[0.82.0]: https://github.com/giantswarm/backstage/compare/v0.81.4...v0.82.0
 [0.81.4]: https://github.com/giantswarm/backstage/compare/v0.81.3...v0.81.4
 [0.81.3]: https://github.com/giantswarm/backstage/compare/v0.81.2...v0.81.3
 [0.81.2]: https://github.com/giantswarm/backstage/compare/v0.81.1...v0.81.2
