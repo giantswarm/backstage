@@ -8,7 +8,9 @@ function useQueryParameters(key: string) {
   });
 
   const queryParameter = parsed[key];
-  const queryParameters = [queryParameter].flat().filter(Boolean) as string[];
+  const queryParameters = queryParameter
+    ? ([queryParameter].flat().filter(Boolean) as string[])
+    : null;
 
   return {
     queryParameters,
@@ -23,14 +25,17 @@ export function useUrlState(
   },
 ) {
   const { queryParameters } = useQueryParameters(key);
-  const [value, setValue] = useState<string[]>(queryParameters);
+  const [value, setValue] = useState<string[] | null>(queryParameters);
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
 
-    const queryParams = multiple ? value : value[0];
+    let queryParams = undefined;
+    if (value) {
+      queryParams = multiple ? value : value[0];
+    }
 
     const oldParams = qs.parse(location.search, {
       ignoreQueryPrefix: true,

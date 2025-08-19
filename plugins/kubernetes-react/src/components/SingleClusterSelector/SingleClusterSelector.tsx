@@ -23,7 +23,7 @@ function useValue({
     urlParameterName,
     { enabled: persistToURL },
   );
-  const valueFromURL: string | null = clusterParams[0] ?? null;
+  const valueFromURL: string | null = clusterParams ? clusterParams[0] : null;
 
   let value = valueFromState;
   if (persistToLocalStorage && valueFromLocalStorage) {
