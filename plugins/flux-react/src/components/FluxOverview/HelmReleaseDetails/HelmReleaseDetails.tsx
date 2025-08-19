@@ -129,7 +129,11 @@ export const HelmReleaseDetails = ({
         <Section heading="Dependencies">
           <Grid container spacing={3}>
             {dependencies.map(resource => (
-              <Grid item xs={12}>
+              <Grid
+                item
+                xs={12}
+                key={`${resource.cluster}-${resource.getKind()}-${resource.getNamespace()}-${resource.getName()}`}
+              >
                 <ResourceCard
                   cluster={resource.cluster}
                   kind={resource.getKind()}

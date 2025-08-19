@@ -1,7 +1,7 @@
 import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Drawer, IconButton, makeStyles } from '@material-ui/core';
 import { KustomizationTreeBuilder } from './utils/KustomizationTreeBuilder';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSelectedResource } from './useSelectedResource';
 import { Details } from './Details';
 import { EmptyState, Progress } from '@backstage/core-components';
@@ -46,6 +46,7 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
     helmRepositories,
     isLoading,
     resourceType,
+    activeCluster,
   } = useFluxOverviewData();
 
   const compactView = resourceType === 'flux';
@@ -59,7 +60,6 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
     if (selectedResourceRef.kind === Kustomization.kind.toLowerCase()) {
       return kustomizations.find(
         k =>
-          k.cluster === selectedResourceRef.cluster &&
           k.getNamespace() === selectedResourceRef.namespace &&
           k.getName() === selectedResourceRef.name,
       );
@@ -67,11 +67,20 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
 
     return helmReleases.find(
       h =>
-        h.cluster === selectedResourceRef.cluster &&
         h.getNamespace() === selectedResourceRef.namespace &&
         h.getName() === selectedResourceRef.name,
     );
   }, [selectedResourceRef, kustomizations, helmReleases]);
+
+  const prevActiveCluster = useRef(activeCluster);
+  useEffect(() => {
+    if (activeCluster !== prevActiveCluster.current) {
+      if (selectedResourceRef) {
+        clearSelectedResource();
+      }
+      prevActiveCluster.current = activeCluster;
+    }
+  }, [activeCluster, clearSelectedResource, selectedResourceRef]);
 
   const { treeBuilder, tree } = useMemo(() => {
     if (isLoading || kustomizations.length === 0) {
@@ -143,6 +152,7 @@ export const FluxOverview = ({ routeRef }: { routeRef: RouteRef }) => {
 
           {selectedResourceRef ? (
             <Details
+              cluster={activeCluster}
               resourceRef={selectedResourceRef}
               resource={selectedResource}
               treeBuilder={treeBuilder}

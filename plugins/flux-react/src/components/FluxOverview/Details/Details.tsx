@@ -12,8 +12,8 @@ import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
 
 type DetailsProps = {
+  cluster: string | null;
   resourceRef: {
-    cluster: string;
     namespace: string;
     name: string;
     kind: string;
@@ -29,6 +29,7 @@ type DetailsProps = {
 };
 
 export const Details = ({
+  cluster,
   resourceRef,
   resource,
   allKustomizations,
@@ -53,7 +54,7 @@ export const Details = ({
           <strong>
             {resourceRef.namespace}/{resourceRef.name}
           </strong>{' '}
-          in cluster <strong>{resourceRef.cluster}</strong> not found.
+          in cluster <strong>{cluster}</strong> not found.
         </Typography>
       </Box>
     );

@@ -87,7 +87,6 @@ const Node = ({
 }: NodeProps<TreeNodeData, FixedSizeNodePublicState<TreeNodeData>>) => {
   const highlighted =
     treeData.selectedResourceRef &&
-    data.cluster === treeData.selectedResourceRef.cluster &&
     data.kind.toLowerCase() === treeData.selectedResourceRef.kind &&
     data.name === treeData.selectedResourceRef.name &&
     data.namespace === treeData.selectedResourceRef.namespace;
@@ -101,7 +100,6 @@ const Node = ({
       name={data.name}
       namespace={data.namespace}
       kind={data.kind}
-      cluster={data.cluster}
       targetCluster={data.targetCluster}
       resource={data.resource}
       highlighted={highlighted}
@@ -148,7 +146,6 @@ type OverviewTreeProps = {
   tree: KustomizationTreeNode[];
   compactView: boolean;
   selectedResourceRef?: {
-    cluster: string;
     namespace: string;
     name: string;
     kind: string;

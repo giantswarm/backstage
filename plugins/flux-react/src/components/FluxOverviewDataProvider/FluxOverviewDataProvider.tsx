@@ -18,6 +18,7 @@ export type FluxOverviewData = {
   ociRepositories: OCIRepository[];
   helmRepositories: HelmRepository[];
   isLoading: boolean;
+  activeCluster: string | null;
   setActiveCluster: (cluster: string | null) => void;
   resourceType: ResourceType;
   setResourceType: (resourceType: ResourceType) => void;
@@ -79,6 +80,7 @@ export const FluxOverviewDataProvider = ({
       ociRepositories,
       helmRepositories,
       isLoading,
+      activeCluster,
       setActiveCluster,
       resourceType,
       setResourceType,
@@ -90,9 +92,8 @@ export const FluxOverviewDataProvider = ({
     ociRepositories,
     helmRepositories,
     isLoading,
-    setActiveCluster,
+    activeCluster,
     resourceType,
-    setResourceType,
   ]);
 
   return (

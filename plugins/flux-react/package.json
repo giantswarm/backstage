@@ -35,6 +35,7 @@
     "@tanstack/react-query": "^5.82.0",
     "classnames": "^2.5.1",
     "colord": "^2.9.3",
+    "qs": "^6.14.0",
     "react-middle-ellipsis": "^1.2.2",
     "react-use": "^17.2.4",
     "react-vtree": "^3.0.0-beta.0",
@@ -49,6 +50,7 @@
     "@backstage/test-utils": "backstage:^",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
+    "@types/qs": "^6",
     "@types/react-window": "^1",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },

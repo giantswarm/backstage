@@ -40,7 +40,6 @@ type ResourceNodeProps = {
   name: string;
   namespace?: string;
   kind: string;
-  cluster: string;
   targetCluster?: string;
   resource?:
     | Kustomization

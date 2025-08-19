@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import qs from 'qs';
+import { useSearchParams } from 'react-router-dom';
 
 function useQueryParameters(key: string) {
   const parsed = qs.parse(location.search, {
