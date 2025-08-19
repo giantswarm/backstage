@@ -70,7 +70,24 @@ export class KubernetesClient implements KubernetesApi {
   getClusters(): Promise<
     { name: string; authProvider: string; oidcTokenProvider?: string }[]
   > {
-    return this.backendClient.getClusters();
+    const installationsConfig =
+      this.configApi.getOptionalConfig('gs.installations');
+    if (!installationsConfig) {
+      throw new Error(`Missing gs.installations configuration`);
+    }
+
+    const installations = this.configApi.getConfig('gs.installations').keys();
+    const clusters = installations.map(installation => {
+      const installationConfig = installationsConfig.getConfig(installation);
+      return {
+        name: installation,
+        authProvider: installationConfig.getString('authProvider'),
+        oidcTokenProvider:
+          installationConfig.getOptionalString('oidcTokenProvider'),
+      };
+    });
+
+    return Promise.resolve(clusters);
   }
 
   getWorkloadsByEntity(

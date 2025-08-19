@@ -14,11 +14,17 @@ function useValue({
 }) {
   const [valueFromState, setValueToState] = useState<string[]>([]);
 
+  const fallbackLocalStorageValueStr = localStorage.getItem('gs-installations');
+  const fallbackLocalStorageValue = fallbackLocalStorageValueStr
+    ? JSON.parse(fallbackLocalStorageValueStr)
+    : undefined;
+
   const [valueFromLocalStorage, setValueToLocalStorage] = useLocalStorageState<
     string[]
   >('gs-kubernetes-clusters', {
-    defaultValue: [],
+    defaultValue: fallbackLocalStorageValue ?? [],
   });
+
   const { value: valueFromURL, setValue: setValueToURL } = useUrlState(
     urlParameterName,
     { multiple: true, enabled: persistToURL },
@@ -38,7 +44,9 @@ function useValue({
     const valueFromLocalStorageHash = JSON.stringify(
       valueFromLocalStorage.sort(),
     );
-    const valueFromURLHash = JSON.stringify(valueFromURL.sort());
+    const valueFromURLHash = JSON.stringify(
+      valueFromURL ? valueFromURL.sort() : valueFromURL,
+    );
 
     if (newValueHash !== valueFromStateHash) {
       setValueToState(newValue);
