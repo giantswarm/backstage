@@ -117,6 +117,39 @@ export class KustomizationTreeBuilder {
     return inventoryEntries;
   }
 
+  private sortChildResources(
+    childResources: ObjectMetadata[],
+  ): ObjectMetadata[] {
+    return childResources.sort((a, b) => {
+      // 1. Flux resources go first (resources that end with toolkit.fluxcd.io)
+      const aIsFlux = a.group.endsWith(COMPACT_GROUP);
+      const bIsFlux = b.group.endsWith(COMPACT_GROUP);
+
+      if (aIsFlux && !bIsFlux) return -1;
+      if (!aIsFlux && bIsFlux) return 1;
+
+      // 2. Alphabetical by kind, but Kustomizations go first within each group
+      const aIsKustomization = a.kind === 'Kustomization';
+      const bIsKustomization = b.kind === 'Kustomization';
+
+      if (aIsKustomization && !bIsKustomization) return -1;
+      if (!aIsKustomization && bIsKustomization) return 1;
+
+      // If both are Kustomizations or both are not, sort alphabetically by kind
+      const kindComparison = a.kind.localeCompare(b.kind);
+      if (kindComparison !== 0) return kindComparison;
+
+      // 3. Alphabetical by namespace
+      const aNamespace = a.namespace || '';
+      const bNamespace = b.namespace || '';
+      const namespaceComparison = aNamespace.localeCompare(bNamespace);
+      if (namespaceComparison !== 0) return namespaceComparison;
+
+      // 4. Alphabetical by name
+      return a.name.localeCompare(b.name);
+    });
+  }
+
   private buildSubtree(
     kustomization: Kustomization,
     visited: Set<string>,
@@ -153,7 +186,7 @@ export class KustomizationTreeBuilder {
     visited.add(key);
 
     // Find children - kustomizations that depend on this one
-    const childResources = this.findChildren(key);
+    const childResources = this.sortChildResources(this.findChildren(key));
     const children: KustomizationTreeNode[] = childResources.map(child => {
       if (child.kind === Kustomization.kind) {
         const childKustomizationKey = this.getKey(child.name, child.namespace);
