@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.40.1
+
+### Patch Changes
+
+- fbc1589: Fixed Kubernetes client clusters retrieval method.
+- Updated dependencies [fbc1589]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.3.1
+
 ## 0.40.0
 
 ### Minor Changes
