@@ -6,7 +6,7 @@ import {
   OCIRepository,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const RECONCILING_INTERVAL = 3000;
 const NON_RECONCILING_INTERVAL = 15000;
@@ -68,31 +68,41 @@ export function useFluxResources(cluster: string | null) {
   });
 
   useEffect(() => {
-    if (kustomizationsErrors.length > 0) {
+    if (
+      kustomizationsErrors.some(({ error }) => error.name === 'NotFoundError')
+    ) {
       setKustomizationsEnabled(false);
     }
 
-    if (helmReleasesErrors.length > 0) {
+    if (
+      helmReleasesErrors.some(({ error }) => error.name === 'NotFoundError')
+    ) {
       setHelmReleasesEnabled(false);
     }
 
-    if (gitRepositoriesErrors.length > 0) {
+    if (
+      gitRepositoriesErrors.some(({ error }) => error.name === 'NotFoundError')
+    ) {
       setGitRepositoriesEnabled(false);
     }
 
-    if (ociRepositoriesErrors.length > 0) {
+    if (
+      ociRepositoriesErrors.some(({ error }) => error.name === 'NotFoundError')
+    ) {
       setOciRepositoriesEnabled(false);
     }
 
-    if (helmRepositoriesErrors.length > 0) {
+    if (
+      helmRepositoriesErrors.some(({ error }) => error.name === 'NotFoundError')
+    ) {
       setHelmRepositoriesEnabled(false);
     }
   }, [
-    kustomizationsErrors.length,
-    helmReleasesErrors.length,
-    gitRepositoriesErrors.length,
-    helmRepositoriesErrors.length,
-    ociRepositoriesErrors.length,
+    kustomizationsErrors,
+    helmReleasesErrors,
+    gitRepositoriesErrors,
+    ociRepositoriesErrors,
+    helmRepositoriesErrors,
   ]);
 
   const isLoading =
@@ -101,6 +111,22 @@ export function useFluxResources(cluster: string | null) {
     isLoadingGitRepositories ||
     isLoadingOciRepositories ||
     isLoadingHelmRepositories;
+
+  const errors = useMemo(() => {
+    return [
+      ...kustomizationsErrors,
+      ...helmReleasesErrors,
+      ...gitRepositoriesErrors,
+      ...helmRepositoriesErrors,
+      ...ociRepositoriesErrors,
+    ].filter(error => error.error.name !== 'NotFoundError');
+  }, [
+    kustomizationsErrors,
+    helmReleasesErrors,
+    gitRepositoriesErrors,
+    helmRepositoriesErrors,
+    ociRepositoriesErrors,
+  ]);
 
   useEffect(() => {
     const reconciling = kustomizations.some(k => k.isReconciling());
@@ -121,5 +147,6 @@ export function useFluxResources(cluster: string | null) {
     ociRepositories,
     helmRepositories,
     isLoading,
+    errors,
   };
 }

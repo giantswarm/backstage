@@ -195,17 +195,15 @@ type ErrorsProps = {
 export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
   const classes = useStyles();
 
-  const groups = Object.entries(groupBy(errors, 'installationName')).sort(
-    (a, b) => {
-      const aId = a[0] || '';
-      const bId = b[0] || '';
-      return aId.localeCompare(bId);
-    },
-  );
+  const groups = Object.entries(groupBy(errors, 'cluster')).sort((a, b) => {
+    const aId = a[0] || '';
+    const bId = b[0] || '';
+    return aId.localeCompare(bId);
+  });
 
-  const installations = groups.map(([groupId]) => groupId).filter(Boolean);
-  const title = installations.length
-    ? `Errors when trying to fetch resources from ${installations.join(', ')}.`
+  const clusters = groups.map(([groupId]) => groupId).filter(Boolean);
+  const title = clusters.length
+    ? `Errors when trying to fetch resources from ${clusters.join(', ')}.`
     : 'Something went wrong';
 
   return (

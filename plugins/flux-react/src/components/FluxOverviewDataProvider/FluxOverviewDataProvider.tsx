@@ -1,11 +1,11 @@
 import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
-// import { useShowErrors } from '@giantswarm/backstage-plugin-ui-react';
 import {
   Kustomization,
   HelmRelease,
   GitRepository,
   OCIRepository,
   HelmRepository,
+  useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResources } from './useFluxResources';
 
@@ -55,22 +55,10 @@ export const FluxOverviewDataProvider = ({
     ociRepositories,
     helmRepositories,
     isLoading,
+    errors,
   } = useFluxResources(activeCluster);
 
-  // const errors = useMemo(() => {
-  //   return [
-  //     ...clusterErrors,
-  //     ...controlPlaneErrors,
-  //     ...providerClusterErrors,
-  //     ...providerClusterIdentityErrors,
-  //   ];
-  // }, [
-  //   clusterErrors,
-  //   controlPlaneErrors,
-  //   providerClusterErrors,
-  //   providerClusterIdentityErrors,
-  // ]);
-  // useShowErrors(errors);
+  useShowErrors(errors);
 
   const contextValue: FluxOverviewData = useMemo(() => {
     return {
