@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.3.1
+
+### Patch Changes
+
+- 3ce1520: Changed ordering for resources in the Flux overview tree.
+- c585a66: Reordered sections in the Flux resource details panel.
+
 ## 0.3.0
 
 ### Minor Changes
