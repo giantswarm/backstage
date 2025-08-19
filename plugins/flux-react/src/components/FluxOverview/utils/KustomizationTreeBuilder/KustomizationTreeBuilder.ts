@@ -150,6 +150,21 @@ export class KustomizationTreeBuilder {
     });
   }
 
+  private sortRootKustomizations(
+    kustomizations: Kustomization[],
+  ): Kustomization[] {
+    return kustomizations.sort((a, b) => {
+      // 1. Alphabetical by namespace
+      const aNamespace = a.getNamespace() || '';
+      const bNamespace = b.getNamespace() || '';
+      const namespaceComparison = aNamespace.localeCompare(bNamespace);
+      if (namespaceComparison !== 0) return namespaceComparison;
+
+      // 2. Alphabetical by name
+      return a.getName().localeCompare(b.getName());
+    });
+  }
+
   private buildSubtree(
     kustomization: Kustomization,
     visited: Set<string>,
@@ -262,7 +277,7 @@ export class KustomizationTreeBuilder {
   }
 
   buildTree(): KustomizationTreeNode[] {
-    const roots = this.findRoots();
+    const roots = this.sortRootKustomizations(this.findRoots());
     return roots.map(root => this.buildSubtree(root, new Set()));
   }
 
