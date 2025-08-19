@@ -7,7 +7,7 @@ import { AppVersionPicker } from './filters/AppVersionPicker';
 import { LocationPicker } from './filters/LocationPicker';
 import { ProviderPicker } from './filters/ProviderPicker';
 import { LabelPicker } from './filters/LabelPicker';
-import { InstallationPicker } from '../../installations/filters';
+import { InstallationPicker } from './filters/InstallationPicker';
 
 export const DefaultFilters = () => {
   return (

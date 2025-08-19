@@ -6,7 +6,7 @@ import { NamespacePicker } from './filters/NamespacePicker';
 import { StatusPicker } from './filters/StatusPicker';
 import { LabelPicker } from './filters/LabelPicker';
 import { AppPicker } from './filters/AppPicker';
-import { InstallationPicker } from '../../installations/filters';
+import { InstallationPicker } from './filters/InstallationPicker';
 
 export const DefaultFilters = () => {
   return (

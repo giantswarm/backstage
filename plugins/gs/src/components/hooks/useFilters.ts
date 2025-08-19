@@ -1,9 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import useMountedState from 'react-use/esm/useMountedState';
 import useDebounce from 'react-use/esm/useDebounce';
 import qs from 'qs';
-import { useInstallations } from './useInstallations';
 
 export type FacetFilter = {
   filter: (item: any) => boolean;
@@ -40,12 +38,12 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
     });
   }, []);
 
-  const location = useLocation();
   const isMounted = useMountedState();
   const mounted = isMounted();
   const { queryParameters } = useMemo(() => {
     const parsed = qs.parse(location.search, {
       ignoreQueryPrefix: true,
+      allowEmptyArrays: true,
     });
 
     return {
@@ -54,9 +52,7 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
         string | string[]
       >,
     };
-  }, [location.search]);
-
-  const { installations, selectedInstallations } = useInstallations();
+  }, []);
 
   useDebounce(
     () => {
@@ -72,7 +68,6 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
         return;
       }
 
-      const installationsQueryParams = selectedInstallations;
       const filtersQueryParams = Object.keys(requestedFilters).reduce(
         (params, key) => {
           const filter = requestedFilters[key as keyof Filters] as
@@ -95,12 +90,11 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
       if (mounted) {
         const oldParams = qs.parse(location.search, {
           ignoreQueryPrefix: true,
+          allowEmptyArrays: true,
         });
         const newParams = qs.stringify(
           {
             ...oldParams,
-            installations:
-              installations.length > 1 ? installationsQueryParams : undefined,
             filters: Object.entries(filtersQueryParams).length
               ? filtersQueryParams
               : undefined,
@@ -116,13 +110,7 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
       }
     },
     10,
-    [
-      mounted,
-      persistToURL,
-      location.search,
-      requestedFilters,
-      selectedInstallations,
-    ],
+    [mounted, persistToURL, requestedFilters],
   );
 
   return useMemo(() => {

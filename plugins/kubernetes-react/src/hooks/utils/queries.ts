@@ -16,20 +16,18 @@ export const mapQueriesToClusters = <T>(
       query,
     };
   });
-  const fulfilledInstallationsQueries = clustersQueries.filter(
+  const fulfilledClustersQueries = clustersQueries.filter(
     ({ query }) => query.isSuccess,
   );
-  const failedInstallationsQueries = clustersQueries.filter(
+  const failedClustersQueries = clustersQueries.filter(
     ({ query }) => query.isError,
   );
 
-  const clustersData = fulfilledInstallationsQueries.map(
-    ({ cluster, query }) => ({
-      cluster,
-      data: query.data!,
-    }),
-  );
-  const clustersErrors: ErrorInfo[] = failedInstallationsQueries.map(
+  const clustersData = fulfilledClustersQueries.map(({ cluster, query }) => ({
+    cluster,
+    data: query.data!,
+  }));
+  const clustersErrors: ErrorInfo[] = failedClustersQueries.map(
     ({ cluster, query }) => ({
       cluster,
       error: query.error as Error,
