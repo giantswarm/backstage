@@ -77,17 +77,17 @@ export const KustomizationDetails = ({
 
   return (
     <Box>
-      {source ? (
-        <Section heading="Source">
-          <ResourceCard
-            cluster={source.cluster}
-            kind={source.getKind()}
-            name={source.getName()}
-            namespace={source.getNamespace()}
-            resource={source}
-          />
-        </Section>
-      ) : null}
+      <Section heading="This Kustomization">
+        <ResourceCard
+          cluster={kustomization.cluster}
+          kind={kustomization.getKind()}
+          name={kustomization.getName()}
+          namespace={kustomization.getNamespace()}
+          targetCluster={findTargetClusterName(kustomization)}
+          resource={kustomization}
+          highlighted
+        />
+      </Section>
 
       {parentKustomization ? (
         <Section heading="Parent Kustomization">
@@ -102,17 +102,18 @@ export const KustomizationDetails = ({
         </Section>
       ) : null}
 
-      <Section heading="This Kustomization">
-        <ResourceCard
-          cluster={kustomization.cluster}
-          kind={kustomization.getKind()}
-          name={kustomization.getName()}
-          namespace={kustomization.getNamespace()}
-          targetCluster={findTargetClusterName(kustomization)}
-          resource={kustomization}
-          highlighted
-        />
-      </Section>
+      {source ? (
+        <Section heading="Source">
+          <ResourceCard
+            cluster={source.cluster}
+            kind={source.getKind()}
+            name={source.getName()}
+            namespace={source.getNamespace()}
+            resource={source}
+          />
+        </Section>
+      ) : null}
+
       {dependencies ? (
         <Section heading="Dependencies">
           <Grid container spacing={3}>
