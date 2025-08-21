@@ -1,4 +1,6 @@
 import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { FluxResourceStatusMixin, FluxResource } from './FluxResourceMixin';
+import { FluxResourceStatus } from './FluxResourceStatusManager';
 
 export interface KustomizationInterface extends KubeObjectInterface {
   spec?: {
@@ -41,11 +43,20 @@ export interface KustomizationInterface extends KubeObjectInterface {
   };
 }
 
-export class Kustomization extends KubeObject<KustomizationInterface> {
+export class Kustomization
+  extends KubeObject<KustomizationInterface>
+  implements FluxResource
+{
   static apiVersion = 'v1';
   static group = 'kustomize.toolkit.fluxcd.io';
   static kind = 'Kustomization' as const;
   static plural = 'kustomizations';
+
+  constructor(json: KustomizationInterface, cluster: string) {
+    super(json, cluster);
+    // Update status in global manager when resource is created
+    this.updateFluxStatus();
+  }
 
   getInventory() {
     return this.jsonData.status?.inventory;
@@ -95,5 +106,26 @@ export class Kustomization extends KubeObject<KustomizationInterface> {
 
   isSuspended() {
     return Boolean(this.jsonData.spec?.suspend);
+  }
+
+  /**
+   * Update status in the global status manager
+   */
+  updateFluxStatus(): FluxResourceStatus {
+    return FluxResourceStatusMixin.updateResourceStatus(this);
+  }
+
+  /**
+   * Get current status from the global status manager
+   */
+  getFluxStatus(): FluxResourceStatus | null {
+    return FluxResourceStatusMixin.getResourceStatus(this);
+  }
+
+  /**
+   * Get or calculate current status
+   */
+  getOrCalculateFluxStatus(): FluxResourceStatus {
+    return FluxResourceStatusMixin.getOrCalculateStatus(this);
   }
 }

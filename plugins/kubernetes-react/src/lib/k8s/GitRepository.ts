@@ -1,4 +1,6 @@
 import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { FluxResourceStatusMixin, FluxResource } from './FluxResourceMixin';
+import { FluxResourceStatus } from './FluxResourceStatusManager';
 
 export interface GitRepositoryInterface extends KubeObjectInterface {
   spec?: {
@@ -27,11 +29,20 @@ export interface GitRepositoryInterface extends KubeObjectInterface {
   };
 }
 
-export class GitRepository extends KubeObject<GitRepositoryInterface> {
+export class GitRepository
+  extends KubeObject<GitRepositoryInterface>
+  implements FluxResource
+{
   static apiVersion = 'v1';
   static group = 'source.toolkit.fluxcd.io';
   static kind = 'GitRepository' as const;
   static plural = 'gitrepositories';
+
+  constructor(json: GitRepositoryInterface, cluster: string) {
+    super(json, cluster);
+    // Update status in global manager when resource is created
+    this.updateFluxStatus();
+  }
 
   getStatusConditions() {
     return this.jsonData.status?.conditions;
@@ -69,5 +80,26 @@ export class GitRepository extends KubeObject<GitRepositoryInterface> {
 
   isSuspended() {
     return Boolean(this.jsonData.spec?.suspend);
+  }
+
+  /**
+   * Update status in the global status manager
+   */
+  updateFluxStatus(): FluxResourceStatus {
+    return FluxResourceStatusMixin.updateResourceStatus(this);
+  }
+
+  /**
+   * Get current status from the global status manager
+   */
+  getFluxStatus(): FluxResourceStatus | null {
+    return FluxResourceStatusMixin.getResourceStatus(this);
+  }
+
+  /**
+   * Get or calculate current status
+   */
+  getOrCalculateFluxStatus(): FluxResourceStatus {
+    return FluxResourceStatusMixin.getOrCalculateStatus(this);
   }
 }

@@ -1,4 +1,6 @@
 import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { FluxResourceStatusMixin, FluxResource } from './FluxResourceMixin';
+import { FluxResourceStatus } from './FluxResourceStatusManager';
 
 export interface HelmRepositoryInterface extends KubeObjectInterface {
   spec?: {
@@ -20,11 +22,20 @@ export interface HelmRepositoryInterface extends KubeObjectInterface {
   };
 }
 
-export class HelmRepository extends KubeObject<HelmRepositoryInterface> {
+export class HelmRepository
+  extends KubeObject<HelmRepositoryInterface>
+  implements FluxResource
+{
   static apiVersion = 'v1beta2';
   static group = 'source.toolkit.fluxcd.io';
   static kind = 'HelmRepository' as const;
   static plural = 'helmrepositories';
+
+  constructor(json: HelmRepositoryInterface, cluster: string) {
+    super(json, cluster);
+    // Update status in global manager when resource is created
+    this.updateFluxStatus();
+  }
 
   getStatusConditions() {
     return this.jsonData.status?.conditions;
@@ -58,5 +69,26 @@ export class HelmRepository extends KubeObject<HelmRepositoryInterface> {
 
   isSuspended() {
     return Boolean(this.jsonData.spec?.suspend);
+  }
+
+  /**
+   * Update status in the global status manager
+   */
+  updateFluxStatus(): FluxResourceStatus {
+    return FluxResourceStatusMixin.updateResourceStatus(this);
+  }
+
+  /**
+   * Get current status from the global status manager
+   */
+  getFluxStatus(): FluxResourceStatus | null {
+    return FluxResourceStatusMixin.getResourceStatus(this);
+  }
+
+  /**
+   * Get or calculate current status
+   */
+  getOrCalculateFluxStatus(): FluxResourceStatus {
+    return FluxResourceStatusMixin.getOrCalculateStatus(this);
   }
 }

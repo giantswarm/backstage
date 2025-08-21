@@ -4,59 +4,79 @@ import {
   HelmRepository,
   Kustomization,
   OCIRepository,
+  resourceStatusManager,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 
-export function useResourceStatus(
-  resource?:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository,
-) {
-  const readyCondition = resource?.findReadyCondition();
+type FluxResource =
+  | Kustomization
+  | HelmRelease
+  | GitRepository
+  | OCIRepository
+  | HelmRepository;
 
-  const [readyStatus, setReadyStatus] = useState(
-    readyCondition?.status || 'Unknown',
-  );
-  const [isDependencyNotReady, setIsDependencyNotReady] = useState(
-    readyCondition?.reason === 'DependencyNotReady',
-  );
+export function useResourceStatus(resource?: FluxResource) {
+  // Get initial status from the global manager or calculate it
+  const initialStatus = resource?.getOrCalculateStatus() || {
+    readyStatus: 'Unknown' as const,
+    isDependencyNotReady: false,
+    isReconciling: false,
+    isSuspended: false,
+  };
+
+  const [status, setStatus] = useState(initialStatus);
+
+  // Memoize resource identifiers to avoid unnecessary effect runs
+  const resourceIdentifiers = useMemo(() => {
+    if (!resource) return null;
+
+    const cluster = resource.cluster;
+    const kind = resource.getKind();
+    const namespace = resource.getNamespace();
+    const name = resource.getName();
+
+    return {
+      cluster,
+      kind,
+      namespace,
+      name,
+      key: `${cluster}:${kind}:${namespace || 'default'}:${name}`,
+    };
+  }, [resource]);
+
+  // Memoize resource state to avoid unnecessary effect runs
+  const resourceState = useMemo(() => {
+    if (!resource) return null;
+
+    const readyCondition = resource.findReadyCondition();
+    return {
+      readyStatus: readyCondition?.status,
+      readyReason: readyCondition?.reason,
+      isReconciling: resource.isReconciling(),
+      isSuspended: resource.isSuspended(),
+    };
+  }, [resource]);
 
   useEffect(() => {
-    // Skip state update if no status or reconciliation is in progress
-    if (
-      !readyCondition?.status ||
-      (readyCondition.status === 'Unknown' &&
-        readyCondition.reason === 'Progressing')
-    ) {
-      return;
+    if (!resource || !resourceIdentifiers) {
+      return undefined;
     }
 
-    const newReadyStatus = readyCondition.status;
-    const newIsDependencyNotReady =
-      readyCondition.reason === 'DependencyNotReady';
-    if (
-      newReadyStatus === readyStatus &&
-      newIsDependencyNotReady === isDependencyNotReady
-    ) {
-      return;
-    }
+    // Listen for status updates from the global manager
+    const unsubscribe = resourceStatusManager.addStatusListener(
+      (key, newStatus) => {
+        if (key === resourceIdentifiers.key) {
+          setStatus(newStatus);
+        }
+      },
+    );
 
-    setReadyStatus(readyCondition.status);
-    setIsDependencyNotReady(readyCondition.reason === 'DependencyNotReady');
-  }, [
-    isDependencyNotReady,
-    readyCondition?.reason,
-    readyCondition?.status,
-    readyStatus,
-  ]);
+    // Update status when resource changes
+    const currentStatus = resource.getOrCalculateStatus();
+    setStatus(currentStatus);
 
-  return {
-    readyStatus,
-    isDependencyNotReady,
-    isReconciling: Boolean(resource?.isReconciling()),
-    isSuspended: Boolean(resource?.isSuspended()),
-  };
+    return unsubscribe;
+  }, [resource, resourceIdentifiers, resourceState]);
+
+  return status;
 }
