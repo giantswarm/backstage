@@ -37,6 +37,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 type ResourceNodeProps = {
+  cluster: string;
   name: string;
   namespace?: string;
   kind: string;
@@ -55,6 +56,7 @@ type ResourceNodeProps = {
 };
 
 export const ResourceNode = ({
+  cluster,
   name,
   namespace,
   kind,
@@ -104,6 +106,7 @@ export const ResourceNode = ({
           width="100%"
         >
           <ResourceInfo
+            cluster={cluster}
             name={name}
             kind={kind}
             namespace={namespace}

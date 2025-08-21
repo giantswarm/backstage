@@ -97,6 +97,7 @@ const Node = ({
 
   const el = (
     <ResourceNode
+      cluster={data.cluster}
       name={data.name}
       namespace={data.namespace}
       kind={data.kind}

@@ -2,6 +2,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
+import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
 import {
   semverCompareSort,
   sortAndFilterOptions,
@@ -17,7 +18,6 @@ import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
-import { isTableColumnHidden } from '../../utils/isTableColumnHidden';
 import { formatDeploymentType } from '../utils';
 
 export const DeploymentColumns = {

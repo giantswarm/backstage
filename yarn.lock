@@ -9598,6 +9598,7 @@ __metadata:
     "@giantswarm/backstage-plugin-flux-react": "npm:^0.3.0"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.19.0"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
+    "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:^4.0.0-alpha.60"

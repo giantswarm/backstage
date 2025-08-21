@@ -98,6 +98,7 @@ type ResourceCardProps = {
 };
 
 export const ResourceCard = ({
+  cluster,
   name,
   namespace,
   kind,
@@ -119,6 +120,7 @@ export const ResourceCard = ({
     >
       <Box display="flex" flexDirection="column" flexGrow={1} p={2} pt={1}>
         <ResourceInfo
+          cluster={cluster}
           name={name}
           kind={kind}
           namespace={namespace}

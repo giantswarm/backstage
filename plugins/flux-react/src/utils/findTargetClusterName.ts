@@ -8,5 +8,7 @@ export function findTargetClusterName(
 ): string | undefined {
   const kubeConfig = resource.getKubeConfig();
   const secretRefName = kubeConfig?.secretRef.name;
-  return secretRefName ? secretRefName.replace(/-kubeconfig$/, '') : undefined;
+  return secretRefName
+    ? secretRefName.replace(/-kubeconfig$/, '')
+    : resource.cluster;
 }

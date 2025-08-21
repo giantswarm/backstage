@@ -1,13 +1,13 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
+import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
 import { clusterDetailsRouteRef } from '../../../routes';
 import {
   semverCompareSort,
   sortAndFilterOptions,
 } from '../../utils/tableHelpers';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
-import { isTableColumnHidden } from '../../utils/isTableColumnHidden';
 import {
   Account,
   DateComponent,

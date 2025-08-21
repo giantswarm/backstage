@@ -13,6 +13,7 @@ import { ResourceChips } from '../ResourceChips';
 type ResourceInfoProps = {
   name: string;
   kind: string;
+  cluster: string;
   namespace?: string;
   targetCluster?: string;
   resource?:
@@ -32,6 +33,7 @@ export const ResourceInfo = ({
   name,
   kind,
   namespace,
+  cluster,
   targetCluster,
   resource,
   readyStatus,
@@ -64,6 +66,7 @@ export const ResourceInfo = ({
       <ResourceChips
         kind={kind}
         namespace={namespace}
+        cluster={cluster}
         targetCluster={targetCluster}
       />
     </Box>

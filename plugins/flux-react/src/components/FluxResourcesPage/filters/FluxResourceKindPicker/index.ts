@@ -1,0 +1,1 @@
+export { FluxResourceKindPicker } from './FluxResourceKindPicker';

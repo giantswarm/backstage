@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 const RECONCILING_INTERVAL = 3000;
 const NON_RECONCILING_INTERVAL = 15000;
 
-export function useFluxResources(cluster: string | null) {
+export function useFluxResources(clusters: string | string[] | null) {
   const [refetchInterval, setRefetchInterval] = useState(
     NON_RECONCILING_INTERVAL,
   );
@@ -26,45 +26,45 @@ export function useFluxResources(cluster: string | null) {
     resources: kustomizations,
     isLoading: isLoadingKustomizations,
     errors: kustomizationsErrors,
-  } = useResources(cluster!, Kustomization, {
+  } = useResources(clusters!, Kustomization, {
     refetchInterval,
-    enabled: Boolean(cluster) && kustomizationsEnabled,
+    enabled: Boolean(clusters) && kustomizationsEnabled,
   });
 
   const {
     resources: helmReleases,
     isLoading: isLoadingHelmReleases,
     errors: helmReleasesErrors,
-  } = useResources(cluster!, HelmRelease, {
+  } = useResources(clusters!, HelmRelease, {
     refetchInterval,
-    enabled: Boolean(cluster) && helmReleasesEnabled,
+    enabled: Boolean(clusters) && helmReleasesEnabled,
   });
 
   const {
     resources: gitRepositories,
     isLoading: isLoadingGitRepositories,
     errors: gitRepositoriesErrors,
-  } = useResources(cluster!, GitRepository, {
+  } = useResources(clusters!, GitRepository, {
     refetchInterval,
-    enabled: Boolean(cluster) && gitRepositoriesEnabled,
+    enabled: Boolean(clusters) && gitRepositoriesEnabled,
   });
 
   const {
     resources: ociRepositories,
     isLoading: isLoadingOciRepositories,
     errors: ociRepositoriesErrors,
-  } = useResources(cluster!, OCIRepository, {
+  } = useResources(clusters!, OCIRepository, {
     refetchInterval,
-    enabled: Boolean(cluster) && ociRepositoriesEnabled,
+    enabled: Boolean(clusters) && ociRepositoriesEnabled,
   });
 
   const {
     resources: helmRepositories,
     isLoading: isLoadingHelmRepositories,
     errors: helmRepositoriesErrors,
-  } = useResources(cluster!, HelmRepository, {
+  } = useResources(clusters!, HelmRepository, {
     refetchInterval,
-    enabled: Boolean(cluster) && helmRepositoriesEnabled,
+    enabled: Boolean(clusters) && helmRepositoriesEnabled,
   });
 
   useEffect(() => {

@@ -1,8 +1,8 @@
 import { Box, makeStyles } from '@material-ui/core';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
-import { ColorVariant } from '../../../UI/colors/makeColorVariants';
 import { Chip, IconText } from '../../../UI';
 import { WorkloadClusterIcon } from '../../../../assets/icons';
+import { getResourceColorVariant } from '../../../../utils/getResourceColorVariant';
 
 const useStyles = makeStyles(() => ({
   chips: {
@@ -13,39 +13,17 @@ const useStyles = makeStyles(() => ({
   },
 }));
 
-function getResourceColorVariant(kind: string) {
-  let variant: ColorVariant;
-  switch (kind) {
-    case 'GitRepository':
-      variant = 'purple';
-      break;
-    case 'HelmRelease':
-      variant = 'pink';
-      break;
-    case 'HelmRepository':
-      variant = 'blue';
-      break;
-    case 'Kustomization':
-      variant = 'orange';
-      break;
-
-    default:
-      variant = 'gray';
-      break;
-  }
-
-  return variant;
-}
-
 type ResourceChipsProps = {
   kind: string;
   namespace?: string;
+  cluster: string;
   targetCluster?: string;
 };
 
 export const ResourceChips = ({
   kind,
   namespace,
+  cluster,
   targetCluster,
 }: ResourceChipsProps) => {
   const classes = useStyles();
@@ -65,7 +43,7 @@ export const ResourceChips = ({
           />
         </>
       ) : null}
-      {targetCluster ? (
+      {targetCluster && targetCluster !== cluster ? (
         <>
           {' for '}
           <Chip
