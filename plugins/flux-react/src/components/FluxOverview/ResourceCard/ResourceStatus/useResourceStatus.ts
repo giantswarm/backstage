@@ -4,7 +4,7 @@ import {
   HelmRepository,
   Kustomization,
   OCIRepository,
-  resourceStatusManager,
+  fluxResourceStatusManager,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEffect, useState, useMemo } from 'react';
 
@@ -63,7 +63,7 @@ export function useResourceStatus(resource?: FluxResource) {
     }
 
     // Listen for status updates from the global manager
-    const unsubscribe = resourceStatusManager.addStatusListener(
+    const unsubscribe = fluxResourceStatusManager.addStatusListener(
       (key, newStatus) => {
         if (key === resourceIdentifiers.key) {
           setStatus(newStatus);

@@ -4,6 +4,7 @@ import {
   GitRepository,
   OCIRepository,
   HelmRepository,
+  FluxResourceStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { findTargetClusterName } from '../../utils/findTargetClusterName';
 
@@ -13,6 +14,7 @@ export type FluxResourceData = {
   namespace?: string;
   kind: string;
   targetCluster?: string;
+  status?: FluxResourceStatus | null;
   // resourceType:
   //   | 'Kustomization'
   //   | 'HelmRelease'
@@ -110,6 +112,7 @@ export function collectKustomizationData(
     namespace: resource.getNamespace(),
     kind: resource.getKind(),
     targetCluster: findTargetClusterName(resource),
+    status: resource.getStatus(),
     // resourceType: 'Kustomization',
     // status: ready ? 'Ready' : 'Not Ready',
     // ready,
@@ -141,6 +144,7 @@ export function collectHelmReleaseData(
     namespace: resource.getNamespace(),
     kind: resource.getKind(),
     targetCluster: findTargetClusterName(resource),
+    status: resource.getStatus(),
     // // resourceType: 'HelmRelease',
     // // status: ready ? 'Ready' : 'Not Ready',
     // ready,
@@ -170,6 +174,7 @@ export function collectGitRepositoryData(
     name: resource.getName(),
     namespace: resource.getNamespace(),
     kind: resource.getKind(),
+    status: resource.getStatus(),
     // resourceType: 'GitRepository',
     // status: ready ? 'Ready' : 'Not Ready',
     // ready,
@@ -197,6 +202,7 @@ export function collectOCIRepositoryData(
     name: resource.getName(),
     namespace: resource.getNamespace(),
     kind: resource.getKind(),
+    status: resource.getStatus(),
     // resourceType: 'OCIRepository',
     // status: ready ? 'Ready' : 'Not Ready',
     // ready,
@@ -224,6 +230,7 @@ export function collectHelmRepositoryData(
     name: resource.getName(),
     namespace: resource.getNamespace(),
     kind: resource.getKind(),
+    status: resource.getStatus(),
     // resourceType: 'HelmRepository',
     // status: ready ? 'Ready' : 'Not Ready',
     // ready,

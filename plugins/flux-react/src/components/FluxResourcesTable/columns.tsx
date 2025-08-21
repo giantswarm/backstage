@@ -3,7 +3,6 @@ import { Link, TableColumn } from '@backstage/core-components';
 import { Typography, Box } from '@material-ui/core';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
 import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
-import { WorkloadClusterIcon } from '../../assets/icons';
 import { FluxResourceData } from '../FluxResourcesDataProvider';
 import { ColorVariant } from '../UI/colors/makeColorVariants';
 import { Status } from '../UI/Status';
@@ -11,6 +10,7 @@ import { Chip, IconText } from '../UI';
 import {
   HelmRelease,
   Kustomization,
+  FluxResourceStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getResourceColorVariant } from '../../utils/getResourceColorVariant';
 
@@ -23,35 +23,61 @@ export const FluxResourceColumns = {
   statusDetails: 'statusDetails',
 } as const;
 
-function formatStatusDetails(item: FluxResourceData): {
+function formatStatus(status: FluxResourceStatus) {
+  let aggregatedStatus: string;
+  if (status.isSuspended || status.isDependencyNotReady) {
+    aggregatedStatus = 'inactive';
+  } else if (status.readyStatus === 'True') {
+    aggregatedStatus = 'ready';
+  } else if (status.readyStatus === 'False') {
+    aggregatedStatus = 'not-ready';
+  } else {
+    aggregatedStatus = 'unknown';
+  }
+
+  const statusLabels = {
+    ready: 'Ready',
+    'not-ready': 'Not Ready',
+    inactive: 'Inactive',
+    unknown: 'Unknown',
+  };
+
+  const statusVariants: Record<string, ColorVariant> = {
+    ready: 'green',
+    'not-ready': 'red',
+    inactive: 'gray',
+    unknown: 'gray',
+  };
+
+  return {
+    label: statusLabels[aggregatedStatus as keyof typeof statusLabels],
+    variant: statusVariants[aggregatedStatus as keyof typeof statusVariants],
+  };
+}
+
+function formatStatusDetails(status: FluxResourceStatus): {
   text: string;
   status: 'aborted' | 'ok' | 'error';
 } {
-  const readyCondition = item.conditions?.find(c => c.type === 'Ready');
-  const readyStatus = readyCondition?.status || 'Unknown';
-  const isDependencyNotReady = readyCondition?.reason === 'DependencyNotReady';
-  const isReconciling = item.status === 'Reconciling';
-  const isSuspended = item.suspended;
-
   let elText = 'Unknown';
   let elStatus: 'aborted' | 'ok' | 'error' = 'aborted';
 
-  if (readyStatus === 'True') {
+  if (status.readyStatus === 'True') {
     elText = 'Ready';
     elStatus = 'ok';
-  } else if (readyStatus === 'False' && !isDependencyNotReady) {
+  } else if (status.readyStatus === 'False' && !status.isDependencyNotReady) {
     elText = 'Not ready';
     elStatus = 'error';
-  } else if (readyStatus === 'False' && isDependencyNotReady) {
+  } else if (status.readyStatus === 'False' && status.isDependencyNotReady) {
     elText = 'Not ready (dep)';
     elStatus = 'error';
   }
 
-  if (isReconciling) {
+  if (status.isReconciling) {
     elText += ', reconciling';
   }
 
-  if (isSuspended) {
+  if (status.isSuspended) {
     elText = 'Suspended';
     elStatus = 'aborted';
   }
@@ -120,42 +146,25 @@ export const getInitialColumns = ({
       title: 'Status',
       field: FluxResourceColumns.status,
       render: row => {
-        let aggregatedStatus: string;
-        if (row.suspended || row.dependencyNotReady) {
-          aggregatedStatus = 'inactive';
-        } else if (row.ready) {
-          aggregatedStatus = 'ready';
-        } else {
-          aggregatedStatus = 'not-ready';
+        if (!row.status) {
+          return null;
         }
 
-        const statusLabels = {
-          ready: 'Ready',
-          'not-ready': 'Not Ready',
-          inactive: 'Inactive',
-        };
+        const { label, variant } = formatStatus(row.status);
 
-        const statusVariants = {
-          ready: 'green' as ColorVariant,
-          'not-ready': 'red' as ColorVariant,
-          inactive: 'orange' as ColorVariant,
-        };
-
-        return (
-          <Chip
-            label={statusLabels[aggregatedStatus as keyof typeof statusLabels]}
-            variant={
-              statusVariants[aggregatedStatus as keyof typeof statusVariants]
-            }
-          />
-        );
+        return <Chip label={label} variant={variant} />;
       },
     },
     {
       title: 'Status Details',
       field: FluxResourceColumns.statusDetails,
       render: row => {
-        const { text, status } = formatStatusDetails(row);
+        if (!row.status) {
+          return null;
+        }
+
+        const { text, status } = formatStatusDetails(row.status);
+
         return (
           <Box style={{ whiteSpace: 'nowrap' }}>
             <Status text={text} status={status} />
