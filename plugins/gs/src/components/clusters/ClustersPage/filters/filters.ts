@@ -1,4 +1,4 @@
-import { FacetFilter } from '../../../hooks';
+import { FacetFilter } from '@giantswarm/backstage-plugin-ui-react';
 import { ClusterData } from '../../ClustersDataProvider';
 import { ClusterTypes } from '../../utils';
 import { MC_VALUE, WC_VALUE } from './KindPicker/KindPicker';

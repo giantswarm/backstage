@@ -3,6 +3,7 @@ export * from './display/FiltersLayout';
 export * from './Autocomplete';
 export * from './ContentRow';
 export * from './DateComponent';
+export * from './MultiplePicker';
 export * from './MultipleSelect';
 export * from './NotAvailable';
 export * from './SingleSelect';

@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
+import {
+  MultiplePicker,
+  MultiplePickerOption,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { OrganizationFilter } from '../filters';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
-import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 import uniqBy from 'lodash/uniqBy';
 
 const TITLE = 'Organizations';

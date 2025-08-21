@@ -5,7 +5,8 @@ import {
   getClusterInfrastructureRef,
   getProviderClusterIdentityRef,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { FiltersData, useClusters, useFilters } from '../../hooks';
+import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
+import { useClusters } from '../../hooks';
 import { useProviderClusters } from '../../hooks/useProviderClusters';
 import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
 import { useControlPlanes } from '../../hooks/useControlPlanes';

@@ -19,7 +19,7 @@ interface Props {
   selected: boolean;
   value: string;
   label: ReactNode;
-  multiple?: true;
+  multiple?: boolean;
 }
 
 export const AutocompleteOption = memo((props: Props) => {

@@ -17,7 +17,7 @@ type FluxResource =
 
 export function useResourceStatus(resource?: FluxResource) {
   // Get initial status from the global manager or calculate it
-  const initialStatus = resource?.getOrCalculateStatus() || {
+  const initialStatus = resource?.getOrCalculateFluxStatus() || {
     readyStatus: 'Unknown' as const,
     isDependencyNotReady: false,
     isReconciling: false,

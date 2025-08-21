@@ -10,11 +10,10 @@ import {
   getAppChartName,
   getHelmReleaseChartName,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
 import {
-  FiltersData,
   useApps,
   useCatalogEntitiesForDeployments,
-  useFilters,
   useHelmReleases,
 } from '../../hooks';
 import {

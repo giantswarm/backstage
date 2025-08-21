@@ -1,5 +1,5 @@
-import Box from '@material-ui/core/Box';
 import { useEffect, useMemo, useState } from 'react';
+import Box from '@material-ui/core/Box';
 import { MultipleSelect } from '../MultipleSelect';
 import { Autocomplete } from '../Autocomplete';
 
@@ -72,9 +72,10 @@ export function MultiplePicker(props: MultiplePickerProps) {
         <Autocomplete
           label={label}
           items={options}
-          selectedValues={values}
+          selectedValue={values}
           onChange={selectedValues => setValues(selectedValues)}
           renderLabel={renderLabel}
+          multiple
         />
       ) : (
         <MultipleSelect

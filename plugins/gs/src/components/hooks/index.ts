@@ -9,7 +9,6 @@ export * from './useDeploymentDetailsTemplateData';
 export * from './useDeploymentStatusDetails';
 export * from './useDetailsPane';
 export * from './useDisabledInstallations';
-export * from './useFilters';
 export * from './useFriendlyItemsConfiguration';
 export * from './useGitOpsSourceLink';
 export * from './useGrafanaDashboardLink';

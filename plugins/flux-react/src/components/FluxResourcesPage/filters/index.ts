@@ -1,3 +1,3 @@
 export { ClusterPicker } from './ClusterPicker';
-export { FluxResourceKindPicker } from './FluxResourceKindPicker';
+export { KindPicker } from './KindPicker';
 export { StatusPicker } from './StatusPicker';

@@ -13,6 +13,10 @@ import {
   FluxResourceStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getResourceColorVariant } from '../../utils/getResourceColorVariant';
+import {
+  AggregatedStatus,
+  getAggregatedStatus,
+} from '../../utils/getAggregatedStatus';
 
 export const FluxResourceColumns = {
   name: 'name',
@@ -24,25 +28,16 @@ export const FluxResourceColumns = {
 } as const;
 
 function formatStatus(status: FluxResourceStatus) {
-  let aggregatedStatus: string;
-  if (status.isSuspended || status.isDependencyNotReady) {
-    aggregatedStatus = 'inactive';
-  } else if (status.readyStatus === 'True') {
-    aggregatedStatus = 'ready';
-  } else if (status.readyStatus === 'False') {
-    aggregatedStatus = 'not-ready';
-  } else {
-    aggregatedStatus = 'unknown';
-  }
+  const aggregatedStatus = getAggregatedStatus(status);
 
-  const statusLabels = {
+  const statusLabels: Record<AggregatedStatus, string> = {
     ready: 'Ready',
     'not-ready': 'Not Ready',
     inactive: 'Inactive',
     unknown: 'Unknown',
   };
 
-  const statusVariants: Record<string, ColorVariant> = {
+  const statusVariants: Record<AggregatedStatus, ColorVariant> = {
     ready: 'green',
     'not-ready': 'red',
     inactive: 'gray',
@@ -50,8 +45,8 @@ function formatStatus(status: FluxResourceStatus) {
   };
 
   return {
-    label: statusLabels[aggregatedStatus as keyof typeof statusLabels],
-    variant: statusVariants[aggregatedStatus as keyof typeof statusVariants],
+    label: statusLabels[aggregatedStatus],
+    variant: statusVariants[aggregatedStatus],
   };
 }
 

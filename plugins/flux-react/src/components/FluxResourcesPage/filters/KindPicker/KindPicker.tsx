@@ -5,21 +5,17 @@ import {
   MultiplePickerOption,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
-  DeploymentData,
-  useDeploymentsData,
-} from '../../../DeploymentsDataProvider';
+  FluxResourceData,
+  useFluxResourcesData,
+} from '../../../FluxResourcesDataProvider';
 import { KindFilter } from '../filters';
 
-export const APP_VALUE = 'app';
-export const HELM_RELEASE_VALUE = 'helmrelease';
+const TITLE = 'Flux resource kind';
 
-const APP_LABEL = 'Giant Swarm App';
-const HELM_RELEASE_LABEL = 'Flux HelmRelease';
-
-const TITLE = 'Deployment type';
-
-function formatOption(item: DeploymentData): MultiplePickerOption | undefined {
-  const label = item.kind === APP_VALUE ? APP_LABEL : HELM_RELEASE_LABEL;
+function formatOption(
+  item: FluxResourceData,
+): MultiplePickerOption | undefined {
+  const label = item.kind;
   const value = item.kind;
 
   return { value, label };
@@ -28,10 +24,10 @@ function formatOption(item: DeploymentData): MultiplePickerOption | undefined {
 export const KindPicker = () => {
   const {
     data,
+    updateFilters,
     filters,
     queryParameters: { kind: queryParameter },
-    updateFilters,
-  } = useDeploymentsData();
+  } = useFluxResourcesData();
 
   const options = useMemo(() => {
     const allOptions = data
@@ -54,6 +50,7 @@ export const KindPicker = () => {
       filterValue={filters.kind?.values}
       options={options}
       onSelect={handleSelect}
+      autocomplete
     />
   );
 };

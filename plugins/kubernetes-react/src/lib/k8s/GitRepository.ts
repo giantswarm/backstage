@@ -1,8 +1,6 @@
-import { KubeObject, KubeObjectInterface } from './KubeObject';
-import { FluxResourceStatusMixin, FluxResource } from './FluxResourceMixin';
-import { FluxResourceStatus } from './FluxResourceStatusManager';
+import { FluxObject, FluxObjectInterface } from './FluxObject';
 
-export interface GitRepositoryInterface extends KubeObjectInterface {
+export interface GitRepositoryInterface extends FluxObjectInterface {
   spec?: {
     ref?: {
       branch?: string;
@@ -29,24 +27,11 @@ export interface GitRepositoryInterface extends KubeObjectInterface {
   };
 }
 
-export class GitRepository
-  extends KubeObject<GitRepositoryInterface>
-  implements FluxResource
-{
+export class GitRepository extends FluxObject<GitRepositoryInterface> {
   static apiVersion = 'v1';
   static group = 'source.toolkit.fluxcd.io';
   static kind = 'GitRepository' as const;
   static plural = 'gitrepositories';
-
-  constructor(json: GitRepositoryInterface, cluster: string) {
-    super(json, cluster);
-    // Update status in global manager when resource is created
-    this.updateFluxStatus();
-  }
-
-  getStatusConditions() {
-    return this.jsonData.status?.conditions;
-  }
 
   getURL() {
     return this.jsonData.spec?.url;
@@ -58,48 +43,5 @@ export class GitRepository
 
   getRevision() {
     return this.jsonData.status?.artifact?.revision;
-  }
-
-  findReadyCondition() {
-    const conditions = this.getStatusConditions();
-    if (!conditions) {
-      return undefined;
-    }
-
-    return conditions.find(c => c.type === 'Ready');
-  }
-
-  isReconciling() {
-    const readyCondition = this.findReadyCondition();
-
-    return (
-      readyCondition?.status === 'Unknown' &&
-      readyCondition?.reason === 'Progressing'
-    );
-  }
-
-  isSuspended() {
-    return Boolean(this.jsonData.spec?.suspend);
-  }
-
-  /**
-   * Update status in the global status manager
-   */
-  updateFluxStatus(): FluxResourceStatus {
-    return FluxResourceStatusMixin.updateResourceStatus(this);
-  }
-
-  /**
-   * Get current status from the global status manager
-   */
-  getFluxStatus(): FluxResourceStatus | null {
-    return FluxResourceStatusMixin.getResourceStatus(this);
-  }
-
-  /**
-   * Get or calculate current status
-   */
-  getOrCalculateFluxStatus(): FluxResourceStatus {
-    return FluxResourceStatusMixin.getOrCalculateStatus(this);
   }
 }

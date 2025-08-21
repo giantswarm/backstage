@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
+import {
+  MultiplePicker,
+  MultiplePickerOption,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { KindFilter } from '../filters';
 import { ClusterTypes } from '../../../utils';
-import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 
 export const MC_VALUE = 'mc';
 export const WC_VALUE = 'wc';

@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
+import {
+  MultiplePicker,
+  MultiplePickerOption,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { StatusFilter } from '../filters';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
-import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 import uniqBy from 'lodash/uniqBy';
 import { toSentenceCase } from '../../../../utils/helpers';
 

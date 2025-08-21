@@ -1,10 +1,13 @@
 import { useMemo } from 'react';
+import {
+  MultiplePicker,
+  MultiplePickerOption,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { VersionFilter } from '../filters';
 import {
   DeploymentData,
   useDeploymentsData,
 } from '../../../DeploymentsDataProvider';
-import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 import uniqBy from 'lodash/uniqBy';
 import semver from 'semver';
 

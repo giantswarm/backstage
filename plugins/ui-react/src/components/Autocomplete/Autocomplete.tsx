@@ -178,19 +178,32 @@ export function CustomAutocomplete<
   );
 }
 
-type AutocompleteProps = {
-  items: {
-    label: string;
-    value: string;
-  }[];
+type AutocompleteItem = {
   label: string;
-  selectedValue?: string | string[] | null;
+  value: string;
+};
+
+type BaseAutocompleteProps = {
+  label: string;
+  items: AutocompleteItem[];
   disabledItems?: string[];
-  onChange?: (selected: string | string[] | null) => void;
   renderLabel?: (label: string) => ReactNode;
   disabled?: boolean;
-  multiple?: true;
 };
+
+type SingleAutocompleteProps = BaseAutocompleteProps & {
+  multiple?: false;
+  selectedValue?: string | null;
+  onChange?: (selected: string | null) => void;
+};
+
+type MultipleAutocompleteProps = BaseAutocompleteProps & {
+  multiple: true;
+  selectedValue?: string[];
+  onChange?: (selected: string[]) => void;
+};
+
+type AutocompleteProps = SingleAutocompleteProps | MultipleAutocompleteProps;
 
 export const Autocomplete = ({
   items,
@@ -215,13 +228,7 @@ export const Autocomplete = ({
   }, [items, selectedValue]);
 
   return (
-    <CustomAutocomplete<
-      {
-        label: string;
-        value: string;
-      },
-      typeof multiple
-    >
+    <CustomAutocomplete<AutocompleteItem, typeof multiple>
       multiple={multiple}
       disableCloseOnSelect={multiple}
       label={label}
@@ -233,21 +240,21 @@ export const Autocomplete = ({
       }
       value={value}
       disabled={disabled}
-      onChange={(_event, selectedItems) => {
+      onChange={(_event, selected) => {
         if (!onChange) {
           return;
         }
 
-        if (!selectedItems) {
-          onChange(null);
-          return;
+        if (multiple) {
+          const selectedItems = selected as AutocompleteItem[];
+          const newValues = selectedItems.map(
+            selectedItem => selectedItem.value,
+          );
+          onChange(newValues);
+        } else {
+          const selectedItem = selected as AutocompleteItem | null;
+          onChange(selectedItem ? selectedItem.value : null);
         }
-
-        const newValue = Array.isArray(selectedItems)
-          ? selectedItems.map(selectedItem => selectedItem.value)
-          : selectedItems.value;
-
-        onChange(newValue);
       }}
       renderOption={(option, { selected }) => (
         <AutocompleteOption
