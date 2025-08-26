@@ -109,21 +109,19 @@ export const MultipleClustersSelector = ({
   };
 
   const activeClusters = useMemo(() => {
-    const allSelectedClusters =
+    const selected =
       clusters.length === 1 || selectedClusters.length === 0
         ? clusters
         : selectedClusters;
 
     if (
-      allSelectedClusters.some(cluster => disabledClusters.includes(cluster)) &&
+      selected.some(cluster => disabledClusters.includes(cluster)) &&
       isLoadingDisabledClusters
     ) {
       return []; // Some selected clusters are potentially disabled, waiting for status check to complete
     }
 
-    return allSelectedClusters.filter(
-      cluster => !disabledClusters.includes(cluster),
-    );
+    return selected.filter(cluster => !disabledClusters.includes(cluster));
   }, [clusters, disabledClusters, isLoadingDisabledClusters, selectedClusters]);
 
   useEffect(() => {
@@ -136,6 +134,10 @@ export const MultipleClustersSelector = ({
     label: cluster,
     value: cluster,
   }));
+
+  if (clusters.length <= 1) {
+    return null;
+  }
 
   return (
     <Autocomplete
