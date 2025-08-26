@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.82.3] - 2025-08-26
 
+### Fixed
+
+- Fixed Cluster selectors in situations when only one cluster is configured.
+
 See [./docs/releases/v0.82.3-changelog.md](./docs/releases/v0.82.3-changelog.md) for more information.
 
 ## [0.82.2] - 2025-08-19
