@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
 import { useUrlState } from '../../hooks/useUrlState';
@@ -92,11 +92,19 @@ export const SingleClusterSelector = ({
     setValue(newItem);
   };
 
-  const activeCluster =
-    isLoadingDisabledClusters ||
-    (selectedCluster && disabledClusters.includes(selectedCluster))
-      ? null
-      : selectedCluster;
+  const activeCluster = useMemo(() => {
+    const selected = clusters.length === 1 ? clusters[0] : selectedCluster;
+
+    if (!selected) {
+      return null;
+    }
+
+    if (disabledClusters.includes(selected) && isLoadingDisabledClusters) {
+      return null; // Selected cluster is potentially disabled, waiting for status check to complete
+    }
+
+    return disabledClusters.includes(selected) ? null : selected;
+  }, [clusters, disabledClusters, isLoadingDisabledClusters, selectedCluster]);
 
   useEffect(() => {
     if (onActiveClusterChange) {
@@ -108,6 +116,10 @@ export const SingleClusterSelector = ({
     label: cluster,
     value: cluster,
   }));
+
+  if (clusters.length <= 1) {
+    return null;
+  }
 
   return (
     <Autocomplete
