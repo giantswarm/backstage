@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.40.3
+
+### Patch Changes
+
+- 9ed2265: Fixed catalog entity deployments cluster selector.
+
 ## 0.40.2
 
 ### Patch Changes
