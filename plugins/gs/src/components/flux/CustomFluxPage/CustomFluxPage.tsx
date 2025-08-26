@@ -3,5 +3,5 @@ import { DefaultFluxPage } from '@giantswarm/backstage-plugin-flux';
 import { CustomFilters } from './CustomFilters';
 
 export const CustomFluxPage = () => {
-  return <DefaultFluxPage filters={<CustomFilters />} />;
+  return <DefaultFluxPage treeViewFilters={<CustomFilters />} />;
 };

@@ -12,11 +12,11 @@ import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
 
 type DetailsProps = {
-  cluster: string | null;
   resourceRef: {
-    namespace: string;
-    name: string;
+    cluster: string;
     kind: string;
+    name: string;
+    namespace?: string;
   };
   resource?: Kustomization | HelmRelease;
   allKustomizations: Kustomization[];
@@ -29,7 +29,6 @@ type DetailsProps = {
 };
 
 export const Details = ({
-  cluster,
   resourceRef,
   resource,
   allKustomizations,
@@ -40,7 +39,7 @@ export const Details = ({
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
-  if (isLoadingResources || !treeBuilder) {
+  if (isLoadingResources) {
     return <Progress />;
   }
 
@@ -52,9 +51,10 @@ export const Details = ({
             ? 'Kustomization'
             : 'HelmRelease'}{' '}
           <strong>
-            {resourceRef.namespace}/{resourceRef.name}
+            {resourceRef.namespace ? `${resourceRef.namespace}/` : ''}
+            {resourceRef.name}
           </strong>{' '}
-          in cluster <strong>{cluster}</strong> not found.
+          in cluster <strong>{resourceRef.cluster}</strong> not found.
         </Typography>
       </Box>
     );

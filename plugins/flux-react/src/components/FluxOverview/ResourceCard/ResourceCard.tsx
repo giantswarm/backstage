@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   GitRepository,
   HelmRelease,
@@ -8,7 +9,6 @@ import {
 import { Box, makeStyles, Paper, PaperProps } from '@material-ui/core';
 import classNames from 'classnames';
 import { ResourceMetadata } from './ResourceMetadata';
-import { useResourceStatus } from './ResourceStatus/useResourceStatus';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
 import { ResourceInfo } from './ResourceInfo';
 
@@ -108,7 +108,18 @@ export const ResourceCard = ({
   error,
 }: ResourceCardProps) => {
   const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
-    useResourceStatus(resource);
+    useMemo(() => {
+      if (!resource) {
+        return {
+          readyStatus: 'Unknown' as const,
+          isDependencyNotReady: false,
+          isReconciling: false,
+          isSuspended: false,
+        };
+      }
+
+      return resource.getOrCalculateFluxStatus();
+    }, [resource]);
 
   const inactive = isSuspended || isDependencyNotReady;
 

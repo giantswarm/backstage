@@ -1,2 +1,1 @@
-export { FluxResourcesTreeView } from './FluxResourcesTreeView';
 export { FluxResourcesListView } from './FluxResourcesListView';

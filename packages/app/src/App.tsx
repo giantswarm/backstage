@@ -60,7 +60,7 @@ import {
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
-import { FluxPage, FluxResourcesPage } from '@giantswarm/backstage-plugin-flux';
+import { FluxPage } from '@giantswarm/backstage-plugin-flux';
 
 const app = createApp({
   apis,
@@ -195,17 +195,6 @@ const routes = (
       element={
         <GSFeatureEnabled feature="fluxPage">
           <FluxPage />
-        </GSFeatureEnabled>
-      }
-    >
-      <GSCustomFluxPage />
-    </Route>
-
-    <Route
-      path="/flux-resources"
-      element={
-        <GSFeatureEnabled feature="fluxPage">
-          <FluxResourcesPage />
         </GSFeatureEnabled>
       }
     />

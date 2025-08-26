@@ -42,7 +42,7 @@ type KustomizationDetailsProps = {
   allKustomizations: Kustomization[];
   allGitRepositories: GitRepository[];
   allOCIRepositories: OCIRepository[];
-  treeBuilder: KustomizationTreeBuilder;
+  treeBuilder?: KustomizationTreeBuilder;
 };
 
 export const KustomizationDetails = ({
@@ -59,7 +59,7 @@ export const KustomizationDetails = ({
   );
 
   const parentKustomization =
-    treeBuilder.findParentKustomization(kustomization);
+    treeBuilder?.findParentKustomization(kustomization);
 
   const dependsOn = kustomization.getDependsOn();
   const dependencies = dependsOn

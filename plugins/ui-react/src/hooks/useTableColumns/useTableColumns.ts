@@ -1,10 +1,6 @@
 import { useCallback } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 
-export const DEPLOYMENTS_TABLE_ID = 'deployments';
-export const ENTITY_DEPLOYMENTS_TABLE_ID = 'entity-deployments';
-export const CLUSTERS_TABLE_ID = 'clusters';
-
 export function useTableColumns(tableName: string) {
   const [savedTableColumns, setSavedTableColumns] = useLocalStorageState<
     string[]

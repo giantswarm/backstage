@@ -1,6 +1,6 @@
 import { Box } from '@material-ui/core';
 import { SingleSelect } from '@giantswarm/backstage-plugin-ui-react';
-import { useFluxOverviewData } from '@giantswarm/backstage-plugin-flux-react';
+import { useFluxOverviewData } from '../../../FluxOverviewDataProvider';
 
 export const ResourceTypePicker = () => {
   const { resourceType, setResourceType } = useFluxOverviewData();

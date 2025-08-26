@@ -1,0 +1,1 @@
+export { useTableColumns } from './useTableColumns';

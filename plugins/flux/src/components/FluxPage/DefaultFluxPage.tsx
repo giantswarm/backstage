@@ -1,62 +1,54 @@
 import { ReactNode } from 'react';
-import { Content, Header, Page } from '@backstage/core-components';
-import { KubernetesQueryClientProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
-import {
-  FluxOverview,
-  FluxOverviewDataProvider,
-} from '@giantswarm/backstage-plugin-flux-react';
-import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
-import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { DefaultFilters } from './DefaultFilters';
+import { useRouteRef } from '@backstage/core-plugin-api';
 import { rootRouteRef } from '../../routes';
-import { makeStyles } from '@material-ui/core/styles';
-
-const useStyles = makeStyles(() => ({
-  content: {
-    paddingBottom: 0,
-  },
-}));
+import { FluxPageLayout } from '../FluxPageLayout';
+import {
+  FluxResourcesListView,
+  FluxResourcesTreeView,
+} from '@giantswarm/backstage-plugin-flux-react';
 
 export type BaseFluxPageProps = {
-  filters: ReactNode;
-  content?: ReactNode;
+  treeViewFilters: ReactNode;
+  listViewFilters: ReactNode;
 };
 
-export function BaseFluxPage(props: BaseFluxPageProps) {
-  const classes = useStyles();
-  const { filters, content = <FluxOverview routeRef={rootRouteRef} /> } = props;
+export function BaseFluxPage({
+  treeViewFilters,
+  listViewFilters,
+}: BaseFluxPageProps) {
+  const getBasePath = useRouteRef(rootRouteRef);
+  const basePath = getBasePath();
 
   return (
-    <Page themeId="service">
-      <Header title="Flux Overview" subtitle="Overview of Flux resources" />
-      <Content className={classes.content}>
-        <KubernetesQueryClientProvider>
-          <ErrorsProvider>
-            <FluxOverviewDataProvider>
-              <FiltersLayout fullHeight>
-                <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-                <FiltersLayout.Content>{content}</FiltersLayout.Content>
-              </FiltersLayout>
-            </FluxOverviewDataProvider>
-          </ErrorsProvider>
-        </KubernetesQueryClientProvider>
-      </Content>
-    </Page>
+    <FluxPageLayout>
+      <FluxPageLayout.Route path="/" title="Tree view">
+        <FluxResourcesTreeView basePath={basePath} filters={treeViewFilters} />
+      </FluxPageLayout.Route>
+
+      <FluxPageLayout.Route path="/list" title="List view">
+        <FluxResourcesListView
+          basePath={`${basePath}/list`}
+          filters={listViewFilters}
+        />
+      </FluxPageLayout.Route>
+    </FluxPageLayout>
   );
 }
 
 export interface DefaultFluxPageProps {
   emptyContent?: ReactNode;
-  filters?: ReactNode;
+  treeViewFilters?: ReactNode;
+  listViewFilters?: ReactNode;
 }
 
-export function DefaultFluxPage(props: DefaultFluxPageProps) {
-  const { filters = <DefaultFilters /> } = props;
-
+export function DefaultFluxPage({
+  treeViewFilters,
+  listViewFilters,
+}: DefaultFluxPageProps) {
   return (
     <BaseFluxPage
-      filters={filters ?? <DefaultFilters />}
-      content={<FluxOverview routeRef={rootRouteRef} />}
+      treeViewFilters={treeViewFilters}
+      listViewFilters={listViewFilters}
     />
   );
 }

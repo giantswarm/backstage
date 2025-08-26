@@ -181,7 +181,7 @@ export class KustomizationTreeBuilder {
       const targetCluster = findTargetClusterName(kustomization);
 
       return {
-        id: `kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
+        id: `${kustomization.cluster}-kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
         nodeData: {
           label: kustomization.getName(),
           kind: kustomization.getKind(),
@@ -239,7 +239,7 @@ export class KustomizationTreeBuilder {
           : undefined;
 
       return {
-        id: `${child.kind}-${child.namespace}-${child.name}`,
+        id: `${kustomization.cluster}-${child.kind}-${child.namespace}-${child.name}`,
         nodeData: {
           ...child,
           label: child.name,
@@ -259,7 +259,7 @@ export class KustomizationTreeBuilder {
     const targetCluster = findTargetClusterName(kustomization);
 
     return {
-      id: `kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
+      id: `${kustomization.cluster}-kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
       nodeData: {
         label: kustomization.getName(),
         kind: kustomization.getKind(),

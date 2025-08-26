@@ -82,8 +82,15 @@ function formatStatusDetails(status: FluxResourceStatus): {
 
 export const getInitialColumns = ({
   visibleColumns,
+  onClick,
 }: {
   visibleColumns: string[];
+  onClick?: (
+    cluster: string,
+    kind: string,
+    name: string,
+    namespace?: string,
+  ) => void;
 }): TableColumn<FluxResourceData>[] => {
   const columns: TableColumn<FluxResourceData>[] = [
     {
@@ -97,21 +104,19 @@ export const getInitialColumns = ({
           </Typography>
         );
 
-        if (row.kind === Kustomization.kind || row.kind === HelmRelease.kind) {
-          const basePath = '/flux-resources';
-          const params = new URLSearchParams({
-            cluster: row.cluster,
-            kind: row.kind.toLowerCase(),
-            name: row.name,
-          });
-          if (row.namespace) {
-            params.set('namespace', row.namespace);
-          }
-
-          const detailsPath = `${basePath}?${params.toString()}`;
-
+        if (
+          (row.kind === Kustomization.kind || row.kind === HelmRelease.kind) &&
+          onClick
+        ) {
           return (
-            <Link component={RouterLink} to={detailsPath}>
+            <Link
+              component={RouterLink}
+              to="#"
+              onClick={e => {
+                e.preventDefault();
+                onClick(row.cluster, row.kind, row.name, row.namespace);
+              }}
+            >
               {el}
             </Link>
           );

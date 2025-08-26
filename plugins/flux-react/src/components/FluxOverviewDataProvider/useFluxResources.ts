@@ -6,7 +6,7 @@ import {
   OCIRepository,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const RECONCILING_INTERVAL = 3000;
 const NON_RECONCILING_INTERVAL = 15000;
@@ -26,6 +26,7 @@ export function useFluxResources(clusters: string | string[] | null) {
     resources: kustomizations,
     isLoading: isLoadingKustomizations,
     errors: kustomizationsErrors,
+    retry: kustomizationsRetry,
   } = useResources(clusters!, Kustomization, {
     refetchInterval,
     enabled: Boolean(clusters) && kustomizationsEnabled,
@@ -35,6 +36,7 @@ export function useFluxResources(clusters: string | string[] | null) {
     resources: helmReleases,
     isLoading: isLoadingHelmReleases,
     errors: helmReleasesErrors,
+    retry: helmReleasesRetry,
   } = useResources(clusters!, HelmRelease, {
     refetchInterval,
     enabled: Boolean(clusters) && helmReleasesEnabled,
@@ -44,6 +46,7 @@ export function useFluxResources(clusters: string | string[] | null) {
     resources: gitRepositories,
     isLoading: isLoadingGitRepositories,
     errors: gitRepositoriesErrors,
+    retry: gitRepositoriesRetry,
   } = useResources(clusters!, GitRepository, {
     refetchInterval,
     enabled: Boolean(clusters) && gitRepositoriesEnabled,
@@ -53,6 +56,7 @@ export function useFluxResources(clusters: string | string[] | null) {
     resources: ociRepositories,
     isLoading: isLoadingOciRepositories,
     errors: ociRepositoriesErrors,
+    retry: ociRepositoriesRetry,
   } = useResources(clusters!, OCIRepository, {
     refetchInterval,
     enabled: Boolean(clusters) && ociRepositoriesEnabled,
@@ -62,6 +66,7 @@ export function useFluxResources(clusters: string | string[] | null) {
     resources: helmRepositories,
     isLoading: isLoadingHelmRepositories,
     errors: helmRepositoriesErrors,
+    retry: helmRepositoriesRetry,
   } = useResources(clusters!, HelmRepository, {
     refetchInterval,
     enabled: Boolean(clusters) && helmRepositoriesEnabled,
@@ -128,6 +133,20 @@ export function useFluxResources(clusters: string | string[] | null) {
     ociRepositoriesErrors,
   ]);
 
+  const retry = useCallback(() => {
+    kustomizationsRetry();
+    helmReleasesRetry();
+    gitRepositoriesRetry();
+    ociRepositoriesRetry();
+    helmRepositoriesRetry();
+  }, [
+    kustomizationsRetry,
+    helmReleasesRetry,
+    gitRepositoriesRetry,
+    ociRepositoriesRetry,
+    helmRepositoriesRetry,
+  ]);
+
   useEffect(() => {
     const reconciling = kustomizations.some(k => k.isReconciling());
 
@@ -140,13 +159,23 @@ export function useFluxResources(clusters: string | string[] | null) {
     }
   }, [kustomizations, refetchInterval]);
 
-  return {
-    kustomizations,
-    helmReleases,
+  return useMemo(() => {
+    return {
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+      isLoading,
+      errors,
+    };
+  }, [
+    errors,
     gitRepositories,
-    ociRepositories,
+    helmReleases,
     helmRepositories,
     isLoading,
-    errors,
-  };
+    kustomizations,
+    ociRepositories,
+  ]);
 }

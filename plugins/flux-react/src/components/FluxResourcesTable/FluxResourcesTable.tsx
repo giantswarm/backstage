@@ -8,6 +8,9 @@ import {
   FluxResourceData,
   useFluxResourcesData,
 } from '../FluxResourcesDataProvider';
+import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
+
+export const FLUX_RESOURCES_TABLE_ID = 'flux-resources';
 
 type Props = {
   columns: TableColumn<FluxResourceData>[];
@@ -58,32 +61,30 @@ const FluxResourcesTableView = ({
   );
 };
 
-const FLUX_RESOURCES_TABLE_ID = 'flux-resources-table';
-
-// Simple column visibility management (in real implementation, this would use proper storage)
-const useTableColumns = (tableId: string) => {
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
-
-  const saveVisibleColumns = useCallback((columns: string[]) => {
-    setVisibleColumns(columns);
-    // In real implementation, save to localStorage or similar
-  }, []);
-
-  return { visibleColumns, saveVisibleColumns };
-};
-
-export const FluxResourcesTable = () => {
+export const FluxResourcesTable = ({
+  onSelectResource,
+}: {
+  onSelectResource: (
+    cluster: string,
+    kind: string,
+    name: string,
+    namespace?: string,
+  ) => void;
+}) => {
   const {
     filteredData: fluxResourcesData,
     isLoading,
     retry,
+    setVisibleColumns,
   } = useFluxResourcesData();
 
   const { visibleColumns, saveVisibleColumns } = useTableColumns(
     FLUX_RESOURCES_TABLE_ID,
   );
 
-  const [columns, setColumns] = useState(getInitialColumns({ visibleColumns }));
+  const [columns, setColumns] = useState(
+    getInitialColumns({ visibleColumns, onClick: onSelectResource }),
+  );
 
   const handleChangeColumnHidden = useCallback(
     (field: string, hidden: boolean) => {
@@ -112,8 +113,12 @@ export const FluxResourcesTable = () => {
       saveVisibleColumns(newVisibleColumns);
     },
     10,
-    [columns, saveVisibleColumns],
+    [columns, setVisibleColumns],
   );
+
+  useEffect(() => {
+    setVisibleColumns(visibleColumns);
+  }, [setVisibleColumns, visibleColumns]);
 
   return (
     <FluxResourcesTableView

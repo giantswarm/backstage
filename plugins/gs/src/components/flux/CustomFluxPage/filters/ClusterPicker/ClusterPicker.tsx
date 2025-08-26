@@ -4,21 +4,21 @@ import {
   SingleClusterSelector,
   useClustersInfo,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useFluxOverviewData } from '@giantswarm/backstage-plugin-flux-react';
+// import { useFluxOverviewData } from '@giantswarm/backstage-plugin-flux-react';
 import { useDisabledInstallations } from '../../../../hooks';
 
 export const ClusterPicker = () => {
   const { clusters, isLoadingClusters } = useClustersInfo();
   const { disabledInstallations, isLoading: isLoadingDisabledClusters } =
     useDisabledInstallations();
-  const { setActiveCluster } = useFluxOverviewData();
+  // const { setActiveCluster } = useFluxOverviewData();
 
-  const handleActiveClusterChange = useCallback(
-    (selectedItem: string | null) => {
-      setActiveCluster(selectedItem);
-    },
-    [setActiveCluster],
-  );
+  // const handleActiveClusterChange = useCallback(
+  //   (selectedItem: string | null) => {
+  //     setActiveCluster(selectedItem);
+  //   },
+  //   [setActiveCluster],
+  // );
 
   if (clusters.length <= 1) {
     return null;
@@ -31,7 +31,7 @@ export const ClusterPicker = () => {
         disabledClusters={disabledInstallations}
         isLoadingDisabledClusters={isLoadingDisabledClusters}
         disabled={isLoadingClusters}
-        onActiveClusterChange={handleActiveClusterChange}
+        // onActiveClusterChange={handleActiveClusterChange}
       />
     </Box>
   );

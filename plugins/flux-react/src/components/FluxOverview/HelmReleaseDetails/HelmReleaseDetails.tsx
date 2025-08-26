@@ -50,7 +50,7 @@ function useSource(
 type HelmReleaseDetailsProps = {
   helmRelease: HelmRelease;
   allHelmReleases: HelmRelease[];
-  treeBuilder: KustomizationTreeBuilder;
+  treeBuilder?: KustomizationTreeBuilder;
   allOCIRepositories: OCIRepository[];
   allGitRepositories: GitRepository[];
   allHelmRepositories: HelmRepository[];
@@ -71,7 +71,7 @@ export const HelmReleaseDetails = ({
     allHelmRepositories,
   );
 
-  const parentKustomization = treeBuilder.findParentKustomization(helmRelease);
+  const parentKustomization = treeBuilder?.findParentKustomization(helmRelease);
 
   const dependsOn = helmRelease.getDependsOn();
   const dependencies = dependsOn

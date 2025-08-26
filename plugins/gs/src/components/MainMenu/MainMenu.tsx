@@ -30,11 +30,6 @@ export const MainMenu = () => {
 
       <FeatureEnabled feature="fluxPage">
         <SidebarItem icon={FluxIcon} to="flux" text="Flux" />
-        <SidebarItem
-          icon={FluxIcon}
-          to="flux-resources"
-          text="Flux Resources"
-        />
       </FeatureEnabled>
     </SidebarGroup>
   );

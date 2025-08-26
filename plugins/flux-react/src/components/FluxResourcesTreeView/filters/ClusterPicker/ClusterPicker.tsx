@@ -3,7 +3,7 @@ import {
   SingleClusterSelector,
   useClustersInfo,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useFluxOverviewData } from '@giantswarm/backstage-plugin-flux-react';
+import { useFluxOverviewData } from '../../../FluxOverviewDataProvider';
 
 export const ClusterPicker = () => {
   const { clusters } = useClustersInfo();
