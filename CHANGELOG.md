@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.82.4] - 2025-08-26
+
+### Fixed
+
+- Fixed Clusters selector on the catalog entity deployments page in situations when only one cluster is configured.
+
+See [./docs/releases/v0.82.4-changelog.md](./docs/releases/v0.82.4-changelog.md) for more information.
+
 ## [0.82.3] - 2025-08-26
 
 ### Fixed
@@ -1412,7 +1420,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.82.3...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.82.4...HEAD
+[0.82.4]: https://github.com/giantswarm/backstage/compare/v0.82.3...v0.82.4
 [0.82.3]: https://github.com/giantswarm/backstage/compare/v0.82.2...v0.82.3
 [0.82.2]: https://github.com/giantswarm/backstage/compare/v0.82.1...v0.82.2
 [0.82.1]: https://github.com/giantswarm/backstage/compare/v0.82.0...v0.82.1
