@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.3.2
+
+### Patch Changes
+
+- 791a215: Fixed Cluster selectors when only one cluster is configured.
+
 ## 0.3.1
 
 ### Patch Changes

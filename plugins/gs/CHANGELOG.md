@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.40.2
+
+### Patch Changes
+
+- 791a215: Fixed Cluster selectors when only one cluster is configured.
+- Updated dependencies [791a215]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.3.2
+  - @giantswarm/backstage-plugin-flux@0.3.1
+
 ## 0.40.1
 
 ### Patch Changes
