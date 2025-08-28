@@ -4,7 +4,7 @@ import {
   SupportButton,
 } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
-import { Grid } from '@material-ui/core';
+import { Box } from '@material-ui/core';
 import {
   getDeploymentNamesFromEntity,
   getIngressHostFromEntity,
@@ -30,22 +30,18 @@ const DeploymentsContent = () => {
   const { clusters } = useClustersInfo();
 
   return (
-    <Grid container spacing={3}>
-      {clusters.length > 1 ? (
-        <Grid item xs={12}>
-          <InstallationPicker />
-        </Grid>
-      ) : null}
-      <Grid item xs={12}>
-        <DeploymentsTable
-          baseRouteRef={entityDeploymentsRouteRef}
-          sourceLocation={sourceLocation}
-          grafanaDashboard={grafanaDashboard}
-          ingressHost={ingressHost}
-          context="catalog-entity"
-        />
-      </Grid>
-    </Grid>
+    <>
+      <Box mb={clusters.length > 1 ? 2 : undefined}>
+        <InstallationPicker />
+      </Box>
+      <DeploymentsTable
+        baseRouteRef={entityDeploymentsRouteRef}
+        sourceLocation={sourceLocation}
+        grafanaDashboard={grafanaDashboard}
+        ingressHost={ingressHost}
+        context="catalog-entity"
+      />
+    </>
   );
 };
 
