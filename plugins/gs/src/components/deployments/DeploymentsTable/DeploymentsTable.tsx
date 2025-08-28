@@ -5,12 +5,11 @@ import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
 import { getInitialColumns } from './columns';
-import {
-  useTableColumns,
-  DEPLOYMENTS_TABLE_ID,
-  ENTITY_DEPLOYMENTS_TABLE_ID,
-} from '../../hooks/useTableColumns';
+import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import useDebounce from 'react-use/esm/useDebounce';
+
+export const DEPLOYMENTS_TABLE_ID = 'deployments';
+export const ENTITY_DEPLOYMENTS_TABLE_ID = 'entity-deployments';
 
 type Props = {
   columns: TableColumn<DeploymentData>[];

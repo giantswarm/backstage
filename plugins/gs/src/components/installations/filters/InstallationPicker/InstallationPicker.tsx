@@ -19,7 +19,7 @@ export const InstallationPicker = ({
     useDisabledInstallations();
 
   return (
-    <Box py={clusters.length > 1 ? 1 : undefined}>
+    <Box py={clusters.length > 1 ? 1 : 0}>
       <MultipleClustersSelector
         label="Installations"
         persistToURL={persistToURL}

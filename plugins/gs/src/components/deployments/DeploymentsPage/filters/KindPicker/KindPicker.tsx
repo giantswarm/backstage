@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
 import {
+  MultiplePicker,
+  MultiplePickerOption,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
   DeploymentData,
   useDeploymentsData,
 } from '../../../DeploymentsDataProvider';
 import { KindFilter } from '../filters';
-import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 
 export const APP_VALUE = 'app';
 export const HELM_RELEASE_VALUE = 'helmrelease';

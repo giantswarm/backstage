@@ -1,10 +1,13 @@
 import { useCallback, useMemo } from 'react';
+import {
+  MultiplePicker,
+  MultiplePickerOption,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { LabelFilter } from '../filters';
 import {
   DeploymentData,
   useDeploymentsData,
 } from '../../../DeploymentsDataProvider';
-import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 import uniqBy from 'lodash/uniqBy';
 import { Typography } from '@material-ui/core';
 

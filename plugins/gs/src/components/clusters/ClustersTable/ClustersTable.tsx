@@ -5,10 +5,9 @@ import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { getInitialColumns } from './columns';
 import { ClusterData, useClustersData } from '../ClustersDataProvider';
-import {
-  useTableColumns,
-  CLUSTERS_TABLE_ID,
-} from '../../hooks/useTableColumns';
+import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
+
+export const CLUSTERS_TABLE_ID = 'clusters';
 
 type Props = {
   columns: TableColumn<ClusterData>[];

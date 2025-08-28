@@ -1,6 +1,6 @@
-import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { FluxObject, FluxObjectInterface } from './FluxObject';
 
-export interface HelmRepositoryInterface extends KubeObjectInterface {
+export interface HelmRepositoryInterface extends FluxObjectInterface {
   spec?: {
     url: string;
     suspend?: boolean;
@@ -20,15 +20,11 @@ export interface HelmRepositoryInterface extends KubeObjectInterface {
   };
 }
 
-export class HelmRepository extends KubeObject<HelmRepositoryInterface> {
+export class HelmRepository extends FluxObject<HelmRepositoryInterface> {
   static apiVersion = 'v1beta2';
   static group = 'source.toolkit.fluxcd.io';
   static kind = 'HelmRepository' as const;
   static plural = 'helmrepositories';
-
-  getStatusConditions() {
-    return this.jsonData.status?.conditions;
-  }
 
   getURL() {
     return this.jsonData.spec?.url;
@@ -36,27 +32,5 @@ export class HelmRepository extends KubeObject<HelmRepositoryInterface> {
 
   getRevision() {
     return this.jsonData.status?.artifact?.revision;
-  }
-
-  findReadyCondition() {
-    const conditions = this.getStatusConditions();
-    if (!conditions) {
-      return undefined;
-    }
-
-    return conditions.find(c => c.type === 'Ready');
-  }
-
-  isReconciling() {
-    const readyCondition = this.findReadyCondition();
-
-    return (
-      readyCondition?.status === 'Unknown' &&
-      readyCondition?.reason === 'Progressing'
-    );
-  }
-
-  isSuspended() {
-    return Boolean(this.jsonData.spec?.suspend);
   }
 }

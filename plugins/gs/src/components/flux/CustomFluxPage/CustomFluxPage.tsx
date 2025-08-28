@@ -1,7 +1,12 @@
-// eslint-disable-next-line @backstage/no-mixed-plugin-imports
-import { DefaultFluxPage } from '@giantswarm/backstage-plugin-flux';
-import { CustomFilters } from './CustomFilters';
+import { DefaultFluxPage } from '@giantswarm/backstage-plugin-flux-react';
+import { CustomTreeViewFilters } from './CustomTreeViewFilters';
+import { CustomListViewFilters } from './CustomListViewFilters';
 
 export const CustomFluxPage = () => {
-  return <DefaultFluxPage filters={<CustomFilters />} />;
+  return (
+    <DefaultFluxPage
+      treeViewFilters={<CustomTreeViewFilters />}
+      listViewFilters={<CustomListViewFilters />}
+    />
+  );
 };

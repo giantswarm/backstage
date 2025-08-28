@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
 import {
   KustomizationTreeNode,
   KustomizationTreeNodeData,
@@ -16,6 +15,7 @@ import {
 } from 'react-vtree';
 import { ResourceNode } from '../ResourceNode';
 import { ListChildComponentProps } from 'react-window';
+import { SelectedResourceRef } from '../useSelectedResource';
 
 export type NodeData = Readonly<{
   id: string;
@@ -97,6 +97,7 @@ const Node = ({
 
   const el = (
     <ResourceNode
+      cluster={data.cluster}
       name={data.name}
       namespace={data.namespace}
       kind={data.kind}
@@ -108,19 +109,9 @@ const Node = ({
       onExpand={() => setOpen(!isOpen)}
     />
   );
-  let detailsPath = null;
-  if (data.kind === Kustomization.kind || data.kind === HelmRelease.kind) {
-    const params = new URLSearchParams({
-      cluster: data.cluster,
-      kind: data.kind.toLowerCase(),
-      name: data.name,
-    });
-    if (data.namespace) {
-      params.set('namespace', data.namespace);
-    }
 
-    detailsPath = `${treeData.basePath}?${params.toString()}`;
-  }
+  const showLink =
+    data.kind === Kustomization.kind || data.kind === HelmRelease.kind;
 
   return (
     <div
@@ -131,8 +122,20 @@ const Node = ({
         paddingBottom: 4,
       }}
     >
-      {detailsPath ? (
-        <Link to={detailsPath} style={{ display: 'inline-block' }}>
+      {showLink ? (
+        <Link
+          to="#"
+          style={{ display: 'inline-block' }}
+          onClick={e => {
+            e.preventDefault();
+            treeData.onSelectResource(
+              data.cluster,
+              data.kind,
+              data.name,
+              data.namespace,
+            );
+          }}
+        >
           {el}
         </Link>
       ) : (
@@ -145,13 +148,14 @@ const Node = ({
 type OverviewTreeProps = {
   tree: KustomizationTreeNode[];
   compactView: boolean;
-  selectedResourceRef?: {
-    namespace: string;
-    name: string;
-    kind: string;
-  };
+  selectedResourceRef?: SelectedResourceRef | null;
   height: number;
-  routeRef: RouteRef;
+  onSelectResource: (
+    cluster: string,
+    kind: string,
+    name: string,
+    namespace?: string,
+  ) => void;
 };
 
 export const OverviewTree = ({
@@ -159,11 +163,8 @@ export const OverviewTree = ({
   compactView,
   selectedResourceRef,
   height,
-  routeRef,
+  onSelectResource,
 }: OverviewTreeProps) => {
-  const getBasePath = useRouteRef(routeRef);
-  const basePath = getBasePath();
-
   const treeNodes = tree;
 
   function* treeWalker(): ReturnType<TreeWalker<TreeNodeData, NodeMeta>> {
@@ -196,9 +197,9 @@ export const OverviewTree = ({
       treeWalker={treeWalker}
       itemSize={100}
       itemData={{
-        basePath,
         selectedResourceRef,
         compactView,
+        onSelectResource,
       }}
       height={height}
       width="100%"

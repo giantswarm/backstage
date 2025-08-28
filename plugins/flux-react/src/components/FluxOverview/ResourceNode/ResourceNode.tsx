@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   GitRepository,
   HelmRelease,
@@ -8,11 +9,7 @@ import {
 import { Box, Button, makeStyles } from '@material-ui/core';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import classNames from 'classnames';
-import {
-  ResourceInfo,
-  ResourceWrapper,
-  useResourceStatus,
-} from '../ResourceCard';
+import { ResourceInfo, ResourceWrapper } from '../ResourceCard';
 
 const useStyles = makeStyles(theme => ({
   node: {
@@ -37,6 +34,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 type ResourceNodeProps = {
+  cluster: string;
   name: string;
   namespace?: string;
   kind: string;
@@ -55,6 +53,7 @@ type ResourceNodeProps = {
 };
 
 export const ResourceNode = ({
+  cluster,
   name,
   namespace,
   kind,
@@ -68,7 +67,18 @@ export const ResourceNode = ({
 }: ResourceNodeProps) => {
   const classes = useStyles();
   const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
-    useResourceStatus(resource);
+    useMemo(() => {
+      if (!resource) {
+        return {
+          readyStatus: 'Unknown' as const,
+          isDependencyNotReady: false,
+          isReconciling: false,
+          isSuspended: false,
+        };
+      }
+
+      return resource.getOrCalculateFluxStatus();
+    }, [resource]);
 
   const inactive = isSuspended || isDependencyNotReady;
 
@@ -104,6 +114,7 @@ export const ResourceNode = ({
           width="100%"
         >
           <ResourceInfo
+            cluster={cluster}
             name={name}
             kind={kind}
             namespace={namespace}

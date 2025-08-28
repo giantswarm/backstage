@@ -14,6 +14,7 @@ const useStyles = makeStyles<Theme, { variant: ColorVariant }>(theme => {
       padding: `${theme.spacing(0.5)}px ${theme.spacing(1)}px`,
       backgroundColor: props => colors[props.variant].backgroundColor,
       borderRadius: theme.shape.borderRadius,
+      whiteSpace: 'nowrap',
     },
   };
 });

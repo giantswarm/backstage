@@ -1,5 +1,6 @@
 import { Box, makeStyles } from '@material-ui/core';
 import { Status } from '../../../UI/Status';
+import { FluxResourceStatus } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 const useStyles = makeStyles(() => ({
   root: {
@@ -7,19 +8,12 @@ const useStyles = makeStyles(() => ({
   },
 }));
 
-type ResourceStatusProps = {
-  readyStatus: 'True' | 'False' | 'Unknown';
-  isDependencyNotReady: boolean;
-  isReconciling: boolean;
-  isSuspended: boolean;
-};
-
 export const ResourceStatus = ({
   readyStatus,
   isDependencyNotReady,
   isReconciling,
   isSuspended,
-}: ResourceStatusProps) => {
+}: FluxResourceStatus) => {
   const classes = useStyles();
 
   let elText = 'Unknown';

@@ -1,6 +1,6 @@
-import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { FluxObject, FluxObjectInterface } from './FluxObject';
 
-export interface HelmReleaseInterface extends KubeObjectInterface {
+export interface HelmReleaseInterface extends FluxObjectInterface {
   spec?: {
     chart: {
       metadata?: {
@@ -64,7 +64,7 @@ export interface HelmReleaseInterface extends KubeObjectInterface {
   };
 }
 
-export class HelmRelease extends KubeObject<HelmReleaseInterface> {
+export class HelmRelease extends FluxObject<HelmReleaseInterface> {
   static apiVersion = 'v2beta1';
   static group = 'helm.toolkit.fluxcd.io';
   static kind = 'HelmRelease' as const;
@@ -78,10 +78,6 @@ export class HelmRelease extends KubeObject<HelmReleaseInterface> {
     return this.jsonData.spec?.kubeConfig;
   }
 
-  getStatusConditions() {
-    return this.jsonData.status?.conditions;
-  }
-
   getLastAppliedRevision() {
     return this.jsonData.status?.lastAppliedRevision;
   }
@@ -92,27 +88,5 @@ export class HelmRelease extends KubeObject<HelmReleaseInterface> {
 
   getChartRef() {
     return this.jsonData.spec?.chartRef;
-  }
-
-  findReadyCondition() {
-    const conditions = this.getStatusConditions();
-    if (!conditions) {
-      return undefined;
-    }
-
-    return conditions.find(c => c.type === 'Ready');
-  }
-
-  isReconciling() {
-    const readyCondition = this.findReadyCondition();
-
-    return (
-      readyCondition?.status === 'Unknown' &&
-      readyCondition?.reason === 'Progressing'
-    );
-  }
-
-  isSuspended() {
-    return Boolean(this.jsonData.spec?.suspend);
   }
 }

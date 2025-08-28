@@ -1,8 +1,11 @@
 import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
+import {
+  MultiplePicker,
+  MultiplePickerOption,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { ProviderFilter } from '../filters';
-import { MultiplePicker, MultiplePickerOption } from '../../../../UI';
 import { formatClusterProvider } from '../../../utils';
 import { useInstallations } from '../../../../hooks';
 

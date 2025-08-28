@@ -1,5 +1,5 @@
+import { FacetFilter } from '@giantswarm/backstage-plugin-ui-react';
 import { ClusterTypes } from '../../../clusters/utils';
-import { FacetFilter } from '../../../hooks';
 import { DeploymentData } from '../../DeploymentsDataProvider';
 import { APP_VALUE, HELM_RELEASE_VALUE } from './KindPicker/KindPicker';
 import {

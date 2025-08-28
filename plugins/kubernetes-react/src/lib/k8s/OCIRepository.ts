@@ -1,6 +1,6 @@
-import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { FluxObject, FluxObjectInterface } from './FluxObject';
 
-export interface OCIRepositoryInterface extends KubeObjectInterface {
+export interface OCIRepositoryInterface extends FluxObjectInterface {
   spec?: {
     ref?: {
       digest?: string;
@@ -26,15 +26,11 @@ export interface OCIRepositoryInterface extends KubeObjectInterface {
   };
 }
 
-export class OCIRepository extends KubeObject<OCIRepositoryInterface> {
+export class OCIRepository extends FluxObject<OCIRepositoryInterface> {
   static apiVersion = 'v1';
   static group = 'source.toolkit.fluxcd.io';
   static kind = 'OCIRepository' as const;
   static plural = 'ocirepositories';
-
-  getStatusConditions() {
-    return this.jsonData.status?.conditions;
-  }
 
   getURL() {
     return this.jsonData.spec?.url;
@@ -45,27 +41,5 @@ export class OCIRepository extends KubeObject<OCIRepositoryInterface> {
   }
   getRevision() {
     return this.jsonData.status?.artifact?.revision;
-  }
-
-  findReadyCondition() {
-    const conditions = this.getStatusConditions();
-    if (!conditions) {
-      return undefined;
-    }
-
-    return conditions.find(c => c.type === 'Ready');
-  }
-
-  isReconciling() {
-    const readyCondition = this.findReadyCondition();
-
-    return (
-      readyCondition?.status === 'Unknown' &&
-      readyCondition?.reason === 'Progressing'
-    );
-  }
-
-  isSuspended() {
-    return Boolean(this.jsonData.spec?.suspend);
   }
 }

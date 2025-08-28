@@ -8,6 +8,14 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResources } from './useFluxResources';
+import {
+  KustomizationTreeBuilder,
+  KustomizationTreeNode,
+} from '../FluxOverview/utils/KustomizationTreeBuilder/KustomizationTreeBuilder';
+import {
+  SelectedResourceRef,
+  useSelectedResource,
+} from '../FluxOverview/useSelectedResource';
 
 export type ResourceType = 'all' | 'flux';
 
@@ -22,6 +30,11 @@ export type FluxOverviewData = {
   setActiveCluster: (cluster: string | null) => void;
   resourceType: ResourceType;
   setResourceType: (resourceType: ResourceType) => void;
+  treeBuilder?: KustomizationTreeBuilder;
+  tree?: KustomizationTreeNode[];
+  selectedResourceRef: SelectedResourceRef | null;
+  setSelectedResource: (resourceRef: SelectedResourceRef) => void;
+  clearSelectedResource: () => void;
 };
 
 const FluxOverviewDataContext = createContext<FluxOverviewData | undefined>(
@@ -48,6 +61,9 @@ export const FluxOverviewDataProvider = ({
   const [activeCluster, setActiveCluster] = useState<string | null>(null);
   const [resourceType, setResourceType] = useState<ResourceType>('flux');
 
+  const { selectedResourceRef, setSelectedResource, clearSelectedResource } =
+    useSelectedResource();
+
   const {
     kustomizations,
     helmReleases,
@@ -59,6 +75,29 @@ export const FluxOverviewDataProvider = ({
   } = useFluxResources(activeCluster);
 
   useShowErrors(errors);
+
+  const { treeBuilder, tree } = useMemo(() => {
+    if (isLoading || kustomizations.length === 0) {
+      return { treeBuilder: undefined, tree: undefined };
+    }
+
+    const builder = new KustomizationTreeBuilder(
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+    );
+
+    return { treeBuilder: builder, tree: builder.buildTree() };
+  }, [
+    kustomizations,
+    helmReleases,
+    gitRepositories,
+    ociRepositories,
+    helmRepositories,
+    isLoading,
+  ]);
 
   const contextValue: FluxOverviewData = useMemo(() => {
     return {
@@ -72,6 +111,11 @@ export const FluxOverviewDataProvider = ({
       setActiveCluster,
       resourceType,
       setResourceType,
+      treeBuilder,
+      tree,
+      selectedResourceRef,
+      setSelectedResource,
+      clearSelectedResource,
     };
   }, [
     kustomizations,
@@ -82,6 +126,11 @@ export const FluxOverviewDataProvider = ({
     isLoading,
     activeCluster,
     resourceType,
+    treeBuilder,
+    tree,
+    selectedResourceRef,
+    setSelectedResource,
+    clearSelectedResource,
   ]);
 
   return (
