@@ -9,12 +9,8 @@ export const ClusterPicker = () => {
   const { clusters, isLoadingClusters } = useClustersInfo();
   const { setActiveClusters } = useFluxResourcesData();
 
-  if (clusters.length <= 1) {
-    return null;
-  }
-
   return (
-    <Box pb={1} pt={1}>
+    <Box py={clusters.length > 1 ? 1 : 0}>
       <MultipleClustersSelector
         clusters={clusters}
         disabled={isLoadingClusters}

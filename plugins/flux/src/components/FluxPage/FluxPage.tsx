@@ -1,5 +1,5 @@
 import { useOutlet } from 'react-router-dom';
-import { DefaultFluxPage } from './DefaultFluxPage';
+import { DefaultFluxPage } from '@giantswarm/backstage-plugin-flux-react';
 
 export function FluxPage() {
   const outlet = useOutlet();
