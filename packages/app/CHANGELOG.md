@@ -1,5 +1,13 @@
 # app
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [9e6fe22]
+  - @giantswarm/backstage-plugin-flux@0.4.0
+  - @giantswarm/backstage-plugin-gs@0.41.0
+
 ## 0.19.0
 
 ### Minor Changes

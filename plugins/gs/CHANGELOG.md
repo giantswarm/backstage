@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.41.0
+
+### Minor Changes
+
+- 9e6fe22: Add table view for Flux resources.
+
+### Patch Changes
+
+- Updated dependencies [9e6fe22]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.4.0
+  - @giantswarm/backstage-plugin-flux-react@0.4.0
+  - @giantswarm/backstage-plugin-ui-react@0.4.0
+  - @giantswarm/backstage-plugin-flux@0.4.0
+
 ## 0.40.3
 
 ### Patch Changes
