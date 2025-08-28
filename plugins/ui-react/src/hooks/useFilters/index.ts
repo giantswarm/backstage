@@ -1,1 +1,1 @@
-export { useFilters, type FiltersData } from './useFilters';
+export { useFilters, type FiltersData, type FacetFilter } from './useFilters';
