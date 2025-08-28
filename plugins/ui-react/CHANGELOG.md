@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.4.0
+
+### Minor Changes
+
+- 9e6fe22: Add table view for Flux resources.
+
 ## 0.3.0
 
 ### Minor Changes
