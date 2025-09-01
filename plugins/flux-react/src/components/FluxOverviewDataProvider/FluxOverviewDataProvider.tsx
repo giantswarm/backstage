@@ -65,11 +65,13 @@ export const FluxOverviewDataProvider = ({
     useSelectedResource();
 
   const {
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
+    resources: {
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+    },
     isLoading,
     errors,
   } = useFluxResources(activeCluster);

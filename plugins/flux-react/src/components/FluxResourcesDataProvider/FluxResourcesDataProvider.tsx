@@ -76,11 +76,13 @@ export const FluxResourcesDataProvider = ({
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   const {
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
+    resources: {
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+    },
     isLoading,
     errors,
   } = useFluxResources(activeClusters);

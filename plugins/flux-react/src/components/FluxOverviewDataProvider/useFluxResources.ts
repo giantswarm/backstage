@@ -142,11 +142,13 @@ export function useFluxResources(clusters: string | string[] | null) {
 
   return useMemo(() => {
     return {
-      kustomizations,
-      helmReleases,
-      gitRepositories,
-      ociRepositories,
-      helmRepositories,
+      resources: {
+        kustomizations,
+        helmReleases,
+        gitRepositories,
+        ociRepositories,
+        helmRepositories,
+      },
       isLoading,
       errors,
     };
