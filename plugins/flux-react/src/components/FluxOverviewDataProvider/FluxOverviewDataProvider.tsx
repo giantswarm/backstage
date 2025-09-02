@@ -7,7 +7,7 @@ import {
   HelmRepository,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useFluxResources } from './useFluxResources';
+import { useFluxResources } from '../../hooks/useFluxResources';
 import {
   KustomizationTreeBuilder,
   KustomizationTreeNode,

@@ -1,5 +1,5 @@
 import { Box, Typography } from '@material-ui/core';
-import { useFluxResources } from '../../FluxOverviewDataProvider/useFluxResources';
+import { useFluxResources } from '../../../hooks/useFluxResources';
 import { ResourceStatusRow } from './ResourceStatusRow';
 import { makeStyles } from '@material-ui/core/styles';
 import { ExternalRouteRef, useRouteRef } from '@backstage/core-plugin-api';

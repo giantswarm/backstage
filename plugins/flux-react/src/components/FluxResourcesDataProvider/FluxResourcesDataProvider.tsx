@@ -7,7 +7,7 @@ import {
   OCIRepository,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useFluxResources } from '../FluxOverviewDataProvider/useFluxResources';
+import { useFluxResources } from '../../hooks/useFluxResources';
 import { FluxResourceData, collectResourceData } from './utils';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
 import {
