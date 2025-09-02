@@ -3,25 +3,42 @@ import { InfoCard, Link } from '@backstage/core-components';
 import { Box, Typography } from '@material-ui/core';
 import { ResourceStatus } from './ResourceStatus';
 import { KubernetesQueryClientProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ExternalRouteRef, useRouteRef } from '@backstage/core-plugin-api';
 
 type FluxStatusCardProps = {
   cluster: string;
+  fluxOverviewRouteRef: ExternalRouteRef;
+  fluxResourcesRouteRef: ExternalRouteRef;
 };
 
-export const FluxStatusCard = ({ cluster }: FluxStatusCardProps) => {
+export const FluxStatusCard = ({
+  cluster,
+  fluxOverviewRouteRef,
+  fluxResourcesRouteRef,
+}: FluxStatusCardProps) => {
+  const fluxOverviewRoute = useRouteRef(fluxOverviewRouteRef);
+  const fluxOverviewUrl = fluxOverviewRoute
+    ? `${fluxOverviewRoute()}?cluster=${cluster}`
+    : null;
+
   return (
     <KubernetesQueryClientProvider>
       <InfoCard
         title="Flux status"
         action={
-          <Box mt={1} mr={1} pt={1}>
-            <Link component={RouterLink} to={`/flux?cluster=${cluster}`}>
-              <Typography variant="body1">Flux overview</Typography>
-            </Link>
-          </Box>
+          fluxOverviewUrl ? (
+            <Box mt={1} mr={1} pt={1}>
+              <Link component={RouterLink} to={fluxOverviewUrl}>
+                <Typography variant="body1">Flux overview</Typography>
+              </Link>
+            </Box>
+          ) : null
         }
       >
-        <ResourceStatus cluster={cluster} />
+        <ResourceStatus
+          cluster={cluster}
+          fluxResourcesRouteRef={fluxResourcesRouteRef}
+        />
       </InfoCard>
     </KubernetesQueryClientProvider>
   );

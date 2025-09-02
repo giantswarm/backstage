@@ -2,6 +2,7 @@ import { Box, Typography } from '@material-ui/core';
 import { useFluxResources } from '../../FluxOverviewDataProvider/useFluxResources';
 import { ResourceStatusRow } from './ResourceStatusRow';
 import { makeStyles } from '@material-ui/core/styles';
+import { ExternalRouteRef, useRouteRef } from '@backstage/core-plugin-api';
 
 const useStyles = makeStyles(() => ({
   title: {
@@ -11,14 +12,21 @@ const useStyles = makeStyles(() => ({
 
 type ResourceStatusProps = {
   cluster: string;
+  fluxResourcesRouteRef: ExternalRouteRef;
 };
 
-export const ResourceStatus = ({ cluster }: ResourceStatusProps) => {
+export const ResourceStatus = ({
+  cluster,
+  fluxResourcesRouteRef,
+}: ResourceStatusProps) => {
   const classes = useStyles();
 
   const { resources: fluxResources } = useFluxResources(cluster);
 
-  const basePath = `/flux/list?clusters=${cluster}`;
+  const fluxResourcesRoute = useRouteRef(fluxResourcesRouteRef);
+  const basePath = fluxResourcesRoute
+    ? `${fluxResourcesRoute()}?clusters=${cluster}`
+    : null;
 
   return (
     <Box>

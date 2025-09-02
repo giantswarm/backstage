@@ -2,8 +2,12 @@ import {
   getClusterName,
   isManagementCluster,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { FluxStatusCard } from '@giantswarm/backstage-plugin-flux-react';
+import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
+import {
+  fluxOverviewExternalRouteRef,
+  fluxResourcesExternalRouteRef,
+} from '../../../../../routes';
 
 export const ClusterFluxStatusCard = () => {
   const { cluster, installationName } = useCurrentCluster();
@@ -12,5 +16,11 @@ export const ClusterFluxStatusCard = () => {
     return null;
   }
 
-  return <FluxStatusCard cluster={getClusterName(cluster)} />;
+  return (
+    <FluxStatusCard
+      fluxOverviewRouteRef={fluxOverviewExternalRouteRef}
+      fluxResourcesRouteRef={fluxResourcesExternalRouteRef}
+      cluster={getClusterName(cluster)}
+    />
+  );
 };

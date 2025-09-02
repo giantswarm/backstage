@@ -12,6 +12,8 @@ import {
   deploymentsRouteRef,
   entityDeploymentsRouteRef,
   entityKratixResourcesRouteRef,
+  fluxOverviewExternalRouteRef,
+  fluxResourcesExternalRouteRef,
   installationsRouteRef,
   rootRouteRef,
 } from './routes';
@@ -91,6 +93,10 @@ export const gsPlugin = createPlugin({
     deploymentsPage: deploymentsRouteRef,
     entityContent: entityDeploymentsRouteRef,
     entityKratixResourcesContent: entityKratixResourcesRouteRef,
+  },
+  externalRoutes: {
+    fluxOverview: fluxOverviewExternalRouteRef,
+    fluxResources: fluxResourcesExternalRouteRef,
   },
   featureFlags: [
     {

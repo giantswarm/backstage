@@ -57,7 +57,7 @@ const useStyles = makeStyles(theme => {
 
 type ResourceStatusRowProps = {
   resources: FluxObject[];
-  basePath: string;
+  basePath: string | null;
 };
 
 export const ResourceStatusRow = ({
@@ -81,7 +81,7 @@ export const ResourceStatusRow = ({
     return { ready, inactive, failed, unknown };
   }, [resources]);
 
-  const path = `${basePath}&filters%5Bkind%5D=${kind}`;
+  const path = basePath ? `${basePath}&filters%5Bkind%5D=${kind}` : null;
 
   return (
     <Box display="flex" alignItems="baseline" mt={1}>
@@ -95,7 +95,7 @@ export const ResourceStatusRow = ({
             variant="outlined"
             size="small"
             className={classNames(classes.button)}
-            href={`${path}&filters%5Bstatus%5D=ready`}
+            href={path ? `${path}&filters%5Bstatus%5D=ready` : undefined}
           >
             {stats.ready} Ready
           </Button>
