@@ -1,5 +1,17 @@
 # app
 
+## 0.20.0
+
+### Minor Changes
+
+- f206288: Added Flux status card.
+
+### Patch Changes
+
+- Updated dependencies [f206288]
+  - @giantswarm/backstage-plugin-flux@0.5.0
+  - @giantswarm/backstage-plugin-gs@0.42.0
+
 ## 0.19.1
 
 ### Patch Changes
