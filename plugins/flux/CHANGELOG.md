@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-flux
 
+## 0.5.0
+
+### Minor Changes
+
+- f206288: Added Flux status card.
+
+### Patch Changes
+
+- Updated dependencies [f206288]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.5.0
+  - @giantswarm/backstage-plugin-flux-react@0.5.0
+  - @giantswarm/backstage-plugin-ui-react@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

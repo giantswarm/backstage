@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.5.0
+
+### Minor Changes
+
+- f206288: Added Flux status card.
+
 ## 0.4.0
 
 ### Minor Changes
