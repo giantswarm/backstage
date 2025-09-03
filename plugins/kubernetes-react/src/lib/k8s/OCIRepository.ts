@@ -27,7 +27,7 @@ export interface OCIRepositoryInterface extends FluxObjectInterface {
 }
 
 export class OCIRepository extends FluxObject<OCIRepositoryInterface> {
-  static apiVersion = 'v1';
+  static apiVersion = 'v1beta2';
   static group = 'source.toolkit.fluxcd.io';
   static kind = 'OCIRepository' as const;
   static plural = 'ocirepositories';
