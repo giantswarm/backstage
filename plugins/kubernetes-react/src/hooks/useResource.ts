@@ -2,11 +2,12 @@ import { useMemo } from 'react';
 import { KubeObject, KubeObjectInterface } from '../lib/k8s/KubeObject';
 import { QueryOptions } from './types';
 import { useGetResource } from './useGetResource';
+import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 
 export function useResource<R extends KubeObject<any>>(
   cluster: string,
   ResourceClass: (new (json: any, cluster: string) => R) & {
-    getGVK(): { apiVersion: string; group: string; plural: string };
+    getGVK(): CustomResourceMatcher;
   },
   options: {
     name: string;

@@ -15,6 +15,7 @@ export class KubeObject<T extends KubeObjectInterface = any> {
   static readonly apiVersion: string;
   static readonly group: string;
   static readonly plural: string;
+  static readonly isCore: boolean = false;
 
   constructor(json: T, cluster: string) {
     this.jsonData = json;
@@ -56,6 +57,7 @@ export class KubeObject<T extends KubeObjectInterface = any> {
       apiVersion: this.apiVersion,
       group: this.group,
       plural: this.plural,
+      isCore: this.isCore,
     };
   }
 }

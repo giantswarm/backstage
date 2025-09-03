@@ -1,25 +1,40 @@
 import {
   Deployment,
-  useNamespaces,
+  Namespace,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-export function useFluxDeployments(clusters: string | string[] | null) {
+function useFluxNamespaces(clusters: string | string[] | null) {
   const clustersArray = [clusters].flat().filter(Boolean) as string[];
-
-  const { namespaces } = useNamespaces(
-    clustersArray,
-    {
-      labelSelector: {
-        matchingLabels: {
-          'app.kubernetes.io/part-of': 'flux',
+  const clustersOptions = Object.fromEntries(
+    clustersArray.map(cluster => [
+      cluster,
+      {
+        labelSelector: {
+          matchingLabels: {
+            'app.kubernetes.io/part-of': 'flux',
+          },
         },
       },
-    },
+    ]),
+  );
+
+  const { resources: namespaces } = useResources(
+    clustersArray,
+    Namespace,
+    clustersOptions,
     {
       enabled: clustersArray.length > 0,
     },
   );
+
+  return { namespaces };
+}
+
+export function useFluxDeployments(clusters: string | string[] | null) {
+  const clustersArray = [clusters].flat().filter(Boolean) as string[];
+
+  const { namespaces } = useFluxNamespaces(clusters);
 
   const clustersOptions = Object.fromEntries(
     clustersArray.map(cluster => [

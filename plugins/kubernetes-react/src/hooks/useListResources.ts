@@ -18,12 +18,9 @@ export function useListResources<T>(
   return useQueries({
     queries: clusters.map(cluster => {
       const gvk = clustersGVKs[cluster];
-      const clusterOptions = options[cluster] ?? {};
-      const path = getK8sListPath(
-        gvk,
-        clusterOptions.namespace,
-        clusterOptions.labelSelector,
-      );
+      const clusterOptions = options[cluster];
+      const path = getK8sListPath(gvk, clusterOptions);
+
       return {
         queryKey: [cluster, 'list', gvk.plural],
         queryFn: async () => {
