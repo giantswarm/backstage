@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.84.0] - 2025-09-03
 
+### Added
+
+- Added Flux status widget.
+
 See [./docs/releases/v0.84.0-changelog.md](./docs/releases/v0.84.0-changelog.md) for more information.
 
 ## [0.83.0] - 2025-08-28
