@@ -15,6 +15,7 @@ export class KubeObject<T extends KubeObjectInterface = any> {
   static readonly apiVersion: string;
   static readonly group: string;
   static readonly plural: string;
+  static readonly isCore: boolean = false;
 
   constructor(json: T, cluster: string) {
     this.jsonData = json;
@@ -39,11 +40,24 @@ export class KubeObject<T extends KubeObjectInterface = any> {
     return this.jsonData.metadata.namespace;
   }
 
+  getLabels() {
+    return this.jsonData.metadata.labels;
+  }
+
+  getAnnotations() {
+    return this.jsonData.metadata.annotations;
+  }
+
+  findLabel(label: string) {
+    return this.jsonData.metadata.labels?.[label];
+  }
+
   static getGVK() {
     return {
       apiVersion: this.apiVersion,
       group: this.group,
       plural: this.plural,
+      isCore: this.isCore,
     };
   }
 }

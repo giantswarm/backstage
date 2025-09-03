@@ -7,7 +7,7 @@ import {
   HelmRepository,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useFluxResources } from './useFluxResources';
+import { useFluxResources } from '../../hooks/useFluxResources';
 import {
   KustomizationTreeBuilder,
   KustomizationTreeNode,
@@ -65,11 +65,13 @@ export const FluxOverviewDataProvider = ({
     useSelectedResource();
 
   const {
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
+    resources: {
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+    },
     isLoading,
     errors,
   } = useFluxResources(activeCluster);

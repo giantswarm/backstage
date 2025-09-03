@@ -56,11 +56,12 @@ import {
   GSDeploymentsPage,
   GSContext,
   GSCustomFluxPage,
+  gsPlugin,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
-import { FluxPage } from '@giantswarm/backstage-plugin-flux';
+import { FluxPage, fluxPlugin } from '@giantswarm/backstage-plugin-flux';
 
 const app = createApp({
   apis,
@@ -86,6 +87,10 @@ const app = createApp({
     });
     bind(orgPlugin.externalRoutes, {
       catalogIndex: catalogPlugin.routes.catalogIndex,
+    });
+    bind(gsPlugin.externalRoutes, {
+      fluxOverview: fluxPlugin.routes.root,
+      fluxResources: fluxPlugin.routes.resources,
     });
   },
   featureFlags: [

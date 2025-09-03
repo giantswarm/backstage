@@ -1,3 +1,5 @@
+export { Deployment } from './Deployment';
+export { Namespace } from './Namespace';
 export { HelmRelease } from './HelmRelease';
 export { HelmRepository } from './HelmRepository';
 export { GitRepository } from './GitRepository';

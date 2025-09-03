@@ -7,7 +7,7 @@ import {
   OCIRepository,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useFluxResources } from '../FluxOverviewDataProvider/useFluxResources';
+import { useFluxResources } from '../../hooks/useFluxResources';
 import { FluxResourceData, collectResourceData } from './utils';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -76,11 +76,13 @@ export const FluxResourcesDataProvider = ({
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   const {
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
+    resources: {
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+    },
     isLoading,
     errors,
   } = useFluxResources(activeClusters);

@@ -1,4 +1,8 @@
-import { createRouteRef, createSubRouteRef } from '@backstage/core-plugin-api';
+import {
+  createExternalRouteRef,
+  createRouteRef,
+  createSubRouteRef,
+} from '@backstage/core-plugin-api';
 
 export const rootRouteRef = createRouteRef({
   id: 'gs',
@@ -34,4 +38,12 @@ export const entityDeploymentsRouteRef = createRouteRef({
 
 export const entityKratixResourcesRouteRef = createRouteRef({
   id: 'gs-entity-kratix-resources',
+});
+
+export const fluxOverviewExternalRouteRef = createExternalRouteRef({
+  id: 'flux-overview',
+});
+
+export const fluxResourcesExternalRouteRef = createExternalRouteRef({
+  id: 'flux-resources',
 });
