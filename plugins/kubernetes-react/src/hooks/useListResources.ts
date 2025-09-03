@@ -5,14 +5,12 @@ import { mapQueriesToClusters } from './utils/queries';
 import { getK8sListPath } from './utils/k8sPath';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
-import { QueryOptions } from './types';
+import { Options, QueryOptions } from './types';
 
 export function useListResources<T>(
   clusters: string[],
   clustersGVKs: { [cluster: string]: CustomResourceMatcher },
-  options: {
-    namespace?: string;
-  },
+  options: { [cluster: string]: Options } = {},
   queryOptions: QueryOptions<T[]> = {},
 ) {
   const kubernetesApi = useApi(kubernetesApiRef);
@@ -20,7 +18,12 @@ export function useListResources<T>(
   return useQueries({
     queries: clusters.map(cluster => {
       const gvk = clustersGVKs[cluster];
-      const path = getK8sListPath(gvk, options.namespace);
+      const clusterOptions = options[cluster] ?? {};
+      const path = getK8sListPath(
+        gvk,
+        clusterOptions.namespace,
+        clusterOptions.labelSelector,
+      );
       return {
         queryKey: [cluster, 'list', gvk.plural],
         queryFn: async () => {

@@ -4,20 +4,28 @@ import { colord } from 'colord';
 import { FluxObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useMemo } from 'react';
 import { getAggregatedStatus } from '../../../utils/getAggregatedStatus';
+import { getColor } from '../../UI/colors/palette';
 
 const HOVER_DARKEN_AMOUNT = 0.05;
+const HOVER_LIGHTEN_AMOUNT = 0.05;
+const DARKEN_AMOUNT = 0.1;
+const LIGHTEN_AMOUNT = 0.1;
 const useStyles = makeStyles(theme => {
   const inactiveColor = theme.palette.type === 'light' ? '#e0e0e0' : '#3c3c3c';
   const inactiveColorHover =
     theme.palette.type === 'light'
       ? colord(inactiveColor).darken(HOVER_DARKEN_AMOUNT).toHex()
-      : colord(inactiveColor).lighten(HOVER_DARKEN_AMOUNT).toHex();
+      : colord(inactiveColor).lighten(HOVER_LIGHTEN_AMOUNT).toHex();
 
-  const failedColor = theme.palette.type === 'light' ? '#ffe6e6' : '#693636';
+  const failedColor = getColor('red', theme.palette.type);
   const failedColorHover =
     theme.palette.type === 'light'
       ? colord(failedColor).darken(HOVER_DARKEN_AMOUNT).toHex()
-      : colord(failedColor).lighten(HOVER_DARKEN_AMOUNT).toHex();
+      : colord(failedColor).lighten(HOVER_LIGHTEN_AMOUNT).toHex();
+  const failedColorBorder =
+    theme.palette.type === 'light'
+      ? colord(failedColor).darken(DARKEN_AMOUNT).toHex()
+      : colord(failedColor).lighten(LIGHTEN_AMOUNT).toHex();
 
   return {
     buttons: {
@@ -47,6 +55,7 @@ const useStyles = makeStyles(theme => {
     },
     buttonFailed: {
       backgroundColor: failedColor,
+      borderColor: failedColorBorder,
 
       '&:hover': {
         backgroundColor: failedColorHover,

@@ -39,6 +39,18 @@ export class KubeObject<T extends KubeObjectInterface = any> {
     return this.jsonData.metadata.namespace;
   }
 
+  getLabels() {
+    return this.jsonData.metadata.labels;
+  }
+
+  getAnnotations() {
+    return this.jsonData.metadata.annotations;
+  }
+
+  findLabel(label: string) {
+    return this.jsonData.metadata.labels?.[label];
+  }
+
   static getGVK() {
     return {
       apiVersion: this.apiVersion,

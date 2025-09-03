@@ -1,9 +1,10 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { InfoCard, Link } from '@backstage/core-components';
 import { Box, Typography } from '@material-ui/core';
-import { ResourceStatus } from './ResourceStatus';
 import { KubernetesQueryClientProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ExternalRouteRef, useRouteRef } from '@backstage/core-plugin-api';
+import { DeploymentStatus } from './DeploymentStatus';
+import { ResourceStatus } from './ResourceStatus';
 
 type FluxStatusCardProps = {
   cluster: string;
@@ -35,6 +36,7 @@ export const FluxStatusCard = ({
           ) : null
         }
       >
+        <DeploymentStatus cluster={cluster} />
         <ResourceStatus
           cluster={cluster}
           fluxResourcesRouteRef={fluxResourcesRouteRef}

@@ -44,3 +44,36 @@ export function getK8sCreatePath(gvk: CustomResourceMatcher) {
 
   return url.pathname;
 }
+
+export function getK8sListNamespacesPath({
+  labelSelector,
+}: {
+  labelSelector?: k8sUrl.IK8sLabelSelector;
+}) {
+  const url = k8sUrl.create({
+    baseUrl,
+    kind: 'namespaces',
+    labelSelector,
+    isCore: true,
+  });
+
+  return `${url.pathname}${url.search}`;
+}
+
+export function getK8sListDeploymentsPath({
+  namespace,
+  labelSelector,
+}: {
+  namespace?: string;
+  labelSelector?: k8sUrl.IK8sLabelSelector;
+}) {
+  const url = k8sUrl.create({
+    baseUrl,
+    kind: 'deployments',
+    namespace,
+    labelSelector,
+    isCore: true,
+  });
+
+  return `${url.pathname}${url.search}`;
+}

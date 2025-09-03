@@ -26,46 +26,71 @@ export function useFluxResources(clusters: string | string[] | null) {
     resources: kustomizations,
     isLoading: isLoadingKustomizations,
     errors: kustomizationsErrors,
-  } = useResources(clusters!, Kustomization, {
-    refetchInterval,
-    enabled: Boolean(clusters) && kustomizationsEnabled,
-  });
+  } = useResources(
+    clusters!,
+    Kustomization,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && kustomizationsEnabled,
+    },
+  );
 
   const {
     resources: helmReleases,
     isLoading: isLoadingHelmReleases,
     errors: helmReleasesErrors,
-  } = useResources(clusters!, HelmRelease, {
-    refetchInterval,
-    enabled: Boolean(clusters) && helmReleasesEnabled,
-  });
+  } = useResources(
+    clusters!,
+    HelmRelease,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && helmReleasesEnabled,
+    },
+  );
 
   const {
     resources: gitRepositories,
     isLoading: isLoadingGitRepositories,
     errors: gitRepositoriesErrors,
-  } = useResources(clusters!, GitRepository, {
-    refetchInterval,
-    enabled: Boolean(clusters) && gitRepositoriesEnabled,
-  });
+  } = useResources(
+    clusters!,
+    GitRepository,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && gitRepositoriesEnabled,
+    },
+  );
 
   const {
     resources: ociRepositories,
     isLoading: isLoadingOciRepositories,
     errors: ociRepositoriesErrors,
-  } = useResources(clusters!, OCIRepository, {
-    refetchInterval,
-    enabled: Boolean(clusters) && ociRepositoriesEnabled,
-  });
+  } = useResources(
+    clusters!,
+    OCIRepository,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && ociRepositoriesEnabled,
+    },
+  );
 
   const {
     resources: helmRepositories,
     isLoading: isLoadingHelmRepositories,
     errors: helmRepositoriesErrors,
-  } = useResources(clusters!, HelmRepository, {
-    refetchInterval,
-    enabled: Boolean(clusters) && helmRepositoriesEnabled,
-  });
+  } = useResources(
+    clusters!,
+    HelmRepository,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && helmRepositoriesEnabled,
+    },
+  );
 
   useEffect(() => {
     if (
