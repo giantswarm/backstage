@@ -7,6 +7,9 @@ import {
   NotAvailable,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+const KUBERNETES_COMPONENT_LABEL = 'app.kubernetes.io/component';
+const KUBERNETES_VERSION_LABEL = 'app.kubernetes.io/version';
+
 type ResourceStatusProps = {
   cluster: string;
 };
@@ -15,15 +18,22 @@ export const DeploymentStatus = ({ cluster }: ResourceStatusProps) => {
   const { resources: deployments } = useFluxDeployments(cluster);
 
   const version = useMemo(() => {
-    return deployments
-      .find(
-        deployment =>
-          deployment
-            .findLabel('app.kubernetes.io/component')
-            ?.match('.+-controller$') &&
-          Boolean(deployment.findLabel('app.kubernetes.io/version')),
-      )
-      ?.findLabel('app.kubernetes.io/version');
+    const fluxController = deployments.find(deployment =>
+      deployment.findLabel(KUBERNETES_COMPONENT_LABEL)?.match('.+-controller$'),
+    );
+
+    if (!fluxController) {
+      return undefined;
+    }
+
+    const templateVersion =
+      fluxController.jsonData.spec?.template?.metadata?.labels?.[
+        KUBERNETES_VERSION_LABEL
+      ];
+
+    return (
+      fluxController.findLabel(KUBERNETES_VERSION_LABEL) ?? templateVersion
+    );
   }, [deployments]);
 
   const stats = useMemo(() => {
