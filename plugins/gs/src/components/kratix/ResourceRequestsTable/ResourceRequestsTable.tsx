@@ -8,7 +8,7 @@ import {
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { useResourceRequests } from '../../hooks';
-import { sortAndFilterOptions } from '../../utils/tableHelpers';
+import { sortAndFilterOptions } from '@giantswarm/backstage-plugin-ui-react';
 import { ResourceRequestStatus } from '../ResourceRequestStatus';
 
 function getResourceRequestDescription(resource: ResourceRequest) {

@@ -10,7 +10,7 @@ import {
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
 import { Entity } from '@backstage/catalog-model';
-import { semverCompareSort } from '../utils/tableHelpers';
+import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
 
 const noWrapStyle = {
   overflow: 'hidden',

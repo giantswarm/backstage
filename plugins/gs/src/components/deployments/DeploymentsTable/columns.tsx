@@ -2,11 +2,11 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
-import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  isTableColumnHidden,
   semverCompareSort,
   sortAndFilterOptions,
-} from '../../utils/tableHelpers';
+} from '@giantswarm/backstage-plugin-ui-react';
 import { DateComponent, NotAvailable, Version } from '../../UI';
 import { Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
