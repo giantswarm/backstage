@@ -6,14 +6,14 @@ import {
 import { useFluxResourcesData } from '../../../FluxResourcesDataProvider';
 
 export const ClusterPicker = () => {
-  const { clusters, isLoadingClusters } = useClustersInfo();
+  const { clusters, isLoading } = useClustersInfo();
   const { setActiveClusters } = useFluxResourcesData();
 
   return (
     <Box py={clusters.length > 1 ? 1 : 0}>
       <MultipleClustersSelector
         clusters={clusters}
-        disabled={isLoadingClusters}
+        disabled={isLoading}
         onActiveClustersChange={setActiveClusters}
       />
     </Box>

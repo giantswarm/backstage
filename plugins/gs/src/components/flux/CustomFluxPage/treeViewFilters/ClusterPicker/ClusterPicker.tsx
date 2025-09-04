@@ -7,7 +7,7 @@ import { useFluxOverviewData } from '@giantswarm/backstage-plugin-flux-react';
 import { useDisabledInstallations } from '../../../../hooks';
 
 export const ClusterPicker = () => {
-  const { clusters, isLoadingClusters } = useClustersInfo();
+  const { clusters, isLoading } = useClustersInfo();
   const { disabledInstallations, isLoading: isLoadingDisabledClusters } =
     useDisabledInstallations();
   const { setActiveCluster } = useFluxOverviewData();
@@ -18,7 +18,7 @@ export const ClusterPicker = () => {
         clusters={clusters}
         disabledClusters={disabledInstallations}
         isLoadingDisabledClusters={isLoadingDisabledClusters}
-        disabled={isLoadingClusters}
+        disabled={isLoading}
         onActiveClusterChange={setActiveCluster}
       />
     </Box>
