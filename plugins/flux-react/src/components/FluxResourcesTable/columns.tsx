@@ -2,7 +2,10 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { Typography, Box } from '@material-ui/core';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
-import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isTableColumnHidden,
+  sortAndFilterOptions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { FluxResourceData } from '../FluxResourcesDataProvider';
 import { ColorVariant } from '../UI/colors/makeColorVariants';
 import { Status } from '../UI/Status';
@@ -97,6 +100,7 @@ export const getInitialColumns = ({
       title: 'Name',
       field: FluxResourceColumns.name,
       highlight: true,
+      defaultSort: 'asc',
       render: row => {
         const el = (
           <Typography variant="inherit" noWrap>
@@ -154,6 +158,7 @@ export const getInitialColumns = ({
 
         return <Chip label={label} variant={variant} />;
       },
+      ...sortAndFilterOptions(row => formatStatus(row.status).label),
     },
     {
       title: 'Status Details',
@@ -171,6 +176,7 @@ export const getInitialColumns = ({
           </Box>
         );
       },
+      ...sortAndFilterOptions(row => formatStatusDetails(row.status).text),
     },
   ];
 

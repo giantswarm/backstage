@@ -1,12 +1,12 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
-import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
 import { clusterDetailsRouteRef } from '../../../routes';
 import {
+  isTableColumnHidden,
   semverCompareSort,
   sortAndFilterOptions,
-} from '../../utils/tableHelpers';
+} from '@giantswarm/backstage-plugin-ui-react';
 import { formatVersion, toSentenceCase } from '../../utils/helpers';
 import {
   Account,
@@ -78,6 +78,7 @@ export const getInitialColumns = ({
       title: 'Name',
       field: ClusterColumns.name,
       highlight: true,
+      defaultSort: 'asc',
       render: row => {
         const LinkWrapper = () => {
           const routeLink = useRouteRef(clusterDetailsRouteRef);
