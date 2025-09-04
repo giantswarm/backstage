@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.5.1
+
+### Patch Changes
+
+- 34f5aba: Fixed version in the Flux status widget.
+
 ## 0.5.0
 
 ### Minor Changes
