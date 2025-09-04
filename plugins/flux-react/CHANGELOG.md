@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.5.2
+
+### Patch Changes
+
+- 3030f54: Fixed Flux resources table sorting.
+- Updated dependencies [3030f54]
+  - @giantswarm/backstage-plugin-ui-react@0.5.1
+
 ## 0.5.1
 
 ### Patch Changes
