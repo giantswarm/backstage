@@ -51,10 +51,6 @@ githubAppCredentials:
 grafana:
   apiToken: ''
 
-# Quay plugin configuration
-quay:
-  apiToken: ''
-
 sentry:
   app:
     dsn: ''

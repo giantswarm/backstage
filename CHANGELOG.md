@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Removed
+
+- Remove Quay plugin
+
 ## [0.84.2] - 2025-09-04
 
 ### Fixed

@@ -52,7 +52,6 @@ import {
   isDashboardSelectorAvailable,
 } from '@k-phoen/backstage-plugin-grafana';
 
-import { isQuayAvailable, QuayPage } from '@janus-idp/backstage-plugin-quay';
 import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
 import {
   EntityGSDeploymentsContent,
@@ -213,10 +212,6 @@ const componentEntityPage = (
       {circleCIContent}
     </EntityLayout.Route>
 
-    <EntityLayout.Route if={isQuayAvailable} path="/quay" title="Quay">
-      <QuayPage />
-    </EntityLayout.Route>
-
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={12}>
@@ -267,10 +262,6 @@ const defaultEntityPage = (
       title="CircleCI"
     >
       {circleCIContent}
-    </EntityLayout.Route>
-
-    <EntityLayout.Route if={isQuayAvailable} path="/quay" title="Quay">
-      <QuayPage />
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/dependencies" title="Dependencies">
