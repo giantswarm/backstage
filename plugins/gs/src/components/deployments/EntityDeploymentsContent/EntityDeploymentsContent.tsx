@@ -15,11 +15,10 @@ import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { entityDeploymentsRouteRef } from '../../../routes';
 import { ErrorsProvider } from '../../Errors';
-import {
-  KubernetesQueryClientProvider,
-  useClustersInfo,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useClustersInfo } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { InstallationPicker } from './filters/InstallationPicker';
+import { QueryClientProvider } from '../../QueryClientProvider';
+import { InstallationsProvider } from '../../installations/InstallationsProvider';
 
 const DeploymentsContent = () => {
   const { entity } = useEntity();
@@ -52,17 +51,19 @@ export const EntityDeploymentsContent = () => {
   const deploymentNames = getDeploymentNamesFromEntity(entity) ?? [];
 
   return (
-    <Content>
-      <ContentHeader title={`Deployments of ${entityName}`}>
-        <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
-      </ContentHeader>
-      <KubernetesQueryClientProvider>
-        <ErrorsProvider>
-          <DeploymentsDataProvider deploymentNames={deploymentNames}>
-            <DeploymentsContent />
-          </DeploymentsDataProvider>
-        </ErrorsProvider>
-      </KubernetesQueryClientProvider>
-    </Content>
+    <QueryClientProvider>
+      <InstallationsProvider>
+        <Content>
+          <ContentHeader title={`Deployments of ${entityName}`}>
+            <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
+          </ContentHeader>
+          <ErrorsProvider>
+            <DeploymentsDataProvider deploymentNames={deploymentNames}>
+              <DeploymentsContent />
+            </DeploymentsDataProvider>
+          </ErrorsProvider>
+        </Content>
+      </InstallationsProvider>
+    </QueryClientProvider>
   );
 };

@@ -1,12 +1,13 @@
 import { ReactNode } from 'react';
 import { Content, Header, Page } from '@backstage/core-components';
-import { KubernetesQueryClientProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { deploymentsRouteRef } from '../../../routes';
 import { FiltersLayout } from '../../FiltersLayout';
 import { DefaultFilters } from './DefaultFilters';
 import { ErrorsProvider } from '../../Errors';
+import { QueryClientProvider } from '../../QueryClientProvider';
+import { InstallationsProvider } from '../../installations/InstallationsProvider';
 
 export type BaseDeploymentsPageProps = {
   filters: ReactNode;
@@ -26,16 +27,14 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
         subtitle="Instances of your applications deployed to Kubernetes clusters"
       />
       <Content>
-        <KubernetesQueryClientProvider>
-          <ErrorsProvider>
-            <DeploymentsDataProvider>
-              <FiltersLayout>
-                <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-                <FiltersLayout.Content>{content}</FiltersLayout.Content>
-              </FiltersLayout>
-            </DeploymentsDataProvider>
-          </ErrorsProvider>
-        </KubernetesQueryClientProvider>
+        <ErrorsProvider>
+          <DeploymentsDataProvider>
+            <FiltersLayout>
+              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+              <FiltersLayout.Content>{content}</FiltersLayout.Content>
+            </FiltersLayout>
+          </DeploymentsDataProvider>
+        </ErrorsProvider>
       </Content>
     </Page>
   );
@@ -50,9 +49,13 @@ export function DefaultDeploymentsPage(props: DefaultDeploymentsPageProps) {
   const { filters = <DefaultFilters /> } = props;
 
   return (
-    <BaseDeploymentsPage
-      filters={filters ?? <DefaultFilters />}
-      content={<DeploymentsTable baseRouteRef={deploymentsRouteRef} />}
-    />
+    <QueryClientProvider>
+      <InstallationsProvider>
+        <BaseDeploymentsPage
+          filters={filters ?? <DefaultFilters />}
+          content={<DeploymentsTable baseRouteRef={deploymentsRouteRef} />}
+        />
+      </InstallationsProvider>
+    </QueryClientProvider>
   );
 }

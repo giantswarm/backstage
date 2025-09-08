@@ -3,6 +3,8 @@ import { LayoutTemplate } from '@backstage/plugin-scaffolder-react';
 import { Box, Grid, Typography } from '@material-ui/core';
 import { useTemplateString } from '../../hooks';
 import { ErrorsProvider } from '../../Errors';
+import { QueryClientProvider } from '../../QueryClientProvider';
+import { InstallationsProvider } from '../../installations/InstallationsProvider';
 
 export const StepLayout: LayoutTemplate = ({
   properties,
@@ -33,15 +35,19 @@ export const StepLayout: LayoutTemplate = ({
         </Box>
       ) : null}
 
-      <ErrorsProvider>
-        <Grid container spacing={3} direction="column">
-          {properties.map(element => (
-            <Grid key={element.content.key} item xs={12}>
-              {element.content}
+      <QueryClientProvider>
+        <InstallationsProvider>
+          <ErrorsProvider>
+            <Grid container spacing={3} direction="column">
+              {properties.map(element => (
+                <Grid key={element.content.key} item xs={12}>
+                  {element.content}
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
-      </ErrorsProvider>
+          </ErrorsProvider>
+        </InstallationsProvider>
+      </QueryClientProvider>
     </Box>
   );
 };

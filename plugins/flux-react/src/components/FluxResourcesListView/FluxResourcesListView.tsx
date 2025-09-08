@@ -1,9 +1,6 @@
 import { ReactNode, useCallback } from 'react';
 import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  ErrorsProvider,
-  KubernetesQueryClientProvider,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   FluxResourcesDataProvider,
   useFluxResourcesData,
@@ -69,15 +66,13 @@ const Content = ({ filters }: { filters: ReactNode }) => {
 export const FluxResourcesListView = ({
   filters = <DefaultFilters />,
 }: {
-  filters: ReactNode;
+  filters?: ReactNode;
 }) => {
   return (
-    <KubernetesQueryClientProvider>
-      <ErrorsProvider>
-        <FluxResourcesDataProvider>
-          <Content filters={filters} />
-        </FluxResourcesDataProvider>
-      </ErrorsProvider>
-    </KubernetesQueryClientProvider>
+    <ErrorsProvider>
+      <FluxResourcesDataProvider>
+        <Content filters={filters} />
+      </FluxResourcesDataProvider>
+    </ErrorsProvider>
   );
 };

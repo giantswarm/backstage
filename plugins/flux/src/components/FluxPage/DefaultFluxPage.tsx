@@ -3,20 +3,18 @@ import {
   FluxResourcesListView,
   FluxResourcesTreeView,
 } from '@giantswarm/backstage-plugin-flux-react';
-import { CustomTreeViewFilters } from './CustomTreeViewFilters';
-import { CustomListViewFilters } from './CustomListViewFilters';
-import { QueryClientProvider } from '../../QueryClientProvider';
+import { QueryClientProvider } from '../QueryClientProvider';
 
-export function CustomFluxPage() {
+export function DefaultFluxPage() {
   return (
     <QueryClientProvider>
       <FluxPageLayout>
         <FluxPageLayout.Route path="/" title="Tree view">
-          <FluxResourcesTreeView filters={<CustomTreeViewFilters />} />
+          <FluxResourcesTreeView />
         </FluxPageLayout.Route>
 
         <FluxPageLayout.Route path="/list" title="List view">
-          <FluxResourcesListView filters={<CustomListViewFilters />} />
+          <FluxResourcesListView />
         </FluxPageLayout.Route>
       </FluxPageLayout>
     </QueryClientProvider>

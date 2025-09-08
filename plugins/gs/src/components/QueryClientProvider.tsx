@@ -1,12 +1,12 @@
 import { ReactNode, useMemo } from 'react';
-import {
-  QueryClient,
-  QueryClientConfig,
-  QueryClientProvider,
-} from '@tanstack/react-query';
-import { InstallationsProvider } from './installations/InstallationsProvider';
+import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 
-export const GSContext = ({ children }: { children: ReactNode }) => {
+const gcTime = 1000 * 60 * 60;
+const maxAge = gcTime;
+
+export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   const queryOptions: QueryClientConfig = useMemo(
     () => ({
       defaultOptions: {
@@ -30,6 +30,7 @@ export const GSContext = ({ children }: { children: ReactNode }) => {
 
             return true;
           },
+          gcTime,
         },
       },
     }),
@@ -41,9 +42,16 @@ export const GSContext = ({ children }: { children: ReactNode }) => {
     [queryOptions],
   );
 
+  const persister = createAsyncStoragePersister({
+    storage: window.localStorage,
+  });
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <InstallationsProvider>{children}</InstallationsProvider>
-    </QueryClientProvider>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{ persister, maxAge }}
+    >
+      {children}
+    </PersistQueryClientProvider>
   );
 };

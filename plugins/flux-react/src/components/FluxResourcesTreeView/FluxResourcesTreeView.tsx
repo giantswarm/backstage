@@ -4,10 +4,7 @@ import {
   useFluxOverviewData,
 } from '../FluxOverviewDataProvider';
 import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  ErrorsProvider,
-  KubernetesQueryClientProvider,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { FluxOverview } from '../FluxOverview';
 import { DefaultFilters } from './DefaultFilters';
 import { SelectedResourceDrawer } from '../FluxOverview/SelectedResourceDrawer';
@@ -72,15 +69,13 @@ const Content = ({ filters }: { filters: ReactNode }) => {
 export const FluxResourcesTreeView = ({
   filters = <DefaultFilters />,
 }: {
-  filters: ReactNode;
+  filters?: ReactNode;
 }) => {
   return (
-    <KubernetesQueryClientProvider>
-      <ErrorsProvider>
-        <FluxOverviewDataProvider>
-          <Content filters={filters} />
-        </FluxOverviewDataProvider>
-      </ErrorsProvider>
-    </KubernetesQueryClientProvider>
+    <ErrorsProvider>
+      <FluxOverviewDataProvider>
+        <Content filters={filters} />
+      </FluxOverviewDataProvider>
+    </ErrorsProvider>
   );
 };

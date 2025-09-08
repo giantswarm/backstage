@@ -6,11 +6,7 @@ import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persi
 const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
 
-export const KubernetesQueryClientProvider = ({
-  children,
-}: {
-  children: ReactNode;
-}) => {
+export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   const queryOptions: QueryClientConfig = useMemo(
     () => ({
       defaultOptions: {
