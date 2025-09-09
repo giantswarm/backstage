@@ -14,8 +14,10 @@ import {
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { entityDeploymentsRouteRef } from '../../../routes';
-import { ErrorsProvider } from '../../Errors';
-import { useClustersInfo } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ErrorsProvider,
+  useClustersInfo,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { InstallationPicker } from './filters/InstallationPicker';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { InstallationsProvider } from '../../installations/InstallationsProvider';
