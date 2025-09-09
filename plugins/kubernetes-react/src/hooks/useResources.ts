@@ -3,6 +3,7 @@ import { useListResources } from './useListResources';
 import { KubeObject, KubeObjectInterface } from '../lib/k8s/KubeObject';
 import { Options, QueryOptions } from './types';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
+import { useIsRestoring } from '@tanstack/react-query';
 
 export function useResources<R extends KubeObject<any>>(
   clusters: string | string[],
@@ -12,6 +13,7 @@ export function useResources<R extends KubeObject<any>>(
   options: Record<string, Options> = {},
   queryOptions: QueryOptions<KubeObjectInterface[]> = {},
 ) {
+  const isRestoring = useIsRestoring();
   const selectedClusters = [clusters].flat().filter(Boolean) as string[];
 
   const clustersGVKs = Object.fromEntries(
@@ -33,6 +35,7 @@ export function useResources<R extends KubeObject<any>>(
 
   return {
     ...queriesInfo,
+    isLoading: isRestoring || queriesInfo.isLoading,
     resources,
   };
 }

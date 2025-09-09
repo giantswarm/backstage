@@ -6,16 +6,8 @@ import {
   useMemo,
   useState,
 } from 'react';
-import {
-  getAppChartName,
-  getHelmReleaseChartName,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  useApps,
-  useCatalogEntitiesForDeployments,
-  useHelmReleases,
-} from '../../hooks';
+import { useCatalogEntitiesForDeployments } from '../../hooks';
 import {
   AppFilter,
   KindFilter,
@@ -27,7 +19,12 @@ import {
   VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
-import { useShowErrors } from '../../Errors/useErrors';
+import {
+  App,
+  HelmRelease,
+  useResources,
+  useShowErrors,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type DefaultDeploymentFilters = {
   app?: AppFilter;
@@ -82,17 +79,17 @@ export const DeploymentsDataProvider = ({
 
   const {
     resources: appResources,
-    errors: appErrors,
     isLoading: isLoadingApps,
+    errors: appErrors,
     retry: retryApps,
-  } = useApps(activeInstallations);
+  } = useResources(activeInstallations, App);
 
   const {
     resources: helmReleaseResources,
-    errors: helmReleaseErrors,
     isLoading: isLoadingHelmReleases,
+    errors: helmReleaseErrors,
     retry: retryHelmReleases,
-  } = useHelmReleases(activeInstallations);
+  } = useResources(activeInstallations, HelmRelease);
 
   const isLoading = isLoadingApps || isLoadingHelmReleases;
 
@@ -115,19 +112,15 @@ export const DeploymentsDataProvider = ({
 
     if (deploymentNames) {
       resources = resources.filter(resource => {
-        const chartName =
-          resource.kind === 'App'
-            ? getAppChartName(resource)
-            : getHelmReleaseChartName(resource);
+        const chartName = resource.getChartName();
 
         return chartName && deploymentNames.includes(chartName);
       });
     }
 
-    return resources.map(({ installationName, ...deployment }) => {
+    return resources.map(resource => {
       return collectDeploymentData({
-        installationName,
-        deployment,
+        deployment: resource,
         catalogEntitiesMap,
       });
     });

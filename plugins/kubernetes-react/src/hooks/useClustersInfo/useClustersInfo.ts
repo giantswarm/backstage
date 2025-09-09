@@ -1,9 +1,11 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useQuery } from '@tanstack/react-query';
+import { useIsRestoring, useQuery } from '@tanstack/react-query';
 
 export function useClustersInfo() {
+  const isRestoring = useIsRestoring();
   const kubernetesApi = useApi(kubernetesApiRef);
+
   const { data: clusters, isLoading: isLoadingClusters } = useQuery({
     queryKey: ['kubernetes-clusters'],
     queryFn: async () => {
@@ -15,6 +17,6 @@ export function useClustersInfo() {
 
   return {
     clusters: clusters ?? [],
-    isLoadingClusters,
+    isLoading: isRestoring || isLoadingClusters,
   };
 }

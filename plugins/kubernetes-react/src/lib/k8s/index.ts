@@ -1,3 +1,4 @@
+export { App } from './App';
 export { Deployment } from './Deployment';
 export { Namespace } from './Namespace';
 export { HelmRelease } from './HelmRelease';

@@ -14,7 +14,7 @@ export const InstallationPicker = ({
   onActiveInstallationsChange,
   persistToURL,
 }: InstallationPickerProps) => {
-  const { clusters, isLoadingClusters } = useClustersInfo();
+  const { clusters, isLoading } = useClustersInfo();
   const { disabledInstallations, isLoading: isLoadingDisabledInstallations } =
     useDisabledInstallations();
 
@@ -27,7 +27,7 @@ export const InstallationPicker = ({
         clusters={clusters}
         disabledClusters={disabledInstallations}
         isLoadingDisabledClusters={isLoadingDisabledInstallations}
-        disabled={isLoadingClusters}
+        disabled={isLoading}
         onActiveClustersChange={onActiveInstallationsChange}
       />
     </Box>

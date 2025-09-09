@@ -54,7 +54,6 @@ import {
   GSSecretStorePickerFieldExtension,
   gsAuthApiRef,
   GSDeploymentsPage,
-  GSContext,
   GSCustomFluxPage,
   gsPlugin,
 } from '@giantswarm/backstage-plugin-gs';
@@ -210,17 +209,15 @@ const routes = (
 
 export default app.createRoot(
   <>
-    <GSContext>
-      <TelemetryProvider>
-        <ErrorReporterProvider>
-          <AlertDisplay />
-          <OAuthRequestDialog />
-          <AppRouter>
-            <VisitListener />
-            <Root>{routes}</Root>
-          </AppRouter>
-        </ErrorReporterProvider>
-      </TelemetryProvider>
-    </GSContext>
+    <TelemetryProvider>
+      <ErrorReporterProvider>
+        <AlertDisplay />
+        <OAuthRequestDialog />
+        <AppRouter>
+          <VisitListener />
+          <Root>{routes}</Root>
+        </AppRouter>
+      </ErrorReporterProvider>
+    </TelemetryProvider>
   </>,
 );
