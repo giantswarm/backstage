@@ -1,26 +1,19 @@
-import {
-  Deployment,
-  getAppCatalogName,
-  getAppChartName,
-  getAppCurrentVersion,
-  getAppStatus,
-  getAppTargetClusterName,
-  getAppTargetClusterNamespace,
-  getAppUpdatedTimestamp,
-  getAppVersion,
-  getHelmReleaseChartName,
-  getHelmReleaseLastAppliedRevision,
-  getHelmReleaseLastAttemptedRevision,
-  getHelmReleaseSourceKind,
-  getHelmReleaseSourceName,
-  getHelmReleaseStatus,
-  getHelmReleaseTargetClusterName,
-  getHelmReleaseTargetClusterNamespace,
-  getHelmReleaseUpdatedTimestamp,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { parseEntityRef } from '@backstage/catalog-model';
-import { calculateClusterType, calculateDeploymentLabels } from '../utils';
-import { formatAppCatalogName, formatVersion } from '../../utils/helpers';
+import { formatVersion } from '../../utils/helpers';
+import {
+  App,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  findTargetClusterName,
+  findTargetClusterNamespace,
+  findTargetClusterType,
+} from '../utils/findTargetCluster';
+import { getAggregatedStatus } from '../utils/getStatus';
+import { calculateDeploymentLabels } from '../utils/calculateLabels';
+import { getUpdatedTimestamp } from '../utils/getUpdatedTimestamp';
+import { getSourceKind, getSourceName } from '../utils/getSource';
+import { getAttemptedVersion, getVersion } from '../utils/getVersion';
 
 export type DeploymentData = {
   installationName: string;
@@ -43,100 +36,38 @@ export type DeploymentData = {
   app?: string;
 };
 
-function getStatus(deploymentStatus: string) {
-  const successfulStatuses = ['reconciled', 'deployed'];
-
-  const pendingStatuses = [
-    'reconciling',
-    'pending-install',
-    'pending-upgrade',
-    'pending-rollback',
-    'uninstalling',
-  ];
-
-  if (successfulStatuses.includes(deploymentStatus)) {
-    return 'successful';
-  }
-
-  if (pendingStatuses.includes(deploymentStatus)) {
-    return 'pending';
-  }
-
-  return 'failed';
-}
-
 export function collectDeploymentData({
-  installationName,
   deployment,
   catalogEntitiesMap,
 }: {
-  installationName: string;
-  deployment: Deployment;
+  deployment: App | HelmRelease;
   catalogEntitiesMap: { [deploymentName: string]: string };
 }): DeploymentData {
-  const chartName =
-    deployment.kind === 'App'
-      ? getAppChartName(deployment)
-      : getHelmReleaseChartName(deployment);
+  const chartName = deployment.getChartName();
   const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
   const app = entityRef ? parseEntityRef(entityRef).name : undefined;
 
-  const deploymentStatus =
-    deployment.kind === 'App'
-      ? getAppStatus(deployment)
-      : getHelmReleaseStatus(deployment);
+  const version = getVersion(deployment);
+  const attemptedVersion = getAttemptedVersion(deployment);
 
-  const status = deploymentStatus ? getStatus(deploymentStatus) : undefined;
-
-  return deployment.kind === 'App'
-    ? {
-        installationName,
-        kind: 'app',
-        clusterName: getAppTargetClusterName(deployment, installationName),
-        clusterNamespace: getAppTargetClusterNamespace(
-          deployment,
-          installationName,
-        ),
-        clusterType: calculateClusterType(deployment, installationName),
-        name: deployment.metadata.name,
-        namespace: deployment.metadata.namespace,
-        version: formatVersion(getAppCurrentVersion(deployment) ?? ''),
-        attemptedVersion: formatVersion(getAppVersion(deployment) ?? ''),
-        status,
-        updated: getAppUpdatedTimestamp(deployment),
-        sourceKind: 'AppCatalog',
-        sourceName: formatAppCatalogName(getAppCatalogName(deployment) ?? ''),
-        chartName,
-        apiVersion: deployment.apiVersion,
-        labels: calculateDeploymentLabels(deployment),
-        entityRef,
-        app,
-      }
-    : {
-        installationName,
-        kind: 'helmrelease',
-        clusterName: getHelmReleaseTargetClusterName(
-          deployment,
-          installationName,
-        ),
-        clusterNamespace: getHelmReleaseTargetClusterNamespace(deployment),
-        clusterType: calculateClusterType(deployment, installationName),
-        name: deployment.metadata.name,
-        namespace: deployment.metadata.namespace,
-        version: formatVersion(
-          getHelmReleaseLastAppliedRevision(deployment) ?? '',
-        ),
-        attemptedVersion: formatVersion(
-          getHelmReleaseLastAttemptedRevision(deployment) ?? '',
-        ),
-        status,
-        updated: getHelmReleaseUpdatedTimestamp(deployment),
-        sourceKind: getHelmReleaseSourceKind(deployment),
-        sourceName: getHelmReleaseSourceName(deployment),
-        chartName,
-        apiVersion: deployment.apiVersion,
-        labels: calculateDeploymentLabels(deployment),
-        entityRef,
-        app,
-      };
+  return {
+    installationName: deployment.cluster,
+    kind: deployment.getKind().toLowerCase(),
+    clusterName: findTargetClusterName(deployment),
+    clusterNamespace: findTargetClusterNamespace(deployment),
+    clusterType: findTargetClusterType(deployment),
+    name: deployment.getName(),
+    namespace: deployment.getNamespace(),
+    version: formatVersion(version ?? ''),
+    attemptedVersion: formatVersion(attemptedVersion ?? ''),
+    status: getAggregatedStatus(deployment),
+    updated: getUpdatedTimestamp(deployment),
+    sourceKind: getSourceKind(deployment),
+    sourceName: getSourceName(deployment),
+    chartName,
+    apiVersion: deployment.getApiVersion(),
+    labels: calculateDeploymentLabels(deployment),
+    entityRef,
+    app,
+  };
 }

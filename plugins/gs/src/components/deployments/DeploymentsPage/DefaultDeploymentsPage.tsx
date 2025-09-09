@@ -5,9 +5,9 @@ import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { deploymentsRouteRef } from '../../../routes';
 import { FiltersLayout } from '../../FiltersLayout';
 import { DefaultFilters } from './DefaultFilters';
-import { ErrorsProvider } from '../../Errors';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { InstallationsProvider } from '../../installations/InstallationsProvider';
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type BaseDeploymentsPageProps = {
   filters: ReactNode;

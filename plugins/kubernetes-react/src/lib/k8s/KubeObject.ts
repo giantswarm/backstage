@@ -2,7 +2,7 @@ import { KubeMetadata } from './KubeMetadata';
 
 export interface KubeObjectInterface {
   kind: string;
-  apiVersion?: string;
+  apiVersion: string;
   metadata: KubeMetadata;
   spec?: any;
   status?: any;
@@ -20,6 +20,10 @@ export class KubeObject<T extends KubeObjectInterface = any> {
   constructor(json: T, cluster: string) {
     this.jsonData = json;
     this.cluster = cluster;
+  }
+
+  getApiVersion() {
+    return this.jsonData.apiVersion;
   }
 
   getGroup() {

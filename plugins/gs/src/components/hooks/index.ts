@@ -1,4 +1,3 @@
-export * from './useApps';
 export * from './useCatalogEntitiesForDeployments';
 export * from './useCatalogEntityForDeployment';
 export * from './useClusterDetailsTemplateData';
@@ -12,7 +11,6 @@ export * from './useDisabledInstallations';
 export * from './useFriendlyItemsConfiguration';
 export * from './useGitOpsSourceLink';
 export * from './useGrafanaDashboardLink';
-export * from './useHelmReleases';
 export * from './useInstallations';
 export * from './useK8sVersionEOLDate';
 export * from './useProviderConfigs';
