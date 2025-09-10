@@ -7,6 +7,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.85.0] - 2025-09-10
 
+In this release:
+
+- PersistQueryClientProvider is now being used instead of the standard QueryClientProvider.
+- Quay plugin has been deleted.
+- Code clean-up and refactoring.
+
 See [./docs/releases/v0.85.0-changelog.md](./docs/releases/v0.85.0-changelog.md) for more information.
 
 ### Removed
