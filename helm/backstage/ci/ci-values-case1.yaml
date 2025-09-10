@@ -36,8 +36,6 @@ githubAppCredentials:
     key
 grafana:
   apiToken: dummyToken
-quay:
-  apiToken: dummyToken
 sentry:
   app:
     dsn: summySentryDSN
