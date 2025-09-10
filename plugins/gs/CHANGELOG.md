@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.42.2
+
+### Patch Changes
+
+- 212cfcb: Code clean-up and refactoring.
+- 212cfcb: Switched from standard QueryClientProvider to PersistQueryClientProvider.
+- Updated dependencies [212cfcb]
+- Updated dependencies [212cfcb]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.5.1
+  - @giantswarm/backstage-plugin-flux-react@0.5.3
+  - @giantswarm/backstage-plugin-flux@0.5.1
+
 ## 0.42.1
 
 ### Patch Changes
