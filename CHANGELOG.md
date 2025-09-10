@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.85.0] - 2025-09-10
+
+In this release:
+
+- PersistQueryClientProvider is now being used instead of the standard QueryClientProvider.
+- Quay plugin has been deleted.
+- Code clean-up and refactoring.
+
+See [./docs/releases/v0.85.0-changelog.md](./docs/releases/v0.85.0-changelog.md) for more information.
+
 ### Removed
 
 - Remove Quay plugin
@@ -1456,7 +1466,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.84.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.85.0...HEAD
+[0.85.0]: https://github.com/giantswarm/backstage/compare/v0.84.2...v0.85.0
 [0.84.2]: https://github.com/giantswarm/backstage/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/giantswarm/backstage/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/giantswarm/backstage/compare/v0.83.0...v0.84.0

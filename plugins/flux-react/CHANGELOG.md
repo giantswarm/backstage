@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.5.3
+
+### Patch Changes
+
+- 212cfcb: Code clean-up and refactoring.
+- 212cfcb: Switched from standard QueryClientProvider to PersistQueryClientProvider.
+- Updated dependencies [212cfcb]
+- Updated dependencies [212cfcb]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.5.1
+
 ## 0.5.2
 
 ### Patch Changes

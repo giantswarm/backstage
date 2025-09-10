@@ -1,5 +1,17 @@
 # app
 
+## 0.20.1
+
+### Patch Changes
+
+- 212cfcb: Code clean-up and refactoring.
+- 212cfcb: Switched from standard QueryClientProvider to PersistQueryClientProvider.
+- 1cf23cb: Removal of the Quay plugin
+- Updated dependencies [212cfcb]
+- Updated dependencies [212cfcb]
+  - @giantswarm/backstage-plugin-flux@0.5.1
+  - @giantswarm/backstage-plugin-gs@0.42.2
+
 ## 0.20.0
 
 ### Minor Changes

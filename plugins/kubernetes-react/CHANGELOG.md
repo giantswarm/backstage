@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.5.1
+
+### Patch Changes
+
+- 212cfcb: Code clean-up and refactoring.
+- 212cfcb: Switched from standard QueryClientProvider to PersistQueryClientProvider.
+
 ## 0.5.0
 
 ### Minor Changes
