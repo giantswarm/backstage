@@ -22,16 +22,15 @@ import {
   GithubAuth,
 } from '@backstage/core-app-api';
 import { visitsApiRef, VisitsWebStorageApi } from '@backstage/plugin-home';
-import {
-  kubernetesApiRef,
-  KubernetesAuthProviders,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes-react';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import {
   gsAuthProvidersApiRef,
   GSDiscoveryApiClient,
   GSScaffolderApiClient,
   KubernetesClient,
+  KubernetesAuthProviders,
+  gsServiceApiRef,
+  kubernetesAuthProvidersApiRef,
 } from '@giantswarm/backstage-plugin-gs';
 import { scaffolderApiRef } from '@backstage/plugin-scaffolder-react';
 
@@ -128,14 +127,14 @@ export const apis: AnyApiFactory[] = [
       gsAuthProvidersApi: gsAuthProvidersApiRef,
     },
     factory: ({ microsoftAuthApi, googleAuthApi, gsAuthProvidersApi }) => {
-      const oidcProviders = {
-        ...gsAuthProvidersApi.getAuthApis(),
-      };
+      const oidcProviders = gsAuthProvidersApi.getOIDCAuthApis();
+      const pinnipedProviders = gsAuthProvidersApi.getPinnipedAuthApis();
 
       return new KubernetesAuthProviders({
         microsoftAuthApi,
         googleAuthApi,
         oidcProviders,
+        pinnipedProviders,
       });
     },
   }),
@@ -146,18 +145,19 @@ export const apis: AnyApiFactory[] = [
       discoveryApi: discoveryApiRef,
       fetchApi: fetchApiRef,
       kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+      gsServiceApi: gsServiceApiRef,
     },
     factory: ({
-      configApi,
       discoveryApi,
       fetchApi,
       kubernetesAuthProvidersApi,
+      gsServiceApi,
     }) => {
       return new KubernetesClient({
-        configApi,
         discoveryApi,
         fetchApi,
         kubernetesAuthProvidersApi,
+        gsServiceApi,
       });
     },
   }),

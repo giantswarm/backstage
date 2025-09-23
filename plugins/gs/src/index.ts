@@ -19,7 +19,10 @@ export {
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
+export { gsServiceApiRef } from './apis/service';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
+export { kubernetesAuthProvidersApiRef } from './apis/kubernetes/types';
+export { KubernetesAuthProviders } from './apis/kubernetes';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
 export { CustomFluxPage as GSCustomFluxPage } from './components/flux/CustomFluxPage';
 export { EntityInstallationDetailsCard as EntityGSInstallationDetailsCard } from './components/catalog/EntityInstallationDetailsCard';

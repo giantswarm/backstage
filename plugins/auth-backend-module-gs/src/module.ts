@@ -14,8 +14,10 @@ import {
   oidcAuthenticator,
   OidcAuthResult,
 } from '@backstage/plugin-auth-backend-module-oidc-provider';
+import { pinnipedAuthenticator } from './pinnipedAuthenticator';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
+const PINNIPED_PROVIDER_NAME_PREFIX = 'pinniped-';
 
 type IdPClaim = {
   connector_id: string;
@@ -90,8 +92,10 @@ export const authModuleGsProviders = createBackendModule({
       async init({ providersExtensionPoint, config, logger }) {
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
-        const customProviders = configuredProviders.filter(provider =>
-          provider.startsWith(OIDC_PROVIDER_NAME_PREFIX),
+        const customProviders = configuredProviders.filter(
+          provider =>
+            provider.startsWith(OIDC_PROVIDER_NAME_PREFIX) ||
+            provider.startsWith(PINNIPED_PROVIDER_NAME_PREFIX),
         );
 
         for (const providerName of customProviders) {
@@ -113,7 +117,11 @@ export const authModuleGsProviders = createBackendModule({
             providersExtensionPoint.registerProvider({
               providerId: providerName,
               factory: createOAuthProviderFactory({
-                authenticator: oidcAuthenticator,
+                authenticator: providerName.startsWith(
+                  OIDC_PROVIDER_NAME_PREFIX,
+                )
+                  ? oidcAuthenticator
+                  : pinnipedAuthenticator,
                 signInResolver: isMainAuthProvider
                   ? customSignInResolver
                   : undefined,

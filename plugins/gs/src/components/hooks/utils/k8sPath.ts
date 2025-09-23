@@ -19,6 +19,22 @@ export function getK8sListPath(
   return url.pathname;
 }
 
+export function getK8sListPathCore(
+  plural: string,
+  namespace?: string,
+  labelSelector?: k8sUrl.IK8sLabelSelector,
+) {
+  const url = k8sUrl.create({
+    baseUrl,
+    kind: plural,
+    namespace,
+    labelSelector,
+    isCore: true,
+  });
+
+  return url.pathname;
+}
+
 export function getK8sGetPath(
   gvk: CustomResourceMatcher,
   name: string,

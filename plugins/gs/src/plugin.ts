@@ -4,6 +4,7 @@ import {
   createPlugin,
   createRoutableExtension,
   discoveryApiRef,
+  fetchApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 
@@ -60,9 +61,24 @@ import {
   gsAuthApiRef,
 } from './apis/auth';
 
+import { gsServiceApiRef, GSService } from './apis/service';
+
 export const gsPlugin = createPlugin({
   id: 'gs',
   apis: [
+    createApiFactory({
+      api: gsServiceApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+      },
+      factory: ({ discoveryApi, fetchApi }) => {
+        return new GSService({
+          discoveryApi,
+          fetchApi,
+        });
+      },
+    }),
     createApiFactory({
       api: gsAuthProvidersApiRef,
       deps: {

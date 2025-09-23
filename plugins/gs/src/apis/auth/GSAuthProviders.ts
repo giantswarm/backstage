@@ -1,12 +1,12 @@
 import {
-  OAuth2,
-  OAuth2Session,
+  OAuth2CreateOptions,
   OAuthApiCreateOptions,
 } from '@backstage/core-app-api';
 import {
   ConfigApi,
   DiscoveryApi,
   OAuthRequestApi,
+  OpenIdConnectApi,
 } from '@backstage/core-plugin-api';
 import {
   AuthApi,
@@ -15,9 +15,12 @@ import {
   gsAuthProvidersApiRef,
 } from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
-import { DefaultAuthConnector } from './DefaultAuthConnector';
+import Pinniped from './pinniped/Pinniped';
+import OIDC from './oidc/OIDC';
+import { PinnipedSupervisorApi } from './pinniped/types';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
+const PINNIPED_PROVIDER_NAME_PREFIX = 'pinniped-';
 
 /**
  * A client for authenticating towards Giant Swarm Management APIs.
@@ -54,11 +57,11 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     }
 
     const installationNames = installationsConfig.keys();
-    return installationNames.map(installationName => {
+    const result = installationNames.map(installationName => {
       const installationConfig =
         installationsConfig.getConfig(installationName);
       const authProvider = installationConfig.getString('authProvider');
-      if (!authProvider || authProvider !== 'oidc') {
+      if (!authProvider) {
         throw new Error(
           `OIDC auth provider is not configured for installation "${installationName}".`,
         );
@@ -66,18 +69,17 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       const oidcTokenProvider =
         installationConfig.getOptionalString('oidcTokenProvider');
 
-      if (
-        !oidcTokenProvider ||
-        !oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)
-      ) {
+      if (!oidcTokenProvider) {
         throw new Error(
           `OIDC token provider is not configured for installation "${installationName}".`,
         );
       }
 
-      const providerDisplayName = oidcTokenProvider.split(
-        OIDC_PROVIDER_NAME_PREFIX,
-      )[1];
+      const namePrefix = oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)
+        ? OIDC_PROVIDER_NAME_PREFIX
+        : PINNIPED_PROVIDER_NAME_PREFIX;
+
+      const providerDisplayName = oidcTokenProvider.split(namePrefix)[1];
 
       return {
         providerName: oidcTokenProvider,
@@ -85,81 +87,59 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         installationName,
       };
     });
+
+    result.push({
+      providerName: 'pinniped-golem',
+      providerDisplayName: 'golem (pinniped)',
+      installationName: 'golem',
+    });
+
+    return result;
   }
 
   private createAuthApis() {
-    const entries = this.authProviders.map(
-      ({ providerName, providerDisplayName }) => {
-        const authConnector = new DefaultAuthConnector({
-          configApi: this.configApi,
-          discoveryApi: this.discoveryApi,
-          oauthRequestApi: this.oauthRequestApi,
-          environment:
-            this.configApi?.getOptionalString('auth.environment') ??
-            'development',
-          provider: {
-            id: providerName,
-            title: providerDisplayName,
-            icon: GiantSwarmIcon,
-          },
-          sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
-            const session: OAuth2Session = {
-              ...res,
-              providerInfo: {
-                idToken: res.providerInfo.idToken,
-                accessToken: res.providerInfo.accessToken,
-                scopes: OAuth2.normalizeScopes(res.providerInfo.scope),
-                expiresAt: res.providerInfo.expiresInSeconds
-                  ? new Date(
-                      Date.now() + res.providerInfo.expiresInSeconds * 1000,
-                    )
-                  : undefined,
-              },
-            };
-            if (backstageIdentity) {
-              session.backstageIdentity = {
-                token: backstageIdentity.token,
-                identity: backstageIdentity.identity,
-                expiresAt: backstageIdentity.expiresInSeconds
-                  ? new Date(
-                      Date.now() + backstageIdentity.expiresInSeconds * 1000,
-                    )
-                  : undefined,
-              };
-            }
-            return session;
-          },
-          popupOptions: {
-            size: {
-              width: 600,
-              height: 600,
-            },
-          },
-        });
+    const entries = this.authProviders.map(authProvider => {
+      const { providerName, providerDisplayName } = authProvider;
 
-        return [
-          providerName,
-          OAuth2.create({
-            authConnector,
-            defaultScopes: [
-              'openid',
-              'profile',
-              'email',
-              'groups',
-              'offline_access',
-              'federated:id',
-              'audience:server:client_id:dex-k8s-authenticator',
-            ],
-          }),
-        ];
-      },
-    );
+      const options: OAuth2CreateOptions = {
+        configApi: this.configApi,
+        discoveryApi: this.discoveryApi,
+        oauthRequestApi: this.oauthRequestApi,
+        environment:
+          this.configApi?.getOptionalString('auth.environment') ??
+          'development',
+        provider: {
+          id: providerName,
+          title: providerDisplayName,
+          icon: GiantSwarmIcon,
+        },
+        popupOptions: {
+          size: {
+            width: 600,
+            height: 600,
+          },
+        },
+      };
+
+      return [
+        providerName,
+        providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)
+          ? OIDC.create(options)
+          : Pinniped.create(options),
+      ];
+    });
 
     return Object.fromEntries(entries);
   }
 
   getProviders() {
     return this.authProviders;
+  }
+
+  getAuthProvider(authProviderName: string) {
+    return this.authProviders.find(
+      authProvider => authProvider.providerName === authProviderName,
+    );
   }
 
   getAuthApi(providerName: string) {
@@ -189,5 +169,31 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
   getAuthApis() {
     return this.authApis;
+  }
+
+  getOIDCAuthApis() {
+    const oidcAuthProviders = this.authProviders.filter(authProvider =>
+      authProvider.providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX),
+    );
+
+    return Object.fromEntries(
+      oidcAuthProviders.map(authProvider => [
+        authProvider.providerName,
+        this.getAuthApi(authProvider.providerName) as OpenIdConnectApi,
+      ]),
+    );
+  }
+
+  getPinnipedAuthApis() {
+    const pinnipedAuthProviders = this.authProviders.filter(authProvider =>
+      authProvider.providerName.startsWith(PINNIPED_PROVIDER_NAME_PREFIX),
+    );
+
+    return Object.fromEntries(
+      pinnipedAuthProviders.map(authProvider => [
+        authProvider.providerName,
+        this.getAuthApi(authProvider.providerName) as PinnipedSupervisorApi,
+      ]),
+    );
   }
 }
