@@ -1,4 +1,4 @@
-import { JsonArray, JsonObject } from '@backstage/types/index';
+import { JsonArray, JsonObject } from '@backstage/types';
 import { oidcTokenInstallation } from './schema';
 
 export function getOIDCTokenInstallation(
