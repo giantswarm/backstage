@@ -4,6 +4,7 @@ import {
   CatalogIndexPage,
   catalogPlugin,
 } from '@backstage/plugin-catalog';
+import { SignalsDisplay } from '@backstage/plugin-signals';
 import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
 import {
   ScaffolderFieldExtensions,
@@ -213,6 +214,7 @@ export default app.createRoot(
       <ErrorReporterProvider>
         <AlertDisplay />
         <OAuthRequestDialog />
+        <SignalsDisplay />
         <AppRouter>
           <VisitListener />
           <Root>{routes}</Root>
