@@ -116,9 +116,6 @@ catalog:
         - System
         - User
         - Template
-  # Experimental: Always use the search method in UrlReaderProcessor.
-  # New adopters are encouraged to enable it as this behavior will be the default in a future release.
-  useUrlReadersSearch: true
 
 grafana:
   domain: https://example.com

@@ -11,6 +11,9 @@ backend.add(import('@backstage/plugin-proxy-backend'));
 backend.add(import('@backstage/plugin-scaffolder-backend'));
 backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
 backend.add(
+  import('@backstage/plugin-scaffolder-backend-module-notifications'),
+);
+backend.add(
   import('@giantswarm/backstage-plugin-scaffolder-backend-module-gs'),
 );
 backend.add(import('@aws/aws-core-plugin-for-backstage-scaffolder-actions'));
@@ -55,5 +58,9 @@ backend.add(import('@backstage/plugin-search-backend-module-techdocs'));
 
 // kubernetes plugin
 backend.add(import('@backstage/plugin-kubernetes-backend'));
+
+// notifications and signals plugins
+backend.add(import('@backstage/plugin-notifications-backend'));
+backend.add(import('@backstage/plugin-signals-backend'));
 
 backend.start();

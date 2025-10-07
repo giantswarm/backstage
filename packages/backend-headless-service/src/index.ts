@@ -12,6 +12,9 @@ backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-gs'));
 backend.add(import('@backstage/plugin-scaffolder-backend'));
 backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
 backend.add(
+  import('@backstage/plugin-scaffolder-backend-module-notifications'),
+);
+backend.add(
   import('@giantswarm/backstage-plugin-scaffolder-backend-module-gs'),
 );
 backend.add(import('@aws/aws-core-plugin-for-backstage-scaffolder-actions'));
