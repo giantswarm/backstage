@@ -17082,6 +17082,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"caniuse-lite@npm:^1.0.30001743":
+  version: 1.0.30001749
+  resolution: "caniuse-lite@npm:1.0.30001749"
+  checksum: 10c0/f5100599361be03e93cae1f38380fdb78b477b573cb27f8aaf8ed8461ac0233ea84c7e127f441ca0a82ff23f4c37a8855b7c6a02e79d70769a786550bc1be69e
+  languageName: node
+  linkType: hard
+
 "caseless@npm:~0.12.0":
   version: 0.12.0
   resolution: "caseless@npm:0.12.0"
@@ -29697,12 +29704,14 @@ __metadata:
   linkType: hard
 
 "react-middle-ellipsis@npm:^1.2.2":
-  version: 1.2.2
-  resolution: "react-middle-ellipsis@npm:1.2.2"
+  version: 1.3.0
+  resolution: "react-middle-ellipsis@npm:1.3.0"
+  dependencies:
+    caniuse-lite: "npm:^1.0.30001743"
   peerDependencies:
-    react: ^16.8 || ^17 || ^18
-    react-dom: ^16.8 || ^17 || ^18
-  checksum: 10c0/f3f71f3cb68471af9a67e57976b5fb64992b42f54b6e332856bb17e3696ba4016561a574f3cb4727508aa603b76be7f7e206102d8922e816233ac2de4f885b55
+    react: ^16.8 || ^17 || ^18 || ^19
+    react-dom: ^16.8 || ^17 || ^18 || ^19
+  checksum: 10c0/f34234967efca2b5cd18f3192774611b854ae135105c44a1739593008ef62ba082382b8e2b07c64279ace06e0c385f45bb7864e37e2251ef02dbdceaa6b749b8
   languageName: node
   linkType: hard
 
