@@ -13952,14 +13952,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typedigital/telemetrydeck-react@npm:^0.4.0":
-  version: 0.4.1
-  resolution: "@typedigital/telemetrydeck-react@npm:0.4.1"
+"@typedigital/telemetrydeck-react@npm:^0.5.0":
+  version: 0.5.0
+  resolution: "@typedigital/telemetrydeck-react@npm:0.5.0"
   dependencies:
     "@telemetrydeck/sdk": "npm:^2.0.4"
   peerDependencies:
     react: ">= 16.8.0"
-  checksum: 10c0/486358c49803cd85222f3a8f42bab787e46f7cab8a86ab2d253eaedf86894329a16ec19345428eb981bc2cde2b5e9f4344003fceb9b5f6e89ee7ebd5ff6b3ca8
+  checksum: 10c0/cd646bacc95c9e049ce1f84a8054fb5fadf9486c6b028486fccdbe43de26f0612a18fe0672db5e40f6f7020bde1c344880c9bb1f81b6435c92b11f429170c285
   languageName: node
   linkType: hard
 
@@ -15605,7 +15605,7 @@ __metadata:
     "@testing-library/jest-dom": "npm:^6.4.2"
     "@testing-library/react": "npm:^16.0.0"
     "@testing-library/user-event": "npm:^14.5.2"
-    "@typedigital/telemetrydeck-react": "npm:^0.4.0"
+    "@typedigital/telemetrydeck-react": "npm:^0.5.0"
     "@types/crypto-js": "npm:^4"
     "@types/node": "npm:^22.0.0"
     "@types/react-dom": "npm:*"
