@@ -6294,6 +6294,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@commander-js/extra-typings@npm:^13.1.0":
+  version: 13.1.0
+  resolution: "@commander-js/extra-typings@npm:13.1.0"
+  peerDependencies:
+    commander: ~13.1.0
+  checksum: 10c0/ff799f0641f68855aa73c976912a607c25d564df34fd8e262927a80b19f6cccd882fe7ce098a0e072a497fd0020cbd19fd1e4d5cc98a461cd6623abf8ed5f4e7
+  languageName: node
+  linkType: hard
+
 "@cspotcode/source-map-support@npm:^0.8.0":
   version: 0.8.1
   resolution: "@cspotcode/source-map-support@npm:0.8.1"
@@ -17129,6 +17138,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"commander@npm:^13.1.0":
+  version: 13.1.0
+  resolution: "commander@npm:13.1.0"
+  checksum: 10c0/7b8c5544bba704fbe84b7cab2e043df8586d5c114a4c5b607f83ae5060708940ed0b5bd5838cf8ce27539cde265c1cbd59ce3c8c6b017ed3eec8943e3a415164
+  languageName: node
+  linkType: hard
+
 "commander@npm:^2.19.0, commander@npm:^2.20.0":
   version: 2.20.3
   resolution: "commander@npm:2.20.3"
@@ -17704,7 +17720,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"cross-spawn@npm:^7.0.5":
+"cross-spawn@npm:^7.0.5, cross-spawn@npm:^7.0.6":
   version: 7.0.6
   resolution: "cross-spawn@npm:7.0.6"
   dependencies:
@@ -19024,15 +19040,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"env-cmd@npm:^10.1.0":
-  version: 10.1.0
-  resolution: "env-cmd@npm:10.1.0"
+"env-cmd@npm:^11.0.0":
+  version: 11.0.0
+  resolution: "env-cmd@npm:11.0.0"
   dependencies:
-    commander: "npm:^4.0.0"
-    cross-spawn: "npm:^7.0.0"
+    "@commander-js/extra-typings": "npm:^13.1.0"
+    commander: "npm:^13.1.0"
+    cross-spawn: "npm:^7.0.6"
   bin:
     env-cmd: bin/env-cmd.js
-  checksum: 10c0/8ea5f4205bed83f39ea0ef0eb94d52a47bc815302c55779fb6c38346ca9284df1855f0847c8f5c702554f7f01e3575d171f12cffd13a1bada01961815842abe3
+  checksum: 10c0/c474573392fd37b8869dd0a2b01a571b8bddd460e7c3a0b8273a0c9831eeda9e363fe3d9bc4cd798ffc4f26762abc2982a3daace6fd8adcc56d1637c57173b76
   languageName: node
   linkType: hard
 
@@ -30407,7 +30424,7 @@ __metadata:
     "@changesets/cli": "npm:^2.27.8"
     "@playwright/test": "npm:^1.32.3"
     concurrently: "npm:^9.0.0"
-    env-cmd: "npm:^10.1.0"
+    env-cmd: "npm:^11.0.0"
     node-gyp: "npm:^11.0.0"
     patch-package: "npm:^8.0.0"
     postinstall-postinstall: "npm:^2.1.0"
