@@ -103,7 +103,7 @@ database:
     storageSize: 5Gi
 
     # -- PostgreSQL container image to use (.registry.domain will be prepended)
-    image: giantswarm/postgresql-cnpg:17.5@sha256:da48dfcf832a348aee6979dc491a35e6e5748665f96d5c7489418df04e3092f7
+    image: giantswarm/postgresql-cnpg:17.6@sha256:5fefb56ac139799f7dece1b97cc1371a0a0a4d4b7f5aa1bee00e9c70a2950285
 
 # Upstream Backstage chart configuration
 # https://github.com/backstage/charts/blob/main/charts/backstage/values.yaml
