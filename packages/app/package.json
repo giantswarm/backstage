@@ -70,7 +70,7 @@
     "@types/crypto-js": "^4",
     "@types/node": "^22.0.0",
     "@types/react-dom": "*",
-    "cross-env": "^7.0.0"
+    "cross-env": "^10.0.0"
   },
   "browserslist": {
     "production": [
