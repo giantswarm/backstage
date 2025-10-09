@@ -7,6 +7,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.86.0] - 2025-10-09
 
+### Changed
+
+- Update Backstage to v1.43.
+
+### Fixed
+
+- Fixed Flux Overview UI resources refetching when a user rejects cluster authentication.
+
 See [./docs/releases/v0.86.0-changelog.md](./docs/releases/v0.86.0-changelog.md) for more information.
 
 ## [0.85.0] - 2025-09-10
