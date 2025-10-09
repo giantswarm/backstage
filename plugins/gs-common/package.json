@@ -34,7 +34,7 @@
     "lodash": "^4.17.21",
     "node-fetch": "3",
     "ts-node": "^10.9.2",
-    "typescript": "~5.8.0"
+    "typescript": "~5.9.0"
   },
   "files": [
     "dist"
