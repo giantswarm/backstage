@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.6.0
+
+### Minor Changes
+
+- 3b06846: Update Backstage to v1.43.
+
+### Patch Changes
+
+- Updated dependencies [3b06846]
+  - @giantswarm/backstage-plugin-ui-react@0.6.0
+
 ## 0.5.1
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.6.0
+
+### Minor Changes
+
+- 3b06846: Update Backstage to v1.43.
+
 ## 0.5.1
 
 ### Patch Changes

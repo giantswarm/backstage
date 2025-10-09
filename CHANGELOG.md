@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.86.0] - 2025-10-09
+
+### Changed
+
+- Update Backstage to v1.43.
+
+### Fixed
+
+- Fixed Flux Overview UI resources refetching when a user rejects cluster authentication.
+
+See [./docs/releases/v0.86.0-changelog.md](./docs/releases/v0.86.0-changelog.md) for more information.
+
 ## [0.85.0] - 2025-09-10
 
 In this release:
@@ -1466,7 +1478,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.85.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.86.0...HEAD
+[0.86.0]: https://github.com/giantswarm/backstage/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/giantswarm/backstage/compare/v0.84.2...v0.85.0
 [0.84.2]: https://github.com/giantswarm/backstage/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/giantswarm/backstage/compare/v0.84.0...v0.84.1

@@ -1,5 +1,16 @@
 # app
 
+## 0.21.0
+
+### Minor Changes
+
+- 3b06846: Update Backstage to v1.43.
+
+### Patch Changes
+
+- @giantswarm/backstage-plugin-flux@0.5.2
+- @giantswarm/backstage-plugin-gs@0.42.3
+
 ## 0.20.1
 
 ### Patch Changes
