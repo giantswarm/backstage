@@ -11,12 +11,12 @@ export function CustomFluxPage() {
   return (
     <QueryClientProvider>
       <FluxPageLayout>
-        <FluxPageLayout.Route path="/" title="Tree view">
-          <FluxResourcesTreeView filters={<CustomTreeViewFilters />} />
+        <FluxPageLayout.Route path="/" title="List view">
+          <FluxResourcesListView filters={<CustomListViewFilters />} />
         </FluxPageLayout.Route>
 
-        <FluxPageLayout.Route path="/list" title="List view">
-          <FluxResourcesListView filters={<CustomListViewFilters />} />
+        <FluxPageLayout.Route path="/tree" title="Tree view">
+          <FluxResourcesTreeView filters={<CustomTreeViewFilters />} />
         </FluxPageLayout.Route>
       </FluxPageLayout>
     </QueryClientProvider>

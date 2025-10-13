@@ -3,12 +3,17 @@ import {
   createRoutableExtension,
 } from '@backstage/core-plugin-api';
 
-import { rootRouteRef, resourcesSubRouteRef } from './routes';
+import {
+  rootRouteRef,
+  resourcesSubRouteRef,
+  overviewSubRouteRef,
+} from './routes';
 
 export const fluxPlugin = createPlugin({
   id: 'flux',
   routes: {
     root: rootRouteRef,
+    overview: overviewSubRouteRef,
     resources: resourcesSubRouteRef,
   },
 });
