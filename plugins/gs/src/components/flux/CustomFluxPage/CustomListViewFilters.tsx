@@ -1,6 +1,6 @@
 import {
-  KindPicker,
-  StatusPicker,
+  FluxResourcesListViewKindPicker,
+  FluxResourcesListViewStatusPicker,
 } from '@giantswarm/backstage-plugin-flux-react';
 import { ClusterPicker } from './listViewFilters';
 
@@ -8,8 +8,8 @@ export const CustomListViewFilters = () => {
   return (
     <>
       <ClusterPicker />
-      <KindPicker />
-      <StatusPicker />
+      <FluxResourcesListViewKindPicker />
+      <FluxResourcesListViewStatusPicker />
     </>
   );
 };
