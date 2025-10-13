@@ -5,7 +5,13 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResourcesData } from '../../../FluxResourcesDataProvider';
 
-export const ClusterPicker = () => {
+export const ClusterPicker = ({
+  disabledClusters = [],
+  isLoadingDisabledClusters = false,
+}: {
+  disabledClusters?: string[];
+  isLoadingDisabledClusters?: boolean;
+}) => {
   const { clusters, isLoading } = useClustersInfo();
   const { setActiveClusters } = useFluxResourcesData();
 
@@ -15,6 +21,8 @@ export const ClusterPicker = () => {
         clusters={clusters}
         disabled={isLoading}
         onActiveClustersChange={setActiveClusters}
+        disabledClusters={disabledClusters}
+        isLoadingDisabledClusters={isLoadingDisabledClusters}
       />
     </Box>
   );
