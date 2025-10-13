@@ -24,6 +24,7 @@ import {
 export const FluxResourceColumns = {
   name: 'name',
   kind: 'kind',
+  cluster: 'cluster',
   targetCluster: 'targetCluster',
   namespace: 'namespace',
   status: 'status',
@@ -136,6 +137,10 @@ export const getInitialColumns = ({
         const colorVariant = getResourceColorVariant(row.kind);
         return <Chip label={row.kind} variant={colorVariant} />;
       },
+    },
+    {
+      title: 'Source Cluster',
+      field: FluxResourceColumns.cluster,
     },
     {
       title: 'Target Cluster',
