@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.5.4
+
+### Patch Changes
+
+- c930bcf: Fixed Flux resources refetching when some clusters authentication is canceled by a user.
+- Updated dependencies [3b06846]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.6.0
+  - @giantswarm/backstage-plugin-ui-react@0.6.0
+
 ## 0.5.3
 
 ### Patch Changes

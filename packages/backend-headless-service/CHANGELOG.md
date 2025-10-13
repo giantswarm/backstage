@@ -1,5 +1,11 @@
 # backend-headless-service
 
+## 0.4.0
+
+### Minor Changes
+
+- 3b06846: Update Backstage to v1.43.
+
 ## 0.3.1
 
 ### Patch Changes
