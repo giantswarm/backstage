@@ -1,13 +1,6 @@
 import { useMemo } from 'react';
-import uniqBy from 'lodash/uniqBy';
-import {
-  MultiplePicker,
-  MultiplePickerOption,
-} from '@giantswarm/backstage-plugin-ui-react';
-import {
-  FluxResourceData,
-  useFluxResourcesData,
-} from '../../../FluxResourcesDataProvider';
+import { MultiplePicker } from '@giantswarm/backstage-plugin-ui-react';
+import { useFluxResourcesData } from '../../../FluxResourcesDataProvider';
 import { StatusFilter } from '../filters';
 import {
   AggregatedStatus,
@@ -15,24 +8,6 @@ import {
 } from '../../../../utils/getAggregatedStatus';
 
 const TITLE = 'Status';
-
-function formatOption(
-  item: FluxResourceData,
-): MultiplePickerOption | undefined {
-  const aggregatedStatus = getAggregatedStatus(item.status);
-
-  const statusLabels: Record<AggregatedStatus, string> = {
-    ready: 'Ready',
-    'not-ready': 'Not Ready',
-    inactive: 'Inactive',
-    unknown: 'Unknown',
-  };
-
-  const label = statusLabels[aggregatedStatus];
-  const value = aggregatedStatus;
-
-  return { value, label };
-}
 
 export const StatusPicker = () => {
   const {
@@ -43,11 +18,28 @@ export const StatusPicker = () => {
   } = useFluxResourcesData();
 
   const options = useMemo(() => {
-    const allOptions = data
-      .map(item => formatOption(item))
-      .filter(item => Boolean(item)) as MultiplePickerOption[];
+    const statusCounts: Record<AggregatedStatus, number> = {
+      ready: 0,
+      'not-ready': 0,
+      inactive: 0,
+      unknown: 0,
+    };
 
-    return uniqBy(allOptions, 'value');
+    data.forEach(item => {
+      const aggregatedStatus = getAggregatedStatus(item.status);
+      statusCounts[aggregatedStatus]++;
+    });
+
+    return [
+      { value: 'ready', label: 'Ready', count: statusCounts.ready },
+      {
+        value: 'not-ready',
+        label: 'Not Ready',
+        count: statusCounts['not-ready'],
+      },
+      { value: 'inactive', label: 'Inactive', count: statusCounts.inactive },
+      { value: 'unknown', label: 'Unknown', count: statusCounts.unknown },
+    ];
   }, [data]);
 
   const handleSelect = (selectedValues: string[]) => {

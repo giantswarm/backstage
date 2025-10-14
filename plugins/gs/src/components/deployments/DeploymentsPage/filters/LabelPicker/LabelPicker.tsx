@@ -52,7 +52,7 @@ export const LabelPicker = () => {
     [updateFilters],
   );
 
-  const renderLabel = useCallback((label: string) => {
+  const renderLabel = useCallback(({ label }: { label: string }) => {
     const parts = label.split(': ');
     return parts.length === 2 ? (
       <>

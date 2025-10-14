@@ -89,8 +89,8 @@ const app = createApp({
       catalogIndex: catalogPlugin.routes.catalogIndex,
     });
     bind(gsPlugin.externalRoutes, {
-      fluxOverview: fluxPlugin.routes.root,
-      fluxResources: fluxPlugin.routes.resources,
+      fluxOverview: fluxPlugin.routes.overview,
+      fluxResources: fluxPlugin.routes.root,
     });
   },
   featureFlags: [

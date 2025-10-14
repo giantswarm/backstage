@@ -1,15 +1,22 @@
 import {
-  KindPicker,
-  StatusPicker,
+  FluxResourcesListViewKindPicker,
+  FluxResourcesListViewStatusPicker,
+  FluxResourcesListViewClusterPicker,
 } from '@giantswarm/backstage-plugin-flux-react';
-import { ClusterPicker } from './listViewFilters';
+import { useDisabledInstallations } from '../../hooks';
 
 export const CustomListViewFilters = () => {
+  const { disabledInstallations, isLoading: isLoadingDisabledInstallations } =
+    useDisabledInstallations();
+
   return (
     <>
-      <ClusterPicker />
-      <KindPicker />
-      <StatusPicker />
+      <FluxResourcesListViewClusterPicker
+        disabledClusters={disabledInstallations}
+        isLoadingDisabledClusters={isLoadingDisabledInstallations}
+      />
+      <FluxResourcesListViewKindPicker />
+      <FluxResourcesListViewStatusPicker />
     </>
   );
 };
