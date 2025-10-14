@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.6.1
+
+### Patch Changes
+
+- 1f347ff: Display items count in Autocomplete options.
+
 ## 0.6.0
 
 ### Minor Changes

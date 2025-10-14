@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.5.5
+
+### Patch Changes
+
+- 1f347ff: Aligned pagination size options between tables.
+- 1f347ff: Change status picker in Flux UI to display static list of options.
+- 1f347ff: Added source cluster column to the Flux UI resources table.
+- Updated dependencies [1f347ff]
+  - @giantswarm/backstage-plugin-ui-react@0.6.1
+
 ## 0.5.4
 
 ### Patch Changes
