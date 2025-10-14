@@ -7,6 +7,13 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.87.0] - 2025-10-14
 
+### Changed
+
+- Added source cluster column to the Flux UI resources table.
+- Changed Flux UI default view to the resources overview.
+- Added more page size options to the Flux UI resources table pagination.
+- Changed Flux UI status filter options to provide static list of statuses and to display amount of corresponding items.
+
 See [./docs/releases/v0.87.0-changelog.md](./docs/releases/v0.87.0-changelog.md) for more information.
 
 ## [0.86.0] - 2025-10-09
