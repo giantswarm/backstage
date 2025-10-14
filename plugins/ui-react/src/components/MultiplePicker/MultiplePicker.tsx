@@ -6,6 +6,7 @@ import { Autocomplete } from '../Autocomplete';
 export type Option = {
   value: string;
   label: string;
+  count?: number;
 };
 
 export type MultiplePickerProps = {
@@ -17,7 +18,7 @@ export type MultiplePickerProps = {
   autocomplete?: boolean;
   disabled?: boolean;
   hidden?: boolean;
-  renderLabel?: (label: string) => React.ReactNode;
+  renderLabel?: (option: Option) => React.ReactNode;
 };
 
 export function MultiplePicker(props: MultiplePickerProps) {

@@ -181,13 +181,14 @@ export function CustomAutocomplete<
 type AutocompleteItem = {
   label: string;
   value: string;
+  count?: number;
 };
 
 type BaseAutocompleteProps = {
   label: string;
   items: AutocompleteItem[];
   disabledItems?: string[];
-  renderLabel?: (label: string) => ReactNode;
+  renderLabel?: (option: AutocompleteItem) => ReactNode;
   disabled?: boolean;
 };
 
@@ -204,6 +205,12 @@ type MultipleAutocompleteProps = BaseAutocompleteProps & {
 };
 
 type AutocompleteProps = SingleAutocompleteProps | MultipleAutocompleteProps;
+
+const defaultRenderLabel = (option: AutocompleteItem) => {
+  return typeof option.count === 'number'
+    ? `${option.label} (${option.count})`
+    : option.label;
+};
 
 export const Autocomplete = ({
   items,
@@ -259,7 +266,7 @@ export const Autocomplete = ({
       renderOption={(option, { selected }) => (
         <AutocompleteOption
           selected={selected}
-          label={renderLabel ? renderLabel(option.label) : option.label}
+          label={renderLabel ? renderLabel(option) : defaultRenderLabel(option)}
           value={option.value}
           multiple={multiple}
         />
