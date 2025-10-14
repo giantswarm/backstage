@@ -1,5 +1,18 @@
 # app
 
+## 0.22.0
+
+### Minor Changes
+
+- 1f347ff: Changed Flux UI default view to resources overview.
+
+### Patch Changes
+
+- Updated dependencies [1f347ff]
+- Updated dependencies [1f347ff]
+  - @giantswarm/backstage-plugin-flux@0.6.0
+  - @giantswarm/backstage-plugin-gs@0.43.0
+
 ## 0.21.0
 
 ### Minor Changes

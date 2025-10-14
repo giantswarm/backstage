@@ -1,5 +1,23 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.43.0
+
+### Minor Changes
+
+- 1f347ff: Changed Flux UI default view to resources overview.
+
+### Patch Changes
+
+- 1f347ff: Aligned pagination size options between tables.
+- Updated dependencies [1f347ff]
+- Updated dependencies [1f347ff]
+- Updated dependencies [1f347ff]
+- Updated dependencies [1f347ff]
+- Updated dependencies [1f347ff]
+  - @giantswarm/backstage-plugin-flux@0.6.0
+  - @giantswarm/backstage-plugin-flux-react@0.5.5
+  - @giantswarm/backstage-plugin-ui-react@0.6.1
+
 ## 0.42.3
 
 ### Patch Changes
