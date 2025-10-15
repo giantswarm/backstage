@@ -18,6 +18,7 @@ export function useGetResource<T>(
   const path = getK8sGetPath(gvk, options.name, options.namespace);
 
   const queryKey = [
+    'cluster',
     cluster,
     'get',
     gvk.plural,

@@ -156,20 +156,9 @@ export function useFluxResources(clusters: string | string[] | null) {
   useEffect(() => {
     const reconciling = kustomizations.some(k => k.isReconciling());
 
-    let newInterval = reconciling
+    const newInterval = reconciling
       ? RECONCILING_INTERVAL
       : NON_RECONCILING_INTERVAL;
-
-    const rejectedErrors = [
-      ...kustomizationsErrors,
-      ...helmReleasesErrors,
-      ...gitRepositoriesErrors,
-      ...helmRepositoriesErrors,
-      ...ociRepositoriesErrors,
-    ].some(({ error }) => error.name === 'RejectedError');
-    if (rejectedErrors) {
-      newInterval = 0;
-    }
 
     if (newInterval !== refetchInterval) {
       setRefetchInterval(newInterval);

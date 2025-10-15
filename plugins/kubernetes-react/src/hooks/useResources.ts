@@ -33,9 +33,16 @@ export function useResources<R extends KubeObject<any>>(
     );
   }, [queriesInfo.clustersData, ResourceClass]);
 
+  const errors = useMemo(() => {
+    return queriesInfo.errors.filter(
+      ({ error }) => error.name !== 'RejectedError',
+    );
+  }, [queriesInfo.errors]);
+
   return {
     ...queriesInfo,
     isLoading: isRestoring || queriesInfo.isLoading,
     resources,
+    errors,
   };
 }

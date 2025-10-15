@@ -63,7 +63,7 @@ export function useClusters(installations?: string[]) {
       const gvk = installationsGVKs[installationName];
 
       return {
-        queryKey: [installationName, 'clusters', namespaces.join()],
+        queryKey: ['cluster', installationName, 'clusters', namespaces.join()],
         queryFn: async () => {
           const requests = namespaces.map(namespace => {
             return kubernetesApi.proxy({
