@@ -1,9 +1,9 @@
 /**
  * This file was automatically generated, PLEASE DO NOT MODIFY IT BY HAND.
  */
-  
-  import * as metav1 from '../../metav1';
-  
+
+import * as metav1 from '../../metav1';
+
 /**
  * Kustomization is the Schema for the kustomizations API.
  */
