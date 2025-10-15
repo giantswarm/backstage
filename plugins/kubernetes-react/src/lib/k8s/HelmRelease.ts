@@ -1,8 +1,9 @@
 import { FluxObject, FluxObjectInterface } from './FluxObject';
+import { compareDates } from '../../utils/compareDates';
 
 export interface HelmReleaseInterface extends FluxObjectInterface {
   spec?: {
-    chart: {
+    chart?: {
       metadata?: {
         annotations?: {
           [k: string]: string;
@@ -13,6 +14,7 @@ export interface HelmReleaseInterface extends FluxObjectInterface {
       };
       spec: {
         chart: string;
+        ignoreMissingValuesFiles?: boolean;
         interval?: string;
         reconcileStrategy?: 'ChartVersion' | 'Revision';
         sourceRef: {
@@ -21,10 +23,9 @@ export interface HelmReleaseInterface extends FluxObjectInterface {
           name: string;
           namespace?: string;
         };
-        valuesFile?: string;
         valuesFiles?: string[];
         verify?: {
-          provider: 'cosign';
+          provider: 'cosign' | 'notation';
           secretRef?: {
             name: string;
           };
@@ -34,16 +35,20 @@ export interface HelmReleaseInterface extends FluxObjectInterface {
     };
     chartRef?: {
       apiVersion?: string;
-      kind: 'OCIRepository' | 'HelmChart';
+      kind: 'OCIRepository' | 'HelmChart' | 'ExternalArtifact';
       name: string;
       namespace?: string;
     };
     dependsOn?: {
       name: string;
       namespace?: string;
+      readyExpr?: string;
     }[];
     kubeConfig?: {
-      secretRef: {
+      configMapRef?: {
+        name: string;
+      };
+      secretRef?: {
         key?: string;
         name: string;
       };
@@ -59,13 +64,53 @@ export interface HelmReleaseInterface extends FluxObjectInterface {
       status: 'True' | 'False' | 'Unknown';
       type: string;
     }[];
-    lastAppliedRevision?: string;
+    failures?: number;
+    helmChart?: string;
+    history?: {
+      apiVersion?: string;
+      appVersion?: string;
+      chartName: string;
+      chartVersion: string;
+      configDigest: string;
+      deleted?: string;
+      digest: string;
+      firstDeployed: string;
+      lastDeployed: string;
+      name: string;
+      namespace: string;
+      ociDigest?: string;
+      status: string;
+      testHooks?: {
+        [k: string]: {
+          lastCompleted?: string;
+          lastStarted?: string;
+          phase?: string;
+        };
+      };
+      version: number;
+    }[];
+    installFailures?: number;
+    lastAttemptedConfigDigest?: string;
+    lastAttemptedGeneration?: number;
+    lastAttemptedReleaseAction?: 'install' | 'upgrade';
+    lastAttemptedReleaseActionDuration?: string;
     lastAttemptedRevision?: string;
+    lastAttemptedRevisionDigest?: string;
+    lastAttemptedValuesChecksum?: string;
+    lastHandledForceAt?: string;
+    lastHandledReconcileAt?: string;
+    lastHandledResetAt?: string;
+    lastReleaseRevision?: number;
+    observedCommonMetadataDigest?: string;
+    observedGeneration?: number;
+    observedPostRenderersDigest?: string;
+    storageNamespace?: string;
+    upgradeFailures?: number;
   };
 }
 
 export class HelmRelease extends FluxObject<HelmReleaseInterface> {
-  static apiVersion = 'v2beta1';
+  static apiVersion = 'v2';
   static group = 'helm.toolkit.fluxcd.io';
   static kind = 'HelmRelease' as const;
   static plural = 'helmreleases';
@@ -79,7 +124,17 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
   }
 
   getLastAppliedRevision() {
-    return this.jsonData.status?.lastAppliedRevision;
+    const history = this.jsonData.status?.history;
+    if (!history || history.length === 0) {
+      return undefined;
+    }
+
+    // Sort history by lastDeployed timestamp (most recent first) and get the chart version
+    const sortedHistory = history.sort((a, b) =>
+      compareDates(b.lastDeployed, a.lastDeployed),
+    );
+
+    return sortedHistory[0]?.chartVersion;
   }
 
   getLastAttemptedRevision() {
@@ -91,7 +146,7 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
   }
 
   getChartName() {
-    return this.jsonData.spec?.chart.spec.chart;
+    return this.jsonData.spec?.chart?.spec.chart;
   }
 
   getChartRef() {
@@ -99,6 +154,6 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
   }
 
   getChartSourceRef() {
-    return this.jsonData.spec?.chart.spec.sourceRef;
+    return this.jsonData.spec?.chart?.spec.sourceRef;
   }
 }

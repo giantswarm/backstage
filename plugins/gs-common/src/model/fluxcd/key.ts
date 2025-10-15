@@ -1,5 +1,5 @@
 import * as v1 from './v1';
-import * as v2beta1 from './v2beta1';
+import * as v2 from './v2';
 
 export const HelmReleaseKind = 'HelmRelease';
 export const HelmReleaseApiGroup = 'helm.toolkit.fluxcd.io';
@@ -10,12 +10,12 @@ export const HelmReleaseNames = {
 
 export function getHelmReleaseGVK(apiVersion?: string) {
   if (!apiVersion) {
-    return v2beta1.HelmReleaseGVK;
+    return v2.HelmReleaseGVK;
   }
 
   switch (apiVersion) {
-    case v2beta1.HelmReleaseApiVersion:
-      return v2beta1.HelmReleaseGVK;
+    case v2.HelmReleaseApiVersion:
+      return v2.HelmReleaseGVK;
     default:
       return undefined;
   }

@@ -119,7 +119,7 @@
     - name: HelmRelease
       crdURL: https://raw.githubusercontent.com/fluxcd/helm-controller/main/config/crd/bases/helm.toolkit.fluxcd.io_helmreleases.yaml
       versions:
-        - v2beta1
+        - v2
     - name: Kustomization
       crdURL: https://raw.githubusercontent.com/fluxcd/kustomize-controller/main/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
       versions:

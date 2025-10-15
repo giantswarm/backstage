@@ -14,7 +14,7 @@ export interface IHelmRelease {
    * may reject unrecognized values.
    * More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
    */
-  apiVersion: 'v2beta1';
+  apiVersion: 'v2';
   /**
    * Kind is a string value representing the REST resource this object represents.
    * Servers may infer this from the endpoint the client submits requests to.
@@ -29,10 +29,10 @@ export interface IHelmRelease {
    */
   spec?: {
     /**
-     * Chart defines the template of the v1beta2.HelmChart that should be created
+     * Chart defines the template of the v1.HelmChart that should be created
      * for this HelmRelease.
      */
-    chart: {
+    chart?: {
       /**
        * ObjectMeta holds the template for metadata like labels and annotations.
        */
@@ -56,7 +56,7 @@ export interface IHelmRelease {
         };
       };
       /**
-       * Spec holds the template for the v1beta2.HelmChartSpec for this HelmRelease.
+       * Spec holds the template for the v1.HelmChartSpec for this HelmRelease.
        */
       spec: {
         /**
@@ -64,7 +64,11 @@ export interface IHelmRelease {
          */
         chart: string;
         /**
-         * Interval at which to check the v1beta2.Source for updates. Defaults to
+         * IgnoreMissingValuesFiles controls whether to silently ignore missing values files rather than failing.
+         */
+        ignoreMissingValuesFiles?: boolean;
+        /**
+         * Interval at which to check the v1.Source for updates. Defaults to
          * 'HelmReleaseSpec.Interval'.
          */
         interval?: string;
@@ -76,7 +80,7 @@ export interface IHelmRelease {
          */
         reconcileStrategy?: 'ChartVersion' | 'Revision';
         /**
-         * The name and namespace of the v1beta2.Source the chart is available at.
+         * The name and namespace of the v1.Source the chart is available at.
          */
         sourceRef: {
           /**
@@ -97,13 +101,6 @@ export interface IHelmRelease {
           namespace?: string;
         };
         /**
-         * Alternative values file to use as the default chart values, expected to
-         * be a relative path in the SourceRef. Deprecated in favor of ValuesFiles,
-         * for backwards compatibility the file defined here is merged before the
-         * ValuesFiles items. Ignored when omitted.
-         */
-        valuesFile?: string;
-        /**
          * Alternative list of values files to use as the chart values (values.yaml
          * is not included by default), expected to be a relative path in the SourceRef.
          * Values files are merged in the order of this list with the last file overriding
@@ -115,13 +112,14 @@ export interface IHelmRelease {
          * used to verify the signature and specifies which provider to use to check
          * whether OCI image is authentic.
          * This field is only supported for OCI sources.
-         * Chart dependencies, which are not bundled in the umbrella chart artifact, are not verified.
+         * Chart dependencies, which are not bundled in the umbrella chart artifact,
+         * are not verified.
          */
         verify?: {
           /**
            * Provider specifies the technology used to sign the OCI Helm chart.
            */
-          provider: 'cosign';
+          provider: 'cosign' | 'notation';
           /**
            * SecretRef specifies the Kubernetes Secret containing the
            * trusted public keys.
@@ -134,7 +132,7 @@ export interface IHelmRelease {
           };
         };
         /**
-         * Version semver expression, ignored for charts from v1beta2.GitRepository and
+         * Version semver expression, ignored for charts from v1.GitRepository and
          * v1beta2.Bucket sources. Defaults to latest when omitted.
          */
         version?: string;
@@ -143,9 +141,6 @@ export interface IHelmRelease {
     /**
      * ChartRef holds a reference to a source controller resource containing the
      * Helm chart artifact.
-     *
-     * Note: this field is provisional to the v2 API, and not actively used
-     * by v2beta1 HelmReleases.
      */
     chartRef?: {
       /**
@@ -155,7 +150,7 @@ export interface IHelmRelease {
       /**
        * Kind of the referent.
        */
-      kind: 'OCIRepository' | 'HelmChart';
+      kind: 'OCIRepository' | 'HelmChart' | 'ExternalArtifact';
       /**
        * Name of the referent.
        */
@@ -167,7 +162,26 @@ export interface IHelmRelease {
       namespace?: string;
     };
     /**
-     * DependsOn may contain a meta.NamespacedObjectReference slice with
+     * CommonMetadata specifies the common labels and annotations that are
+     * applied to all resources. Any existing label or annotation will be
+     * overridden if its key matches a common one.
+     */
+    commonMetadata?: {
+      /**
+       * Annotations to be added to the object's metadata.
+       */
+      annotations?: {
+        [k: string]: string;
+      };
+      /**
+       * Labels to be added to the object's metadata.
+       */
+      labels?: {
+        [k: string]: string;
+      };
+    };
+    /**
+     * DependsOn may contain a DependencyReference slice with
      * references to HelmRelease resources that must be ready before this HelmRelease
      * can be reconciled.
      */
@@ -177,17 +191,23 @@ export interface IHelmRelease {
        */
       name: string;
       /**
-       * Namespace of the referent, when not specified it acts as LocalObjectReference.
+       * Namespace of the referent, defaults to the namespace of the HelmRelease
+       * resource object that contains the reference.
        */
       namespace?: string;
+      /**
+       * ReadyExpr is a CEL expression that can be used to assess the readiness
+       * of a dependency. When specified, the built-in readiness check
+       * is replaced by the logic defined in the CEL expression.
+       * To make the CEL expression additive to the built-in readiness check,
+       * the feature gate `AdditiveCELDependencyCheck` must be set to `true`.
+       */
+      readyExpr?: string;
     }[];
     /**
      * DriftDetection holds the configuration for detecting and handling
      * differences between the manifest in the Helm storage and the resources
      * currently existing in the cluster.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
      */
     driftDetection?: {
       /**
@@ -273,7 +293,7 @@ export interface IHelmRelease {
        * but not deleted.
        *
        * By default, CRDs are applied (installed) during Helm install action.
-       * With this option users can opt-in to CRD replace existing CRDs on Helm
+       * With this option users can opt in to CRD replace existing CRDs on Helm
        * install actions, which is not (yet) natively supported by Helm.
        * https://helm.sh/docs/chart_best_practices/custom_resource_definitions.
        */
@@ -293,6 +313,16 @@ export interface IHelmRelease {
        * rendered templates against the Kubernetes OpenAPI Schema.
        */
       disableOpenAPIValidation?: boolean;
+      /**
+       * DisableSchemaValidation prevents the Helm install action from validating
+       * the values against the JSON Schema.
+       */
+      disableSchemaValidation?: boolean;
+      /**
+       * DisableTakeOwnership disables taking ownership of existing resources
+       * during the Helm install action. Defaults to false.
+       */
+      disableTakeOwnership?: boolean;
       /**
        * DisableWait disables the waiting for resources to be ready after a Helm
        * install has been performed.
@@ -339,6 +369,22 @@ export interface IHelmRelease {
        */
       skipCRDs?: boolean;
       /**
+       * Strategy defines the install strategy to use for this HelmRelease.
+       * Defaults to 'RemediateOnFailure'.
+       */
+      strategy?: {
+        /**
+         * Name of the install strategy.
+         */
+        name: 'RemediateOnFailure' | 'RetryOnFailure';
+        /**
+         * RetryInterval is the interval at which to retry a failed install.
+         * Can be used only when Name is set to RetryOnFailure.
+         * Defaults to '5m'.
+         */
+        retryInterval?: string;
+      };
+      /**
        * Timeout is the time to wait for any individual Kubernetes operation (like
        * Jobs for hooks) during the performance of a Helm install action. Defaults to
        * 'HelmReleaseSpec.Timeout'.
@@ -347,8 +393,6 @@ export interface IHelmRelease {
     };
     /**
      * Interval at which to reconcile the Helm release.
-     * This interval is approximate and may be subject to jitter to ensure
-     * efficient use of resources.
      */
     interval: string;
     /**
@@ -421,7 +465,7 @@ export interface IHelmRelease {
     };
     /**
      * MaxHistory is the number of revisions saved by Helm for this HelmRelease.
-     * Use '0' for an unlimited number of revisions; defaults to '10'.
+     * Use '0' for an unlimited number of revisions; defaults to '5'.
      */
     maxHistory?: number;
     /**
@@ -526,89 +570,6 @@ export interface IHelmRelease {
             version?: string;
           };
         }[];
-        /**
-         * JSON 6902 patches, defined as inline YAML objects.
-         */
-        patchesJson6902?: {
-          /**
-           * Patch contains the JSON6902 patch document with an array of operation objects.
-           */
-          patch: {
-            /**
-             * From contains a JSON-pointer value that references a location within the target document where the operation is
-             * performed. The meaning of the value depends on the value of Op, and is NOT taken into account by all operations.
-             */
-            from?: string;
-            /**
-             * Op indicates the operation to perform. Its value MUST be one of "add", "remove", "replace", "move", "copy", or
-             * "test".
-             * https://datatracker.ietf.org/doc/html/rfc6902#section-4
-             */
-            op: 'test' | 'remove' | 'add' | 'replace' | 'move' | 'copy';
-            /**
-             * Path contains the JSON-pointer value that references a location within the target document where the operation
-             * is performed. The meaning of the value depends on the value of Op.
-             */
-            path: string;
-            /**
-             * Value contains a valid JSON structure. The meaning of the value depends on the value of Op, and is NOT taken into
-             * account by all operations.
-             */
-            value?: {
-              [k: string]: unknown;
-            };
-          }[];
-          /**
-           * Target points to the resources that the patch document should be applied to.
-           */
-          target: {
-            /**
-             * AnnotationSelector is a string that follows the label selection expression
-             * https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-             * It matches with the resource annotations.
-             */
-            annotationSelector?: string;
-            /**
-             * Group is the API group to select resources from.
-             * Together with Version and Kind it is capable of unambiguously identifying and/or selecting resources.
-             * https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md
-             */
-            group?: string;
-            /**
-             * Kind of the API Group to select resources from.
-             * Together with Group and Version it is capable of unambiguously
-             * identifying and/or selecting resources.
-             * https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md
-             */
-            kind?: string;
-            /**
-             * LabelSelector is a string that follows the label selection expression
-             * https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-             * It matches with the resource labels.
-             */
-            labelSelector?: string;
-            /**
-             * Name to match resources with.
-             */
-            name?: string;
-            /**
-             * Namespace to select resources from.
-             */
-            namespace?: string;
-            /**
-             * Version of the API Group to select resources from.
-             * Together with Group and Kind it is capable of unambiguously identifying and/or selecting resources.
-             * https://github.com/kubernetes/community/blob/master/contributors/design-proposals/api-machinery/api-group.md
-             */
-            version?: string;
-          };
-        }[];
-        /**
-         * Strategic merge patches, defined as inline YAML objects.
-         */
-        patchesStrategicMerge?: {
-          [k: string]: unknown;
-        }[];
       };
     }[];
     /**
@@ -683,6 +644,19 @@ export interface IHelmRelease {
        * or upgrade action has been performed.
        */
       enable?: boolean;
+      /**
+       * Filters is a list of tests to run or exclude from running.
+       */
+      filters?: {
+        /**
+         * Exclude specifies whether the named test should be excluded.
+         */
+        exclude?: boolean;
+        /**
+         * Name is the name of the test.
+         */
+        name: string;
+      }[];
       /**
        * IgnoreFailures tells the controller to skip remediation when the Helm tests
        * are run but fail. Can be overwritten for tests run after install or upgrade
@@ -767,6 +741,16 @@ export interface IHelmRelease {
        */
       disableOpenAPIValidation?: boolean;
       /**
+       * DisableSchemaValidation prevents the Helm upgrade action from validating
+       * the values against the JSON Schema.
+       */
+      disableSchemaValidation?: boolean;
+      /**
+       * DisableTakeOwnership disables taking ownership of existing resources
+       * during the Helm upgrade action. Defaults to false.
+       */
+      disableTakeOwnership?: boolean;
+      /**
        * DisableWait disables the waiting for resources to be ready after a Helm
        * upgrade has been performed.
        */
@@ -814,6 +798,22 @@ export interface IHelmRelease {
         strategy?: 'rollback' | 'uninstall';
       };
       /**
+       * Strategy defines the upgrade strategy to use for this HelmRelease.
+       * Defaults to 'RemediateOnFailure'.
+       */
+      strategy?: {
+        /**
+         * Name of the upgrade strategy.
+         */
+        name: 'RemediateOnFailure' | 'RetryOnFailure';
+        /**
+         * RetryInterval is the interval at which to retry a failed upgrade.
+         * Can be used only when Name is set to RetryOnFailure.
+         * Defaults to '5m'.
+         */
+        retryInterval?: string;
+      };
+      /**
        * Timeout is the time to wait for any individual Kubernetes operation (like
        * Jobs for hooks) during the performance of a Helm upgrade action. Defaults to
        * 'HelmReleaseSpec.Timeout'.
@@ -855,8 +855,6 @@ export interface IHelmRelease {
       /**
        * ValuesKey is the data key where the values.yaml or a specific value can be
        * found at. Defaults to 'values.yaml'.
-       * When set, must be a valid Data Key, consisting of alphanumeric characters,
-       * '-', '_' or '.'.
        */
       valuesKey?: string;
     }[];
@@ -915,9 +913,6 @@ export interface IHelmRelease {
     /**
      * History holds the history of Helm releases performed for this HelmRelease
      * up to the last successfully completed release.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
      */
     history?: {
       /**
@@ -1013,48 +1008,48 @@ export interface IHelmRelease {
      */
     installFailures?: number;
     /**
-     * LastAppliedRevision is the revision of the last successfully applied source.
-     */
-    lastAppliedRevision?: string;
-    /**
      * LastAttemptedConfigDigest is the digest for the config (better known as
      * "values") of the last reconciliation attempt.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
      */
     lastAttemptedConfigDigest?: string;
     /**
      * LastAttemptedGeneration is the last generation the controller attempted
      * to reconcile.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
      */
     lastAttemptedGeneration?: number;
     /**
      * LastAttemptedReleaseAction is the last release action performed for this
-     * HelmRelease. It is used to determine the active remediation strategy.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
+     * HelmRelease. It is used to determine the active retry or remediation
+     * strategy.
      */
-    lastAttemptedReleaseAction?: string;
+    lastAttemptedReleaseAction?: 'install' | 'upgrade';
     /**
-     * LastAttemptedRevision is the revision of the last reconciliation attempt.
+     * LastAttemptedReleaseActionDuration is the duration of the last
+     * release action performed for this HelmRelease.
+     */
+    lastAttemptedReleaseActionDuration?: string;
+    /**
+     * LastAttemptedRevision is the Source revision of the last reconciliation
+     * attempt. For OCIRepository  sources, the 12 first characters of the digest are
+     * appended to the chart version e.g. "1.2.3+1234567890ab".
      */
     lastAttemptedRevision?: string;
     /**
-     * LastAttemptedValuesChecksum is the SHA1 checksum of the values of the last
+     * LastAttemptedRevisionDigest is the digest of the last reconciliation attempt.
+     * This is only set for OCIRepository sources.
+     */
+    lastAttemptedRevisionDigest?: string;
+    /**
+     * LastAttemptedValuesChecksum is the SHA1 checksum for the values of the last
      * reconciliation attempt.
+     *
+     * Deprecated: Use LastAttemptedConfigDigest instead.
      */
     lastAttemptedValuesChecksum?: string;
     /**
-     * LastHandledForceAt holds the value of the most recent force request
-     * value, so a change of the annotation value can be detected.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
+     * LastHandledForceAt holds the value of the most recent
+     * force request value, so a change of the annotation value
+     * can be detected.
      */
     lastHandledForceAt?: string;
     /**
@@ -1066,15 +1061,19 @@ export interface IHelmRelease {
     /**
      * LastHandledResetAt holds the value of the most recent reset request
      * value, so a change of the annotation value can be detected.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
      */
     lastHandledResetAt?: string;
     /**
      * LastReleaseRevision is the revision of the last successful Helm release.
+     *
+     * Deprecated: Use History instead.
      */
     lastReleaseRevision?: number;
+    /**
+     * ObservedCommonMetadataDigest is the digest for the common metadata of
+     * the last successful reconciliation attempt.
+     */
+    observedCommonMetadataDigest?: string;
     /**
      * ObservedGeneration is the last observed generation.
      */
@@ -1087,9 +1086,6 @@ export interface IHelmRelease {
     /**
      * StorageNamespace is the namespace of the Helm release storage for the
      * current release.
-     *
-     * Note: this field is provisional to the v2beta2 API, and not actively used
-     * by v2beta1 HelmReleases.
      */
     storageNamespace?: string;
     /**
