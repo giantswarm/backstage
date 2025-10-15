@@ -1,9 +1,9 @@
 /**
  * This file was automatically generated, PLEASE DO NOT MODIFY IT BY HAND.
  */
-
-import * as metav1 from '../../metav1';
-
+  
+  import * as metav1 from '../../metav1';
+  
 /**
  * Kustomization is the Schema for the kustomizations API.
  */
@@ -49,7 +49,7 @@ export interface IKustomization {
       };
     };
     /**
-     * Components specifies relative paths to specifications of other Components.
+     * Components specifies relative paths to kustomize Components.
      */
     components?: string[];
     /**
@@ -168,6 +168,12 @@ export interface IKustomization {
        */
       namespace?: string;
     }[];
+    /**
+     * IgnoreMissingComponents instructs the controller to ignore Components paths
+     * not found in source by removing them from the generated kustomization.yaml
+     * before running kustomize build.
+     */
+    ignoreMissingComponents?: boolean;
     /**
      * Images is a list of (image name, new name, new tag or digest)
      * for changing image names, tags or digests. This can also be achieved with a
@@ -401,7 +407,7 @@ export interface IKustomization {
       /**
        * Kind of the referent.
        */
-      kind: 'OCIRepository' | 'GitRepository' | 'Bucket';
+      kind: 'OCIRepository' | 'GitRepository' | 'Bucket' | 'ExternalArtifact';
       /**
        * Name of the referent.
        */
@@ -470,6 +476,42 @@ export interface IKustomization {
        * type of condition in CamelCase or in foo.example.com/CamelCase.
        */
       type: string;
+    }[];
+    /**
+     * History contains a set of snapshots of the last reconciliation attempts
+     * tracking the revision, the state and the duration of each attempt.
+     */
+    history?: {
+      /**
+       * Digest is the checksum in the format `<algo>:<hex>` of the resources in this snapshot.
+       */
+      digest: string;
+      /**
+       * FirstReconciled is the time when this revision was first reconciled to the cluster.
+       */
+      firstReconciled: string;
+      /**
+       * LastReconciled is the time when this revision was last reconciled to the cluster.
+       */
+      lastReconciled: string;
+      /**
+       * LastReconciledDuration is time it took to reconcile the resources in this revision.
+       */
+      lastReconciledDuration: string;
+      /**
+       * LastReconciledStatus is the status of the last reconciliation.
+       */
+      lastReconciledStatus: string;
+      /**
+       * Metadata contains additional information about the snapshot.
+       */
+      metadata?: {
+        [k: string]: string;
+      };
+      /**
+       * TotalReconciliations is the total number of reconciliations that have occurred for this snapshot.
+       */
+      totalReconciliations: number;
     }[];
     /**
      * Inventory contains the list of Kubernetes resource object references that
@@ -651,6 +693,11 @@ export interface IGitRepository {
       name: string;
     };
     /**
+     * ServiceAccountName is the name of the Kubernetes ServiceAccount used to
+     * authenticate to the GitRepository. This field is only supported for 'azure' provider.
+     */
+    serviceAccountName?: string;
+    /**
      * SparseCheckout specifies a list of directories to checkout when cloning
      * the repository. If specified, only these directories are included in the
      * Artifact produced for this GitRepository.
@@ -705,7 +752,7 @@ export interface IGitRepository {
       /**
        * Digest is the digest of the file in the form of '<algorithm>:<checksum>'.
        */
-      digest?: string;
+      digest: string;
       /**
        * LastUpdateTime is the timestamp corresponding to the last update of the
        * Artifact.
@@ -784,7 +831,7 @@ export interface IGitRepository {
       /**
        * Digest is the digest of the file in the form of '<algorithm>:<checksum>'.
        */
-      digest?: string;
+      digest: string;
       /**
        * LastUpdateTime is the timestamp corresponding to the last update of the
        * Artifact.
@@ -1079,7 +1126,7 @@ export interface IOCIRepository {
       /**
        * Digest is the digest of the file in the form of '<algorithm>:<checksum>'.
        */
-      digest?: string;
+      digest: string;
       /**
        * LastUpdateTime is the timestamp corresponding to the last update of the
        * Artifact.

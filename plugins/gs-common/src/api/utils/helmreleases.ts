@@ -31,7 +31,17 @@ export const HelmReleaseStatuses = {
 } as const;
 
 export function getHelmReleaseLastAppliedRevision(helmRelease: HelmRelease) {
-  return helmRelease.status?.lastAppliedRevision;
+  const history = helmRelease.status?.history;
+  if (!history || history.length === 0) {
+    return undefined;
+  }
+
+  // Sort history by lastDeployed timestamp (most recent first) and get the chart version
+  const sortedHistory = history.sort((a, b) =>
+    compareDates(b.lastDeployed, a.lastDeployed),
+  );
+
+  return sortedHistory[0]?.chartVersion;
 }
 
 export function getHelmReleaseLastAttemptedRevision(helmRelease: HelmRelease) {
@@ -39,11 +49,12 @@ export function getHelmReleaseLastAttemptedRevision(helmRelease: HelmRelease) {
 }
 
 export function getHelmReleaseVersion(helmRelease: HelmRelease) {
-  if (!helmRelease.status || !helmRelease.status.lastAppliedRevision) {
-    return helmRelease.spec?.chart.spec.version;
+  const lastAppliedRevision = getHelmReleaseLastAppliedRevision(helmRelease);
+  if (!lastAppliedRevision) {
+    return helmRelease.spec?.chart?.spec.version;
   }
 
-  return helmRelease.status.lastAppliedRevision;
+  return lastAppliedRevision;
 }
 
 export function getHelmReleaseStatus(helmRelease: HelmRelease) {
@@ -97,7 +108,7 @@ export function getHelmReleaseTargetClusterNamespace(helmRelease: HelmRelease) {
 }
 
 export function getHelmReleaseChartName(helmRelease: HelmRelease) {
-  return helmRelease.spec?.chart.spec.chart;
+  return helmRelease.spec?.chart?.spec.chart;
 }
 
 export function getHelmReleaseCreatedTimestamp(
@@ -120,13 +131,13 @@ export function getHelmReleaseUpdatedTimestamp(
 export function getHelmReleaseSourceKind(
   helmRelease: HelmRelease,
 ): string | undefined {
-  return helmRelease.spec?.chart.spec.sourceRef?.kind;
+  return helmRelease.spec?.chart?.spec.sourceRef?.kind;
 }
 
 export function getHelmReleaseSourceName(
   helmRelease: HelmRelease,
 ): string | undefined {
-  return helmRelease.spec?.chart.spec.sourceRef?.name;
+  return helmRelease.spec?.chart?.spec.sourceRef?.name;
 }
 
 export function getHelmReleaseKustomizationName(helmrelease: HelmRelease) {
