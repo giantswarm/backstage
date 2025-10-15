@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.87.1] - 2025-10-15
 
+### Changed
+
+- Added support for API version V2 of HelmRelease resource.
+
 See [./docs/releases/v0.87.1-changelog.md](./docs/releases/v0.87.1-changelog.md) for more information.
 
 ## [0.87.0] - 2025-10-14
