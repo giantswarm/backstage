@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.19.1
+
+### Patch Changes
+
+- f740242: Added support for API version v2 of HelmRelease
+
 ## 0.19.0
 
 ### Minor Changes

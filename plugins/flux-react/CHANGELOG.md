@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.5.6
+
+### Patch Changes
+
+- f740242: Added support for API version v2 of HelmRelease
+- Updated dependencies [f740242]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.6.1
+
 ## 0.5.5
 
 ### Patch Changes
