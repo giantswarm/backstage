@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.6.1
+
+### Patch Changes
+
+- f740242: Added support for API version v2 of HelmRelease
+
 ## 0.6.0
 
 ### Minor Changes
