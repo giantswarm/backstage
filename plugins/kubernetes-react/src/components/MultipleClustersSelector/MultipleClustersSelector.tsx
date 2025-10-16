@@ -66,12 +66,14 @@ function useValue({
 
 function useSelectedClusters({
   clusters,
+  disabledClusters,
   persistToLocalStorage,
   persistToURL,
   urlParameterName,
   disabled,
 }: {
   clusters: string[];
+  disabledClusters: string[];
   persistToLocalStorage: boolean;
   persistToURL: boolean;
   urlParameterName: string;
@@ -115,15 +117,15 @@ function useSelectedClusters({
   const selectedClusters = useMemo(() => {
     let selected = value;
     if (value.length === 0 && rejectedClusters.length > 0) {
-      selected = clusters.filter(
-        cluster => !rejectedClusters.includes(cluster),
-      );
+      selected = clusters
+        .filter(cluster => !disabledClusters.includes(cluster))
+        .filter(cluster => !rejectedClusters.includes(cluster));
     }
 
     return clusters
       .filter(cluster => !rejectedClusters.includes(cluster))
       .filter(cluster => selected.includes(cluster));
-  }, [clusters, rejectedClusters, value]);
+  }, [clusters, disabledClusters, rejectedClusters, value]);
 
   useEffect(() => {
     if (disabled) {
@@ -161,6 +163,7 @@ export const MultipleClustersSelector = ({
 }: MultipleClustersSelectorProps) => {
   const { selectedClusters, setSelectedClusters } = useSelectedClusters({
     clusters,
+    disabledClusters,
     persistToLocalStorage,
     persistToURL,
     urlParameterName,
