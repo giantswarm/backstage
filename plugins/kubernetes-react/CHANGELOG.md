@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.7.1
+
+### Patch Changes
+
+- f4d5ed5: Fix MultipleClusterPicker to take disabled installations into account.
+
 ## 0.7.0
 
 ### Minor Changes
