@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.88.1] - 2025-10-16
 
+### Fixed
+
+- Fix MultipleClusterPicker to take disabled installations into account.
+
 See [./docs/releases/v0.88.1-changelog.md](./docs/releases/v0.88.1-changelog.md) for more information.
 
 ## [0.88.0] - 2025-10-16
