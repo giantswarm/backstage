@@ -34,7 +34,7 @@ export function useResourceRequests(
 
         const path = getK8sGetPath(gvk, name, namespace);
         return {
-          queryKey: [installationName, gvk!.plural],
+          queryKey: ['cluster', installationName, gvk!.plural],
           queryFn: async () => {
             const response = await kubernetesApi.proxy({
               clusterName: installationName,

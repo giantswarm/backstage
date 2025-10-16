@@ -168,7 +168,7 @@ export function useOrganizations(installations?: string[]) {
       const gvk = installationsGVKs[installationName];
 
       return {
-        queryKey: [installationName, gvk.plural],
+        queryKey: ['cluster', installationName, gvk.plural],
         queryFn: async () => {
           const { canListAll, availableResources } = await checkListPermissions(
             installationName,

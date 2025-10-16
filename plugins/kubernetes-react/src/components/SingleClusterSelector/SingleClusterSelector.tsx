@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import useLocalStorageState from 'use-local-storage-state';
 import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
 import { useUrlState } from '../../hooks/useUrlState';
+import { alertApiRef, useApi } from '@backstage/core-plugin-api';
+import { useClusterQueries } from '../../hooks/useClusterQueries';
 
 function useValue({
   persistToLocalStorage,
@@ -48,6 +50,79 @@ function useValue({
   return { value, setValue };
 }
 
+function useSelectedCluster({
+  clusters,
+  persistToLocalStorage,
+  persistToURL,
+  urlParameterName,
+  disabled,
+}: {
+  clusters: string[];
+  persistToLocalStorage: boolean;
+  persistToURL: boolean;
+  urlParameterName: string;
+  disabled: boolean;
+}) {
+  const { value, setValue } = useValue({
+    persistToLocalStorage,
+    persistToURL,
+    urlParameterName,
+  });
+
+  const alertApi = useApi(alertApiRef);
+  const { clusterStatuses } = useClusterQueries();
+  const rejectedClusters = useMemo(() => {
+    const errors = clusterStatuses.flatMap(
+      clusterStatus => clusterStatus.errors,
+    );
+    const rejectedItems = errors
+      .filter(({ error }) => error.name === 'RejectedError')
+      .map(({ cluster }) => cluster);
+
+    return [...new Set(rejectedItems)];
+  }, [clusterStatuses]);
+
+  useEffect(() => {
+    if (rejectedClusters.length > 0) {
+      const clusterNames =
+        rejectedClusters.length === 1
+          ? rejectedClusters[0]
+          : `${rejectedClusters.slice(0, -1).join(', ')} and ${rejectedClusters[rejectedClusters.length - 1]}`;
+      const message = `${rejectedClusters.length === 1 ? 'Cluster' : 'Clusters'} ${clusterNames} ${rejectedClusters.length === 1 ? 'has' : 'have'} been deselected since authentication was rejected.`;
+
+      alertApi.post({
+        message,
+        severity: 'error',
+        display: 'transient',
+      });
+    }
+  }, [rejectedClusters, alertApi]);
+
+  const selectedCluster = useMemo(() => {
+    if (!value) {
+      return null;
+    }
+
+    if (rejectedClusters.includes(value)) {
+      return null;
+    }
+
+    return clusters.find(cluster => cluster === value) ?? null;
+  }, [clusters, rejectedClusters, value]);
+
+  useEffect(() => {
+    if (disabled) {
+      return;
+    }
+
+    if (selectedCluster !== value) {
+      setValue(selectedCluster);
+    }
+  }, [disabled, selectedCluster, setValue, value]);
+
+  return { selectedCluster, setSelectedCluster: setValue };
+}
+
 type ClusterSelectorProps = {
   label?: string;
   clusters?: string[];
@@ -71,25 +146,17 @@ export const SingleClusterSelector = ({
   urlParameterName = 'cluster',
   onActiveClusterChange,
 }: ClusterSelectorProps) => {
-  const { value, setValue } = useValue({
+  const { selectedCluster, setSelectedCluster } = useSelectedCluster({
+    clusters,
     persistToLocalStorage,
     persistToURL,
     urlParameterName,
+    disabled,
   });
-
-  const selectedCluster = clusters.find(cluster => cluster === value) ?? null;
-
-  useEffect(() => {
-    if (disabled) {
-      return;
-    }
-
-    setValue(selectedCluster);
-  }, [disabled, selectedCluster, setValue]);
 
   const handleChange = (newValue: string | string[] | null) => {
     const newItem = Array.isArray(newValue) ? newValue[0] : newValue;
-    setValue(newItem);
+    setSelectedCluster(newItem);
   };
 
   const activeCluster = useMemo(() => {

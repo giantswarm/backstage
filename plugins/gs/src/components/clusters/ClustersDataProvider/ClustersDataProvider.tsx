@@ -144,7 +144,12 @@ export const ClustersDataProvider = ({
     providerClusterErrors,
     providerClusterIdentityErrors,
   ]);
-  useShowErrors(errors);
+
+  const displayErrors = useMemo(() => {
+    return errors.filter(({ error }) => error.name !== 'RejectedError');
+  }, [errors]);
+
+  useShowErrors(displayErrors);
 
   const clustersData = useMemo(() => {
     if (isLoading) {

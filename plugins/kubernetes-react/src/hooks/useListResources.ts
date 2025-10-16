@@ -22,7 +22,7 @@ export function useListResources<T>(
       const path = getK8sListPath(gvk, clusterOptions);
 
       return {
-        queryKey: [cluster, 'list', gvk.plural],
+        queryKey: ['cluster', cluster, 'list', gvk.plural],
         queryFn: async () => {
           const response = await kubernetesApi.proxy({
             clusterName: cluster,
