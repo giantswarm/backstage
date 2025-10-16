@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.88.0] - 2025-10-16
+
+### Changed
+
+- Changed cluster picker components to better handle rejected cluster authentication.
+
+See [./docs/releases/v0.88.0-changelog.md](./docs/releases/v0.88.0-changelog.md) for more information.
+
 ## [0.87.1] - 2025-10-15
 
 ### Changed
@@ -1497,7 +1505,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.87.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.88.0...HEAD
+[0.88.0]: https://github.com/giantswarm/backstage/compare/v0.87.1...v0.88.0
 [0.87.1]: https://github.com/giantswarm/backstage/compare/v0.87.0...v0.87.1
 [0.87.0]: https://github.com/giantswarm/backstage/compare/v0.86.0...v0.87.0
 [0.86.0]: https://github.com/giantswarm/backstage/compare/v0.85.0...v0.86.0

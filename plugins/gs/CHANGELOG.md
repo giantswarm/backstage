@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.44.0
+
+### Minor Changes
+
+- 644308d: Handle rejected cluster authentication.
+
+### Patch Changes
+
+- Updated dependencies [644308d]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.7.0
+  - @giantswarm/backstage-plugin-flux-react@0.6.0
+  - @giantswarm/backstage-plugin-flux@0.6.1
+
 ## 0.43.0
 
 ### Minor Changes

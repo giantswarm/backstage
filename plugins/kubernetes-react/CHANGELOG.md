@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.7.0
+
+### Minor Changes
+
+- 644308d: Handle rejected cluster authentication.
+
 ## 0.6.1
 
 ### Patch Changes
