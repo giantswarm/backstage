@@ -19,11 +19,13 @@ auth:
   environment: development
 
 techdocs:
-  builder: 'local'
+  builder: local
   generator:
-    runIn: 'docker'
+    runIn: docker
   publisher:
-    type: 'local'
+    type: local
+    local:
+      publishDirectory: ../../volumes/techdocs
 
 # For local development purposes, you can add/change catalog sources here.
 #
