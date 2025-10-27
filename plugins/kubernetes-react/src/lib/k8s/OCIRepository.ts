@@ -1,30 +1,7 @@
-import { FluxObject, FluxObjectInterface } from './FluxObject';
+import { crds } from '@giantswarm/k8s-types';
+import { FluxObject } from './FluxObject';
 
-export interface OCIRepositoryInterface extends FluxObjectInterface {
-  spec?: {
-    ref?: {
-      digest?: string;
-      semver?: string;
-      semverFilter?: string;
-      tag?: string;
-    };
-    suspend?: boolean;
-    url: string;
-  };
-  status?: {
-    artifact?: {
-      revision: string;
-    };
-    conditions?: {
-      lastTransitionTime: string;
-      message: string;
-      observedGeneration?: number;
-      reason: string;
-      status: 'True' | 'False' | 'Unknown';
-      type: string;
-    }[];
-  };
-}
+type OCIRepositoryInterface = crds.fluxcd.v1beta2.OCIRepository;
 
 export class OCIRepository extends FluxObject<OCIRepositoryInterface> {
   static apiVersion = 'v1beta2';

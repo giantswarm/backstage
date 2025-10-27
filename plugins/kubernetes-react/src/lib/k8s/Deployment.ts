@@ -1,19 +1,7 @@
-import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { core } from '@giantswarm/k8s-types';
+import { KubeObject } from './KubeObject';
 
-export interface DeploymentInterface extends KubeObjectInterface {
-  status?: {
-    readyReplicas?: number;
-    replicas?: number;
-    conditions?: {
-      lastTransitionTime: string;
-      message: string;
-      observedGeneration?: number;
-      reason: string;
-      status: 'True' | 'False' | 'Unknown';
-      type: string;
-    }[];
-  };
-}
+type DeploymentInterface = core.apps.v1.Deployment;
 
 export class Deployment extends KubeObject<DeploymentInterface> {
   static apiVersion = 'v1';

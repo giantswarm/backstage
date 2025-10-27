@@ -48,6 +48,7 @@
   "devDependencies": {
     "@backstage/cli": "backstage:^",
     "@backstage/test-utils": "backstage:^",
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.1.0",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
     "@types/qs": "^6",
