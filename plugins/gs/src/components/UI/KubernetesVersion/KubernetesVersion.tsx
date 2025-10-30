@@ -1,7 +1,7 @@
 import { NotAvailable } from '../NotAvailable';
 import { Box, styled, Tooltip } from '@material-ui/core';
 import { useK8sVersionEOLDate } from '../../hooks';
-import { getKubernetesReleaseEOLStatus } from '@giantswarm/backstage-plugin-gs-common';
+import { getKubernetesReleaseEOLStatus } from '../../utils/getKubernetesReleaseEOLStatus';
 
 const EolLabel = styled(Box)(({ theme }) => ({
   display: 'inline-block',

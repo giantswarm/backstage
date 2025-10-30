@@ -7,7 +7,7 @@ import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentD
 
 export function DeploymentLabelsCard() {
   const { deployment } = useCurrentDeployment();
-  const labels = deployment.metadata.labels;
+  const labels = deployment.getLabels();
   const labelsConfig =
     useFriendlyItemsConfiguration('gs.friendlyLabels') ??
     defaultFriendlyLabelsConfiguration;

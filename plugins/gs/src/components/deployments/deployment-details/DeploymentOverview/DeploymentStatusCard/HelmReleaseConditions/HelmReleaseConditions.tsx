@@ -13,7 +13,6 @@ import {
 import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import type { HelmRelease } from '@giantswarm/backstage-plugin-gs-common';
 import { compareDates } from '../../../../../utils/helpers';
 import {
   DateComponent,
@@ -22,6 +21,7 @@ import {
   StatusMessage,
 } from '../../../../../UI';
 import { InfoCard } from '@backstage/core-components';
+import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,
@@ -140,7 +140,8 @@ type HelmReleaseConditionsProps = {
 export const HelmReleaseConditions = ({
   helmrelease,
 }: HelmReleaseConditionsProps) => {
-  if (!helmrelease.status?.conditions) {
+  const conditions = helmrelease.getStatusConditions();
+  if (!conditions) {
     return (
       <Paper>
         <Box padding={2}>
@@ -150,14 +151,14 @@ export const HelmReleaseConditions = ({
     );
   }
 
-  const conditions = helmrelease.status.conditions.sort((a, b) =>
+  const sortedConditions = conditions.sort((a, b) =>
     compareDates(b.lastTransitionTime, a.lastTransitionTime),
   );
 
   return (
     <InfoCard title="Conditions">
       <Grid container direction="column">
-        {conditions.map((condition, idx) => (
+        {sortedConditions.map((condition, idx) => (
           <Grid item xs={12} key={condition.type}>
             <ConditionCard
               condition={condition}

@@ -1,10 +1,13 @@
-import { Deployment } from '@giantswarm/backstage-plugin-gs-common';
 import { createContext, ReactNode, useContext } from 'react';
 import { useDeploymentFromUrl } from './useDeploymentFromUrl';
+import {
+  App,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type DeploymentLoadingStatus = {
   installationName: string;
-  deployment?: Deployment;
+  deployment?: App | HelmRelease;
   loading: boolean;
   error: Error | null;
 };
@@ -48,7 +51,7 @@ export const AsyncDeploymentProvider = ({
  */
 export function useCurrentDeployment(): {
   installationName: string;
-  deployment: Deployment;
+  deployment: App | HelmRelease;
 } {
   const value = useContext(DeploymentContext);
 

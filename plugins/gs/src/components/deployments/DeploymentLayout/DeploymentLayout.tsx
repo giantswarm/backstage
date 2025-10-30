@@ -13,16 +13,19 @@ import {
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
 import { useAsyncDeployment } from '../DeploymentDetailsPage/useCurrentDeployment';
-import { AppKind, Deployment } from '@giantswarm/backstage-plugin-gs-common';
 import { deploymentDetailsRouteRef } from '../../../routes';
 import { useCurrentUser } from '../../hooks';
+import {
+  App,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type DeploymentLayoutRouteProps = {
   path: string;
   title: string;
   children: JSX.Element;
   if?: (data: {
-    deployment: Deployment;
+    deployment: App | HelmRelease;
     installationName: string;
     isGSUser: boolean;
   }) => boolean;
@@ -46,7 +49,7 @@ const PageContent = ({
   isLoading: boolean;
   error: Error | null;
   installationName: string;
-  deployment?: Deployment;
+  deployment?: App | HelmRelease;
   isGSUser?: boolean;
   children?: React.ReactNode;
 }) => {
@@ -124,7 +127,7 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
 
   const isLoading = deploymentIsLoading || currentUserIsLoading;
 
-  const type = `resource - ${deployment && deployment.kind === AppKind ? 'Giant Swarm App' : 'Flux HelmRelease'}`;
+  const type = `resource - ${deployment && deployment instanceof App ? 'Giant Swarm App' : 'Flux HelmRelease'}`;
 
   return (
     <Page themeId="service">

@@ -1,20 +1,16 @@
-import {
-  Cluster,
-  getClusterName,
-  getClusterNamespace,
-  getClusterOrganization,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useInstallations } from './useInstallations';
+import { useInstallationsInfo } from './useInstallationsInfo';
 import { useMemo } from 'react';
+import { getClusterOrganization } from '../clusters/utils';
+import { Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export function useClusterDetailsTemplateData(
   installationName: string,
   cluster: Cluster,
 ) {
-  const { installationsInfo } = useInstallations();
+  const { installationsInfo } = useInstallationsInfo();
 
-  const clusterName = getClusterName(cluster);
-  const clusterNamespace = getClusterNamespace(cluster);
+  const clusterName = cluster.getName();
+  const clusterNamespace = cluster.getNamespace();
   const organizationName = getClusterOrganization(cluster);
 
   const installationInfo = installationsInfo.find(

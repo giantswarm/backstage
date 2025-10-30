@@ -1,18 +1,16 @@
 import { useCallback } from 'react';
 import { Grid } from '@material-ui/core';
 import { ReleasePickerProps } from './schema';
-import { useReleases } from '../../hooks';
 import semver from 'semver';
-import {
-  getReleaseName,
-  getReleaseVersion,
-  Release,
-  RELEASE_VERSION_PREFIXES,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
-import { useShowErrors } from '../../Errors/useErrors';
+import {
+  Release,
+  useResources,
+  useShowErrors,
+  RELEASE_VERSION_PREFIXES,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -40,11 +38,12 @@ const ReleasePickerField = ({
   const providerPrefix = provider
     ? RELEASE_VERSION_PREFIXES[provider]
     : undefined;
-  const { resources, isLoading, errors } = useReleases([installationName]);
+  const { resources, isLoading, errors } = useResources(
+    installationName,
+    Release,
+  );
   const filteredResources = providerPrefix
-    ? resources.filter(release =>
-        getReleaseName(release).startsWith(providerPrefix),
-      )
+    ? resources.filter(release => release.getName().startsWith(providerPrefix))
     : resources;
 
   useShowErrors(errors, {
@@ -54,7 +53,7 @@ const ReleasePickerField = ({
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources: filteredResources,
     isLoading,
-    getResourceName: getReleaseVersion,
+    getResourceName: (release: Release) => release.getVersion(),
     initialValue: releaseValue,
     selectFirstValue: true,
     onSelect: onReleaseSelect,
@@ -119,7 +118,7 @@ export const ReleasePicker = ({
         return;
       }
 
-      onChange(getReleaseVersion(selectedRelease));
+      onChange(selectedRelease.getVersion());
     },
     [onChange],
   );

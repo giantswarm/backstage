@@ -4,9 +4,8 @@ import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';
 import { ClustersDataProvider } from '../ClustersDataProvider';
 import { DefaultFilters } from './DefaultFilters';
-import { ErrorsProvider } from '../../Errors';
 import { QueryClientProvider } from '../../QueryClientProvider';
-import { InstallationsProvider } from '../../installations/InstallationsProvider';
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type BaseClustersPageProps = {
   filters: ReactNode;
@@ -46,12 +45,10 @@ export function DefaultClustersPage(props: DefaultClustersPageProps) {
 
   return (
     <QueryClientProvider>
-      <InstallationsProvider>
-        <BaseClustersPage
-          filters={filters ?? <DefaultFilters />}
-          content={<ClustersTable />}
-        />
-      </InstallationsProvider>
+      <BaseClustersPage
+        filters={filters ?? <DefaultFilters />}
+        content={<ClustersTable />}
+      />
     </QueryClientProvider>
   );
 }

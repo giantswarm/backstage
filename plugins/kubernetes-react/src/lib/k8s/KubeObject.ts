@@ -52,6 +52,10 @@ export class KubeObject<T extends KubeObjectInterface = any> {
     return this.jsonData.metadata.annotations;
   }
 
+  getCreatedTimestamp() {
+    return this.jsonData.metadata.creationTimestamp;
+  }
+
   findLabel(label: string) {
     return this.jsonData.metadata.labels?.[label];
   }

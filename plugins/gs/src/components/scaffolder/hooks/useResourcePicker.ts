@@ -1,10 +1,7 @@
-import {
-  Resource,
-  ResourceObject,
-} from '@giantswarm/backstage-plugin-gs-common';
+import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEffect, useMemo, useState } from 'react';
 
-export function useResourcePicker<T extends ResourceObject>({
+export function useResourcePicker<T extends KubeObject>({
   resources,
   isLoading,
   getResourceName,
@@ -13,17 +10,22 @@ export function useResourcePicker<T extends ResourceObject>({
   onSelect,
   compareFn,
 }: {
-  resources: Resource<T>[];
+  resources: T[];
   isLoading: boolean;
-  getResourceName: (resource: Resource<T>) => string;
+  getResourceName?: (resource: T) => string;
   initialValue?: string;
   selectFirstValue?: boolean;
-  onSelect: (selectedResource: Resource<T> | undefined) => void;
+  onSelect: (selectedResource: T | undefined) => void;
   compareFn?: ((a: string, b: string) => number) | undefined;
 }) {
   const resourceNames = useMemo(
-    () => resources.map(getResourceName).sort(compareFn),
-    [resources, getResourceName, compareFn],
+    () =>
+      resources
+        .map(resource =>
+          getResourceName ? getResourceName(resource) : resource.getName(),
+        )
+        .sort(compareFn),
+    [resources, compareFn, getResourceName],
   );
 
   const defaultValue = selectFirstValue ? resourceNames[0] : undefined;
@@ -48,7 +50,9 @@ export function useResourcePicker<T extends ResourceObject>({
   // Propagate selection change
   useEffect(() => {
     const selectedResource = resources.find(
-      resource => getResourceName(resource) === selectedName,
+      resource =>
+        (getResourceName ? getResourceName(resource) : resource.getName()) ===
+        selectedName,
     );
     onSelect(selectedResource);
   }, [resources, selectedName, onSelect, getResourceName]);

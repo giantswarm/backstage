@@ -1,15 +1,14 @@
 import { useCallback } from 'react';
-import {
-  getProviderConfigName,
-  ProviderConfig,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { useProviderConfigs } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { ProviderConfigPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
-import { useShowErrors } from '../../Errors/useErrors';
+import {
+  ProviderConfig,
+  useResources,
+  useShowErrors,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type ProviderConfigPickerFieldProps = {
   id?: string;
@@ -35,7 +34,10 @@ const ProviderConfigPickerField = ({
   onProviderConfigSelect,
 }: ProviderConfigPickerFieldProps) => {
   const installations = installationName ? [installationName] : [];
-  const { resources, isLoading, errors } = useProviderConfigs(installations);
+  const { resources, isLoading, errors } = useResources(
+    installations,
+    ProviderConfig,
+  );
 
   useShowErrors(errors, {
     message: 'Failed to load provider configs',
@@ -44,7 +46,6 @@ const ProviderConfigPickerField = ({
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources,
     isLoading,
-    getResourceName: getProviderConfigName,
     initialValue: providerConfigNameValue,
     onSelect: onProviderConfigSelect,
   });
@@ -99,7 +100,7 @@ export const ProviderConfigPicker = ({
         return;
       }
 
-      onChange(getProviderConfigName(selectedProviderConfig));
+      onChange(selectedProviderConfig.getName());
     },
     [onChange],
   );

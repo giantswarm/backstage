@@ -1,6 +1,6 @@
 import { Grid, Typography } from '@material-ui/core';
-import { App } from '@giantswarm/backstage-plugin-gs-common';
 import { AppStatus } from '../../deployments/deployment-details/DeploymentOverview/DeploymentStatusCard/AppStatus';
+import { App } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type ClusterAppStatusProps = {
   app: App;

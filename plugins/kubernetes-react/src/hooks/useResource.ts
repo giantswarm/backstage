@@ -4,6 +4,7 @@ import { QueryOptions } from './types';
 import { useGetResource } from './useGetResource';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
+import { ErrorInfo } from './utils/queries';
 
 export function useResource<R extends KubeObject<any>>(
   cluster: string,
@@ -13,6 +14,7 @@ export function useResource<R extends KubeObject<any>>(
   options: {
     name: string;
     namespace?: string;
+    apiVersion?: string;
   },
   queryOptions?: QueryOptions<KubeObjectInterface>,
 ) {
@@ -34,9 +36,23 @@ export function useResource<R extends KubeObject<any>>(
     return new ResourceClass(queryInfo.data, cluster);
   }, [queryInfo.data, cluster, ResourceClass]);
 
+  const errors: ErrorInfo[] = useMemo(() => {
+    if (!queryInfo.error) {
+      return [];
+    }
+    return [
+      {
+        cluster,
+        error: queryInfo.error,
+        retry: queryInfo.refetch,
+      },
+    ];
+  }, [cluster, queryInfo.error, queryInfo.refetch]);
+
   return {
     ...queryInfo,
     isLoading: isRestoring || queryInfo.isLoading,
     resource,
+    errors,
   };
 }

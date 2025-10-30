@@ -26,7 +26,15 @@ export class Kustomization extends FluxObject<KustomizationInterface> {
   }
 
   getSourceRef() {
-    return this.jsonData.spec?.sourceRef;
+    const sourceRef = this.jsonData.spec?.sourceRef;
+    if (!sourceRef) {
+      return undefined;
+    }
+
+    return {
+      ...sourceRef,
+      namespace: sourceRef.namespace ?? this.getNamespace(),
+    };
   }
 
   getLastAppliedRevision() {

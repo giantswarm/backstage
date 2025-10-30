@@ -2,7 +2,7 @@ import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import { Drawer, IconButton, Typography } from '@material-ui/core';
 import Close from '@material-ui/icons/Close';
 import { useDetailsPane } from '../../hooks';
-import { ErrorsProvider } from '../../Errors';
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 const useDrawerStyles = makeStyles((theme: Theme) =>
   createStyles({

@@ -2,31 +2,18 @@ import { InfoCard } from '@backstage/core-components';
 import { Grid, Typography } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { formatVersion } from '../../../../utils/helpers';
-import {
-  AppKind,
-  getAppCurrentVersion,
-  getAppVersion,
-  getHelmReleaseLastAppliedRevision,
-  getHelmReleaseLastAttemptedRevision,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { getSourceLocationFromEntity } from '../../../../utils/entity';
 import { useCatalogEntityForDeployment } from '../../../../hooks';
 import { AboutField } from '@backstage/plugin-catalog';
 import { AboutFieldValue, Version } from '../../../../UI';
+import { getAttemptedVersion, getVersion } from '../../../utils/getVersion';
 
 export function DeploymentRevisionsCard() {
   const { deployment } = useCurrentDeployment();
   const { catalogEntity } = useCatalogEntityForDeployment(deployment);
 
-  const lastAppliedRevision =
-    deployment.kind === AppKind
-      ? getAppCurrentVersion(deployment)
-      : getHelmReleaseLastAppliedRevision(deployment);
-
-  const lastAttemptedRevision =
-    deployment.kind === AppKind
-      ? getAppVersion(deployment)
-      : getHelmReleaseLastAttemptedRevision(deployment);
+  const lastAppliedRevision = getVersion(deployment);
+  const lastAttemptedRevision = getAttemptedVersion(deployment);
 
   const sourceLocation = catalogEntity
     ? getSourceLocationFromEntity(catalogEntity)

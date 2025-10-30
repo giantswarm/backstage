@@ -1,10 +1,7 @@
 import { Box, Grid, Typography } from '@material-ui/core';
-
-import {
-  Cluster,
-  getClusterK8sAPIUrl,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { CodeBlock, NotAvailable } from '../../../../../UI';
+import { Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { getClusterK8sAPIUrl } from '../../../../utils';
 
 type ClusterAccessProps = {
   cluster: Cluster;

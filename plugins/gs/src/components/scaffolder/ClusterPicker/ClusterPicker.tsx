@@ -1,17 +1,15 @@
 import { useCallback } from 'react';
-import {
-  Cluster,
-  getClusterName,
-  getClusterNamespace,
-  getClusterOrganization,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { useClusters } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { ClusterPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
-import { useShowErrors } from '../../Errors/useErrors';
+import {
+  Cluster,
+  useResources,
+  useShowErrors,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { getClusterOrganization } from '../../clusters/utils';
 
 type ClusterPickerFieldProps = {
   id?: string;
@@ -35,7 +33,7 @@ const ClusterPickerField = ({
   onClusterSelect,
 }: ClusterPickerFieldProps) => {
   const installations = installationName ? [installationName] : [];
-  const { resources, isLoading, errors } = useClusters(installations);
+  const { resources, isLoading, errors } = useResources(installations, Cluster);
 
   useShowErrors(errors, {
     message: 'Failed to load clusters',
@@ -44,7 +42,6 @@ const ClusterPickerField = ({
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources,
     isLoading,
-    getResourceName: getClusterName,
     initialValue: clusterNameValue,
     onSelect: onClusterSelect,
   });
@@ -100,8 +97,8 @@ export const ClusterPicker = ({
       }
 
       onChange({
-        clusterName: getClusterName(selectedCluster),
-        clusterNamespace: getClusterNamespace(selectedCluster),
+        clusterName: selectedCluster.getName(),
+        clusterNamespace: selectedCluster.getNamespace(),
         clusterOrganization: getClusterOrganization(selectedCluster),
       });
     },

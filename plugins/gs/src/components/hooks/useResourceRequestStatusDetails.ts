@@ -10,7 +10,7 @@ import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ScheduleOutlinedIcon from '@material-ui/icons/ScheduleOutlined';
 import HelpOutlinedIcon from '@material-ui/icons/HelpOutlineOutlined';
 import { toSentenceCase } from '../utils/helpers';
-import { ResourceRequestStatuses } from '@giantswarm/backstage-plugin-gs-common';
+import { ResourceRequestStatuses } from '../kratix/utils';
 
 export function useResourceRequestStatusDetails(status: string) {
   const theme = useTheme();

@@ -1,6 +1,6 @@
-import { App, Cluster } from '@giantswarm/backstage-plugin-gs-common';
 import { createContext, ReactNode, useContext } from 'react';
 import { useClusterFromUrl } from './useClusterFromUrl';
+import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type ClusterLoadingStatus = {
   installationName: string;

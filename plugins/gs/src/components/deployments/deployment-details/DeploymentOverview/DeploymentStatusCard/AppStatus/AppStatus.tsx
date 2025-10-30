@@ -1,6 +1,4 @@
 import { Box, Paper, styled, Typography } from '@material-ui/core';
-import type { App } from '@giantswarm/backstage-plugin-gs-common';
-import { getAppStatus } from '@giantswarm/backstage-plugin-gs-common';
 import { useAppStatusDetails } from '../../../../../hooks';
 import {
   ContentRow,
@@ -11,6 +9,8 @@ import {
 } from '../../../../../UI';
 import { ComponentProps, ComponentType } from 'react';
 import { InfoCard } from '@backstage/core-components';
+import { App } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { getStatus } from '../../../../utils/getStatus';
 
 const IconWrapper = styled('div')(({ color }) => ({
   display: 'flex',
@@ -54,7 +54,7 @@ type AppStatusProps = {
 };
 
 export const AppStatus = ({ app }: AppStatusProps) => {
-  const status = getAppStatus(app);
+  const status = getStatus(app);
   if (!status) {
     return (
       <Paper>
@@ -65,8 +65,8 @@ export const AppStatus = ({ app }: AppStatusProps) => {
     );
   }
 
-  const lastTransitionTime = app.status!.release.lastDeployed;
-  const reason = app.status!.release.reason;
+  const lastTransitionTime = app.getStatus()!.release.lastDeployed;
+  const reason = app.getStatus()!.release.reason;
 
   return (
     <InfoCard title="Status">

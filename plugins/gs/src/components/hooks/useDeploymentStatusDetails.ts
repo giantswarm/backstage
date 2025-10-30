@@ -14,7 +14,7 @@ import { toSentenceCase } from '../utils/helpers';
 import {
   AppStatuses,
   HelmReleaseStatuses,
-} from '@giantswarm/backstage-plugin-gs-common';
+} from '../deployments/utils/getStatus';
 
 export function useAppStatusDetails(status: string) {
   const theme = useTheme();

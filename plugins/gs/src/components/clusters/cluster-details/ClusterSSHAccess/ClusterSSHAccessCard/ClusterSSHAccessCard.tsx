@@ -8,11 +8,10 @@ import {
   getSpecificNodeAccessCommandExample,
   getWorkerNodeAccessCommand,
 } from './utils';
-import { getClusterName } from '@giantswarm/backstage-plugin-gs-common';
 
 export function ClusterSSHAccessCard() {
   const { cluster, installationName } = useCurrentCluster();
-  const clusterName = getClusterName(cluster);
+  const clusterName = cluster.getName();
 
   return (
     <InfoCard title="SSH access">

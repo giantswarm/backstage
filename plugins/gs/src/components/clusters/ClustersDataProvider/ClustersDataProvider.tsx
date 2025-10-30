@@ -1,15 +1,10 @@
 import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
-import {
-  findResourceByRef,
-  getClusterControlPlaneRef,
-  getClusterInfrastructureRef,
-  getProviderClusterIdentityRef,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
-import { useClusters } from '../../hooks';
-import { useProviderClusters } from '../../hooks/useProviderClusters';
-import { useProviderClustersIdentities } from '../../hooks/useProviderClustersIdentities';
-import { useControlPlanes } from '../../hooks/useControlPlanes';
+import {
+  useControlPlanesForClusters,
+  useProviderClustersForClusters,
+  useProviderClusterIdentitiesForProviderClusters,
+} from '../../hooks';
 import {
   AppVersionFilter,
   KindFilter,
@@ -23,7 +18,13 @@ import {
 } from '../ClustersPage/filters/filters';
 import { ClusterData, collectClusterData } from './utils';
 import { ClusterColumns } from '../ClustersTable/columns';
-import { useShowErrors } from '../../Errors/useErrors';
+import {
+  AWSClusterRoleIdentity,
+  Cluster,
+  useResources,
+  useShowErrors,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { findResourceByRef } from '../../utils/findResourceByRef';
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
@@ -77,7 +78,7 @@ export const ClustersDataProvider = ({
     errors: clusterErrors,
     isLoading: isLoadingClusters,
     retry,
-  } = useClusters(activeInstallations);
+  } = useResources(activeInstallations, Cluster);
 
   const controlPlanesRequired = visibleColumns.includes(
     ClusterColumns.kubernetesVersion,
@@ -87,7 +88,7 @@ export const ClustersDataProvider = ({
     resources: controlPlaneResources,
     errors: controlPlaneErrors,
     isLoading: isLoadingControlPlanes,
-  } = useControlPlanes(clusterResources, {
+  } = useControlPlanesForClusters(clusterResources, {
     enabled:
       controlPlanesRequired &&
       !isLoadingClusters &&
@@ -103,7 +104,7 @@ export const ClustersDataProvider = ({
     resources: providerClusterResources,
     errors: providerClusterErrors,
     isLoading: isLoadingProviderClusters,
-  } = useProviderClusters(clusterResources, {
+  } = useProviderClustersForClusters(clusterResources, {
     enabled:
       providerClustersRequired &&
       !isLoadingClusters &&
@@ -118,12 +119,15 @@ export const ClustersDataProvider = ({
     resources: providerClusterIdentityResources,
     errors: providerClusterIdentityErrors,
     isLoading: isLoadingProviderClusterIdentities,
-  } = useProviderClustersIdentities(providerClusterResources, {
-    enabled:
-      providerClusterIdentitiesRequired &&
-      !isLoadingProviderClusters &&
-      providerClusterResources.length > 0,
-  });
+  } = useProviderClusterIdentitiesForProviderClusters(
+    providerClusterResources,
+    {
+      enabled:
+        providerClusterIdentitiesRequired &&
+        !isLoadingProviderClusters &&
+        providerClusterResources.length > 0,
+    },
+  );
 
   const isLoading =
     isLoadingClusters ||
@@ -156,13 +160,13 @@ export const ClustersDataProvider = ({
       return [];
     }
 
-    return clusterResources.map(({ installationName, ...cluster }) => {
+    return clusterResources.map(cluster => {
       let controlPlane = null;
       if (controlPlaneResources.length) {
-        const controlPlaneRef = getClusterControlPlaneRef(cluster);
+        const controlPlaneRef = cluster.getControlPlaneRef();
         if (controlPlaneRef) {
           controlPlane = findResourceByRef(controlPlaneResources, {
-            installationName,
+            installationName: cluster.cluster,
             ...controlPlaneRef,
           });
         }
@@ -170,33 +174,38 @@ export const ClustersDataProvider = ({
 
       let providerCluster = null;
       if (providerClusterResources.length) {
-        const infrastructureRef = getClusterInfrastructureRef(cluster);
+        const infrastructureRef = cluster.getInfrastructureRef();
         if (infrastructureRef) {
           providerCluster = findResourceByRef(providerClusterResources, {
-            installationName,
+            installationName: cluster.cluster,
             ...infrastructureRef,
           });
         }
       }
 
-      let providerClusterIdentity = null;
+      let awsClusterRoleIdentity: AWSClusterRoleIdentity | null = null;
       if (providerCluster && providerClusterIdentityResources.length) {
-        const providerClusterIdentityRef =
-          getProviderClusterIdentityRef(providerCluster);
-        if (providerClusterIdentityRef) {
-          providerClusterIdentity = findResourceByRef(
+        const providerClusterIdentityRef = providerCluster.getIdentityRef();
+        if (
+          providerClusterIdentityRef &&
+          providerClusterIdentityRef.kind === AWSClusterRoleIdentity.kind
+        ) {
+          awsClusterRoleIdentity = findResourceByRef(
             providerClusterIdentityResources,
-            { installationName, ...providerClusterIdentityRef },
+            {
+              installationName: providerCluster.cluster,
+              ...providerClusterIdentityRef,
+            },
           );
         }
       }
 
       return collectClusterData({
-        installationName,
+        installationName: cluster.cluster,
         cluster,
         controlPlane,
         providerCluster,
-        providerClusterIdentity,
+        awsClusterRoleIdentity,
       });
     });
   }, [

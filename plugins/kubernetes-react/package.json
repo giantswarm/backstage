@@ -30,6 +30,7 @@
     "@backstage/core-plugin-api": "backstage:^",
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.1.0",
     "@material-ui/core": "^4.9.13",
     "@material-ui/icons": "^4.11.3",
     "@types/lodash": "^4.17.5",
@@ -48,7 +49,6 @@
   "devDependencies": {
     "@backstage/cli": "backstage:^",
     "@backstage/test-utils": "backstage:^",
-    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.1.0",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
     "@types/qs": "^6",

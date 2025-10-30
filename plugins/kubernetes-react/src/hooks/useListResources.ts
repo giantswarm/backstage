@@ -1,11 +1,20 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries } from '@tanstack/react-query';
-import type { List } from '@giantswarm/backstage-plugin-gs-common';
 import { mapQueriesToClusters } from './utils/queries';
 import { getK8sListPath } from './utils/k8sPath';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { Options, QueryOptions } from './types';
+
+interface List<T> {
+  apiVersion: string;
+  kind: string;
+  metadata: {
+    resourceVersion?: string;
+    selfLink?: string;
+  };
+  items: T[];
+}
 
 export function useListResources<T>(
   clusters: string[],

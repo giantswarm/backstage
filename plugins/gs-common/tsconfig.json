@@ -1,8 +1,0 @@
-{
-  "extends": "@backstage/cli/config/tsconfig.json",
-  "ts-node": {
-    "compilerOptions": {
-      "module": "commonjs"
-    }
-  }
-}

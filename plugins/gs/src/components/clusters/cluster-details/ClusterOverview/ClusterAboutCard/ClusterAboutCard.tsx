@@ -2,26 +2,20 @@ import { Link as RouterLink } from 'react-router-dom';
 import { InfoCard, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';
 import { Grid, Tooltip, Typography } from '@material-ui/core';
+import { Constants } from '@giantswarm/backstage-plugin-gs-common';
+import { AboutField } from '@backstage/plugin-catalog';
 import {
+  calculateClusterType,
+  calculateClusterProvider,
+  formatClusterProvider,
+  formatClusterType,
+  formatServicePriority,
   getClusterCreationTimestamp,
   getClusterOrganization,
   getClusterReleaseVersion,
   getClusterServicePriority,
-  getControlPlaneK8sVersion,
-  Constants,
   isManagementCluster,
-  ControlPlane,
-  getClusterControlPlaneRef,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { AboutField } from '@backstage/plugin-catalog';
-import {
-  calculateClusterProvider,
-  calculateClusterType,
-  formatClusterProvider,
-  formatClusterType,
-  formatServicePriority,
 } from '../../../utils';
-import { useResource } from '../../../../hooks';
 import {
   AboutFieldValue,
   AsyncValue,
@@ -34,48 +28,61 @@ import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { clusterDetailsRouteRef } from '../../../../../routes';
-import { useShowErrors } from '../../../../Errors/useErrors';
+import {
+  ControlPlane,
+  useResource,
+  useShowErrors,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { getErrorMessage } from '../../../../hooks/utils/helpers';
 
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();
 
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
+  const controlPlaneRef = cluster.getControlPlaneRef();
+  if (!controlPlaneRef) {
+    throw new Error(
+      'There is no control plane reference defined in the cluster resource.',
+    );
+  }
+
   const {
-    kind: controlPlaneKind,
     apiVersion: controlPlaneApiVersion,
     name: controlPlaneName,
     namespace: controlPlaneNamespace,
-  } = getClusterControlPlaneRef(cluster);
+  } = controlPlaneRef;
 
   const {
-    data: controlPlane,
+    resource: controlPlane,
     isLoading: controlPlaneIsLoading,
     errors: controlPlaneErrors,
-    queryErrorMessage: controlPlaneQueryErrorMessage,
-  } = useResource<ControlPlane>({
-    kind: controlPlaneKind,
+    error: controlPlaneError,
+  } = useResource(installationName, ControlPlane, {
     apiVersion: controlPlaneApiVersion,
-    installationName,
     name: controlPlaneName,
     namespace: controlPlaneNamespace,
   });
 
-  useShowErrors(controlPlaneErrors, {
-    message: controlPlaneQueryErrorMessage,
-  });
+  let controlPlaneErrorMessage;
+  if (controlPlaneError) {
+    controlPlaneErrorMessage = getErrorMessage({
+      error: controlPlaneError,
+      resourceKind: ControlPlane.kind,
+      resourceName: controlPlaneName,
+      resourceNamespace: controlPlaneNamespace,
+    });
+  }
 
-  const clusterType = calculateClusterType(cluster, installationName);
+  useShowErrors(controlPlaneErrors);
+
+  const clusterType = calculateClusterType(cluster);
   const releaseVersion = getClusterReleaseVersion(cluster);
   const organization = getClusterOrganization(cluster);
   const servicePriority = getClusterServicePriority(cluster);
   const provider = calculateClusterProvider(cluster);
   const creationTimestamp = getClusterCreationTimestamp(cluster);
-  const k8sVersion = controlPlane
-    ? getControlPlaneK8sVersion(controlPlane)
-    : undefined;
-
-  const firstError = controlPlaneErrors[0]?.error ?? null;
+  const k8sVersion = controlPlane ? controlPlane.getK8sVersion() : undefined;
 
   return (
     <InfoCard title="About">
@@ -90,8 +97,8 @@ export function ClusterAboutCard() {
             <AsyncValue
               isLoading={controlPlaneIsLoading}
               value={k8sVersion}
-              error={firstError}
-              errorMessage={controlPlaneQueryErrorMessage}
+              error={controlPlaneError}
+              errorMessage={controlPlaneErrorMessage}
             >
               {value => (
                 <KubernetesVersion
@@ -137,7 +144,7 @@ export function ClusterAboutCard() {
             />
           </AboutFieldValue>
         </AboutField>
-        {!isManagementCluster(cluster, installationName) && (
+        {!isManagementCluster(cluster) && (
           <AboutField
             label="Installation"
             value={installationName}

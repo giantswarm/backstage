@@ -1,20 +1,15 @@
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import {
-  AppKind,
-  Deployment,
-  getAppChartName,
-  getHelmReleaseChartName,
-} from '@giantswarm/backstage-plugin-gs-common';
+  App,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCatalogEntitiesForDeployments } from './useCatalogEntitiesForDeployments';
 
-export function useCatalogEntityForDeployment(deployment: Deployment) {
+export function useCatalogEntityForDeployment(deployment: App | HelmRelease) {
   const { catalogEntities, catalogEntitiesMap } =
     useCatalogEntitiesForDeployments();
 
-  const chartName =
-    deployment.kind === AppKind
-      ? getAppChartName(deployment)
-      : getHelmReleaseChartName(deployment);
+  const chartName = deployment.getChartName();
 
   const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
 

@@ -6,7 +6,6 @@ import { useRouteRef } from '@backstage/core-plugin-api';
 import { AboutField } from '@backstage/plugin-catalog';
 import { Grid, Tooltip, Typography } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
-import { calculateClusterType, formatDeploymentType } from '../../../utils';
 import {
   AboutFieldValue,
   ClusterLink,
@@ -14,26 +13,17 @@ import {
   NotAvailable,
 } from '../../../../UI';
 import { clusterDetailsRouteRef } from '../../../../../routes';
-import {
-  AppKind,
-  Constants,
-  getAppCatalogName,
-  getAppChartName,
-  getAppCreatedTimestamp,
-  getAppTargetClusterName,
-  getAppTargetClusterNamespace,
-  getAppUpdatedTimestamp,
-  getHelmReleaseChartName,
-  getHelmReleaseCreatedTimestamp,
-  getHelmReleaseSourceKind,
-  getHelmReleaseSourceName,
-  getHelmReleaseTargetClusterName,
-  getHelmReleaseTargetClusterNamespace,
-  getHelmReleaseUpdatedTimestamp,
-} from '@giantswarm/backstage-plugin-gs-common';
+import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { useCatalogEntityForDeployment } from '../../../../hooks';
-import { formatAppCatalogName, formatSource } from '../../../../utils/helpers';
+import { formatSource } from '../../../../utils/helpers';
+import {
+  findTargetClusterName,
+  findTargetClusterNamespace,
+  findTargetClusterType,
+} from '../../../utils/findTargetCluster';
+import { getSourceKind, getSourceName } from '../../../utils/getSource';
+import { getUpdatedTimestamp } from '../../../utils/getUpdatedTimestamp';
 
 export function DeploymentAboutCard() {
   const { deployment, installationName } = useCurrentDeployment();
@@ -42,25 +32,16 @@ export function DeploymentAboutCard() {
 
   const { catalogEntity } = useCatalogEntityForDeployment(deployment);
 
-  const name = deployment.metadata.name;
-  const namespace = deployment.metadata.namespace;
+  const name = deployment.getName();
+  const namespace = deployment.getNamespace();
 
-  const clusterName =
-    deployment.kind === AppKind
-      ? getAppTargetClusterName(deployment, installationName)
-      : getHelmReleaseTargetClusterName(deployment, installationName);
+  const clusterName = findTargetClusterName(deployment);
 
-  const clusterNamespace =
-    deployment.kind === AppKind
-      ? getAppTargetClusterNamespace(deployment, installationName)
-      : getHelmReleaseTargetClusterNamespace(deployment);
+  const clusterNamespace = findTargetClusterNamespace(deployment);
 
-  const clusterType = calculateClusterType(deployment, installationName);
+  const clusterType = findTargetClusterType(deployment);
 
-  const chartName =
-    deployment.kind === AppKind
-      ? getAppChartName(deployment)
-      : getHelmReleaseChartName(deployment);
+  const chartName = deployment.getChartName();
 
   let clusterEl: ReactNode = clusterName ? clusterName : <NotAvailable />;
   if (clusterName && clusterNamespace) {
@@ -83,32 +64,20 @@ export function DeploymentAboutCard() {
     <NotAvailable />
   );
 
-  const createdTimestamp =
-    deployment.kind === AppKind
-      ? getAppCreatedTimestamp(deployment)
-      : getHelmReleaseCreatedTimestamp(deployment);
+  const createdTimestamp = deployment.getCreatedTimestamp();
 
-  const updatedTimestamp =
-    deployment.kind === AppKind
-      ? getAppUpdatedTimestamp(deployment)
-      : getHelmReleaseUpdatedTimestamp(deployment);
+  const updatedTimestamp = getUpdatedTimestamp(deployment);
 
-  const sourceKind =
-    deployment.kind === AppKind
-      ? 'AppCatalog'
-      : getHelmReleaseSourceKind(deployment);
+  const sourceKind = getSourceKind(deployment);
 
-  const sourceName =
-    deployment.kind === AppKind
-      ? formatAppCatalogName(getAppCatalogName(deployment) ?? '')
-      : getHelmReleaseSourceName(deployment);
+  const sourceName = getSourceName(deployment);
 
   return (
     <InfoCard title="About">
       <Grid container spacing={5}>
         <AboutField
           label="Type"
-          value={formatDeploymentType(deployment.kind)}
+          value={deployment.getKind()}
           gridSizes={{ xs: 6, md: 4 }}
         />
 
