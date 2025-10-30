@@ -1,13 +1,12 @@
-import {
-  ClusterSecretStore,
-  getSecretStoreName,
-  SecretStore,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { Grid } from '@material-ui/core';
 import { SecretStorePickerProps } from './schema';
 import { ClusterSecretStoreSelector } from './ClusterSecretStoreSelector';
 import { SecretStoreSelector } from './SecretStoreSelector';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import {
+  ClusterSecretStore,
+  SecretStore,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type SecretStorePickerFieldProps = {
   id?: string;
@@ -108,7 +107,7 @@ export const SecretStorePicker = ({
   const handleSecretStoreSelect = (
     selectedSecretStore: SecretStore | ClusterSecretStore,
   ) => {
-    onChange(getSecretStoreName(selectedSecretStore));
+    onChange(selectedSecretStore.getName());
   };
 
   return (

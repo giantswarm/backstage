@@ -1,45 +1,7 @@
-import { FluxObject, FluxObjectInterface } from './FluxObject';
+import { crds } from '@giantswarm/k8s-types';
+import { FluxObject } from './FluxObject';
 
-export interface KustomizationInterface extends FluxObjectInterface {
-  spec?: {
-    dependsOn?: {
-      name: string;
-      namespace?: string;
-    }[];
-    kubeConfig?: {
-      secretRef: {
-        key?: string;
-        name: string;
-      };
-    };
-    path?: string;
-    sourceRef: {
-      apiVersion?: string;
-      kind: 'OCIRepository' | 'GitRepository' | 'Bucket';
-      name: string;
-      namespace?: string;
-    };
-    suspend?: boolean;
-  };
-  status?: {
-    conditions?: {
-      lastTransitionTime: string;
-      message: string;
-      observedGeneration?: number;
-      reason: string;
-      status: 'True' | 'False' | 'Unknown';
-      type: string;
-    }[];
-    inventory?: {
-      entries: {
-        id: string;
-        v: string;
-      }[];
-    };
-    lastAppliedRevision?: string;
-    lastAttemptedRevision?: string;
-  };
-}
+type KustomizationInterface = crds.fluxcd.v1.Kustomization;
 
 export class Kustomization extends FluxObject<KustomizationInterface> {
   static apiVersion = 'v1';
@@ -64,7 +26,15 @@ export class Kustomization extends FluxObject<KustomizationInterface> {
   }
 
   getSourceRef() {
-    return this.jsonData.spec?.sourceRef;
+    const sourceRef = this.jsonData.spec?.sourceRef;
+    if (!sourceRef) {
+      return undefined;
+    }
+
+    return {
+      ...sourceRef,
+      namespace: sourceRef.namespace ?? this.getNamespace(),
+    };
   }
 
   getLastAppliedRevision() {

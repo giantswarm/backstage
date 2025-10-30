@@ -2,7 +2,7 @@ import { FluxResourceStatusMixin } from './FluxResourceMixin';
 import { FluxResourceStatus } from './FluxResourceStatusManager';
 import { KubeObject, KubeObjectInterface } from './KubeObject';
 
-export interface FluxObjectInterface extends KubeObjectInterface {
+interface FluxObjectInterface extends KubeObjectInterface {
   status?: {
     conditions?: {
       lastTransitionTime: string;

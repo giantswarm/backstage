@@ -1,42 +1,30 @@
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '../../../../UI';
-import { useResource } from '../../../../hooks';
-import {
-  getClusterInfrastructureRef,
-  getProviderClusterLocation,
-  ProviderCluster,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useShowErrors } from '../../../../Errors/useErrors';
+import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useProviderClusterForCluster } from '../../../../hooks';
 
 export const ProviderClusterLocation = () => {
-  const { cluster, installationName } = useCurrentCluster();
+  const { cluster } = useCurrentCluster();
 
   const {
-    kind: providerClusterKind,
-    apiVersion: providerClusterApiVersion,
-    name: providerClusterName,
-    namespace: providerClusterNamespace,
-  } = getClusterInfrastructureRef(cluster);
-  const {
-    data: providerCluster,
+    resource: providerCluster,
     isLoading: providerClusterIsLoading,
     errors: providerClusterErrors,
-    queryErrorMessage: providerClusterQueryErrorMessage,
-  } = useResource<ProviderCluster>({
-    kind: providerClusterKind,
-    apiVersion: providerClusterApiVersion,
-    installationName,
-    name: providerClusterName,
-    namespace: providerClusterNamespace,
-  });
+    errorMessage: providerClusterErrorMessage,
+  } = useProviderClusterForCluster(cluster);
+
+  const infrastructureRef = cluster.getInfrastructureRef();
+  if (!infrastructureRef) {
+    throw new Error(
+      'There is no infrastructure reference defined in the cluster resource.',
+    );
+  }
 
   useShowErrors(providerClusterErrors, {
-    message: providerClusterQueryErrorMessage,
+    message: providerClusterErrorMessage,
   });
 
-  const location = providerCluster
-    ? getProviderClusterLocation(providerCluster)
-    : undefined;
+  const location = providerCluster ? providerCluster.getLocation() : undefined;
 
   const firstError = providerClusterErrors[0]?.error ?? null;
 
@@ -44,7 +32,7 @@ export const ProviderClusterLocation = () => {
     <AsyncValue
       isLoading={providerClusterIsLoading}
       error={firstError}
-      errorMessage={providerClusterQueryErrorMessage}
+      errorMessage={providerClusterErrorMessage}
       value={location}
     >
       {value => value}

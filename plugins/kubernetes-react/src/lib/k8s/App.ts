@@ -1,26 +1,7 @@
-import { KubeObject, KubeObjectInterface } from './KubeObject';
+import { crds } from '@giantswarm/k8s-types';
+import { KubeObject } from './KubeObject';
 
-export interface AppInterface extends KubeObjectInterface {
-  spec?: {
-    catalog: string;
-    name: string;
-    kubeConfig: {
-      inCluster: boolean;
-      secret?: {
-        name: string;
-        namespace: string;
-      };
-    };
-    version: string;
-  };
-  status?: {
-    release: {
-      status: string;
-      lastDeployed?: string;
-    };
-    version: string;
-  };
-}
+type AppInterface = crds.giantswarm.v1alpha1.App;
 
 export class App extends KubeObject<AppInterface> {
   static apiVersion = 'v1alpha1';

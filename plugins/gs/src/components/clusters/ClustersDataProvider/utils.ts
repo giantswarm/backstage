@@ -1,28 +1,22 @@
 import {
-  Cluster,
-  ControlPlane,
-  getClusterCreationTimestamp,
-  getClusterDescription,
-  getClusterName,
-  getClusterNamespace,
-  getClusterOrganization,
-  getClusterReleaseVersion,
-  getClusterServicePriority,
-  getControlPlaneK8sVersion,
-  getProviderClusterAppSourceLocation,
-  getProviderClusterAppVersion,
-  getProviderClusterIdentityAWSAccountId,
-  getProviderClusterIdentityAWSAccountUrl,
-  getProviderClusterLocation,
-  ProviderCluster,
-  ProviderClusterIdentity,
-} from '@giantswarm/backstage-plugin-gs-common';
-import {
   calculateClusterProvider,
+  getClusterDescription,
+  getClusterOrganization,
+  getClusterCreationTimestamp,
+  getClusterServicePriority,
+  getClusterReleaseVersion,
   calculateClusterLabels,
   calculateClusterStatus,
   calculateClusterType,
+  findProviderClusterAppSourceLocation,
+  findProviderClusterAppVersion,
 } from '../utils';
+import {
+  AWSClusterRoleIdentity,
+  Cluster,
+  ControlPlane,
+  ProviderCluster,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type ClusterData = {
   installationName: string;
@@ -51,19 +45,19 @@ export function collectClusterData({
   cluster,
   controlPlane,
   providerCluster,
-  providerClusterIdentity,
+  awsClusterRoleIdentity,
 }: {
   installationName: string;
   cluster: Cluster;
   controlPlane?: ControlPlane | null;
   providerCluster?: ProviderCluster | null;
-  providerClusterIdentity?: ProviderClusterIdentity | null;
+  awsClusterRoleIdentity?: AWSClusterRoleIdentity | null;
 }): ClusterData {
-  const name = getClusterName(cluster);
-  const namespace = getClusterNamespace(cluster);
-  const apiVersion = cluster.apiVersion;
+  const name = cluster.getName();
+  const namespace = cluster.getNamespace();
+  const apiVersion = cluster.getApiVersion();
   const description = getClusterDescription(cluster);
-  const type = calculateClusterType(cluster, installationName);
+  const type = calculateClusterType(cluster);
   const organization = getClusterOrganization(cluster);
   const created = getClusterCreationTimestamp(cluster);
   const priority = getClusterServicePriority(cluster);
@@ -73,27 +67,25 @@ export function collectClusterData({
   const labels = calculateClusterLabels(cluster);
 
   const appVersion = providerCluster
-    ? getProviderClusterAppVersion(providerCluster)
+    ? findProviderClusterAppVersion(providerCluster)
     : undefined;
 
   const appSourceLocation = providerCluster
-    ? getProviderClusterAppSourceLocation(providerCluster)
+    ? findProviderClusterAppSourceLocation(providerCluster)
     : undefined;
 
   const kubernetesVersion = controlPlane
-    ? getControlPlaneK8sVersion(controlPlane)
+    ? controlPlane.getK8sVersion()
     : undefined;
 
-  const location = providerCluster
-    ? getProviderClusterLocation(providerCluster)
+  const location = providerCluster ? providerCluster.getLocation() : undefined;
+
+  const awsAccountId = awsClusterRoleIdentity
+    ? awsClusterRoleIdentity.getAWSAccountId()
     : undefined;
 
-  const awsAccountId = providerClusterIdentity
-    ? getProviderClusterIdentityAWSAccountId(providerClusterIdentity)
-    : undefined;
-
-  const awsAccountUrl = providerClusterIdentity
-    ? getProviderClusterIdentityAWSAccountUrl(providerClusterIdentity)
+  const awsAccountUrl = awsClusterRoleIdentity
+    ? awsClusterRoleIdentity.getAWSAccountUrl()
     : undefined;
 
   return {

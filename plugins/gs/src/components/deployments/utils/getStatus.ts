@@ -3,11 +3,17 @@ import {
   HelmRelease,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-function getAppStatus(app: App) {
-  const status = app.getStatus();
-
-  return status?.release.status;
-}
+export const AppStatuses = {
+  Unknown: 'unknown',
+  Deployed: 'deployed',
+  Uninstalled: 'uninstalled',
+  Superseded: 'superseded',
+  Failed: 'failed',
+  Uninstalling: 'uninstalling',
+  PendingInstall: 'pending-install',
+  PendingUpgrade: 'pending-upgrade',
+  PendingRollback: 'pending-rollback',
+} as const;
 
 export const HelmReleaseStatuses = {
   Unknown: 'unknown',
@@ -16,6 +22,12 @@ export const HelmReleaseStatuses = {
   Reconciling: 'reconciling',
   Reconciled: 'reconciled',
 } as const;
+
+function getAppStatus(app: App) {
+  const status = app.getStatus();
+
+  return status?.release.status;
+}
 
 function getHelmReleaseStatus(helmRelease: HelmRelease) {
   const conditions = helmRelease.getStatusConditions();
@@ -42,7 +54,7 @@ function getHelmReleaseStatus(helmRelease: HelmRelease) {
   return HelmReleaseStatuses.Unknown;
 }
 
-function getStatus(deployment: App | HelmRelease) {
+export function getStatus(deployment: App | HelmRelease) {
   if (deployment instanceof App) {
     return getAppStatus(deployment);
   }

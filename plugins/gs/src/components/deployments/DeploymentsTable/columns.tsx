@@ -18,7 +18,6 @@ import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
-import { formatDeploymentType } from '../utils';
 
 export const DeploymentColumns = {
   name: 'name',
@@ -142,7 +141,7 @@ export const getInitialColumns = ({
       title: 'Type',
       field: DeploymentColumns.kind,
       render: row => {
-        const label = formatDeploymentType(row.kind);
+        const label = row.kind === 'app' ? 'App' : 'HelmRelease';
 
         return (
           <Typography variant="inherit" noWrap>

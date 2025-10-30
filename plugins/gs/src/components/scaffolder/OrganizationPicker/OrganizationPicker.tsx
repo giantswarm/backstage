@@ -1,15 +1,14 @@
 import { useCallback } from 'react';
 import { Grid } from '@material-ui/core';
 import { OrganizationPickerProps } from './schema';
-import { useOrganizations } from '../../hooks/useOrganizations';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
 import {
-  getOrganizationName,
   Organization,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useShowErrors } from '../../Errors/useErrors';
+  useResources,
+  useShowErrors,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type OrganizationPickerFieldProps = {
   id?: string;
@@ -34,7 +33,10 @@ const OrganizationPickerField = ({
   installationName,
   onOrganizationSelect,
 }: OrganizationPickerFieldProps) => {
-  const { resources, isLoading, errors } = useOrganizations([installationName]);
+  const { resources, isLoading, errors } = useResources(
+    installationName,
+    Organization,
+  );
 
   useShowErrors(errors, {
     message: 'Failed to load organizations',
@@ -43,7 +45,6 @@ const OrganizationPickerField = ({
   const { resourceNames, selectedName, handleChange } = useResourcePicker({
     resources,
     isLoading,
-    getResourceName: getOrganizationName,
     initialValue: organizationValue,
     onSelect: onOrganizationSelect,
   });
@@ -98,7 +99,7 @@ export const OrganizationPicker = ({
         return;
       }
 
-      onChange(getOrganizationName(selectedOrganization));
+      onChange(selectedOrganization.getName());
     },
     [onChange],
   );

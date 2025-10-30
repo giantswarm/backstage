@@ -13,14 +13,11 @@ import {
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
 import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
-import {
-  App,
-  Cluster,
-  getClusterDescription,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { useCurrentUser } from '../../hooks';
 import { ClusterAppStatus } from './ClusterAppStatus';
+import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { getClusterDescription } from '../utils';
 
 export type ClusterLayoutRouteProps = {
   path: string;

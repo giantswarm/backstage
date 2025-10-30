@@ -1,10 +1,9 @@
 import { useMemo } from 'react';
-import {
-  getSecretStoreName,
-  SecretStore,
-} from '@giantswarm/backstage-plugin-gs-common';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { useSecretStores } from '../../hooks';
+import {
+  SecretStore,
+  useResources,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type SecretStoreSelectorProps = {
   id?: string;
@@ -31,17 +30,18 @@ export const SecretStoreSelector = ({
   selectedSecretStore,
   onChange,
 }: SecretStoreSelectorProps) => {
-  const { resources, isLoading, errors } = useSecretStores(
+  const { resources, isLoading, errors } = useResources(
     installations,
-    namespace,
+    SecretStore,
+    Object.fromEntries(
+      installations.map(installation => [installation, { namespace }]),
+    ),
   );
 
   const resourcesMap = useMemo(() => {
     return Object.fromEntries(
       resources.map(resource => {
-        const { installationName, ...secretStore } = resource;
-
-        return [getSecretStoreName(secretStore), resource];
+        return [resource.getName(), resource];
       }),
     );
   }, [resources]);
@@ -65,7 +65,7 @@ export const SecretStoreSelector = ({
   }
 
   const handleChange = (selectedItem: string) => {
-    const { installationName, ...secretStore } = resourcesMap[selectedItem];
+    const secretStore = resourcesMap[selectedItem];
 
     onChange(secretStore);
   };

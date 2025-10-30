@@ -1,89 +1,68 @@
 import { Box, Card, CardContent, Typography } from '@material-ui/core';
-import {
-  Deployment,
-  getAppKustomizationName,
-  getAppKustomizationNamespace,
-  getGitRepositoryKind,
-  getGitRepositoryRevision,
-  getGitRepositoryUrl,
-  getHelmReleaseKustomizationName,
-  getHelmReleaseKustomizationNamespace,
-  getKustomizationPath,
-  getKustomizationSourceRef,
-  GitRepository,
-  GitRepositoryKind,
-  Kustomization,
-  KustomizationKind,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useGitOpsSourceLink, useResource } from '../hooks';
+import { useGitOpsSourceLink } from '../hooks';
 import { GitOpsIcon } from '../../assets/icons/CustomIcons';
 import { AsyncValue, ExternalLink } from '../UI';
-import { useShowErrors } from '../Errors/useErrors';
 import { useMemo } from 'react';
 import { ErrorStatus } from '../UI/ErrorStatus/ErrorStatus';
+import {
+  getKustomizationName,
+  getKustomizationNamespace,
+} from '../deployments/utils/isManagedByFlux';
+import {
+  App,
+  GitRepository,
+  HelmRelease,
+  Kustomization,
+  useResource,
+  useShowErrors,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { getErrorMessage } from '../hooks/utils/helpers';
 
 type GitOpsCardProps = {
-  deployment: Deployment;
+  deployment: App | HelmRelease;
   installationName: string;
 };
 
 export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
-  const kustomizationName =
-    deployment.kind === 'App'
-      ? getAppKustomizationName(deployment)
-      : getHelmReleaseKustomizationName(deployment);
-  const kustomizationNamespace =
-    deployment.kind === 'App'
-      ? getAppKustomizationNamespace(deployment)
-      : getHelmReleaseKustomizationNamespace(deployment);
+  const kustomizationName = getKustomizationName(deployment);
+  const kustomizationNamespace = getKustomizationNamespace(deployment);
+
   const {
-    data: kustomization,
+    resource: kustomization,
     errors: kustomizationErrors,
     isLoading: kustomizationIsLoading,
     error: kustomizationError,
-    queryErrorMessage: kustomizationQueryErrorMessage,
-  } = useResource<Kustomization>({
-    kind: KustomizationKind,
-    installationName,
+  } = useResource(installationName, Kustomization, {
     name: kustomizationName!,
     namespace: kustomizationNamespace,
   });
 
-  const kustomizationSourceRef = kustomization
-    ? getKustomizationSourceRef(kustomization)
-    : undefined;
+  const kustomizationSourceRef = kustomization?.getSourceRef();
+  const gitRepositoryName = kustomizationSourceRef?.name;
+  const gitRepositoryNamespace = kustomizationSourceRef?.namespace;
   const {
-    data: gitRepository,
+    resource: gitRepository,
     errors: gitRepositoryErrors,
     isLoading: gitRepositoryIsLoading,
     error: gitRepositoryError,
-    queryErrorMessage: gitRepositoryQueryErrorMessage,
-  } = useResource<GitRepository>(
+  } = useResource(
+    installationName,
+    GitRepository,
     {
-      kind: GitRepositoryKind,
-      installationName,
-      name: kustomizationSourceRef?.name!,
-      namespace: kustomizationSourceRef?.namespace,
+      name: gitRepositoryName!,
+      namespace: gitRepositoryNamespace,
     },
     {
       enabled: Boolean(
         kustomizationSourceRef &&
-          kustomizationSourceRef.kind === getGitRepositoryKind(),
+          kustomizationSourceRef.kind === GitRepository.kind,
       ),
     },
   );
 
-  const kustomizationPath = kustomization
-    ? getKustomizationPath(kustomization)
-    : undefined;
-
-  const gitRepositoryUrl = gitRepository
-    ? getGitRepositoryUrl(gitRepository)
-    : undefined;
-
-  const gitRepositoryRevision = gitRepository
-    ? getGitRepositoryRevision(gitRepository)
-    : undefined;
+  const kustomizationPath = kustomization?.getPath();
+  const gitRepositoryUrl = gitRepository?.getURL();
+  const gitRepositoryRevision = gitRepository?.getRevision();
 
   const isLoading = kustomizationIsLoading || gitRepositoryIsLoading;
 
@@ -96,10 +75,20 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
   const firstError = errors[0]?.error ?? null;
   let errorMessage;
   if (kustomizationError) {
-    errorMessage = kustomizationQueryErrorMessage;
+    errorMessage = getErrorMessage({
+      error: kustomizationError,
+      resourceKind: Kustomization.kind,
+      resourceName: kustomizationName!,
+      resourceNamespace: kustomizationNamespace,
+    });
   }
   if (gitRepositoryError) {
-    errorMessage = gitRepositoryQueryErrorMessage;
+    errorMessage = getErrorMessage({
+      error: gitRepositoryError,
+      resourceKind: GitRepository.kind,
+      resourceName: gitRepositoryName!,
+      resourceNamespace: gitRepositoryNamespace,
+    });
   }
 
   const sourceUrl = useGitOpsSourceLink({

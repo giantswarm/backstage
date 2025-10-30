@@ -97,5 +97,5 @@ export function findTargetClusterType(deployment: App | HelmRelease) {
       : ClusterTypes.Workload;
   }
 
-  return undefined;
+  return ClusterTypes.Workload;
 }

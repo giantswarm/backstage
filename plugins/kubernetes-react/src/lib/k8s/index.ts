@@ -1,13 +1,21 @@
+export * from './capi';
+export * from './giantswarm/platform';
+
 export { App } from './App';
+export { ClusterSecretStore } from './ClusterSecretStore';
 export { Deployment } from './Deployment';
+export { KubeObject } from './KubeObject';
 export { Namespace } from './Namespace';
 export { HelmRelease } from './HelmRelease';
 export { HelmRepository } from './HelmRepository';
 export { GitRepository } from './GitRepository';
 export { Kustomization } from './Kustomization';
 export { OCIRepository } from './OCIRepository';
+export { Organization } from './Organization';
+export { ProviderConfig } from './ProviderConfig';
+export { Release, RELEASE_VERSION_PREFIXES } from './Release';
+export { SecretStore } from './SecretStore';
 export * from './KubeObject';
 export * from './FluxObject';
-export * from './KubeMetadata';
 export * from './FluxResourceStatusManager';
 export * from './FluxResourceMixin';

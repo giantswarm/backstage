@@ -2,9 +2,8 @@ import { MarkdownContent } from '@backstage/core-components';
 import { LayoutTemplate } from '@backstage/plugin-scaffolder-react';
 import { Box, Grid, Typography } from '@material-ui/core';
 import { useTemplateString } from '../../hooks';
-import { ErrorsProvider } from '../../Errors';
 import { QueryClientProvider } from '../../QueryClientProvider';
-import { InstallationsProvider } from '../../installations/InstallationsProvider';
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export const StepLayout: LayoutTemplate = ({
   properties,
@@ -36,17 +35,15 @@ export const StepLayout: LayoutTemplate = ({
       ) : null}
 
       <QueryClientProvider>
-        <InstallationsProvider>
-          <ErrorsProvider>
-            <Grid container spacing={3} direction="column">
-              {properties.map(element => (
-                <Grid key={element.content.key} item xs={12}>
-                  {element.content}
-                </Grid>
-              ))}
-            </Grid>
-          </ErrorsProvider>
-        </InstallationsProvider>
+        <ErrorsProvider>
+          <Grid container spacing={3} direction="column">
+            {properties.map(element => (
+              <Grid key={element.content.key} item xs={12}>
+                {element.content}
+              </Grid>
+            ))}
+          </Grid>
+        </ErrorsProvider>
       </QueryClientProvider>
     </Box>
   );

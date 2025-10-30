@@ -2,11 +2,9 @@ import { useRouteRefParams } from '@backstage/core-plugin-api';
 import { clusterDetailsRouteRef } from '../../../routes';
 import {
   App,
-  AppKind,
   Cluster,
-  ClusterKind,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useResource } from '../../hooks';
+  useResource,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export const useClusterFromUrl = (): {
   installationName: string;
@@ -20,23 +18,19 @@ export const useClusterFromUrl = (): {
   );
 
   const {
-    data: clusterApp,
+    resource: clusterApp,
     isLoading: isLoadingClusterApp,
     error: errorClusterApp,
-  } = useResource<App>({
-    kind: AppKind,
-    installationName,
+  } = useResource(installationName, App, {
     name,
     namespace,
   });
 
   const {
-    data: cluster,
+    resource: cluster,
     isLoading: isLoadingCluster,
     error: errorCluster,
-  } = useResource<Cluster>({
-    kind: ClusterKind,
-    installationName,
+  } = useResource(installationName, Cluster, {
     name,
     namespace,
   });

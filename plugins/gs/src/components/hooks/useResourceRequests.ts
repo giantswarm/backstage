@@ -1,15 +1,11 @@
 import {
-  getResourceRequestGVK,
-  getResourceRequestNames,
-  Resource,
-  type ResourceRequest,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useApi } from '@backstage/core-plugin-api';
-import { useQueries } from '@tanstack/react-query';
-import { getK8sGetPath } from './utils/k8sPath';
-import { getInstallationsQueriesInfo } from './utils/queries';
-import { useApiVersionOverrides } from './useApiVersionOverrides';
-import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+  AppDeployment,
+  GitHubApp,
+  GitHubRepo,
+  ResourceRequest,
+  useResource,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useMemo } from 'react';
 
 export function useResourceRequests(
   kratixResources: {
@@ -19,63 +15,84 @@ export function useResourceRequests(
     namespace: string;
   }[],
 ) {
-  const apiVersionOverrides = useApiVersionOverrides(
-    kratixResources.map(item => item.installationName),
-  );
-  const kubernetesApi = useApi(kubernetesApiRef);
-  const queries = useQueries({
-    queries: kratixResources.map(
-      ({ kind, name, namespace, installationName }) => {
-        const resourceNames = getResourceRequestNames(kind);
-        const apiVersion =
-          apiVersionOverrides[installationName]?.[resourceNames.plural];
-
-        const gvk = getResourceRequestGVK(kind, apiVersion);
-
-        const path = getK8sGetPath(gvk, name, namespace);
-        return {
-          queryKey: ['cluster', installationName, gvk!.plural],
-          queryFn: async () => {
-            const response = await kubernetesApi.proxy({
-              clusterName: installationName,
-              path,
-            });
-
-            if (!response.ok) {
-              const error = new Error(
-                `Failed to fetch resources from ${installationName} at ${path}. Reason: ${response.statusText}.`,
-              );
-              error.name =
-                response.status === 403 ? 'ForbiddenError' : error.name;
-              error.name =
-                response.status === 404 ? 'NotFoundError' : error.name;
-
-              throw error;
-            }
-
-            const resourceRequest: ResourceRequest = await response.json();
-
-            return resourceRequest;
-          },
-        };
-      },
-    ),
-  });
-
-  const queriesInfo = getInstallationsQueriesInfo(
-    kratixResources.map(item => item.installationName),
-    queries,
+  const appDeploymentRef = kratixResources.find(
+    resource => resource.kind === 'appdeployment',
   );
 
-  const resources: Resource<ResourceRequest>[] =
-    queriesInfo.installationsData.map(({ installationName, data }) => ({
-      installationName,
-      ...data,
-    }));
+  const {
+    resource: appDeployment,
+    isLoading: isLoadingAppDeployment,
+    error: appDeploymentError,
+    refetch: appDeploymentRefetch,
+  } = useResource(
+    appDeploymentRef!.installationName,
+    AppDeployment,
+    { name: appDeploymentRef!.name, namespace: appDeploymentRef!.namespace },
+    { enabled: Boolean(appDeploymentRef) },
+  );
 
-  return {
-    ...queriesInfo,
-    resources,
-    isLoading: queriesInfo.isLoading,
-  };
+  const githubAppRef = kratixResources.find(
+    resource => resource.kind === 'githubapp',
+  );
+
+  const {
+    resource: githubApp,
+    isLoading: isLoadingGithubApp,
+    error: githubAppError,
+    refetch: githubAppRefetch,
+  } = useResource(
+    githubAppRef!.installationName,
+    GitHubApp,
+    { name: githubAppRef!.name, namespace: githubAppRef!.namespace },
+    { enabled: Boolean(githubAppRef) },
+  );
+
+  const githubRepoRef = kratixResources.find(
+    resource => resource.kind === 'githubrepo',
+  );
+  const {
+    resource: githubRepo,
+    isLoading: isLoadingGithubRepo,
+    error: githubRepoError,
+    refetch: githubRepoRefetch,
+  } = useResource(
+    githubRepoRef!.installationName,
+    GitHubRepo,
+    { name: githubRepoRef!.name, namespace: githubRepoRef!.namespace },
+    { enabled: Boolean(githubRepoRef) },
+  );
+
+  return useMemo(() => {
+    const resources = [appDeployment, githubApp, githubRepo].filter(
+      Boolean,
+    ) as ResourceRequest[];
+    const isLoading =
+      isLoadingAppDeployment || isLoadingGithubApp || isLoadingGithubRepo;
+    const error = appDeploymentError || githubAppError || githubRepoError;
+    const retry = () => {
+      appDeploymentRefetch();
+      githubAppRefetch();
+      githubRepoRefetch();
+    };
+
+    return {
+      resources,
+      isLoading,
+      error,
+      retry,
+    };
+  }, [
+    appDeployment,
+    githubApp,
+    githubRepo,
+    isLoadingAppDeployment,
+    isLoadingGithubApp,
+    isLoadingGithubRepo,
+    appDeploymentError,
+    githubAppError,
+    githubRepoError,
+    appDeploymentRefetch,
+    githubAppRefetch,
+    githubRepoRefetch,
+  ]);
 }

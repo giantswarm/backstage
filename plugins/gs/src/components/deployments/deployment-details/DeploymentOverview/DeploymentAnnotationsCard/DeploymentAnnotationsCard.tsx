@@ -4,7 +4,7 @@ import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentD
 
 export function DeploymentAnnotationsCard() {
   const { deployment } = useCurrentDeployment();
-  const annotations = deployment.metadata.annotations;
+  const annotations = deployment.getAnnotations();
   const annotationsConfig =
     useFriendlyItemsConfiguration('gs.friendlyAnnotations') ?? [];
 

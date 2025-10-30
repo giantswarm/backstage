@@ -1,11 +1,11 @@
-import { isAppManagedByFlux } from '@giantswarm/backstage-plugin-gs-common';
+import { isManagedByFlux } from '../../../../deployments/utils/isManagedByFlux';
 import { GitOpsCard } from '../../../../GitOpsCard';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
 export const ClusterGitOpsCard = () => {
   const { clusterApp, installationName } = useCurrentCluster();
 
-  const isGitOpsManaged = isAppManagedByFlux(clusterApp);
+  const isGitOpsManaged = isManagedByFlux(clusterApp);
   if (!isGitOpsManaged) {
     return null;
   }

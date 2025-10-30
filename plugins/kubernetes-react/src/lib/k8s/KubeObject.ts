@@ -1,9 +1,9 @@
-import { KubeMetadata } from './KubeMetadata';
+import { core } from '@giantswarm/k8s-types';
 
 export interface KubeObjectInterface {
   kind: string;
   apiVersion: string;
-  metadata: KubeMetadata;
+  metadata: core.metav1.ObjectMeta;
   spec?: any;
   status?: any;
 }
@@ -37,7 +37,7 @@ export class KubeObject<T extends KubeObjectInterface = any> {
   }
 
   getName() {
-    return this.jsonData.metadata.name;
+    return this.jsonData.metadata.name ?? '';
   }
 
   getNamespace() {
@@ -50,6 +50,10 @@ export class KubeObject<T extends KubeObjectInterface = any> {
 
   getAnnotations() {
     return this.jsonData.metadata.annotations;
+  }
+
+  getCreatedTimestamp() {
+    return this.jsonData.metadata.creationTimestamp;
   }
 
   findLabel(label: string) {

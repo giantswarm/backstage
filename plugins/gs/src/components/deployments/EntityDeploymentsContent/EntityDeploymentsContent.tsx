@@ -20,7 +20,6 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { InstallationPicker } from './filters/InstallationPicker';
 import { QueryClientProvider } from '../../QueryClientProvider';
-import { InstallationsProvider } from '../../installations/InstallationsProvider';
 
 const DeploymentsContent = () => {
   const { entity } = useEntity();
@@ -54,18 +53,16 @@ export const EntityDeploymentsContent = () => {
 
   return (
     <QueryClientProvider>
-      <InstallationsProvider>
-        <Content>
-          <ContentHeader title={`Deployments of ${entityName}`}>
-            <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
-          </ContentHeader>
-          <ErrorsProvider>
-            <DeploymentsDataProvider deploymentNames={deploymentNames}>
-              <DeploymentsContent />
-            </DeploymentsDataProvider>
-          </ErrorsProvider>
-        </Content>
-      </InstallationsProvider>
+      <Content>
+        <ContentHeader title={`Deployments of ${entityName}`}>
+          <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
+        </ContentHeader>
+        <ErrorsProvider>
+          <DeploymentsDataProvider deploymentNames={deploymentNames}>
+            <DeploymentsContent />
+          </DeploymentsDataProvider>
+        </ErrorsProvider>
+      </Content>
     </QueryClientProvider>
   );
 };

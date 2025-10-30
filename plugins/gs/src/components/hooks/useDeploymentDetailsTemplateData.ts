@@ -1,21 +1,20 @@
-import {
-  AppKind,
-  Deployment,
-  getAppTargetClusterName,
-  getHelmReleaseTargetClusterName,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useInstallations } from './useInstallations';
+import { useInstallationsInfo } from './useInstallationsInfo';
 import {
   getGrafanaDashboardFromEntity,
   getIngressHostFromEntity,
 } from '../utils/entity';
 import { useCatalogEntityForDeployment } from './useCatalogEntityForDeployment';
+import {
+  App,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { findTargetClusterName } from '../deployments/utils/findTargetCluster';
 
 export function useDeploymentDetailsTemplateData(
   installationName: string,
-  deployment: Deployment,
+  deployment: App | HelmRelease,
 ) {
-  const { installationsInfo } = useInstallations();
+  const { installationsInfo } = useInstallationsInfo();
   const { catalogEntity } = useCatalogEntityForDeployment(deployment);
 
   const installationInfo = installationsInfo.find(
@@ -23,12 +22,9 @@ export function useDeploymentDetailsTemplateData(
   );
   const baseDomain = installationInfo?.baseDomain ?? '';
 
-  const appName = deployment.metadata.name;
-  const appNamespace = deployment.metadata.namespace;
-  const appClusterName =
-    deployment.kind === AppKind
-      ? getAppTargetClusterName(deployment, installationName)
-      : getHelmReleaseTargetClusterName(deployment, installationName);
+  const appName = deployment.getName();
+  const appNamespace = deployment.getNamespace();
+  const appClusterName = findTargetClusterName(deployment);
 
   const grafanaDashboard = catalogEntity
     ? getGrafanaDashboardFromEntity(catalogEntity)

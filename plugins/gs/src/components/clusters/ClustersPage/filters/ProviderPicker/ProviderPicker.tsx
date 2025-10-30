@@ -7,7 +7,7 @@ import {
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import { ProviderFilter } from '../filters';
 import { formatClusterProvider } from '../../../utils';
-import { useInstallations } from '../../../../hooks';
+import { useInstallationsInfo } from '../../../../hooks';
 
 const TITLE = 'Provider';
 
@@ -23,7 +23,7 @@ function formatOption(item: ClusterData): MultiplePickerOption | undefined {
 }
 
 export const ProviderPicker = () => {
-  const { installationsInfo } = useInstallations();
+  const { installationsInfo } = useInstallationsInfo();
   const {
     data,
     filters,

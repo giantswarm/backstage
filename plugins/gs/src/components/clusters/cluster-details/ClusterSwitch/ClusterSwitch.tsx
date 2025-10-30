@@ -1,11 +1,10 @@
-import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import {
-  getClusterInfrastructureRef,
-  isAWSCluster,
-  isAzureCluster,
-  isVCDCluster,
-  isVSphereCluster,
-} from '@giantswarm/backstage-plugin-gs-common';
+  AWSCluster,
+  AzureCluster,
+  VCDCluster,
+  VSphereCluster,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 
 type ClusterSwitchProps = {
   renderAWS: () => React.ReactNode;
@@ -22,16 +21,21 @@ export const ClusterSwitch = ({
 }: ClusterSwitchProps) => {
   const { cluster } = useCurrentCluster();
 
-  const { kind, apiVersion } = getClusterInfrastructureRef(cluster);
+  const infrastructureRef = cluster.getInfrastructureRef();
+  if (!infrastructureRef) {
+    return null;
+  }
+
+  const { kind } = infrastructureRef;
 
   switch (true) {
-    case isAWSCluster(kind, apiVersion):
+    case kind === AWSCluster.kind:
       return renderAWS();
-    case isAzureCluster(kind, apiVersion):
+    case kind === AzureCluster.kind:
       return renderAzure();
-    case isVSphereCluster(kind, apiVersion):
+    case kind === VSphereCluster.kind:
       return renderVSphere();
-    case isVCDCluster(kind, apiVersion):
+    case kind === VCDCluster.kind:
       return renderVCD();
     default:
       return null;

@@ -1,10 +1,10 @@
 import { Card, CardContent } from '@material-ui/core';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { type Tool, Toolkit } from '../../../../UI';
-import { isManagementCluster } from '@giantswarm/backstage-plugin-gs-common';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { formatTemplateString } from '../../../../utils/formatTemplateString';
 import { useClusterDetailsTemplateData } from '../../../../hooks';
+import { isManagementCluster } from '../../../utils';
 
 const defaultLinks = [
   {
@@ -53,9 +53,7 @@ export function ClusterToolsCard() {
       }))
     : defaultLinks;
 
-  const clusterType = isManagementCluster(cluster, installationName)
-    ? 'management'
-    : 'workload';
+  const clusterType = isManagementCluster(cluster) ? 'management' : 'workload';
   const filteredLinks = links.filter(
     link =>
       typeof link.clusterType === 'undefined' ||

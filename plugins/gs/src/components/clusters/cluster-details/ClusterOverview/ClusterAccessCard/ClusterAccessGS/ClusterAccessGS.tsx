@@ -1,15 +1,12 @@
 import { Box, Grid, Link, Typography } from '@material-ui/core';
 
 import {
-  Cluster,
-  getClusterName,
-} from '@giantswarm/backstage-plugin-gs-common';
-import {
   TSH_INSTALLATION_DOCS_URL,
   TSH_LOGIN_COMMAND,
   getKubernetesAPIAccessCommand,
 } from './utils';
 import { CodeBlock, SimpleAccordion } from '../../../../../UI';
+import { Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type ClusterAccessProps = {
   cluster: Cluster;
@@ -20,7 +17,7 @@ export const ClusterAccessGS = ({
   cluster,
   installationName,
 }: ClusterAccessProps) => {
-  const clusterName = getClusterName(cluster);
+  const clusterName = cluster.getName();
 
   return (
     <Grid container direction="column">

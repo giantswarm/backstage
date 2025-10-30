@@ -2,16 +2,13 @@ import { useRouteRefParams } from '@backstage/core-plugin-api';
 import { deploymentDetailsRouteRef } from '../../../routes';
 import {
   App,
-  AppKind,
-  Deployment,
   HelmRelease,
-  HelmReleaseKind,
-} from '@giantswarm/backstage-plugin-gs-common';
-import { useResource } from '../../hooks';
+  useResource,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export const useDeploymentFromUrl = (): {
   installationName: string;
-  deployment?: Deployment;
+  deployment?: App | HelmRelease;
   loading: boolean;
   error: Error | null;
 } => {
@@ -20,29 +17,24 @@ export const useDeploymentFromUrl = (): {
   );
 
   const {
-    data: app,
+    resource: app,
     isLoading: isLoadingApp,
     error: appError,
-  } = useResource<App>(
-    {
-      kind: AppKind,
-      installationName,
-      name,
-      namespace,
-    },
-    {
-      enabled: kind === 'app',
-    },
+  } = useResource(
+    installationName,
+    App,
+    { name, namespace },
+    { enabled: kind === 'app' },
   );
 
   const {
-    data: helmRelease,
+    resource: helmRelease,
     isLoading: isLoadingHelmRelease,
     error: helmReleaseError,
-  } = useResource<HelmRelease>(
+  } = useResource(
+    installationName,
+    HelmRelease,
     {
-      kind: HelmReleaseKind,
-      installationName,
       name,
       namespace,
     },

@@ -1,23 +1,27 @@
 import { SubvalueCell, Table, TableColumn } from '@backstage/core-components';
-import {
-  getResourceRequestStatus,
-  getResourceRequestStatusMessage,
-  Resource,
-  ResourceRequest,
-} from '@giantswarm/backstage-plugin-gs-common';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { useResourceRequests } from '../../hooks';
 import { sortAndFilterOptions } from '@giantswarm/backstage-plugin-ui-react';
 import { ResourceRequestStatus } from '../ResourceRequestStatus';
+import {
+  AppDeployment,
+  GitHubApp,
+  GitHubRepo,
+  ResourceRequest,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  getResourceRequestStatus,
+  getResourceRequestStatusMessage,
+} from '../utils';
 
 function getResourceRequestDescription(resource: ResourceRequest) {
-  switch (resource.kind) {
-    case 'GitHubApp':
+  switch (true) {
+    case resource instanceof GitHubApp:
       return 'Compound resource request.';
-    case 'GitHubRepo':
+    case resource instanceof GitHubRepo:
       return 'Create GitHub repository.';
-    case 'AppDeployment':
+    case resource instanceof AppDeployment:
       return 'Create app deployment.';
     default:
       return '';
@@ -50,7 +54,7 @@ type Row = {
 type ResourceRequestsTableViewProps = {
   loading: boolean;
   retry: () => void;
-  resources: Resource<ResourceRequest>[];
+  resources: ResourceRequest[];
   baseRoute: string;
 };
 
@@ -59,15 +63,15 @@ const ResourceRequestsTableView = ({
   retry,
   resources,
 }: ResourceRequestsTableViewProps) => {
-  const data: Row[] = resources.map(({ installationName, ...resource }) => ({
-    installationName,
-    kind: resource.kind,
-    name: resource.metadata.name,
-    namespace: resource.metadata.namespace,
+  const data: Row[] = resources.map(resource => ({
+    installationName: resource.cluster,
+    kind: resource.getKind(),
+    name: resource.getName(),
+    namespace: resource.getNamespace(),
     status: getResourceRequestStatus(resource),
     message: getResourceRequestStatusMessage(resource),
     description: getResourceRequestDescription(resource),
-    apiVersion: resource.apiVersion,
+    apiVersion: resource.getApiVersion(),
   }));
 
   const generatedColumns: TableColumn<Row>[] = [

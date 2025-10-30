@@ -1,24 +1,7 @@
-import { FluxObject, FluxObjectInterface } from './FluxObject';
+import { crds } from '@giantswarm/k8s-types';
+import { FluxObject } from './FluxObject';
 
-export interface HelmRepositoryInterface extends FluxObjectInterface {
-  spec?: {
-    url: string;
-    suspend?: boolean;
-  };
-  status?: {
-    artifact?: {
-      revision: string;
-    };
-    conditions?: {
-      lastTransitionTime: string;
-      message: string;
-      observedGeneration?: number;
-      reason: string;
-      status: 'True' | 'False' | 'Unknown';
-      type: string;
-    }[];
-  };
-}
+type HelmRepositoryInterface = crds.fluxcd.v1.HelmRepository;
 
 export class HelmRepository extends FluxObject<HelmRepositoryInterface> {
   static apiVersion = 'v1beta2';

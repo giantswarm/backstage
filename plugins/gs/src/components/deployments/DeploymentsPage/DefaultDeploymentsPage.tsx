@@ -6,7 +6,6 @@ import { deploymentsRouteRef } from '../../../routes';
 import { FiltersLayout } from '../../FiltersLayout';
 import { DefaultFilters } from './DefaultFilters';
 import { QueryClientProvider } from '../../QueryClientProvider';
-import { InstallationsProvider } from '../../installations/InstallationsProvider';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export type BaseDeploymentsPageProps = {
@@ -50,12 +49,10 @@ export function DefaultDeploymentsPage(props: DefaultDeploymentsPageProps) {
 
   return (
     <QueryClientProvider>
-      <InstallationsProvider>
-        <BaseDeploymentsPage
-          filters={filters ?? <DefaultFilters />}
-          content={<DeploymentsTable baseRouteRef={deploymentsRouteRef} />}
-        />
-      </InstallationsProvider>
+      <BaseDeploymentsPage
+        filters={filters ?? <DefaultFilters />}
+        content={<DeploymentsTable baseRouteRef={deploymentsRouteRef} />}
+      />
     </QueryClientProvider>
   );
 }

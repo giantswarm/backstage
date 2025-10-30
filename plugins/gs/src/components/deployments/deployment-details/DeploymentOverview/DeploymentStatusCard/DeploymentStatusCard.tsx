@@ -1,12 +1,12 @@
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
-import { AppKind } from '@giantswarm/backstage-plugin-gs-common';
 import { AppStatus } from './AppStatus';
 import { HelmReleaseConditions } from './HelmReleaseConditions';
+import { App } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export function DeploymentStatusCard() {
   const { deployment } = useCurrentDeployment();
 
-  return deployment.kind === AppKind ? (
+  return deployment instanceof App ? (
     <AppStatus app={deployment} />
   ) : (
     <HelmReleaseConditions helmrelease={deployment} />

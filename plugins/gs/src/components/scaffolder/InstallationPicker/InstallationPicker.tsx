@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useInstallations } from '../../hooks';
+import { useDisabledInstallations, useInstallationsInfo } from '../../hooks';
 import { Grid } from '@material-ui/core';
 import { InstallationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { InstallationInfo } from '../../installations/InstallationsProvider';
+import { InstallationInfo } from '../../hooks/useInstallationsInfo';
 
 type InstallationFieldProps = {
   id?: string;
@@ -35,7 +35,8 @@ const InstallationPickerField = ({
   widget = 'radio',
   onInstallationSelect,
 }: InstallationFieldProps) => {
-  const { disabledInstallations, installationsInfo } = useInstallations();
+  const { disabledInstallations } = useDisabledInstallations();
+  const { installationsInfo } = useInstallationsInfo();
   const { installations, installationLabels } = useMemo(() => {
     let filteredInstallations = installationsInfo;
     const labels: string[] = [];

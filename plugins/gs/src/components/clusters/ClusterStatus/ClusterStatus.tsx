@@ -3,7 +3,7 @@ import {
   StatusOK,
   StatusWarning,
 } from '@backstage/core-components';
-import { Box } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { toSentenceCase } from '../../utils/helpers';
 
 export const ClusterStatuses = {
@@ -21,8 +21,12 @@ export const ClusterStatus = ({ status }: ClusterStatusProps) => {
 
   return (
     <Box display="flex" alignItems="center">
-      <StatusIcon status={status} />
-      {statusLabel}
+      <Box marginTop="-5px">
+        <StatusIcon status={status} />
+      </Box>
+      <Typography variant="inherit" noWrap>
+        {statusLabel}
+      </Typography>
     </Box>
   );
 };
