@@ -1,5 +1,21 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.45.0
+
+### Minor Changes
+
+- d6b1c2d: Use types from @giantswarm/k8s-types package.
+
+### Patch Changes
+
+- d6b1c2d: Fixed cluster status icon alignment.
+- Updated dependencies [d6b1c2d]
+- Updated dependencies [d6b1c2d]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.8.0
+  - @giantswarm/backstage-plugin-gs-common@0.20.0
+  - @giantswarm/backstage-plugin-flux@0.6.2
+  - @giantswarm/backstage-plugin-flux-react@0.6.1
+
 ## 0.44.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.8.0
+
+### Minor Changes
+
+- d6b1c2d: Use types from @giantswarm/k8s-types package.
+
 ## 0.7.1
 
 ### Patch Changes

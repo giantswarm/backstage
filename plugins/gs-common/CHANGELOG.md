@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.20.0
+
+### Minor Changes
+
+- d6b1c2d: Removed Kubernetes object types and types generator script.
+
 ## 0.19.1
 
 ### Patch Changes
