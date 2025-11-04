@@ -7,6 +7,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.89.0] - 2025-11-04
 
+### Changed
+
+- Added support for Node.js v24
+- Removed TypeScript types for Kubernetes object and types generator script.
+- Refactored the code to use types from `@giantswarm/k8s-types` package.
+
+### Fixed
+
+- Fixed cluster status icon alignment in the Clusters table.
+
 See [./docs/releases/v0.89.0-changelog.md](./docs/releases/v0.89.0-changelog.md) for more information.
 
 ## [0.88.1] - 2025-10-16
