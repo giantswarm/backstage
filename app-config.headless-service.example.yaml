@@ -1,0 +1,57 @@
+app:
+  baseUrl: http://localhost:3000
+  errorReporter: null
+  telemetrydeck: null
+
+backend:
+  auth:
+    pluginKeyStore:
+      type: static
+      static:
+        keys:
+          - publicKeyFile: APP_ROOT/plugin-keys/plugin-to-plugin-key/public.key
+            privateKeyFile: APP_ROOT/plugin-keys/plugin-to-plugin-key/private.key
+            keyId: plugin-to-plugin-key
+  baseUrl: http://localhost:7008
+  listen:
+    port: 7008
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  errorReporter: null
+
+discovery:
+  endpoints:
+    - target: http://localhost:7007/api/{{pluginId}}
+      plugins: ['auth', 'catalog', 'events', 'permission']
+
+auth:
+  environment: development
+  session:
+    secret: ${AUTH_SESSION_SECRET}
+  experimentalExtraAllowedOrigins:
+    - http://localhost:3000
+  providers:
+    oidc-example:
+      development:
+        metadataUrl: OIDC_ISSUER_METADATA_URL
+        callbackUrl: http://localhost:7008/api/auth/oidc-example/handler/frame
+        clientId: OIDC_CLIENT_ID
+        clientSecret: OIDC_CLIENT_SECRET
+      production:
+        metadataUrl: OIDC_ISSUER_METADATA_URL
+        callbackUrl: http://localhost:7008/api/auth/oidc-example/handler/frame
+        clientId: OIDC_CLIENT_ID
+        clientSecret: OIDC_CLIENT_SECRET
+
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters:
+        - name: example
+          url: EXAMPLE_API_ENDPOINT
+          authProvider: oidc
+          oidcTokenProvider: oidc-example
