@@ -247,12 +247,16 @@ export class DefaultAuthConnector<AuthSession>
     query?: { [key: string]: string | boolean | undefined },
   ): Promise<string> {
     let baseUrl: string;
+
+    let resetInstallation: VoidFunction | undefined = undefined;
     try {
       const installation = this.provider.id.split('oidc-')[1];
-      DiscoveryApiClient.setInstallation(installation);
+      resetInstallation = DiscoveryApiClient.setInstallation(installation);
       baseUrl = await this.discoveryApi.getBaseUrl('auth');
     } finally {
-      DiscoveryApiClient.resetInstallation();
+      if (resetInstallation) {
+        resetInstallation();
+      }
     }
 
     const queryString = this.buildQueryString({
