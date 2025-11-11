@@ -7,6 +7,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.90.0] - 2025-11-11
 
+In this release, custom Kubernetes client has been refactored to use the standard backend proxy.
+
+### Changed
+
+- Kubernetes backend plugin has been added to the backend-headless-service package.
+- Custom Kubernetes frontend client has been changed to use standard Kubernetes backend proxy.
+- Custom discovery service has been updated to handle requests to Kubernetes plugin.
+
 See [./docs/releases/v0.90.0-changelog.md](./docs/releases/v0.90.0-changelog.md) for more information.
 
 ## [0.89.0] - 2025-11-04
