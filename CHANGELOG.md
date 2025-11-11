@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.90.0] - 2025-11-11
+
+In this release, custom Kubernetes client has been refactored to use the standard backend proxy.
+
+### Changed
+
+- Kubernetes backend plugin has been added to the backend-headless-service package.
+- Custom Kubernetes frontend client has been changed to use standard Kubernetes backend proxy.
+- Custom discovery service has been updated to handle requests to Kubernetes plugin.
+
+See [./docs/releases/v0.90.0-changelog.md](./docs/releases/v0.90.0-changelog.md) for more information.
+
 ## [0.89.0] - 2025-11-04
 
 ### Changed
@@ -1527,7 +1539,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.89.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.90.0...HEAD
+[0.90.0]: https://github.com/giantswarm/backstage/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/giantswarm/backstage/compare/v0.88.1...v0.89.0
 [0.88.1]: https://github.com/giantswarm/backstage/compare/v0.88.0...v0.88.1
 [0.88.0]: https://github.com/giantswarm/backstage/compare/v0.87.1...v0.88.0

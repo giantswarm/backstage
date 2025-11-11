@@ -1,5 +1,11 @@
 # backend-headless-service
 
+## 0.5.0
+
+### Minor Changes
+
+- a478023: Added Kubernetes plugin to the backend-headless-service package.
+
 ## 0.4.0
 
 ### Minor Changes
