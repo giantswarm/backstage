@@ -1,7 +1,7 @@
 import { UrlPatternDiscovery } from '@backstage/core-app-api';
 import { ConfigApi, DiscoveryApi } from '@backstage/core-plugin-api';
 
-const PLUGINS = ['auth', 'scaffolder'];
+const PLUGINS = ['auth', 'scaffolder', 'kubernetes'];
 
 export class DiscoveryApiClient implements DiscoveryApi {
   private urlPatternDiscovery: UrlPatternDiscovery;
@@ -55,15 +55,28 @@ export class DiscoveryApiClient implements DiscoveryApi {
   }
 
   static setInstallation(installation: string) {
+    if (
+      DiscoveryApiClient.installation &&
+      DiscoveryApiClient.installation !== installation
+    ) {
+      throw new Error(
+        `Installation ${DiscoveryApiClient.installation} is already set`,
+      );
+    }
+
+    if (DiscoveryApiClient.installation === installation) {
+      return undefined;
+    }
+
     DiscoveryApiClient.installation = installation;
+
+    return () => {
+      DiscoveryApiClient.installation = null;
+    };
   }
 
   static getInstallation() {
     return DiscoveryApiClient.installation;
-  }
-
-  static resetInstallation() {
-    DiscoveryApiClient.installation = null;
   }
 
   static getInstallationsWithBaseUrlOverrides() {

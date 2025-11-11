@@ -19,6 +19,7 @@
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/plugin-auth-backend": "backstage:^",
     "@backstage/plugin-auth-node": "backstage:^",
+    "@backstage/plugin-kubernetes-backend": "backstage:^",
     "@backstage/plugin-scaffolder-backend": "backstage:^",
     "@backstage/plugin-scaffolder-backend-module-github": "backstage:^",
     "@backstage/plugin-scaffolder-backend-module-notifications": "backstage:^",

@@ -38,8 +38,13 @@ export class ScaffolderApiClient extends ScaffolderClient {
   }): Promise<{ tasks: ScaffolderTask[]; totalTasks?: number }> {
     const TIMEOUT_MS = 5000;
 
-    const fetchWithTimeout = async (installationName: string) => {
-      const timeoutPromise = new Promise((_, reject) =>
+    const fetchWithTimeout = async (
+      installationName: string,
+    ): Promise<{ tasks: ScaffolderTask[] }> => {
+      const timeoutPromise = new Promise<{
+        tasks: ScaffolderTask[];
+        totalTasks?: number;
+      }>((_, reject) =>
         setTimeout(
           () =>
             reject(
@@ -49,19 +54,25 @@ export class ScaffolderApiClient extends ScaffolderClient {
         ),
       );
 
-      try {
-        // Temporarily set installation for this specific call
-        DiscoveryApiClient.setInstallation(installationName);
-        const fetchPromise = super.listTasks(options);
-        return Promise.race([fetchPromise, timeoutPromise]);
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error(`Failed to fetch tasks from ${installationName}`, error);
-        return null;
-      } finally {
-        // Reset to default/previous state immediately after queuing the promise
-        DiscoveryApiClient.resetInstallation();
-      }
+      const fetchPromise = new Promise<{
+        tasks: ScaffolderTask[];
+      }>(async (resolve, reject) => {
+        let resetInstallation: VoidFunction | undefined = undefined;
+        try {
+          resetInstallation =
+            DiscoveryApiClient.setInstallation(installationName);
+          const result = await super.listTasks(options);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        } finally {
+          if (resetInstallation) {
+            resetInstallation();
+          }
+        }
+      });
+
+      return Promise.race([fetchPromise, timeoutPromise]);
     };
 
     const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides();
@@ -76,23 +87,18 @@ export class ScaffolderApiClient extends ScaffolderClient {
         return matchingEntry?.[0];
       })
       .filter(Boolean) as string[];
-    const promises = [
-      super.listTasks(options),
-      ...installations.map(fetchWithTimeout),
-    ];
 
-    const results = await Promise.allSettled(promises);
-    let allTasks: ScaffolderTask[] = [];
-    results.forEach(result => {
-      if (result.status === 'fulfilled') {
-        const value = result.value as { tasks: ScaffolderTask[] };
-        allTasks = allTasks.concat(value.tasks);
-      }
-      if (result.status === 'rejected') {
+    const baseTasks = await super.listTasks(options);
+    let allTasks = baseTasks.tasks;
+    for (const installationName of installations) {
+      try {
+        const result = await fetchWithTimeout(installationName);
+        allTasks = allTasks.concat(result.tasks);
+      } catch (error) {
         // eslint-disable-next-line no-console
-        console.error(`Failed to fetch tasks, ${result.reason}`);
+        console.error(`Failed to fetch tasks`, error);
       }
-    });
+    }
 
     allTasks.sort((a, b) => {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -117,7 +123,7 @@ export class ScaffolderApiClient extends ScaffolderClient {
   streamLogs(options: ScaffolderStreamLogsOptions): Observable<LogEvent> {
     return new ObservableImpl(subscriber => {
       let underlyingSubscription: ZenObservable.Subscription | undefined;
-      let installationWasSet = false;
+      let resetInstallation: VoidFunction | undefined = undefined;
 
       this.getTaskInstallation(options.taskId)
         .then(installationName => {
@@ -132,15 +138,13 @@ export class ScaffolderApiClient extends ScaffolderClient {
             installationName !== DEFAULT_INSTALLATION_TOKEN
           ) {
             try {
-              DiscoveryApiClient.setInstallation(installationName);
-              installationWasSet = true;
+              resetInstallation =
+                DiscoveryApiClient.setInstallation(installationName);
               resultObservable = super.streamLogs(options);
             } catch (e) {
               subscriber.error(e);
-              // If setInstallation succeeded but super.streamLogs failed, reset.
-              if (installationWasSet) {
-                DiscoveryApiClient.resetInstallation();
-                installationWasSet = false; // Avoid double reset in cleanup
+              if (resetInstallation) {
+                resetInstallation();
               }
               return;
             }
@@ -163,9 +167,8 @@ export class ScaffolderApiClient extends ScaffolderClient {
         if (underlyingSubscription) {
           underlyingSubscription.unsubscribe();
         }
-        if (installationWasSet) {
-          DiscoveryApiClient.resetInstallation();
-          installationWasSet = false;
+        if (resetInstallation) {
+          resetInstallation();
         }
       };
     });
@@ -179,11 +182,15 @@ export class ScaffolderApiClient extends ScaffolderClient {
       installationName && installationName !== DEFAULT_INSTALLATION_TOKEN;
 
     if (needsOverride) {
+      let resetInstallation: VoidFunction | undefined = undefined;
       try {
-        DiscoveryApiClient.setInstallation(installationName);
+        resetInstallation =
+          DiscoveryApiClient.setInstallation(installationName);
         return await action();
       } finally {
-        DiscoveryApiClient.resetInstallation();
+        if (resetInstallation) {
+          resetInstallation();
+        }
       }
     } else {
       return action();

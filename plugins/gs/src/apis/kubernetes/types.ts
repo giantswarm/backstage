@@ -1,6 +1,5 @@
 export interface ClusterConfiguration {
   name: string;
-  apiEndpoint: string;
   authProvider: string;
   oidcTokenProvider?: string;
 }

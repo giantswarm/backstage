@@ -46,6 +46,7 @@ site
 
 # Local configuration files
 *.local.yaml
+*.headless-service.yaml
 
 # Sensitive credentials
 *-credentials.yaml
@@ -63,6 +64,9 @@ e2e-test-report/
 /volumes
 
 /catalog
+
+# plugin keys
+plugin-keys/*
 
 # helm chart dependencies
 charts/*/charts/

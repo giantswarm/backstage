@@ -20,6 +20,9 @@ backend.add(
 backend.add(import('@aws/aws-core-plugin-for-backstage-scaffolder-actions'));
 backend.add(import('@devangelista/backstage-scaffolder-kubernetes'));
 
+// kubernetes plugin
+backend.add(import('@backstage/plugin-kubernetes-backend'));
+
 // custom root logger service
 backend.add(rootLogger);
 
