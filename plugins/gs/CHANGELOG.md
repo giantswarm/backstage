@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.46.0
+
+### Minor Changes
+
+- a478023: Change custom Kubernetes client to use standard backend proxy.
+- a478023: Handle Kubernetes plugin by custom Discovery service.
+
 ## 0.45.0
 
 ### Minor Changes
