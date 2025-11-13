@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.46.1
+
+### Patch Changes
+
+- 7233c8c: Fix KubernetesClient race condition problem.
+
 ## 0.46.0
 
 ### Minor Changes
