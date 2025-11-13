@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.90.1-changelog.md](./docs/releases/v0.90.1-changelog.md) for more information.
+
 ## [0.90.0] - 2025-11-11
 
 In this release, custom Kubernetes client has been refactored to use the standard backend proxy.
