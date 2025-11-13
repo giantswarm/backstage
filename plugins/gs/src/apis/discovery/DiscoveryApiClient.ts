@@ -19,10 +19,11 @@ export class DiscoveryApiClient implements DiscoveryApi {
     );
   }
 
-  async getBaseUrl(pluginId: string) {
-    const installation = DiscoveryApiClient.getInstallation();
-    const baseUrlOverride = installation
-      ? this.baseUrlOverrides[installation]
+  async getBaseUrl(pluginId: string, installation?: string) {
+    const selectedInstallation =
+      installation || DiscoveryApiClient.getInstallation();
+    const baseUrlOverride = selectedInstallation
+      ? this.baseUrlOverrides[selectedInstallation]
       : undefined;
 
     if (PLUGINS.includes(pluginId) && baseUrlOverride) {

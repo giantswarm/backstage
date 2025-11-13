@@ -155,7 +155,7 @@ export const apis: AnyApiFactory[] = [
     }) => {
       return new KubernetesClient({
         configApi,
-        discoveryApi,
+        discoveryApi: discoveryApi as GSDiscoveryApiClient,
         fetchApi,
         kubernetesAuthProvidersApi,
       });
