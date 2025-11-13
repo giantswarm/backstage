@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.90.1] - 2025-11-13
 
+### Fixed
+
+- Fixed a race condition in the custom Kubernetes client.
+
 See [./docs/releases/v0.90.1-changelog.md](./docs/releases/v0.90.1-changelog.md) for more information.
 
 ## [0.90.0] - 2025-11-11
