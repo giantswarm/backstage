@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.46.2
+
+### Patch Changes
+
+- 3d4d3f2: Use custom discovery API in custom auth connector.
+
 ## 0.46.1
 
 ### Patch Changes
