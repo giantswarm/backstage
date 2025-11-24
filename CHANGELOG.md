@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.90.2] - 2025-11-24
+
+### Changed
+
+- Use custom discovery API in custom auth connector.
+
+See [./docs/releases/v0.90.2-changelog.md](./docs/releases/v0.90.2-changelog.md) for more information.
+
 ## [0.90.1] - 2025-11-13
 
 ### Fixed
@@ -1547,7 +1555,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.90.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.90.2...HEAD
+[0.90.2]: https://github.com/giantswarm/backstage/compare/v0.90.1...v0.90.2
 [0.90.1]: https://github.com/giantswarm/backstage/compare/v0.90.0...v0.90.1
 [0.90.0]: https://github.com/giantswarm/backstage/compare/v0.89.0...v0.90.0
 [0.89.0]: https://github.com/giantswarm/backstage/compare/v0.88.1...v0.89.0
