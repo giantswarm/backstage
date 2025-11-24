@@ -1,11 +1,15 @@
 import {
+  AuthProviderInfo,
   BackstageIdentityApi,
+  ConfigApi,
   OAuthApi,
+  OAuthRequestApi,
   OpenIdConnectApi,
   ProfileInfoApi,
   SessionApi,
   createApiRef,
 } from '@backstage/core-plugin-api';
+import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 
 export const gsAuthApiRef = createApiRef<AuthApi>({
   id: 'plugin.gs.auth',
@@ -32,4 +36,13 @@ export type GSAuthProvidersApi = {
   getMainAuthApi: () => AuthApi;
   getAuthApis: () => { [providerName: string]: AuthApi };
   getProviders: () => AuthProvider[];
+};
+
+export type GSAuthProvidersApiCreateOptions = {
+  discoveryApi: DiscoveryApiClient;
+  environment?: string;
+  provider?: AuthProviderInfo;
+  configApi?: ConfigApi;
+  oauthRequestApi: OAuthRequestApi;
+  defaultScopes?: string[];
 };

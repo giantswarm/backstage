@@ -28,7 +28,6 @@ import {
 import {
   AuthProviderInfo,
   ConfigApi,
-  DiscoveryApi,
   OAuthRequestApi,
   OAuthRequester,
 } from '@backstage/core-plugin-api';
@@ -40,7 +39,7 @@ type Options<AuthSession> = {
   /**
    * DiscoveryApi instance used to locate the auth backend endpoint.
    */
-  discoveryApi: DiscoveryApi;
+  discoveryApi: DiscoveryApiClient;
   /**
    * Environment hint passed on to auth backend, for example 'production' or 'development'
    */
@@ -84,7 +83,7 @@ function defaultJoinScopes(scopes: Set<string>) {
 export class DefaultAuthConnector<AuthSession>
   implements AuthConnector<AuthSession>
 {
-  private readonly discoveryApi: DiscoveryApi;
+  private readonly discoveryApi: DiscoveryApiClient;
   private readonly environment: string;
   private readonly provider: AuthProviderInfo;
   private readonly joinScopesFunc: (scopes: Set<string>) => string;
@@ -246,18 +245,8 @@ export class DefaultAuthConnector<AuthSession>
     path: string,
     query?: { [key: string]: string | boolean | undefined },
   ): Promise<string> {
-    let baseUrl: string;
-
-    let resetInstallation: VoidFunction | undefined = undefined;
-    try {
-      const installation = this.provider.id.split('oidc-')[1];
-      resetInstallation = DiscoveryApiClient.setInstallation(installation);
-      baseUrl = await this.discoveryApi.getBaseUrl('auth');
-    } finally {
-      if (resetInstallation) {
-        resetInstallation();
-      }
-    }
+    const installation = this.provider.id.split('oidc-')[1];
+    const baseUrl = await this.discoveryApi.getBaseUrl('auth', installation);
 
     const queryString = this.buildQueryString({
       ...query,

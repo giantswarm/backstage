@@ -59,6 +59,7 @@ import {
   GSAuthProviders,
   gsAuthApiRef,
 } from './apis/auth';
+import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -73,7 +74,7 @@ export const gsPlugin = createPlugin({
       factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
         GSAuthProviders.create({
           configApi,
-          discoveryApi,
+          discoveryApi: discoveryApi as DiscoveryApiClient,
           oauthRequestApi,
         }),
     }),
