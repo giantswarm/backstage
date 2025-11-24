@@ -1,21 +1,15 @@
-import {
-  OAuth2,
-  OAuth2Session,
-  OAuthApiCreateOptions,
-} from '@backstage/core-app-api';
-import {
-  ConfigApi,
-  DiscoveryApi,
-  OAuthRequestApi,
-} from '@backstage/core-plugin-api';
+import { OAuth2, OAuth2Session } from '@backstage/core-app-api';
+import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
 import {
   AuthApi,
   AuthProvider,
   GSAuthProvidersApi,
+  GSAuthProvidersApiCreateOptions,
   gsAuthProvidersApiRef,
 } from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { DefaultAuthConnector } from './DefaultAuthConnector';
+import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 
@@ -26,12 +20,12 @@ const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
  */
 export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly configApi?: ConfigApi;
-  private readonly discoveryApi: DiscoveryApi;
+  private readonly discoveryApi: DiscoveryApiClient;
   private readonly oauthRequestApi: OAuthRequestApi;
   private readonly authProviders: AuthProvider[];
   private readonly authApis: { [providerName: string]: AuthApi };
 
-  constructor(options: OAuthApiCreateOptions) {
+  constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.oauthRequestApi = options.oauthRequestApi;
@@ -41,7 +35,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   static create(
-    options: OAuthApiCreateOptions,
+    options: GSAuthProvidersApiCreateOptions,
   ): typeof gsAuthProvidersApiRef.T {
     return new GSAuthProviders(options);
   }
