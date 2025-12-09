@@ -39,6 +39,7 @@ import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
 import { HomePage } from './components/home/HomePage';
 
 import {
+  GSChartPickerFieldExtension,
   GSClusterPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
   GSClustersPage,
@@ -141,6 +142,7 @@ const routes = (
       }
     >
       <ScaffolderFieldExtensions>
+        <GSChartPickerFieldExtension />
         <GSClusterPickerFieldExtension />
         <GSProviderConfigPickerFieldExtension />
         <GSOIDCTokenFieldExtension />

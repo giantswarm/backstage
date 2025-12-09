@@ -24,6 +24,10 @@ import {
 } from '@backstage/plugin-scaffolder-react';
 
 import {
+  ChartPicker,
+  ChartPickerSchema,
+} from './components/scaffolder/ChartPicker';
+import {
   ClusterPicker,
   ClusterPickerSchema,
   clusterPickerValidation,
@@ -167,6 +171,14 @@ export const EntityGSKratixResourcesContent = gsPlugin.provide(
         m => m.EntityKratixResourcesContent,
       ),
     mountPoint: entityKratixResourcesRouteRef,
+  }),
+);
+
+export const GSChartPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSChartPicker',
+    component: ChartPicker,
+    schema: ChartPickerSchema,
   }),
 );
 
