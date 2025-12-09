@@ -16,6 +16,7 @@ export {
   GSInstallationPickerFieldExtension,
   GSReleasePickerFieldExtension,
   GSOrganizationPickerFieldExtension,
+  GSYamlValuesEditorFieldExtension,
   GSStepLayout,
 } from './plugin';
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';

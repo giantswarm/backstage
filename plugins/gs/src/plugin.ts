@@ -64,6 +64,11 @@ import {
   TemplateStringInputSchema,
 } from './components/scaffolder/TemplateStringInput';
 import {
+  YamlValuesEditor,
+  YamlValuesEditorSchema,
+  yamlValuesEditorValidation,
+} from './components/scaffolder/YamlValuesEditor';
+import {
   gsAuthProvidersApiRef,
   GSAuthProviders,
   gsAuthApiRef,
@@ -257,6 +262,15 @@ export const GSTemplateStringInputFieldExtension = gsPlugin.provide(
     name: 'GSTemplateStringInput',
     component: TemplateStringInput,
     schema: TemplateStringInputSchema,
+  }),
+);
+
+export const GSYamlValuesEditorFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSYamlValuesEditor',
+    component: YamlValuesEditor,
+    schema: YamlValuesEditorSchema,
+    validation: yamlValuesEditorValidation,
   }),
 );
 
