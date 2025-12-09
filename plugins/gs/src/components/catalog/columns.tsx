@@ -136,8 +136,8 @@ export const columnFactories = Object.freeze({
       width: 'auto',
       filtering: false,
       customSort({ entity: entity1 }, { entity: entity2 }) {
-        const entity1HelmCharts = getHelmChartsFromEntity(entity1) || [];
-        const entity2HelmCharts = getHelmChartsFromEntity(entity2) || [];
+        const entity1HelmCharts = getHelmChartsFromEntity(entity1);
+        const entity2HelmCharts = getHelmChartsFromEntity(entity2);
 
         if (entity1HelmCharts.length < entity2HelmCharts.length) {
           return -1;
@@ -182,7 +182,7 @@ export const columnFactories = Object.freeze({
         helmCharts.forEach((chart, idx) => {
           const version = appVersions[idx];
           if (version && version !== '') {
-            versionsMap[chart] = version;
+            versionsMap[chart.name] = version;
           }
         });
 
@@ -192,9 +192,9 @@ export const columnFactories = Object.freeze({
 
         return (
           <>
-            {Object.entries(versionsMap).map(([chart, version]) => (
-              <Typography key={chart} variant="body2">
-                {`${chart}: ${version}`}
+            {Object.entries(versionsMap).map(([chartName, version]) => (
+              <Typography key={chartName} variant="body2">
+                {`${chartName}: ${version}`}
               </Typography>
             ))}
           </>
