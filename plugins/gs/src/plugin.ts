@@ -69,6 +69,10 @@ import {
   yamlValuesEditorValidation,
 } from './components/scaffolder/YamlValuesEditor';
 import {
+  YamlValuesValidation,
+  YamlValuesValidationSchema,
+} from './components/scaffolder/YamlValuesValidation';
+import {
   gsAuthProvidersApiRef,
   GSAuthProviders,
   gsAuthApiRef,
@@ -271,6 +275,14 @@ export const GSYamlValuesEditorFieldExtension = gsPlugin.provide(
     component: YamlValuesEditor,
     schema: YamlValuesEditorSchema,
     validation: yamlValuesEditorValidation,
+  }),
+);
+
+export const GSYamlValuesValidationFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSYamlValuesValidation',
+    component: YamlValuesValidation,
+    schema: YamlValuesValidationSchema,
   }),
 );
 
