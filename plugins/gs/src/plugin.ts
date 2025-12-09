@@ -28,6 +28,10 @@ import {
   ChartPickerSchema,
 } from './components/scaffolder/ChartPicker';
 import {
+  ChartTagPicker,
+  ChartTagPickerSchema,
+} from './components/scaffolder/ChartTagPicker';
+import {
   ClusterPicker,
   ClusterPickerSchema,
   clusterPickerValidation,
@@ -179,6 +183,14 @@ export const GSChartPickerFieldExtension = gsPlugin.provide(
     name: 'GSChartPicker',
     component: ChartPicker,
     schema: ChartPickerSchema,
+  }),
+);
+
+export const GSChartTagPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSChartTagPicker',
+    component: ChartTagPicker,
+    schema: ChartTagPickerSchema,
   }),
 );
 

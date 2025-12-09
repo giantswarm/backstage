@@ -40,6 +40,7 @@ import { HomePage } from './components/home/HomePage';
 
 import {
   GSChartPickerFieldExtension,
+  GSChartTagPickerFieldExtension,
   GSClusterPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
   GSClustersPage,
@@ -143,6 +144,7 @@ const routes = (
     >
       <ScaffolderFieldExtensions>
         <GSChartPickerFieldExtension />
+        <GSChartTagPickerFieldExtension />
         <GSClusterPickerFieldExtension />
         <GSProviderConfigPickerFieldExtension />
         <GSOIDCTokenFieldExtension />
