@@ -4,6 +4,7 @@ import {
   createPlugin,
   createRoutableExtension,
   discoveryApiRef,
+  fetchApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 
@@ -60,6 +61,10 @@ import {
   gsAuthApiRef,
 } from './apis/auth';
 import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
+import {
+  ContainerRegistryClient,
+  containerRegistryApiRef,
+} from './apis/containerRegistry';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -86,6 +91,15 @@ export const gsPlugin = createPlugin({
       factory: ({ gsAuthProvidersApi }) => {
         return gsAuthProvidersApi.getMainAuthApi();
       },
+    }),
+    createApiFactory({
+      api: containerRegistryApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+      },
+      factory: ({ discoveryApi, fetchApi }) =>
+        new ContainerRegistryClient({ discoveryApi, fetchApi }),
     }),
   ],
   routes: {
