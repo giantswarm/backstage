@@ -3,10 +3,10 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { createRouter } from './router';
-import { todoListServiceRef } from './services/TodoListService';
+import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 
 /**
- * gsPlugin backend plugin
+ * GS backend plugin
  *
  * @public
  */
@@ -15,15 +15,13 @@ export const gsPlugin = createBackendPlugin({
   register(env) {
     env.registerInit({
       deps: {
-        httpAuth: coreServices.httpAuth,
         httpRouter: coreServices.httpRouter,
-        todoList: todoListServiceRef,
+        containerRegistry: containerRegistryServiceRef,
       },
-      async init({ httpAuth, httpRouter, todoList }) {
+      async init({ httpRouter, containerRegistry }) {
         httpRouter.use(
           await createRouter({
-            httpAuth,
-            todoList,
+            containerRegistry,
           }),
         );
       },

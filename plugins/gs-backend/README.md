@@ -1,6 +1,12 @@
 # gs
 
-This plugin backend was templated using the Backstage CLI. You should replace this text with a description of your plugin backend.
+This is the backend plugin for Giant Swarm specific functionality in Backstage.
+
+## Features
+
+### Container Registry API
+
+Provides an API endpoint to fetch tags information from OCI registries.
 
 ## Installation
 
