@@ -56,6 +56,18 @@ describe('formatTemplateString', () => {
     });
   });
 
+  describe('when template string contains chartName placeholders', () => {
+    it('replaces chartName placeholders with the name of the chart', () => {
+      const data = {
+        chartRef: 'chart-registry/chart-repository/TEST_NAME',
+      };
+
+      expect(
+        formatTemplateString('test-${{chartName(chartRef)}}-test', { data }),
+      ).toEqual('test-TEST_NAME-test');
+    });
+  });
+
   describe('when template string contains data placeholders', () => {
     it('replaces data placeholders with provided values', () => {
       const data = {

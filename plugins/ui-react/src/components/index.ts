@@ -8,3 +8,4 @@ export * from './MultipleSelect';
 export * from './NotAvailable';
 export * from './SingleSelect';
 export * from './StructuredMetadataList';
+export * from './YamlEditor';

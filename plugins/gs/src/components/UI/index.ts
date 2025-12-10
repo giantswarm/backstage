@@ -20,3 +20,4 @@ export { StatusMessage } from './StatusMessage';
 export { StructuredMetadataList } from './StructuredMetadataList';
 export { Toolkit, type Tool } from './Toolkit';
 export { Version } from './Version';
+export { YamlEditorFormField } from './YamlEditorFormField';

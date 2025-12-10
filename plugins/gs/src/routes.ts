@@ -47,3 +47,10 @@ export const fluxOverviewExternalRouteRef = createExternalRouteRef({
 export const fluxResourcesExternalRouteRef = createExternalRouteRef({
   id: 'flux-resources',
 });
+
+export const appDeploymentTemplateRouteRef = createExternalRouteRef({
+  id: 'app-deployment-template',
+  optional: true,
+  params: ['namespace', 'templateName'],
+  defaultTarget: 'scaffolder.selectedTemplate',
+});

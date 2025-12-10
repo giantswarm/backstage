@@ -1,5 +1,6 @@
 import { ANNOTATION_SOURCE_LOCATION, Entity } from '@backstage/catalog-model';
 import { formatVersion } from './helpers';
+import { parseChartRef } from './parseChartRef';
 
 export const GS_DEPLOYMENT_NAMES = 'giantswarm.io/deployment-names';
 export const GS_INGRESS_HOST = 'giantswarm.io/ingress-host';
@@ -61,7 +62,7 @@ export const isEntityHelmChartsAvailable = (entity: Entity) =>
 export const getHelmChartsFromEntity = (entity: Entity) => {
   const helmCharts = entity.metadata.annotations?.[GS_HELMCHARTS];
 
-  return helmCharts?.split(',');
+  return helmCharts?.split(',').map(chartRef => parseChartRef(chartRef)) ?? [];
 };
 
 export const getHelmChartsAppVersionsFromEntity = (entity: Entity) => {

@@ -1,4 +1,5 @@
 export * from './useCatalogEntitiesForDeployments';
+export * from './useCatalogEntityByRef';
 export * from './useCatalogEntityForDeployment';
 export * from './useControlPlanesForClusters';
 export * from './useClusterDetailsTemplateData';
@@ -14,6 +15,7 @@ export * from './useInstallationsInfo';
 export * from './useK8sVersionEOLDate';
 export * from './useResourceRequests';
 export * from './useResourceRequestStatusDetails';
+export * from './useSchemaForChart';
 export * from './useTemplateString';
 export * from './useProviderClusterForCluster';
 export * from './useProviderClustersForClusters';

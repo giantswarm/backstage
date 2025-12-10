@@ -4,10 +4,12 @@ import {
   createPlugin,
   createRoutableExtension,
   discoveryApiRef,
+  fetchApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
 
 import {
+  appDeploymentTemplateRouteRef,
   clustersRouteRef,
   deploymentsRouteRef,
   entityDeploymentsRouteRef,
@@ -22,6 +24,14 @@ import {
   createScaffolderLayout,
 } from '@backstage/plugin-scaffolder-react';
 
+import {
+  ChartPicker,
+  ChartPickerSchema,
+} from './components/scaffolder/ChartPicker';
+import {
+  ChartTagPicker,
+  ChartTagPickerSchema,
+} from './components/scaffolder/ChartTagPicker';
 import {
   ClusterPicker,
   ClusterPickerSchema,
@@ -55,11 +65,24 @@ import {
   TemplateStringInputSchema,
 } from './components/scaffolder/TemplateStringInput';
 import {
+  YamlValuesEditor,
+  YamlValuesEditorSchema,
+  yamlValuesEditorValidation,
+} from './components/scaffolder/YamlValuesEditor';
+import {
+  YamlValuesValidation,
+  YamlValuesValidationSchema,
+} from './components/scaffolder/YamlValuesValidation';
+import {
   gsAuthProvidersApiRef,
   GSAuthProviders,
   gsAuthApiRef,
 } from './apis/auth';
 import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
+import {
+  ContainerRegistryClient,
+  containerRegistryApiRef,
+} from './apis/containerRegistry';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -87,6 +110,15 @@ export const gsPlugin = createPlugin({
         return gsAuthProvidersApi.getMainAuthApi();
       },
     }),
+    createApiFactory({
+      api: containerRegistryApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+      },
+      factory: ({ discoveryApi, fetchApi }) =>
+        new ContainerRegistryClient({ discoveryApi, fetchApi }),
+    }),
   ],
   routes: {
     root: rootRouteRef,
@@ -98,6 +130,7 @@ export const gsPlugin = createPlugin({
   externalRoutes: {
     fluxOverview: fluxOverviewExternalRouteRef,
     fluxResources: fluxResourcesExternalRouteRef,
+    appDeploymentTemplate: appDeploymentTemplateRouteRef,
   },
   featureFlags: [
     {
@@ -153,6 +186,22 @@ export const EntityGSKratixResourcesContent = gsPlugin.provide(
         m => m.EntityKratixResourcesContent,
       ),
     mountPoint: entityKratixResourcesRouteRef,
+  }),
+);
+
+export const GSChartPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSChartPicker',
+    component: ChartPicker,
+    schema: ChartPickerSchema,
+  }),
+);
+
+export const GSChartTagPickerFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSChartTagPicker',
+    component: ChartTagPicker,
+    schema: ChartTagPickerSchema,
   }),
 );
 
@@ -219,6 +268,23 @@ export const GSTemplateStringInputFieldExtension = gsPlugin.provide(
     name: 'GSTemplateStringInput',
     component: TemplateStringInput,
     schema: TemplateStringInputSchema,
+  }),
+);
+
+export const GSYamlValuesEditorFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSYamlValuesEditor',
+    component: YamlValuesEditor,
+    schema: YamlValuesEditorSchema,
+    validation: yamlValuesEditorValidation,
+  }),
+);
+
+export const GSYamlValuesValidationFieldExtension = gsPlugin.provide(
+  createScaffolderFieldExtension({
+    name: 'GSYamlValuesValidation',
+    component: YamlValuesValidation,
+    schema: YamlValuesValidationSchema,
   }),
 );
 
