@@ -19,6 +19,7 @@ backend.add(
 );
 backend.add(import('@aws/aws-core-plugin-for-backstage-scaffolder-actions'));
 backend.add(import('@devangelista/backstage-scaffolder-kubernetes'));
+backend.add(import('@roadiehq/scaffolder-backend-module-utils'));
 
 // kubernetes plugin
 backend.add(import('@backstage/plugin-kubernetes-backend'));
