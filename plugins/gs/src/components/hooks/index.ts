@@ -1,4 +1,5 @@
 export * from './useCatalogEntitiesForDeployments';
+export * from './useCatalogEntityByRef';
 export * from './useCatalogEntityForDeployment';
 export * from './useControlPlanesForClusters';
 export * from './useClusterDetailsTemplateData';

@@ -9,6 +9,7 @@ import {
 } from '@backstage/core-plugin-api';
 
 import {
+  appDeploymentTemplateRouteRef,
   clustersRouteRef,
   deploymentsRouteRef,
   entityDeploymentsRouteRef,
@@ -129,6 +130,7 @@ export const gsPlugin = createPlugin({
   externalRoutes: {
     fluxOverview: fluxOverviewExternalRouteRef,
     fluxResources: fluxResourcesExternalRouteRef,
+    appDeploymentTemplate: appDeploymentTemplateRouteRef,
   },
   featureFlags: [
     {

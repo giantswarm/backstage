@@ -61,6 +61,7 @@ import {
   isEntityGSInstallationResource,
   isEntityGSKratixResource,
   isEntityGSDeploymentsAvailable,
+  EntityGSAppDeploymentCard,
 } from '@giantswarm/backstage-plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -68,6 +69,12 @@ function isLinksAvailable(entity: Entity) {
     return true;
   }
   return false;
+}
+
+function isHelmChartAvailable(entity: Entity) {
+  const tags = entity?.metadata?.tags ?? [];
+
+  return tags.includes('helm-chart') || tags.includes('helmchart');
 }
 
 const circleCIContent = (
@@ -133,6 +140,13 @@ const overviewContent = (
 
     <Grid item md={4} xs={12}>
       <Grid container spacing={3} alignItems="stretch">
+        <EntitySwitch>
+          <EntitySwitch.Case if={isHelmChartAvailable}>
+            <Grid item xs={12}>
+              <EntityGSAppDeploymentCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
         <EntitySwitch>
           <EntitySwitch.Case if={isLinksAvailable}>
             <Grid item xs={12}>

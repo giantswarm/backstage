@@ -3,12 +3,9 @@ import { FormHelperText, Grid, TextField, Typography } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ChartPickerProps, ChartPickerValue } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
-import { useApi } from '@backstage/core-plugin-api';
-import { catalogApiRef } from '@backstage/plugin-catalog-react';
-import { parseEntityRef } from '@backstage/catalog-model';
-import { useQuery } from '@tanstack/react-query';
 import { getHelmChartsFromEntity, GS_HELMCHARTS } from '../../utils/entity';
 import { parseChartRef } from '../../utils/parseChartRef';
+import { useCatalogEntityByRef } from '../../hooks';
 
 type ChartPickerFieldProps = {
   id?: string;
@@ -31,23 +28,12 @@ const ChartPickerField = ({
   entityRef,
   onChange,
 }: ChartPickerFieldProps) => {
-  const catalogApi = useApi(catalogApiRef);
-
   const [selectedChart, setSelectedChart] = useState<string | null>(
     value ?? null,
   );
 
-  const { data: entity, isLoading: isLoadingEntity } = useQuery({
-    queryKey: ['catalog-entity', entityRef],
-    queryFn: async () => {
-      if (!entityRef) {
-        return undefined;
-      }
-
-      const parsedRef = parseEntityRef(entityRef);
-      return catalogApi.getEntityByRef(parsedRef);
-    },
-  });
+  const { entity, isLoading: isLoadingEntity } =
+    useCatalogEntityByRef(entityRef);
 
   const chartOptions = useMemo(() => {
     if (!entity) {
