@@ -1,5 +1,24 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.47.0
+
+### Minor Changes
+
+- 7f837a5: Add ChartTagPicker custom scaffolder field.
+- 7f837a5: Add YamlValuesValidation custom scaffolder field.
+- 7f837a5: Add YamlValuesEditor custom scaffolder field.
+- 7f837a5: Add Container Registry API client
+- 7f837a5: Add ChartPicker custom scaffolder field.
+- 7f837a5: Change helmcharts catalog entity annotation format.
+
+### Patch Changes
+
+- Updated dependencies [7f837a5]
+  - @giantswarm/backstage-plugin-ui-react@0.7.0
+  - @giantswarm/backstage-plugin-flux@0.6.3
+  - @giantswarm/backstage-plugin-flux-react@0.6.2
+  - @giantswarm/backstage-plugin-kubernetes-react@0.8.1
+
 ## 0.46.2
 
 ### Patch Changes

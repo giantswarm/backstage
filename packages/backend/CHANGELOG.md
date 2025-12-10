@@ -1,5 +1,16 @@
 # backend
 
+## 0.13.0
+
+### Minor Changes
+
+- 7f837a5: Add GS backend plugin.
+
+### Patch Changes
+
+- Updated dependencies [7f837a5]
+  - @giantswarm/backstage-plugin-gs-backend@0.2.0
+
 ## 0.12.0
 
 ### Minor Changes

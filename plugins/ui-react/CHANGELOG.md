@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.7.0
+
+### Minor Changes
+
+- 7f837a5: Add YamlEditor component.
+
 ## 0.6.1
 
 ### Patch Changes
