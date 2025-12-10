@@ -18,7 +18,7 @@ export const StepLayout: LayoutTemplate = ({
   const formWidth = uiSchema?.['ui:options']?.formWidth;
 
   return (
-    <Box maxWidth={formWidth}>
+    <Box maxWidth={formWidth} mt={2}>
       {description || note ? (
         <Box marginBottom={2}>
           {description ? (
