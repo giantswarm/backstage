@@ -7,6 +7,19 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.91.0] - 2025-12-10
 
+### Added
+
+- `ChartPicker` custom scaffolder field.
+- `ChartTagPicker` custom scaffolder field.
+- `YamlValuesEditor` custom scaffolder field.
+- `YamlValuesValidation` custom scaffolder field.
+- GS backend plugin.
+- Container Registry frontend API client and backend service.
+
+### Changed
+
+- `helmcharts` catalog entity annotation format has been changed.
+
 See [./docs/releases/v0.91.0-changelog.md](./docs/releases/v0.91.0-changelog.md) for more information.
 
 ## [0.90.2] - 2025-11-24
