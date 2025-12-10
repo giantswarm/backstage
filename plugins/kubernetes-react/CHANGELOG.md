@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [7f837a5]
+  - @giantswarm/backstage-plugin-ui-react@0.7.0
+
 ## 0.8.0
 
 ### Minor Changes
