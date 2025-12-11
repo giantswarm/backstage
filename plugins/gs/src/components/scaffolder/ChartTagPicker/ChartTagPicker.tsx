@@ -118,11 +118,11 @@ const ChartTagPickerField = ({
     if (isLoading) {
       return 'Loading versions...';
     }
-    if (!chartRef) {
-      return 'Select a Helm chart first';
+    if (chartRef && sortedVersions.length === 0) {
+      return `No versions found for the Helm chart.`;
     }
     return helperText;
-  }, [chartRef, helperText, isLoading]);
+  }, [chartRef, helperText, isLoading, sortedVersions.length]);
 
   return (
     <Grid container spacing={3} direction="column">
@@ -171,7 +171,7 @@ export const ChartTagPicker = ({
   formData,
   schema: {
     title = 'Chart Version',
-    description = 'The chart version to deploy',
+    description = 'Select the Helm chart version you want to deploy.',
   },
   uiSchema,
   idSchema,
