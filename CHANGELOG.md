@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.91.1] - 2025-12-11
 
+### Fixed
+
+- Added custom scaffolder fields improvements.
+
 See [./docs/releases/v0.91.1-changelog.md](./docs/releases/v0.91.1-changelog.md) for more information.
 
 ## [0.91.0] - 2025-12-10
