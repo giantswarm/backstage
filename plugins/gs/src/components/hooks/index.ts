@@ -15,7 +15,7 @@ export * from './useInstallationsInfo';
 export * from './useK8sVersionEOLDate';
 export * from './useResourceRequests';
 export * from './useResourceRequestStatusDetails';
-export * from './useSchemaForChart';
+export * from './useHelmChartValuesSchema';
 export * from './useTemplateString';
 export * from './useProviderClusterForCluster';
 export * from './useProviderClustersForClusters';

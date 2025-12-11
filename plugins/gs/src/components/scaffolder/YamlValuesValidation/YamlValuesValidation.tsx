@@ -6,7 +6,7 @@ import WarningIcon from '@material-ui/icons/Warning';
 import * as yaml from 'js-yaml';
 import Ajv from 'ajv/dist/2020';
 import type { YamlValuesValidationProps } from './schema';
-import { useSchemaForChart } from '../../hooks';
+import { useHelmChartValuesSchema } from '../../hooks';
 import { get } from 'lodash';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import classNames from 'classnames';
@@ -146,7 +146,7 @@ export const YamlValuesValidation = ({
 
   const valuesFields = uiSchema?.['ui:options']?.valuesFields;
 
-  const { schema: jsonSchema } = useSchemaForChart(chartRef, chartTag);
+  const { schema: jsonSchema } = useHelmChartValuesSchema(chartRef, chartTag);
 
   const values = useMemo(() => {
     if (!valuesFields) {

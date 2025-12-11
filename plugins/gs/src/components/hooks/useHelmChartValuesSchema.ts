@@ -6,7 +6,7 @@ import { parseChartRef } from '../utils/parseChartRef';
 
 const VALUES_SCHEMA_ANNOTATION = 'application.giantswarm.io/values-schema';
 
-export function useSchemaForChart(
+export function useHelmChartValuesSchema(
   chartRef: string | undefined,
   chartTag: string | undefined,
 ) {

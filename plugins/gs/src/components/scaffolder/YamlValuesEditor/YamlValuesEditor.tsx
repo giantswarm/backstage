@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { YamlValuesEditorProps } from './schema';
 import { YamlEditorFormField } from '../../UI';
-import { useSchemaForChart } from '../../hooks';
+import { useHelmChartValuesSchema } from '../../hooks';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 export const YamlValuesEditor = ({
@@ -34,7 +34,7 @@ export const YamlValuesEditor = ({
 
   const values = formData || '';
 
-  const { schema: jsonSchema } = useSchemaForChart(chartRef, chartTag);
+  const { schema: jsonSchema } = useHelmChartValuesSchema(chartRef, chartTag);
 
   const processedJsonSchema = useMemo(() => {
     if (!jsonSchema) {
