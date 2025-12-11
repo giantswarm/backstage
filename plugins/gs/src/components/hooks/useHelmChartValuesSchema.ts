@@ -4,7 +4,9 @@ import { useMemo } from 'react';
 import { containerRegistryApiRef } from '../../apis/containerRegistry';
 import { parseChartRef } from '../utils/parseChartRef';
 
-const VALUES_SCHEMA_ANNOTATION = 'application.giantswarm.io/values-schema';
+const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
+const DEPRECATED_VALUES_SCHEMA_ANNOTATION =
+  'application.giantswarm.io/values-schema';
 
 export function useHelmChartValuesSchema(
   chartRef: string | undefined,
@@ -41,7 +43,9 @@ export function useHelmChartValuesSchema(
     enabled: Boolean(registry && repository && chartTag),
   });
 
-  const schemaUrl = tagManifest?.annotations[VALUES_SCHEMA_ANNOTATION];
+  const schemaUrl =
+    tagManifest?.annotations[VALUES_SCHEMA_ANNOTATION] ??
+    tagManifest?.annotations[DEPRECATED_VALUES_SCHEMA_ANNOTATION];
 
   const {
     data: schema,
