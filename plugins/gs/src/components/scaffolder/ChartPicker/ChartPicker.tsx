@@ -72,11 +72,8 @@ const ChartPickerField = ({
     if (isLoading) {
       return 'Loading charts...';
     }
-    if (!entityRef) {
-      return 'Select an application first';
-    }
-    if (chartOptions.length === 0) {
-      return `No charts found. Entity is missing "${GS_HELMCHARTS}" annotation.`;
+    if (entityRef && chartOptions.length === 0) {
+      return `No Helm charts found. Entity is missing "${GS_HELMCHARTS}" annotation.`;
     }
     return helperText;
   }, [entityRef, helperText, isLoading, chartOptions.length]);
@@ -128,7 +125,7 @@ export const ChartPicker = ({
   rawErrors,
   required,
   formData,
-  schema: { title = 'Chart', description = 'The chart to deploy' },
+  schema: { title = 'Chart', description = 'Select the Helm chart to deploy.' },
   uiSchema,
   idSchema,
   formContext,
