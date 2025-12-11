@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.47.1
+
+### Patch Changes
+
+- a6688e0: Added custom scaffolder fields improvements.
+
 ## 0.47.0
 
 ### Minor Changes
