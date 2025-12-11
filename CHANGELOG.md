@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Migrate Chart.yaml annotations to new format as per https://docs.giantswarm.io/reference/platform-api/chart-metadata/
+
 ## [0.91.1] - 2025-12-11
 
 ### Fixed
@@ -1581,6 +1585,10 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 - Disable anonymous access.
 
 [Unreleased]: https://github.com/giantswarm/backstage/compare/v0.91.1...HEAD
+
+### Changed
+
+- Migrate Chart.yaml annotations to new format as per https://docs.giantswarm.io/reference/platform-api/chart-metadata/
 [0.91.1]: https://github.com/giantswarm/backstage/compare/v0.91.0...v0.91.1
 [0.91.0]: https://github.com/giantswarm/backstage/compare/v0.90.2...v0.91.0
 [0.90.2]: https://github.com/giantswarm/backstage/compare/v0.90.1...v0.90.2
