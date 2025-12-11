@@ -51,7 +51,10 @@ const ChartPickerField = ({
       onChange(undefined);
     }
 
-    if (!selectedChart && chartOptions.length > 0) {
+    if (
+      (!selectedChart && chartOptions.length > 0) ||
+      (selectedChart && !chartOptions.includes(selectedChart))
+    ) {
       setSelectedChart(chartOptions[0]);
       onChange(chartOptions[0]);
     }
@@ -66,7 +69,7 @@ const ChartPickerField = ({
   );
 
   const isLoading = isLoadingEntity;
-  const isDisabled = isLoading || !entityRef;
+  const isDisabled = isLoading || !entityRef || chartOptions.length <= 1;
 
   const helper = useMemo(() => {
     if (isLoading) {

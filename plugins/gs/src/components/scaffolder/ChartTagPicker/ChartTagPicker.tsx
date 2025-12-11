@@ -69,7 +69,13 @@ const ChartTagPickerField = ({
       onChange(undefined);
     }
 
-    if (!selectedVersion && latestStableVersion && sortedVersions.length > 0) {
+    if (
+      (!selectedVersion && sortedVersions.length > 0) ||
+      (selectedVersion && !sortedVersions.includes(selectedVersion))
+    ) {
+      if (!latestStableVersion) {
+        return;
+      }
       setSelectedVersion(latestStableVersion);
       onChange(latestStableVersion);
     }
