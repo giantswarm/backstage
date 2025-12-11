@@ -31,7 +31,8 @@ export class ContainerRegistryClient implements ContainerRegistryApi {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.error || `Failed to fetch tags: ${response.statusText}`,
+        errorData.error?.message ||
+          `Failed to fetch tags: ${response.statusText}`,
       );
     }
 
@@ -57,7 +58,7 @@ export class ContainerRegistryClient implements ContainerRegistryApi {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.error ||
+        errorData.error?.message ||
           `Failed to fetch tag manifest: ${response.statusText}`,
       );
     }
