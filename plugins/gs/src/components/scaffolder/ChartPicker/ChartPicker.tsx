@@ -51,7 +51,10 @@ const ChartPickerField = ({
       onChange(undefined);
     }
 
-    if (!selectedChart && chartOptions.length > 0) {
+    if (
+      (!selectedChart && chartOptions.length > 0) ||
+      (selectedChart && !chartOptions.includes(selectedChart))
+    ) {
       setSelectedChart(chartOptions[0]);
       onChange(chartOptions[0]);
     }
@@ -66,17 +69,14 @@ const ChartPickerField = ({
   );
 
   const isLoading = isLoadingEntity;
-  const isDisabled = isLoading || !entityRef;
+  const isDisabled = isLoading || !entityRef || chartOptions.length <= 1;
 
   const helper = useMemo(() => {
     if (isLoading) {
       return 'Loading charts...';
     }
-    if (!entityRef) {
-      return 'Select an application first';
-    }
-    if (chartOptions.length === 0) {
-      return `No charts found. Entity is missing "${GS_HELMCHARTS}" annotation.`;
+    if (entityRef && chartOptions.length === 0) {
+      return `No Helm charts found. Entity is missing "${GS_HELMCHARTS}" annotation.`;
     }
     return helperText;
   }, [entityRef, helperText, isLoading, chartOptions.length]);
@@ -128,7 +128,7 @@ export const ChartPicker = ({
   rawErrors,
   required,
   formData,
-  schema: { title = 'Chart', description = 'The chart to deploy' },
+  schema: { title = 'Chart', description = 'Select the Helm chart to deploy.' },
   uiSchema,
   idSchema,
   formContext,

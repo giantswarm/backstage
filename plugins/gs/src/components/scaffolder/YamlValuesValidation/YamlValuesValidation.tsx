@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, FormHelperText, FormLabel } from '@material-ui/core';
+import { Box, FormHelperText, FormLabel, Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
+import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import WarningIcon from '@material-ui/icons/Warning';
 import * as yaml from 'js-yaml';
 import Ajv from 'ajv/dist/2020';
 import type { YamlValuesValidationProps } from './schema';
-import { useSchemaForChart } from '../../hooks';
+import { useHelmChartValuesSchema } from '../../hooks';
 import { get } from 'lodash';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import classNames from 'classnames';
 
 const useStyles = makeStyles(theme => ({
   container: {
@@ -19,7 +22,14 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.error.main,
     marginTop: theme.spacing(1),
   },
-  successText: {
+  icon: {
+    marginRight: theme.spacing(1),
+    fontSize: '20px',
+  },
+  iconWarning: {
+    color: theme.palette.warning.main,
+  },
+  iconSuccess: {
     color: theme.palette.success.main,
   },
   warningText: {
@@ -80,7 +90,16 @@ const YamlValuesValidationResult = ({
   return (
     <Box>
       {validationWarnings.length > 0 ? (
-        <Box>
+        <Box display="flex" flexDirection="column">
+          <Box display="flex" alignItems="center">
+            <WarningIcon
+              className={classNames(classes.icon, classes.iconWarning)}
+            />
+            <Typography variant="body2">
+              This configuration is not valid, according to the chart's values
+              schema
+            </Typography>
+          </Box>
           {validationWarnings.map((warning, index) => (
             <FormHelperText key={index} className={classes.warningText}>
               <code>{warning}</code>
@@ -88,10 +107,14 @@ const YamlValuesValidationResult = ({
           ))}
         </Box>
       ) : (
-        <FormHelperText className={classes.successText}>
-          {valuesFields?.length > 1 ? 'Merged values' : 'values'} conform to the
-          schema.
-        </FormHelperText>
+        <Box display="flex" alignItems="center">
+          <CheckCircleIcon
+            className={classNames(classes.icon, classes.iconSuccess)}
+          />
+          <Typography variant="body2">
+            This configuration is valid, according to the chart's values schema
+          </Typography>
+        </Box>
       )}
     </Box>
   );
@@ -99,7 +122,7 @@ const YamlValuesValidationResult = ({
 
 export const YamlValuesValidation = ({
   formContext,
-  schema: { title = 'Values validation', description },
+  schema: { title, description },
   uiSchema,
 }: YamlValuesValidationProps): JSX.Element => {
   const {
@@ -123,7 +146,7 @@ export const YamlValuesValidation = ({
 
   const valuesFields = uiSchema?.['ui:options']?.valuesFields;
 
-  const { schema: jsonSchema } = useSchemaForChart(chartRef, chartTag);
+  const { schema: jsonSchema } = useHelmChartValuesSchema(chartRef, chartTag);
 
   const values = useMemo(() => {
     if (!valuesFields) {

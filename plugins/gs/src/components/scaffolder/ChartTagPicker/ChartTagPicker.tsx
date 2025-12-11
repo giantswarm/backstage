@@ -3,11 +3,8 @@ import { FormHelperText, Grid, TextField, Typography } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ChartTagPickerProps, ChartTagPickerValue } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
-import { useApi } from '@backstage/core-plugin-api';
-import useAsync from 'react-use/esm/useAsync';
 import semver from 'semver';
-import { containerRegistryApiRef } from '../../../apis/containerRegistry';
-import { parseChartRef } from '../../utils/parseChartRef';
+import { useHelmChartTags } from '../../hooks';
 
 type ChartTagPickerFieldProps = {
   id?: string;
@@ -30,34 +27,23 @@ const ChartTagPickerField = ({
   chartRef,
   onChange,
 }: ChartTagPickerFieldProps) => {
-  const containerRegistryApi = useApi(containerRegistryApiRef);
-
   const [selectedVersion, setSelectedVersion] = useState<string | null>(
     value ?? null,
   );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const { registry, repository } = chartRef ? parseChartRef(chartRef) : {};
 
   const {
-    value: versionsData,
-    loading: versionsLoading,
-    error: versionsError,
-  } = useAsync(async () => {
-    if (!registry || !repository) {
-      return undefined;
-    }
-
-    setErrorMessage(null);
-    return await containerRegistryApi.getTags(registry, repository);
-  }, [registry, repository, containerRegistryApi]);
+    tags,
+    latestStableVersion,
+    error: tagsError,
+    isLoading,
+  } = useHelmChartTags(chartRef);
 
   const sortedVersions = useMemo(() => {
-    if (versionsLoading || !versionsData || !versionsData.tags) {
+    if (!tags) {
       return [];
     }
 
-    return [...versionsData.tags].sort((a, b) => {
+    return tags.sort((a, b) => {
       const versionA = semver.valid(a);
       const versionB = semver.valid(b);
 
@@ -75,7 +61,7 @@ const ChartTagPickerField = ({
 
       return semver.rcompare(versionA, versionB);
     });
-  }, [versionsData, versionsLoading]);
+  }, [tags]);
 
   useEffect(() => {
     if (sortedVersions.length === 0) {
@@ -84,24 +70,16 @@ const ChartTagPickerField = ({
     }
 
     if (
-      !selectedVersion &&
-      versionsData?.latestStableVersion &&
-      sortedVersions.length > 0
+      (!selectedVersion && sortedVersions.length > 0) ||
+      (selectedVersion && !sortedVersions.includes(selectedVersion))
     ) {
-      setSelectedVersion(versionsData.latestStableVersion);
-      onChange(versionsData.latestStableVersion);
+      if (!latestStableVersion) {
+        return;
+      }
+      setSelectedVersion(latestStableVersion);
+      onChange(latestStableVersion);
     }
-  }, [versionsData, sortedVersions, selectedVersion, onChange]);
-
-  useEffect(() => {
-    if (versionsError) {
-      setErrorMessage(
-        versionsError instanceof Error
-          ? versionsError.message
-          : 'Failed to fetch versions',
-      );
-    }
-  }, [versionsError]);
+  }, [sortedVersions, selectedVersion, onChange, latestStableVersion]);
 
   const handleChange = useCallback(
     (_: any, newValue: string | null) => {
@@ -111,18 +89,17 @@ const ChartTagPickerField = ({
     [onChange],
   );
 
-  const isLoading = versionsLoading;
-  const isDisabled = isLoading || !chartRef;
+  const isDisabled = isLoading || !chartRef || sortedVersions.length === 0;
 
   const helper = useMemo(() => {
     if (isLoading) {
       return 'Loading versions...';
     }
-    if (!chartRef) {
-      return 'Select a Helm chart first';
+    if (chartRef && sortedVersions.length === 0) {
+      return `No versions found for the Helm chart.`;
     }
     return helperText;
-  }, [chartRef, helperText, isLoading]);
+  }, [chartRef, helperText, isLoading, sortedVersions.length]);
 
   return (
     <Grid container spacing={3} direction="column">
@@ -142,7 +119,7 @@ const ChartTagPickerField = ({
               margin="dense"
               variant="outlined"
               required={required}
-              error={error || !!errorMessage}
+              error={error}
               disabled={isDisabled}
               InputProps={params.InputProps}
             />
@@ -150,13 +127,15 @@ const ChartTagPickerField = ({
         />
         {helper && <FormHelperText>{helper}</FormHelperText>}
 
-        {errorMessage && (
+        {tagsError && (
           <Typography
             variant="caption"
             color="error"
             style={{ marginTop: 4, display: 'block' }}
           >
-            {errorMessage}
+            {tagsError instanceof Error
+              ? tagsError.message
+              : 'Failed to fetch tags'}
           </Typography>
         )}
       </Grid>
@@ -171,7 +150,7 @@ export const ChartTagPicker = ({
   formData,
   schema: {
     title = 'Chart Version',
-    description = 'The chart version to deploy',
+    description = 'Select the Helm chart version you want to deploy.',
   },
   uiSchema,
   idSchema,
