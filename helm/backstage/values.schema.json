@@ -199,12 +199,31 @@
     },
     "ingress": {
       "type": "object",
+      "description": "Traditional Ingress configuration",
       "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable traditional Ingress resource"
+        },
+        "className": {
+          "type": "string",
+          "default": "nginx",
+          "description": "Ingress class name"
+        },
         "annotations": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Ingress annotations"
         },
         "hostnames": {
-          "type": "array"
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Hostnames for the Ingress"
         }
       }
     },
@@ -275,6 +294,131 @@
             },
             "memory": {
               "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "description": "Gateway API route configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Gateway API HTTPRoute"
+        },
+        "kind": {
+          "type": "string",
+          "default": "HTTPRoute",
+          "enum": ["HTTPRoute", "GRPCRoute", "TCPRoute", "TLSRoute", "UDPRoute"],
+          "description": "Route kind"
+        },
+        "name": {
+          "type": "string",
+          "description": "Route name (defaults to .Values.name)"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Route annotations"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Route labels"
+        },
+        "hostnames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Hostnames for the route (supports templating)"
+        },
+        "parentRefs": {
+          "type": "array",
+          "description": "Parent Gateway references",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the parent Gateway"
+              },
+              "namespace": {
+                "type": "string",
+                "description": "Namespace of the parent Gateway"
+              },
+              "sectionName": {
+                "type": "string",
+                "description": "Section name within the parent Gateway"
+              }
+            },
+            "required": ["name"]
+          }
+        },
+        "matches": {
+          "type": "array",
+          "description": "Path matching rules"
+        },
+        "filters": {
+          "type": "array",
+          "description": "Request/Response filters"
+        },
+        "additionalRules": {
+          "type": "array",
+          "description": "Additional custom rules"
+        },
+        "securityPolicy": {
+          "type": "object",
+          "description": "Envoy Gateway SecurityPolicy configuration (gateway.envoyproxy.io/v1alpha1)",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable SecurityPolicy resource"
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "SecurityPolicy labels"
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "SecurityPolicy annotations"
+            },
+            "basicAuth": {
+              "type": "object",
+              "description": "Basic authentication configuration"
+            },
+            "cors": {
+              "type": "object",
+              "description": "CORS configuration"
+            },
+            "jwt": {
+              "type": "object",
+              "description": "JWT validation configuration"
+            },
+            "oidc": {
+              "type": "object",
+              "description": "OIDC authentication configuration"
+            },
+            "extAuth": {
+              "type": "object",
+              "description": "External authorization configuration"
+            },
+            "authorization": {
+              "type": "object",
+              "description": "Authorization rules configuration"
             }
           }
         }

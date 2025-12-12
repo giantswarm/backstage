@@ -145,11 +145,109 @@ backstage:
   # -- Backstage container additional volumes
   extraVolumes: []
 
+# -- Traditional Ingress configuration
 ingress:
+  # -- Enable traditional Ingress resource
+  enabled: true
+  # -- Ingress class name
+  className: nginx
+  # -- Ingress annotations
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-giantswarm
     kubernetes.io/tls-acme: 'true'
     nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+  # -- Hostnames for the Ingress
   hostnames: []
+
+# -- Gateway API route configuration
+route:
+  # -- Enable Gateway API HTTPRoute
+  enabled: false
+  # -- Route kind (HTTPRoute, GRPCRoute, TCPRoute, TLSRoute, UDPRoute)
+  kind: HTTPRoute
+  # -- Route name (defaults to .Values.name)
+  name: ""
+  # -- Route annotations
+  annotations: {}
+  # -- Route labels
+  labels: {}
+  # -- Hostnames for the route (supports templating)
+  # Example:
+  #   - backstage.example.com
+  hostnames: []
+  # -- Parent Gateway references
+  # Example:
+  #   - name: giantswarm-default
+  #     namespace: envoy-gateway-system
+  parentRefs: []
+  # -- Path matching rules
+  matches:
+    - path:
+        type: PathPrefix
+        value: /
+  # -- Request/Response filters
+  filters: []
+  # -- Additional custom rules
+  additionalRules: []
+  # -- Envoy Gateway SecurityPolicy configuration
+  # Note: This is specific to Envoy Gateway (gateway.envoyproxy.io/v1alpha1)
+  securityPolicy:
+    # -- Enable SecurityPolicy resource
+    enabled: false
+    # -- SecurityPolicy labels
+    labels: {}
+    # -- SecurityPolicy annotations
+    annotations: {}
+    # -- Basic authentication (reference to htpasswd secret)
+    # Example:
+    #   users:
+    #     name: backstage-htpasswd
+    basicAuth: {}
+    # -- CORS configuration
+    # Example:
+    #   allowOrigins:
+    #     - type: Exact
+    #       value: "https://example.com"
+    #   allowMethods:
+    #     - GET
+    #     - POST
+    #   allowHeaders:
+    #     - "Content-Type"
+    cors: {}
+    # -- JWT validation
+    # Example:
+    #   providers:
+    #     - name: example
+    #       issuer: "https://issuer.example.com"
+    #       audiences:
+    #         - backstage
+    jwt: {}
+    # -- OIDC authentication
+    # Example:
+    #   provider:
+    #     issuer: "https://dex.example.com"
+    #     authorizationEndpoint: "https://dex.example.com/auth"
+    #     tokenEndpoint: "https://dex.example.com/token"
+    #     clientID: backstage
+    #     clientSecret:
+    #       name: backstage-oidc-secret
+    #   redirectURL: "https://backstage.example.com/oauth2/callback"
+    oidc: {}
+    # -- External authorization
+    # Example:
+    #   http:
+    #     backendRef:
+    #       name: ext-auth-service
+    #       port: 9001
+    extAuth: {}
+    # -- Authorization rules
+    # Example:
+    #   rules:
+    #     - action:
+    #         type: Deny
+    #       principal:
+    #         clientCIDRs:
+    #           - cidr: "0.0.0.0/0"
+    authorization: {}
 
 pluginKeys: []
