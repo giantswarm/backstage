@@ -166,7 +166,7 @@ route:
   # -- Route kind (HTTPRoute, GRPCRoute, TCPRoute, TLSRoute, UDPRoute)
   kind: HTTPRoute
   # -- Route name (defaults to .Values.name)
-  name: ""
+  name: ''
   # -- Route annotations
   annotations: {}
   # -- Route labels

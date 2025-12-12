@@ -76,11 +76,10 @@ route:
     enabled: true
     oidc:
       provider:
-        issuer: "https://dex.example.com"
-        authorizationEndpoint: "https://dex.example.com/auth"
-        tokenEndpoint: "https://dex.example.com/token"
+        issuer: https://dex.example.com
+        authorizationEndpoint: https://dex.example.com/auth
+        tokenEndpoint: https://dex.example.com/token
         clientID: backstage
         clientSecret:
           name: backstage-oidc-secret
-      redirectURL: "https://backstage.example.com/oauth2/callback"
-
+      redirectURL: https://backstage.example.com/oauth2/callback
