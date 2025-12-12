@@ -8,6 +8,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 ### Changed
 
 - Migrate Chart.yaml annotations to new format as per https://docs.giantswarm.io/reference/platform-api/chart-metadata/
+
 ## [0.91.1] - 2025-12-11
 
 ### Fixed
