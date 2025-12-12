@@ -1,3 +1,4 @@
+# CI test case for Gateway API support
 name: backstage
 namespace: devportal
 backstageDiscovery:
@@ -8,7 +9,6 @@ image:
   name: backstage
   repository: giantswarm/backstage
 port: 7007
-hostnames: ['test']
 registry:
   domain: gsoci.azurecr.io
 authSessionSecret: fooBar
@@ -18,9 +18,6 @@ dexAuthCredentials:
   example-1:
     clientID: exampleOneDummyClientID
     clientSecret: exampleOneDummyClientSecret
-  example-2:
-    clientID: exampleTwoDummyClientID
-    clientSecret: exampleTwoDummyClientSecret
 githubAuthCredentials:
   clientID: dummyClientID
   clientSecret: dummyClientSecret
@@ -45,11 +42,7 @@ backstage:
   command: ['node', 'packages/backend']
   args: []
   extraAppConfig: []
-  extraEnvVars:
-    - name: GLOBAL_AGENT_HTTP_PROXY
-      value: http://12.34.56.78:3128
-    - name: GLOBAL_AGENT_NO_PROXY
-      value: 127.0.0.1,*.example.com
+  extraEnvVars: []
 resources:
   verticalPodAutoscaler:
     enabled: true
@@ -60,23 +53,33 @@ resources:
     cpu: 500m
     memory: 600M
 database:
-  engine: postgresql
-  postgresql:
-    clusterNameSuffix: cnpg
-    image: postgresql:15
-    storageSize: 10Gi
+  engine: sqlite
 
-# Explicitly enable traditional Ingress (default)
+# Disable traditional Ingress
 ingress:
+  enabled: false
+
+# Enable Gateway API HTTPRoute
+route:
   enabled: true
-  className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-giantswarm
-    kubernetes.io/tls-acme: 'true'
-    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+  kind: HTTPRoute
   hostnames:
     - backstage.example.com
-
-# Explicitly disable Gateway API route
-route:
-  enabled: false
+  parentRefs:
+    - name: giantswarm-default
+      namespace: envoy-gateway-system
+  matches:
+    - path:
+        type: PathPrefix
+        value: /
+  securityPolicy:
+    enabled: true
+    oidc:
+      provider:
+        issuer: https://dex.example.com
+        authorizationEndpoint: https://dex.example.com/auth
+        tokenEndpoint: https://dex.example.com/token
+        clientID: backstage
+        clientSecret:
+          name: backstage-oidc-secret
+      redirectURL: https://backstage.example.com/oauth2/callback
