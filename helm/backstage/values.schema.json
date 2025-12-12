@@ -311,7 +311,13 @@
         "kind": {
           "type": "string",
           "default": "HTTPRoute",
-          "enum": ["HTTPRoute", "GRPCRoute", "TCPRoute", "TLSRoute", "UDPRoute"],
+          "enum": [
+            "HTTPRoute",
+            "GRPCRoute",
+            "TCPRoute",
+            "TLSRoute",
+            "UDPRoute"
+          ],
           "description": "Route kind"
         },
         "name": {
