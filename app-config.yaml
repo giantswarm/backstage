@@ -119,3 +119,13 @@ catalog:
 
 grafana:
   domain: https://example.com
+
+# AI Chat plugin configuration
+aiChat:
+  # OpenAI configuration
+  openai:
+    apiKey: ${OPENAI_API_KEY}
+    # Optional: custom base URL for OpenAI-compatible APIs
+    # baseUrl: https://api.openai.com/v1
+  # Model to use (default: gpt-4o-mini)
+  model: gpt-4o-mini

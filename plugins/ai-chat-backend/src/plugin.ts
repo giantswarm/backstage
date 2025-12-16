@@ -3,7 +3,6 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { createRouter } from './router';
-import { todoListServiceRef } from './services/TodoListService';
 
 /**
  * aiChatPlugin backend plugin
@@ -17,13 +16,15 @@ export const aiChatPlugin = createBackendPlugin({
       deps: {
         httpAuth: coreServices.httpAuth,
         httpRouter: coreServices.httpRouter,
-        todoList: todoListServiceRef,
+        logger: coreServices.logger,
+        config: coreServices.rootConfig,
       },
-      async init({ httpAuth, httpRouter, todoList }) {
+      async init({ httpAuth, httpRouter, logger, config }) {
         httpRouter.use(
           await createRouter({
             httpAuth,
-            todoList,
+            logger,
+            config,
           }),
         );
       },
