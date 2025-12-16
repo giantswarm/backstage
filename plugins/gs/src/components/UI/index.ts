@@ -12,6 +12,7 @@ export { ExternalLink } from './ExternalLink';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { GridItem } from './GridItem';
 export { Heading } from './Heading';
+export { JsonSchemaViewer } from './JsonSchemaViewer';
 export { KubernetesVersion } from './KubernetesVersion';
 export { NotAvailable } from './NotAvailable';
 export { ScrollContainer } from './ScrollContainer';
