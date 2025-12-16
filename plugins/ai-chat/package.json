@@ -26,13 +26,16 @@
   },
   "dependencies": {
     "@assistant-ui/react": "^0.11.51",
+    "@assistant-ui/react-ai-sdk": "^1.1.19",
     "@assistant-ui/react-markdown": "^0.11.8",
     "@backstage/core-components": "^0.18.0",
     "@backstage/core-plugin-api": "^1.9.4",
+    "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/theme": "^0.6.8",
     "@material-ui/core": "^4.9.13",
     "@material-ui/icons": "^4.9.1",
     "@material-ui/lab": "^4.0.0-alpha.61",
+    "ai": "^5.0.113",
     "react-use": "^17.2.4",
     "remark-gfm": "^4.0.1"
   },

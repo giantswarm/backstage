@@ -2,7 +2,7 @@ import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createOpenAI } from '@ai-sdk/openai';
-import { streamText, UIMessage } from 'ai';
+import { convertToModelMessages, streamText, UIMessage } from 'ai';
 import { z } from 'zod';
 import express from 'express';
 import Router from 'express-promise-router';
@@ -39,25 +39,8 @@ export async function createRouter(
 
   // Schema for chat request
   const chatRequestSchema = z.object({
-    messages: z.array(
-      z.object({
-        role: z.enum(['user', 'assistant', 'system']),
-        content: z.union([
-          z.string(),
-          z.array(
-            z.union([
-              z.object({ type: z.literal('text'), text: z.string() }),
-              z.object({
-                type: z.literal('image'),
-                image: z.string(),
-                mimeType: z.string().optional(),
-              }),
-            ]),
-          ),
-        ]),
-      }),
-    ),
-    system: z.string().optional(),
+    messages: z.array(z.any()),
+    tools: z.record(z.string(), z.any()).optional(),
   });
 
   router.post('/chat', async (req, res) => {
@@ -78,41 +61,24 @@ export async function createRouter(
       throw new InputError(`Invalid request body: ${parsed.error.message}`);
     }
 
-    const { messages, system } = parsed.data;
+    const { messages } = parsed.data;
 
     try {
       const result = streamText({
         model: openai(modelName),
-        messages: messages as UIMessage[],
+        messages: convertToModelMessages(messages as UIMessage[]),
         system:
-          system ??
           'You are a helpful assistant integrated into Backstage, a developer portal. Help users with their questions about their software catalog, services, and development workflows.',
         abortSignal: req.socket ? undefined : undefined,
       });
 
       // Set headers for streaming
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Stream the response using the data stream protocol
-      const response = result.toDataStreamResponse();
-
-      // Forward the streaming response
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new InputError('Failed to get response stream');
-      }
-
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(value);
-      }
-
-      res.end();
+      result.pipeUIMessageStreamToResponse(res);
     } catch (error) {
       logger.error('Error in chat endpoint', error as Error);
       throw error;

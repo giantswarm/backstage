@@ -1,10 +1,44 @@
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { Content, Header, Page } from '@backstage/core-components';
+import {
+  useApi,
+  identityApiRef,
+  discoveryApiRef,
+} from '@backstage/core-plugin-api';
 import { Thread } from './Thread';
-import { useAiChatRuntime } from './useAiChatRuntime';
+import { useCallback } from 'react';
+import {
+  useChatRuntime,
+  AssistantChatTransport,
+} from '@assistant-ui/react-ai-sdk';
+import { lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
+import useAsync from 'react-use/esm/useAsync';
 
 export const AiChatPage = () => {
-  const runtime = useAiChatRuntime();
+  const identityApi = useApi(identityApiRef);
+  const discoveryApi = useApi(discoveryApiRef);
+
+  const { value: apiUrl } = useAsync(async () => {
+    const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
+
+    return `${baseUrl}/chat`;
+  }, [discoveryApi]);
+
+  const getHeaders = useCallback(async () => {
+    const { token } = await identityApi.getCredentials();
+
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  }, [identityApi]);
+
+  const runtime = useChatRuntime({
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    transport: new AssistantChatTransport({
+      api: apiUrl,
+      headers: getHeaders,
+    }),
+  });
 
   return (
     <Page themeId="tool">
