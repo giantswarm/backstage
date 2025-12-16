@@ -46,6 +46,7 @@
     "@backstage/plugin-signals-backend": "backstage:^",
     "@backstage/plugin-techdocs-backend": "backstage:^",
     "@devangelista/backstage-scaffolder-kubernetes": "^0.5.0",
+    "@giantswarm/backstage-plugin-ai-chat-backend": "^0.1.0",
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.11.0",
     "@giantswarm/backstage-plugin-gs-backend": "^0.2.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.10.0",
