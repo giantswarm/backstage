@@ -15,8 +15,7 @@ export const aiChatPlugin = createPlugin({
 export const AiChatPage = aiChatPlugin.provide(
   createRoutableExtension({
     name: 'AiChatPage',
-    component: () =>
-      import('./components/ExampleComponent').then(m => m.ExampleComponent),
+    component: () => import('./components/AiChat').then(m => m.AiChatPage),
     mountPoint: rootRouteRef,
   }),
 );
