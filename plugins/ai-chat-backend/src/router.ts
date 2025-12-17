@@ -9,6 +9,7 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { extractKubernetesAuthTokens } from './extractKubernetesAuthTokens';
 import { getKubernetesMcpTools } from './getKubernetesMcpTools';
+import { getMcpTools } from './getMcpTools';
 
 export interface RouterOptions {
   httpAuth: HttpAuthService;
@@ -85,13 +86,18 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
+    const mcpTools = await getMcpTools(config);
+    console.log('==================MCP TOOLS====================');
+    console.log(mcpTools);
+    console.log('===============================================');
+
     const kubernetesAuthTokens = extractKubernetesAuthTokens(messages);
     const kubernetesMcpTools = await getKubernetesMcpTools(
       kubernetesAuthTokens,
       config,
     );
 
-    console.log('==================MCP TOOLS====================');
+    console.log('==================KUBERNETES MCP TOOLS====================');
     console.log(kubernetesMcpTools);
     console.log('===============================================');
 
@@ -103,6 +109,7 @@ export async function createRouter(
         abortSignal: req.socket ? undefined : undefined,
         tools: {
           ...frontendTools(tools),
+          ...mcpTools,
           ...kubernetesMcpTools,
         },
       });
