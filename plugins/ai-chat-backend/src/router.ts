@@ -61,6 +61,8 @@ export async function createRouter(
   More information about the Backstage developer portal can be found in the documentation: https://docs.giantswarm.io/overview/developer-portal/
 
   Your task is to help the user with their questions about their clusters, application deployments, software catalog, and documentation.
+
+  When you asked to access resources from Kubernetes, use kubernetesAuth tool to authenticate first. Then use the appropriate MCP tool to access the resources.
   `;
 
   router.post('/chat', async (req, res) => {
