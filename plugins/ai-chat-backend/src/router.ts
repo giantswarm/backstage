@@ -3,12 +3,12 @@ import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createOpenAI } from '@ai-sdk/openai';
-import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp';
-import { convertToModelMessages, streamText, ToolSet, UIMessage } from 'ai';
+import { convertToModelMessages, streamText, UIMessage } from 'ai';
 import { z } from 'zod';
 import express from 'express';
 import Router from 'express-promise-router';
 import { extractKubernetesAuthTokens } from './extractKubernetesAuthTokens';
+import { getKubernetesMcpTools } from './getKubernetesMcpTools';
 
 export interface RouterOptions {
   httpAuth: HttpAuthService;
@@ -86,44 +86,13 @@ export async function createRouter(
     const { messages, tools } = parsed.data;
 
     const kubernetesAuthTokens = extractKubernetesAuthTokens(messages);
-
-    const mcpTools: ToolSet = {};
-    if (kubernetesAuthTokens.length > 0) {
-      const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
-      const mcpServers: Record<string, string> = {};
-      if (mcpConfigs && mcpConfigs.length > 0) {
-        mcpConfigs.forEach(mcp => {
-          mcpServers[mcp.getString('name')] = mcp.getString('url');
-        });
-      }
-
-      for (const kubernetesAuthToken of kubernetesAuthTokens) {
-        const mcpServer =
-          mcpServers[`kubernetes-mcp-${kubernetesAuthToken.clusterName}`];
-        if (mcpServer) {
-          const mcpClient = await createMCPClient({
-            name: `kubernetes-mcp-${kubernetesAuthToken.clusterName}`,
-            transport: {
-              type: 'http',
-              url: mcpServer,
-              headers: {
-                Authorization: `Bearer ${kubernetesAuthToken.token}`,
-              },
-            },
-          });
-
-          const clusterTools = await mcpClient.tools();
-          Object.entries(clusterTools).forEach(([name, tool]) => {
-            const toolName = `${kubernetesAuthToken.clusterName}_${name}`;
-            tool.description = `${tool.description} (for cluster: ${kubernetesAuthToken.clusterName})`;
-            mcpTools[toolName] = tool;
-          });
-        }
-      }
-    }
+    const kubernetesMcpTools = await getKubernetesMcpTools(
+      kubernetesAuthTokens,
+      config,
+    );
 
     console.log('==================MCP TOOLS====================');
-    console.log(mcpTools);
+    console.log(kubernetesMcpTools);
     console.log('===============================================');
 
     try {
@@ -134,7 +103,7 @@ export async function createRouter(
         abortSignal: req.socket ? undefined : undefined,
         tools: {
           ...frontendTools(tools),
-          ...mcpTools,
+          ...kubernetesMcpTools,
         },
       });
 

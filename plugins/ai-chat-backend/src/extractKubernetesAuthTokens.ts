@@ -5,7 +5,7 @@ interface KubernetesAuthOutput {
   token: string;
 }
 
-interface ClusterToken {
+export interface ClusterToken {
   clusterName: string;
   token: string;
 }
