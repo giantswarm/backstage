@@ -1,3 +1,4 @@
+import { frontendTools } from '@assistant-ui/react-ai-sdk';
 import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
@@ -6,6 +7,9 @@ import { convertToModelMessages, streamText, UIMessage } from 'ai';
 import { z } from 'zod';
 import express from 'express';
 import Router from 'express-promise-router';
+import { extractKubernetesAuthTokens } from './extractKubernetesAuthTokens';
+import { getKubernetesMcpTools } from './getKubernetesMcpTools';
+import { getMcpTools } from './getMcpTools';
 
 export interface RouterOptions {
   httpAuth: HttpAuthService;
@@ -40,7 +44,7 @@ export async function createRouter(
   // Schema for chat request
   const chatRequestSchema = z.object({
     messages: z.array(z.any()),
-    tools: z.record(z.string(), z.any()).optional(),
+    tools: z.any().optional(),
   });
 
   const defaultSystemPrompt = `
@@ -74,6 +78,8 @@ export async function createRouter(
   You have access to several MCP tools. Kubernetes related tools are prefixed with the name of the manegement cluster they are associated with.
   For example: 'graveler_kubernetes_list' is for listing Kubernetes resources on graveler.
 
+  When asked to access resources from Kubernetes, use kubernetesAuth tool to authenticate first. Then use the appropriate MCP tool to access the resources.
+
   ### CLUSTERNAME_kubernetes_list
 
   This tool is used to list Kubernetes resources on a specific management cluster.
@@ -84,6 +90,7 @@ export async function createRouter(
 
   - "MCP" stands for "Model Context Protocol". You are free to give the user details about the MCP tools available to you.
   
+  Your task is to help the user with their questions about their clusters, application deployments, software catalog, and documentation.
   `;
 
   router.post('/chat', async (req, res) => {
@@ -104,7 +111,22 @@ export async function createRouter(
       throw new InputError(`Invalid request body: ${parsed.error.message}`);
     }
 
-    const { messages } = parsed.data;
+    const { messages, tools } = parsed.data;
+
+    const mcpTools = await getMcpTools(config);
+    console.log('==================MCP TOOLS====================');
+    console.log(mcpTools);
+    console.log('===============================================');
+
+    const kubernetesAuthTokens = extractKubernetesAuthTokens(messages);
+    const kubernetesMcpTools = await getKubernetesMcpTools(
+      kubernetesAuthTokens,
+      config,
+    );
+
+    console.log('==================KUBERNETES MCP TOOLS====================');
+    console.log(kubernetesMcpTools);
+    console.log('===============================================');
 
     try {
       const result = streamText({
@@ -112,6 +134,11 @@ export async function createRouter(
         messages: convertToModelMessages(messages as UIMessage[]),
         system: defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
+        tools: {
+          ...frontendTools(tools),
+          ...mcpTools,
+          ...kubernetesMcpTools,
+        },
       });
 
       // Set headers for streaming

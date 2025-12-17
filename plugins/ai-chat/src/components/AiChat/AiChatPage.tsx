@@ -1,4 +1,8 @@
-import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import {
+  AssistantRuntimeProvider,
+  makeAssistantTool,
+  tool,
+} from '@assistant-ui/react';
 import { Content, Header, Page } from '@backstage/core-components';
 import {
   useApi,
@@ -13,10 +17,17 @@ import {
 } from '@assistant-ui/react-ai-sdk';
 import { lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import useAsync from 'react-use/esm/useAsync';
+import { z } from 'zod';
+import {
+  kubernetesApiRef,
+  kubernetesAuthProvidersApiRef,
+} from '@backstage/plugin-kubernetes-react';
 
 export const AiChatPage = () => {
   const identityApi = useApi(identityApiRef);
   const discoveryApi = useApi(discoveryApiRef);
+  const kubernetesApi = useApi(kubernetesApiRef);
+  const kubernetesAuthProvidersApi = useApi(kubernetesAuthProvidersApiRef);
 
   const { value: apiUrl } = useAsync(async () => {
     const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
@@ -32,6 +43,39 @@ export const AiChatPage = () => {
     };
   }, [identityApi]);
 
+  const kubernetesAuthTool = tool({
+    description: 'Authenticate to access Kubernetes resources',
+    parameters: z.object({
+      clusterName: z.string(),
+    }),
+    execute: async ({ clusterName }) => {
+      const cluster = await kubernetesApi.getCluster(clusterName);
+
+      if (!cluster) {
+        return {};
+      }
+
+      const { authProvider, oidcTokenProvider } = cluster;
+      const credentials = await kubernetesAuthProvidersApi.getCredentials(
+        authProvider === 'oidc'
+          ? `${authProvider}.${oidcTokenProvider}`
+          : authProvider,
+      );
+
+      return {
+        success: true,
+        message: 'Authenticated to access Kubernetes resources',
+        clusterName,
+        token: credentials.token,
+      };
+    },
+  });
+
+  const KubernetesAuthTool = makeAssistantTool({
+    ...kubernetesAuthTool,
+    toolName: 'kubernetesAuth',
+  });
+
   const runtime = useChatRuntime({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     transport: new AssistantChatTransport({
@@ -45,6 +89,7 @@ export const AiChatPage = () => {
       <Header title="AI Chat" subtitle="Chat with AI assistant" />
       <Content>
         <AssistantRuntimeProvider runtime={runtime}>
+          <KubernetesAuthTool />
           <Thread />
         </AssistantRuntimeProvider>
       </Content>
