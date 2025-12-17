@@ -70,4 +70,7 @@ backend.add(import('@giantswarm/backstage-plugin-gs-backend'));
 // ai chat plugin
 backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 
+// mcp actions plugin
+backend.add(import('@backstage/plugin-mcp-actions-backend'));
+
 backend.start();
