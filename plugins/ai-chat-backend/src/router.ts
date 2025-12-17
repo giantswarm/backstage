@@ -89,8 +89,6 @@ export async function createRouter(
   ## More context
 
   - "MCP" stands for "Model Context Protocol". You are free to give the user details about the MCP tools available to you.
-  
-  Your task is to help the user with their questions about their clusters, application deployments, software catalog, and documentation.
   `;
 
   router.post('/chat', async (req, res) => {
