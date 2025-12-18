@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Gateway API support in Helm chart with HTTPRoute and Envoy Gateway SecurityPolicy.
+- New `route` configuration section in Helm values for Gateway API HTTPRoute.
+- Configurable `ingress.enabled` and `ingress.className` in Helm chart.
+
 ## [0.92.0] - 2025-12-18
 
 ### Changed
