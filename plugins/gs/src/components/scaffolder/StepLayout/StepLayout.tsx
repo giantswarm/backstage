@@ -70,7 +70,7 @@ const ExtraContent = (props: { children: ReactNode }) => {
     <>
       <Grid item xs={12}>
         <Button variant="contained" onClick={() => setDrawerOpen(true)}>
-          Show values docs
+          Show configuration docs
         </Button>
       </Grid>
       <Drawer
@@ -94,7 +94,7 @@ const ExtraContent = (props: { children: ReactNode }) => {
             component="h2"
             style={{ marginBottom: theme.spacing(2) }}
           >
-            Values docs
+            Configuration docs
           </Typography>
           <Box className={classes.drawerContentChildren}>{props.children}</Box>
         </Box>

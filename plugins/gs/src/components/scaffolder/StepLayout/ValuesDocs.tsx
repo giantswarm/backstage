@@ -112,10 +112,10 @@ export const ValuesDocs = ({
             value={value}
             onChange={handleChange}
             indicatorColor="primary"
-            aria-label="Values docs"
+            aria-label="Configuration docs"
           >
-            <Tab label="values.yaml" {...a11yProps(0)} />
-            <Tab label="Schema docs" {...a11yProps(1)} />
+            <Tab label="Defaults" {...a11yProps(0)} />
+            <Tab label="Schema" {...a11yProps(1)} />
           </Tabs>
         </Box>
         <Box className={classes.codeContainer}>
