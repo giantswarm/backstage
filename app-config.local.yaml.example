@@ -25,6 +25,27 @@ techdocs:
   publisher:
     type: 'local'
 
+# gs:
+#   authProvider: oidc-mcname
+#   installations:
+#     mcname:
+#       pipeline: stable-testing
+#       providers: [capa]
+#       apiEndpoint: https://localhost:7007/api/proxy/gs/api/mcname
+#       authProvider: oidc
+#       oidcTokenProvider: oidc-mcname
+#       baseDomain: mcname.awsprod.gigantic.io
+#       region: eu-central-1
+
+# kubernetes:
+#   clusterLocatorMethods:
+#     - type: 'config'
+#       clusters:
+#         - name: mcname
+#           url: https://happaapi.mcname.awsprod.gigantic.io
+#           authProvider: oidc
+#           oidcTokenProvider: oidc-mcname
+
 # For local development purposes, you can add/change catalog sources here.
 #
 # To add a local YAML file as a source, uncomment the entry of type 'file'.

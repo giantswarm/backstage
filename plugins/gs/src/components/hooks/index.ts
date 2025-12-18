@@ -13,6 +13,7 @@ export * from './useGitOpsSourceLink';
 export * from './useGrafanaDashboardLink';
 export * from './useHelmChartTags';
 export * from './useHelmChartValuesSchema';
+export * from './useHelmChartValuesYaml';
 export * from './useInstallationsInfo';
 export * from './useK8sVersionEOLDate';
 export * from './useResourceRequests';
