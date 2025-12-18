@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.92.0-changelog.md](./docs/releases/v0.92.0-changelog.md) for more information.
+
 ### Changed
 
 - Migrate Chart.yaml annotations to new format as per https://docs.giantswarm.io/reference/platform-api/chart-metadata/

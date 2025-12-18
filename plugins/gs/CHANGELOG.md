@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.48.0
+
+### Minor Changes
+
+- 5e8c7e3: Add YAML values docs to the custom scaffolder step layout.
+
 ## 0.47.1
 
 ### Patch Changes
