@@ -5,9 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.92.0] - 2025-12-18
+
 ### Changed
 
+- Improve custom scaffolder layout to make it possible to show chart configuration documentation.
 - Migrate Chart.yaml annotations to new format as per https://docs.giantswarm.io/reference/platform-api/chart-metadata/
+
+See [./docs/releases/v0.92.0-changelog.md](./docs/releases/v0.92.0-changelog.md) for more information.
 
 ## [0.91.1] - 2025-12-11
 
@@ -1584,7 +1589,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.91.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.92.0...HEAD
+[0.92.0]: https://github.com/giantswarm/backstage/compare/v0.91.1...v0.92.0
 [0.91.1]: https://github.com/giantswarm/backstage/compare/v0.91.0...v0.91.1
 [0.91.0]: https://github.com/giantswarm/backstage/compare/v0.90.2...v0.91.0
 [0.90.2]: https://github.com/giantswarm/backstage/compare/v0.90.1...v0.90.2
