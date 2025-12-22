@@ -1,7 +1,6 @@
 import { Grid } from '@material-ui/core';
 import { ClusterAboutCard } from './ClusterAboutCard';
 import { ClusterAccessCard } from './ClusterAccessCard';
-import { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';
 import { ClusterLabelsCard } from './ClusterLabelsCard';
 import { ClusterToolsCard } from './ClusterToolsCard';
 import { ClusterAnnotationsCard } from './ClusterAnnotationsCard';
@@ -16,9 +15,6 @@ export const ClusterOverview = () => (
       <GridItem container spacing={3}>
         <GridItem xs={12}>
           <ClusterAboutCard />
-        </GridItem>
-        <GridItem xs={12}>
-          <ClusterPolicyComplianceCard />
         </GridItem>
         <GridItem xs={12}>
           <ClusterLabelsCard />
