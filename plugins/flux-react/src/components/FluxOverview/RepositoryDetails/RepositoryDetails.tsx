@@ -35,7 +35,8 @@ function findResourcesUsingSource(
 
     const sourceRef = kustomization.getSourceRef();
     if (sourceRef) {
-      const sourceNamespace = sourceRef.namespace ?? kustomization.getNamespace();
+      const sourceNamespace =
+        sourceRef.namespace ?? kustomization.getNamespace();
       if (
         sourceRef.name === repoName &&
         sourceNamespace === repoNamespace &&
@@ -62,7 +63,8 @@ function findResourcesUsingSource(
     // Check chartRef for OCIRepository
     if (!chart && chartRef) {
       if (chartRef.kind === repoKind) {
-        const sourceNamespace = chartRef.namespace ?? helmRelease.getNamespace();
+        const sourceNamespace =
+          chartRef.namespace ?? helmRelease.getNamespace();
         if (chartRef.name === repoName && sourceNamespace === repoNamespace) {
           matches = true;
         }
@@ -151,4 +153,3 @@ export const RepositoryDetails = ({
     </Box>
   );
 };
-
