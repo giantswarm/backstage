@@ -69,14 +69,20 @@ export async function createRouter(
   - An installation is the combination of a management cluster and all workload clusters managed by that management cluster.
   - Each installation has a unique name, which is identical with its management cluster name.
   - To get details about an installation, fetch the entitity with kind "resource" and type "installation" from the catalog, named like the installation.
-  - Workload clusters are managed via Kubernetes Cluster API (CAPI).
+  - Clusters are managed via Kubernetes Cluster API (CAPI).
+    - The main resource defining a cluster is the Cluster CR (clusters.cluster.x-k8s.io). In the Giant Swarm platform, this resource is found in the namespace of the organization owning the cluster.
+    - The Cluster CR has a reference to the InfrastructureRef, which is a reference to the infrastructure provider.
+    - The Cluster CR has a reference to the ControlPlaneRef, which is a reference to the control plane.
   - Applications are deployed in several ways:
     - To the management cluster:
       - Via App CRs or HelmRelease CRs in the management cluster. These CRs can reside in various namespaces.
     - To workload clusters:
       - Via App CRs or HelmRelease CRs in the workload clusters. These resources usually reside in the namespace of the organization that owns the cluster.
       - Via Helm directly on the workload clusters.
-      - Via directly applying manifests for Deployments, StatefulSets, Deamonsets, etc.    
+      - Via directly applying manifests for Deployments, StatefulSets, Deamonsets, etc.
+  - The CNI used is Cilium
+
+  More details about the Giant Swarm platform can be found in the documentation: https://docs.giantswarm.io/llms.txt
 
   ## The Backstage developer portal
 
