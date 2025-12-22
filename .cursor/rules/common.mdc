@@ -47,6 +47,7 @@ alwaysApply: false
 - **Local Config**: Copy `app-config.local.yaml.example` to `app-config.local.yaml`
 - **Database**: Run PostgreSQL via Docker (see `docs/development.md`)
 - **HTTPS Support**: Configure via `certificate.yaml` (see `certificate.yaml.example`)
+- **Prettier**: Run `yarn prettier:fix` before committing code changes.
 
 ## Code Organization & Naming Conventions
 

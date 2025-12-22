@@ -10,6 +10,7 @@ import { Box, Typography } from '@material-ui/core';
 import { KustomizationDetails } from '../KustomizationDetails';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
+import { RepositoryDetails } from '../RepositoryDetails';
 
 type DetailsProps = {
   resourceRef: {
@@ -18,7 +19,12 @@ type DetailsProps = {
     name: string;
     namespace?: string;
   };
-  resource?: Kustomization | HelmRelease;
+  resource?:
+    | Kustomization
+    | HelmRelease
+    | GitRepository
+    | OCIRepository
+    | HelmRepository;
   allKustomizations: Kustomization[];
   allHelmReleases: HelmRelease[];
   allGitRepositories: GitRepository[];
@@ -44,12 +50,24 @@ export const Details = ({
   }
 
   if (!resource) {
+    // Determine the resource kind name for display
+    let resourceKindName = resourceRef.kind;
+    if (resourceRef.kind === Kustomization.kind.toLowerCase()) {
+      resourceKindName = 'Kustomization';
+    } else if (resourceRef.kind === HelmRelease.kind.toLowerCase()) {
+      resourceKindName = 'HelmRelease';
+    } else if (resourceRef.kind === GitRepository.kind.toLowerCase()) {
+      resourceKindName = 'GitRepository';
+    } else if (resourceRef.kind === OCIRepository.kind.toLowerCase()) {
+      resourceKindName = 'OCIRepository';
+    } else if (resourceRef.kind === HelmRepository.kind.toLowerCase()) {
+      resourceKindName = 'HelmRepository';
+    }
+
     return (
       <Box>
         <Typography variant="body1">
-          {resourceRef.kind === Kustomization.kind.toLowerCase()
-            ? 'Kustomization'
-            : 'HelmRelease'}{' '}
+          {resourceKindName}{' '}
           <strong>
             {resourceRef.namespace ? `${resourceRef.namespace}/` : ''}
             {resourceRef.name}
@@ -79,6 +97,17 @@ export const Details = ({
           allOCIRepositories={allOCIRepositories}
           allHelmRepositories={allHelmRepositories}
           treeBuilder={treeBuilder}
+        />
+      )}
+      {(resource.getKind() === GitRepository.kind ||
+        resource.getKind() === OCIRepository.kind ||
+        resource.getKind() === HelmRepository.kind) && (
+        <RepositoryDetails
+          repository={
+            resource as GitRepository | OCIRepository | HelmRepository
+          }
+          allKustomizations={allKustomizations}
+          allHelmReleases={allHelmReleases}
         />
       )}
     </Box>

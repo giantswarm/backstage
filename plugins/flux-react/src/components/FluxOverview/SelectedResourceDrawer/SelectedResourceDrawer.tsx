@@ -76,12 +76,47 @@ export const SelectedResourceDrawer = ({
       );
     }
 
-    return helmReleases.find(
-      h =>
-        h.getNamespace() === selectedResourceRef.namespace &&
-        h.getName() === selectedResourceRef.name,
-    );
-  }, [selectedResourceRef, kustomizations, helmReleases]);
+    if (selectedResourceRef.kind === HelmRelease.kind.toLowerCase()) {
+      return helmReleases.find(
+        h =>
+          h.getNamespace() === selectedResourceRef.namespace &&
+          h.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === GitRepository.kind.toLowerCase()) {
+      return gitRepositories.find(
+        r =>
+          r.getNamespace() === selectedResourceRef.namespace &&
+          r.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === OCIRepository.kind.toLowerCase()) {
+      return ociRepositories.find(
+        r =>
+          r.getNamespace() === selectedResourceRef.namespace &&
+          r.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === HelmRepository.kind.toLowerCase()) {
+      return helmRepositories.find(
+        r =>
+          r.getNamespace() === selectedResourceRef.namespace &&
+          r.getName() === selectedResourceRef.name,
+      );
+    }
+
+    return undefined;
+  }, [
+    selectedResourceRef,
+    kustomizations,
+    helmReleases,
+    gitRepositories,
+    ociRepositories,
+    helmRepositories,
+  ]);
 
   // const prevActiveCluster = useRef(activeCluster);
   // useEffect(() => {

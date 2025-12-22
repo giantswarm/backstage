@@ -13,6 +13,9 @@ import { Chip, IconText } from '../UI';
 import {
   HelmRelease,
   Kustomization,
+  GitRepository,
+  OCIRepository,
+  HelmRepository,
   FluxResourceStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getResourceColorVariant } from '../../utils/getResourceColorVariant';
@@ -110,7 +113,11 @@ export const getInitialColumns = ({
         );
 
         if (
-          (row.kind === Kustomization.kind || row.kind === HelmRelease.kind) &&
+          (row.kind === Kustomization.kind ||
+            row.kind === HelmRelease.kind ||
+            row.kind === GitRepository.kind ||
+            row.kind === OCIRepository.kind ||
+            row.kind === HelmRepository.kind) &&
           onClick
         ) {
           return (
