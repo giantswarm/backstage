@@ -226,7 +226,6 @@ export function ClusterAboutCard() {
           </AboutFieldValue>
         </AboutField>
 
-
         <AboutField
           label="Organization"
           value={organization}
