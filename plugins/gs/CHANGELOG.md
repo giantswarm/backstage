@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.49.0
+
+### Minor Changes
+
+- 39eb4f8: Improve cluster details (about card)
+
+### Patch Changes
+
+- 8812d57: Remove policy compliance component from cluster details page
+- Updated dependencies [578b11d]
+  - @giantswarm/backstage-plugin-flux-react@0.6.3
+
 ## 0.48.0
 
 ### Minor Changes

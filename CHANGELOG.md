@@ -5,6 +5,17 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-01-06
+
+### Changed
+
+- About card on the cluster details page has been improved.
+- Policy compliance component has been removed from the cluster details page.
+- Show details for GitRepository, OCIRepository, HelmRepository in Flux plugin.
+- Allow to install only deployable applications.
+
+See [./docs/releases/v0.93.0-changelog.md](./docs/releases/v0.93.0-changelog.md) for more information.
+
 ### Added
 
 - Gateway API support in Helm chart with HTTPRoute and Envoy Gateway SecurityPolicy.
@@ -1595,7 +1606,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.92.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.93.0...HEAD
+[0.93.0]: https://github.com/giantswarm/backstage/compare/v0.92.0...v0.93.0
 [0.92.0]: https://github.com/giantswarm/backstage/compare/v0.91.1...v0.92.0
 [0.91.1]: https://github.com/giantswarm/backstage/compare/v0.91.0...v0.91.1
 [0.91.0]: https://github.com/giantswarm/backstage/compare/v0.90.2...v0.91.0
