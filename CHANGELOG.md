@@ -7,6 +7,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.93.1] - 2026-01-06
 
+### Changed
+
+- Configuration docs component in the scaffolder custom step has been refactored.
+
+### Fixed
+
+- Syntax highlighting in the YamlEditor component has been fixed.
+
 See [./docs/releases/v0.93.1-changelog.md](./docs/releases/v0.93.1-changelog.md) for more information.
 
 ## [0.93.0] - 2026-01-06
