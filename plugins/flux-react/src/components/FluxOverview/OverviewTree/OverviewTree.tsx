@@ -6,6 +6,9 @@ import {
 import {
   HelmRelease,
   Kustomization,
+  GitRepository,
+  OCIRepository,
+  HelmRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   FixedSizeTree as Tree,
@@ -111,7 +114,11 @@ const Node = ({
   );
 
   const showLink =
-    data.kind === Kustomization.kind || data.kind === HelmRelease.kind;
+    data.kind === Kustomization.kind ||
+    data.kind === HelmRelease.kind ||
+    data.kind === GitRepository.kind ||
+    data.kind === OCIRepository.kind ||
+    data.kind === HelmRepository.kind;
 
   return (
     <div
