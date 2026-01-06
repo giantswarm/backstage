@@ -46,7 +46,7 @@ interface ProviderLocationDisplayProps {
 }
 
 function ProviderLocationDisplay({ provider }: ProviderLocationDisplayProps) {
-  const renderProviderIcon = () => {
+  const renderProvider = () => {
     switch (provider) {
       case ClusterProviders.AWS:
         return (
@@ -79,9 +79,11 @@ function ProviderLocationDisplay({ provider }: ProviderLocationDisplayProps) {
       provider === ClusterProviders.Azure
     ) {
       return (
-        <Typography variant="inherit" color="textSecondary">
-          <ProviderClusterLocation />
-        </Typography>
+        <Box ml={1}>
+          <Typography variant="inherit">
+            <ProviderClusterLocation />
+          </Typography>
+        </Box>
       );
     }
     return null;
@@ -89,8 +91,8 @@ function ProviderLocationDisplay({ provider }: ProviderLocationDisplayProps) {
 
   return (
     <Box display="inline-flex" alignItems="center">
-      {renderProviderIcon()}
-      <Box ml={1}>{renderLocation()}</Box>
+      {renderProvider()}
+      {renderLocation()}
     </Box>
   );
 }
@@ -216,7 +218,15 @@ export function ClusterAboutCard() {
           </AboutField>
         )}
 
-        <AboutField label="Provider/Location" gridSizes={{ xs: 6, md: 4 }}>
+        <AboutField
+          label={
+            provider === ClusterProviders.AWS ||
+            provider === ClusterProviders.Azure
+              ? 'Provider/Location'
+              : 'Provider'
+          }
+          gridSizes={{ xs: 6, md: 4 }}
+        >
           <AboutFieldValue>
             {provider ? (
               <ProviderLocationDisplay provider={provider} />
