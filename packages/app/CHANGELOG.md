@@ -1,5 +1,14 @@
 # app
 
+## 0.22.6
+
+### Patch Changes
+
+- b2d62f8: Allow to install only deployable applications.
+- Updated dependencies [8812d57]
+- Updated dependencies [39eb4f8]
+  - @giantswarm/backstage-plugin-gs@0.49.0
+
 ## 0.22.5
 
 ### Patch Changes

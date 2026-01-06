@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.93.0-changelog.md](./docs/releases/v0.93.0-changelog.md) for more information.
+
 ### Added
 
 - Gateway API support in Helm chart with HTTPRoute and Envoy Gateway SecurityPolicy.
