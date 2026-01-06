@@ -16,9 +16,11 @@ import {
 import { useTemplateString } from '../../hooks';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { ValuesDocs } from './ValuesDocs';
+import {
+  ConfigurationDocs,
+  ConfigurationDocsOptions,
+} from './ConfigurationDocs';
 import { ReactNode, useState } from 'react';
-import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 const useStyles = makeStyles(theme => ({
   drawerContent: {
@@ -107,20 +109,11 @@ const ExtraContent = (props: { children: ReactNode }) => {
   );
 };
 
-type ValuesDocsOptions =
-  | {
-      chartRef?: string;
-      chartRefField?: string;
-      chartTag?: string;
-      chartTagField?: string;
-    }
-  | undefined;
-
 type UiOptions =
   | {
       formWidth?: number;
       note?: string;
-      valuesDocs?: ValuesDocsOptions;
+      configurationDocs?: ConfigurationDocsOptions;
     }
   | undefined;
 
@@ -135,29 +128,10 @@ export const StepLayout: LayoutTemplate = ({
   const {
     formWidth,
     note: noteTemplate = '',
-    valuesDocs: valuesDocsOptions,
+    configurationDocs: configurationDocsOptions,
   } = uiOptions ?? {};
 
-  const showExtraContent = Boolean(valuesDocsOptions);
-
-  const {
-    chartRef: chartRefOption,
-    chartRefField: chartRefFieldOption,
-    chartTag: chartTagOption,
-    chartTagField: chartTagFieldOption,
-  } = valuesDocsOptions ?? {};
-
-  const chartRef = useValueFromOptions(
-    formContext,
-    chartRefOption,
-    chartRefFieldOption,
-  );
-
-  const chartTag = useValueFromOptions(
-    formContext,
-    chartTagOption,
-    chartTagFieldOption,
-  );
+  const showExtraContent = Boolean(configurationDocsOptions);
 
   const allFormData = (formContext.formData as Record<string, any>) ?? {};
   const note = useTemplateString(noteTemplate, allFormData);
@@ -184,8 +158,11 @@ export const StepLayout: LayoutTemplate = ({
           {showExtraContent ? (
             <Grid container spacing={3} direction="row-reverse">
               <ExtraContent>
-                {chartRef && chartTag ? (
-                  <ValuesDocs chartRef={chartRef} chartTag={chartTag} />
+                {configurationDocsOptions ? (
+                  <ConfigurationDocs
+                    configurationDocsOptions={configurationDocsOptions}
+                    formContext={formContext}
+                  />
                 ) : null}
               </ExtraContent>
               <Content>

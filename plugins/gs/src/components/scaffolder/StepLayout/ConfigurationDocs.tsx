@@ -3,8 +3,8 @@ import { Box, makeStyles, Tab, Tabs, Typography } from '@material-ui/core';
 import { useHelmChartValuesSchema } from '../../hooks/useHelmChartValuesSchema';
 import { CodeSnippet, Progress } from '@backstage/core-components';
 import { useHelmChartValuesYaml } from '../../hooks';
-import { injectStyles } from '@stoplight/mosaic';
 import { JsonSchemaViewer } from '../../UI';
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 const lightBackgroundColor = '#f8f8f8';
 const darkBackgroundColor = '#333333';
@@ -16,7 +16,6 @@ const useStyles = makeStyles(theme => ({
 
     [`${theme.breakpoints.up('lg')}`]: {
       paddingTop: '24px',
-      // paddingBottom: '67px',
     },
   },
   tabsContainer: {
@@ -90,16 +89,41 @@ function a11yProps(index: number) {
   };
 }
 
-export const ValuesDocs = ({
-  chartRef,
-  chartTag,
+export type ConfigurationDocsOptions = {
+  chartRef?: string;
+  chartRefField?: string;
+  chartTag?: string;
+  chartTagField?: string;
+};
+
+export const ConfigurationDocs = ({
+  configurationDocsOptions,
+  formContext,
 }: {
-  chartRef: string;
-  chartTag: string;
+  configurationDocsOptions: ConfigurationDocsOptions;
+  formContext: any;
 }) => {
-  injectStyles();
   const classes = useStyles();
   const [value, setValue] = useState(0);
+
+  const {
+    chartRef: chartRefOption,
+    chartRefField: chartRefFieldOption,
+    chartTag: chartTagOption,
+    chartTagField: chartTagFieldOption,
+  } = configurationDocsOptions ?? {};
+
+  const chartRef = useValueFromOptions(
+    formContext,
+    chartRefOption,
+    chartRefFieldOption,
+  );
+
+  const chartTag = useValueFromOptions(
+    formContext,
+    chartTagOption,
+    chartTagFieldOption,
+  );
 
   const { valuesYaml, isLoading: isLoadingValuesYaml } = useHelmChartValuesYaml(
     chartRef,
