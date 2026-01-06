@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.49.1
+
+### Patch Changes
+
+- 2dfca83: Configuration docs refactoring.
+
 ## 0.49.0
 
 ### Minor Changes

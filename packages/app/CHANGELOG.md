@@ -1,5 +1,13 @@
 # app
 
+## 0.22.7
+
+### Patch Changes
+
+- 590fcac: Fix syntax highlighting in the YamlEditor component.
+- Updated dependencies [2dfca83]
+  - @giantswarm/backstage-plugin-gs@0.49.1
+
 ## 0.22.6
 
 ### Patch Changes
