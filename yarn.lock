@@ -1964,18 +1964,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage-community/plugin-github-actions@npm:^0.15.0":
-  version: 0.15.0
-  resolution: "@backstage-community/plugin-github-actions@npm:0.15.0"
+"@backstage-community/plugin-github-actions@npm:^0.19.0":
+  version: 0.19.0
+  resolution: "@backstage-community/plugin-github-actions@npm:0.19.0"
   dependencies:
-    "@backstage/catalog-model": "npm:^1.7.5"
-    "@backstage/core-compat-api": "npm:^0.5.2"
-    "@backstage/core-components": "npm:^0.18.1"
-    "@backstage/core-plugin-api": "npm:^1.11.0"
-    "@backstage/frontend-plugin-api": "npm:^0.12.0"
-    "@backstage/integration": "npm:^1.18.0"
-    "@backstage/integration-react": "npm:^1.2.10"
-    "@backstage/plugin-catalog-react": "npm:^1.21.1"
+    "@backstage/catalog-model": "npm:^1.7.6"
+    "@backstage/core-compat-api": "npm:^0.5.5"
+    "@backstage/core-components": "npm:^0.18.4"
+    "@backstage/core-plugin-api": "npm:^1.12.1"
+    "@backstage/frontend-plugin-api": "npm:^0.13.2"
+    "@backstage/integration": "npm:^1.19.0"
+    "@backstage/integration-react": "npm:^1.2.13"
+    "@backstage/plugin-catalog-react": "npm:^1.21.4"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:4.0.0-alpha.61"
@@ -1988,7 +1988,7 @@ __metadata:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: 6.0.0-beta.0 || ^6.3.0
-  checksum: 10c0/3482b53d842b87b2bc5a7963a9a36abdf9c35cb863a2d3a1cb72eac2e595b5ee86a7f188481b7c47b424cac60d867fd1c52419ef99cd77b55acd6bfb69a16806
+  checksum: 10c0/196dfbe21ec05dee0826df7a6b7bfa7954c0709201cd66d27ff4638eee8316ae6af3f8911f26bb1ba8ee2e01a3692b0aee21b252ec2c526aff00944376323479
   languageName: node
   linkType: hard
 
@@ -16466,7 +16466,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "app@workspace:packages/app"
   dependencies:
-    "@backstage-community/plugin-github-actions": "npm:^0.15.0"
+    "@backstage-community/plugin-github-actions": "npm:^0.19.0"
     "@backstage/app-defaults": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
