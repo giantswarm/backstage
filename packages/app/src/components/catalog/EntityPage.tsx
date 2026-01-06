@@ -71,10 +71,10 @@ function isLinksAvailable(entity: Entity) {
   return false;
 }
 
-function isHelmChartAvailable(entity: Entity) {
+function isDeployable(entity: Entity) {
   const tags = entity?.metadata?.tags ?? [];
 
-  return tags.includes('helm-chart') || tags.includes('helmchart');
+  return tags.includes('helmchart-deployable');
 }
 
 const circleCIContent = (
@@ -141,7 +141,7 @@ const overviewContent = (
     <Grid item md={4} xs={12}>
       <Grid container spacing={3} alignItems="stretch">
         <EntitySwitch>
-          <EntitySwitch.Case if={isHelmChartAvailable}>
+          <EntitySwitch.Case if={isDeployable}>
             <Grid item xs={12}>
               <EntityGSAppDeploymentCard />
             </Grid>
