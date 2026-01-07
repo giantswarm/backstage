@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.93.2] - 2026-01-07
 
+### Changed
+
+- Expose `isManagementCluster` value in the `ClusterPicker` scaffolder field.
+- Improve `formatTemplateString` utility to support `clusterNamePrefix` placeholders.
+
 See [./docs/releases/v0.93.2-changelog.md](./docs/releases/v0.93.2-changelog.md) for more information.
 
 ## [0.93.1] - 2026-01-06
