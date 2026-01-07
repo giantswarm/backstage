@@ -6,6 +6,7 @@ export const ClusterPickerFieldSchema = makeFieldSchemaFromZod(
     clusterName: z.string(),
     clusterNamespace: z.string().optional(),
     clusterOrganization: z.string().optional(),
+    isManagementCluster: z.boolean().optional(),
   }),
   z.object({
     installationName: z
