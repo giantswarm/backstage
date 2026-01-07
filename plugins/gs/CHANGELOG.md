@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.49.2
+
+### Patch Changes
+
+- 9059740: Expose isManagementCluster value in ClusterPicker scaffolder field.
+- 9059740: Improve formatTemplateString utility to replace clusterNamePrefix placeholders.
+
 ## 0.49.1
 
 ### Patch Changes
