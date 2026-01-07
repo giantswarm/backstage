@@ -6,6 +6,8 @@ const CURRENT_USER_PLACEHOLDER_REGEXP = /\${{currentUser\(\)}}/;
 const GENERATE_UID_PLACEHOLDER_REGEXP =
   /\${{generateUID\((?<length>[1-9]\d*)\)}}/;
 const CHART_NAME_PLACEHOLDER_REGEXP = /\${{chartName\((?<chartRef>[\w\.]+)\)}}/;
+const CLUSTER_NAME_PREFIX_PLACEHOLDER_REGEXP =
+  /\${{clusterNamePrefix\((?<clusterRef>[\w\.]+)\)}}/;
 const DATA_VALUE_PLACEHOLDER_REGEXP = /\${{(?<parameter>[\w\.]+)}}/;
 
 function replaceCurrentUserPlaceholder(
@@ -55,6 +57,37 @@ function replaceChartNamePlaceholder(
   return template.replace(placeholder, chartName);
 }
 
+function replaceClusterNamePrefixPlaceholder(
+  template: string,
+  placeholder: string,
+  data?: Record<string, any>,
+) {
+  const match = template.match(CLUSTER_NAME_PREFIX_PLACEHOLDER_REGEXP);
+  if (!match || !match.groups) {
+    return template;
+  }
+
+  const clusterRef = match.groups.clusterRef;
+
+  const value = get(data ?? {}, clusterRef);
+  if (!value) {
+    return template;
+  }
+
+  const clusterName = value.clusterName;
+  const isManagementCluster = value.isManagementCluster;
+
+  if (!clusterName) {
+    return template;
+  }
+
+  if (isManagementCluster) {
+    return template.replace(placeholder, '');
+  }
+
+  return template.replace(placeholder, `${clusterName}-`);
+}
+
 function replaceDataValuePlaceholder(
   template: string,
   placeholder: string,
@@ -89,6 +122,7 @@ export function formatTemplateString(template: string, options: Options = {}) {
       CURRENT_USER_PLACEHOLDER_REGEXP.source,
       GENERATE_UID_PLACEHOLDER_REGEXP.source,
       CHART_NAME_PLACEHOLDER_REGEXP.source,
+      CLUSTER_NAME_PREFIX_PLACEHOLDER_REGEXP.source,
       DATA_VALUE_PLACEHOLDER_REGEXP.source,
     ].join('|'),
     'g',
@@ -108,6 +142,14 @@ export function formatTemplateString(template: string, options: Options = {}) {
 
     if (CHART_NAME_PLACEHOLDER_REGEXP.test(placeholder)) {
       newTemplate = replaceChartNamePlaceholder(newTemplate, placeholder, data);
+    }
+
+    if (CLUSTER_NAME_PREFIX_PLACEHOLDER_REGEXP.test(placeholder)) {
+      newTemplate = replaceClusterNamePrefixPlaceholder(
+        newTemplate,
+        placeholder,
+        data,
+      );
     }
 
     if (DATA_VALUE_PLACEHOLDER_REGEXP.test(placeholder)) {

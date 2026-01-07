@@ -9,7 +9,10 @@ import {
   useResources,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { getClusterOrganization } from '../../clusters/utils';
+import {
+  getClusterOrganization,
+  isManagementCluster,
+} from '../../clusters/utils';
 
 type ClusterPickerFieldProps = {
   id?: string;
@@ -100,6 +103,7 @@ export const ClusterPicker = ({
         clusterName: selectedCluster.getName(),
         clusterNamespace: selectedCluster.getNamespace(),
         clusterOrganization: getClusterOrganization(selectedCluster),
+        isManagementCluster: isManagementCluster(selectedCluster),
       });
     },
     [onChange],
