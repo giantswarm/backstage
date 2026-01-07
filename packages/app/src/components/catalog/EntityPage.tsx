@@ -62,6 +62,8 @@ import {
   isEntityGSKratixResource,
   isEntityGSDeploymentsAvailable,
   EntityGSAppDeploymentCard,
+  EntityGSVersionHistoryContent,
+  isEntityGSVersionHistoryAvailable,
 } from '@giantswarm/backstage-plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -202,6 +204,14 @@ const componentEntityPage = (
       title="Deployments"
     >
       <EntityGSDeploymentsContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route
+      if={isEntityGSVersionHistoryAvailable}
+      path="/version-history"
+      title="Version History"
+    >
+      <EntityGSVersionHistoryContent />
     </EntityLayout.Route>
 
     <FeatureFlagged with="show-kubernetes-resources">
