@@ -1,11 +1,5 @@
 import { useMemo, useState } from 'react';
-import {
-  Content,
-  ContentHeader,
-  SupportButton,
-  Table,
-  TableColumn,
-} from '@backstage/core-components';
+import { Content, Table, TableColumn } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import {
   Box,
@@ -20,6 +14,7 @@ import {
 import { getHelmChartsFromEntity } from '../../utils/entity';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { QueryClientProvider } from '../../QueryClientProvider';
+import { DateComponent } from '../../UI';
 
 const useStyles = makeStyles(theme => ({
   latestChip: {
@@ -36,6 +31,7 @@ const useStyles = makeStyles(theme => ({
 type ChartTagData = {
   tag: string;
   isLatest: boolean;
+  createdAt: string | null;
 };
 
 type VersionHistoryTableProps = {
@@ -59,6 +55,7 @@ const VersionHistoryTable = ({
     return tags.map(tagInfo => ({
       tag: tagInfo.tag,
       isLatest: tagInfo.tag === latestStableVersion,
+      createdAt: tagInfo.createdAt,
     }));
   }, [tags, latestStableVersion]);
 
@@ -80,6 +77,14 @@ const VersionHistoryTable = ({
           </Box>
         ),
       },
+      {
+        title: 'Created',
+        field: 'createdAt',
+        type: 'datetime',
+        render: (row: ChartTagData) => (
+          <DateComponent value={row.createdAt} relative />
+        ),
+      },
     ],
     [classes.latestChip],
   );
@@ -99,8 +104,6 @@ const VersionHistoryTable = ({
         pageSize: 50,
         pageSizeOptions: [10, 25, 50, 100],
         emptyRowsWhenPaging: false,
-        search: true,
-        sorting: false,
       }}
       data={tableData}
       style={{ width: '100%' }}
@@ -172,18 +175,9 @@ const VersionHistoryContent = () => {
 };
 
 export const EntityVersionHistoryContent = () => {
-  const { entity } = useEntity();
-  const entityName = entity.metadata.name;
-
   return (
     <QueryClientProvider>
       <Content>
-        <ContentHeader title={`Version history of ${entityName}`}>
-          <SupportButton>
-            This page shows all available tags for the helm charts associated
-            with this component.
-          </SupportButton>
-        </ContentHeader>
         <VersionHistoryContent />
       </Content>
     </QueryClientProvider>
