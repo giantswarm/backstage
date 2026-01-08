@@ -56,9 +56,9 @@ const VersionHistoryTable = ({
       return [];
     }
 
-    return tags.map(tag => ({
-      tag,
-      isLatest: tag === latestStableVersion,
+    return tags.map(tagInfo => ({
+      tag: tagInfo.tag,
+      isLatest: tagInfo.tag === latestStableVersion,
     }));
   }, [tags, latestStableVersion]);
 

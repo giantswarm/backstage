@@ -43,24 +43,26 @@ const ChartTagPickerField = ({
       return [];
     }
 
-    return tags.sort((a, b) => {
-      const versionA = semver.valid(a);
-      const versionB = semver.valid(b);
+    return tags
+      .map(tagInfo => tagInfo.tag)
+      .sort((a, b) => {
+        const versionA = semver.valid(a);
+        const versionB = semver.valid(b);
 
-      if (!versionA && !versionB) {
-        return 0;
-      }
+        if (!versionA && !versionB) {
+          return 0;
+        }
 
-      if (!versionA) {
-        return 1;
-      }
+        if (!versionA) {
+          return 1;
+        }
 
-      if (!versionB) {
-        return -1;
-      }
+        if (!versionB) {
+          return -1;
+        }
 
-      return semver.rcompare(versionA, versionB);
-    });
+        return semver.rcompare(versionA, versionB);
+      });
   }, [tags]);
 
   useEffect(() => {
