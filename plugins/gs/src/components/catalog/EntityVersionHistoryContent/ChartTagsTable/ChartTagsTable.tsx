@@ -59,7 +59,7 @@ export const ChartTagsTable = ({
       style={{ width: '100%' }}
       title={
         <Typography variant="h6">
-          Tags for {chartName} ({tableData.length})
+          Tags for {chartName} chart ({tableData.length})
         </Typography>
       }
       columns={columns}

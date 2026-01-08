@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Content } from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Box, Typography } from '@material-ui/core';
 import { getHelmChartsFromEntity } from '../../utils/entity';
@@ -55,9 +54,7 @@ const VersionHistoryContent = () => {
 export const EntityVersionHistoryContent = () => {
   return (
     <QueryClientProvider>
-      <Content>
-        <VersionHistoryContent />
-      </Content>
+      <VersionHistoryContent />
     </QueryClientProvider>
   );
 };
