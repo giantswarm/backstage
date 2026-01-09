@@ -5,13 +5,14 @@ import {
   useContext,
   useMemo,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import useLocalStorageState from 'use-local-storage-state';
+import { stringifyEntityRef } from '@backstage/catalog-model';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Box, Typography } from '@material-ui/core';
 import { ChartSelector } from './ChartSelector';
 import { getHelmChartsFromEntity } from '../../utils/entity';
 
-const CHART_QUERY_PARAM = 'chart';
+const STORAGE_KEY_PREFIX = 'gs-entity-selected-chart';
 
 export type Chart = {
   ref: string;
@@ -33,52 +34,34 @@ export interface EntityChartProviderProps {
 }
 
 /**
- * Provides chart selection context to child components.
- * Fetches charts from the current entity using useEntity hook.
- * Displays a chart selector when there are multiple charts.
- * Auto-selects the first chart by default, or uses URL query param if present.
- * Syncs selected chart with URL query params when multiple charts exist.
- * Shows an error message when no charts are configured.
- *
- * @public
+ * Provider for entities with multiple charts.
+ * Uses local storage to persist chart selection.
  */
-export const EntityChartProvider = ({ children }: EntityChartProviderProps) => {
-  const { entity } = useEntity();
-  const charts = getHelmChartsFromEntity(entity);
-  const [searchParams, setSearchParams] = useSearchParams();
+const MultiChartProvider = ({
+  children,
+  charts,
+  storageKey,
+}: {
+  children: ReactNode;
+  charts: Chart[];
+  storageKey: string;
+}) => {
+  const [storedChartRef, setStoredChartRef] = useLocalStorageState<string>(
+    storageKey,
+    { defaultValue: '' },
+  );
 
-  const hasMultipleCharts = charts.length > 1;
-
-  // Get selected chart ref from URL or default to first chart
-  const chartFromUrl = searchParams.get(CHART_QUERY_PARAM);
+  // Get selected chart ref from local storage or default to first chart
   const selectedChartRef = useMemo(() => {
-    if (hasMultipleCharts && chartFromUrl) {
-      // Validate that the chart from URL exists
-      const chartExists = charts.some(chart => chart.ref === chartFromUrl);
+    if (storedChartRef) {
+      // Validate that the stored chart exists
+      const chartExists = charts.some(chart => chart.ref === storedChartRef);
       if (chartExists) {
-        return chartFromUrl;
+        return storedChartRef;
       }
     }
     return charts[0]?.ref ?? '';
-  }, [hasMultipleCharts, chartFromUrl, charts]);
-
-  const setSelectedChartRef = useCallback(
-    (chartRef: string) => {
-      if (!hasMultipleCharts) {
-        // Don't update URL if there's only one chart
-        return;
-      }
-
-      setSearchParams(
-        params => {
-          params.set(CHART_QUERY_PARAM, chartRef);
-          return params;
-        },
-        { replace: true },
-      );
-    },
-    [hasMultipleCharts, setSearchParams],
-  );
+  }, [storedChartRef, charts]);
 
   const selectedChart = useMemo(
     () => charts.find(chart => chart.ref === selectedChartRef) ?? charts[0],
@@ -89,10 +72,74 @@ export const EntityChartProvider = ({ children }: EntityChartProviderProps) => {
     () => ({
       charts,
       selectedChart,
+      setSelectedChartRef: setStoredChartRef,
+    }),
+    [charts, selectedChart, setStoredChartRef],
+  );
+
+  return (
+    <EntityChartContext.Provider value={value}>
+      <Box mb={2}>
+        <ChartSelector
+          charts={charts}
+          selectedChartRef={selectedChartRef}
+          onChartChange={setStoredChartRef}
+        />
+      </Box>
+      {children}
+    </EntityChartContext.Provider>
+  );
+};
+
+/**
+ * Provider for entities with a single chart.
+ * No local storage is used.
+ */
+const SingleChartProvider = ({
+  children,
+  charts,
+}: {
+  children: ReactNode;
+  charts: Chart[];
+}) => {
+  const selectedChart = charts[0];
+
+  const setSelectedChartRef = useCallback(() => {
+    // No-op for single chart entities
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      charts,
+      selectedChart,
       setSelectedChartRef,
     }),
     [charts, selectedChart, setSelectedChartRef],
   );
+
+  return (
+    <EntityChartContext.Provider value={value}>
+      {children}
+    </EntityChartContext.Provider>
+  );
+};
+
+/**
+ * Provides chart selection context to child components.
+ * Fetches charts from the current entity using useEntity hook.
+ * Displays a chart selector when there are multiple charts.
+ * Auto-selects the first chart by default, or uses local storage if present.
+ * Persists selected chart to local storage only when multiple charts exist.
+ * Shows an error message when no charts are configured.
+ *
+ * @public
+ */
+export const EntityChartProvider = ({ children }: EntityChartProviderProps) => {
+  const { entity } = useEntity();
+  const charts = getHelmChartsFromEntity(entity);
+
+  const entityRef = stringifyEntityRef(entity);
+  const storageKey = `${STORAGE_KEY_PREFIX}-${entityRef}`;
 
   if (charts.length === 0) {
     return (
@@ -103,19 +150,16 @@ export const EntityChartProvider = ({ children }: EntityChartProviderProps) => {
     );
   }
 
+  if (charts.length === 1) {
+    return (
+      <SingleChartProvider charts={charts}>{children}</SingleChartProvider>
+    );
+  }
+
   return (
-    <EntityChartContext.Provider value={value}>
-      {hasMultipleCharts && (
-        <Box mb={2}>
-          <ChartSelector
-            charts={charts}
-            selectedChartRef={selectedChartRef}
-            onChartChange={setSelectedChartRef}
-          />
-        </Box>
-      )}
+    <MultiChartProvider charts={charts} storageKey={storageKey}>
       {children}
-    </EntityChartContext.Provider>
+    </MultiChartProvider>
   );
 };
 

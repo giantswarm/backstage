@@ -1,4 +1,4 @@
-import { Link as RouterLink, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
 import { InfoCard, Link, Progress } from '@backstage/core-components';
 import {
   Box,
@@ -75,18 +75,10 @@ const LatestChip = ({ isLatest }: LatestChipProps) => {
 
 const VersionHistoryCardContent = () => {
   const classes = useStyles();
-  const { charts, selectedChart } = useCurrentEntityChart();
-  const [searchParams] = useSearchParams();
+  const { selectedChart } = useCurrentEntityChart();
   const { tags, latestStableVersion, isLoading, error } = useHelmChartTags(
     selectedChart.ref,
   );
-
-  const hasMultipleCharts = charts.length > 1;
-
-  // Build the "View all" link, preserving chart selection if multiple charts
-  const versionHistoryPath = hasMultipleCharts
-    ? `version-history?${searchParams.toString()}`
-    : 'version-history';
 
   if (isLoading) {
     return <Progress />;
@@ -115,7 +107,7 @@ const VersionHistoryCardContent = () => {
       title="Version History"
       action={
         <Box mt={1} mr={1} pt={1}>
-          <Link component={RouterLink} to={versionHistoryPath}>
+          <Link component={RouterLink} to="version-history">
             <Typography variant="body1">View all →</Typography>
           </Link>
         </Box>
