@@ -6,6 +6,7 @@ import { appDeploymentTemplateRouteRef } from '../../../routes';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { useCatalogEntityByRef } from '../../hooks';
 import { QueryClientProvider } from '../../QueryClientProvider';
+import { useCurrentEntityChart } from '../EntityChartContext';
 
 const TEMPLATE_NAME = 'app-deployment';
 
@@ -21,6 +22,7 @@ const CardContent = () => {
   const classes = useStyles();
 
   const { entity } = useEntity();
+  const { charts, selectedChart } = useCurrentEntityChart();
 
   const { entity: templateEntityGS } = useCatalogEntityByRef({
     kind: 'template',
@@ -45,10 +47,17 @@ const CardContent = () => {
       namespace: templateEntity?.metadata.namespace ?? 'default',
     });
 
+  const formData: Record<string, string> = {
+    entityRef: stringifyEntityRef(entity),
+  };
+
+  // Include chartRef only when entity has multiple charts
+  if (charts.length > 1) {
+    formData.chartRef = selectedChart.ref;
+  }
+
   const searchParams = new URLSearchParams({
-    formData: JSON.stringify({
-      entityRef: stringifyEntityRef(entity),
-    }),
+    formData: JSON.stringify(formData),
   });
 
   const isDisabled = !templateEntity || !templateRoute;
