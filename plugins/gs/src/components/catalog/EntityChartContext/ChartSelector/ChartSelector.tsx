@@ -1,10 +1,6 @@
 import { useMemo } from 'react';
 import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
-
-type Chart = {
-  name: string;
-  ref: string;
-};
+import { Chart } from '../EntityChartContext';
 
 type ChartSelectorProps = {
   charts: Chart[];
