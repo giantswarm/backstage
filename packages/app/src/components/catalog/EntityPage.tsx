@@ -63,6 +63,8 @@ import {
   isEntityGSDeploymentsAvailable,
   EntityGSAppDeploymentCard,
   EntityGSVersionHistoryContent,
+  EntityGSVersionHistoryCard,
+  EntityGSChartProvider,
   isEntityGSVersionHistoryAvailable,
 } from '@giantswarm/backstage-plugin-gs';
 
@@ -141,35 +143,36 @@ const entityWarningContent = (
 const overviewContent = (
   <EntitySwitch renderMultipleMatches="first">
     <EntitySwitch.Case if={isHelmChart}>
-      <Grid container spacing={3} alignItems="stretch">
-        {entityWarningContent}
-        <Grid item md={8}>
-          <EntityAboutCard variant="gridItem" />
-          <EntityGSVersionHistoryCard />
-        </Grid>
+      <EntityGSChartProvider>
+        <Grid container spacing={3} alignItems="stretch">
+          {entityWarningContent}
+          <Grid item md={8}>
+            <EntityAboutCard variant="gridItem" />
+          </Grid>
 
-        <Grid item md={4} xs={12}>
-          <Grid container spacing={3} alignItems="stretch">
-            <EntitySwitch renderMultipleMatches="all">
-              <EntitySwitch.Case if={isDeployable}>
-                <Grid item xs={12}>
-                  <EntityGSAppDeploymentCard />
-                </Grid>
-              </EntitySwitch.Case>
+          <Grid item md={4} xs={12}>
+            <Grid container spacing={3} alignItems="stretch">
+              <EntitySwitch renderMultipleMatches="all">
+                <EntitySwitch.Case if={isDeployable}>
+                  <Grid item xs={12}>
+                    <EntityGSAppDeploymentCard />
+                  </Grid>
+                </EntitySwitch.Case>
 
-              <EntitySwitch.Case if={isLinksAvailable}>
-                <Grid item xs={12}>
-                  <EntityLinksCard />
-                </Grid>
-              </EntitySwitch.Case>
-            </EntitySwitch>
+                <EntitySwitch.Case if={isLinksAvailable}>
+                  <Grid item xs={12}>
+                    <EntityLinksCard />
+                  </Grid>
+                </EntitySwitch.Case>
+              </EntitySwitch>
+            </Grid>
+          </Grid>
+
+          <Grid item md={8} xs={12}>
+            <EntityGSVersionHistoryCard />
           </Grid>
         </Grid>
-
-        <Grid item md={12} xs={12}>
-          <EntityCatalogGraphCard variant="gridItem" height={400} />
-        </Grid>
-      </Grid>
+      </EntityGSChartProvider>
     </EntitySwitch.Case>
     <EntitySwitch.Case>
       <Grid container spacing={3} alignItems="stretch">

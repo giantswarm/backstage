@@ -43,4 +43,6 @@ export {
   isEntityHelmChartTagged as isEntityGSVersionHistoryAvailable,
 } from './components/utils/entity';
 export { EntityVersionHistoryContent as EntityGSVersionHistoryContent } from './components/catalog/EntityVersionHistoryContent';
+export { EntityVersionHistoryCard as EntityGSVersionHistoryCard } from './components/catalog/EntityVersionHistoryCard';
+export { EntityChartProvider as EntityGSChartProvider } from './components/catalog/EntityChartContext';
 export { columnFactories as GSColumnFactories } from './components/catalog/columns';
