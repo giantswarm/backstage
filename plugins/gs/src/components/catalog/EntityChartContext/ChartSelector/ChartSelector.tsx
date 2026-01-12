@@ -1,10 +1,24 @@
 import { useMemo } from 'react';
 import { Chart } from '../EntityChartContext';
-import { makeStyles, Paper, Tab, Tabs } from '@material-ui/core';
+import {
+  Box,
+  makeStyles,
+  Paper,
+  Tab,
+  Tabs,
+  Typography,
+} from '@material-ui/core';
 
 const useStyles = makeStyles(theme => ({
   tab: {
     padding: theme.spacing(2, 4),
+    lineHeight: 1.4,
+  },
+  label: {
+    marginRight: theme.spacing(3),
+    marginLeft: theme.spacing(3),
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
   },
 }));
 
@@ -38,21 +52,28 @@ export const ChartSelector = ({
 
   return (
     <Paper square>
-      <Tabs
-        value={selectedChartRef}
-        indicatorColor="primary"
-        onChange={handleChange}
-        aria-label="Helm charts selector"
-      >
-        {items.map(({ label, value }) => (
-          <Tab
-            key={value}
-            label={label}
-            value={value}
-            className={classes.tab}
-          />
-        ))}
-      </Tabs>
+      <Box display="flex" alignItems="center">
+        <Typography variant="overline" className={classes.label}>
+          Helm Charts
+        </Typography>
+        <Tabs
+          value={selectedChartRef}
+          indicatorColor="primary"
+          variant="scrollable"
+          scrollButtons="auto"
+          onChange={handleChange}
+          aria-label="Helm charts selector"
+        >
+          {items.map(({ label, value }) => (
+            <Tab
+              key={value}
+              label={label}
+              value={value}
+              className={classes.tab}
+            />
+          ))}
+        </Tabs>
+      </Box>
     </Paper>
   );
 };
