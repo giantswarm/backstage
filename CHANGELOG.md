@@ -7,6 +7,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.94.0] - 2026-01-12
 
+### Added
+
+- Add Helm chart versions history overview.
+
+### Fixed
+
+- Fix ChartPicker and ChartTagPicker to respect initial form value.
+- Fix AutocompleteOption to display label instead of value.
+
 See [./docs/releases/v0.94.0-changelog.md](./docs/releases/v0.94.0-changelog.md) for more information.
 
 ## [0.93.2] - 2026-01-07
