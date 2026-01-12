@@ -62,6 +62,8 @@ import {
   isEntityGSKratixResource,
   isEntityGSDeploymentsAvailable,
   EntityGSAppDeploymentCard,
+  EntityGSOSSFScorecardContent,
+  EntityGSOSSFScorecardCard,
 } from '@giantswarm/backstage-plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -154,6 +156,9 @@ const overviewContent = (
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
+        <Grid item xs={12}>
+          <EntityGSOSSFScorecardCard />
+        </Grid>
       </Grid>
     </Grid>
 
@@ -209,6 +214,10 @@ const componentEntityPage = (
         <EntityKubernetesContent refreshIntervalMs={30000} />
       </EntityLayout.Route>
     </FeatureFlagged>
+
+    <EntityLayout.Route path="/ossf-scorecard" title="OSSF Scorecard">
+      <EntityGSOSSFScorecardContent />
+    </EntityLayout.Route>
 
     <EntityLayout.Route path="/pull-requests" title="Pull Requests">
       <EntityGithubPullRequestsContent />

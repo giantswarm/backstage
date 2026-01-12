@@ -1,0 +1,1 @@
+export { EntityOSSFScorecardContent } from './EntityOSSFScorecardContent';
