@@ -78,3 +78,9 @@ export const isEntityInstallationResource = (entity: Entity) => {
 export const isEntityKratixResource = (entity: Entity) => {
   return entity.kind === 'Resource' && entity.spec?.type === 'kratix';
 };
+
+export const GITHUB_PROJECT_SLUG = 'github.com/project-slug';
+
+export const getGithubProjectSlugFromEntity = (entity: Entity) => {
+  return entity.metadata.annotations?.[GITHUB_PROJECT_SLUG];
+};

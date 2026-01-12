@@ -27,11 +27,11 @@ alwaysApply: false
 
 ## Technology Stack
 
-- **Runtime**: Node.js 20, 22, or 24 (recommended: 24)
-- **Package Manager**: Yarn 4.10.3
-- **Language**: TypeScript ~5.9.0
-- **Frontend**: React 18, Material-UI v4, React Router v6
-- **Backend**: Express 5, Backstage backend framework
+- **Runtime**: Node.js . Check /package.json to determine the desired version. Use the highest supported version, e. g. via nvm.
+- **Package Manager**: Yarn
+- **Language**: TypeScript
+- **Frontend**: React, Material-UI v4, React Router
+- **Backend**: Express, Backstage backend framework
 - **Database**: PostgreSQL (production), SQLite (local dev)
 - **Testing**: Jest, Playwright (E2E), Testing Library
 - **Build Tools**: Backstage CLI, TypeScript compiler

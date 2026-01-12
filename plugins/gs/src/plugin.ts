@@ -189,6 +189,17 @@ export const EntityGSKratixResourcesContent = gsPlugin.provide(
   }),
 );
 
+export const EntityGSOSSFScorecardContent = gsPlugin.provide(
+  createRoutableExtension({
+    name: 'EntityGSOSSFScorecardContent',
+    component: () =>
+      import('./components/catalog/EntityOSSFScorecardContent').then(
+        m => m.EntityOSSFScorecardContent,
+      ),
+    mountPoint: rootRouteRef,
+  }),
+);
+
 export const GSChartPickerFieldExtension = gsPlugin.provide(
   createScaffolderFieldExtension({
     name: 'GSChartPicker',
