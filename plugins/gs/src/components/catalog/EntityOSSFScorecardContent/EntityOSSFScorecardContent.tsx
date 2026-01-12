@@ -7,7 +7,15 @@ import {
 } from '@backstage/core-components';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Grid, Typography, Box, Chip, Link, Button, Collapse } from '@material-ui/core';
+import {
+  Grid,
+  Typography,
+  Box,
+  Chip,
+  Link,
+  Button,
+  Collapse,
+} from '@material-ui/core';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CheckIcon from '@material-ui/icons/Check';
@@ -129,7 +137,7 @@ const ScorecardContent = () => {
       1: '#af2e02',
       0: '#b40000',
     };
-    
+
     // Round score to nearest integer and clamp between 0-10
     const roundedScore = Math.max(0, Math.min(10, Math.round(score)));
     return colorMap[roundedScore] || '#b40000';
@@ -151,10 +159,13 @@ const ScorecardContent = () => {
       <Grid container spacing={3}>
         <Grid item xs={12}>
           <Box mb={2}>
-            <Box display="flex" alignItems="baseline" style={{ gap: '16px' }} mb={1}>
-              <Typography variant="h4">
-                Overall Score
-              </Typography>
+            <Box
+              display="flex"
+              alignItems="baseline"
+              style={{ gap: '16px' }}
+              mb={1}
+            >
+              <Typography variant="h4">Overall Score</Typography>
               <Chip
                 label={`${data.score.toFixed(1)} / 10`}
                 size="medium"
@@ -167,7 +178,8 @@ const ScorecardContent = () => {
               />
             </Box>
             <Typography variant="caption" color="textSecondary" display="block">
-              Last updated: {new Date(data.date).toLocaleDateString()} • Scorecard version: {data.scorecard.version} (commit:{' '}
+              Last updated: {new Date(data.date).toLocaleDateString()} •
+              Scorecard version: {data.scorecard.version} (commit:{' '}
               {data.scorecard.commit.substring(0, 7)})
             </Typography>
             <Box mt={1}>
@@ -191,160 +203,35 @@ const ScorecardContent = () => {
                 // Sort by score ascending (lowest first)
                 return a.score - b.score;
               });
-            const passedChecks = data.checks.filter(check => check.score === 10);
+            const passedChecks = data.checks.filter(
+              check => check.score === 10,
+            );
 
             return (
               <>
                 {/* Checks Requiring Attention */}
                 {checksNeedingAttention.length > 0 && (
                   <>
-                    <Typography variant="h6" style={{ marginBottom: '8px', fontWeight: 'bold' }}>
+                    <Typography
+                      variant="h6"
+                      style={{ marginBottom: '8px', fontWeight: 'bold' }}
+                    >
                       Checks Requiring Attention
                     </Typography>
                     <Grid container spacing={2}>
-                      {checksNeedingAttention.map((check) => {
-              const isExpanded = expandedChecks.has(check.name);
-              const hasManyDetails = check.details && check.details.length > MAX_VISIBLE_DETAILS;
-              const visibleDetails = hasManyDetails && !isExpanded
-                ? check.details!.slice(0, MAX_VISIBLE_DETAILS)
-                : check.details || [];
-              const hiddenCount = hasManyDetails && !isExpanded
-                ? check.details!.length - MAX_VISIBLE_DETAILS
-                : 0;
-
-              const toggleExpand = () => {
-                const newExpanded = new Set(expandedChecks);
-                if (isExpanded) {
-                  newExpanded.delete(check.name);
-                } else {
-                  newExpanded.add(check.name);
-                }
-                setExpandedChecks(newExpanded);
-              };
-
-              return (
-                <Grid item xs={12} md={6} key={check.name}>
-                  <Box
-                    border={1}
-                    borderColor="divider"
-                    borderRadius={1}
-                    p={2}
-                    height="100%"
-                    display="flex"
-                    flexDirection="column"
-                  >
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <Typography variant="subtitle1" style={{ fontWeight: 'bold' }}>
-                        {check.name}
-                      </Typography>
-                      <Chip
-                        label={
-                          <Box display="flex" alignItems="center" style={{ gap: '8px' }}>
-                            <span>{check.score >= 0 ? `${check.score} / 10` : 'N/A'}</span>
-                            {check.score === 10 && (
-                              <CheckIcon style={{ fontSize: '16px', marginLeft: '4px' }} />
-                            )}
-                          </Box>
-                        }
-                        size="small"
-                        style={{
-                          backgroundColor: check.score >= 0 ? getCheckScoreColor(check.score) : undefined,
-                          color: check.score >= 0 ? '#ffffff' : undefined,
-                        }}
-                      />
-                    </Box>
-                    <Typography variant="body2" color="textSecondary" gutterBottom>
-                      {check.reason}
-                    </Typography>
-                    {check.details && check.details.length > 0 && (
-                      <Box mt={1} position="relative">
-                        <Box
-                          style={{
-                            maxHeight: isExpanded ? 'none' : '200px',
-                            overflow: isExpanded ? 'visible' : 'hidden',
-                            maskImage: hasManyDetails && !isExpanded
-                              ? `linear-gradient(to bottom, black 70%, transparent 100%)`
-                              : 'none',
-                            WebkitMaskImage: hasManyDetails && !isExpanded
-                              ? `linear-gradient(to bottom, black 70%, transparent 100%)`
-                              : 'none',
-                          }}
-                        >
-                          {visibleDetails.map((detail, idx) => (
-                            <Typography
-                              key={idx}
-                              variant="caption"
-                              color="textSecondary"
-                              display="block"
-                            >
-                              • {detail}
-                            </Typography>
-                          ))}
-                        </Box>
-                        {hasManyDetails && (
-                          <>
-                            <Collapse in={isExpanded} timeout="auto">
-                              <Box>
-                                {check.details!.slice(MAX_VISIBLE_DETAILS).map((detail, idx) => (
-                                  <Typography
-                                    key={MAX_VISIBLE_DETAILS + idx}
-                                    variant="caption"
-                                    color="textSecondary"
-                                    display="block"
-                                  >
-                                    • {detail}
-                                  </Typography>
-                                ))}
-                              </Box>
-                            </Collapse>
-                            <Button
-                              size="small"
-                              onClick={toggleExpand}
-                              startIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                              style={{ marginTop: '8px', textTransform: 'none' }}
-                            >
-                              {isExpanded
-                                ? 'Show less'
-                                : `Show ${hiddenCount} more`}
-                            </Button>
-                          </>
-                        )}
-                      </Box>
-                    )}
-                    <Box mt={1}>
-                      <Link
-                        href={check.documentation.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        variant="caption"
-                      >
-                        Learn more →
-                      </Link>
-                    </Box>
-                  </Box>
-                </Grid>
-              );
-                      })}
-                    </Grid>
-                  </>
-                )}
-
-                {/* Passed Checks */}
-                {passedChecks.length > 0 && (
-                  <>
-                    <Typography variant="h6" style={{ marginTop: '24px', marginBottom: '8px', fontWeight: 'bold' }}>
-                      All Checks Passed
-                    </Typography>
-                    <Grid container spacing={2}>
-                      {passedChecks.map((check) => {
+                      {checksNeedingAttention.map(check => {
                         const isExpanded = expandedChecks.has(check.name);
-                        const hasManyDetails = check.details && check.details.length > MAX_VISIBLE_DETAILS;
-                        const visibleDetails = hasManyDetails && !isExpanded
-                          ? check.details!.slice(0, MAX_VISIBLE_DETAILS)
-                          : check.details || [];
-                        const hiddenCount = hasManyDetails && !isExpanded
-                          ? check.details!.length - MAX_VISIBLE_DETAILS
-                          : 0;
+                        const hasManyDetails =
+                          check.details &&
+                          check.details.length > MAX_VISIBLE_DETAILS;
+                        const visibleDetails =
+                          hasManyDetails && !isExpanded
+                            ? check.details!.slice(0, MAX_VISIBLE_DETAILS)
+                            : check.details || [];
+                        const hiddenCount =
+                          hasManyDetails && !isExpanded
+                            ? check.details!.length - MAX_VISIBLE_DETAILS
+                            : 0;
 
                         const toggleExpand = () => {
                           const newExpanded = new Set(expandedChecks);
@@ -367,27 +254,56 @@ const ScorecardContent = () => {
                               display="flex"
                               flexDirection="column"
                             >
-                              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                              <Typography variant="subtitle1" style={{ fontWeight: 'bold' }}>
-                                {check.name}
-                              </Typography>
-                              <Chip
-                                label={
-                                  <Box display="flex" alignItems="center" style={{ gap: '8px' }}>
-                                    <span>{check.score >= 0 ? `${check.score} / 10` : 'N/A'}</span>
-                                    {check.score === 10 && (
-                                      <CheckIcon style={{ fontSize: '16px', marginLeft: '4px' }} />
-                                    )}
-                                  </Box>
-                                }
-                                size="small"
-                                style={{
-                                  backgroundColor: check.score >= 0 ? getCheckScoreColor(check.score) : undefined,
-                                  color: check.score >= 0 ? '#ffffff' : undefined,
-                                }}
-                              />
+                              <Box
+                                display="flex"
+                                justifyContent="space-between"
+                                alignItems="center"
+                                mb={1}
+                              >
+                                <Typography
+                                  variant="subtitle1"
+                                  style={{ fontWeight: 'bold' }}
+                                >
+                                  {check.name}
+                                </Typography>
+                                <Chip
+                                  label={
+                                    <Box
+                                      display="flex"
+                                      alignItems="center"
+                                      style={{ gap: '8px' }}
+                                    >
+                                      <span>
+                                        {check.score >= 0
+                                          ? `${check.score} / 10`
+                                          : 'N/A'}
+                                      </span>
+                                      {check.score === 10 && (
+                                        <CheckIcon
+                                          style={{
+                                            fontSize: '16px',
+                                            marginLeft: '4px',
+                                          }}
+                                        />
+                                      )}
+                                    </Box>
+                                  }
+                                  size="small"
+                                  style={{
+                                    backgroundColor:
+                                      check.score >= 0
+                                        ? getCheckScoreColor(check.score)
+                                        : undefined,
+                                    color:
+                                      check.score >= 0 ? '#ffffff' : undefined,
+                                  }}
+                                />
                               </Box>
-                              <Typography variant="body2" color="textSecondary" gutterBottom>
+                              <Typography
+                                variant="body2"
+                                color="textSecondary"
+                                gutterBottom
+                              >
                                 {check.reason}
                               </Typography>
                               {check.details && check.details.length > 0 && (
@@ -395,13 +311,17 @@ const ScorecardContent = () => {
                                   <Box
                                     style={{
                                       maxHeight: isExpanded ? 'none' : '200px',
-                                      overflow: isExpanded ? 'visible' : 'hidden',
-                                      maskImage: hasManyDetails && !isExpanded
-                                        ? `linear-gradient(to bottom, black 70%, transparent 100%)`
-                                        : 'none',
-                                      WebkitMaskImage: hasManyDetails && !isExpanded
-                                        ? `linear-gradient(to bottom, black 70%, transparent 100%)`
-                                        : 'none',
+                                      overflow: isExpanded
+                                        ? 'visible'
+                                        : 'hidden',
+                                      maskImage:
+                                        hasManyDetails && !isExpanded
+                                          ? `linear-gradient(to bottom, black 70%, transparent 100%)`
+                                          : 'none',
+                                      WebkitMaskImage:
+                                        hasManyDetails && !isExpanded
+                                          ? `linear-gradient(to bottom, black 70%, transparent 100%)`
+                                          : 'none',
                                     }}
                                   >
                                     {visibleDetails.map((detail, idx) => (
@@ -419,23 +339,223 @@ const ScorecardContent = () => {
                                     <>
                                       <Collapse in={isExpanded} timeout="auto">
                                         <Box>
-                                          {check.details!.slice(MAX_VISIBLE_DETAILS).map((detail, idx) => (
-                                            <Typography
-                                              key={MAX_VISIBLE_DETAILS + idx}
-                                              variant="caption"
-                                              color="textSecondary"
-                                              display="block"
-                                            >
-                                              • {detail}
-                                            </Typography>
-                                          ))}
+                                          {check
+                                            .details!.slice(MAX_VISIBLE_DETAILS)
+                                            .map((detail, idx) => (
+                                              <Typography
+                                                key={MAX_VISIBLE_DETAILS + idx}
+                                                variant="caption"
+                                                color="textSecondary"
+                                                display="block"
+                                              >
+                                                • {detail}
+                                              </Typography>
+                                            ))}
                                         </Box>
                                       </Collapse>
                                       <Button
                                         size="small"
                                         onClick={toggleExpand}
-                                        startIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                        style={{ marginTop: '8px', textTransform: 'none' }}
+                                        startIcon={
+                                          isExpanded ? (
+                                            <ExpandLessIcon />
+                                          ) : (
+                                            <ExpandMoreIcon />
+                                          )
+                                        }
+                                        style={{
+                                          marginTop: '8px',
+                                          textTransform: 'none',
+                                        }}
+                                      >
+                                        {isExpanded
+                                          ? 'Show less'
+                                          : `Show ${hiddenCount} more`}
+                                      </Button>
+                                    </>
+                                  )}
+                                </Box>
+                              )}
+                              <Box mt={1}>
+                                <Link
+                                  href={check.documentation.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  variant="caption"
+                                >
+                                  Learn more →
+                                </Link>
+                              </Box>
+                            </Box>
+                          </Grid>
+                        );
+                      })}
+                    </Grid>
+                  </>
+                )}
+
+                {/* Passed Checks */}
+                {passedChecks.length > 0 && (
+                  <>
+                    <Typography
+                      variant="h6"
+                      style={{
+                        marginTop: '24px',
+                        marginBottom: '8px',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      All Checks Passed
+                    </Typography>
+                    <Grid container spacing={2}>
+                      {passedChecks.map(check => {
+                        const isExpanded = expandedChecks.has(check.name);
+                        const hasManyDetails =
+                          check.details &&
+                          check.details.length > MAX_VISIBLE_DETAILS;
+                        const visibleDetails =
+                          hasManyDetails && !isExpanded
+                            ? check.details!.slice(0, MAX_VISIBLE_DETAILS)
+                            : check.details || [];
+                        const hiddenCount =
+                          hasManyDetails && !isExpanded
+                            ? check.details!.length - MAX_VISIBLE_DETAILS
+                            : 0;
+
+                        const toggleExpand = () => {
+                          const newExpanded = new Set(expandedChecks);
+                          if (isExpanded) {
+                            newExpanded.delete(check.name);
+                          } else {
+                            newExpanded.add(check.name);
+                          }
+                          setExpandedChecks(newExpanded);
+                        };
+
+                        return (
+                          <Grid item xs={12} md={6} key={check.name}>
+                            <Box
+                              border={1}
+                              borderColor="divider"
+                              borderRadius={1}
+                              p={2}
+                              height="100%"
+                              display="flex"
+                              flexDirection="column"
+                            >
+                              <Box
+                                display="flex"
+                                justifyContent="space-between"
+                                alignItems="center"
+                                mb={1}
+                              >
+                                <Typography
+                                  variant="subtitle1"
+                                  style={{ fontWeight: 'bold' }}
+                                >
+                                  {check.name}
+                                </Typography>
+                                <Chip
+                                  label={
+                                    <Box
+                                      display="flex"
+                                      alignItems="center"
+                                      style={{ gap: '8px' }}
+                                    >
+                                      <span>
+                                        {check.score >= 0
+                                          ? `${check.score} / 10`
+                                          : 'N/A'}
+                                      </span>
+                                      {check.score === 10 && (
+                                        <CheckIcon
+                                          style={{
+                                            fontSize: '16px',
+                                            marginLeft: '4px',
+                                          }}
+                                        />
+                                      )}
+                                    </Box>
+                                  }
+                                  size="small"
+                                  style={{
+                                    backgroundColor:
+                                      check.score >= 0
+                                        ? getCheckScoreColor(check.score)
+                                        : undefined,
+                                    color:
+                                      check.score >= 0 ? '#ffffff' : undefined,
+                                  }}
+                                />
+                              </Box>
+                              <Typography
+                                variant="body2"
+                                color="textSecondary"
+                                gutterBottom
+                              >
+                                {check.reason}
+                              </Typography>
+                              {check.details && check.details.length > 0 && (
+                                <Box mt={1} position="relative">
+                                  <Box
+                                    style={{
+                                      maxHeight: isExpanded ? 'none' : '200px',
+                                      overflow: isExpanded
+                                        ? 'visible'
+                                        : 'hidden',
+                                      maskImage:
+                                        hasManyDetails && !isExpanded
+                                          ? `linear-gradient(to bottom, black 70%, transparent 100%)`
+                                          : 'none',
+                                      WebkitMaskImage:
+                                        hasManyDetails && !isExpanded
+                                          ? `linear-gradient(to bottom, black 70%, transparent 100%)`
+                                          : 'none',
+                                    }}
+                                  >
+                                    {visibleDetails.map((detail, idx) => (
+                                      <Typography
+                                        key={idx}
+                                        variant="caption"
+                                        color="textSecondary"
+                                        display="block"
+                                      >
+                                        • {detail}
+                                      </Typography>
+                                    ))}
+                                  </Box>
+                                  {hasManyDetails && (
+                                    <>
+                                      <Collapse in={isExpanded} timeout="auto">
+                                        <Box>
+                                          {check
+                                            .details!.slice(MAX_VISIBLE_DETAILS)
+                                            .map((detail, idx) => (
+                                              <Typography
+                                                key={MAX_VISIBLE_DETAILS + idx}
+                                                variant="caption"
+                                                color="textSecondary"
+                                                display="block"
+                                              >
+                                                • {detail}
+                                              </Typography>
+                                            ))}
+                                        </Box>
+                                      </Collapse>
+                                      <Button
+                                        size="small"
+                                        onClick={toggleExpand}
+                                        startIcon={
+                                          isExpanded ? (
+                                            <ExpandLessIcon />
+                                          ) : (
+                                            <ExpandMoreIcon />
+                                          )
+                                        }
+                                        style={{
+                                          marginTop: '8px',
+                                          textTransform: 'none',
+                                        }}
                                       >
                                         {isExpanded
                                           ? 'Show less'

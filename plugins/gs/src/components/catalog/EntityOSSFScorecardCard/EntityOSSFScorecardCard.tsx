@@ -37,7 +37,9 @@ const CardContent = () => {
       const response = await fetch(apiUrl);
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch scorecard data: ${response.statusText}`);
+        throw new Error(
+          `Failed to fetch scorecard data: ${response.statusText}`,
+        );
       }
 
       return response.json();
@@ -76,7 +78,7 @@ const CardContent = () => {
       1: '#af2e02',
       0: '#b40000',
     };
-    
+
     // Round score to nearest integer and clamp between 0-10
     const roundedScore = Math.max(0, Math.min(10, Math.round(score)));
     return colorMap[roundedScore] || '#b40000';
@@ -84,7 +86,11 @@ const CardContent = () => {
 
   return (
     <InfoCard title="OSSF Scorecard">
-      <Box display="flex" alignItems="center" style={{ gap: '12px', marginBottom: '12px' }}>
+      <Box
+        display="flex"
+        alignItems="center"
+        style={{ gap: '12px', marginBottom: '12px' }}
+      >
         <Chip
           label={`${data.score.toFixed(1)} / 10`}
           size="small"
