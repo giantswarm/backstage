@@ -5,6 +5,19 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-01-12
+
+### Added
+
+- Add Helm chart versions history overview.
+
+### Fixed
+
+- Fix ChartPicker and ChartTagPicker to respect initial form value.
+- Fix AutocompleteOption to display label instead of value.
+
+See [./docs/releases/v0.94.0-changelog.md](./docs/releases/v0.94.0-changelog.md) for more information.
+
 ## [0.93.2] - 2026-01-07
 
 ### Changed
@@ -1627,7 +1640,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.93.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.94.0...HEAD
+[0.94.0]: https://github.com/giantswarm/backstage/compare/v0.93.2...v0.94.0
 [0.93.2]: https://github.com/giantswarm/backstage/compare/v0.93.1...v0.93.2
 [0.93.1]: https://github.com/giantswarm/backstage/compare/v0.93.0...v0.93.1
 [0.93.0]: https://github.com/giantswarm/backstage/compare/v0.92.0...v0.93.0

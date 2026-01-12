@@ -1,5 +1,17 @@
 # app
 
+## 0.23.0
+
+### Minor Changes
+
+- f665c62: Add Helm chart versions history.
+
+### Patch Changes
+
+- Updated dependencies [f665c62]
+- Updated dependencies [f665c62]
+  - @giantswarm/backstage-plugin-gs@0.50.0
+
 ## 0.22.7
 
 ### Patch Changes
