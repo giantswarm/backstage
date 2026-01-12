@@ -115,16 +115,29 @@ const ScorecardContent = () => {
     );
   }
 
-  const getScoreColor = (score: number): 'default' | 'primary' | 'secondary' => {
-    if (score >= 8) return 'primary';
-    if (score >= 5) return 'secondary';
-    return 'default';
+  const getScoreColor = (score: number): string => {
+    const colorMap: { [key: number]: string } = {
+      10: '#42a832',
+      9: '#5c9e2c',
+      8: '#6e9326',
+      7: '#7d8821',
+      6: '#887c1b',
+      5: '#927015',
+      4: '#9b630f',
+      3: '#a25509',
+      2: '#a94405',
+      1: '#af2e02',
+      0: '#b40000',
+    };
+    
+    // Round score to nearest integer and clamp between 0-10
+    const roundedScore = Math.max(0, Math.min(10, Math.round(score)));
+    return colorMap[roundedScore] || '#b40000';
   };
 
-  const getCheckScoreColor = (score: number): 'default' | 'primary' | 'secondary' => {
-    if (score >= 8) return 'primary';
-    if (score >= 5) return 'secondary';
-    return 'default';
+  const getCheckScoreColor = (score: number): string => {
+    // Use same color mapping for check scores
+    return getScoreColor(score);
   };
 
   // Ensure viewer URL uses the correct format
@@ -144,9 +157,13 @@ const ScorecardContent = () => {
               </Typography>
               <Chip
                 label={`${data.score.toFixed(1)} / 10`}
-                color={getScoreColor(data.score)}
                 size="medium"
-                style={{ fontSize: '1.2rem', padding: '8px 16px' }}
+                style={{
+                  fontSize: '1.2rem',
+                  padding: '8px 16px',
+                  backgroundColor: getScoreColor(data.score),
+                  color: '#ffffff',
+                }}
               />
             </Box>
             <Typography variant="caption" color="textSecondary" display="block">
@@ -229,8 +246,11 @@ const ScorecardContent = () => {
                             )}
                           </Box>
                         }
-                        color={getCheckScoreColor(check.score)}
                         size="small"
+                        style={{
+                          backgroundColor: check.score >= 0 ? getCheckScoreColor(check.score) : undefined,
+                          color: check.score >= 0 ? '#ffffff' : undefined,
+                        }}
                       />
                     </Box>
                     <Typography variant="body2" color="textSecondary" gutterBottom>
@@ -360,8 +380,11 @@ const ScorecardContent = () => {
                                     )}
                                   </Box>
                                 }
-                                color={getCheckScoreColor(check.score)}
                                 size="small"
+                                style={{
+                                  backgroundColor: check.score >= 0 ? getCheckScoreColor(check.score) : undefined,
+                                  color: check.score >= 0 ? '#ffffff' : undefined,
+                                }}
                               />
                               </Box>
                               <Typography variant="body2" color="textSecondary" gutterBottom>

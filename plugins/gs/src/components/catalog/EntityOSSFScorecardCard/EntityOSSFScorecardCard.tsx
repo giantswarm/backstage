@@ -62,10 +62,24 @@ const CardContent = () => {
     return null;
   }
 
-  const getScoreColor = (score: number): 'default' | 'primary' | 'secondary' => {
-    if (score >= 8) return 'primary';
-    if (score >= 5) return 'secondary';
-    return 'default';
+  const getScoreColor = (score: number): string => {
+    const colorMap: { [key: number]: string } = {
+      10: '#42a832',
+      9: '#5c9e2c',
+      8: '#6e9326',
+      7: '#7d8821',
+      6: '#887c1b',
+      5: '#927015',
+      4: '#9b630f',
+      3: '#a25509',
+      2: '#a94405',
+      1: '#af2e02',
+      0: '#b40000',
+    };
+    
+    // Round score to nearest integer and clamp between 0-10
+    const roundedScore = Math.max(0, Math.min(10, Math.round(score)));
+    return colorMap[roundedScore] || '#b40000';
   };
 
   return (
@@ -73,8 +87,11 @@ const CardContent = () => {
       <Box display="flex" alignItems="center" style={{ gap: '12px', marginBottom: '12px' }}>
         <Chip
           label={`${data.score.toFixed(1)} / 10`}
-          color={getScoreColor(data.score)}
           size="small"
+          style={{
+            backgroundColor: getScoreColor(data.score),
+            color: '#ffffff',
+          }}
         />
       </Box>
       <Link component={RouterLink} to={scorecardUrl}>
