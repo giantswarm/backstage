@@ -38,4 +38,3 @@ export function findLatestStableVersion(
   }
   return sortedVersions[0] ?? null;
 }
-
