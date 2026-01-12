@@ -17,11 +17,11 @@ const CardContent = () => {
   const githubProjectSlug = getGithubProjectSlugFromEntity(entity);
 
   const entityRoute = useRouteRef(entityRouteRef);
-  const scorecardUrl = entityRoute({
+  const scorecardUrl = `${entityRoute({
     kind: entity.kind.toLowerCase(),
     namespace: entity.metadata.namespace?.toLowerCase() ?? 'default',
     name: entity.metadata.name,
-  }) + '/ossf-scorecard';
+  })}/ossf-scorecard`;
 
   const { data, isLoading } = useQuery<ScorecardData>({
     queryKey: ['ossf-scorecard-preview', githubProjectSlug],
