@@ -79,7 +79,7 @@ const MultiChartProvider = ({
 
   return (
     <EntityChartContext.Provider value={value}>
-      <Box mb={2}>
+      <Box mb={3}>
         <ChartSelector
           charts={charts}
           selectedChartRef={selectedChartRef}

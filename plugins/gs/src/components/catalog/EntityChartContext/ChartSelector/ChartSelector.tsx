@@ -1,6 +1,12 @@
 import { useMemo } from 'react';
-import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
 import { Chart } from '../EntityChartContext';
+import { makeStyles, Paper, Tab, Tabs } from '@material-ui/core';
+
+const useStyles = makeStyles(theme => ({
+  tab: {
+    padding: theme.spacing(2, 4),
+  },
+}));
 
 type ChartSelectorProps = {
   charts: Chart[];
@@ -13,6 +19,8 @@ export const ChartSelector = ({
   selectedChartRef,
   onChartChange,
 }: ChartSelectorProps) => {
+  const classes = useStyles();
+
   const items = useMemo(
     () =>
       charts.map(chart => ({
@@ -22,19 +30,29 @@ export const ChartSelector = ({
     [charts],
   );
 
-  const handleChange = (newValue: string | null) => {
+  const handleChange = (_event: React.ChangeEvent<{}>, newValue: string) => {
     if (newValue) {
       onChartChange(newValue);
     }
   };
 
   return (
-    <Autocomplete
-      label="Chart"
-      items={items}
-      selectedValue={selectedChartRef}
-      onChange={handleChange}
-    />
+    <Paper square>
+      <Tabs
+        value={selectedChartRef}
+        indicatorColor="primary"
+        onChange={handleChange}
+        aria-label="Helm charts selector"
+      >
+        {items.map(({ label, value }) => (
+          <Tab
+            key={value}
+            label={label}
+            value={value}
+            className={classes.tab}
+          />
+        ))}
+      </Tabs>
+    </Paper>
   );
 };
-
