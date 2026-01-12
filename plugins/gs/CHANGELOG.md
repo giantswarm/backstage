@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.50.0
+
+### Minor Changes
+
+- f665c62: Add Helm chart versions history.
+
+### Patch Changes
+
+- f665c62: Fix ChartPicker and ChartTagPicker to respect initial form value.
+- Updated dependencies [f665c62]
+  - @giantswarm/backstage-plugin-ui-react@0.7.1
+
 ## 0.49.2
 
 ### Patch Changes

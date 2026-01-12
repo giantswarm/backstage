@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.7.1
+
+### Patch Changes
+
+- f665c62: Fix AutocompleteOption to display label instead of value.
+
 ## 0.7.0
 
 ### Minor Changes
