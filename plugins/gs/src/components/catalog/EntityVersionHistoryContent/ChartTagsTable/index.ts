@@ -1,0 +1,1 @@
+export { ChartTagsTable } from './ChartTagsTable';

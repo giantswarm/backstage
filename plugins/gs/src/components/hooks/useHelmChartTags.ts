@@ -1,10 +1,11 @@
 import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import { useIsRestoring, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { containerRegistryApiRef } from '../../apis/containerRegistry';
 import { parseChartRef } from '../utils/parseChartRef';
 
 export function useHelmChartTags(chartRef: string | undefined) {
+  const isRestoring = useIsRestoring();
   const containerRegistryApi = useApi(containerRegistryApiRef);
 
   const { registry, repository } = useMemo(() => {
@@ -24,13 +25,15 @@ export function useHelmChartTags(chartRef: string | undefined) {
     enabled: Boolean(registry && repository),
   });
 
+  const { tags, latestStableVersion } = data ?? {};
+
   return useMemo(
     () => ({
-      tags: data?.tags,
-      latestStableVersion: data?.latestStableVersion,
-      isLoading,
+      tags,
+      latestStableVersion,
+      isLoading: isRestoring || isLoading,
       error,
     }),
-    [data, isLoading, error],
+    [tags, latestStableVersion, isRestoring, isLoading, error],
   );
 }

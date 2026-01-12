@@ -1,0 +1,1 @@
+export { EntityVersionHistoryCard } from './EntityVersionHistoryCard';
