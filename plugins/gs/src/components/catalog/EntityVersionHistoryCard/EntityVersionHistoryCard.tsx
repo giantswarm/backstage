@@ -80,39 +80,30 @@ const VersionHistoryCardContent = () => {
     selectedChart.ref,
   );
 
-  if (isLoading) {
-    return <Progress />;
-  }
+  const renderContent = () => {
+    if (isLoading) {
+      return <Progress />;
+    }
 
-  if (error) {
+    if (error) {
+      return (
+        <Typography color="error">
+          Failed to load tags: {error.message}
+        </Typography>
+      );
+    }
+
+    if (!tags || tags.length === 0) {
+      return (
+        <Typography variant="body2" color="textSecondary">
+          No tags found
+        </Typography>
+      );
+    }
+
+    const displayedTags = tags.slice(0, MAX_TAGS_TO_DISPLAY);
+
     return (
-      <Typography color="error">
-        Failed to load tags: {error.message}
-      </Typography>
-    );
-  }
-
-  if (!tags || tags.length === 0) {
-    return (
-      <Typography variant="body2" color="textSecondary">
-        No tags found
-      </Typography>
-    );
-  }
-
-  const displayedTags = tags.slice(0, MAX_TAGS_TO_DISPLAY);
-
-  return (
-    <InfoCard
-      title="Version History"
-      action={
-        <Box mt={1} mr={1} pt={1}>
-          <Link component={RouterLink} to="version-history">
-            <Typography variant="body1">View all →</Typography>
-          </Link>
-        </Box>
-      }
-    >
       <List className={classes.list}>
         {displayedTags.map(tagInfo => {
           const isLatest = tagInfo.tag === latestStableVersion;
@@ -136,6 +127,21 @@ const VersionHistoryCardContent = () => {
           );
         })}
       </List>
+    );
+  };
+
+  return (
+    <InfoCard
+      title="Version History"
+      action={
+        <Box mt={1} mr={1} pt={1}>
+          <Link component={RouterLink} to="version-history">
+            <Typography variant="body1">View all →</Typography>
+          </Link>
+        </Box>
+      }
+    >
+      {renderContent()}
     </InfoCard>
   );
 };
