@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { FormHelperText, Grid, TextField, Typography } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ChartTagPickerProps, ChartTagPickerValue } from './schema';
@@ -27,10 +27,6 @@ const ChartTagPickerField = ({
   chartRef,
   onChange,
 }: ChartTagPickerFieldProps) => {
-  const [selectedVersion, setSelectedVersion] = useState<string | null>(
-    value ?? null,
-  );
-
   const {
     tags,
     latestStableVersion,
@@ -65,27 +61,37 @@ const ChartTagPickerField = ({
       });
   }, [tags]);
 
+  // Derive selected version from value prop - this is a controlled component
+  const selectedVersion = value ?? null;
+
   useEffect(() => {
-    if (sortedVersions.length === 0) {
-      setSelectedVersion(null);
-      onChange(undefined);
+    // Don't do anything while still loading or waiting for tags
+    if (isLoading || !tags) {
+      return;
     }
 
-    if (
-      (!selectedVersion && sortedVersions.length > 0) ||
-      (selectedVersion && !sortedVersions.includes(selectedVersion))
-    ) {
-      if (!latestStableVersion) {
-        return;
+    // If no versions available (tags loaded but empty), clear selection
+    if (sortedVersions.length === 0) {
+      if (value !== undefined) {
+        onChange(undefined);
       }
-      setSelectedVersion(latestStableVersion);
-      onChange(latestStableVersion);
+      return;
     }
-  }, [sortedVersions, selectedVersion, onChange, latestStableVersion]);
+
+    // If current value is valid, keep it
+    if (value && sortedVersions.includes(value)) {
+      return;
+    }
+
+    // Otherwise, select the latest stable version (or first option as fallback)
+    const defaultVersion = latestStableVersion ?? sortedVersions[0];
+    if (defaultVersion) {
+      onChange(defaultVersion);
+    }
+  }, [sortedVersions, onChange, isLoading, tags, value, latestStableVersion]);
 
   const handleChange = useCallback(
     (_: any, newValue: string | null) => {
-      setSelectedVersion(newValue);
       onChange(newValue ?? undefined);
     },
     [onChange],
