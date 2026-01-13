@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.95.0] - 2026-01-13
 
+### Added
+
+- Add Helm chart README overview.
+
 See [./docs/releases/v0.95.0-changelog.md](./docs/releases/v0.95.0-changelog.md) for more information.
 
 ## [0.94.0] - 2026-01-12
