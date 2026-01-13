@@ -5,9 +5,73 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-01-13
+
+### Added
+
+- Add Helm chart README overview.
+
+See [./docs/releases/v0.95.0-changelog.md](./docs/releases/v0.95.0-changelog.md) for more information.
+
+## [0.94.0] - 2026-01-12
+
+### Added
+
+- Add Helm chart versions history overview.
+
+### Fixed
+
+- Fix ChartPicker and ChartTagPicker to respect initial form value.
+- Fix AutocompleteOption to display label instead of value.
+
+See [./docs/releases/v0.94.0-changelog.md](./docs/releases/v0.94.0-changelog.md) for more information.
+
+## [0.93.2] - 2026-01-07
+
 ### Changed
 
+- Expose `isManagementCluster` value in the `ClusterPicker` scaffolder field.
+- Improve `formatTemplateString` utility to support `clusterNamePrefix` placeholders.
+
+See [./docs/releases/v0.93.2-changelog.md](./docs/releases/v0.93.2-changelog.md) for more information.
+
+## [0.93.1] - 2026-01-06
+
+### Changed
+
+- Configuration docs component in the scaffolder custom step has been refactored.
+
+### Fixed
+
+- Syntax highlighting in the YamlEditor component has been fixed.
+
+See [./docs/releases/v0.93.1-changelog.md](./docs/releases/v0.93.1-changelog.md) for more information.
+
+## [0.93.0] - 2026-01-06
+
+### Changed
+
+- About card on the cluster details page has been improved.
+- Policy compliance component has been removed from the cluster details page.
+- Show details for GitRepository, OCIRepository, HelmRepository in Flux plugin.
+- Allow to install only deployable applications.
+
+See [./docs/releases/v0.93.0-changelog.md](./docs/releases/v0.93.0-changelog.md) for more information.
+
+### Added
+
+- Gateway API support in Helm chart with HTTPRoute and Envoy Gateway SecurityPolicy.
+- New `route` configuration section in Helm values for Gateway API HTTPRoute.
+- Configurable `ingress.enabled` and `ingress.className` in Helm chart.
+
+## [0.92.0] - 2025-12-18
+
+### Changed
+
+- Improve custom scaffolder layout to make it possible to show chart configuration documentation.
 - Migrate Chart.yaml annotations to new format as per https://docs.giantswarm.io/reference/platform-api/chart-metadata/
+
+See [./docs/releases/v0.92.0-changelog.md](./docs/releases/v0.92.0-changelog.md) for more information.
 
 ## [0.91.1] - 2025-12-11
 
@@ -1584,7 +1648,13 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.91.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.95.0...HEAD
+[0.95.0]: https://github.com/giantswarm/backstage/compare/v0.94.0...v0.95.0
+[0.94.0]: https://github.com/giantswarm/backstage/compare/v0.93.2...v0.94.0
+[0.93.2]: https://github.com/giantswarm/backstage/compare/v0.93.1...v0.93.2
+[0.93.1]: https://github.com/giantswarm/backstage/compare/v0.93.0...v0.93.1
+[0.93.0]: https://github.com/giantswarm/backstage/compare/v0.92.0...v0.93.0
+[0.92.0]: https://github.com/giantswarm/backstage/compare/v0.91.1...v0.92.0
 [0.91.1]: https://github.com/giantswarm/backstage/compare/v0.91.0...v0.91.1
 [0.91.0]: https://github.com/giantswarm/backstage/compare/v0.90.2...v0.91.0
 [0.90.2]: https://github.com/giantswarm/backstage/compare/v0.90.1...v0.90.2

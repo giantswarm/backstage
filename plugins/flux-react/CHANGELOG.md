@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.6.3
+
+### Patch Changes
+
+- 578b11d: Show details for GitRepository, OCIRepository, HelmRepository
+
 ## 0.6.2
 
 ### Patch Changes

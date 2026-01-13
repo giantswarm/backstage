@@ -1,10 +1,18 @@
 import { createApiRef } from '@backstage/core-plugin-api';
 
 /**
+ * Tag information returned from the container registry.
+ */
+export interface TagInfo {
+  tag: string;
+  createdAt: string | null;
+}
+
+/**
  * Response from the container registry tags endpoint.
  */
 export interface TagsResponse {
-  tags: string[];
+  tags: TagInfo[];
   latestStableVersion: string | null;
 }
 

@@ -62,6 +62,11 @@ import {
   isEntityGSKratixResource,
   isEntityGSDeploymentsAvailable,
   EntityGSAppDeploymentCard,
+  EntityGSVersionHistoryContent,
+  EntityGSVersionHistoryCard,
+  EntityGSReadmeCard,
+  EntityGSChartProvider,
+  isEntityGSVersionHistoryAvailable,
 } from '@giantswarm/backstage-plugin-gs';
 
 function isLinksAvailable(entity: Entity) {
@@ -71,10 +76,15 @@ function isLinksAvailable(entity: Entity) {
   return false;
 }
 
-function isHelmChartAvailable(entity: Entity) {
+function isHelmChart(entity: Entity) {
+  const tags = entity?.metadata?.tags ?? [];
+  return tags.includes('helmchart');
+}
+
+function isDeployable(entity: Entity) {
   const tags = entity?.metadata?.tags ?? [];
 
-  return tags.includes('helm-chart') || tags.includes('helmchart');
+  return tags.includes('helmchart-deployable');
 }
 
 const circleCIContent = (
@@ -132,35 +142,68 @@ const entityWarningContent = (
 );
 
 const overviewContent = (
-  <Grid container spacing={3} alignItems="stretch">
-    {entityWarningContent}
-    <Grid item md={8}>
-      <EntityAboutCard variant="gridItem" />
-    </Grid>
+  <EntitySwitch renderMultipleMatches="first">
+    <EntitySwitch.Case if={isHelmChart}>
+      <EntityGSChartProvider>
+        <Grid container spacing={3} alignItems="stretch">
+          {entityWarningContent}
+          <Grid item md={8}>
+            <EntityAboutCard variant="gridItem" />
+          </Grid>
 
-    <Grid item md={4} xs={12}>
+          <Grid item md={4} xs={12}>
+            <Grid container spacing={3} alignItems="stretch">
+              <EntitySwitch renderMultipleMatches="all">
+                <EntitySwitch.Case if={isDeployable}>
+                  <Grid item xs={12}>
+                    <EntityGSAppDeploymentCard />
+                  </Grid>
+                </EntitySwitch.Case>
+
+                <EntitySwitch.Case if={isLinksAvailable}>
+                  <Grid item xs={12}>
+                    <EntityLinksCard />
+                  </Grid>
+                </EntitySwitch.Case>
+              </EntitySwitch>
+            </Grid>
+          </Grid>
+
+          <Grid item md={8} xs={12}>
+            <EntityGSReadmeCard />
+          </Grid>
+
+          <Grid item md={8} xs={12}>
+            <EntityGSVersionHistoryCard />
+          </Grid>
+        </Grid>
+      </EntityGSChartProvider>
+    </EntitySwitch.Case>
+    <EntitySwitch.Case>
       <Grid container spacing={3} alignItems="stretch">
-        <EntitySwitch>
-          <EntitySwitch.Case if={isHelmChartAvailable}>
-            <Grid item xs={12}>
-              <EntityGSAppDeploymentCard />
-            </Grid>
-          </EntitySwitch.Case>
-        </EntitySwitch>
-        <EntitySwitch>
-          <EntitySwitch.Case if={isLinksAvailable}>
-            <Grid item xs={12}>
-              <EntityLinksCard />
-            </Grid>
-          </EntitySwitch.Case>
-        </EntitySwitch>
-      </Grid>
-    </Grid>
+        {entityWarningContent}
+        <Grid item md={8}>
+          <EntityAboutCard variant="gridItem" />
+        </Grid>
 
-    <Grid item md={12} xs={12}>
-      <EntityCatalogGraphCard variant="gridItem" height={400} />
-    </Grid>
-  </Grid>
+        <Grid item md={4} xs={12}>
+          <Grid container spacing={3} alignItems="stretch">
+            <EntitySwitch>
+              <EntitySwitch.Case if={isLinksAvailable}>
+                <Grid item xs={12}>
+                  <EntityLinksCard />
+                </Grid>
+              </EntitySwitch.Case>
+            </EntitySwitch>
+          </Grid>
+        </Grid>
+
+        <Grid item md={12} xs={12}>
+          <EntityCatalogGraphCard variant="gridItem" height={400} />
+        </Grid>
+      </Grid>
+    </EntitySwitch.Case>
+  </EntitySwitch>
 );
 
 const baseEntityPage = (
@@ -202,6 +245,14 @@ const componentEntityPage = (
       title="Deployments"
     >
       <EntityGSDeploymentsContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route
+      if={isEntityGSVersionHistoryAvailable}
+      path="/version-history"
+      title="Version History"
+    >
+      <EntityGSVersionHistoryContent />
     </EntityLayout.Route>
 
     <FeatureFlagged with="show-kubernetes-resources">

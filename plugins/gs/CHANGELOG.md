@@ -1,5 +1,54 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.51.0
+
+### Minor Changes
+
+- 4fd2838: Add Helm chart readme overview.
+
+## 0.50.0
+
+### Minor Changes
+
+- f665c62: Add Helm chart versions history.
+
+### Patch Changes
+
+- f665c62: Fix ChartPicker and ChartTagPicker to respect initial form value.
+- Updated dependencies [f665c62]
+  - @giantswarm/backstage-plugin-ui-react@0.7.1
+
+## 0.49.2
+
+### Patch Changes
+
+- 9059740: Expose isManagementCluster value in ClusterPicker scaffolder field.
+- 9059740: Improve formatTemplateString utility to replace clusterNamePrefix placeholders.
+
+## 0.49.1
+
+### Patch Changes
+
+- 2dfca83: Configuration docs refactoring.
+
+## 0.49.0
+
+### Minor Changes
+
+- 39eb4f8: Improve cluster details (about card)
+
+### Patch Changes
+
+- 8812d57: Remove policy compliance component from cluster details page
+- Updated dependencies [578b11d]
+  - @giantswarm/backstage-plugin-flux-react@0.6.3
+
+## 0.48.0
+
+### Minor Changes
+
+- 5e8c7e3: Add YAML values docs to the custom scaffolder step layout.
+
 ## 0.47.1
 
 ### Patch Changes

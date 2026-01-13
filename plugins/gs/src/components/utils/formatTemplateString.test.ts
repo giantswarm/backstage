@@ -68,6 +68,37 @@ describe('formatTemplateString', () => {
     });
   });
 
+  describe('when template string contains clusterNamePrefix placeholders', () => {
+    it('replaces clusterNamePrefix placeholders with the prefix of the cluster name', () => {
+      const data = {
+        cluster: {
+          clusterName: 'TEST_CLUSTER_NAME',
+        },
+      };
+
+      expect(
+        formatTemplateString('test-${{clusterNamePrefix(cluster)}}test', {
+          data,
+        }),
+      ).toEqual('test-TEST_CLUSTER_NAME-test');
+    });
+
+    it('ignores clusterNamePrefix placeholders if cluster is a management cluster', () => {
+      const data = {
+        cluster: {
+          clusterName: 'TEST_CLUSTER_NAME',
+          isManagementCluster: true,
+        },
+      };
+
+      expect(
+        formatTemplateString('test-${{clusterNamePrefix(cluster)}}test', {
+          data,
+        }),
+      ).toEqual('test-test');
+    });
+  });
+
   describe('when template string contains data placeholders', () => {
     it('replaces data placeholders with provided values', () => {
       const data = {

@@ -1,0 +1,93 @@
+---
+description: Component file structure and organization patterns for React components in this repository
+alwaysApply: false
+globs:
+  - '**/components/**/*.tsx'
+  - '**/components/**/*.ts'
+---
+
+## Component Directory Structure
+
+Each React component should be placed in its own directory with the same name as the component. The directory must contain:
+
+1. **Main component file**: `ComponentName.tsx` - Contains the component implementation
+2. **Index file**: `index.ts` - Re-exports the component using named exports
+
+### Example Structure
+
+```
+components/
+  MyComponent/
+    MyComponent.tsx      # Component implementation
+    index.ts             # Named export: export { MyComponent } from './MyComponent';
+  AnotherComponent/
+    AnotherComponent.tsx
+    index.ts
+```
+
+### Index File Pattern
+
+The `index.ts` file should use named exports (not default exports):
+
+```typescript
+// ✅ Correct - named export
+export { MyComponent } from './MyComponent';
+
+// ✅ Correct - with types
+export { MyComponent } from './MyComponent';
+export type { MyComponentProps } from './MyComponent';
+
+// ❌ Incorrect - default export
+export { default as MyComponent } from './MyComponent';
+```
+
+### Additional Files
+
+Component directories may also contain:
+
+- **Helper files**: `columns.tsx`, `helpers.ts`, `types.ts` for component-specific utilities
+- **Test files**: `MyComponent.test.tsx` for unit tests
+- **Hooks**: `useMyComponent.ts` for component-specific hooks
+- **Subcomponents**: Nested directories following the same pattern
+
+### Example with Additional Files
+
+```
+components/
+  DataTable/
+    DataTable.tsx        # Main component
+    columns.tsx          # Column definitions
+    helpers.ts           # Helper functions
+    types.ts             # Type definitions
+    index.ts             # export { DataTable } from './DataTable';
+```
+
+### Importing Components
+
+When importing components from other locations, import from the directory (which resolves to `index.ts`):
+
+```typescript
+// ✅ Correct - import from directory
+import { MyComponent } from '../MyComponent';
+import { ChartSelector } from './ChartSelector';
+
+// ❌ Incorrect - import directly from file
+import { MyComponent } from '../MyComponent/MyComponent';
+```
+
+### Barrel Exports
+
+Parent directories should have their own `index.ts` that re-exports child components:
+
+```typescript
+// components/charts/index.ts
+export { ChartProvider, useCurrentChart } from './ChartContext';
+export type { Chart, ChartProviderProps } from './ChartContext';
+export { ChartSelector } from './ChartSelector';
+```
+
+This allows clean imports from the parent directory:
+
+```typescript
+import { ChartProvider, useCurrentChart, ChartSelector } from '../../charts';
+```

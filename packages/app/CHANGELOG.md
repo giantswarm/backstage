@@ -1,5 +1,52 @@
 # app
 
+## 0.24.0
+
+### Minor Changes
+
+- 4fd2838: Add Helm chart readme overview.
+
+### Patch Changes
+
+- Updated dependencies [4fd2838]
+  - @giantswarm/backstage-plugin-gs@0.51.0
+
+## 0.23.0
+
+### Minor Changes
+
+- f665c62: Add Helm chart versions history.
+
+### Patch Changes
+
+- Updated dependencies [f665c62]
+- Updated dependencies [f665c62]
+  - @giantswarm/backstage-plugin-gs@0.50.0
+
+## 0.22.7
+
+### Patch Changes
+
+- 590fcac: Fix syntax highlighting in the YamlEditor component.
+- Updated dependencies [2dfca83]
+  - @giantswarm/backstage-plugin-gs@0.49.1
+
+## 0.22.6
+
+### Patch Changes
+
+- b2d62f8: Allow to install only deployable applications.
+- Updated dependencies [8812d57]
+- Updated dependencies [39eb4f8]
+  - @giantswarm/backstage-plugin-gs@0.49.0
+
+## 0.22.5
+
+### Patch Changes
+
+- Updated dependencies [5e8c7e3]
+  - @giantswarm/backstage-plugin-gs@0.48.0
+
 ## 0.22.4
 
 ### Patch Changes

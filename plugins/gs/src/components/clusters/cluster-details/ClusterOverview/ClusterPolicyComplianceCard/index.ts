@@ -1,1 +1,0 @@
-export { ClusterPolicyComplianceCard } from './ClusterPolicyComplianceCard';

@@ -40,6 +40,6 @@ export const AutocompleteOption = memo((props: Props) => {
       onClick={event => event.preventDefault()}
     />
   ) : (
-    value
+    label
   );
 });

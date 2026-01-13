@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { FormHelperText, Grid, TextField, Typography } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ChartPickerProps, ChartPickerValue } from './schema';
@@ -28,10 +28,6 @@ const ChartPickerField = ({
   entityRef,
   onChange,
 }: ChartPickerFieldProps) => {
-  const [selectedChart, setSelectedChart] = useState<string | null>(
-    value ?? null,
-  );
-
   const { entity, isLoading: isLoadingEntity } =
     useCatalogEntityByRef(entityRef);
 
@@ -45,24 +41,34 @@ const ChartPickerField = ({
     return charts.map(chart => chart.ref);
   }, [entity]);
 
+  // Derive selected chart from value prop - this is a controlled component
+  const selectedChart = value ?? null;
+
   useEffect(() => {
-    if (chartOptions.length === 0) {
-      setSelectedChart(null);
-      onChange(undefined);
+    // Don't do anything while still loading or waiting for entity
+    if (isLoadingEntity || !entity) {
+      return;
     }
 
-    if (
-      (!selectedChart && chartOptions.length > 0) ||
-      (selectedChart && !chartOptions.includes(selectedChart))
-    ) {
-      setSelectedChart(chartOptions[0]);
-      onChange(chartOptions[0]);
+    // If no options available (entity loaded but has no charts), clear selection
+    if (chartOptions.length === 0) {
+      if (value !== undefined) {
+        onChange(undefined);
+      }
+      return;
     }
-  }, [chartOptions, selectedChart, onChange]);
+
+    // If current value is valid, keep it
+    if (value && chartOptions.includes(value)) {
+      return;
+    }
+
+    // Otherwise, select the first option
+    onChange(chartOptions[0]);
+  }, [chartOptions, onChange, isLoadingEntity, entity, value]);
 
   const handleChange = useCallback(
     (_: any, newValue: string | null) => {
-      setSelectedChart(newValue);
       onChange(newValue ?? undefined);
     },
     [onChange],

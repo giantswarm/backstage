@@ -65,3 +65,18 @@ database:
     clusterNameSuffix: cnpg
     image: postgresql:15
     storageSize: 10Gi
+
+# Explicitly enable traditional Ingress (default)
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-giantswarm
+    kubernetes.io/tls-acme: 'true'
+    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
+  hostnames:
+    - backstage.example.com
+
+# Explicitly disable Gateway API route
+route:
+  enabled: false
