@@ -64,6 +64,7 @@ import {
   EntityGSAppDeploymentCard,
   EntityGSVersionHistoryContent,
   EntityGSVersionHistoryCard,
+  EntityGSReadmeCard,
   EntityGSChartProvider,
   isEntityGSVersionHistoryAvailable,
 } from '@giantswarm/backstage-plugin-gs';
@@ -166,6 +167,10 @@ const overviewContent = (
                 </EntitySwitch.Case>
               </EntitySwitch>
             </Grid>
+          </Grid>
+
+          <Grid item md={8} xs={12}>
+            <EntityGSReadmeCard />
           </Grid>
 
           <Grid item md={8} xs={12}>
