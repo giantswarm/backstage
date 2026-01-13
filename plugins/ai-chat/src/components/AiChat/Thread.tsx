@@ -14,7 +14,7 @@ import Tooltip from '@material-ui/core/Tooltip';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import SendIcon from '@material-ui/icons/Send';
 import StopIcon from '@material-ui/icons/Stop';
-import ContentCopyIcon from '@material-ui/icons/FileCopy';
+import ContentCopyIcon from '@material-ui/icons/FileCopyOutlined';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
@@ -41,7 +41,7 @@ const BranchPicker = () => {
   return (
     <BranchPickerPrimitive.Root
       hideWhenSingleBranch
-      className={classes.messageActions}
+      className={classes.branchPicker}
     >
       <BranchPickerPrimitive.Previous>
         <Tooltip title="Previous">
@@ -50,7 +50,7 @@ const BranchPicker = () => {
           </IconButton>
         </Tooltip>
       </BranchPickerPrimitive.Previous>
-      <Typography variant="caption">
+      <Typography variant="subtitle2" color="textSecondary">
         <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
       </Typography>
       <BranchPickerPrimitive.Next>
@@ -71,7 +71,9 @@ const AssistantActionBar = () => {
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
+      // autohide="never"
       autohide="not-last"
+      autohideFloat="single-branch"
       className={classes.messageActions}
     >
       <ActionBarPrimitive.Copy
@@ -131,8 +133,10 @@ const AssistantMessage = () => {
           </div>
         </MessagePrimitive.Error>
       </div>
-      <AssistantActionBar />
-      <BranchPicker />
+      <div className={classes.messageActionsContainer}>
+        <BranchPicker />
+        <AssistantActionBar />
+      </div>
     </MessagePrimitive.Root>
   );
 };
@@ -176,6 +180,8 @@ const Composer = () => {
         <ComposerPrimitive.Input asChild>
           <TextField
             variant="outlined"
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
             size="small"
             fullWidth
             multiline

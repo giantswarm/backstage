@@ -6,9 +6,10 @@ export const useStyles = makeStyles((theme: Theme) =>
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      maxHeight: 'calc(100vh - 200px)',
+      maxWidth: '600px',
       minHeight: '500px',
       backgroundColor: theme.palette.background.paper,
+      boxShadow: theme.shadows[2],
       borderRadius: theme.shape.borderRadius,
       overflow: 'hidden',
     },
@@ -19,6 +20,9 @@ export const useStyles = makeStyles((theme: Theme) =>
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(2),
+      '& > div': {
+        position: 'relative',
+      },
     },
     welcomeContainer: {
       flex: 1,
@@ -39,21 +43,13 @@ export const useStyles = makeStyles((theme: Theme) =>
       color: theme.palette.text.secondary,
     },
     userMessage: {
-      alignSelf: 'flex-end',
-      maxWidth: '80%',
-      backgroundColor: theme.palette.primary.main,
-      color: theme.palette.primary.contrastText,
-      padding: theme.spacing(1.5, 2),
-      borderRadius: theme.spacing(2),
-      borderBottomRightRadius: theme.spacing(0.5),
-    },
-    assistantMessage: {
-      alignSelf: 'flex-start',
-      maxWidth: '80%',
+      justifySelf: 'flex-end',
+      maxWidth: 'calc(100% - 65px)',
       backgroundColor: theme.palette.background.default,
       padding: theme.spacing(1.5, 2),
-      borderRadius: theme.spacing(2),
-      borderBottomLeftRadius: theme.spacing(0.5),
+      borderRadius: theme.shape.borderRadius,
+    },
+    assistantMessage: {
       '& pre': {
         backgroundColor: theme.palette.type === 'dark' ? '#1e1e1e' : '#f5f5f5',
         padding: theme.spacing(1.5),
@@ -82,7 +78,7 @@ export const useStyles = makeStyles((theme: Theme) =>
     composerForm: {
       display: 'flex',
       gap: theme.spacing(1),
-      alignItems: 'flex-end',
+      alignItems: 'center',
     },
     composerInput: {
       flex: 1,
@@ -107,17 +103,26 @@ export const useStyles = makeStyles((theme: Theme) =>
         backgroundColor: theme.palette.error.dark,
       },
     },
+    messageActionsContainer: {
+      display: 'flex',
+      gap: theme.spacing(1),
+      paddingTop: theme.spacing(0.5),
+    },
+    branchPicker: {
+      display: 'inline-flex',
+      gap: theme.spacing(0.5),
+      alignItems: 'center',
+    },
     messageActions: {
       display: 'flex',
       gap: theme.spacing(0.5),
-      marginTop: theme.spacing(0.5),
-      opacity: 0.6,
-      '&:hover': {
-        opacity: 1,
+
+      '&[data-floating]': {
+        position: 'absolute',
+        zIndex: 1,
       },
     },
     actionButton: {
-      padding: theme.spacing(0.5),
       minWidth: 'auto',
     },
     loadingIndicator: {

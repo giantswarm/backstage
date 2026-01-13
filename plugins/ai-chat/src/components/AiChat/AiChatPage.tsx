@@ -85,7 +85,7 @@ export const AiChatPage = () => {
   });
 
   return (
-    <Page themeId="tool">
+    <Page themeId="service">
       <Header title="AI Chat" subtitle="Chat with AI assistant" />
       <Content>
         <AssistantRuntimeProvider runtime={runtime}>

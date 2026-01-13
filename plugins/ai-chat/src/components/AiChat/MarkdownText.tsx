@@ -98,7 +98,7 @@ const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
       </Typography>
     ),
     p: ({ children }) => (
-      <Typography variant="body1" className={classes.paragraph}>
+      <Typography variant="body2" className={classes.paragraph}>
         {children}
       </Typography>
     ),
