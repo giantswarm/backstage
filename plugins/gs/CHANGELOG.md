@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.51.0
+
+### Minor Changes
+
+- 4fd2838: Add Helm chart readme overview.
+
 ## 0.50.0
 
 ### Minor Changes

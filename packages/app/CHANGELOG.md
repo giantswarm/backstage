@@ -1,5 +1,16 @@
 # app
 
+## 0.24.0
+
+### Minor Changes
+
+- 4fd2838: Add Helm chart readme overview.
+
+### Patch Changes
+
+- Updated dependencies [4fd2838]
+  - @giantswarm/backstage-plugin-gs@0.51.0
+
 ## 0.23.0
 
 ### Minor Changes
