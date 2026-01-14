@@ -3,6 +3,7 @@ import {
   makeAssistantTool,
   tool,
 } from '@assistant-ui/react';
+import { DevToolsModal } from '@assistant-ui/react-devtools';
 import { Content, Header, Page } from '@backstage/core-components';
 import {
   useApi,
@@ -89,6 +90,7 @@ export const AiChatPage = () => {
       <Header title="AI Chat" subtitle="Chat with AI assistant" />
       <Content>
         <AssistantRuntimeProvider runtime={runtime}>
+          <DevToolsModal />
           <KubernetesAuthTool />
           <Thread />
         </AssistantRuntimeProvider>
