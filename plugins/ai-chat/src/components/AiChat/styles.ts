@@ -6,7 +6,7 @@ export const useStyles = makeStyles((theme: Theme) =>
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      maxWidth: '600px',
+      maxWidth: '800px',
       minHeight: '500px',
       backgroundColor: theme.palette.background.paper,
       boxShadow: theme.shadows[2],
