@@ -17,13 +17,8 @@ export function extractKubernetesAuthTokens(
 
   for (const message of messages) {
     for (const part of message.parts) {
-      const partOutput = part.output as KubernetesAuthOutput;
-      if (
-        part.type === 'tool-kubernetesAuth' &&
-        partOutput &&
-        partOutput.clusterName &&
-        partOutput.token
-      ) {
+      if (part.type === 'tool-kubernetesAuth' && part.output) {
+        const partOutput = part.output as KubernetesAuthOutput;
         tokensByCluster.set(partOutput.clusterName, partOutput.token);
       }
     }

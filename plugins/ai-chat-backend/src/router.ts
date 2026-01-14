@@ -3,7 +3,7 @@ import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createOpenAI } from '@ai-sdk/openai';
-import { convertToModelMessages, streamText, UIMessage } from 'ai';
+import { convertToModelMessages, streamText, ToolSet, UIMessage } from 'ai';
 import { z } from 'zod';
 import express from 'express';
 import Router from 'express-promise-router';
@@ -137,9 +137,9 @@ export async function createRouter(
     const { messages, tools } = parsed.data;
 
     const mcpTools = await getMcpTools(config);
-    console.log('==================MCP TOOLS====================');
-    console.log(mcpTools);
-    console.log('===============================================');
+    logger.debug('==================MCP TOOLS====================');
+    logger.debug(JSON.stringify(mcpTools));
+    logger.debug('===============================================');
 
     const kubernetesAuthTokens = extractKubernetesAuthTokens(messages);
     const kubernetesMcpTools = await getKubernetesMcpTools(
@@ -147,9 +147,9 @@ export async function createRouter(
       config,
     );
 
-    console.log('==================KUBERNETES MCP TOOLS====================');
-    console.log(kubernetesMcpTools);
-    console.log('===============================================');
+    logger.debug('==================KUBERNETES MCP TOOLS====================');
+    logger.debug(JSON.stringify(kubernetesMcpTools));
+    logger.debug('===============================================');
 
     try {
       const result = streamText({
@@ -161,7 +161,7 @@ export async function createRouter(
           ...frontendTools(tools),
           ...mcpTools,
           ...kubernetesMcpTools,
-        },
+        } as ToolSet,
       });
 
       // Set headers for streaming

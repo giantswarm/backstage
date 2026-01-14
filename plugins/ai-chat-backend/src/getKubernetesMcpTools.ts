@@ -6,9 +6,9 @@ import { ClusterToken } from './extractKubernetesAuthTokens';
 export async function getKubernetesMcpTools(
   kubernetesAuthTokens: ClusterToken[],
   config: Config,
-) {
+): Promise<ToolSet> {
   if (kubernetesAuthTokens.length === 0) {
-    return [];
+    return {};
   }
 
   const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
