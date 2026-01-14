@@ -28,16 +28,19 @@
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/plugin-auth-backend": "backstage:^",
+    "@backstage/plugin-auth-backend-module-oauth2-provider": "backstage:^",
     "@backstage/plugin-auth-backend-module-oidc-provider": "backstage:^",
     "@backstage/plugin-auth-node": "backstage:^",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "passport-oauth2": "^1.8.0"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
-    "@types/express": "^5.0.0"
+    "@types/express": "^5.0.0",
+    "@types/passport-oauth2": "^1"
   },
   "files": [
     "dist"

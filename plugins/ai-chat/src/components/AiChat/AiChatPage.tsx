@@ -50,17 +50,22 @@ export const AiChatPage = () => {
       clusterName: z.string(),
     }),
     execute: async ({ clusterName }) => {
-      const cluster = await kubernetesApi.getCluster(clusterName);
+      // console.log();
+      // const cluster = await kubernetesApi.getCluster(clusterName);
 
-      if (!cluster) {
-        return {};
-      }
+      // if (!cluster) {
+      //   return {};
+      // }
 
-      const { authProvider, oidcTokenProvider } = cluster;
+      // const { authProvider, oidcTokenProvider } = cluster;
+      // const credentials = await kubernetesAuthProvidersApi.getCredentials(
+      //   authProvider === 'oidc'
+      //     ? `${authProvider}.${oidcTokenProvider}`
+      //     : authProvider,
+      // );
+      console.log('kubernetesAuthProvidersApi', kubernetesAuthProvidersApi);
       const credentials = await kubernetesAuthProvidersApi.getCredentials(
-        authProvider === 'oidc'
-          ? `${authProvider}.${oidcTokenProvider}`
-          : authProvider,
+        'oidc.oauth-graveler-mcp-kubernetes',
       );
 
       return {
