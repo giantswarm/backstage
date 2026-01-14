@@ -14,6 +14,8 @@ import {
   oidcAuthenticator,
   OidcAuthResult,
 } from '@backstage/plugin-auth-backend-module-oidc-provider';
+import express from 'express';
+import Router from 'express-promise-router';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 
@@ -76,6 +78,49 @@ const customSignInResolver: SignInResolver<
   return signInWithGuestUser(ctx);
 };
 
+/**
+ * Creates a router with the Client ID Metadata Document (CIMD) endpoint.
+ *
+ * @param baseUrl - The base URL of the backend (e.g., http://localhost:7007)
+ * @returns Express router with the CIMD endpoint
+ */
+function createCimdRouter(baseUrl: string): express.Router {
+  const router = Router();
+
+  // Remove trailing slash from baseUrl if present
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
+
+  // Construct the client_id (full URL of this endpoint)
+  const clientId = `${normalizedBaseUrl}/api/auth/client.json`;
+
+  // Construct redirect_uri
+  const redirectUri = `${normalizedBaseUrl}/api/auth/oauth2/handler/frame`;
+
+  // Client ID Metadata Document
+  const cimd = {
+    client_id: clientId,
+    client_name: 'Backstage',
+    client_uri: 'https://docs.giantswarm.io/overview/developer-portal/',
+    redirect_uris: [redirectUri],
+    grant_types: ['authorization_code'],
+    response_types: ['code'],
+    token_endpoint_auth_method: 'none',
+  };
+
+  /**
+   * GET /client.json
+   *
+   * Returns the Client ID Metadata Document (CIMD) for OAuth client registration.
+   * This endpoint is publicly accessible and follows the CIMD specification.
+   */
+  router.get('/client.json', (_, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.json(cimd);
+  });
+
+  return router;
+}
+
 /** @public */
 export const authModuleGsProviders = createBackendModule({
   pluginId: 'auth',
@@ -86,8 +131,12 @@ export const authModuleGsProviders = createBackendModule({
         providersExtensionPoint: authProvidersExtensionPoint,
         config: coreServices.rootConfig,
         logger: coreServices.rootLogger,
+        httpRouter: coreServices.httpRouter,
       },
-      async init({ providersExtensionPoint, config, logger }) {
+      async init({ providersExtensionPoint, config, logger, httpRouter }) {
+        // Register CIMD endpoint
+        const baseUrl = config.getString('backend.baseUrl');
+        httpRouter.use(createCimdRouter(baseUrl));
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
         const customProviders = configuredProviders.filter(provider =>
