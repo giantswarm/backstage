@@ -29,11 +29,12 @@ export class ContainerRegistryClient implements ContainerRegistryApi {
     );
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.error?.message ||
-          `Failed to fetch tags: ${response.statusText}`,
+      const error = new Error(
+        `Failed to fetch tags for  ${registry}/${repository}. Reason: ${response.statusText}.`,
       );
+      error.name = response.status === 401 ? 'UnauthorizedError' : error.name;
+
+      throw error;
     }
 
     return response.json();

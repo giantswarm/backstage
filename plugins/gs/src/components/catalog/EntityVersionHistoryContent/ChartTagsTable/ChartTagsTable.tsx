@@ -39,11 +39,7 @@ export const ChartTagsTable = ({
   );
 
   if (error) {
-    return (
-      <Typography color="error">
-        Failed to load tags: {error.message}
-      </Typography>
-    );
+    return <Typography color="error">{error.message}</Typography>;
   }
 
   return (
