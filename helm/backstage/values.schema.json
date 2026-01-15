@@ -152,6 +152,14 @@
         "required": ["clientID", "clientSecret"]
       }
     },
+    "externalAccess": {
+      "type": "object",
+      "properties": {
+        "mcpToken": {
+          "type": "string"
+        }
+      }
+    },
     "githubAppCredentials": {
       "type": "object",
       "properties": {
