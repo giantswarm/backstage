@@ -155,7 +155,7 @@ export async function createRouter(
 
       const result = streamText({
         model: selectedModel as any,
-        messages: await convertToModelMessages(messages as UIMessage[]),
+        messages: convertToModelMessages(messages as UIMessage[]),
         system: defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
