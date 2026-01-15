@@ -11,19 +11,16 @@ export async function getMcpTools(config: Config) {
   if (mcpConfigs && mcpConfigs.length > 0) {
     mcpConfigs.forEach(mcp => {
       const name = mcp.getString('name');
-
-      if (!name.startsWith('kubernetes-mcp')) {
-        const url = mcp.getString('url');
-        const serverHeaders = mcp.getOptionalConfig('headers');
-        const headers: Record<string, string> = {};
-        if (serverHeaders) {
-          const keys = serverHeaders.keys();
-          for (const key of keys) {
-            headers[key] = serverHeaders.getString(key);
-          }
+      const url = mcp.getString('url');
+      const serverHeaders = mcp.getOptionalConfig('headers');
+      const headers: Record<string, string> = {};
+      if (serverHeaders) {
+        const keys = serverHeaders.keys();
+        for (const key of keys) {
+          headers[key] = serverHeaders.getString(key);
         }
-        mcpServers[name] = { url, headers };
       }
+      mcpServers[name] = { url, headers };
     });
   }
 

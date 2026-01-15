@@ -8,8 +8,6 @@ import { convertToModelMessages, streamText, ToolSet, UIMessage } from 'ai';
 import { z } from 'zod';
 import express from 'express';
 import Router from 'express-promise-router';
-import { extractKubernetesAuthTokens } from './extractKubernetesAuthTokens';
-import { getKubernetesMcpTools } from './getKubernetesMcpTools';
 import { getMcpTools } from './getMcpTools';
 
 export interface RouterOptions {
@@ -118,16 +116,7 @@ export async function createRouter(
 
   ## MCP tools
 
-  You have access to several MCP tools. Kubernetes related tools are prefixed with the name of the manegement cluster they are associated with.
-  For example: 'graveler_kubernetes_list' is for listing Kubernetes resources on graveler.
-
-  When asked to access resources from Kubernetes, use kubernetesAuth tool to authenticate first. Then use the appropriate MCP tool to access the resources.
-
-  ### CLUSTERNAME_kubernetes_list
-
-  This tool is used to list Kubernetes resources on a specific management cluster.
-  Make sure to use the 'filter' parameter to filter the results only to the resources you are interested in.
-  For example, to fetch Flux HelmRelease resources that are suspended, use the filter {"spec.suspend": true}.
+  You have access to several MCP tools.
 
   ## More context
 
@@ -158,16 +147,6 @@ export async function createRouter(
     logger.debug(JSON.stringify(mcpTools));
     logger.debug('===============================================');
 
-    const kubernetesAuthTokens = extractKubernetesAuthTokens(messages);
-    const kubernetesMcpTools = await getKubernetesMcpTools(
-      kubernetesAuthTokens,
-      config,
-    );
-
-    logger.debug('==================KUBERNETES MCP TOOLS====================');
-    logger.debug(JSON.stringify(kubernetesMcpTools));
-    logger.debug('===============================================');
-
     try {
       // Select the appropriate provider based on model type
       const selectedModel = isAnthropicModel
@@ -182,7 +161,6 @@ export async function createRouter(
         tools: {
           ...frontendTools(tools),
           ...mcpTools,
-          ...kubernetesMcpTools,
         } as ToolSet,
       });
 
