@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.95.1] - 2026-01-15
+
+### Fixed
+
+- Added proper HTTP error handling for container registry clients.
+- Implemented consistent error handling for chart tags requests.
+
+See [./docs/releases/v0.95.1-changelog.md](./docs/releases/v0.95.1-changelog.md) for more information.
+
 ## [0.95.0] - 2026-01-13
 
 ### Added
@@ -1648,7 +1657,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.95.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.95.1...HEAD
+[0.95.1]: https://github.com/giantswarm/backstage/compare/v0.95.0...v0.95.1
 [0.95.0]: https://github.com/giantswarm/backstage/compare/v0.94.0...v0.95.0
 [0.94.0]: https://github.com/giantswarm/backstage/compare/v0.93.2...v0.94.0
 [0.93.2]: https://github.com/giantswarm/backstage/compare/v0.93.1...v0.93.2
