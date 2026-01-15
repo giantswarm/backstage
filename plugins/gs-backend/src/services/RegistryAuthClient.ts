@@ -1,4 +1,8 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
+import {
+  AuthenticationError,
+  ServiceUnavailableError,
+} from '@backstage/errors';
 import fetch, { Response } from 'node-fetch';
 
 // Default timeout for HTTP requests (30 seconds)
@@ -77,6 +81,7 @@ export class RegistryAuthClient {
 
   /**
    * Performs a fetch request with a timeout.
+   * Throws ServiceUnavailableError on timeout or network errors.
    */
   private async fetchWithTimeout(
     url: string,
@@ -93,6 +98,23 @@ export class RegistryAuthClient {
         ...options,
         signal: controller.signal,
       });
+    } catch (error: any) {
+      // Handle timeout/abort errors
+      if (error.name === 'AbortError') {
+        throw new ServiceUnavailableError(
+          `Request to ${url} timed out after ${this.requestTimeoutMs}ms`,
+          error,
+        );
+      }
+      // Handle network errors (ECONNREFUSED, ENOTFOUND, etc.)
+      if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        throw new ServiceUnavailableError(
+          `Registry unreachable at ${url}: ${error.message}`,
+          error,
+        );
+      }
+      // Re-throw other errors
+      throw error;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -171,6 +193,7 @@ export class RegistryAuthClient {
    * require authentication even for public repositories.
    *
    * Tokens are cached to avoid unnecessary requests.
+   * Throws AuthenticationError if token acquisition fails.
    */
   private async getAnonymousToken(
     wwwAuthenticate: string,
@@ -206,22 +229,39 @@ export class RegistryAuthClient {
       });
 
       if (!tokenResponse.ok) {
-        this.logger.warn(
-          `Failed to get anonymous token: ${tokenResponse.status} ${tokenResponse.statusText}`,
+        const errorText = await tokenResponse.text();
+        throw new AuthenticationError(
+          `Failed to acquire registry authentication token: ${tokenResponse.status} ${tokenResponse.statusText}${errorText ? ` - ${errorText}` : ''}`,
         );
-        return null;
       }
 
       const tokenData = (await tokenResponse.json()) as TokenResponse;
       const token = tokenData.access_token;
+
+      if (!token) {
+        throw new AuthenticationError(
+          'Registry authentication token response missing access_token field',
+        );
+      }
 
       // Cache the token
       this.cacheToken(cacheKey, token);
 
       return token;
     } catch (error) {
+      // If it's already a Backstage error (AuthenticationError, ServiceUnavailableError), re-throw it
+      if (
+        error instanceof AuthenticationError ||
+        error instanceof ServiceUnavailableError
+      ) {
+        throw error;
+      }
+      // Otherwise wrap it as AuthenticationError
       this.logger.warn(`Error getting anonymous token: ${error}`);
-      return null;
+      throw new AuthenticationError(
+        `Failed to acquire registry authentication token: ${error}`,
+        error as Error,
+      );
     }
   }
 }
