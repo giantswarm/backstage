@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.96.2] - 2026-01-15
+
+### Fixed
+
+- Fix React dependency.
+
+See [./docs/releases/v0.96.2-changelog.md](./docs/releases/v0.96.2-changelog.md) for more information.
+
 ## [0.96.1] - 2026-01-15
 
 ### Changed
@@ -1673,7 +1681,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.96.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.96.2...HEAD
+[0.96.2]: https://github.com/giantswarm/backstage/compare/v0.96.1...v0.96.2
 [0.96.1]: https://github.com/giantswarm/backstage/compare/v0.96.0...v0.96.1
 [0.96.0]: https://github.com/giantswarm/backstage/compare/v0.95.1...v0.96.0
 [0.95.1]: https://github.com/giantswarm/backstage/compare/v0.95.0...v0.95.1
