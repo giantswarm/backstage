@@ -25,6 +25,7 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import { GSFeatureEnabled, GSMainMenu } from '@giantswarm/backstage-plugin-gs';
+import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat';
 import { useTelemetryDeck } from '@typedigital/telemetrydeck-react';
 import { useLocation } from 'react-router-dom';
 import { getTelemetryPageViewPayload } from '../../utils/telemetry';
@@ -90,6 +91,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         <SidebarDivider />
         <GSMainMenu />
         <SidebarGroup label="Menu" icon={<MenuIcon />}>
+          <GSFeatureEnabled feature="aiChat">
+            <SidebarItem icon={AIChatIcon} to="ai-chat" text="AI Assistant" />
+          </GSFeatureEnabled>
           <GSFeatureEnabled feature="scaffolder">
             <SidebarDivider />
             <SidebarItem

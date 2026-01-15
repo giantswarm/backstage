@@ -119,3 +119,27 @@ catalog:
 
 grafana:
   domain: https://example.com
+
+# AI Chat plugin configuration
+aiChat:
+  # Anthropic configuration
+  anthropic:
+    apiKey: ${ANTHROPIC_API_KEY}
+    # Optional: custom base URL for Anthropic-compatible APIs
+    # baseUrl: https://api.anthropic.com/v1
+
+  # OpenAI configuration
+  openai:
+    apiKey: ${OPENAI_API_KEY}
+    # Optional: custom base URL for OpenAI-compatible APIs
+    # baseUrl: https://api.openai.com/v1
+
+  # Model to use (default: gpt-4o-mini)
+  model: gpt-4o-mini
+
+  # Optional: MCP servers configuration
+  # mcp:
+  #   - name: backstage-actions
+  #     url: http://localhost:7007/api/mcp-actions/v1
+  #     headers:
+  #       Authorization: 'Bearer ${MCP_TOKEN}'

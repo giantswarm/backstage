@@ -66,6 +66,7 @@ import {
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { FluxPage, fluxPlugin } from '@giantswarm/backstage-plugin-flux';
+import { AiChatPage } from '@giantswarm/backstage-plugin-ai-chat';
 
 const app = createApp({
   apis,
@@ -213,6 +214,7 @@ const routes = (
     >
       <GSCustomFluxPage />
     </Route>
+    <Route path="/ai-chat" element={<AiChatPage />} />
   </FlatRoutes>
 );
 
