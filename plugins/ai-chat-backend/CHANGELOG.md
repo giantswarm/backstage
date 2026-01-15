@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.2.2
+
+### Patch Changes
+
+- cba1afd: Fix dependency issue.
+
 ## 0.2.1
 
 ### Patch Changes
