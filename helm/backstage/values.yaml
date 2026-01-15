@@ -67,6 +67,12 @@ aws:
 externalAccess:
   mcpToken: ''
 
+anthropic:
+  apiKey: ''
+
+openai:
+  apiKey: ''
+
 # Allows to define the sharedConfig as a multiline string that generates a ConfigMap
 # automatically. Configuration defined here can be referenced in the main app configuration
 # with $include keyword.

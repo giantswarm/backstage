@@ -2,6 +2,14 @@
   "$schema": "http://json-schema.org/schema#",
   "type": "object",
   "properties": {
+    "anthropic": {
+      "type": "object",
+      "properties": {
+        "apiKey": {
+          "type": "string"
+        }
+      }
+    },
     "authSessionSecret": {
       "type": "string"
     },
@@ -251,6 +259,14 @@
     },
     "nodeSelector": {
       "type": "object"
+    },
+    "openai": {
+      "type": "object",
+      "properties": {
+        "apiKey": {
+          "type": "string"
+        }
+      }
     },
     "pluginKeys": {
       "type": "array",
