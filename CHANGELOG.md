@@ -7,6 +7,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.95.1] - 2026-01-15
 
+### Fixed
+
+- Added proper HTTP error handling for container registry clients.
+- Implemented consistent error handling for chart tags requests.
+
 See [./docs/releases/v0.95.1-changelog.md](./docs/releases/v0.95.1-changelog.md) for more information.
 
 ## [0.95.0] - 2026-01-13
