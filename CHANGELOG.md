@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.96.1] - 2026-01-15
 
+### Changed
+
+- Add Anthropic and OpenAI API keys to the Helm chart values.
+
 See [./docs/releases/v0.96.1-changelog.md](./docs/releases/v0.96.1-changelog.md) for more information.
 
 ## [0.96.0] - 2026-01-15
