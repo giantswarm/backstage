@@ -48,44 +48,37 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     }
 
     const installationNames = installationsConfig.keys();
-    return [
-      ...installationNames.map(installationName => {
-        const installationConfig =
-          installationsConfig.getConfig(installationName);
-        const authProvider = installationConfig.getString('authProvider');
-        if (!authProvider || authProvider !== 'oidc') {
-          throw new Error(
-            `OIDC auth provider is not configured for installation "${installationName}".`,
-          );
-        }
-        const oidcTokenProvider =
-          installationConfig.getOptionalString('oidcTokenProvider');
+    return installationNames.map(installationName => {
+      const installationConfig =
+        installationsConfig.getConfig(installationName);
+      const authProvider = installationConfig.getString('authProvider');
+      if (!authProvider || authProvider !== 'oidc') {
+        throw new Error(
+          `OIDC auth provider is not configured for installation "${installationName}".`,
+        );
+      }
+      const oidcTokenProvider =
+        installationConfig.getOptionalString('oidcTokenProvider');
 
-        if (
-          !oidcTokenProvider ||
-          !oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)
-        ) {
-          throw new Error(
-            `OIDC token provider is not configured for installation "${installationName}".`,
-          );
-        }
+      if (
+        !oidcTokenProvider ||
+        !oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)
+      ) {
+        throw new Error(
+          `OIDC token provider is not configured for installation "${installationName}".`,
+        );
+      }
 
-        const providerDisplayName = oidcTokenProvider.split(
-          OIDC_PROVIDER_NAME_PREFIX,
-        )[1];
+      const providerDisplayName = oidcTokenProvider.split(
+        OIDC_PROVIDER_NAME_PREFIX,
+      )[1];
 
-        return {
-          providerName: oidcTokenProvider,
-          providerDisplayName,
-          installationName,
-        };
-      }),
-      {
-        providerName: 'oauth-graveler-mcp-kubernetes',
-        providerDisplayName: 'Graveler MCP Kubernetes',
-        installationName: 'graveler',
-      },
-    ];
+      return {
+        providerName: oidcTokenProvider,
+        providerDisplayName,
+        installationName,
+      };
+    });
   }
 
   private createAuthApis() {
