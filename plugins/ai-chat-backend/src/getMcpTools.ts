@@ -1,5 +1,5 @@
 import { Config } from '@backstage/config';
-import { ToolSet } from 'ai';
+import { Tool, ToolSet } from 'ai';
 import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp';
 
 export async function getMcpTools(config: Config) {
@@ -38,7 +38,7 @@ export async function getMcpTools(config: Config) {
 
     const mcpClientTools = await mcpClient.tools();
     Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
-      tools[toolName] = tool;
+      tools[toolName] = tool as Tool;
     });
   }
 
