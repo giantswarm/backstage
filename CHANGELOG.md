@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.96.0] - 2026-01-15
 
+### Added
+
+- Add AI Chat plugin.
+
 See [./docs/releases/v0.96.0-changelog.md](./docs/releases/v0.96.0-changelog.md) for more information.
 
 ## [0.95.1] - 2026-01-15
