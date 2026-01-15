@@ -3,6 +3,7 @@ import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { convertToModelMessages, streamText, ToolSet, UIMessage } from 'ai';
 import { z } from 'zod';
 import express from 'express';
@@ -25,26 +26,43 @@ export async function createRouter(
   const router = Router();
   router.use(express.json());
 
+  // Get model configuration
+  const modelName = config.getOptionalString('aiChat.model') ?? 'gpt-4o-mini';
+
   // Get OpenAI configuration
   const openaiApiKey = config.getOptionalString('aiChat.openai.apiKey');
   const openaiBaseUrl = config.getOptionalString('aiChat.openai.baseUrl');
-  const modelName = config.getOptionalString('aiChat.model') ?? 'gpt-4o-mini';
 
-  if (!openaiApiKey) {
+  // Get Anthropic configuration
+  const anthropicApiKey = config.getOptionalString('aiChat.anthropic.apiKey');
+  const anthropicBaseUrl = config.getOptionalString('aiChat.anthropic.baseUrl');
+
+  // Determine which provider to use based on model name
+  const isAnthropicModel = modelName.startsWith('claude-');
+  const isOpenAIModel = modelName.startsWith('gpt-');
+
+  // Validate configuration
+  if (isAnthropicModel && !anthropicApiKey) {
     logger.warn(
-      'No OpenAI API key configured. Set aiChat.openai.apiKey in app-config.yaml',
+      'No Anthropic API key configured for Anthropic model. Set aiChat.anthropic.apiKey in app-config.yaml',
     );
   }
 
+  if (isOpenAIModel && !openaiApiKey) {
+    logger.warn(
+      'No OpenAI API key configured for OpenAI model. Set aiChat.openai.apiKey in app-config.yaml',
+    );
+  }
+
+  // Create provider clients
   const openai = createOpenAI({
     apiKey: openaiApiKey,
     baseURL: openaiBaseUrl,
   });
 
-  // Schema for chat request
-  const chatRequestSchema = z.object({
-    messages: z.array(z.any()),
-    tools: z.any().optional(),
+  const anthropic = createAnthropic({
+    apiKey: anthropicApiKey,
+    baseURL: anthropicBaseUrl,
   });
 
   const defaultSystemPrompt = `
@@ -123,12 +141,11 @@ export async function createRouter(
 
     logger.info(`Chat request from user: ${userRef}`);
 
-    if (!openaiApiKey) {
-      throw new InputError(
-        'OpenAI API key not configured. Set aiChat.openai.apiKey in app-config.yaml',
-      );
-    }
-
+    // Schema for chat request
+    const chatRequestSchema = z.object({
+      messages: z.array(z.any()),
+      tools: z.any().optional(),
+    });
     const parsed = chatRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       throw new InputError(`Invalid request body: ${parsed.error.message}`);
@@ -152,9 +169,14 @@ export async function createRouter(
     logger.debug('===============================================');
 
     try {
+      // Select the appropriate provider based on model type
+      const selectedModel = isAnthropicModel
+        ? anthropic(modelName)
+        : openai(modelName);
+
       const result = streamText({
-        model: openai(modelName),
-        messages: convertToModelMessages(messages as UIMessage[]),
+        model: selectedModel as any,
+        messages: await convertToModelMessages(messages as UIMessage[]),
         system: defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
@@ -181,8 +203,11 @@ export async function createRouter(
   router.get('/health', (_, res) => {
     res.json({
       status: 'ok',
-      configured: !!openaiApiKey,
       model: modelName,
+      provider: isAnthropicModel ? 'anthropic' : 'openai',
+      configured: isAnthropicModel ? !!anthropicApiKey : !!openaiApiKey,
+      openaiConfigured: !!openaiApiKey,
+      anthropicConfigured: !!anthropicApiKey,
     });
   });
 
