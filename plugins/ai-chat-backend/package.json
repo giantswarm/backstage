@@ -27,6 +27,7 @@
     "@ai-sdk/anthropic": "^2.0.57",
     "@ai-sdk/mcp": "^0.0.12",
     "@ai-sdk/openai": "^2.0.86",
+    "@assistant-ui/react": "^0.11.53",
     "@assistant-ui/react-ai-sdk": "^1.1.19",
     "@backstage/backend-defaults": "^0.12.1",
     "@backstage/backend-plugin-api": "^1.2.1",
