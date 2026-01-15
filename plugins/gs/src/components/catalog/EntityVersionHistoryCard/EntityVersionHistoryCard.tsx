@@ -86,11 +86,7 @@ const VersionHistoryCardContent = () => {
     }
 
     if (error) {
-      return (
-        <Typography color="error">
-          Failed to load tags: {error.message}
-        </Typography>
-      );
+      return <Typography color="error">{error.message}</Typography>;
     }
 
     if (!tags || tags.length === 0) {

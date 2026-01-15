@@ -1,6 +1,15 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
+import {
+  AuthenticationError,
+  NotAllowedError,
+  NotFoundError,
+  InputError,
+  ConflictError,
+  ServiceUnavailableError,
+} from '@backstage/errors';
 import semver from 'semver';
 import { RegistryAuthClient } from './RegistryAuthClient';
+import { RegistryError } from './RegistryError';
 import { normalizeRegistry } from './registryUtils';
 
 export interface TagInfo {
@@ -76,9 +85,34 @@ export class AcrRegistryClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `Failed to fetch tags from ACR API ${url}: ${response.status} ${response.statusText} - ${errorText}`,
-      );
+      const baseMessage = `Failed to fetch tags from ACR API for ${normalized}/${repository}`;
+      const detailedMessage = `${baseMessage}: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`;
+
+      switch (response.status) {
+        case 400:
+          throw new InputError(detailedMessage);
+        case 401:
+          throw new AuthenticationError(detailedMessage);
+        case 403:
+          throw new NotAllowedError(detailedMessage);
+        case 404:
+          throw new NotFoundError(detailedMessage);
+        case 409:
+          throw new ConflictError(detailedMessage);
+        case 429:
+          throw new RegistryError(
+            `${baseMessage}: Rate limit exceeded`,
+            429,
+            errorText,
+          );
+        case 503:
+          throw new ServiceUnavailableError(detailedMessage);
+        default:
+          if (response.status >= 500) {
+            throw new ServiceUnavailableError(detailedMessage);
+          }
+          throw new RegistryError(detailedMessage, response.status, errorText);
+      }
     }
 
     const data = (await response.json()) as AcrTagListResponse;

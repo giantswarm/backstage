@@ -171,13 +171,15 @@ const useStyles = makeStyles(theme => ({
 const ReadmeCardContent = () => {
   const classes = useStyles();
   const { selectedChart } = useCurrentEntityChart();
-  const { latestStableVersion, isLoading: isLoadingTags } = useHelmChartTags(
-    selectedChart.ref,
-  );
+  const {
+    latestStableVersion,
+    isLoading: isLoadingTags,
+    error: tagsError,
+  } = useHelmChartTags(selectedChart.ref);
   const {
     readme,
     isLoading: isLoadingReadme,
-    error,
+    error: readmeError,
   } = useHelmChartReadme(selectedChart.ref, latestStableVersion ?? undefined);
 
   const [expanded, setExpanded] = useState(false);
@@ -186,6 +188,8 @@ const ReadmeCardContent = () => {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isLoading = isLoadingTags || isLoadingReadme;
+
+  const error = tagsError || readmeError;
 
   const updateContentSize = useCallback(() => {
     if (contentRef.current) {
@@ -233,11 +237,7 @@ const ReadmeCardContent = () => {
     }
 
     if (error) {
-      return (
-        <Typography color="error">
-          Failed to load README: {(error as Error).message}
-        </Typography>
-      );
+      return <Typography color="error">{error.message}</Typography>;
     }
 
     if (!readme) {

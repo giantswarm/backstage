@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.51.1
+
+### Patch Changes
+
+- f3f3a50: Consistent errors handling for chart tags requests.
+- Updated dependencies [f3f3a50]
+  - @giantswarm/backstage-plugin-flux@0.6.4
+
 ## 0.51.0
 
 ### Minor Changes
