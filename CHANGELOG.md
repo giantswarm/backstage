@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.96.4] - 2026-01-15
 
+### Fixed
+
+- Fix dependency issue.
+
 See [./docs/releases/v0.96.4-changelog.md](./docs/releases/v0.96.4-changelog.md) for more information.
 
 ## [0.96.3] - 2026-01-15
