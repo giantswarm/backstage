@@ -32,6 +32,9 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
           createRoutesFromChildren,
           matchRoutes,
         }),
+        Sentry.reportingObserverIntegration({
+          types: ['csp-violation', 'deprecation', 'intervention'],
+        }),
       ],
       tracesSampleRate: config.tracesSampleRate,
       tracePropagationTargets: config.tracePropagationTargets,
