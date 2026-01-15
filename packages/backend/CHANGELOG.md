@@ -1,5 +1,16 @@
 # backend
 
+## 0.14.0
+
+### Minor Changes
+
+- 1a75706: Add AI Chat plugin.
+
+### Patch Changes
+
+- Updated dependencies [1a75706]
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.2.0
+
 ## 0.13.1
 
 ### Patch Changes
