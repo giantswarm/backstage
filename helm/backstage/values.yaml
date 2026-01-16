@@ -166,7 +166,7 @@ ingress:
     kubernetes.io/tls-acme: 'true'
     nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
   # -- Hostnames for the Ingress
-  hostnames: ["default-hostname"]
+  hostnames: ['default-hostname']
 
 # -- Gateway API route configuration
 route:
