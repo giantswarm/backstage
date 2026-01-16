@@ -71,3 +71,9 @@ plugin-keys/*
 # helm chart dependencies
 charts/*/charts/
 **/charts/*.tgz
+
+# Claude Code local files
+.claude/settings.local.json
+.claude/user-team-info.json
+.claude/tasks/
+CLAUDE.local.md
