@@ -4,7 +4,13 @@ import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { convertToModelMessages, streamText, ToolSet, UIMessage } from 'ai';
+import {
+  convertToModelMessages,
+  streamText,
+  ToolSet,
+  UIMessage,
+  SystemModelMessage,
+} from 'ai';
 import { z } from 'zod';
 import express from 'express';
 import Router from 'express-promise-router';
@@ -153,10 +159,28 @@ export async function createRouter(
         ? anthropic(modelName)
         : openai(modelName);
 
+      // Convert UI messages to model messages
+      const modelMessages = convertToModelMessages(messages as UIMessage[]);
+
+      // For Anthropic models, prepend system message with cache control
+      // to enable prompt caching for the system prompt.
+      // See: https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#cache-control
+      const systemMessage: SystemModelMessage | undefined = isAnthropicModel
+        ? {
+            role: 'system',
+            content: defaultSystemPrompt,
+            providerOptions: {
+              anthropic: { cacheControl: { type: 'ephemeral' } },
+            },
+          }
+        : undefined;
+
       const result = streamText({
         model: selectedModel as any,
-        messages: convertToModelMessages(messages as UIMessage[]),
-        system: defaultSystemPrompt,
+        messages: systemMessage
+          ? [systemMessage, ...modelMessages]
+          : modelMessages,
+        system: isAnthropicModel ? undefined : defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
           ...frontendTools(tools),
