@@ -33,6 +33,15 @@ Description of the change.
 - **minor** (0.X.0) - New features, backwards compatible
 - **patch** (0.0.X) - Bug fixes, minor changes
 
+**If no changesets are found:**
+
+If there are no `*.md` files in `.changeset/` (excluding `README.md`), ask the user:
+
+1. If they still want to proceed with a release
+2. If yes, ask them to provide:
+   - The release level (major, minor, or patch)
+   - The changelog entry describing what should be included in the release
+
 ### 2. Prepare Release Branch
 
 ```bash
