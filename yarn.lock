@@ -230,22 +230,21 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-markdown@npm:^0.11.8":
-  version: 0.11.8
-  resolution: "@assistant-ui/react-markdown@npm:0.11.8"
+  version: 0.11.9
+  resolution: "@assistant-ui/react-markdown@npm:0.11.9"
   dependencies:
     "@radix-ui/react-primitive": "npm:^2.1.4"
     "@radix-ui/react-use-callback-ref": "npm:^1.1.1"
-    "@types/hast": "npm:^3.0.4"
     classnames: "npm:^2.5.1"
     react-markdown: "npm:^10.1.0"
   peerDependencies:
-    "@assistant-ui/react": ^0.11.50
+    "@assistant-ui/react": ^0.11.53
     "@types/react": "*"
-    react: ^18 || ^19 || ^19.0.0-rc
+    react: ^18 || ^19
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/ba1da2d1d1ed139d6f73387a4e74c1f9ec50e72b787c4b6b98ac644f5bffaff6a1a86bdc8cf34857cd7c80ca1b3ab0ec758c863b870f1294aa39a4195833bd26
+  checksum: 10c0/3fad1595c51de0736b7e2c63bcdbb8bee6456193ddd5f35fa35ee9dfecdfe50b381a71b52ef185ecb48d7dc0ed01baac2d669b9a663ca76c3960aa65eb9e0dc6
   languageName: node
   linkType: hard
 
