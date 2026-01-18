@@ -4,6 +4,10 @@
   reviewersFromCodeOwners: false,
   packageRules: [
     {
+      groupName: 'ai-sdk packages',
+      matchPackageNames: ['@ai-sdk{/,}**'],
+    },
+    {
       groupName: 'backstage packages',
       matchPackageNames: ['@backstage{/,}**'],
     },
