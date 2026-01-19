@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.2.3
+
+### Patch Changes
+
+- 24a4c48: Increase request size limit
+
 ## 0.2.2
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # backend
 
+## 0.14.1
+
+### Patch Changes
+
+- 53c5d68: Expose additional MCP tools via the catalog MCP backend plugin
+- Updated dependencies [24a4c48]
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.2.3
+
 ## 0.14.0
 
 ### Minor Changes

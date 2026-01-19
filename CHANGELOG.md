@@ -5,6 +5,22 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-01-19
+
+See [./docs/releases/v0.97.0-changelog.md](./docs/releases/v0.97.0-changelog.md) for more information.
+
+### Added
+
+- Expose additional MCP tools via the catalog MCP backend plugin.
+
+### Changed
+
+- Increase request size limit for AI chat backend.
+
+### Fixed
+
+- Fix react-router version mismatch causing routing context error on Entity pages.
+
 ## [0.96.4] - 2026-01-15
 
 ### Fixed
@@ -1697,7 +1713,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.96.4...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.97.0...HEAD
+[0.97.0]: https://github.com/giantswarm/backstage/compare/v0.96.4...v0.97.0
 [0.96.4]: https://github.com/giantswarm/backstage/compare/v0.96.3...v0.96.4
 [0.96.3]: https://github.com/giantswarm/backstage/compare/v0.96.2...v0.96.3
 [0.96.2]: https://github.com/giantswarm/backstage/compare/v0.96.1...v0.96.2
