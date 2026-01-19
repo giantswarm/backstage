@@ -1,5 +1,5 @@
 import { getTelemetryPageViewPayload } from './telemetry';
-import { Location } from 'react-router';
+import { Location } from 'react-router-dom';
 
 describe('getTelemetryPageViewPayload', () => {
   const createLocation = (pathname: string): Location => ({
