@@ -1,12 +1,16 @@
 import { Box, makeStyles, useTheme } from '@material-ui/core';
-import { InvertTheme, injectStyles } from '@stoplight/mosaic';
+import {
+  GLOBAL_CSS_ID,
+  GLOBAL_CSS_THEME_ID,
+  InvertTheme,
+  injectStyles,
+} from '@stoplight/mosaic';
 // @ts-expect-error Package types exist but can't be resolved due to package.json exports configuration
 import { JsonSchemaViewer as StoplightJsonSchemaViewer } from '@stoplight/json-schema-viewer';
+import { useEffect } from 'react';
 
 const lightBackgroundColor = '#f8f8f8';
 const darkBackgroundColor = '#333333';
-
-injectStyles();
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -19,9 +23,29 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+function removeMosaicStyles() {
+  const styleIds = [
+    GLOBAL_CSS_ID,
+    `${GLOBAL_CSS_THEME_ID}-light`,
+    `${GLOBAL_CSS_THEME_ID}-dark`,
+  ];
+  for (const id of styleIds) {
+    document.getElementById(id)?.remove();
+  }
+}
+
 export const JsonSchemaViewer = ({ jsonSchema }: { jsonSchema: any }) => {
   const classes = useStyles();
   const theme = useTheme();
+
+  // Inject styles only when component mounts, clean up on unmount
+  useEffect(() => {
+    const unsubscribe = injectStyles();
+    return () => {
+      unsubscribe?.();
+      removeMosaicStyles();
+    };
+  }, []);
 
   const viewer = (
     <StoplightJsonSchemaViewer
