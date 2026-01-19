@@ -28,7 +28,7 @@ export async function createRouter(
   const { httpAuth, logger, config } = options;
 
   const router = Router();
-  router.use(express.json());
+  router.use(express.json({ limit: '2mb' }));
 
   // Get model configuration
   const modelName = config.getOptionalString('aiChat.model') ?? 'gpt-4o-mini';
