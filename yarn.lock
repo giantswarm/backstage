@@ -166,14 +166,14 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-ai-sdk@npm:^1.1.19":
-  version: 1.1.20
-  resolution: "@assistant-ui/react-ai-sdk@npm:1.1.20"
+  version: 1.1.21
+  resolution: "@assistant-ui/react-ai-sdk@npm:1.1.21"
   dependencies:
     "@ai-sdk/react": "npm:^2.0.118"
     ai: "npm:^5.0.116"
-    zod: "npm:^4.2.1"
+    zod: "npm:^4.3.5"
   peerDependencies:
-    "@assistant-ui/react": ^0.11.53
+    "@assistant-ui/react": ^0.11.56
     "@types/react": "*"
     assistant-cloud: "*"
     react: ^18 || ^19
@@ -182,7 +182,7 @@ __metadata:
       optional: true
     assistant-cloud:
       optional: true
-  checksum: 10c0/00e07860a4524ddeb9fcd244cdda7ed0cd0869e81ba2e1f7a0cdf706f6d90a0642f513ca6b1ad90791efc6748a829a0440fa7f26a7c54eec802cb51b34bc82cd
+  checksum: 10c0/2441fc33dadc684a0f0dc8586aefb392b78eabfe48fe38566a51e38a6aaf9b3272a542db575591006ae0f2e12708115ed3e69d1b906083b419f8cc966b85fdff
   languageName: node
   linkType: hard
 
