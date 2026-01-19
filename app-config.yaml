@@ -58,10 +58,11 @@ backend:
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
 
 integrations:
-  github:
-    - host: github.com
-      apps:
-        - $include: github-app-credentials.yaml
+  # Example for how to add GitHub integration with a GitHub App.
+  # github:
+  #   - host: github.com
+  #     apps:
+  #       - $include: github-app-credentials.yaml
 
 permission:
   enabled: true
