@@ -1,4 +1,4 @@
-import { AssistantRuntimeProvider } from '@assistant-ui/react';
+import { AssistantRuntimeProvider, useAssistantApi } from '@assistant-ui/react';
 import { DevToolsModal } from '@assistant-ui/react-devtools';
 import { Content, Header, Page } from '@backstage/core-components';
 import {
@@ -7,13 +7,43 @@ import {
   discoveryApiRef,
 } from '@backstage/core-plugin-api';
 import { Thread } from './Thread';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   useChatRuntime,
   AssistantChatTransport,
 } from '@assistant-ui/react-ai-sdk';
 import { lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
 import useAsync from 'react-use/esm/useAsync';
+import { useSearchParams } from 'react-router-dom';
+
+interface InitialMessageHandlerProps {
+  isReady: boolean;
+}
+
+const InitialMessageHandler = ({ isReady }: InitialMessageHandlerProps) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const api = useAssistantApi();
+  const hasSubmitted = useRef(false);
+
+  useEffect(() => {
+    const message = searchParams.get('message');
+    if (message && isReady && !hasSubmitted.current) {
+      hasSubmitted.current = true;
+      api
+        .thread()
+        .append({ role: 'user', content: [{ type: 'text', text: message }] });
+      setSearchParams(
+        params => {
+          params.delete('message');
+          return params;
+        },
+        { replace: true },
+      );
+    }
+  }, [searchParams, setSearchParams, api, isReady]);
+
+  return null;
+};
 
 export const AiChatPage = () => {
   const identityApi = useApi(identityApiRef);
@@ -46,6 +76,7 @@ export const AiChatPage = () => {
       <Header title="AI Chat" subtitle="Chat with AI assistant" />
       <Content>
         <AssistantRuntimeProvider runtime={runtime}>
+          <InitialMessageHandler isReady={Boolean(apiUrl)} />
           <DevToolsModal />
           <Thread />
         </AssistantRuntimeProvider>
