@@ -44,128 +44,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
     verticalAlign: 'middle',
   },
-  markdownContent: {
-    // Typography
-    '& h1': {
-      ...theme.typography.h4,
-      marginTop: theme.spacing(3),
-      marginBottom: theme.spacing(2),
-      '&:first-child': {
-        marginTop: 0,
-      },
-    },
-    '& h2': {
-      ...theme.typography.h5,
-      marginTop: theme.spacing(3),
-      marginBottom: theme.spacing(1.5),
-    },
-    '& h3': {
-      ...theme.typography.h6,
-      marginTop: theme.spacing(2.5),
-      marginBottom: theme.spacing(1),
-    },
-    '& h4, & h5, & h6': {
-      ...theme.typography.subtitle1,
-      fontWeight: theme.typography.fontWeightMedium,
-      marginTop: theme.spacing(2),
-      marginBottom: theme.spacing(1),
-    },
-    '& p': {
-      ...theme.typography.body2,
-      marginTop: 0,
-      marginBottom: theme.spacing(2),
-    },
-    // Links
-    '& a': {
-      display: 'inline-block',
-      color: theme.palette.primary.main,
-      textDecoration: 'none',
-      '&:hover': {
-        textDecoration: 'underline',
-      },
-    },
-    // Lists
-    '& ul': {
-      marginTop: 0,
-      marginBottom: theme.spacing(2),
-      paddingLeft: theme.spacing(3),
-      listStyleType: 'disc',
-    },
-    '& ol': {
-      marginTop: 0,
-      marginBottom: theme.spacing(2),
-      paddingLeft: theme.spacing(3),
-      listStyleType: 'decimal',
-    },
-    '& li': {
-      ...theme.typography.body2,
-      marginBottom: theme.spacing(0.5),
-    },
-    '& li > ul, & li > ol': {
-      marginTop: theme.spacing(0.5),
-      marginBottom: 0,
-    },
-    // Code
-    '& code': {
-      fontFamily: 'monospace',
-      fontSize: '0.875em',
-      backgroundColor:
-        theme.palette.type === 'dark'
-          ? 'rgba(255, 255, 255, 0.1)'
-          : 'rgba(0, 0, 0, 0.06)',
-      padding: '0.2em 0.4em',
-      borderRadius: theme.shape.borderRadius,
-    },
-    '& pre': {
-      borderRadius: theme.shape.borderRadius,
-      marginTop: 0,
-      marginBottom: theme.spacing(2),
-      '& code': {
-        backgroundColor: 'transparent',
-        padding: 0,
-      },
-    },
-    // Blockquotes
-    '& blockquote': {
-      margin: theme.spacing(0, 0, 2, 0),
-      padding: theme.spacing(1, 2),
-      borderLeft: `4px solid ${theme.palette.divider}`,
-      color: theme.palette.text.secondary,
-      '& p:last-child': {
-        marginBottom: 0,
-      },
-    },
-    // Tables
-    '& table': {
-      width: '100%',
-      borderCollapse: 'collapse',
-      marginBottom: theme.spacing(2),
-    },
-    '& th, & td': {
-      ...theme.typography.body2,
-      padding: theme.spacing(1, 2),
-      borderBottom: `1px solid ${theme.palette.divider}`,
-      textAlign: 'left',
-    },
-    '& th': {
-      fontWeight: theme.typography.fontWeightMedium,
-      backgroundColor:
-        theme.palette.type === 'dark'
-          ? 'rgba(255, 255, 255, 0.05)'
-          : 'rgba(0, 0, 0, 0.02)',
-    },
-    // Horizontal rule
-    '& hr': {
-      border: 'none',
-      borderTop: `1px solid ${theme.palette.divider}`,
-      margin: theme.spacing(3, 0),
-    },
-    // Images
-    '& img': {
-      maxWidth: '100%',
-      height: 'auto',
-    },
-  },
 }));
 
 const ReadmeCardContent = () => {
@@ -252,7 +130,7 @@ const ReadmeCardContent = () => {
       <>
         <Box className={classes.contentWrapper}>
           <Collapse in={expanded} collapsedSize={collapsedSize}>
-            <div ref={contentRef} className={classes.markdownContent}>
+            <div ref={contentRef}>
               <MarkdownContent content={readme} />
             </div>
           </Collapse>
