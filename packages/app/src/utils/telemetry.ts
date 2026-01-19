@@ -1,4 +1,4 @@
-import { Location } from 'react-router';
+import { Location } from 'react-router-dom';
 import sha256 from 'crypto-js/sha256';
 
 export function getTelemetryPageViewPayload(location: Location): {
