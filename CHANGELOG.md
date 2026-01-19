@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+See [./docs/releases/v0.97.0-changelog.md](./docs/releases/v0.97.0-changelog.md) for more information.
+
 ### Added
 
 - Expose additional MCP tools via the catalog MCP backend plugin.

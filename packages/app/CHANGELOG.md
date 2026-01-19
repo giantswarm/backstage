@@ -1,5 +1,11 @@
 # app
 
+## 0.25.1
+
+### Patch Changes
+
+- c9d05b5: Fix react-router version mismatch that caused "useRoutes() may be used only in the context of a Router component" error on Entity pages
+
 ## 0.25.0
 
 ### Minor Changes
