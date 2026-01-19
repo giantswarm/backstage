@@ -53,6 +53,7 @@ More information about the Backstage developer portal can be found in the docume
 ### Entity data and metadata
 
 Annotations:
+
 - 'backstage.io/source-location': URL of the source code repository of the component entity.
 - 'backstage.io/techdocs-ref': URL of the TechDocs documentation of the component entity.
 - 'github.com/project-slug': Project slug of the component entity in GitHub.
@@ -68,6 +69,7 @@ Annotations:
 - 'giantswarm.io/base': Base domain of a Giant Swarm installation.
 
 Tags:
+
 - 'defaultbranch:master': The source repository's default branch is 'master', which we consider a legacy. We prefer 'main' as the default branch
 - 'flavor:app': The repository is an app repository
 - 'flavor:customer': The repository is a customer repository we use for issue tracking
