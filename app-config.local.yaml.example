@@ -6,6 +6,10 @@ app:
   telemetrydeck: null
 
 backend:
+  actions:
+    pluginSources:
+      - catalog
+      - catalog-mcp
   baseUrl: https://localhost:7007
   listen:
     port: 7007
@@ -14,6 +18,16 @@ backend:
   https:
     $include: certificate.yaml
   errorReporter: null
+  auth:
+    externalAccess:
+      - type: static
+        options:
+          token: ${EXTERNAL_ACCESS_MCP_TOKEN}
+          subject: mcp-clients
+        accessRestrictions:
+          - plugin: mcp-actions
+          - plugin: catalog
+          - plugin: catalog-mcp
 
 auth:
   environment: development

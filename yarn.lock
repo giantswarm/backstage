@@ -15811,6 +15811,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@terasky/backstage-plugin-catalog-mcp-backend@npm:^0.2.0":
+  version: 0.2.0
+  resolution: "@terasky/backstage-plugin-catalog-mcp-backend@npm:0.2.0"
+  dependencies:
+    "@backstage/backend-defaults": "npm:^0.14.0"
+    "@backstage/backend-plugin-api": "npm:^1.6.0"
+    "@backstage/errors": "npm:^1.2.7"
+    "@backstage/types": "npm:^1.2.2"
+    express: "npm:^4.17.1"
+    express-promise-router: "npm:^4.1.0"
+    zod: "npm:^3.22.4"
+  checksum: 10c0/58944546dd181dbab6e1ff08fb50c5a651042ee63c5e6cea3185bd3ac3dfea3910ec2a1ff32f63b564e0593099a491b5c7287480cdb03194a4818894b7c7a4b7
+  languageName: node
+  linkType: hard
+
 "@testing-library/dom@npm:^10.0.0":
   version: 10.4.1
   resolution: "@testing-library/dom@npm:10.4.1"
@@ -18540,6 +18555,7 @@ __metadata:
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "npm:^0.9.0"
     "@internal/backend-common": "workspace:^"
     "@roadiehq/scaffolder-backend-module-utils": "npm:^4.1.1"
+    "@terasky/backstage-plugin-catalog-mcp-backend": "npm:^0.2.0"
     app: "link:../app"
     better-sqlite3: "npm:^12.0.0"
     express: "npm:^5.0.0"
