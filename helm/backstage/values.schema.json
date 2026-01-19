@@ -476,6 +476,9 @@
               "type": "string"
             }
           }
+        },
+        "reportURI": {
+          "type": "string"
         }
       }
     },
