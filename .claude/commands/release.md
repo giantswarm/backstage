@@ -1,3 +1,7 @@
+---
+description: Make a release
+---
+
 # Release Process
 
 This command prepares a new release by analyzing changesets and updating the CHANGELOG.
