@@ -43,8 +43,8 @@ It provides the following capabilities taylored for Giant Swarm customers:
 - [Clusters](/clusters): the user can inspect existing Kubernetes clusters
 - [Deployments](/deployments): the user can inspect existing application deployments (based on Giant Swarm App or Flux HelmRelease resources)
 - [Flux](/flux): the user can get an overview of Flux sources like GitRepositories and deployment resources like HelmReleases and Kustomizations, and inspect their state
-- Catalog: here the user can find applications running in management and workload clusters, and applications available for deployment
-- Docs: Access to documentation about components in the Catalog
+- [Catalog](/catalog): here the user can find applications running in management and workload clusters, and applications available for deployment
+- [Docs](/docs): Access to documentation about components in the Catalog
 
 More information about the Backstage developer portal can be found in the documentation: https://docs.giantswarm.io/overview/developer-portal/
 
@@ -93,3 +93,4 @@ Tags:
   - Examples:
     - Team [area-kaas](/catalog/default/group/area-kaas)
     - Component [observability-operator](/catalog/default/component/observability-operator)
+    - System [App Platform](/catalog/default/system/app-platform)
