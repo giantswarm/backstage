@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Expose additional MCP tools via the catalog MCP backend plugin.
+
+### Changed
+
+- Increase request size limit for AI chat backend.
+
+### Fixed
+
+- Fix react-router version mismatch causing routing context error on Entity pages.
+
 ## [0.96.4] - 2026-01-15
 
 ### Fixed
