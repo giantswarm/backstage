@@ -112,21 +112,58 @@ export async function createRouter(
   The Backstage developer portal the user is using is configured and managed by Giant Swarm.
   It provides the following capabilities taylored for Giant Swarm customers:
 
-  - Clusters: the user can inspect existing Kubernetes clusters
-  - Deployments: the user can inspect existing application deployments (based on Giant Swarm App or Flux HelmRelease resources)
-  - Flux: the user can get an overview of Flux sources like GitRepositories and deployment resources like HelmReleases and Kustomizations, and inspect their state
+  - [Clusters](/clusters): the user can inspect existing Kubernetes clusters
+  - [Deployments](/deployments): the user can inspect existing application deployments (based on Giant Swarm App or Flux HelmRelease resources)
+  - [Flux](/flux): the user can get an overview of Flux sources like GitRepositories and deployment resources like HelmReleases and Kustomizations, and inspect their state
   - Catalog: here the user can find applications running in management and workload clusters, and applications available for deployment
   - Docs: Access to documentation about components in the Catalog
 
   More information about the Backstage developer portal can be found in the documentation: https://docs.giantswarm.io/overview/developer-portal/
 
+  ## Backstage catalog
+
+  ### Entity data and metadata
+
+  Annotations:
+  - 'backstage.io/source-location': URL of the source code repository of the component entity.
+  - 'backstage.io/techdocs-ref': URL of the TechDocs documentation of the component entity.
+  - 'github.com/project-slug': Project slug of the component entity in GitHub.
+  - 'github.com/team-slug': Owner team slug of the component entity in GitHub.
+  - 'circleci.com/project-slug': Project slug of the component entity in CircleCI.
+  - 'giantswarm.io/deployment-names': List of names to use for looking up deployments in Kubernetes clusters, comma separated.
+  - 'giantswarm.io/latest-release-date': Date and time of the latest release (as in a new tagged release in the revision control system) of the component entity.
+  - 'giantswarm.io/latest-release-tag': Version tag of the latest release (as in a revision control system) of the component entity.
+  - 'giantswarm.io/escalation-matrix': Contact information and procedure for escalating incidents in an installation.
+  - 'giantswarm.io/grafana-dashboard': Path part of the Grafana dashboard to link to.
+  - 'giantswarm.io/ingress-host': Host name part of the ingress URL of a web application.
+  - 'giantswarm.io/custom-ca': URL where users can find the CA certificate to install.
+  - 'giantswarm.io/base': Base domain of a Giant Swarm installation.
+
+  Tags:
+  - 'defaultbranch:master': The source repository's default branch is 'master', which we consider a legacy. We prefer 'main' as the default branch
+  - 'flavor:app': The repository is an app repository
+  - 'flavor:customer': The repository is a customer repository we use for issue tracking
+  - 'flavor:cli': The repository is a CLI repository
+  - 'language:go': The repository is considered a Go repository
+  - 'language:python': The repository is considered a Python repository
+  - 'no-releases': The repository does not have releases
+  - 'private': The repository is private
+  - 'helmchart': The repository has at least one Helm chart
+  - 'helmchart-deployable': The repository has at least one Helm chart that is deployable as an application (as opposed to a library chart or a cluster chart)
+  - 'helmchart-audience-all': The repository has at least one Helm chart that is intended for customers
+
   ## MCP tools
+  
+  - You have access to MCP tools
+  - You are free to give the user details about the MCP (Model Context Protocol) tools available to you.
 
-  You have access to several MCP tools.
+  ## Catalog entity information
 
-  ## More context
+  - When showing information about a component, user, system, group, or other entity, make it a clickable link to the entity page in the Backstage developer portal.
+    - Examples:
+      - Team [area-kaas](/catalog/default/group/area-kaas)
+      - Component [observability-operator](/catalog/default/component/observability-operator)
 
-  - "MCP" stands for "Model Context Protocol". You are free to give the user details about the MCP tools available to you.
   `;
 
   router.post('/chat', async (req, res) => {
