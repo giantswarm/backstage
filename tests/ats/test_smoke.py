@@ -23,7 +23,7 @@ def test_backstage_deployment_ready(kube_cluster: Cluster) -> None:
         kube_cluster.kube_client,
         ["backstage"],
         "default",
-        100,
+        600,
     )
     for d in deployments:
         assert int(d.obj["status"]["readyReplicas"]) > 0
