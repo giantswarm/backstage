@@ -22,16 +22,24 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly configApi?: ConfigApi;
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly oauthRequestApi: OAuthRequestApi;
-  private readonly authProviders: AuthProvider[];
-  private readonly authApis: { [providerName: string]: AuthApi };
+  // private readonly authProviders: AuthProvider[];
+  // private readonly authApis: { [providerName: string]: AuthApi };
+  private readonly kubernetesAuthProviders: AuthProvider[];
+  private readonly kubernetesAuthApis: { [providerName: string]: AuthApi };
+
+  private readonly mcpAuthProviders: AuthProvider[];
+  private readonly mcpAuthApis: { [providerName: string]: AuthApi };
 
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.oauthRequestApi = options.oauthRequestApi;
 
-    this.authProviders = this.getAuthProvidersFromConfig();
-    this.authApis = this.createAuthApis();
+    this.kubernetesAuthProviders = this.getKubernetesAuthProvidersFromConfig();
+    this.kubernetesAuthApis = this.createKubernetesAuthApis();
+
+    this.mcpAuthProviders = this.getMCPAuthProvidersFromConfig();
+    this.mcpAuthApis = this.createMCPAuthApis();
   }
 
   static create(
@@ -40,7 +48,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     return new GSAuthProviders(options);
   }
 
-  private getAuthProvidersFromConfig(): AuthProvider[] {
+  private getKubernetesAuthProvidersFromConfig(): AuthProvider[] {
     const installationsConfig =
       this.configApi?.getOptionalConfig('gs.installations');
     if (!installationsConfig) {
@@ -81,8 +89,89 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     });
   }
 
-  private createAuthApis() {
-    const entries = this.authProviders.map(
+  private createKubernetesAuthApis() {
+    const entries = this.kubernetesAuthProviders.map(
+      ({ providerName, providerDisplayName }) => {
+        const authConnector = new DefaultAuthConnector({
+          configApi: this.configApi,
+          discoveryApi: this.discoveryApi,
+          oauthRequestApi: this.oauthRequestApi,
+          environment:
+            this.configApi?.getOptionalString('auth.environment') ??
+            'development',
+          provider: {
+            id: providerName,
+            title: providerDisplayName,
+            icon: GiantSwarmIcon,
+          },
+          sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
+            const session: OAuth2Session = {
+              ...res,
+              providerInfo: {
+                idToken: res.providerInfo.idToken,
+                accessToken: res.providerInfo.accessToken,
+                scopes: OAuth2.normalizeScopes(res.providerInfo.scope),
+                expiresAt: res.providerInfo.expiresInSeconds
+                  ? new Date(
+                      Date.now() + res.providerInfo.expiresInSeconds * 1000,
+                    )
+                  : undefined,
+              },
+            };
+            if (backstageIdentity) {
+              session.backstageIdentity = {
+                token: backstageIdentity.token,
+                identity: backstageIdentity.identity,
+                expiresAt: backstageIdentity.expiresInSeconds
+                  ? new Date(
+                      Date.now() + backstageIdentity.expiresInSeconds * 1000,
+                    )
+                  : undefined,
+              };
+            }
+            return session;
+          },
+          popupOptions: {
+            size: {
+              width: 600,
+              height: 600,
+            },
+          },
+        });
+
+        return [
+          providerName,
+          OAuth2.create({
+            authConnector,
+            defaultScopes: [
+              'openid',
+              'profile',
+              'email',
+              'groups',
+              'offline_access',
+              'federated:id',
+              'audience:server:client_id:dex-k8s-authenticator',
+            ],
+          }),
+        ];
+      },
+    );
+
+    return Object.fromEntries(entries);
+  }
+
+  private getMCPAuthProvidersFromConfig(): AuthProvider[] {
+    return [
+      {
+        providerName: 'mcp-kubernetes-graveler',
+        providerDisplayName: 'Kubernetes MCP - graveler',
+        installationName: 'graveler',
+      },
+    ];
+  }
+
+  private createMCPAuthApis() {
+    const entries = this.mcpAuthProviders.map(
       ({ providerName, providerDisplayName }) => {
         const authConnector = new DefaultAuthConnector({
           configApi: this.configApi,
@@ -153,11 +242,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   getProviders() {
-    return this.authProviders;
+    return [...this.kubernetesAuthProviders, ...this.mcpAuthProviders];
   }
 
   getAuthApi(providerName: string) {
-    return this.authApis[providerName];
+    return (
+      this.kubernetesAuthApis[providerName] || this.mcpAuthApis[providerName]
+    );
   }
 
   getMainAuthApi() {
@@ -181,7 +272,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     return authApi;
   }
 
-  getAuthApis() {
-    return this.authApis;
+  getKubernetesAuthApis() {
+    return this.kubernetesAuthApis;
   }
 }

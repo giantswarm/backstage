@@ -14,8 +14,10 @@ import {
   oidcAuthenticator,
   OidcAuthResult,
 } from '@backstage/plugin-auth-backend-module-oidc-provider';
+import { oauth2Authenticator } from './oauth2/authenticator';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
+const OAUTH_PROVIDER_NAME_PREFIX = 'mcp-';
 
 type IdPClaim = {
   connector_id: string;
@@ -90,11 +92,12 @@ export const authModuleGsProviders = createBackendModule({
       async init({ providersExtensionPoint, config, logger }) {
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
-        const customProviders = configuredProviders.filter(provider =>
+
+        const customOIDCProviders = configuredProviders.filter(provider =>
           provider.startsWith(OIDC_PROVIDER_NAME_PREFIX),
         );
 
-        for (const providerName of customProviders) {
+        for (const providerName of customOIDCProviders) {
           try {
             logger.info(`Configuring auth provider: ${providerName}`);
 
@@ -125,6 +128,23 @@ export const authModuleGsProviders = createBackendModule({
             );
             logger.error((err as Error).toString());
           }
+        }
+
+        const customOAuthProviders = configuredProviders.filter(provider =>
+          provider.startsWith(OAUTH_PROVIDER_NAME_PREFIX),
+        );
+
+        for (const providerName of customOAuthProviders) {
+          logger.info(`Configuring auth provider: ${providerName}`);
+
+          // httpRouter.use(createCimdRouter(baseUrl, providerName));
+
+          providersExtensionPoint.registerProvider({
+            providerId: providerName,
+            factory: createOAuthProviderFactory({
+              authenticator: oauth2Authenticator,
+            }),
+          });
         }
       },
     });

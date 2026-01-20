@@ -28,6 +28,7 @@ backend.add(import('@giantswarm/backstage-plugin-techdocs-backend-module-gs'));
 backend.add(import('@backstage/plugin-auth-backend'));
 backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
 backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-gs'));
+backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-mcp'));
 
 // events plugin
 backend.add(import('@backstage/plugin-events-backend'));

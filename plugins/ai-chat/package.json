@@ -29,6 +29,7 @@
     "@assistant-ui/react-ai-sdk": "^1.1.19",
     "@assistant-ui/react-devtools": "^0.1.12",
     "@assistant-ui/react-markdown": "^0.11.8",
+    "@backstage/core-app-api": "^1.18.0",
     "@backstage/core-components": "^0.18.0",
     "@backstage/core-plugin-api": "^1.9.4",
     "@backstage/plugin-kubernetes-react": "backstage:^",
@@ -47,7 +48,6 @@
   },
   "devDependencies": {
     "@backstage/cli": "^0.34.3",
-    "@backstage/core-app-api": "^1.18.0",
     "@backstage/dev-utils": "^1.1.14",
     "@backstage/test-utils": "^1.7.11",
     "@testing-library/jest-dom": "^6.0.0",
