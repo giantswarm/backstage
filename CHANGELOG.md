@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Support initializing AI chat from a URL parameter.
+
+### Fixed
+
+- Fix Mosaic styles not being cleaned up when JsonSchemaViewer component unmounts.
+- Remove custom markdown style overrides from EntityReadmeCard now that Mosaic styles are properly isolated.
+
 ## [0.97.0] - 2026-01-19
 
 ### Added
