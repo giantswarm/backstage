@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.51.2
+
+### Patch Changes
+
+- e42fd25: Fix Mosaic styles not being cleaned up when JsonSchemaViewer component unmounts
+- e42fd25: Remove custom markdown style overrides from EntityReadmeCard now that Mosaic styles are properly isolated
+
 ## 0.51.1
 
 ### Patch Changes

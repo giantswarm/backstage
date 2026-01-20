@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix Mosaic styles not being cleaned up when JsonSchemaViewer component unmounts.
 - Remove custom markdown style overrides from EntityReadmeCard now that Mosaic styles are properly isolated.
 
+See [./docs/releases/v0.97.1-changelog.md](./docs/releases/v0.97.1-changelog.md) for more information.
+
 ## [0.97.0] - 2026-01-19
 
 ### Added
