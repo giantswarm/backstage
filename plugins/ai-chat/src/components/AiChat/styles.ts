@@ -48,28 +48,12 @@ export const useStyles = makeStyles((theme: Theme) =>
       backgroundColor: theme.palette.background.default,
       padding: theme.spacing(1.5, 2),
       borderRadius: theme.shape.borderRadius,
-    },
-    assistantMessage: {
-      '& pre': {
-        backgroundColor: theme.palette.type === 'dark' ? '#1e1e1e' : '#f5f5f5',
-        padding: theme.spacing(1.5),
-        borderRadius: theme.shape.borderRadius,
-        overflowX: 'auto',
-        margin: theme.spacing(1, 0),
-      },
-      '& code': {
-        fontFamily: 'monospace',
-        fontSize: '0.875rem',
-      },
+
       '& p': {
-        margin: theme.spacing(0.5, 0),
-      },
-      '& ul, & ol': {
-        marginLeft: theme.spacing(2),
-        marginTop: theme.spacing(0.5),
-        marginBottom: theme.spacing(0.5),
+        margin: 0,
       },
     },
+    assistantMessage: {},
     composerContainer: {
       borderTop: `1px solid ${theme.palette.divider}`,
       padding: theme.spacing(2),
@@ -112,6 +96,15 @@ export const useStyles = makeStyles((theme: Theme) =>
       display: 'inline-flex',
       gap: theme.spacing(0.5),
       alignItems: 'center',
+
+      '& > button': {
+        border: 'none',
+        background: 'none',
+        padding: 0,
+        font: 'inherit',
+        cursor: 'pointer',
+        outline: 'inherit',
+      },
     },
     messageActions: {
       display: 'flex',
@@ -120,6 +113,15 @@ export const useStyles = makeStyles((theme: Theme) =>
       '&[data-floating]': {
         position: 'absolute',
         zIndex: 1,
+      },
+
+      '& > button': {
+        border: 'none',
+        background: 'none',
+        padding: 0,
+        font: 'inherit',
+        cursor: 'pointer',
+        outline: 'inherit',
       },
     },
     actionButton: {
