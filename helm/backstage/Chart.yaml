@@ -2,8 +2,8 @@ apiVersion: v2
 name: backstage
 description: Backstage app provided by Giant Swarm
 home: https://github.com/giantswarm/backstage
-version: 0.97.0
-appVersion: '0.97.0'
+version: 0.97.1
+appVersion: '0.97.1'
 annotations:
   io.giantswarm.application.team: honeybadger
   io.giantswarm.application.logo: https://s.giantswarm.io/app-icons/backstage/1/logo.svg
