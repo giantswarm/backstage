@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.2.3
+
+### Patch Changes
+
+- feb7eb2: Support initializing a chat from a URL parameter
+
 ## 0.2.2
 
 ### Patch Changes
