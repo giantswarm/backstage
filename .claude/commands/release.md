@@ -14,7 +14,16 @@ When the release branch is pushed, GitHub Actions will automatically run `yarn r
 
 ## Steps
 
-### 1. Analyze Changesets
+### 1. Checkout Main and Pull Latest
+
+First, switch to the main branch and pull the latest changes to ensure we're analyzing the current state:
+
+```bash
+git checkout main
+git pull origin main
+```
+
+### 2. Analyze Changesets
 
 Read all `*.md` files in `.changeset/` folder (excluding `README.md`) to:
 
@@ -46,18 +55,14 @@ If there are no `*.md` files in `.changeset/` (excluding `README.md`), ask the u
    - The release level (major, minor, or patch)
    - The changelog entry describing what should be included in the release
 
-### 2. Prepare Release Branch
+### 3. Prepare Release Branch
 
 ```bash
-# Switch to main and pull latest
-git checkout main
-git pull origin main
-
 # Create release branch using determined level
 git checkout -b "main#release#${level}"  # e.g., main#release#patch
 ```
 
-### 3. Update CHANGELOG.md
+### 4. Update CHANGELOG.md
 
 Add a concise summary of changes to the `## [Unreleased]` section in the root `CHANGELOG.md`.
 
@@ -103,7 +108,7 @@ Add a concise summary of changes to the `## [Unreleased]` section in the root `C
 ...
 ```
 
-### 4. Review Changes
+### 5. Review Changes
 
 Review the CHANGELOG.md update:
 
@@ -119,7 +124,7 @@ Verify:
 - All important changes from changesets are represented
 - No version numbers or dates added (automation handles this)
 
-### 5. Commit and Push
+### 6. Commit and Push
 
 ```bash
 # Stage CHANGELOG.md
@@ -132,7 +137,7 @@ git commit -m "Prepare release: update CHANGELOG for ${level} release"
 git push origin main#release#${level}
 ```
 
-### 6. Monitor and Merge Release PR
+### 7. Monitor and Merge Release PR
 
 When the branch is pushed, GitHub Actions automatically:
 
