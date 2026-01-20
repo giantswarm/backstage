@@ -7,8 +7,6 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.97.0] - 2026-01-19
 
-See [./docs/releases/v0.97.0-changelog.md](./docs/releases/v0.97.0-changelog.md) for more information.
-
 ### Added
 
 - Expose additional MCP tools via the catalog MCP backend plugin.
@@ -20,6 +18,8 @@ See [./docs/releases/v0.97.0-changelog.md](./docs/releases/v0.97.0-changelog.md)
 ### Fixed
 
 - Fix react-router version mismatch causing routing context error on Entity pages.
+
+See [./docs/releases/v0.97.0-changelog.md](./docs/releases/v0.97.0-changelog.md) for more information.
 
 ## [0.96.4] - 2026-01-15
 
