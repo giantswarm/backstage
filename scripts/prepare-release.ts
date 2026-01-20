@@ -131,9 +131,20 @@ function updateUnreleasedSection(releaseNotesPath: string): void {
     throw new Error('Unreleased section not found in CHANGELOG.md');
   }
 
-  const releaseNotesLink = `\nSee [${releaseNotesPath}](${releaseNotesPath}) for more information.`;
+  const releaseNotesLink = `See [${releaseNotesPath}](${releaseNotesPath}) for more information.\n`;
   if (!lines.includes(releaseNotesLink)) {
-    lines.splice(unreleasedIndex + 1, 0, releaseNotesLink);
+    // Find the next section (next line starting with ##)
+    const nextSectionIndex = lines
+      .slice(unreleasedIndex + 1)
+      .findIndex(line => line.startsWith('## '));
+
+    // Insert before the next section (or at the end if no next section)
+    const insertIndex =
+      nextSectionIndex === -1
+        ? lines.length
+        : unreleasedIndex + 1 + nextSectionIndex;
+
+    lines.splice(insertIndex, 0, releaseNotesLink);
     fs.writeFileSync(changelogPath, lines.join('\n'), 'utf-8');
   }
 }
