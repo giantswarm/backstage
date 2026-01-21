@@ -6,7 +6,6 @@ import {
 import {
   authProvidersExtensionPoint,
   AuthResolverContext,
-  createOAuthProviderFactory,
   OAuthAuthenticatorResult,
   SignInResolver,
 } from '@backstage/plugin-auth-node';
@@ -15,6 +14,7 @@ import {
   OidcAuthResult,
 } from '@backstage/plugin-auth-backend-module-oidc-provider';
 import { oauth2Authenticator } from './oauth2/authenticator';
+import { createOAuthProviderFactory as createCustomOAuthProviderFactory } from './oauth2/createOAuthProviderFactory';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const OAUTH_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -115,7 +115,7 @@ export const authModuleGsProviders = createBackendModule({
 
             providersExtensionPoint.registerProvider({
               providerId: providerName,
-              factory: createOAuthProviderFactory({
+              factory: createCustomOAuthProviderFactory({
                 authenticator: oidcAuthenticator,
                 signInResolver: isMainAuthProvider
                   ? customSignInResolver
@@ -141,7 +141,7 @@ export const authModuleGsProviders = createBackendModule({
 
           providersExtensionPoint.registerProvider({
             providerId: providerName,
-            factory: createOAuthProviderFactory({
+            factory: createCustomOAuthProviderFactory({
               authenticator: oauth2Authenticator,
             }),
           });

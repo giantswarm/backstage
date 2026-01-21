@@ -30,6 +30,7 @@
     "@backstage/plugin-auth-backend": "backstage:^",
     "@backstage/plugin-auth-backend-module-oidc-provider": "backstage:^",
     "@backstage/plugin-auth-node": "backstage:^",
+    "@backstage/types": "backstage:^",
     "express": "^5.0.0",
     "node-fetch": "^3.3.2",
     "passport-oauth2": "^1.8.0"

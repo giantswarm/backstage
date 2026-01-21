@@ -20,6 +20,7 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
+import { extractMCPAuthTokens } from './extractMCPAuthTokens';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -99,24 +100,8 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
-    // Extract MCP tokens from headers (sent by frontend for authenticated MCP servers)
-    const mcpTokensHeader = req.headers['x-mcp-tokens'] as string | undefined;
-    let mcpTokens: Record<string, string> = {};
-    if (mcpTokensHeader) {
-      try {
-        mcpTokens = JSON.parse(mcpTokensHeader);
-        logger.debug(
-          `Received MCP tokens for servers: ${Object.keys(mcpTokens).join(', ')}`,
-        );
-      } catch {
-        logger.warn('Failed to parse X-MCP-Tokens header');
-      }
-    }
-
-    const mcpTools = await getMcpTools(config, mcpTokens, logger);
-    logger.debug('==================MCP TOOLS====================');
-    logger.debug(JSON.stringify(Object.keys(mcpTools)));
-    logger.debug('===============================================');
+    const authTokens = extractMCPAuthTokens(messages as UIMessage[]);
+    const mcpTools = await getMcpTools(config, authTokens);
 
     try {
       // Select the appropriate provider based on model type

@@ -161,13 +161,23 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   private getMCPAuthProvidersFromConfig(): AuthProvider[] {
-    return [
-      {
-        providerName: 'mcp-kubernetes-graveler',
-        providerDisplayName: 'Kubernetes MCP - graveler',
-        installationName: 'graveler',
-      },
-    ];
+    const authProvidersConfig =
+      this.configApi?.getOptionalConfig('auth.providers');
+    if (!authProvidersConfig) {
+      return [];
+    }
+
+    const providerNames = authProvidersConfig.keys();
+    return providerNames
+      .filter(providerName => providerName.startsWith('mcp-'))
+      .map(providerName => {
+        const providerDisplayName = providerName.replace(/-/g, ' ');
+        return {
+          providerName,
+          providerDisplayName,
+          installationName: '',
+        };
+      });
   }
 
   private createMCPAuthApis() {
@@ -224,15 +234,25 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           providerName,
           OAuth2.create({
             authConnector,
-            defaultScopes: [
-              'openid',
-              'profile',
-              'email',
-              'groups',
-              'offline_access',
-              'federated:id',
-              'audience:server:client_id:dex-k8s-authenticator',
-            ],
+            defaultScopes:
+              providerName === 'mcp-kubernetes-graveler'
+                ? [
+                    'openid',
+                    'profile',
+                    'email',
+                    'groups',
+                    'offline_access',
+                    'audience:server:client_id:dex-k8s-authenticator',
+                  ]
+                : [
+                    'openid',
+                    'profile',
+                    'email',
+                    'groups',
+                    'offline_access',
+                    'federated:id',
+                    'audience:server:client_id:dex-k8s-authenticator',
+                  ],
           }),
         ];
       },
