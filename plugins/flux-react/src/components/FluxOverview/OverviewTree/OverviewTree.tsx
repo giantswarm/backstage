@@ -1,3 +1,4 @@
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   KustomizationTreeNode,
@@ -17,7 +18,7 @@ import {
   FixedSizeNodePublicState,
 } from 'react-vtree';
 import { ResourceNode } from '../ResourceNode';
-import { ListChildComponentProps } from 'react-window';
+import { ListChildComponentProps, Align } from 'react-window';
 import { SelectedResourceRef } from '../useSelectedResource';
 
 export type NodeData = Readonly<{
@@ -94,6 +95,9 @@ const Node = ({
     data.name === treeData.selectedResourceRef.name &&
     data.namespace === treeData.selectedResourceRef.namespace;
 
+  const isSearchMatch = treeData.searchMatchIds?.has(data.id);
+  const isCurrentMatch = treeData.currentMatchId === data.id;
+
   const expandable = treeData.compactView
     ? data.hasChildrenInCompactView
     : data.hasChildren;
@@ -110,6 +114,8 @@ const Node = ({
       expandable={expandable}
       expanded={isOpen}
       onExpand={() => setOpen(!isOpen)}
+      searchMatch={isSearchMatch}
+      currentSearchMatch={isCurrentMatch}
     />
   );
 
@@ -152,6 +158,10 @@ const Node = ({
   );
 };
 
+export type OverviewTreeRef = {
+  scrollToItem: (id: string, align?: Align) => void;
+};
+
 type OverviewTreeProps = {
   tree: KustomizationTreeNode[];
   compactView: boolean;
@@ -163,55 +173,87 @@ type OverviewTreeProps = {
     name: string,
     namespace?: string,
   ) => void;
+  searchMatchIds?: Set<string>;
+  currentMatchId?: string;
+  pathsToExpand?: Set<string>;
 };
 
-export const OverviewTree = ({
-  tree,
-  compactView,
-  selectedResourceRef,
-  height,
-  onSelectResource,
-}: OverviewTreeProps) => {
-  const treeNodes = tree;
+export const OverviewTree = forwardRef<OverviewTreeRef, OverviewTreeProps>(
+  (
+    {
+      tree,
+      compactView,
+      selectedResourceRef,
+      height,
+      onSelectResource,
+      searchMatchIds,
+      currentMatchId,
+      pathsToExpand,
+    },
+    ref,
+  ) => {
+    const treeRef = useRef<Tree<TreeNodeData>>(null);
+    const treeNodes = tree;
 
-  function* treeWalker(): ReturnType<TreeWalker<TreeNodeData, NodeMeta>> {
-    // Step [1]: Define the root node of our tree. There can be one or
-    // multiple nodes.
-    for (let i = 0; i < treeNodes.length; i++) {
-      if (!compactView || treeNodes[i].displayInCompactView) {
-        yield getNodeData(treeNodes[i], 0);
+    useImperativeHandle(ref, () => ({
+      scrollToItem: (id: string, align: Align = 'center') => {
+        treeRef.current?.scrollToItem(id, align);
+      },
+    }));
+
+    // Auto-expand paths to search matches
+    useEffect(() => {
+      if (pathsToExpand && pathsToExpand.size > 0 && treeRef.current) {
+        const opennessState: Record<string, { open: boolean }> = {};
+        pathsToExpand.forEach(id => {
+          opennessState[id] = { open: true };
+        });
+        treeRef.current.recomputeTree(opennessState);
       }
-    }
+    }, [pathsToExpand]);
 
-    while (true) {
-      // Step [2]: Get the parent component back. It will be the object
-      // the `getNodeData` function constructed, so you can read any data from it.
-      const parent = yield;
+    function* treeWalker(): ReturnType<TreeWalker<TreeNodeData, NodeMeta>> {
+      // Step [1]: Define the root node of our tree. There can be one or
+      // multiple nodes.
+      for (let i = 0; i < treeNodes.length; i++) {
+        if (!compactView || treeNodes[i].displayInCompactView) {
+          yield getNodeData(treeNodes[i], 0);
+        }
+      }
 
-      for (let i = 0; i < parent.node.children.length; i++) {
-        // Step [3]: Yielding all the children of the provided component. Then we
-        // will return for the step [2] with the first children.
-        if (!compactView || parent.node.children[i].displayInCompactView) {
-          yield getNodeData(parent.node.children[i], parent.nestingLevel + 1);
+      while (true) {
+        // Step [2]: Get the parent component back. It will be the object
+        // the `getNodeData` function constructed, so you can read any data from it.
+        const parent = yield;
+
+        for (let i = 0; i < parent.node.children.length; i++) {
+          // Step [3]: Yielding all the children of the provided component. Then we
+          // will return for the step [2] with the first children.
+          if (!compactView || parent.node.children[i].displayInCompactView) {
+            yield getNodeData(parent.node.children[i], parent.nestingLevel + 1);
+          }
         }
       }
     }
-  }
 
-  return (
-    <Tree
-      async
-      treeWalker={treeWalker}
-      itemSize={100}
-      itemData={{
-        selectedResourceRef,
-        compactView,
-        onSelectResource,
-      }}
-      height={height}
-      width="100%"
-    >
-      {Node}
-    </Tree>
-  );
-};
+    return (
+      <Tree
+        ref={treeRef}
+        async
+        treeWalker={treeWalker}
+        itemSize={100}
+        itemData={{
+          selectedResourceRef,
+          compactView,
+          onSelectResource,
+          searchMatchIds,
+          currentMatchId,
+        }}
+        height={height}
+        width="100%"
+      >
+        {Node}
+      </Tree>
+    );
+  },
+);

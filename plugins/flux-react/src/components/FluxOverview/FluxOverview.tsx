@@ -1,7 +1,8 @@
+import { useEffect, useMemo, useRef } from 'react';
 import { Box } from '@material-ui/core';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { ContentContainer } from './ContentContainer';
-import { OverviewTree } from './OverviewTree';
+import { OverviewTree, OverviewTreeRef } from './OverviewTree';
 import { useFluxOverviewData } from '../FluxOverviewDataProvider';
 import { SelectedResourceRef } from './useSelectedResource';
 
@@ -17,9 +18,31 @@ export const FluxOverview = ({
     namespace?: string,
   ) => void;
 }) => {
-  const { tree, isLoading, resourceType } = useFluxOverviewData();
+  const {
+    tree,
+    isLoading,
+    resourceType,
+    searchMatches,
+    currentMatchId,
+    pathsToExpand,
+  } = useFluxOverviewData();
 
+  const treeRef = useRef<OverviewTreeRef>(null);
   const compactView = resourceType === 'flux';
+
+  const searchMatchIds = useMemo(() => new Set(searchMatches), [searchMatches]);
+
+  // Scroll to the current match when it changes
+  useEffect(() => {
+    if (currentMatchId && treeRef.current) {
+      // Small delay to allow auto-expand to complete first
+      const timeoutId = setTimeout(() => {
+        treeRef.current?.scrollToItem(currentMatchId, 'center');
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+    return undefined;
+  }, [currentMatchId]);
 
   return (
     <Box display="flex" flexDirection="column" height="100%">
@@ -37,11 +60,15 @@ export const FluxOverview = ({
         <ContentContainer
           renderContent={containerHeight => (
             <OverviewTree
+              ref={treeRef}
               tree={tree}
               compactView={compactView}
               selectedResourceRef={selectedResourceRef}
               height={containerHeight}
               onSelectResource={onSelectResource}
+              searchMatchIds={searchMatchIds}
+              currentMatchId={currentMatchId}
+              pathsToExpand={pathsToExpand}
             />
           )}
         />
