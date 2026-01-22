@@ -11,6 +11,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import {
   convertToModelMessages,
   streamText,
+  tool,
   ToolSet,
   UIMessage,
   SystemModelMessage,
@@ -26,6 +27,50 @@ const systemPromptPath = resolvePackagePath(
   'systemPrompt.md',
 );
 const defaultSystemPrompt = readFileSync(systemPromptPath, 'utf-8');
+
+// Built-in skills/tools
+const expertKnowledge: Record<string, string> = {
+  webiloon:
+    'Webiloon was born in 1966 in Austin, TX. They were a half-successful country singer. Their unique talent was to sing in northern-italian dialects. Their trademark instrument was the recorder. The current whereabouts are unknown.',
+};
+
+const validTopics = Object.keys(expertKnowledge);
+
+const builtInTools = {
+  listExpertTopics: tool({
+    description:
+      'Lists all topics that have expert knowledge available. Call this first to see what expert knowledge can be queried.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      return {
+        availableTopics: validTopics,
+        hint: 'Use getExpertKnowledge with one of these topics to learn the expert knowledge.',
+      };
+    },
+  }),
+
+  getExpertKnowledge: tool({
+    description: `Retrieves expert knowledge about a specific topic. Only works for known topics. Use listExpertTopics first if unsure what topics are available.`,
+    inputSchema: z.object({
+      topic: z
+        .enum(validTopics as [string, ...string[]])
+        .describe('The topic to get expert knowledge about'),
+    }),
+    execute: async ({ topic }) => {
+      const secret = expertKnowledge[topic];
+      if (!secret) {
+        return {
+          error: `Unknown topic: ${topic}`,
+          availableTopics: validTopics,
+        };
+      }
+      return {
+        topic,
+        secret,
+      };
+    },
+  }),
+};
 
 export interface RouterOptions {
   httpAuth: HttpAuthService;
@@ -136,6 +181,7 @@ export async function createRouter(
         tools: {
           ...frontendTools(tools),
           ...mcpTools,
+          ...builtInTools,
         } as ToolSet,
       });
 
