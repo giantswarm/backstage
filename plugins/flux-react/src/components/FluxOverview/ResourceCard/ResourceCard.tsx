@@ -44,6 +44,14 @@ const useStyles = makeStyles(theme => {
     rootHighlighted: {
       borderColor: theme.palette.type === 'light' ? '#000' : '#fff',
     },
+    rootSearchMatch: {
+      outline: `1px solid ${theme.palette.warning.light}`,
+      outlineOffset: 1,
+    },
+    rootCurrentSearchMatch: {
+      outline: '3px solid #e91e63',
+      outlineOffset: 1,
+    },
   };
 });
 
@@ -51,12 +59,16 @@ type ResourceWrapperProps = PaperProps & {
   highlighted?: boolean;
   error?: boolean;
   inactive?: boolean;
+  searchMatch?: boolean;
+  currentSearchMatch?: boolean;
 };
 
 export const ResourceWrapper = ({
   highlighted,
   error,
   inactive,
+  searchMatch,
+  currentSearchMatch,
   className,
   children,
   ...props
@@ -72,6 +84,8 @@ export const ResourceWrapper = ({
           [classes.rootHighlighted]: highlighted,
           [classes.rootError]: error,
           [classes.rootInactive]: inactive,
+          [classes.rootSearchMatch]: searchMatch && !currentSearchMatch,
+          [classes.rootCurrentSearchMatch]: currentSearchMatch,
         },
         className,
       )}
