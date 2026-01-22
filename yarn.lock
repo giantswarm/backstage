@@ -200,13 +200,13 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-devtools@npm:^0.1.12":
-  version: 0.1.12
-  resolution: "@assistant-ui/react-devtools@npm:0.1.12"
+  version: 0.1.13
+  resolution: "@assistant-ui/react-devtools@npm:0.1.13"
   dependencies:
-    zod: "npm:^4.2.1"
+    zod: "npm:^4.3.5"
   peerDependencies:
-    "@assistant-ui/react": ^0.11.53
-    "@assistant-ui/tap": ^0.3.5
+    "@assistant-ui/react": ^0.11.58
+    "@assistant-ui/tap": ^0.3.6
     "@types/react": "*"
     "@types/react-dom": "*"
     react: ^18 || ^19
@@ -216,7 +216,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/ce08cfcd1c6aef26c38068ea7044bcee080655bb7a15893ef6c81d906bce9480f51015113251f9801ca00779074a5b29bd4c663fdf8fbc09671dd7f41f7ba5e7
+  checksum: 10c0/88dda5a78fde7d9ebd5b8096695e430a98c1b11067f5f45a5136f17ef65fc94603b2bb3837788fc66cf3ac1db8187855a36e38a487c81d30e9b9eda7f1db646c
   languageName: node
   linkType: hard
 
