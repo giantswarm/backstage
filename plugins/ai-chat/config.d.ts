@@ -32,12 +32,17 @@ export interface Config {
       description?: string;
       /** URL of the MCP server */
       url: string;
-      /** Optional: HTTP headers to send with requests */
+      /**
+       * Optional: HTTP headers to send with requests
+       * @visibility backend
+       */
       headers?: {
         [key: string]: string;
       };
       /** Optional: Auth provider name to use for this MCP server */
       authProvider?: string;
+      /** Optional: Installation name to prefix tool names and descriptions */
+      installation?: string;
     }>;
   };
 }
