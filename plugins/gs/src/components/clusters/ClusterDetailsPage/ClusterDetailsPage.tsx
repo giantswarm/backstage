@@ -1,9 +1,10 @@
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';
 import { ClusterOverview } from '../cluster-details/ClusterOverview';
 import { ClusterSSHAccess } from '../cluster-details/ClusterSSHAccess';
+import { ClusterDeployments } from '../cluster-details/ClusterDeployments';
 import { QueryClientProvider } from '../../QueryClientProvider';
-import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export const ClusterDetailsPage = () => {
   return (
@@ -15,6 +16,7 @@ export const ClusterDetailsPage = () => {
               <ClusterOverview />
             </ErrorsProvider>
           </ClusterLayout.Route>
+
           <ClusterLayout.Route
             path="/ssh-access"
             title="SSH access"
@@ -22,6 +24,12 @@ export const ClusterDetailsPage = () => {
           >
             <ErrorsProvider>
               <ClusterSSHAccess />
+            </ErrorsProvider>
+          </ClusterLayout.Route>
+
+          <ClusterLayout.Route path="/deployments" title="Deployments">
+            <ErrorsProvider>
+              <ClusterDeployments />
             </ErrorsProvider>
           </ClusterLayout.Route>
         </ClusterLayout>
