@@ -139,9 +139,23 @@ aiChat:
   # Model to use (default: gpt-4o-mini)
   model: gpt-4o-mini
 
-  # Optional: MCP servers configuration
+  # Optional: Static MCP servers (with pre-configured auth)
   # mcp:
   #   - name: backstage-actions
   #     url: http://localhost:7007/api/mcp-actions/v1
   #     headers:
   #       Authorization: 'Bearer ${MCP_TOKEN}'
+# Optional: MCP servers requiring OAuth authentication
+# These servers are authenticated per-user via OAuth 2.1 with CIMD
+# mcp:
+#   servers:
+#     - name: kubernetes-gazelle
+#       url: https://mcp-kubernetes.gazelle.example.com
+#       displayName: Kubernetes (Gazelle)
+#       # Optional: Additional OAuth scopes to request
+#       scopes:
+#         - kubernetes:read
+#         - kubernetes:write
+#     - name: kubernetes-gorilla
+#       url: https://mcp-kubernetes.gorilla.example.com
+#       displayName: Kubernetes (Gorilla)

@@ -129,7 +129,7 @@ export const apis: AnyApiFactory[] = [
     },
     factory: ({ microsoftAuthApi, googleAuthApi, gsAuthProvidersApi }) => {
       const oidcProviders = {
-        ...gsAuthProvidersApi.getAuthApis(),
+        ...gsAuthProvidersApi.getKubernetesAuthApis(),
       };
 
       return new KubernetesAuthProviders({

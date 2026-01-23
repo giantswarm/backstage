@@ -22,7 +22,7 @@ import {
   AuthConnector,
   AuthConnectorCreateSessionOptions,
   AuthConnectorRefreshSessionOptions,
-  openLoginPopup,
+  // openLoginPopup,
   PopupOptions,
 } from '@backstage/core-app-api';
 import {
@@ -32,6 +32,7 @@ import {
   OAuthRequester,
 } from '@backstage/core-plugin-api';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import { openLoginPopup } from './loginPopup';
 
 let warned = false;
 

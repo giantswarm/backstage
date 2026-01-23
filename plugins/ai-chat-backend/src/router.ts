@@ -20,6 +20,7 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
+import { extractMCPAuthTokens } from './extractMCPAuthTokens';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -99,10 +100,8 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
-    const mcpTools = await getMcpTools(config);
-    logger.debug('==================MCP TOOLS====================');
-    logger.debug(JSON.stringify(mcpTools));
-    logger.debug('===============================================');
+    const authTokens = extractMCPAuthTokens(messages as UIMessage[]);
+    const mcpTools = await getMcpTools(config, authTokens);
 
     try {
       // Select the appropriate provider based on model type
