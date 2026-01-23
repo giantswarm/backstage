@@ -11,6 +11,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import {
   convertToModelMessages,
   streamText,
+  tool,
   ToolSet,
   UIMessage,
   SystemModelMessage,
@@ -26,6 +27,68 @@ const systemPromptPath = resolvePackagePath(
   'systemPrompt.md',
 );
 const defaultSystemPrompt = readFileSync(systemPromptPath, 'utf-8');
+
+// Built-in tools
+const builtInTools = {
+  getSecurityScorecard: tool({
+    description:
+      'Fetches security scorecard results from the OpenSSF Scorecard API for a GitHub repository. ' +
+      'Returns security checks and scores that help assess the security posture of an open source project. ' +
+      'Use this when users ask about security, vulnerabilities, or security best practices for a repository.',
+    inputSchema: z.object({
+      repository: z
+        .string()
+        .describe(
+          'The GitHub repository in "owner/repo" format (e.g., "giantswarm/backstage")',
+        ),
+    }),
+    execute: async ({ repository }: { repository: string }) => {
+      const url = `https://api.scorecard.dev/projects/github.com/${repository}`;
+
+      try {
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            return {
+              error: `Repository "${repository}" not found or has no scorecard data available.`,
+              hint: 'The repository might be private, too new, or not yet analyzed by the OpenSSF Scorecard project.',
+            };
+          }
+          return {
+            error: `Failed to fetch scorecard data: ${response.status} ${response.statusText}`,
+          };
+        }
+
+        const data = await response.json();
+
+        return {
+          repository,
+          score: data.score,
+          date: data.date,
+          checks: data.checks?.map(
+            (check: {
+              name: string;
+              score: number;
+              reason: string;
+              documentation?: { short?: string };
+            }) => ({
+              name: check.name,
+              score: check.score,
+              reason: check.reason,
+              description: check.documentation?.short,
+            }),
+          ),
+          scorecardVersion: data.scorecard?.version,
+        };
+      } catch (error) {
+        return {
+          error: `Failed to fetch scorecard data: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        };
+      }
+    },
+  }),
+};
 
 export interface RouterOptions {
   httpAuth: HttpAuthService;
@@ -99,10 +162,19 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
-    const mcpTools = await getMcpTools(config);
-    logger.debug('==================MCP TOOLS====================');
-    logger.debug(JSON.stringify(mcpTools));
-    logger.debug('===============================================');
+    // Load MCP tools with error handling - don't fail if MCP servers are unavailable
+    let mcpTools: ToolSet = {};
+    try {
+      mcpTools = await getMcpTools(config);
+      logger.debug('==================MCP TOOLS====================');
+      logger.debug(JSON.stringify(mcpTools));
+      logger.debug('===============================================');
+    } catch (mcpError) {
+      logger.warn(
+        'Failed to load MCP tools, continuing without them',
+        mcpError as Error,
+      );
+    }
 
     try {
       // Select the appropriate provider based on model type
@@ -136,6 +208,7 @@ export async function createRouter(
         tools: {
           ...frontendTools(tools),
           ...mcpTools,
+          ...builtInTools,
         } as ToolSet,
       });
 
