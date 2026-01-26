@@ -103,6 +103,11 @@ export async function createRouter(
     const authTokens = extractMCPAuthTokens(messages as UIMessage[]);
     const mcpTools = await getMcpTools(config, authTokens);
 
+    console.log('========= Frontend Tools =========');
+    console.log(frontendTools(tools));
+    console.log('========= MCP Tools =========');
+    console.log(mcpTools);
+
     try {
       // Select the appropriate provider based on model type
       const selectedModel = isAnthropicModel

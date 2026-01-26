@@ -91,6 +91,44 @@ export function openLoginPopup(
       return;
     }
 
+    // Fallback: Listen for BroadcastChannel messages (when window.opener is null)
+    let broadcastChannel: BroadcastChannel | undefined;
+    if (typeof BroadcastChannel !== 'undefined') {
+      broadcastChannel = new BroadcastChannel('backstage-auth-response');
+      // eslint-disable-next-line no-console
+      console.log('[Auth Popup] BroadcastChannel listener initialized');
+      broadcastChannel.onmessage = (event: MessageEvent) => {
+        const { data } = event;
+
+        // Debug: temporarily log to verify this is being called
+        // eslint-disable-next-line no-console
+        console.log('[Auth Popup] BroadcastChannel received:', data.type);
+
+        if (data.type === 'config_info') {
+          targetOrigin = data.targetOrigin;
+          return;
+        }
+
+        if (data.type !== 'authorization_response') {
+          return;
+        }
+        const authResult = data as AuthResult;
+
+        if ('error' in authResult) {
+          const error = new Error(authResult.error.message);
+          error.name = authResult.error.name;
+          reject(error);
+        } else {
+          resolve(authResult.response);
+        }
+        done();
+      };
+    } else {
+      // Debug: log if BroadcastChannel is not supported
+      // eslint-disable-next-line no-console
+      console.warn('[Auth Popup] BroadcastChannel API not available in this browser');
+    }
+
     const messageListener = (event: MessageEvent) => {
       if (event.source !== popup) {
         return;
@@ -139,6 +177,9 @@ export function openLoginPopup(
     function done() {
       window.removeEventListener('message', messageListener);
       clearInterval(intervalId);
+      if (broadcastChannel) {
+        broadcastChannel.close();
+      }
     }
 
     window.addEventListener('message', messageListener);

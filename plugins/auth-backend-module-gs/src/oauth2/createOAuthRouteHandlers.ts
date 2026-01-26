@@ -157,13 +157,13 @@ export function createOAuthRouteHandlers<TProfile>(
         authenticatorCtx,
       );
 
-      // console.log('=== OAuth start redirect:', {
-      //   providerId,
-      //   redirectTo: url,
-      //   status: status || 302,
-      //   origin,
-      //   flow,
-      // });
+      console.log('[Auth Backend] === OAuth start handler ===');
+      console.log('[Auth Backend] Provider ID:', providerId);
+      console.log('[Auth Backend] Redirect to:', url);
+      console.log('[Auth Backend] Status:', status || 302);
+      console.log('[Auth Backend] Origin:', origin);
+      console.log('[Auth Backend] Flow:', flow);
+      console.log('[Auth Backend] Scope:', scope);
 
       // Optionally check the target URL's headers to see COOP policy
       // try {
@@ -201,17 +201,21 @@ export function createOAuthRouteHandlers<TProfile>(
       req: express.Request,
       res: express.Response,
     ): Promise<void> {
-      // console.log('=== OAuth frameHandler called:', {
-      //   providerId,
-      //   url: req.url,
-      //   referer: req.headers.referer,
-      //   origin: req.headers.origin,
-      //   requestHeaders: {
-      //     'sec-fetch-site': req.headers['sec-fetch-site'],
-      //     'sec-fetch-mode': req.headers['sec-fetch-mode'],
-      //     'sec-fetch-dest': req.headers['sec-fetch-dest'],
-      //   },
-      // });
+      console.log('[Auth Backend] === OAuth frameHandler called ===');
+      console.log('[Auth Backend] Provider ID:', providerId);
+      console.log('[Auth Backend] Full URL:', req.url);
+      console.log('[Auth Backend] Referer:', req.headers.referer);
+      console.log('[Auth Backend] Origin header:', req.headers.origin);
+      console.log('[Auth Backend] Request headers:', {
+        'sec-fetch-site': req.headers['sec-fetch-site'],
+        'sec-fetch-mode': req.headers['sec-fetch-mode'],
+        'sec-fetch-dest': req.headers['sec-fetch-dest'],
+        'sec-fetch-user': req.headers['sec-fetch-user'],
+      });
+      console.log('[Auth Backend] Response headers will be:', {
+        'Cross-Origin-Opener-Policy': res.getHeader('Cross-Origin-Opener-Policy'),
+        'Cross-Origin-Embedder-Policy': res.getHeader('Cross-Origin-Embedder-Policy'),
+      });
 
       let origin = defaultAppOrigin;
       let state;
@@ -244,7 +248,10 @@ export function createOAuthRouteHandlers<TProfile>(
           { req },
           authenticatorCtx,
         );
-        // console.log('=== OAuth2 authenticate result', result);
+        console.log('[Auth Backend] Authentication successful');
+        console.log('[Auth Backend] Has idToken:', !!result.session.idToken);
+        console.log('[Auth Backend] Has accessToken:', !!result.session.accessToken);
+        console.log('[Auth Backend] Has refreshToken:', !!result.session.refreshToken);
         const { profile } = await profileTransform(result, resolverContext);
 
         const signInResult =
@@ -291,10 +298,10 @@ export function createOAuthRouteHandlers<TProfile>(
           return;
         }
 
-        // console.log('=== OAuth2 sendWebMessageResponse', {
-        //   type: 'authorization_response',
-        //   response,
-        // });
+        console.log('[Auth Backend] Sending web message response');
+        console.log('[Auth Backend] Target origin:', origin);
+        console.log('[Auth Backend] Flow type:', state.flow);
+        console.log('[Auth Backend] Has backstageIdentity:', !!response.backstageIdentity);
 
         // post message back to popup if successful
         sendWebMessageResponse(res, origin, {
@@ -302,10 +309,13 @@ export function createOAuthRouteHandlers<TProfile>(
           response,
         });
       } catch (error) {
-        // console.log('=== OAuth2 frameHandler error', error);
+        console.error('[Auth Backend] Error in frameHandler:', error);
         const { name, message } = isError(error)
           ? error
           : new Error('Encountered invalid error'); // Being a bit safe and not forwarding the bad value
+        console.error('[Auth Backend] Error name:', name);
+        console.error('[Auth Backend] Error message:', message);
+        console.error('[Auth Backend] State flow:', state?.flow);
 
         if (state?.flow === 'redirect' && state?.redirectUrl) {
           const redirectUrl = new URL(state.redirectUrl);
