@@ -111,7 +111,9 @@ export async function createRouter(
         : openai(modelName);
 
       // Convert UI messages to model messages
-      const modelMessages = convertToModelMessages(messages as UIMessage[]);
+      const modelMessages = await convertToModelMessages(
+        messages as UIMessage[],
+      );
 
       // For Anthropic models, prepend system message with cache control
       // to enable prompt caching for the system prompt.
