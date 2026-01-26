@@ -104,7 +104,8 @@ const useReasoningStyles = makeStyles((theme: Theme) =>
       overflowY: 'auto',
       paddingTop: theme.spacing(1),
       paddingBottom: theme.spacing(1),
-      paddingLeft: theme.spacing(3),
+      paddingLeft: theme.spacing(2),
+      paddingRight: theme.spacing(2),
       lineHeight: 1.6,
     },
     fade: {

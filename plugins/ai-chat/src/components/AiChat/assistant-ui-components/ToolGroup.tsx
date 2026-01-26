@@ -42,13 +42,14 @@ const useStyles = makeStyles(theme =>
       display: 'flex',
       alignItems: 'center',
       fontSize: theme.typography.body2.fontSize,
+      color: theme.palette.text.primary,
       cursor: 'pointer',
       border: 'none',
       background: 'none',
       padding: 0,
-      transition: 'color 0.2s',
+      transition: theme.transitions.create('color'),
       '&:hover': {
-        color: theme.palette.text.primary,
+        color: theme.palette.text.secondary,
       },
       '& > *:not(:last-child)': {
         marginRight: theme.spacing(1),

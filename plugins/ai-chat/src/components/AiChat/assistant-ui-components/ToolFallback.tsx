@@ -34,11 +34,12 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.body2.fontSize,
     cursor: 'pointer',
     transition: theme.transitions.create('color'),
+    color: theme.palette.text.primary,
     border: 'none',
     background: 'none',
     textAlign: 'left',
     '&:hover': {
-      opacity: 0.8,
+      color: theme.palette.text.secondary,
     },
   },
   icon: {
