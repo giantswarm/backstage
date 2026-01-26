@@ -19,16 +19,14 @@ const useReasoningStyles = makeStyles((theme: Theme) =>
       width: '100%',
     },
     rootOutline: {
-      borderRadius: theme.shape.borderRadius,
+      borderRadius: theme.spacing(1),
       border: `1px solid ${theme.palette.divider}`,
       padding: theme.spacing(1.5),
     },
     rootMuted: {
-      borderRadius: theme.shape.borderRadius,
-      backgroundColor:
-        theme.palette.type === 'dark'
-          ? 'rgba(255, 255, 255, 0.05)'
-          : 'rgba(0, 0, 0, 0.03)',
+      borderRadius: theme.spacing(1),
+      border: `1px solid ${theme.palette.divider}`,
+      backgroundColor: theme.palette.action.hover,
       padding: theme.spacing(1.5),
     },
     trigger: {
