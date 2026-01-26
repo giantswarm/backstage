@@ -137,6 +137,13 @@ export async function createRouter(
           ...frontendTools(tools),
           ...mcpTools,
         } as ToolSet,
+        providerOptions: isAnthropicModel
+          ? {
+              anthropic: {
+                thinking: { type: 'enabled', budgetTokens: 10000 },
+              },
+            }
+          : undefined,
       });
 
       // Set headers for streaming
