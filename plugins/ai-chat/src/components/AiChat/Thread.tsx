@@ -24,6 +24,8 @@ import {
   Reasoning,
   ReasoningGroup,
   MarkdownText,
+  ToolFallback,
+  ToolGroup,
 } from './assistant-ui-components';
 
 const ThreadWelcome = () => {
@@ -131,6 +133,10 @@ const AssistantMessage = () => {
             Text: MarkdownText,
             Reasoning: Reasoning,
             ReasoningGroup: ReasoningGroup,
+            ToolGroup: ToolGroup,
+            tools: {
+              Fallback: ToolFallback,
+            },
           }}
         />
         <MessagePrimitive.Error>
