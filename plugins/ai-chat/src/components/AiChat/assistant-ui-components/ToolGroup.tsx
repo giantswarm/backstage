@@ -14,7 +14,7 @@ import {
   createStyles,
   CircularProgress,
 } from '@material-ui/core';
-import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import { useScrollLock } from '@assistant-ui/react';
 import classNames from 'classnames';
 
@@ -89,6 +89,7 @@ const useStyles = makeStyles(theme =>
       },
     },
     chevron: {
+      fontSize: 16,
       flexShrink: 0,
       transition: `transform ${ANIMATION_DURATION}ms ease-out`,
       transform: 'rotate(0deg)',
@@ -258,7 +259,7 @@ function ToolGroupTrigger({
           </span>
         )}
       </span>
-      <ChevronRightIcon
+      <ExpandMoreIcon
         data-slot="tool-group-trigger-chevron"
         className={classNames(classes.chevron, {
           [classes.chevronClosed]: !isOpen,

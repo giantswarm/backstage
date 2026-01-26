@@ -1,9 +1,9 @@
 import { memo, useCallback, useRef, useState } from 'react';
 import ErrorIcon from '@material-ui/icons/Error';
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import CheckIcon from '@material-ui/icons/Check';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import LoopIcon from '@material-ui/icons/Loop';
-import CancelIcon from '@material-ui/icons/Cancel';
+import HighlightOffIcon from '@material-ui/icons/HighlightOff';
 import { Collapse, makeStyles } from '@material-ui/core';
 import {
   type ToolCallMessagePartStatus,
@@ -162,8 +162,8 @@ type ToolStatus = ToolCallMessagePartStatus['type'];
 
 const statusIconMap: Record<ToolStatus, React.ElementType> = {
   running: LoopIcon,
-  complete: CheckCircleIcon,
-  incomplete: CancelIcon,
+  complete: CheckIcon,
+  incomplete: HighlightOffIcon,
   'requires-action': ErrorIcon,
 };
 
