@@ -56,8 +56,8 @@
     "@typedigital/telemetrydeck-react": "^0.5.0",
     "crypto-js": "^4.2.0",
     "history": "^5.0.0",
-    "react": "^18.0.2",
-    "react-dom": "^18.0.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-router-dom": "^6.3.0"
   },
   "devDependencies": {
