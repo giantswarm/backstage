@@ -19,8 +19,12 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import CheckIcon from '@material-ui/icons/Check';
-import { MarkdownText } from './MarkdownText';
 import { useStyles } from './styles';
+import {
+  Reasoning,
+  ReasoningGroup,
+  MarkdownText,
+} from './assistant-ui-components';
 
 const ThreadWelcome = () => {
   const classes = useStyles();
@@ -122,9 +126,11 @@ const AssistantMessage = () => {
   return (
     <MessagePrimitive.Root>
       <div className={classes.assistantMessage}>
-        <MessagePrimitive.Content
+        <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
+            Reasoning: Reasoning,
+            ReasoningGroup: ReasoningGroup,
           }}
         />
         <MessagePrimitive.Error>
