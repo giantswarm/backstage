@@ -45,9 +45,10 @@ const useStyles = makeStyles((theme: Theme) =>
       borderBottom: `1px solid ${theme.palette.divider}`,
     },
     list: {
-      marginLeft: theme.spacing(2),
+      marginLeft: theme.spacing(1),
       marginTop: theme.spacing(1),
       marginBottom: theme.spacing(1),
+      paddingInlineStart: theme.spacing(3),
     },
     paragraph: {
       margin: theme.spacing(1, 0),
