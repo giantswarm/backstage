@@ -1,4 +1,3 @@
-import { frontendTools } from '@assistant-ui/react-ai-sdk';
 import {
   HttpAuthService,
   LoggerService,
@@ -20,6 +19,7 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
+import { frontendTools } from './frontendTools';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
