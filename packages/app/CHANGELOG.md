@@ -1,5 +1,21 @@
 # app
 
+## 0.26.0
+
+### Minor Changes
+
+- 0384d69: Update ai-sdk packages to v6
+
+### Patch Changes
+
+- Updated dependencies [0384d69]
+- Updated dependencies [98f9ffb]
+- Updated dependencies [98f9ffb]
+- Updated dependencies [009baf6]
+  - @giantswarm/backstage-plugin-ai-chat@0.3.0
+  - @giantswarm/backstage-plugin-gs@0.51.3
+  - @giantswarm/backstage-plugin-flux@0.6.5
+
 ## 0.25.1
 
 ### Patch Changes

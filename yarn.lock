@@ -8287,7 +8287,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@giantswarm/backstage-plugin-ai-chat-backend@npm:^0.2.3, @giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend":
+"@giantswarm/backstage-plugin-ai-chat-backend@npm:^0.3.0, @giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend"
   dependencies:
@@ -8363,7 +8363,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-flux-react@npm:^0.6.3, @giantswarm/backstage-plugin-flux-react@workspace:^, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
+"@giantswarm/backstage-plugin-flux-react@npm:^0.7.0, @giantswarm/backstage-plugin-flux-react@workspace:^, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react"
   dependencies:
@@ -8478,7 +8478,7 @@ __metadata:
     "@backstage/theme": "backstage:^"
     "@backstage/types": "backstage:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
-    "@giantswarm/backstage-plugin-flux-react": "npm:^0.6.3"
+    "@giantswarm/backstage-plugin-flux-react": "npm:^0.7.0"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.20.0"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
@@ -18747,7 +18747,7 @@ __metadata:
     "@backstage/plugin-signals-backend": "backstage:^"
     "@backstage/plugin-techdocs-backend": "backstage:^"
     "@devangelista/backstage-scaffolder-kubernetes": "npm:^0.5.0"
-    "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.2.3"
+    "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.3.0"
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.11.0"
     "@giantswarm/backstage-plugin-gs-backend": "npm:^0.3.0"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.10.0"
