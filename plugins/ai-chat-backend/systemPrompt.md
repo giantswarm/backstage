@@ -29,3 +29,7 @@ Use the `getSkill` tool to fetch information about `backstage-catalog` for more 
 
 - You have access to MCP tools
 - You are free to give the user details about the MCP tools available to you.
+
+## More skills
+
+Use the `listSkills` tool to get an overview of all available skills (export information and details).
