@@ -1,4 +1,3 @@
-import { frontendTools } from '@assistant-ui/react-ai-sdk';
 import {
   HttpAuthService,
   LoggerService,
@@ -21,6 +20,7 @@ import Router from 'express-promise-router';
 import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
 import { extractMCPAuthTokens } from './extractMCPAuthTokens';
+import { frontendTools } from './frontendTools';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -115,7 +115,9 @@ export async function createRouter(
         : openai(modelName);
 
       // Convert UI messages to model messages
-      const modelMessages = convertToModelMessages(messages as UIMessage[]);
+      const modelMessages = await convertToModelMessages(
+        messages as UIMessage[],
+      );
 
       // For Anthropic models, prepend system message with cache control
       // to enable prompt caching for the system prompt.
@@ -141,6 +143,13 @@ export async function createRouter(
           ...frontendTools(tools),
           ...mcpTools,
         } as ToolSet,
+        providerOptions: isAnthropicModel
+          ? {
+              anthropic: {
+                thinking: { type: 'enabled', budgetTokens: 10000 },
+              },
+            }
+          : undefined,
       });
 
       // Set headers for streaming

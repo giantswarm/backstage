@@ -10,29 +10,22 @@ Giant Swarm's customized Backstage application for both internal use and custome
 
 ### Running Locally
 
+Either method works:
+
 ```bash
+# Start frontend and backend together:
+yarn start
+```
 
+```bash
 # Start frontend and backend separately:
-
 yarn start backend
 yarn start app
 ```
 
 ### Testing
 
-```bash
-# Run unit tests (changed files only)
-yarn test
-
-# Run all tests with coverage
-yarn test:all
-
-# Run E2E tests
-yarn test:e2e
-
-# Run a single test file
-yarn backstage-cli repo test path/to/test.test.ts
-```
+Use the test-runner subagent for testing.
 
 ### Code Quality
 
@@ -47,7 +40,7 @@ yarn lint:all
 yarn fix
 
 # Format code (run before committing)
-yarn prettier:fix
+yarn prettier:fix > /dev/null
 
 # Check formatting
 yarn prettier:check

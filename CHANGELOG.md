@@ -5,6 +5,38 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-01-27
+
+See [./docs/releases/v0.98.0-changelog.md](./docs/releases/v0.98.0-changelog.md) for more information.
+
+## [0.98.0] - 2026-01-27
+
+### Added
+
+- Add search widget to Flux Tree view.
+- Add components to render tool calling in AI chat.
+- Add components to display reasoning in AI chat.
+
+### Changed
+
+- Update ai-sdk packages to v6.
+- Enable thinking for anthropic model.
+
+See [./docs/releases/v0.98.0-changelog.md](./docs/releases/v0.98.0-changelog.md) for more information.
+
+## [0.97.1] - 2026-01-20
+
+### Added
+
+- Support initializing AI chat from a URL parameter.
+
+### Fixed
+
+- Fix Mosaic styles not being cleaned up when JsonSchemaViewer component unmounts.
+- Remove custom markdown style overrides from EntityReadmeCard now that Mosaic styles are properly isolated.
+
+See [./docs/releases/v0.97.1-changelog.md](./docs/releases/v0.97.1-changelog.md) for more information.
+
 ## [0.97.0] - 2026-01-19
 
 ### Added
@@ -1713,7 +1745,10 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.97.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.98.0...HEAD
+[0.98.0]: https://github.com/giantswarm/backstage/compare/v0.98.0...v0.98.0
+[0.98.0]: https://github.com/giantswarm/backstage/compare/v0.97.1...v0.98.0
+[0.97.1]: https://github.com/giantswarm/backstage/compare/v0.97.0...v0.97.1
 [0.97.0]: https://github.com/giantswarm/backstage/compare/v0.96.4...v0.97.0
 [0.96.4]: https://github.com/giantswarm/backstage/compare/v0.96.3...v0.96.4
 [0.96.3]: https://github.com/giantswarm/backstage/compare/v0.96.2...v0.96.3

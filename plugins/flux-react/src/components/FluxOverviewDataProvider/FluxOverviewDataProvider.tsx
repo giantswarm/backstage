@@ -8,6 +8,7 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResources } from '../../hooks/useFluxResources';
+import { useTreeSearch } from '../../hooks/useTreeSearch';
 import {
   KustomizationTreeBuilder,
   KustomizationTreeNode,
@@ -35,6 +36,16 @@ export type FluxOverviewData = {
   selectedResourceRef: SelectedResourceRef | null;
   setSelectedResource: (resourceRef: SelectedResourceRef) => void;
   clearSelectedResource: () => void;
+  // Search state
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  searchMatches: string[];
+  pathsToExpand: Set<string>;
+  currentMatchIndex: number;
+  currentMatchId: string | undefined;
+  navigateToNextMatch: () => void;
+  navigateToPreviousMatch: () => void;
+  totalMatches: number;
 };
 
 const FluxOverviewDataContext = createContext<FluxOverviewData | undefined>(
@@ -101,6 +112,20 @@ export const FluxOverviewDataProvider = ({
     isLoading,
   ]);
 
+  const compactView = resourceType === 'flux';
+
+  const {
+    searchQuery,
+    setSearchQuery,
+    searchMatches,
+    pathsToExpand,
+    currentMatchIndex,
+    currentMatchId,
+    navigateToNextMatch,
+    navigateToPreviousMatch,
+    totalMatches,
+  } = useTreeSearch({ tree, compactView });
+
   const contextValue: FluxOverviewData = useMemo(() => {
     return {
       kustomizations,
@@ -118,6 +143,15 @@ export const FluxOverviewDataProvider = ({
       selectedResourceRef,
       setSelectedResource,
       clearSelectedResource,
+      searchQuery,
+      setSearchQuery,
+      searchMatches,
+      pathsToExpand,
+      currentMatchIndex,
+      currentMatchId,
+      navigateToNextMatch,
+      navigateToPreviousMatch,
+      totalMatches,
     };
   }, [
     kustomizations,
@@ -133,6 +167,15 @@ export const FluxOverviewDataProvider = ({
     selectedResourceRef,
     setSelectedResource,
     clearSelectedResource,
+    searchQuery,
+    setSearchQuery,
+    searchMatches,
+    pathsToExpand,
+    currentMatchIndex,
+    currentMatchId,
+    navigateToNextMatch,
+    navigateToPreviousMatch,
+    totalMatches,
   ]);
 
   return (

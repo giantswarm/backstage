@@ -50,6 +50,8 @@ type ResourceNodeProps = {
   expandable: boolean;
   expanded: boolean;
   onExpand: () => void;
+  searchMatch?: boolean;
+  currentSearchMatch?: boolean;
 };
 
 export const ResourceNode = ({
@@ -64,6 +66,8 @@ export const ResourceNode = ({
   expandable,
   expanded,
   onExpand,
+  searchMatch,
+  currentSearchMatch,
 }: ResourceNodeProps) => {
   const classes = useStyles();
   const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
@@ -88,6 +92,8 @@ export const ResourceNode = ({
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
       inactive={inactive}
+      searchMatch={searchMatch}
+      currentSearchMatch={currentSearchMatch}
     >
       <Box display="flex">
         {expandable ? (

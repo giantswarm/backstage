@@ -1,6 +1,7 @@
 import {
   FluxResourcesTreeViewResourceTypePicker,
   FluxResourcesTreeViewClusterPicker,
+  FluxResourcesTreeViewTreeSearch,
 } from '@giantswarm/backstage-plugin-flux-react';
 import { useDisabledInstallations } from '../../hooks';
 
@@ -15,6 +16,7 @@ export const CustomTreeViewFilters = () => {
         isLoadingDisabledClusters={isLoadingDisabledInstallations}
       />
       <FluxResourcesTreeViewResourceTypePicker />
+      <FluxResourcesTreeViewTreeSearch />
     </>
   );
 };
