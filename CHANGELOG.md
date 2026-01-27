@@ -16,6 +16,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Update ai-sdk packages to v6.
 - Enable thinking for anthropic model.
 
+See [./docs/releases/v0.98.0-changelog.md](./docs/releases/v0.98.0-changelog.md) for more information.
+
 ## [0.97.1] - 2026-01-20
 
 ### Added

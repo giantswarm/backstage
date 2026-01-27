@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.7.0
+
+### Minor Changes
+
+- 009baf6: Add search widget to Flux Tree view
+
 ## 0.6.3
 
 ### Patch Changes

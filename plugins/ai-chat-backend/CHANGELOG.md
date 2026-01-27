@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.3.0
+
+### Minor Changes
+
+- 0384d69: Update ai-sdk packages to v6
+- 98f9ffb: Enable thinking for anthropic model.
+
+### Patch Changes
+
+- f81c921: Remove react-ai-sdk dependency.
+
 ## 0.2.3
 
 ### Patch Changes
