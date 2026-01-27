@@ -295,4 +295,8 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   getKubernetesAuthApis() {
     return this.kubernetesAuthApis;
   }
+
+  getMCPAuthApis() {
+    return this.mcpAuthApis;
+  }
 }

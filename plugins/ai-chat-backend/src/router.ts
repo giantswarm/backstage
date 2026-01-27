@@ -21,6 +21,7 @@ import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
 import { extractMCPAuthTokens } from './extractMCPAuthTokens';
 import { frontendTools } from './frontendTools';
+import { createMCPClient } from '@ai-sdk/mcp';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -101,12 +102,25 @@ export async function createRouter(
     const { messages, tools } = parsed.data;
 
     const authTokens = extractMCPAuthTokens(messages as UIMessage[]);
-    const mcpTools = await getMcpTools(config, authTokens);
+    // const mcpTools = await getMcpTools(config, authTokens);
 
-    console.log('========= Frontend Tools =========');
-    console.log(frontendTools(tools));
-    console.log('========= MCP Tools =========');
-    console.log(mcpTools);
+    // console.log('========= Frontend Tools =========');
+    // console.log(frontendTools(tools));
+    // console.log('========= MCP Tools =========');
+    // console.log(mcpTools);
+
+    // const mcpClient = await createMCPClient({
+    //   name: 'muster',
+    //   transport: {
+    //     type: 'http',
+    //     url: 'https://muster.gazelle.awsprod.gigantic.io/mcp',
+    //     headers: {
+    //       Authorization: `Bearer ${credentials.principal.}`,
+    //     },
+    //   },
+    // });
+
+    // const mcpTools = await mcpClient.tools();
 
     try {
       // Select the appropriate provider based on model type
@@ -140,8 +154,8 @@ export async function createRouter(
         system: isAnthropicModel ? undefined : defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
-          ...frontendTools(tools),
-          ...mcpTools,
+          // ...frontendTools(tools),
+          // ...mcpTools,
         } as ToolSet,
         providerOptions: isAnthropicModel
           ? {

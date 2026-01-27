@@ -35,6 +35,7 @@ export type GSAuthProvidersApi = {
   getAuthApi: (providerName: string) => AuthApi | undefined;
   getMainAuthApi: () => AuthApi;
   getKubernetesAuthApis: () => { [providerName: string]: AuthApi };
+  getMCPAuthApis: () => { [providerName: string]: AuthApi };
   getProviders: () => AuthProvider[];
 };
 
