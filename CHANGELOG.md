@@ -5,6 +5,17 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add search widget to Flux Tree view.
+- Add components to render tool calling in AI chat.
+- Add components to display reasoning in AI chat.
+
+### Changed
+
+- Update ai-sdk packages to v6.
+- Enable thinking for anthropic model.
+
 ## [0.97.1] - 2026-01-20
 
 ### Added
