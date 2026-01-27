@@ -8265,14 +8265,14 @@ __metadata:
   linkType: hard
 
 "@fsegurai/codemirror-theme-vscode-dark@npm:^6.2.2":
-  version: 6.2.3
-  resolution: "@fsegurai/codemirror-theme-vscode-dark@npm:6.2.3"
+  version: 6.2.4
+  resolution: "@fsegurai/codemirror-theme-vscode-dark@npm:6.2.4"
   peerDependencies:
     "@codemirror/language": ^6.0.0
     "@codemirror/state": ^6.0.0
     "@codemirror/view": ^6.0.0
     "@lezer/highlight": ^1.0.0
-  checksum: 10c0/9f2adf16c37331b11c4318ff8f092cf540a359cb35746d3385b5ef48edcca13d96c6139f50e42061c49cc00f7af6d84d79b15264e31a56f6041fd8b5bd18292e
+  checksum: 10c0/3bb5546ae22c36a265c08eba490b4b2f77fe6fe001230d7425e63b18ef18b40f0a976122063465e6e985ae6228d4aebef881488d30b9263067b42066055c94c7
   languageName: node
   linkType: hard
 
