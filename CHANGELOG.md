@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-01-27
+
 ### Added
 
 - Add search widget to Flux Tree view.
@@ -1739,7 +1741,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.97.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.98.0...HEAD
+[0.98.0]: https://github.com/giantswarm/backstage/compare/v0.97.1...v0.98.0
 [0.97.1]: https://github.com/giantswarm/backstage/compare/v0.97.0...v0.97.1
 [0.97.0]: https://github.com/giantswarm/backstage/compare/v0.96.4...v0.97.0
 [0.96.4]: https://github.com/giantswarm/backstage/compare/v0.96.3...v0.96.4
