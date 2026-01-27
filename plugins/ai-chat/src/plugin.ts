@@ -10,6 +10,11 @@ export const aiChatPlugin = createPlugin({
   routes: {
     root: rootRouteRef,
   },
+  featureFlags: [
+    {
+      name: 'ai-chat-verbose-debugging',
+    },
+  ],
 });
 
 export const AiChatPage = aiChatPlugin.provide(

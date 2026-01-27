@@ -6,6 +6,7 @@ import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
 } from '@assistant-ui/react';
+import { useApi, featureFlagsApiRef } from '@backstage/core-plugin-api';
 import IconButton from '@material-ui/core/IconButton';
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
@@ -124,6 +125,10 @@ const UserMessage = () => {
 
 const AssistantMessage = () => {
   const classes = useStyles();
+  const featureFlagsApi = useApi(featureFlagsApiRef);
+  const verboseDebugging = featureFlagsApi.isActive(
+    'ai-chat-verbose-debugging',
+  );
 
   return (
     <MessagePrimitive.Root>
@@ -131,9 +136,11 @@ const AssistantMessage = () => {
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            Reasoning: Reasoning,
-            ReasoningGroup: ReasoningGroup,
-            ToolGroup: ToolGroup,
+            ...(verboseDebugging && {
+              Reasoning: Reasoning,
+              ReasoningGroup: ReasoningGroup,
+              ToolGroup: ToolGroup,
+            }),
             tools: {
               Fallback: ToolFallback,
             },
