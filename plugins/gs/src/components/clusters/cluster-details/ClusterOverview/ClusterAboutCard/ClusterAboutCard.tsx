@@ -1,7 +1,14 @@
 import { Link as RouterLink } from 'react-router-dom';
-import { InfoCard, Link } from '@backstage/core-components';
+import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/core-plugin-api';
-import { Box, Grid, Tooltip, Typography } from '@material-ui/core';
+import {
+  Box,
+  Card,
+  CardContent,
+  Grid,
+  Tooltip,
+  Typography,
+} from '@material-ui/core';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import { AboutField } from '@backstage/plugin-catalog';
 import {
@@ -147,119 +154,125 @@ export function ClusterAboutCard() {
   const k8sVersion = controlPlane ? controlPlane.getK8sVersion() : undefined;
 
   return (
-    <InfoCard>
-      <Grid container spacing={5}>
-        <AboutField label="Type" gridSizes={{ xs: 6, md: 4 }}>
-          <AboutFieldValue>
-            <Box display="inline-flex" alignItems="center">
-              {clusterType === ClusterTypes.Management ? (
-                <Tooltip title="Management cluster">
-                  <Box display="flex" mr={1}>
-                    <ClusterTypeManagementIcon />
-                  </Box>
-                </Tooltip>
+    <Card>
+      <CardContent>
+        <Grid container spacing={5}>
+          <AboutField label="Type" gridSizes={{ xs: 6, md: 4 }}>
+            <AboutFieldValue>
+              <Box display="inline-flex" alignItems="center">
+                {clusterType === ClusterTypes.Management ? (
+                  <Tooltip title="Management cluster">
+                    <Box display="flex" mr={1}>
+                      <ClusterTypeManagementIcon />
+                    </Box>
+                  </Tooltip>
+                ) : (
+                  <Tooltip title="Workload cluster">
+                    <Box display="flex" mr={1}>
+                      <ClusterTypeWorkloadIcon />
+                    </Box>
+                  </Tooltip>
+                )}
+                <span>{formatClusterType(clusterType)}</span>
+              </Box>
+            </AboutFieldValue>
+          </AboutField>
+
+          <AboutField label="Kubernetes version" gridSizes={{ xs: 6, md: 4 }}>
+            <AboutFieldValue>
+              <AsyncValue
+                isLoading={controlPlaneIsLoading}
+                value={k8sVersion}
+                error={controlPlaneError}
+                errorMessage={controlPlaneErrorMessage}
+              >
+                {value => (
+                  <KubernetesVersion
+                    version={formatVersion(value)}
+                    hideIcon={false}
+                    hideLabel
+                  />
+                )}
+              </AsyncValue>
+            </AboutFieldValue>
+          </AboutField>
+
+          <AboutField label="Release" gridSizes={{ xs: 6, md: 4 }}>
+            <AboutFieldValue>
+              {releaseVersion ? (
+                formatVersion(releaseVersion)
               ) : (
-                <Tooltip title="Workload cluster">
-                  <Box display="flex" mr={1}>
-                    <ClusterTypeWorkloadIcon />
-                  </Box>
-                </Tooltip>
+                <NotAvailable />
               )}
-              <span>{formatClusterType(clusterType)}</span>
-            </Box>
-          </AboutFieldValue>
-        </AboutField>
+            </AboutFieldValue>
+          </AboutField>
 
-        <AboutField label="Kubernetes version" gridSizes={{ xs: 6, md: 4 }}>
-          <AboutFieldValue>
-            <AsyncValue
-              isLoading={controlPlaneIsLoading}
-              value={k8sVersion}
-              error={controlPlaneError}
-              errorMessage={controlPlaneErrorMessage}
+          {!isManagementCluster(cluster) && (
+            <AboutField
+              label="Installation"
+              value={installationName}
+              gridSizes={{ xs: 6, md: 4 }}
             >
-              {value => (
-                <KubernetesVersion
-                  version={formatVersion(value)}
-                  hideIcon={false}
-                  hideLabel
-                />
-              )}
-            </AsyncValue>
-          </AboutFieldValue>
-        </AboutField>
+              <AboutFieldValue>
+                <Tooltip title="Open management cluster">
+                  <Link
+                    component={RouterLink}
+                    to={managementClusterRouteLink({
+                      installationName: installationName,
+                      namespace: Constants.MANAGEMENT_CLUSTER_NAMESPACE,
+                      name: installationName,
+                    })}
+                  >
+                    {installationName}
+                  </Link>
+                </Tooltip>
+              </AboutFieldValue>
+            </AboutField>
+          )}
 
-        <AboutField label="Release" gridSizes={{ xs: 6, md: 4 }}>
-          <AboutFieldValue>
-            {releaseVersion ? formatVersion(releaseVersion) : <NotAvailable />}
-          </AboutFieldValue>
-        </AboutField>
-
-        {!isManagementCluster(cluster) && (
           <AboutField
-            label="Installation"
-            value={installationName}
+            label={
+              provider === ClusterProviders.AWS ||
+              provider === ClusterProviders.Azure
+                ? 'Provider/Location'
+                : 'Provider'
+            }
             gridSizes={{ xs: 6, md: 4 }}
           >
             <AboutFieldValue>
-              <Tooltip title="Open management cluster">
-                <Link
-                  component={RouterLink}
-                  to={managementClusterRouteLink({
-                    installationName: installationName,
-                    namespace: Constants.MANAGEMENT_CLUSTER_NAMESPACE,
-                    name: installationName,
-                  })}
-                >
-                  {installationName}
-                </Link>
-              </Tooltip>
+              {provider ? (
+                <ProviderLocationDisplay provider={provider} />
+              ) : (
+                <NotAvailable />
+              )}
             </AboutFieldValue>
           </AboutField>
-        )}
 
-        <AboutField
-          label={
-            provider === ClusterProviders.AWS ||
-            provider === ClusterProviders.Azure
-              ? 'Provider/Location'
-              : 'Provider'
-          }
-          gridSizes={{ xs: 6, md: 4 }}
-        >
-          <AboutFieldValue>
-            {provider ? (
-              <ProviderLocationDisplay provider={provider} />
-            ) : (
-              <NotAvailable />
-            )}
-          </AboutFieldValue>
-        </AboutField>
+          <AboutField
+            label="Organization"
+            value={organization}
+            gridSizes={{ xs: 6, md: 4 }}
+          />
 
-        <AboutField
-          label="Organization"
-          value={organization}
-          gridSizes={{ xs: 6, md: 4 }}
-        />
+          <AboutField label="Service priority" gridSizes={{ xs: 6, md: 4 }}>
+            <AboutFieldValue>
+              {servicePriority ? (
+                formatServicePriority(servicePriority)
+              ) : (
+                <NotAvailable />
+              )}
+            </AboutFieldValue>
+          </AboutField>
 
-        <AboutField label="Service priority" gridSizes={{ xs: 6, md: 4 }}>
-          <AboutFieldValue>
-            {servicePriority ? (
-              formatServicePriority(servicePriority)
-            ) : (
-              <NotAvailable />
-            )}
-          </AboutFieldValue>
-        </AboutField>
-
-        <AboutField label="Created" gridSizes={{ xs: 6, md: 4 }}>
-          <AboutFieldValue>
-            <Typography variant="inherit">
-              <DateComponent value={creationTimestamp} relative />
-            </Typography>
-          </AboutFieldValue>
-        </AboutField>
-      </Grid>
-    </InfoCard>
+          <AboutField label="Created" gridSizes={{ xs: 6, md: 4 }}>
+            <AboutFieldValue>
+              <Typography variant="inherit">
+                <DateComponent value={creationTimestamp} relative />
+              </Typography>
+            </AboutFieldValue>
+          </AboutField>
+        </Grid>
+      </CardContent>
+    </Card>
   );
 }
