@@ -132,11 +132,7 @@ export const gsPlugin = createPlugin({
     fluxResources: fluxResourcesExternalRouteRef,
     appDeploymentTemplate: appDeploymentTemplateRouteRef,
   },
-  featureFlags: [
-    {
-      name: 'experimental-data-fetching',
-    },
-  ],
+  featureFlags: [],
 });
 
 export const GSClustersPage = gsPlugin.provide(
