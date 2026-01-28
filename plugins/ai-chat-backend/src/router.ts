@@ -2,6 +2,7 @@ import {
   HttpAuthService,
   LoggerService,
   resolvePackagePath,
+  UserInfoService,
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
@@ -93,12 +94,13 @@ export interface RouterOptions {
   httpAuth: HttpAuthService;
   logger: LoggerService;
   config: Config;
+  userInfo: UserInfoService;
 }
 
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { httpAuth, logger, config } = options;
+  const { httpAuth, logger, config, userInfo } = options;
 
   const router = Router();
   router.use(express.json({ limit: '2mb' }));
@@ -166,6 +168,22 @@ export async function createRouter(
     logger.debug(JSON.stringify(mcpTools));
     logger.debug('===============================================');
 
+    // User-scoped tools that need access to the current request's credentials
+    const userTools = {
+      getCurrentUserInfo: tool({
+        description:
+          'Get information about the currently authenticated user, including their entity reference and group memberships.',
+        inputSchema: z.object({}),
+        execute: async () => {
+          const info = await userInfo.getUserInfo(credentials);
+          return {
+            userEntityRef: info.userEntityRef,
+            ownershipEntityRefs: info.ownershipEntityRefs,
+          };
+        },
+      }),
+    };
+
     try {
       // Select the appropriate provider based on model type
       const selectedModel = isAnthropicModel
@@ -201,6 +219,7 @@ export async function createRouter(
           ...frontendTools(tools),
           ...mcpTools,
           ...builtInTools,
+          ...userTools,
         } as ToolSet,
         providerOptions: isAnthropicModel
           ? {

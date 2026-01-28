@@ -18,13 +18,15 @@ export const aiChatPlugin = createBackendPlugin({
         httpRouter: coreServices.httpRouter,
         logger: coreServices.logger,
         config: coreServices.rootConfig,
+        userInfo: coreServices.userInfo,
       },
-      async init({ httpAuth, httpRouter, logger, config }) {
+      async init({ httpAuth, httpRouter, logger, config, userInfo }) {
         httpRouter.use(
           await createRouter({
             httpAuth,
             logger,
             config,
+            userInfo,
           }),
         );
       },
