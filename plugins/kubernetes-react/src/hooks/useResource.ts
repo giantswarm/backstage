@@ -5,6 +5,7 @@ import { useGetResource } from './useGetResource';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
 import { ErrorInfo } from './utils/queries';
+import { usePreferredVersion } from './useApiDiscovery';
 
 export function useResource<R extends KubeObject<any>>(
   cluster: string,
@@ -15,17 +16,28 @@ export function useResource<R extends KubeObject<any>>(
     name: string;
     namespace?: string;
     apiVersion?: string;
+    enableDiscovery?: boolean;
   },
   queryOptions?: QueryOptions<KubeObjectInterface>,
 ) {
   const isRestoring = useIsRestoring();
-  const clusterGVK = ResourceClass.getGVK();
+  const staticGVK = ResourceClass.getGVK();
+
+  const { resolvedGVK, isDiscovering, discoveryError, isDiscovered } =
+    usePreferredVersion(cluster, staticGVK, {
+      enableDiscovery: options.enableDiscovery,
+      explicitVersion: options.apiVersion,
+    });
 
   const queryInfo = useGetResource<KubeObjectInterface>(
     cluster,
-    clusterGVK,
+    resolvedGVK,
     options,
-    queryOptions,
+    {
+      ...queryOptions,
+      enabled:
+        (queryOptions?.enabled ?? true) && !isDiscovering && Boolean(cluster),
+    },
   );
 
   const resource = useMemo(() => {
@@ -51,8 +63,11 @@ export function useResource<R extends KubeObject<any>>(
 
   return {
     ...queryInfo,
-    isLoading: isRestoring || queryInfo.isLoading,
+    isLoading: isRestoring || isDiscovering || queryInfo.isLoading,
     resource,
     errors,
+    resolvedApiVersion: resolvedGVK.apiVersion,
+    isApiVersionDiscovered: isDiscovered,
+    discoveryError,
   };
 }

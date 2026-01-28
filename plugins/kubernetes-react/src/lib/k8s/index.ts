@@ -1,5 +1,6 @@
 export * from './capi';
 export * from './giantswarm/platform';
+export * from './ApiDiscovery';
 
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
