@@ -140,10 +140,10 @@ const AssistantMessage = () => {
               Reasoning: Reasoning,
               ReasoningGroup: ReasoningGroup,
               ToolGroup: ToolGroup,
+              tools: {
+                Fallback: ToolFallback,
+              },
             }),
-            tools: {
-              Fallback: ToolFallback,
-            },
           }}
         />
         <MessagePrimitive.Error>
