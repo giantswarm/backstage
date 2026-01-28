@@ -37,6 +37,8 @@ const EXAMPLE_QUESTIONS = [
   'Who are my team mates?',
   "What are my organization's workload clusters?",
   "Show me one of the applications I own and where it's deployed",
+  'What tools do you have available?',
+  'What can I do here in the portal?',
 ];
 
 const ThreadWelcome = () => {
@@ -242,7 +244,7 @@ const Composer = () => {
             fullWidth
             multiline
             maxRows={4}
-            placeholder="Send a message..."
+            placeholder="Ask a question..."
             className={classes.composerInput}
           />
         </ComposerPrimitive.Input>

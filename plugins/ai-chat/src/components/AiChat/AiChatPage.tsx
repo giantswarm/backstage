@@ -73,7 +73,10 @@ export const AiChatPage = () => {
 
   return (
     <Page themeId="service">
-      <Header title="AI Assistant" subtitle="Your agentic interface to the Giant Swarm platform and developer portal" />
+      <Header
+        title="AI Assistant"
+        subtitle="Your agentic interface to the Giant Swarm platform and developer portal"
+      />
       <Content>
         <AssistantRuntimeProvider runtime={runtime}>
           <InitialMessageHandler isReady={Boolean(apiUrl)} />
