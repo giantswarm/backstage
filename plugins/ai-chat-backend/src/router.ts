@@ -13,6 +13,7 @@ import {
   ToolSet,
   UIMessage,
   SystemModelMessage,
+  jsonSchema,
 } from 'ai';
 import { z } from 'zod';
 import express from 'express';
@@ -21,7 +22,6 @@ import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
 import { extractMCPAuthTokens } from './extractMCPAuthTokens';
 import { frontendTools } from './frontendTools';
-import { createMCPClient } from '@ai-sdk/mcp';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -101,26 +101,11 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
-    const authTokens = extractMCPAuthTokens(messages as UIMessage[]);
-    // const mcpTools = await getMcpTools(config, authTokens);
-
-    // console.log('========= Frontend Tools =========');
-    // console.log(frontendTools(tools));
-    // console.log('========= MCP Tools =========');
-    // console.log(mcpTools);
-
-    // const mcpClient = await createMCPClient({
-    //   name: 'muster',
-    //   transport: {
-    //     type: 'http',
-    //     url: 'https://muster.gazelle.awsprod.gigantic.io/mcp',
-    //     headers: {
-    //       Authorization: `Bearer ${credentials.principal.}`,
-    //     },
-    //   },
-    // });
-
-    // const mcpTools = await mcpClient.tools();
+    const authTokens = extractMCPAuthTokens(req.headers);
+    const { tools: mcpTools, resources: mcpResources } = await getMcpTools(
+      config,
+      authTokens,
+    );
 
     try {
       // Select the appropriate provider based on model type
@@ -133,29 +118,48 @@ export async function createRouter(
         messages as UIMessage[],
       );
 
+      // Convert MCP resources to tools that can be called on-demand
+      const resourceTools: ToolSet = {};
+      let resourceIndex = 0;
+      for (const [name, content] of Object.entries(mcpResources)) {
+        // Create a short, unique tool name (max 128 chars for API)
+        const sanitizedName = name
+          .replace(/[^a-zA-Z0-9]/g, '_')
+          .substring(0, 100);
+        const toolName = `mcp_resource_${resourceIndex}_${sanitizedName}`;
+
+        resourceTools[toolName] = {
+          description: `Get MCP resource: ${name}`,
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => content,
+        };
+        resourceIndex++;
+      }
+
       // For Anthropic models, prepend system message with cache control
       // to enable prompt caching for the system prompt.
       // See: https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#cache-control
-      const systemMessage: SystemModelMessage | undefined = isAnthropicModel
-        ? {
-            role: 'system',
-            content: defaultSystemPrompt,
-            providerOptions: {
-              anthropic: { cacheControl: { type: 'ephemeral' } },
+      const systemMessages: SystemModelMessage[] = isAnthropicModel
+        ? [
+            {
+              role: 'system',
+              content: defaultSystemPrompt,
+              providerOptions: {
+                anthropic: { cacheControl: { type: 'ephemeral' } },
+              },
             },
-          }
-        : undefined;
+          ]
+        : [];
 
       const result = streamText({
         model: selectedModel as any,
-        messages: systemMessage
-          ? [systemMessage, ...modelMessages]
-          : modelMessages,
+        messages: [...systemMessages, ...modelMessages],
         system: isAnthropicModel ? undefined : defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
-          // ...frontendTools(tools),
-          // ...mcpTools,
+          ...frontendTools(tools),
+          ...mcpTools,
+          ...resourceTools,
         } as ToolSet,
         providerOptions: isAnthropicModel
           ? {

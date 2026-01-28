@@ -49,12 +49,13 @@ export async function getMcpTools(config: Config, authTokens: AuthTokens) {
   }
 
   const tools: ToolSet = {};
+  const allResources: { [resourceName: string]: string } = {};
 
-  for (const [name, { url, headers, installation }] of Object.entries(
+  for (const [serverName, { url, headers, installation }] of Object.entries(
     mcpServers,
   )) {
     const mcpClient = await createMCPClient({
-      name,
+      name: serverName,
       transport: {
         type: 'http',
         url,
@@ -63,6 +64,25 @@ export async function getMcpTools(config: Config, authTokens: AuthTokens) {
     });
 
     const mcpClientTools = await mcpClient.tools();
+    const listResources = await mcpClient.listResources();
+    // const a = await mcpClient.
+    console.log(
+      `======= MCP Client Resources for ${serverName}:`,
+      listResources,
+    );
+
+    const resources: { [resourceName: string]: string } = {};
+    for (const { name, uri } of listResources.resources) {
+      const resource = await mcpClient.readResource({ uri });
+      resources[name] = (resource.contents[0]?.text as string) ?? '';
+    }
+
+    console.log('====== resources =======');
+    console.log(resources);
+
+    // Accumulate resources from all servers
+    Object.assign(allResources, resources);
+
     Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
       const toolInstance = tool as Tool;
 
@@ -76,5 +96,5 @@ export async function getMcpTools(config: Config, authTokens: AuthTokens) {
     });
   }
 
-  return tools;
+  return { tools, resources: allResources };
 }

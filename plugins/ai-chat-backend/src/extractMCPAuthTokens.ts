@@ -1,24 +1,18 @@
-import { UIMessage } from 'ai';
-
-interface MCPAuthOutput {
-  authProvider: string;
-  token: string;
-}
+import { IncomingHttpHeaders } from 'http';
 
 export type AuthTokens = { [authProvider: string]: string };
 
-export function extractMCPAuthTokens(messages: UIMessage[]): AuthTokens {
+const MCP_AUTH_HEADER_PREFIX = 'backstage-ai-chat-authorization-';
+
+export function extractMCPAuthTokens(headers: IncomingHttpHeaders): AuthTokens {
   const tokensByAuthProvider = new Map<string, string>();
 
-  for (const message of messages) {
-    for (const part of message.parts) {
-      if (
-        part.type.startsWith('tool-mcp-auth') &&
-        'output' in part &&
-        part.output
-      ) {
-        const partOutput = part.output as MCPAuthOutput;
-        tokensByAuthProvider.set(partOutput.authProvider, partOutput.token);
+  for (const [headerName, headerValue] of Object.entries(headers)) {
+    const lowerHeaderName = headerName.toLowerCase();
+    if (lowerHeaderName.startsWith(MCP_AUTH_HEADER_PREFIX)) {
+      const authProvider = lowerHeaderName.slice(MCP_AUTH_HEADER_PREFIX.length);
+      if (authProvider && typeof headerValue === 'string') {
+        tokensByAuthProvider.set(authProvider, headerValue);
       }
     }
   }

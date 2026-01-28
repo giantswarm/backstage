@@ -1,9 +1,4 @@
-import {
-  AssistantRuntimeProvider,
-  makeAssistantTool,
-  tool,
-  useAssistantApi,
-} from '@assistant-ui/react';
+import { AssistantRuntimeProvider, useAssistantApi } from '@assistant-ui/react';
 import { DevToolsModal } from '@assistant-ui/react-devtools';
 import { Content, Header, Page } from '@backstage/core-components';
 import {
@@ -19,7 +14,6 @@ import {
   AssistantChatTransport,
 } from '@assistant-ui/react-ai-sdk';
 import { lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
-import { z } from 'zod';
 import useAsync from 'react-use/esm/useAsync';
 import { useSearchParams } from 'react-router-dom';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports
@@ -65,14 +59,63 @@ export const AiChatPage = () => {
     return `${baseUrl}/chat`;
   }, [discoveryApi]);
 
+  // Parse MCP config once to extract auth providers
+  const mcpAuthProviders = useMemo(() => {
+    const mcpServers = configApi.getOptionalConfigArray('aiChat.mcp');
+    if (!mcpServers) {
+      return [];
+    }
+
+    const providers: string[] = [];
+    for (const serverConfig of mcpServers) {
+      const authProvider = serverConfig.getOptionalString('authProvider');
+      if (authProvider && !providers.includes(authProvider)) {
+        providers.push(authProvider);
+      }
+    }
+
+    return providers;
+  }, [configApi]);
+
+  // Get MCP authentication headers in parallel
+  const getMCPAuthHeaders = useCallback(async () => {
+    const mcpHeaders: { [key: string]: string } = {};
+
+    const results = await Promise.allSettled(
+      mcpAuthProviders.map(async authProvider => {
+        const authApi = gsAuthProvidersApi.getAuthApi(authProvider);
+        if (authApi) {
+          const authToken = await authApi.getAccessToken();
+          if (authToken) {
+            return { authProvider, authToken };
+          }
+        }
+        return null;
+      }),
+    );
+
+    results.forEach(result => {
+      if (result.status === 'fulfilled' && result.value) {
+        const { authProvider, authToken } = result.value;
+        mcpHeaders[`backstage-ai-chat-authorization-${authProvider}`] =
+          authToken;
+      }
+    });
+
+    return mcpHeaders;
+  }, [mcpAuthProviders, gsAuthProvidersApi]);
+
   // Get headers including MCP tokens
   const getHeaders = useCallback(async () => {
     const { token } = await identityApi.getCredentials();
+    const mcpHeaders = await getMCPAuthHeaders();
+    console.log('MCP Headers:', mcpHeaders);
 
     return {
       Authorization: `Bearer ${token}`,
+      ...mcpHeaders,
     };
-  }, [identityApi]);
+  }, [identityApi, getMCPAuthHeaders]);
 
   const runtime = useChatRuntime({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -82,47 +125,6 @@ export const AiChatPage = () => {
     }),
   });
 
-  const mcpTools = useMemo(() => {
-    const mcpConfigArray = configApi.getOptionalConfigArray('aiChat.mcp');
-    if (!mcpConfigArray) {
-      return [];
-    }
-
-    const tools: any[] = [];
-
-    mcpConfigArray.forEach(serverConfig => {
-      const authProvider = serverConfig.getOptionalString('authProvider');
-      const authApi = gsAuthProvidersApi.getAuthApi(authProvider || '');
-      if (authApi) {
-        const mcpServerName = serverConfig.getString('name');
-        const mcpServerDescription =
-          serverConfig.getOptionalString('description');
-
-        const mcpServer = mcpServerDescription
-          ? `${mcpServerName} (${mcpServerDescription})`
-          : mcpServerName;
-        tools.push(
-          tool({
-            description: `Authenticate to access MCP server ${mcpServer}.`,
-            parameters: z.object({}),
-            execute: async () => {
-              const token = await authApi.getAccessToken();
-
-              return {
-                success: true,
-                message: `Authenticated to access MCP server ${mcpServer}.`,
-                authProvider,
-                token,
-              };
-            },
-          }),
-        );
-      }
-    });
-
-    return tools;
-  }, [configApi, gsAuthProvidersApi]);
-
   return (
     <Page themeId="service">
       <Header title="AI Chat" subtitle="Chat with AI assistant" />
@@ -130,14 +132,6 @@ export const AiChatPage = () => {
         <AssistantRuntimeProvider runtime={runtime}>
           <InitialMessageHandler isReady={Boolean(apiUrl)} />
           <DevToolsModal />
-          {mcpTools.map((mcpTool, index) => {
-            const ToolComponent = makeAssistantTool({
-              ...mcpTool,
-              toolName: `mcp-auth-${index}`,
-            });
-
-            return <ToolComponent key={index} />;
-          })}
           <Thread />
         </AssistantRuntimeProvider>
       </Content>
