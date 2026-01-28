@@ -54,46 +54,47 @@ export async function getMcpTools(config: Config, authTokens: AuthTokens) {
   for (const [serverName, { url, headers, installation }] of Object.entries(
     mcpServers,
   )) {
-    const mcpClient = await createMCPClient({
-      name: serverName,
-      transport: {
-        type: 'http',
-        url,
-        headers,
-      },
-    });
+    try {
+      const mcpClient = await createMCPClient({
+        name: serverName,
+        transport: {
+          type: 'http',
+          url,
+          headers,
+        },
+      });
 
-    const mcpClientTools = await mcpClient.tools();
-    const listResources = await mcpClient.listResources();
-    // const a = await mcpClient.
-    console.log(
-      `======= MCP Client Resources for ${serverName}:`,
-      listResources,
-    );
+      const mcpClientTools = await mcpClient.tools();
+      const listResources = await mcpClient.listResources();
 
-    const resources: { [resourceName: string]: string } = {};
-    for (const { name, uri } of listResources.resources) {
-      const resource = await mcpClient.readResource({ uri });
-      resources[name] = (resource.contents[0]?.text as string) ?? '';
-    }
-
-    console.log('====== resources =======');
-    console.log(resources);
-
-    // Accumulate resources from all servers
-    Object.assign(allResources, resources);
-
-    Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
-      const toolInstance = tool as Tool;
-
-      if (installation) {
-        // Prefix tool name and description with installation
-        toolInstance.description = `${toolInstance.description} (for installation: ${installation})`;
-        tools[`${installation}_${toolName}`] = toolInstance;
-      } else {
-        tools[toolName] = toolInstance;
+      const resources: { [resourceName: string]: string } = {};
+      for (const { name, uri } of listResources.resources) {
+        const resource = await mcpClient.readResource({ uri });
+        resources[name] = (resource.contents[0]?.text as string) ?? '';
       }
-    });
+
+      // Accumulate resources from all servers
+      Object.assign(allResources, resources);
+
+      Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
+        const toolInstance = tool as Tool;
+
+        if (installation) {
+          // Prefix tool name and description with installation
+          toolInstance.description = `${toolInstance.description} (for installation: ${installation})`;
+          const prefixedToolName = `${installation}_${toolName}`;
+          tools[prefixedToolName] = toolInstance;
+        } else {
+          tools[toolName] = toolInstance;
+        }
+      });
+    } catch (error) {
+      console.error(
+        `======= Error connecting to MCP server ${serverName}:`,
+        error,
+      );
+      // Continue with other servers
+    }
   }
 
   return { tools, resources: allResources };

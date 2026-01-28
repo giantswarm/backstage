@@ -108,6 +108,9 @@ export async function createRouter(
       authTokens,
     );
 
+    logger.info(`MCP tools available: ${Object.keys(mcpTools).length}`);
+    logger.info(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
+
     try {
       // Select the appropriate provider based on model type
       const selectedModel = isAnthropicModel
@@ -155,16 +158,23 @@ export async function createRouter(
           ]
         : [];
 
+      const combinedTools = {
+        ...frontendTools(tools),
+        ...mcpTools,
+        ...resourceTools,
+      } as ToolSet;
+
+      logger.info(
+        `Total tools passed to LLM: ${Object.keys(combinedTools).length}`,
+      );
+      logger.info(`All tool names: ${Object.keys(combinedTools).join(', ')}`);
+
       const result = streamText({
         model: selectedModel as any,
         messages: [...systemMessages, ...deduplicatedMessages],
         system: isAnthropicModel ? undefined : defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
-        tools: {
-          ...frontendTools(tools),
-          ...mcpTools,
-          ...resourceTools,
-        } as ToolSet,
+        tools: combinedTools,
         providerOptions: isAnthropicModel
           ? {
               anthropic: {

@@ -109,7 +109,6 @@ export const AiChatPage = () => {
   const getHeaders = useCallback(async () => {
     const { token } = await identityApi.getCredentials();
     const mcpHeaders = await getMCPAuthHeaders();
-    console.log('MCP Headers:', mcpHeaders);
 
     return {
       Authorization: `Bearer ${token}`,
