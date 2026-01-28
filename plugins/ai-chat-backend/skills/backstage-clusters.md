@@ -1,0 +1,39 @@
+# Clusters in Backstage
+
+- Users can view all the management and workload clusters they have access to in the Backstage portal.
+  - The link to this list view is [Clusters](/clusters).
+  - The list view provides these details:
+    - Cluster name
+    - Cluster type (management or workload)
+    - Installation
+    - Organization owning the cluster
+    - Service priority
+    - Release
+    - Kubernetes Version
+    - Cluster app version
+    - Region
+    - AWS account id (for AWS clusters)
+    - Creation date and time
+    - Status (e. g. Ready)
+- Users can see details of clusters in the portal. The URI for that looks like `/clusters/:installation/:org-namespace/:clustername`
+  - That page provides:
+    - Cluster name
+    - Cluster type (management or workload)
+    - Creation date and time
+    - Organization owning the cluster
+    - Installation the cluster belongs to
+    - Service priority
+    - Kubernetes Version
+    - Cloud provider
+    - Location/region
+    - Release
+    - All labels and annotations of the cluster resource
+    - Links to dashboards in Grafana
+    - Links to Alert management in Grafana
+    - Link to the legacy web UI (Happa)
+  - In case of a management cluster, this page also provides:
+    - Flux overview
+      - Version of Flux CD deployed
+      - Status of the Flux CD controllers
+      - Aggregated summary of Flux resources by status (Ready, Inactive, Failed, Unknown)
+    - Link to the Policy Reporter UI

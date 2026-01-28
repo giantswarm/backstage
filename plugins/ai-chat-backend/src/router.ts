@@ -10,6 +10,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import {
   convertToModelMessages,
   streamText,
+  tool,
   ToolSet,
   UIMessage,
   SystemModelMessage,
@@ -17,7 +18,8 @@ import {
 import { z } from 'zod';
 import express from 'express';
 import Router from 'express-promise-router';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
+import { join, basename } from 'path';
 import { getMcpTools } from './getMcpTools';
 import { frontendTools } from './frontendTools';
 
@@ -26,6 +28,66 @@ const systemPromptPath = resolvePackagePath(
   'systemPrompt.md',
 );
 const defaultSystemPrompt = readFileSync(systemPromptPath, 'utf-8');
+
+// Load skills from markdown files in the skills directory
+const skillsDir = resolvePackagePath(
+  '@giantswarm/backstage-plugin-ai-chat-backend',
+  'skills',
+);
+
+function loadSkills(): Record<string, string> {
+  const skills: Record<string, string> = {};
+  const files = readdirSync(skillsDir);
+
+  for (const file of files) {
+    if (file.endsWith('.md')) {
+      const skillName = basename(file, '.md');
+      const filePath = join(skillsDir, file);
+      skills[skillName] = readFileSync(filePath, 'utf-8').trim();
+    }
+  }
+
+  return skills;
+}
+
+const skills = loadSkills();
+const validTopics = Object.keys(skills);
+
+const builtInTools = {
+  listSkills: tool({
+    description:
+      'Lists all topics that have expert knowledge available. Call this first to see what expert knowledge can be queried.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      return {
+        availableTopics: validTopics,
+        hint: 'Use getSkill with one of these topics to learn the expert knowledge.',
+      };
+    },
+  }),
+
+  getSkill: tool({
+    description: `Retrieves expert knowledge about a specific topic. Only works for known topics. Use listSkills first if unsure what topics are available.`,
+    inputSchema: z.object({
+      topic: z
+        .enum(validTopics as [string, ...string[]])
+        .describe('The topic to get expert knowledge about'),
+    }),
+    execute: async ({ topic }) => {
+      const secret = skills[topic];
+      if (!secret) {
+        return {
+          error: `Unknown topic: ${topic}`,
+          availableTopics: validTopics,
+        };
+      }
+      return {
+        topic,
+        secret,
+      };
+    },
+  }),
+};
 
 export interface RouterOptions {
   httpAuth: HttpAuthService;
@@ -138,6 +200,7 @@ export async function createRouter(
         tools: {
           ...frontendTools(tools),
           ...mcpTools,
+          ...builtInTools,
         } as ToolSet,
         providerOptions: isAnthropicModel
           ? {
