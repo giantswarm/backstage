@@ -64,18 +64,33 @@ export async function getMcpTools(config: Config, authTokens: AuthTokens) {
         },
       });
 
-      const mcpClientTools = await mcpClient.tools();
-      const listResources = await mcpClient.listResources();
+      // Try to get resources, but don't fail if the server doesn't support them
+      try {
+        const listResources = await mcpClient.listResources();
 
-      const resources: { [resourceName: string]: string } = {};
-      for (const { name, uri } of listResources.resources) {
-        const resource = await mcpClient.readResource({ uri });
-        resources[name] = (resource.contents[0]?.text as string) ?? '';
+        const resources: { [resourceName: string]: string } = {};
+        for (const { name, uri } of listResources.resources) {
+          const resource = await mcpClient.readResource({ uri });
+          resources[name] = (resource.contents[0]?.text as string) ?? '';
+        }
+
+        // Accumulate resources from all servers
+        Object.assign(allResources, resources);
+      } catch (resourceError: any) {
+        // Log a concise message if resources aren't supported
+        if (resourceError?.message?.includes('does not support resources')) {
+          console.log(
+            `MCP server ${serverName} does not support resources, skipping resource loading`,
+          );
+        } else {
+          console.warn(
+            `Failed to load resources from MCP server ${serverName}:`,
+            resourceError?.message || resourceError,
+          );
+        }
       }
 
-      // Accumulate resources from all servers
-      Object.assign(allResources, resources);
-
+      const mcpClientTools = await mcpClient.tools();
       Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
         const toolInstance = tool as Tool;
 
@@ -88,10 +103,10 @@ export async function getMcpTools(config: Config, authTokens: AuthTokens) {
           tools[toolName] = toolInstance;
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(
-        `======= Error connecting to MCP server ${serverName}:`,
-        error,
+        `Failed to connect to MCP server ${serverName}:`,
+        error?.message || error,
       );
       // Continue with other servers
     }
