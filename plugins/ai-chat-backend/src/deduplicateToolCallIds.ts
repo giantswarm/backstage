@@ -36,7 +36,9 @@ export function deduplicateToolCallIds(messages: any[]): any[] {
     if (message.role === 'tool' && message.toolCallId) {
       const originalId = message.toolCallId;
       // Find the first pending tool call with this original ID (FIFO order)
-      const index = pendingToolCalls.findIndex(p => p.originalId === originalId);
+      const index = pendingToolCalls.findIndex(
+        p => p.originalId === originalId,
+      );
 
       if (index !== -1) {
         const { renamedId } = pendingToolCalls[index];

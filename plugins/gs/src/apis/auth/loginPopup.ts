@@ -126,7 +126,9 @@ export function openLoginPopup(
     } else {
       // Debug: log if BroadcastChannel is not supported
       // eslint-disable-next-line no-console
-      console.warn('[Auth Popup] BroadcastChannel API not available in this browser');
+      console.warn(
+        '[Auth Popup] BroadcastChannel API not available in this browser',
+      );
     }
 
     const messageListener = (event: MessageEvent) => {
