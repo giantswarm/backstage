@@ -16018,8 +16018,8 @@ __metadata:
   linkType: hard
 
 "@terasky/backstage-plugin-catalog-mcp-backend@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@terasky/backstage-plugin-catalog-mcp-backend@npm:0.3.0"
+  version: 0.3.1
+  resolution: "@terasky/backstage-plugin-catalog-mcp-backend@npm:0.3.1"
   dependencies:
     "@backstage/backend-defaults": "npm:^0.15.0"
     "@backstage/backend-plugin-api": "npm:^1.6.1"
@@ -16028,7 +16028,7 @@ __metadata:
     express: "npm:^4.17.1"
     express-promise-router: "npm:^4.1.0"
     zod: "npm:^3.22.4"
-  checksum: 10c0/65535a46578f93250d2b30e52c9bf96eef3326a854a28fa08be7109aa0361402ff92552d1e9a3a2938c0a3a9d2574112a637ab165d3afbb7f9b038367e180be2
+  checksum: 10c0/9be441d7fa8c3ffb26be00097f80c3c52d59634a653654742a41c5859f8e8308a540e2051dca1581bad7370542f5e1d9533f36e1e3932680c27a2991a4ac6380
   languageName: node
   linkType: hard
 
