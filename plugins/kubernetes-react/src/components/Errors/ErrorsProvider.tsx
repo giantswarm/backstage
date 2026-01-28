@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useRef, useState } from 'react';
+import { createContext, ReactNode, useMemo, useRef, useState } from 'react';
 import { Errors } from './Errors';
 import { Box } from '@material-ui/core';
 
@@ -33,6 +33,11 @@ export const ErrorsProvider = ({ children }: ErrorsProviderProps) => {
   const [_updatedAt, setUpdatedAt] = useState(new Date());
   const errors = errorsRef.current;
 
+  const contextValue = useMemo(
+    () => ({ errorsRef, setUpdatedAt }),
+    [errorsRef, setUpdatedAt],
+  );
+
   const handleRetry = (errorItemId: number) => {
     const errorItem = errors.find(e => e.id === errorItemId);
     if (!errorItem || !errorItem.retry) return;
@@ -54,7 +59,7 @@ export const ErrorsProvider = ({ children }: ErrorsProviderProps) => {
   };
 
   return (
-    <ErrorsContext.Provider value={{ errorsRef, setUpdatedAt }}>
+    <ErrorsContext.Provider value={contextValue}>
       {errors.length > 0 ? (
         <Box marginBottom={2}>
           <Errors
