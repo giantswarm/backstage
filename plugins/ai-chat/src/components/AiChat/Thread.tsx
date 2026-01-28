@@ -35,8 +35,8 @@ const EXAMPLE_QUESTIONS = [
   'What applications are available for deployment?',
   'Are there any clusters unhealthy right now?',
   'Who are my team mates?',
-  'What are my organization\'s workload clusters?',
-  'Show me one of the applications I own and where it\'s deployed'
+  "What are my organization's workload clusters?",
+  "Show me one of the applications I own and where it's deployed",
 ];
 
 const ThreadWelcome = () => {
