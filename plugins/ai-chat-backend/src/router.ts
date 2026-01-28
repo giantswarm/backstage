@@ -22,6 +22,7 @@ import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
 import { extractMCPAuthTokens } from './extractMCPAuthTokens';
 import { frontendTools } from './frontendTools';
+import { deduplicateToolCallIds } from './deduplicateToolCallIds';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -118,6 +119,9 @@ export async function createRouter(
         messages as UIMessage[],
       );
 
+      // Deduplicate tool call IDs to prevent Anthropic API errors
+      const deduplicatedMessages = deduplicateToolCallIds(modelMessages);
+
       // Convert MCP resources to tools that can be called on-demand
       const resourceTools: ToolSet = {};
       let resourceIndex = 0;
@@ -153,7 +157,7 @@ export async function createRouter(
 
       const result = streamText({
         model: selectedModel as any,
-        messages: [...systemMessages, ...modelMessages],
+        messages: [...systemMessages, ...deduplicatedMessages],
         system: isAnthropicModel ? undefined : defaultSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
