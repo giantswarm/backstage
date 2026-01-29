@@ -1,3 +1,17 @@
+import type { IncompatibilityState } from '@giantswarm/backstage-plugin-kubernetes-react';
+
+export const getIncompatibilityMessage = (
+  incompatibility: IncompatibilityState,
+): string => {
+  const clientVersionsStr = incompatibility.clientVersions.join(', ');
+  const serverVersionsStr =
+    incompatibility.serverVersions.length > 0
+      ? incompatibility.serverVersions.join(', ')
+      : 'none';
+
+  return `API version incompatibility for ${incompatibility.resourceClass} on cluster "${incompatibility.cluster}". Client supports: [${clientVersionsStr}], server provides: [${serverVersionsStr}].`;
+};
+
 export const getErrorMessage = ({
   error,
   resourceKind,

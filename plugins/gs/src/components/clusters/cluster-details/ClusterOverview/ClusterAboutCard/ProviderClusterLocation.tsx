@@ -26,12 +26,9 @@ export const ProviderClusterLocation = () => {
 
   const location = providerCluster ? providerCluster.getLocation() : undefined;
 
-  const firstError = providerClusterErrors[0]?.error ?? null;
-
   return (
     <AsyncValue
       isLoading={providerClusterIsLoading}
-      error={firstError}
       errorMessage={providerClusterErrorMessage}
       value={location}
     >

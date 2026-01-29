@@ -16,7 +16,10 @@ import {
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { getErrorMessage } from '../hooks/utils/helpers';
+import {
+  getErrorMessage,
+  getIncompatibilityMessage,
+} from '../hooks/utils/helpers';
 
 type GitOpsCardProps = {
   deployment: App | HelmRelease;
@@ -32,6 +35,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
     errors: kustomizationErrors,
     isLoading: kustomizationIsLoading,
     error: kustomizationError,
+    incompatibility: kustomizationIncompatibility,
   } = useResource(installationName, Kustomization, {
     name: kustomizationName!,
     namespace: kustomizationNamespace,
@@ -45,6 +49,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
     errors: gitRepositoryErrors,
     isLoading: gitRepositoryIsLoading,
     error: gitRepositoryError,
+    incompatibility: gitRepositoryIncompatibility,
   } = useResource(
     installationName,
     GitRepository,
@@ -72,7 +77,6 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
 
   useShowErrors(errors);
 
-  const firstError = errors[0]?.error ?? null;
   let errorMessage;
   if (kustomizationError) {
     errorMessage = getErrorMessage({
@@ -89,6 +93,12 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
       resourceName: gitRepositoryName!,
       resourceNamespace: gitRepositoryNamespace,
     });
+  }
+  if (kustomizationIncompatibility) {
+    errorMessage = getIncompatibilityMessage(kustomizationIncompatibility);
+  }
+  if (gitRepositoryIncompatibility) {
+    errorMessage = getIncompatibilityMessage(gitRepositoryIncompatibility);
   }
 
   const sourceUrl = useGitOpsSourceLink({
@@ -109,7 +119,6 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
             <AsyncValue
               isLoading={isLoading}
               value={sourceUrl}
-              error={firstError}
               errorMessage={errorMessage}
               renderError={message => (
                 <ErrorStatus errorMessage={message} notAvailable={false} />
