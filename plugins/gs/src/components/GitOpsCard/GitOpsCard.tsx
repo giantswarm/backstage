@@ -55,7 +55,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
     {
       enabled: Boolean(
         kustomizationSourceRef &&
-          kustomizationSourceRef.kind === GitRepository.kind,
+        kustomizationSourceRef.kind === GitRepository.kind,
       ),
     },
   );
