@@ -102,13 +102,29 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
-    const mcpTools = await getMcpTools(config);
+    const { tools: mcpTools, failedServers } = await getMcpTools(
+      config,
+      logger,
+    );
     logger.debug('==================MCP TOOLS====================');
     logger.debug(JSON.stringify(mcpTools));
     logger.debug('===============================================');
 
+    if (failedServers.length > 0) {
+      logger.warn(
+        `${failedServers.length} MCP server(s) failed to connect: ${failedServers.map(s => s.name).join(', ')}`,
+      );
+    }
+
     // User-scoped tools that need access to the current request's credentials
     const userTools = createUserTools(userInfo, credentials);
+
+    // Build effective system prompt, including MCP server failure info if any
+    let effectiveSystemPrompt = defaultSystemPrompt;
+    if (failedServers.length > 0) {
+      const failureNote = `\n\n---\n**Note:** The following MCP tool server(s) are currently unavailable: ${failedServers.map(s => s.name).join(', ')}. Some tools may not be available. If the user asks about functionality that requires these servers, let them know there's a connectivity issue.`;
+      effectiveSystemPrompt = defaultSystemPrompt + failureNote;
+    }
 
     try {
       // Select the appropriate provider based on model type
@@ -127,7 +143,7 @@ export async function createRouter(
       const systemMessage: SystemModelMessage | undefined = isAnthropicModel
         ? {
             role: 'system',
-            content: defaultSystemPrompt,
+            content: effectiveSystemPrompt,
             providerOptions: {
               anthropic: { cacheControl: { type: 'ephemeral' } },
             },
@@ -139,7 +155,7 @@ export async function createRouter(
         messages: systemMessage
           ? [systemMessage, ...modelMessages]
           : modelMessages,
-        system: isAnthropicModel ? undefined : defaultSystemPrompt,
+        system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
           ...frontendTools(tools),
