@@ -40,8 +40,7 @@ export interface ResolvedGVK extends CustomResourceMatcher {
 /**
  * Resolved GVK with multi-version support and compatibility information.
  */
-export interface ResolvedGVKWithCompatibility
-  extends MultiVersionResourceMatcher {
+export interface ResolvedGVKWithCompatibility extends MultiVersionResourceMatcher {
   /** Whether the apiVersion was discovered from the cluster */
   isDiscovered?: boolean;
   /** Version compatibility information, present when discovery is complete */
