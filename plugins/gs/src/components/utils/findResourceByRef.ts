@@ -37,9 +37,11 @@ export function findResourceByRef<T extends KubeObject>(
     const installationNameMatch = resource.cluster === installationName;
     const kindMatch = resource.getKind() === kind;
     const nameMatch = resource.getName() === name;
-    const namespaceMatch = namespace
-      ? resource.getNamespace() === namespace
-      : true;
+    const resourceNamespace = resource.getNamespace();
+    const namespaceMatch =
+      !namespace || // ref doesn't specify namespace
+      !resourceNamespace || // resource is cluster-scoped
+      resourceNamespace === namespace; // both have namespaces, must match
 
     // API group matching: supports both ObjectReference (apiVersion) and
     // TypedLocalObjectReference (apiGroup) formats.
