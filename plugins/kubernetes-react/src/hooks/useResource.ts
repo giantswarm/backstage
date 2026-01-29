@@ -6,6 +6,7 @@ import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
 import { ErrorInfoUnion } from './utils/queries';
 import { usePreferredVersion } from './useApiDiscovery';
+import { useReportApiVersionIssues } from './useReportApiVersionIssues';
 
 export function useResource<R extends KubeObject<any>>(
   cluster: string,
@@ -30,6 +31,7 @@ export function useResource<R extends KubeObject<any>>(
     isDiscovered,
     queryEnabled,
     incompatibility,
+    clientOutdated,
   } = usePreferredVersion(cluster, staticGVK, {
     enableDiscovery: options.enableDiscovery,
     explicitVersion: options.apiVersion,
@@ -82,6 +84,12 @@ export function useResource<R extends KubeObject<any>>(
     return result;
   }, [cluster, incompatibility, queryInfo.error, queryInfo.refetch]);
 
+  // Report API version issues to Sentry automatically
+  useReportApiVersionIssues(
+    incompatibility ? [incompatibility] : null,
+    clientOutdated ? [clientOutdated] : null,
+  );
+
   return {
     ...queryInfo,
     isLoading: isRestoring || isDiscovering || queryInfo.isLoading,
@@ -91,6 +99,7 @@ export function useResource<R extends KubeObject<any>>(
     isApiVersionDiscovered: isDiscovered,
     discoveryError,
     incompatibility,
+    clientOutdated,
     compatibility: resolvedGVK.compatibility,
   };
 }

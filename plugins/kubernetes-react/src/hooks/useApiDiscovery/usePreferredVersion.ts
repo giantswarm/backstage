@@ -4,8 +4,14 @@ import {
   MultiVersionResourceMatcher,
 } from '../../lib/k8s/CustomResourceMatcher';
 import { ResolvedGVKWithCompatibility } from '../../lib/k8s/ApiDiscovery';
-import { IncompatibilityState } from '../../lib/k8s/VersionTypes';
-import { checkVersionCompatibility } from '../../lib/k8s/versionUtils';
+import {
+  ClientOutdatedState,
+  IncompatibilityState,
+} from '../../lib/k8s/VersionTypes';
+import {
+  checkVersionCompatibility,
+  getLatestVersion,
+} from '../../lib/k8s/versionUtils';
 import { useApiDiscovery } from './useApiDiscovery';
 
 export interface UsePreferredVersionOptions {
@@ -30,6 +36,8 @@ export interface UsePreferredVersionResult {
   queryEnabled: boolean;
   /** Incompatibility state when versions don't match, undefined if compatible */
   incompatibility: IncompatibilityState | undefined;
+  /** Client outdated state when server has newer versions, undefined if not outdated */
+  clientOutdated: ClientOutdatedState | undefined;
 }
 
 /**
@@ -83,6 +91,7 @@ export function usePreferredVersion(
     resolvedGVK: ResolvedGVKWithCompatibility;
     queryEnabled: boolean;
     incompatibility: IncompatibilityState | undefined;
+    clientOutdated: ClientOutdatedState | undefined;
   } => {
     const baseGVK: ResolvedGVKWithCompatibility = {
       ...gvk,
@@ -99,6 +108,7 @@ export function usePreferredVersion(
         },
         queryEnabled: true,
         incompatibility: undefined,
+        clientOutdated: undefined,
       };
     }
 
@@ -108,6 +118,7 @@ export function usePreferredVersion(
         resolvedGVK: baseGVK,
         queryEnabled: true,
         incompatibility: undefined,
+        clientOutdated: undefined,
       };
     }
 
@@ -120,6 +131,23 @@ export function usePreferredVersion(
       );
 
       if (compatibility.isCompatible && compatibility.resolvedVersion) {
+        // Check if client is outdated (compatible but server has newer versions)
+        let clientOutdated: ClientOutdatedState | undefined;
+        if (compatibility.isClientOutdated) {
+          const clientLatest = getLatestVersion(supportedVersions);
+          const serverLatest = getLatestVersion(serverVersions);
+          if (clientLatest && serverLatest) {
+            clientOutdated = {
+              resourceClass: gvk.plural,
+              cluster,
+              clientLatestVersion: clientLatest,
+              serverLatestVersion: serverLatest,
+              clientVersions: supportedVersions,
+              serverVersions,
+            };
+          }
+        }
+
         return {
           resolvedGVK: {
             ...baseGVK,
@@ -129,6 +157,7 @@ export function usePreferredVersion(
           },
           queryEnabled: true,
           incompatibility: undefined,
+          clientOutdated,
         };
       }
 
@@ -145,6 +174,7 @@ export function usePreferredVersion(
           clientVersions: supportedVersions,
           serverVersions,
         },
+        clientOutdated: undefined,
       };
     }
 
@@ -154,6 +184,7 @@ export function usePreferredVersion(
         resolvedGVK: baseGVK,
         queryEnabled: true,
         incompatibility: undefined,
+        clientOutdated: undefined,
       };
     }
 
@@ -162,6 +193,7 @@ export function usePreferredVersion(
       resolvedGVK: baseGVK,
       queryEnabled: true,
       incompatibility: undefined,
+      clientOutdated: undefined,
     };
   }, [
     gvk,
@@ -181,5 +213,6 @@ export function usePreferredVersion(
     isDiscovered: result.resolvedGVK.isDiscovered ?? false,
     queryEnabled: result.queryEnabled,
     incompatibility: result.incompatibility,
+    clientOutdated: result.clientOutdated,
   };
 }

@@ -14,6 +14,8 @@ export interface VersionCompatibility {
   clientVersions: readonly ApiVersionString[];
   /** Versions available on the server (from API discovery) */
   serverVersions: ApiVersionString[];
+  /** Whether the server has newer versions than the client supports */
+  isClientOutdated: boolean;
 }
 
 /**
@@ -24,6 +26,25 @@ export interface IncompatibilityState {
   resourceClass: string;
   /** The cluster name */
   cluster: string;
+  /** Versions supported by the client (resource class) */
+  clientVersions: readonly ApiVersionString[];
+  /** Versions available on the server (from API discovery) */
+  serverVersions: ApiVersionString[];
+}
+
+/**
+ * State representing that the client is outdated (server supports newer versions).
+ * This is a warning, not an error - the client can still communicate with the server.
+ */
+export interface ClientOutdatedState {
+  /** The resource class name */
+  resourceClass: string;
+  /** The cluster name */
+  cluster: string;
+  /** The latest version supported by the client */
+  clientLatestVersion: ApiVersionString;
+  /** The latest version supported by the server */
+  serverLatestVersion: ApiVersionString;
   /** Versions supported by the client (resource class) */
   clientVersions: readonly ApiVersionString[];
   /** Versions available on the server (from API discovery) */

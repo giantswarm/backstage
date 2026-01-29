@@ -114,11 +114,20 @@ export function checkVersionCompatibility(
       ? sortedCompatible[sortedCompatible.length - 1]
       : undefined;
 
+  // Determine if client is outdated (server has newer versions than client supports)
+  const clientLatest = getLatestVersion(clientVersions);
+  const serverLatest = getLatestVersion(serverVersions);
+  const isClientOutdated =
+    clientLatest !== undefined &&
+    serverLatest !== undefined &&
+    compareVersions(serverLatest, clientLatest) > 0;
+
   return {
     isCompatible: sortedCompatible.length > 0,
     resolvedVersion,
     compatibleVersions: sortedCompatible,
     clientVersions,
     serverVersions,
+    isClientOutdated,
   };
 }

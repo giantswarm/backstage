@@ -27,6 +27,7 @@ import {
   KubernetesAuthProviders,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
+import { errorReporterApiRef } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   gsAuthProvidersApiRef,
   GSDiscoveryApiClient,
@@ -34,8 +35,14 @@ import {
   KubernetesClient,
 } from '@giantswarm/backstage-plugin-gs';
 import { scaffolderApiRef } from '@backstage/plugin-scaffolder-react';
+import ErrorReporter from './utils/ErrorReporter';
 
 export const apis: AnyApiFactory[] = [
+  createApiFactory({
+    api: errorReporterApiRef,
+    deps: {},
+    factory: () => ErrorReporter.getInstance(),
+  }),
   createApiFactory({
     api: discoveryApiRef,
     deps: {

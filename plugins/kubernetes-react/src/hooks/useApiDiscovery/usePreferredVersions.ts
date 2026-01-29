@@ -10,8 +10,14 @@ import {
   APIGroup,
   ResolvedGVKWithCompatibility,
 } from '../../lib/k8s/ApiDiscovery';
-import { IncompatibilityState } from '../../lib/k8s/VersionTypes';
-import { checkVersionCompatibility } from '../../lib/k8s/versionUtils';
+import {
+  ClientOutdatedState,
+  IncompatibilityState,
+} from '../../lib/k8s/VersionTypes';
+import {
+  checkVersionCompatibility,
+  getLatestVersion,
+} from '../../lib/k8s/versionUtils';
 
 const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
 
@@ -40,6 +46,8 @@ export interface UsePreferredVersionsResult {
   clustersQueryEnabled: Record<string, boolean>;
   /** List of incompatibility states for clusters with version mismatches */
   incompatibilities: IncompatibilityState[];
+  /** List of client outdated states for clusters where server has newer versions */
+  clientOutdatedStates: ClientOutdatedState[];
 }
 
 /**
@@ -108,79 +116,101 @@ export function usePreferredVersions(
     })),
   });
 
-  const { clustersGVKs, clustersQueryEnabled, incompatibilities } =
-    useMemo(() => {
-      const gvks: Record<string, ResolvedGVKWithCompatibility> = {};
-      const queryEnabled: Record<string, boolean> = {};
-      const incompats: IncompatibilityState[] = [];
+  const {
+    clustersGVKs,
+    clustersQueryEnabled,
+    incompatibilities,
+    clientOutdatedStates,
+  } = useMemo(() => {
+    const gvks: Record<string, ResolvedGVKWithCompatibility> = {};
+    const queryEnabled: Record<string, boolean> = {};
+    const incompats: IncompatibilityState[] = [];
+    const outdatedStates: ClientOutdatedState[] = [];
 
-      const baseGVK: ResolvedGVKWithCompatibility = {
-        ...gvk,
-        supportedVersions,
-        isDiscovered: false,
-      };
-
-      clusters.forEach((cluster, index) => {
-        if (!shouldDiscover) {
-          gvks[cluster] = baseGVK;
-          queryEnabled[cluster] = true;
-          return;
-        }
-
-        const query = queries[index];
-
-        if (query.data?.versions) {
-          const serverVersions = query.data.versions.map(v => v.version);
-          const compatibility = checkVersionCompatibility(
-            supportedVersions,
-            serverVersions,
-          );
-
-          if (compatibility.isCompatible && compatibility.resolvedVersion) {
-            gvks[cluster] = {
-              ...baseGVK,
-              apiVersion: compatibility.resolvedVersion,
-              isDiscovered: true,
-              compatibility,
-            };
-            queryEnabled[cluster] = true;
-          } else {
-            // Incompatible versions
-            gvks[cluster] = {
-              ...baseGVK,
-              compatibility,
-            };
-            queryEnabled[cluster] = false;
-            incompats.push({
-              resourceClass: gvk.plural,
-              cluster,
-              clientVersions: supportedVersions,
-              serverVersions,
-            });
-          }
-        } else if (query.error && fallbackToStatic) {
-          gvks[cluster] = baseGVK;
-          queryEnabled[cluster] = true;
-        } else {
-          // Default to static version while discovering or on error without fallback
-          gvks[cluster] = baseGVK;
-          queryEnabled[cluster] = true;
-        }
-      });
-
-      return {
-        clustersGVKs: gvks,
-        clustersQueryEnabled: queryEnabled,
-        incompatibilities: incompats,
-      };
-    }, [
-      clusters,
-      gvk,
-      queries,
-      shouldDiscover,
+    const baseGVK: ResolvedGVKWithCompatibility = {
+      ...gvk,
       supportedVersions,
-      fallbackToStatic,
-    ]);
+      isDiscovered: false,
+    };
+
+    clusters.forEach((cluster, index) => {
+      if (!shouldDiscover) {
+        gvks[cluster] = baseGVK;
+        queryEnabled[cluster] = true;
+        return;
+      }
+
+      const query = queries[index];
+
+      if (query.data?.versions) {
+        const serverVersions = query.data.versions.map(v => v.version);
+        const compatibility = checkVersionCompatibility(
+          supportedVersions,
+          serverVersions,
+        );
+
+        if (compatibility.isCompatible && compatibility.resolvedVersion) {
+          gvks[cluster] = {
+            ...baseGVK,
+            apiVersion: compatibility.resolvedVersion,
+            isDiscovered: true,
+            compatibility,
+          };
+          queryEnabled[cluster] = true;
+
+          // Check if client is outdated (compatible but server has newer versions)
+          if (compatibility.isClientOutdated) {
+            const clientLatest = getLatestVersion(supportedVersions);
+            const serverLatest = getLatestVersion(serverVersions);
+            if (clientLatest && serverLatest) {
+              outdatedStates.push({
+                resourceClass: gvk.plural,
+                cluster,
+                clientLatestVersion: clientLatest,
+                serverLatestVersion: serverLatest,
+                clientVersions: supportedVersions,
+                serverVersions,
+              });
+            }
+          }
+        } else {
+          // Incompatible versions
+          gvks[cluster] = {
+            ...baseGVK,
+            compatibility,
+          };
+          queryEnabled[cluster] = false;
+          incompats.push({
+            resourceClass: gvk.plural,
+            cluster,
+            clientVersions: supportedVersions,
+            serverVersions,
+          });
+        }
+      } else if (query.error && fallbackToStatic) {
+        gvks[cluster] = baseGVK;
+        queryEnabled[cluster] = true;
+      } else {
+        // Default to static version while discovering or on error without fallback
+        gvks[cluster] = baseGVK;
+        queryEnabled[cluster] = true;
+      }
+    });
+
+    return {
+      clustersGVKs: gvks,
+      clustersQueryEnabled: queryEnabled,
+      incompatibilities: incompats,
+      clientOutdatedStates: outdatedStates,
+    };
+  }, [
+    clusters,
+    gvk,
+    queries,
+    shouldDiscover,
+    supportedVersions,
+    fallbackToStatic,
+  ]);
 
   const discoveryErrors = useMemo(() => {
     if (!shouldDiscover) {
@@ -210,5 +240,6 @@ export function usePreferredVersions(
     isReady,
     clustersQueryEnabled,
     incompatibilities,
+    clientOutdatedStates,
   };
 }
