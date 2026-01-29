@@ -8302,14 +8302,14 @@ __metadata:
   linkType: hard
 
 "@fsegurai/codemirror-theme-vscode-light@npm:^6.2.2":
-  version: 6.2.3
-  resolution: "@fsegurai/codemirror-theme-vscode-light@npm:6.2.3"
+  version: 6.2.4
+  resolution: "@fsegurai/codemirror-theme-vscode-light@npm:6.2.4"
   peerDependencies:
     "@codemirror/language": ^6.0.0
     "@codemirror/state": ^6.0.0
     "@codemirror/view": ^6.0.0
     "@lezer/highlight": ^1.0.0
-  checksum: 10c0/439b40873abd5294f09e5b153abbd6eac7de514eb3dc10c0af5c7472f049cfaba8e3e985116d4da7aa957cb97e8c3c3162e91d78c4d37c189d8b5ef188dc438b
+  checksum: 10c0/c64a9a587013a7fb7e7308eff146220347a013ded32cac25b72a8e1bf73d2ad4cac3d1caa877a19d9ab4ef442e32b651af4d5d784d55903857112e0def48905d
   languageName: node
   linkType: hard
 
