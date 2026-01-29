@@ -1,4 +1,5 @@
 import {
+  ErrorInfoUnion,
   GitRepository,
   HelmRelease,
   HelmRepository,
@@ -10,6 +11,10 @@ import { useEffect, useMemo, useState } from 'react';
 
 const RECONCILING_INTERVAL = 3000;
 const NON_RECONCILING_INTERVAL = 15000;
+
+const isNotFoundError = (errorInfo: ErrorInfoUnion): boolean =>
+  errorInfo.type !== 'incompatibility' &&
+  errorInfo.error.name === 'NotFoundError';
 
 export function useFluxResources(clusters: string | string[] | null) {
   const [refetchInterval, setRefetchInterval] = useState(
@@ -93,33 +98,23 @@ export function useFluxResources(clusters: string | string[] | null) {
   );
 
   useEffect(() => {
-    if (
-      kustomizationsErrors.some(({ error }) => error.name === 'NotFoundError')
-    ) {
+    if (kustomizationsErrors.some(isNotFoundError)) {
       setKustomizationsEnabled(false);
     }
 
-    if (
-      helmReleasesErrors.some(({ error }) => error.name === 'NotFoundError')
-    ) {
+    if (helmReleasesErrors.some(isNotFoundError)) {
       setHelmReleasesEnabled(false);
     }
 
-    if (
-      gitRepositoriesErrors.some(({ error }) => error.name === 'NotFoundError')
-    ) {
+    if (gitRepositoriesErrors.some(isNotFoundError)) {
       setGitRepositoriesEnabled(false);
     }
 
-    if (
-      ociRepositoriesErrors.some(({ error }) => error.name === 'NotFoundError')
-    ) {
+    if (ociRepositoriesErrors.some(isNotFoundError)) {
       setOciRepositoriesEnabled(false);
     }
 
-    if (
-      helmRepositoriesErrors.some(({ error }) => error.name === 'NotFoundError')
-    ) {
+    if (helmRepositoriesErrors.some(isNotFoundError)) {
       setHelmRepositoriesEnabled(false);
     }
   }, [
@@ -144,7 +139,7 @@ export function useFluxResources(clusters: string | string[] | null) {
       ...gitRepositoriesErrors,
       ...helmRepositoriesErrors,
       ...ociRepositoriesErrors,
-    ].filter(error => error.error.name !== 'NotFoundError');
+    ].filter(errorInfo => !isNotFoundError(errorInfo));
   }, [
     kustomizationsErrors,
     helmReleasesErrors,

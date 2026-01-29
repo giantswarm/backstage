@@ -10,16 +10,14 @@ import {
 } from '../deployments/utils/isManagedByFlux';
 import {
   App,
+  getErrorMessage,
+  getIncompatibilityMessage,
   GitRepository,
   HelmRelease,
   Kustomization,
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import {
-  getErrorMessage,
-  getIncompatibilityMessage,
-} from '../hooks/utils/helpers';
 
 type GitOpsCardProps = {
   deployment: App | HelmRelease;

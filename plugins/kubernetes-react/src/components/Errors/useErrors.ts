@@ -3,7 +3,8 @@ import { assertErrorsContext, ErrorsContext } from './ErrorsProvider';
 import { generateUID } from '../../utils/generateUID';
 
 import useDebounce from 'react-use/esm/useDebounce';
-import { ErrorInfo } from '../../hooks/utils/queries';
+import { ErrorInfoUnion } from '../../hooks/utils/queries';
+import { getIncompatibilityMessage } from '../../lib/k8s/errorMessages';
 
 type showErrorOptions = {
   sourceId?: string;
@@ -17,7 +18,7 @@ export function useErrors() {
   const memoized = useMemo(
     () => {
       const showErrors = (
-        errors: ErrorInfo | ErrorInfo[],
+        errors: ErrorInfoUnion | ErrorInfoUnion[],
         options: showErrorOptions = {},
       ) => {
         const { errorsRef, setUpdatedAt } = context;
@@ -30,18 +31,35 @@ export function useErrors() {
         }
 
         const newErrors = Array.isArray(errors) ? errors : [errors];
-        newErrors.forEach(({ cluster, error, retry }) => {
+        newErrors.forEach(errorInfo => {
           const id = updatedErrors.length
             ? Math.max(...updatedErrors.map(e => e.id)) + 1
             : 1;
-          updatedErrors.push({
-            id,
-            error,
-            retry,
-            cluster,
-            sourceId: options.sourceId,
-            message: options.message,
-          });
+
+          if (errorInfo.type === 'incompatibility') {
+            // Handle incompatibility errors
+            updatedErrors.push({
+              id,
+              type: 'incompatibility',
+              incompatibility: errorInfo.incompatibility,
+              cluster: errorInfo.cluster,
+              sourceId: options.sourceId,
+              message:
+                options.message ??
+                getIncompatibilityMessage(errorInfo.incompatibility),
+            });
+          } else {
+            // Handle regular errors (type is 'error' or undefined)
+            updatedErrors.push({
+              id,
+              type: 'error',
+              error: errorInfo.error,
+              retry: errorInfo.retry,
+              cluster: errorInfo.cluster,
+              sourceId: options.sourceId,
+              message: options.message,
+            });
+          }
         });
 
         errorsRef.current = updatedErrors;
@@ -60,7 +78,7 @@ export function useErrors() {
 }
 
 export function useShowErrors(
-  errors: ErrorInfo | ErrorInfo[] | null,
+  errors: ErrorInfoUnion | ErrorInfoUnion[] | null,
   options: {
     message?: string | undefined;
   } = {},

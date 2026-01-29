@@ -1,10 +1,29 @@
 import { UseQueryResult } from '@tanstack/react-query';
+import { IncompatibilityState } from '../../lib/k8s/VersionTypes';
 
+/**
+ * Error info for regular fetch errors.
+ */
 export type ErrorInfo = {
+  type?: 'error';
   cluster: string;
   error: Error;
   retry: VoidFunction;
 };
+
+/**
+ * Error info for API version incompatibility errors.
+ */
+export type IncompatibilityErrorInfo = {
+  type: 'incompatibility';
+  cluster: string;
+  incompatibility: IncompatibilityState;
+};
+
+/**
+ * Union type for all error types that can be displayed.
+ */
+export type ErrorInfoUnion = ErrorInfo | IncompatibilityErrorInfo;
 
 export const mapQueriesToClusters = <T>(
   clusters: string[],

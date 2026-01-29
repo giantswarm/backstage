@@ -5,6 +5,7 @@ import { Options, QueryOptions } from './types';
 import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
 import { usePreferredVersions } from './useApiDiscovery';
+import { ErrorInfoUnion } from './utils/queries';
 
 export interface UseResourcesQueryOptions<T> extends QueryOptions<T> {
   /** Enable API version discovery. Defaults to true. */
@@ -69,11 +70,23 @@ export function useResources<R extends KubeObject<any>>(
     );
   }, [queriesInfo.clustersData, ResourceClass]);
 
-  const errors = useMemo(() => {
-    return queriesInfo.errors.filter(
+  const errors: ErrorInfoUnion[] = useMemo(() => {
+    // Start with regular fetch errors (filtered)
+    const fetchErrors = queriesInfo.errors.filter(
       ({ error }) => error.name !== 'RejectedError',
     );
-  }, [queriesInfo.errors]);
+
+    // Add incompatibility errors
+    const incompatibilityErrors: ErrorInfoUnion[] = incompatibilities.map(
+      incompatibility => ({
+        type: 'incompatibility' as const,
+        cluster: incompatibility.cluster,
+        incompatibility,
+      }),
+    );
+
+    return [...fetchErrors, ...incompatibilityErrors];
+  }, [queriesInfo.errors, incompatibilities]);
 
   return {
     ...queriesInfo,

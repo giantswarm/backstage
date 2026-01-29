@@ -36,13 +36,11 @@ import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import {
   ControlPlane,
+  getErrorMessage,
+  getIncompatibilityMessage,
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import {
-  getErrorMessage,
-  getIncompatibilityMessage,
-} from '../../../../hooks/utils/helpers';
 import {
   ClusterTypeManagementIcon,
   ClusterTypeWorkloadIcon,

@@ -1,10 +1,15 @@
 import { createContext, ReactNode, useMemo, useRef, useState } from 'react';
 import { Errors } from './Errors';
 import { Box } from '@material-ui/core';
+import { IncompatibilityState } from '../../lib/k8s/VersionTypes';
+
+export type ErrorItemType = 'error' | 'incompatibility';
 
 export type ErrorItem = {
   id: number;
-  error: Error;
+  type?: ErrorItemType;
+  error?: Error;
+  incompatibility?: IncompatibilityState;
   cluster?: string;
   sourceId?: string;
   message?: string;

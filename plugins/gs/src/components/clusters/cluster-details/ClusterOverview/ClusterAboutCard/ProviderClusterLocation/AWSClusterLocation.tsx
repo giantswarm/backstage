@@ -1,14 +1,12 @@
 import {
   AWSCluster,
+  getErrorMessage,
+  getIncompatibilityMessage,
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '../../../../../UI';
-import {
-  getErrorMessage,
-  getIncompatibilityMessage,
-} from '../../../../../hooks/utils/helpers';
 
 export const AWSClusterLocation = () => {
   const { cluster, installationName } = useCurrentCluster();

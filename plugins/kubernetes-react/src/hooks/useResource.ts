@@ -4,7 +4,7 @@ import { QueryOptions } from './types';
 import { useGetResource } from './useGetResource';
 import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
-import { ErrorInfo } from './utils/queries';
+import { ErrorInfoUnion } from './utils/queries';
 import { usePreferredVersion } from './useApiDiscovery';
 
 export function useResource<R extends KubeObject<any>>(
@@ -57,18 +57,30 @@ export function useResource<R extends KubeObject<any>>(
     return new ResourceClass(queryInfo.data, cluster);
   }, [queryInfo.data, cluster, ResourceClass]);
 
-  const errors: ErrorInfo[] = useMemo(() => {
-    if (!queryInfo.error) {
-      return [];
+  const errors: ErrorInfoUnion[] = useMemo(() => {
+    const result: ErrorInfoUnion[] = [];
+
+    // Include incompatibility as an error
+    if (incompatibility) {
+      result.push({
+        type: 'incompatibility',
+        cluster,
+        incompatibility,
+      });
     }
-    return [
-      {
+
+    // Include regular fetch errors
+    if (queryInfo.error) {
+      result.push({
+        type: 'error',
         cluster,
         error: queryInfo.error,
         retry: queryInfo.refetch,
-      },
-    ];
-  }, [cluster, queryInfo.error, queryInfo.refetch]);
+      });
+    }
+
+    return result;
+  }, [cluster, incompatibility, queryInfo.error, queryInfo.refetch]);
 
   return {
     ...queryInfo,
