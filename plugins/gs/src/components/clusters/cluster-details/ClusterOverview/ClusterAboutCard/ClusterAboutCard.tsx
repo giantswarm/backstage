@@ -116,11 +116,8 @@ export function ClusterAboutCard() {
     );
   }
 
-  const {
-    apiVersion: controlPlaneApiVersion,
-    name: controlPlaneName,
-    namespace: controlPlaneNamespace,
-  } = controlPlaneRef;
+  const { name: controlPlaneName, namespace: controlPlaneNamespace } =
+    controlPlaneRef;
 
   const {
     resource: controlPlane,
@@ -128,7 +125,6 @@ export function ClusterAboutCard() {
     errors: controlPlaneErrors,
     error: controlPlaneError,
   } = useResource(installationName, ControlPlane, {
-    apiVersion: controlPlaneApiVersion,
     name: controlPlaneName,
     namespace: controlPlaneNamespace,
   });

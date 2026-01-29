@@ -29,12 +29,56 @@ export class Cluster extends KubeObject<ClusterInterface> {
     return this.jsonData.metadata?.deletionTimestamp;
   }
 
-  getInfrastructureRef() {
-    return this.jsonData.spec?.infrastructureRef;
+  getInfrastructureRef():
+    | {
+        apiVersion?: string;
+        apiGroup?: string;
+        kind: string;
+        name: string;
+        namespace: string;
+      }
+    | undefined {
+    const ref = this.jsonData.spec?.infrastructureRef;
+    if (!ref || !ref.kind || !ref.name) {
+      return undefined;
+    }
+    // v1beta2 uses TypedLocalObjectReference with apiGroup but without namespace,
+    // v1beta1 uses ObjectReference with apiVersion and optional namespace.
+    // When namespace is missing, use the parent's namespace.
+    const refNamespace = 'namespace' in ref ? ref.namespace : undefined;
+    return {
+      apiVersion: 'apiVersion' in ref ? ref.apiVersion : undefined,
+      apiGroup: 'apiGroup' in ref ? ref.apiGroup : undefined,
+      kind: ref.kind,
+      name: ref.name,
+      namespace: refNamespace ?? this.getNamespace() ?? '',
+    };
   }
 
-  getControlPlaneRef() {
-    return this.jsonData.spec?.controlPlaneRef;
+  getControlPlaneRef():
+    | {
+        apiVersion?: string;
+        apiGroup?: string;
+        kind: string;
+        name: string;
+        namespace: string;
+      }
+    | undefined {
+    const ref = this.jsonData.spec?.controlPlaneRef;
+    if (!ref || !ref.kind || !ref.name) {
+      return undefined;
+    }
+    // v1beta2 uses TypedLocalObjectReference with apiGroup but without namespace,
+    // v1beta1 uses ObjectReference with apiVersion and optional namespace.
+    // When namespace is missing, use the parent's namespace.
+    const refNamespace = 'namespace' in ref ? ref.namespace : undefined;
+    return {
+      apiVersion: 'apiVersion' in ref ? ref.apiVersion : undefined,
+      apiGroup: 'apiGroup' in ref ? ref.apiGroup : undefined,
+      kind: ref.kind,
+      name: ref.name,
+      namespace: refNamespace ?? this.getNamespace() ?? '',
+    };
   }
 
   getControlPlaneEndpoint() {
