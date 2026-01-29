@@ -13,7 +13,6 @@ interface AsyncValueProps<T> {
   renderError?: (message: string) => ReactNode;
   value?: T;
   isLoading: boolean;
-  error?: Error | null;
   errorMessage?: string;
   height?: number;
 }
@@ -22,7 +21,6 @@ export const AsyncValue = <T extends ReactNode>({
   value,
   children,
   isLoading,
-  error,
   errorMessage,
   height = 24,
   renderError = defaultRenderErrorFn,
@@ -40,7 +38,7 @@ export const AsyncValue = <T extends ReactNode>({
 
       {value && (children ? children(value) : value)}
 
-      {error && renderError(errorMessage || error.message)}
+      {errorMessage && renderError(errorMessage)}
     </>
   );
 };

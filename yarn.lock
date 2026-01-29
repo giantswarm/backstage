@@ -18050,6 +18050,7 @@ __metadata:
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
+    "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@k-phoen/backstage-plugin-grafana": "npm:^0.1.22"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"

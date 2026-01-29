@@ -21,6 +21,8 @@ export function useGetResource<T>(
     'cluster',
     cluster,
     'get',
+    gvk.group,
+    gvk.apiVersion,
     gvk.plural,
     options.namespace,
     options.name,

@@ -2,30 +2,53 @@ import { useMemo } from 'react';
 import { KubeObject, KubeObjectInterface } from '../lib/k8s/KubeObject';
 import { QueryOptions } from './types';
 import { useGetResource } from './useGetResource';
-import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
+import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
-import { ErrorInfo } from './utils/queries';
+import { ErrorInfoUnion } from './utils/queries';
+import { usePreferredVersion } from './useApiDiscovery';
+import { useReportApiVersionIssues } from './useReportApiVersionIssues';
 
 export function useResource<R extends KubeObject<any>>(
   cluster: string,
   ResourceClass: (new (json: any, cluster: string) => R) & {
-    getGVK(): CustomResourceMatcher;
+    getGVK(): MultiVersionResourceMatcher;
   },
   options: {
     name: string;
     namespace?: string;
     apiVersion?: string;
+    enableDiscovery?: boolean;
   },
   queryOptions?: QueryOptions<KubeObjectInterface>,
 ) {
   const isRestoring = useIsRestoring();
-  const clusterGVK = ResourceClass.getGVK();
+  const staticGVK = ResourceClass.getGVK();
+
+  const {
+    resolvedGVK,
+    isDiscovering,
+    discoveryError,
+    isDiscovered,
+    queryEnabled,
+    incompatibility,
+    clientOutdated,
+  } = usePreferredVersion(cluster, staticGVK, {
+    enableDiscovery: options.enableDiscovery,
+    explicitVersion: options.apiVersion,
+  });
 
   const queryInfo = useGetResource<KubeObjectInterface>(
     cluster,
-    clusterGVK,
+    resolvedGVK,
     options,
-    queryOptions,
+    {
+      ...queryOptions,
+      enabled:
+        (queryOptions?.enabled ?? true) &&
+        !isDiscovering &&
+        Boolean(cluster) &&
+        queryEnabled,
+    },
   );
 
   const resource = useMemo(() => {
@@ -36,23 +59,47 @@ export function useResource<R extends KubeObject<any>>(
     return new ResourceClass(queryInfo.data, cluster);
   }, [queryInfo.data, cluster, ResourceClass]);
 
-  const errors: ErrorInfo[] = useMemo(() => {
-    if (!queryInfo.error) {
-      return [];
+  const errors: ErrorInfoUnion[] = useMemo(() => {
+    const result: ErrorInfoUnion[] = [];
+
+    // Include incompatibility as an error
+    if (incompatibility) {
+      result.push({
+        type: 'incompatibility',
+        cluster,
+        incompatibility,
+      });
     }
-    return [
-      {
+
+    // Include regular fetch errors
+    if (queryInfo.error) {
+      result.push({
+        type: 'error',
         cluster,
         error: queryInfo.error,
         retry: queryInfo.refetch,
-      },
-    ];
-  }, [cluster, queryInfo.error, queryInfo.refetch]);
+      });
+    }
+
+    return result;
+  }, [cluster, incompatibility, queryInfo.error, queryInfo.refetch]);
+
+  // Report API version issues to Sentry automatically
+  useReportApiVersionIssues(
+    incompatibility ? [incompatibility] : null,
+    clientOutdated ? [clientOutdated] : null,
+  );
 
   return {
     ...queryInfo,
-    isLoading: isRestoring || queryInfo.isLoading,
+    isLoading: isRestoring || isDiscovering || queryInfo.isLoading,
     resource,
     errors,
+    resolvedApiVersion: resolvedGVK.apiVersion,
+    isApiVersionDiscovered: isDiscovered,
+    discoveryError,
+    incompatibility,
+    clientOutdated,
+    compatibility: resolvedGVK.compatibility,
   };
 }

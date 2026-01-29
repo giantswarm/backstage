@@ -1,13 +1,11 @@
-import * as React from 'react';
+import { createContext, FC, PropsWithChildren, useContext } from 'react';
 import ErrorReporter from './ErrorReporter';
 import { SentryErrorNotifier } from './SentryErrorNotifier';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 
-const ErrorReporterContext = React.createContext(ErrorReporter.getInstance());
+const ErrorReporterContext = createContext(ErrorReporter.getInstance());
 
-const ErrorReporterProvider: React.FC<React.PropsWithChildren<{}>> = ({
-  children,
-}) => {
+const ErrorReporterProvider: FC<PropsWithChildren<{}>> = ({ children }) => {
   const config = useApi(configApiRef);
 
   const errorReporter = ErrorReporter.getInstance();
@@ -33,7 +31,7 @@ const ErrorReporterProvider: React.FC<React.PropsWithChildren<{}>> = ({
 };
 
 function useErrorReporter() {
-  const context = React.useContext(ErrorReporterContext);
+  const context = useContext(ErrorReporterContext);
   if (context === undefined) {
     throw new Error(
       'useErrorReporter must be used within an ErrorReporterProvider',

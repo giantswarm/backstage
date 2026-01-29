@@ -150,7 +150,11 @@ export const ClustersDataProvider = ({
   ]);
 
   const displayErrors = useMemo(() => {
-    return errors.filter(({ error }) => error.name !== 'RejectedError');
+    return errors.filter(
+      errorInfo =>
+        errorInfo.type === 'incompatibility' ||
+        errorInfo.error.name !== 'RejectedError',
+    );
   }, [errors]);
 
   useShowErrors(displayErrors);

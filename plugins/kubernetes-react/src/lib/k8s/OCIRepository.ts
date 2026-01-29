@@ -4,10 +4,10 @@ import { FluxObject } from './FluxObject';
 type OCIRepositoryInterface = crds.fluxcd.v1beta2.OCIRepository;
 
 export class OCIRepository extends FluxObject<OCIRepositoryInterface> {
-  static apiVersion = 'v1beta2';
-  static group = 'source.toolkit.fluxcd.io';
-  static kind = 'OCIRepository' as const;
-  static plural = 'ocirepositories';
+  static readonly supportedVersions = ['v1beta2'] as const;
+  static readonly group = 'source.toolkit.fluxcd.io';
+  static readonly kind = 'OCIRepository' as const;
+  static readonly plural = 'ocirepositories';
 
   getURL() {
     return this.jsonData.spec?.url;

@@ -97,6 +97,63 @@ const ErrorPanel = ({ error, message, stack, children }: ErrorPanelProps) => {
   );
 };
 
+type IncompatibilityPanelProps = {
+  resourceClass: string;
+  clientVersions: readonly string[];
+  serverVersions: string[];
+};
+
+const IncompatibilityPanel = ({
+  resourceClass,
+  clientVersions,
+  serverVersions,
+}: IncompatibilityPanelProps) => {
+  const classes = useStyles();
+
+  const clientVersionsStr = clientVersions.join(', ');
+  const serverVersionsStr =
+    serverVersions.length > 0 ? serverVersions.join(', ') : 'none';
+
+  return (
+    <List dense disablePadding>
+      <ListItem alignItems="flex-start" disableGutters>
+        <ListItemText
+          classes={{ secondary: classes.text }}
+          primary="Error Type"
+          secondary="API Version Incompatibility"
+        />
+      </ListItem>
+
+      <ListItem alignItems="flex-start" disableGutters>
+        <ListItemText
+          classes={{ secondary: classes.text }}
+          primary="Resource"
+          secondary={resourceClass}
+        />
+        <CopyTextButton text={resourceClass} />
+      </ListItem>
+
+      <ListItem alignItems="flex-start" disableGutters>
+        <ListItemText
+          classes={{ secondary: classes.text }}
+          primary="Client Supports"
+          secondary={`[${clientVersionsStr}]`}
+        />
+        <CopyTextButton text={clientVersionsStr} />
+      </ListItem>
+
+      <ListItem alignItems="flex-start" disableGutters>
+        <ListItemText
+          classes={{ secondary: classes.text }}
+          primary="Server Provides"
+          secondary={`[${serverVersionsStr}]`}
+        />
+        <CopyTextButton text={serverVersionsStr} />
+      </ListItem>
+    </List>
+  );
+};
+
 const Accordion = withStyles(() => ({
   root: {
     '&::before': {
@@ -135,9 +192,11 @@ const ErrorDetails = ({ errorItem, onRetry, onDismiss }: ErrorDetailsProps) => {
     setShowDetails(!showDetails);
   };
 
+  const isIncompatibility = errorItem.type === 'incompatibility';
+
   const message = errorItem.message
     ? errorItem.message
-    : errorItem.error.message;
+    : (errorItem.error?.message ?? 'Unknown error');
 
   return (
     <Box mt={1}>
@@ -155,11 +214,20 @@ const ErrorDetails = ({ errorItem, onRetry, onDismiss }: ErrorDetailsProps) => {
 
       {showDetails ? (
         <Box mb={4} className={classes.details}>
-          <ErrorPanel
-            error={errorItem.error.name}
-            message={errorItem.error.message}
-            stack={errorItem.error.stack}
-          />
+          {isIncompatibility && errorItem.incompatibility && (
+            <IncompatibilityPanel
+              resourceClass={errorItem.incompatibility.resourceClass}
+              clientVersions={errorItem.incompatibility.clientVersions}
+              serverVersions={errorItem.incompatibility.serverVersions}
+            />
+          )}
+          {!isIncompatibility && errorItem.error && (
+            <ErrorPanel
+              error={errorItem.error.name}
+              message={errorItem.error.message}
+              stack={errorItem.error.stack}
+            />
+          )}
           <Box display="flex" marginTop={2} gridGap={10}>
             <Button
               size="small"
@@ -169,7 +237,7 @@ const ErrorDetails = ({ errorItem, onRetry, onDismiss }: ErrorDetailsProps) => {
             >
               Dismiss
             </Button>
-            {errorItem.retry ? (
+            {!isIncompatibility && errorItem.retry ? (
               <Button
                 size="small"
                 variant="outlined"
@@ -223,7 +291,10 @@ export const Errors = ({ errors, onRetry, onDismiss }: ErrorsProps) => {
 
             const groupTitle = groupId
               ? `${groupId}:`
-              : errorsWithMessage[0]?.message || errorItems[0].error.message;
+              : errorsWithMessage[0]?.message ||
+                errorItems[0].error?.message ||
+                errorItems[0].message ||
+                'Unknown error';
 
             return (
               <Grid item key={groupId} xs={12}>

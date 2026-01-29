@@ -4,10 +4,10 @@ import { FluxObject } from './FluxObject';
 type GitRepositoryInterface = crds.fluxcd.v1.GitRepository;
 
 export class GitRepository extends FluxObject<GitRepositoryInterface> {
-  static apiVersion = 'v1';
-  static group = 'source.toolkit.fluxcd.io';
-  static kind = 'GitRepository' as const;
-  static plural = 'gitrepositories';
+  static readonly supportedVersions = ['v1'] as const;
+  static readonly group = 'source.toolkit.fluxcd.io';
+  static readonly kind = 'GitRepository' as const;
+  static readonly plural = 'gitrepositories';
 
   getURL() {
     return this.jsonData.spec?.url;

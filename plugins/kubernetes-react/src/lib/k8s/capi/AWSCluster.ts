@@ -4,10 +4,10 @@ import { ProviderCluster } from './ProviderCluster';
 type AWSClusterInterface = crds.capa.v1beta2.AWSCluster;
 
 export class AWSCluster extends ProviderCluster<AWSClusterInterface> {
-  static apiVersion = 'v1beta2';
-  static group = 'infrastructure.cluster.x-k8s.io';
-  static kind = 'AWSCluster' as const;
-  static plural = 'awsclusters';
+  static readonly supportedVersions = ['v1beta2'] as const;
+  static readonly group = 'infrastructure.cluster.x-k8s.io';
+  static readonly kind = 'AWSCluster' as const;
+  static readonly plural = 'awsclusters';
 
   getLocation() {
     return this.jsonData.spec?.region;

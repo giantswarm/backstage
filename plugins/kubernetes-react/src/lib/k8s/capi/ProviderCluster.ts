@@ -10,11 +10,25 @@ export class ProviderCluster<
   getIdentityRef():
     | {
         apiVersion?: string;
+        apiGroup?: string;
         kind: string;
         name: string;
-        namespace?: string;
+        namespace: string;
       }
     | undefined {
-    return this.jsonData.spec?.identityRef;
+    const ref = this.jsonData.spec?.identityRef;
+    if (!ref) {
+      return undefined;
+    }
+    // Include apiGroup if present (for TypedLocalObjectReference format)
+    const refNamespace = 'namespace' in ref ? ref.namespace : undefined;
+    return {
+      apiVersion: 'apiVersion' in ref ? ref.apiVersion : undefined,
+      apiGroup:
+        'apiGroup' in ref ? (ref as { apiGroup?: string }).apiGroup : undefined,
+      kind: ref.kind,
+      name: ref.name,
+      namespace: refNamespace ?? this.getNamespace() ?? '',
+    };
   }
 }

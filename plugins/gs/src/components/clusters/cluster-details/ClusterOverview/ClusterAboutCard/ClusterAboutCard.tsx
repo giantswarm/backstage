@@ -36,10 +36,11 @@ import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import {
   ControlPlane,
+  getErrorMessage,
+  getIncompatibilityMessage,
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { getErrorMessage } from '../../../../hooks/utils/helpers';
 import {
   ClusterTypeManagementIcon,
   ClusterTypeWorkloadIcon,
@@ -116,19 +117,16 @@ export function ClusterAboutCard() {
     );
   }
 
-  const {
-    apiVersion: controlPlaneApiVersion,
-    name: controlPlaneName,
-    namespace: controlPlaneNamespace,
-  } = controlPlaneRef;
+  const { name: controlPlaneName, namespace: controlPlaneNamespace } =
+    controlPlaneRef;
 
   const {
     resource: controlPlane,
     isLoading: controlPlaneIsLoading,
     errors: controlPlaneErrors,
     error: controlPlaneError,
+    incompatibility: controlPlaneIncompatibility,
   } = useResource(installationName, ControlPlane, {
-    apiVersion: controlPlaneApiVersion,
     name: controlPlaneName,
     namespace: controlPlaneNamespace,
   });
@@ -141,6 +139,11 @@ export function ClusterAboutCard() {
       resourceName: controlPlaneName,
       resourceNamespace: controlPlaneNamespace,
     });
+  }
+  if (controlPlaneIncompatibility) {
+    controlPlaneErrorMessage = getIncompatibilityMessage(
+      controlPlaneIncompatibility,
+    );
   }
 
   useShowErrors(controlPlaneErrors);
@@ -183,7 +186,6 @@ export function ClusterAboutCard() {
               <AsyncValue
                 isLoading={controlPlaneIsLoading}
                 value={k8sVersion}
-                error={controlPlaneError}
                 errorMessage={controlPlaneErrorMessage}
               >
                 {value => (

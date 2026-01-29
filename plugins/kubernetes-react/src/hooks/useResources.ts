@@ -2,29 +2,68 @@ import { useMemo } from 'react';
 import { useListResources } from './useListResources';
 import { KubeObject, KubeObjectInterface } from '../lib/k8s/KubeObject';
 import { Options, QueryOptions } from './types';
-import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
+import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
+import { usePreferredVersions } from './useApiDiscovery';
+import { ErrorInfoUnion } from './utils/queries';
+import { useReportApiVersionIssues } from './useReportApiVersionIssues';
+
+export interface UseResourcesQueryOptions<T> extends QueryOptions<T> {
+  /** Enable API version discovery. Defaults to true. */
+  enableDiscovery?: boolean;
+}
 
 export function useResources<R extends KubeObject<any>>(
   clusters: string | string[],
   ResourceClass: (new (json: any, cluster: string) => R) & {
-    getGVK(): CustomResourceMatcher;
+    getGVK(): MultiVersionResourceMatcher;
   },
   options: Record<string, Options> = {},
-  queryOptions: QueryOptions<KubeObjectInterface[]> = {},
+  queryOptions: UseResourcesQueryOptions<KubeObjectInterface[]> = {},
 ) {
   const isRestoring = useIsRestoring();
   const selectedClusters = [clusters].flat().filter(Boolean) as string[];
+  const staticGVK = ResourceClass.getGVK();
 
-  const clustersGVKs = Object.fromEntries(
-    selectedClusters.map(c => [c, ResourceClass.getGVK()]),
-  );
+  const { enableDiscovery, ...restQueryOptions } = queryOptions;
+
+  const {
+    clustersGVKs,
+    isDiscovering,
+    discoveryErrors,
+    clustersQueryEnabled,
+    incompatibilities,
+    clientOutdatedStates,
+  } = usePreferredVersions(selectedClusters, staticGVK, {
+    enableDiscovery,
+  });
+
+  // Filter out clusters that are incompatible (queryEnabled = false)
+  const compatibleClusters = useMemo(() => {
+    return selectedClusters.filter(
+      cluster => clustersQueryEnabled[cluster] !== false,
+    );
+  }, [selectedClusters, clustersQueryEnabled]);
+
+  // Filter GVKs to only include compatible clusters
+  const compatibleClustersGVKs = useMemo(() => {
+    const result: Record<string, (typeof clustersGVKs)[string]> = {};
+    for (const cluster of compatibleClusters) {
+      if (clustersGVKs[cluster]) {
+        result[cluster] = clustersGVKs[cluster];
+      }
+    }
+    return result;
+  }, [compatibleClusters, clustersGVKs]);
 
   const queriesInfo = useListResources<KubeObjectInterface>(
-    selectedClusters,
-    clustersGVKs,
+    compatibleClusters,
+    compatibleClustersGVKs,
     options,
-    queryOptions,
+    {
+      ...restQueryOptions,
+      enabled: (restQueryOptions?.enabled ?? true) && !isDiscovering,
+    },
   );
 
   const resources = useMemo(() => {
@@ -33,16 +72,35 @@ export function useResources<R extends KubeObject<any>>(
     );
   }, [queriesInfo.clustersData, ResourceClass]);
 
-  const errors = useMemo(() => {
-    return queriesInfo.errors.filter(
+  const errors: ErrorInfoUnion[] = useMemo(() => {
+    // Start with regular fetch errors (filtered)
+    const fetchErrors = queriesInfo.errors.filter(
       ({ error }) => error.name !== 'RejectedError',
     );
-  }, [queriesInfo.errors]);
+
+    // Add incompatibility errors
+    const incompatibilityErrors: ErrorInfoUnion[] = incompatibilities.map(
+      incompatibility => ({
+        type: 'incompatibility' as const,
+        cluster: incompatibility.cluster,
+        incompatibility,
+      }),
+    );
+
+    return [...fetchErrors, ...incompatibilityErrors];
+  }, [queriesInfo.errors, incompatibilities]);
+
+  // Report API version issues to Sentry automatically
+  useReportApiVersionIssues(incompatibilities, clientOutdatedStates);
 
   return {
     ...queriesInfo,
-    isLoading: isRestoring || queriesInfo.isLoading,
+    isLoading: isRestoring || isDiscovering || queriesInfo.isLoading,
     resources,
     errors,
+    discoveryErrors,
+    incompatibilities,
+    clientOutdatedStates,
+    clustersQueryEnabled,
   };
 }

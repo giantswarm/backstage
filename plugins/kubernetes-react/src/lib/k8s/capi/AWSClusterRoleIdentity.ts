@@ -5,10 +5,10 @@ import { extractIDFromARN } from '../../../utils/extractIDFromARN';
 type AWSClusterRoleIdentityInterface = crds.capa.v1beta2.AWSClusterRoleIdentity;
 
 export class AWSClusterRoleIdentity extends KubeObject<AWSClusterRoleIdentityInterface> {
-  static apiVersion = 'v1beta2';
-  static group = 'infrastructure.cluster.x-k8s.io';
-  static kind = 'AWSClusterRoleIdentity' as const;
-  static plural = 'awsclusterroleidentities';
+  static readonly supportedVersions = ['v1beta2'] as const;
+  static readonly group = 'infrastructure.cluster.x-k8s.io';
+  static readonly kind = 'AWSClusterRoleIdentity' as const;
+  static readonly plural = 'awsclusterroleidentities';
 
   getRoleARN() {
     return this.jsonData.spec?.roleARN;
