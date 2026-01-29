@@ -2,8 +2,16 @@ import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
-import { CustomResourceMatcher } from '../../lib/k8s/CustomResourceMatcher';
-import { APIGroup, ResolvedGVK } from '../../lib/k8s/ApiDiscovery';
+import {
+  CustomResourceMatcher,
+  MultiVersionResourceMatcher,
+} from '../../lib/k8s/CustomResourceMatcher';
+import {
+  APIGroup,
+  ResolvedGVKWithCompatibility,
+} from '../../lib/k8s/ApiDiscovery';
+import { IncompatibilityState } from '../../lib/k8s/VersionTypes';
+import { checkVersionCompatibility } from '../../lib/k8s/versionUtils';
 
 const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
 
@@ -21,13 +29,32 @@ export interface DiscoveryError {
 
 export interface UsePreferredVersionsResult {
   /** Map of cluster name to resolved GVK */
-  clustersGVKs: Record<string, ResolvedGVK>;
+  clustersGVKs: Record<string, ResolvedGVKWithCompatibility>;
   /** Whether any discovery is in progress */
   isDiscovering: boolean;
   /** Discovery errors per cluster */
   discoveryErrors: DiscoveryError[];
   /** Whether all discoveries have completed */
   isReady: boolean;
+  /** Map of cluster name to whether query should be enabled */
+  clustersQueryEnabled: Record<string, boolean>;
+  /** List of incompatibility states for clusters with version mismatches */
+  incompatibilities: IncompatibilityState[];
+}
+
+/**
+ * Extracts supported versions from a GVK, handling both single-version
+ * and multi-version resource matchers.
+ */
+function getSupportedVersions(
+  gvk: CustomResourceMatcher | MultiVersionResourceMatcher,
+): readonly string[] {
+  // Check if it's a MultiVersionResourceMatcher
+  if ('supportedVersions' in gvk && gvk.supportedVersions.length > 0) {
+    return gvk.supportedVersions;
+  }
+  // Fallback to single apiVersion
+  return gvk.apiVersion ? [gvk.apiVersion] : [];
 }
 
 /**
@@ -42,12 +69,13 @@ export interface UsePreferredVersionsResult {
  */
 export function usePreferredVersions(
   clusters: string[],
-  gvk: CustomResourceMatcher,
+  gvk: CustomResourceMatcher | MultiVersionResourceMatcher,
   options: UsePreferredVersionsOptions = {},
 ): UsePreferredVersionsResult {
   const { enableDiscovery = true, fallbackToStatic = true } = options;
 
   const kubernetesApi = useApi(kubernetesApiRef);
+  const supportedVersions = getSupportedVersions(gvk);
 
   // Skip discovery for core APIs (they use /api/v1 not /apis)
   const shouldDiscover = enableDiscovery && !gvk.isCore;
@@ -80,42 +108,79 @@ export function usePreferredVersions(
     })),
   });
 
-  const clustersGVKs = useMemo(() => {
-    const result: Record<string, ResolvedGVK> = {};
+  const { clustersGVKs, clustersQueryEnabled, incompatibilities } =
+    useMemo(() => {
+      const gvks: Record<string, ResolvedGVKWithCompatibility> = {};
+      const queryEnabled: Record<string, boolean> = {};
+      const incompats: IncompatibilityState[] = [];
 
-    clusters.forEach((cluster, index) => {
-      if (!shouldDiscover) {
-        result[cluster] = {
-          ...gvk,
-          isDiscovered: false,
-        };
-        return;
-      }
+      const baseGVK: ResolvedGVKWithCompatibility = {
+        ...gvk,
+        supportedVersions,
+        isDiscovered: false,
+      };
 
-      const query = queries[index];
+      clusters.forEach((cluster, index) => {
+        if (!shouldDiscover) {
+          gvks[cluster] = baseGVK;
+          queryEnabled[cluster] = true;
+          return;
+        }
 
-      if (query.data?.preferredVersion) {
-        result[cluster] = {
-          ...gvk,
-          apiVersion: query.data.preferredVersion.version,
-          isDiscovered: true,
-        };
-      } else if (query.error && fallbackToStatic) {
-        result[cluster] = {
-          ...gvk,
-          isDiscovered: false,
-        };
-      } else {
-        // Default to static version while discovering or on error without fallback
-        result[cluster] = {
-          ...gvk,
-          isDiscovered: false,
-        };
-      }
-    });
+        const query = queries[index];
 
-    return result;
-  }, [clusters, gvk, queries, shouldDiscover, fallbackToStatic]);
+        if (query.data?.versions) {
+          const serverVersions = query.data.versions.map(v => v.version);
+          const compatibility = checkVersionCompatibility(
+            supportedVersions,
+            serverVersions,
+          );
+
+          if (compatibility.isCompatible && compatibility.resolvedVersion) {
+            gvks[cluster] = {
+              ...baseGVK,
+              apiVersion: compatibility.resolvedVersion,
+              isDiscovered: true,
+              compatibility,
+            };
+            queryEnabled[cluster] = true;
+          } else {
+            // Incompatible versions
+            gvks[cluster] = {
+              ...baseGVK,
+              compatibility,
+            };
+            queryEnabled[cluster] = false;
+            incompats.push({
+              resourceClass: gvk.plural,
+              cluster,
+              clientVersions: supportedVersions,
+              serverVersions,
+            });
+          }
+        } else if (query.error && fallbackToStatic) {
+          gvks[cluster] = baseGVK;
+          queryEnabled[cluster] = true;
+        } else {
+          // Default to static version while discovering or on error without fallback
+          gvks[cluster] = baseGVK;
+          queryEnabled[cluster] = true;
+        }
+      });
+
+      return {
+        clustersGVKs: gvks,
+        clustersQueryEnabled: queryEnabled,
+        incompatibilities: incompats,
+      };
+    }, [
+      clusters,
+      gvk,
+      queries,
+      shouldDiscover,
+      supportedVersions,
+      fallbackToStatic,
+    ]);
 
   const discoveryErrors = useMemo(() => {
     if (!shouldDiscover) {
@@ -143,5 +208,7 @@ export function usePreferredVersions(
     isDiscovering,
     discoveryErrors,
     isReady,
+    clustersQueryEnabled,
+    incompatibilities,
   };
 }

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { KubeObject, KubeObjectInterface } from '../lib/k8s/KubeObject';
 import { QueryOptions } from './types';
 import { useGetResource } from './useGetResource';
-import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
+import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
 import { ErrorInfo } from './utils/queries';
 import { usePreferredVersion } from './useApiDiscovery';
@@ -10,7 +10,7 @@ import { usePreferredVersion } from './useApiDiscovery';
 export function useResource<R extends KubeObject<any>>(
   cluster: string,
   ResourceClass: (new (json: any, cluster: string) => R) & {
-    getGVK(): CustomResourceMatcher;
+    getGVK(): MultiVersionResourceMatcher;
   },
   options: {
     name: string;
@@ -23,11 +23,17 @@ export function useResource<R extends KubeObject<any>>(
   const isRestoring = useIsRestoring();
   const staticGVK = ResourceClass.getGVK();
 
-  const { resolvedGVK, isDiscovering, discoveryError, isDiscovered } =
-    usePreferredVersion(cluster, staticGVK, {
-      enableDiscovery: options.enableDiscovery,
-      explicitVersion: options.apiVersion,
-    });
+  const {
+    resolvedGVK,
+    isDiscovering,
+    discoveryError,
+    isDiscovered,
+    queryEnabled,
+    incompatibility,
+  } = usePreferredVersion(cluster, staticGVK, {
+    enableDiscovery: options.enableDiscovery,
+    explicitVersion: options.apiVersion,
+  });
 
   const queryInfo = useGetResource<KubeObjectInterface>(
     cluster,
@@ -36,7 +42,10 @@ export function useResource<R extends KubeObject<any>>(
     {
       ...queryOptions,
       enabled:
-        (queryOptions?.enabled ?? true) && !isDiscovering && Boolean(cluster),
+        (queryOptions?.enabled ?? true) &&
+        !isDiscovering &&
+        Boolean(cluster) &&
+        queryEnabled,
     },
   );
 
@@ -69,5 +78,7 @@ export function useResource<R extends KubeObject<any>>(
     resolvedApiVersion: resolvedGVK.apiVersion,
     isApiVersionDiscovered: isDiscovered,
     discoveryError,
+    incompatibility,
+    compatibility: resolvedGVK.compatibility,
   };
 }

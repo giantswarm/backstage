@@ -5,8 +5,8 @@ type ClusterSecretStoreInterface =
   crds.externalSecrets.v1beta1.ClusterSecretStore;
 
 export class ClusterSecretStore extends KubeObject<ClusterSecretStoreInterface> {
-  static apiVersion = 'v1beta1';
-  static group = 'external-secrets.io';
-  static kind = 'ClusterSecretStore' as const;
-  static plural = 'clustersecretstores';
+  static readonly supportedVersions = ['v1beta1'] as const;
+  static readonly group = 'external-secrets.io';
+  static readonly kind = 'ClusterSecretStore' as const;
+  static readonly plural = 'clustersecretstores';
 }

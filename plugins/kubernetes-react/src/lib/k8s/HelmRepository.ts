@@ -4,10 +4,10 @@ import { FluxObject } from './FluxObject';
 type HelmRepositoryInterface = crds.fluxcd.v1.HelmRepository;
 
 export class HelmRepository extends FluxObject<HelmRepositoryInterface> {
-  static apiVersion = 'v1beta2';
-  static group = 'source.toolkit.fluxcd.io';
-  static kind = 'HelmRepository' as const;
-  static plural = 'helmrepositories';
+  static readonly supportedVersions = ['v1beta2'] as const;
+  static readonly group = 'source.toolkit.fluxcd.io';
+  static readonly kind = 'HelmRepository' as const;
+  static readonly plural = 'helmrepositories';
 
   getURL() {
     return this.jsonData.spec?.url;

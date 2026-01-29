@@ -4,8 +4,8 @@ import { ResourceRequest } from './ResourceRequest';
 type AppDeploymentInterface = crds.giantswarm.v1beta1.AppDeployment;
 
 export class AppDeployment extends ResourceRequest<AppDeploymentInterface> {
-  static apiVersion = 'v1beta1';
-  static group = 'promise.platform.giantswarm.io';
-  static kind = 'AppDeployment' as const;
-  static plural = 'appdeployments';
+  static readonly supportedVersions = ['v1beta1'] as const;
+  static readonly group = 'promise.platform.giantswarm.io';
+  static readonly kind = 'AppDeployment' as const;
+  static readonly plural = 'appdeployments';
 }

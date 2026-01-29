@@ -1,4 +1,8 @@
-import { CustomResourceMatcher } from './CustomResourceMatcher';
+import {
+  CustomResourceMatcher,
+  MultiVersionResourceMatcher,
+} from './CustomResourceMatcher';
+import { VersionCompatibility } from './VersionTypes';
 
 /**
  * Represents a specific version of an API group.
@@ -31,4 +35,15 @@ export interface APIGroup {
 export interface ResolvedGVK extends CustomResourceMatcher {
   /** Whether the apiVersion was discovered from the cluster */
   isDiscovered?: boolean;
+}
+
+/**
+ * Resolved GVK with multi-version support and compatibility information.
+ */
+export interface ResolvedGVKWithCompatibility
+  extends MultiVersionResourceMatcher {
+  /** Whether the apiVersion was discovered from the cluster */
+  isDiscovered?: boolean;
+  /** Version compatibility information, present when discovery is complete */
+  compatibility?: VersionCompatibility;
 }

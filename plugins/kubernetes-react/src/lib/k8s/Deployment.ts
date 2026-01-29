@@ -4,10 +4,10 @@ import { KubeObject } from './KubeObject';
 type DeploymentInterface = core.apps.v1.Deployment;
 
 export class Deployment extends KubeObject<DeploymentInterface> {
-  static apiVersion = 'v1';
-  static group = 'apps';
-  static kind = 'Deployment' as const;
-  static plural = 'deployments';
+  static readonly supportedVersions = ['v1'] as const;
+  static readonly group = 'apps';
+  static readonly kind = 'Deployment' as const;
+  static readonly plural = 'deployments';
 
   getStatusConditions() {
     return this.jsonData.status?.conditions;

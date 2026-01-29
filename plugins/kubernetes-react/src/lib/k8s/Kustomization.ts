@@ -4,10 +4,10 @@ import { FluxObject } from './FluxObject';
 type KustomizationInterface = crds.fluxcd.v1.Kustomization;
 
 export class Kustomization extends FluxObject<KustomizationInterface> {
-  static apiVersion = 'v1';
-  static group = 'kustomize.toolkit.fluxcd.io';
-  static kind = 'Kustomization' as const;
-  static plural = 'kustomizations';
+  static readonly supportedVersions = ['v1'] as const;
+  static readonly group = 'kustomize.toolkit.fluxcd.io';
+  static readonly kind = 'Kustomization' as const;
+  static readonly plural = 'kustomizations';
 
   getInventory() {
     return this.jsonData.status?.inventory;

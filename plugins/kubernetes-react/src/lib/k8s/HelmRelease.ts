@@ -5,10 +5,10 @@ import { compareDates } from '../../utils/compareDates';
 type HelmReleaseInterface = crds.fluxcd.v2.HelmRelease;
 
 export class HelmRelease extends FluxObject<HelmReleaseInterface> {
-  static apiVersion = 'v2';
-  static group = 'helm.toolkit.fluxcd.io';
-  static kind = 'HelmRelease' as const;
-  static plural = 'helmreleases';
+  static readonly supportedVersions = ['v2'] as const;
+  static readonly group = 'helm.toolkit.fluxcd.io';
+  static readonly kind = 'HelmRelease' as const;
+  static readonly plural = 'helmreleases';
 
   getDependsOn() {
     return this.jsonData.spec?.dependsOn;

@@ -4,10 +4,10 @@ import { KubeObject } from './KubeObject';
 type AppInterface = crds.giantswarm.v1alpha1.App;
 
 export class App extends KubeObject<AppInterface> {
-  static apiVersion = 'v1alpha1';
-  static group = 'application.giantswarm.io';
-  static kind = 'App' as const;
-  static plural = 'apps';
+  static readonly supportedVersions = ['v1alpha1'] as const;
+  static readonly group = 'application.giantswarm.io';
+  static readonly kind = 'App' as const;
+  static readonly plural = 'apps';
 
   getStatus() {
     return this.jsonData.status;

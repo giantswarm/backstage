@@ -22,10 +22,10 @@ function normalizeReleaseVersion(version: string): string {
 type ReleaseInterface = crds.giantswarm.v1alpha1.Release;
 
 export class Release extends KubeObject<ReleaseInterface> {
-  static apiVersion = 'v1alpha1';
-  static group = 'release.giantswarm.io';
-  static kind = 'Release' as const;
-  static plural = 'releases';
+  static readonly supportedVersions = ['v1alpha1'] as const;
+  static readonly group = 'release.giantswarm.io';
+  static readonly kind = 'Release' as const;
+  static readonly plural = 'releases';
 
   getVersion() {
     return normalizeReleaseVersion(this.getName());

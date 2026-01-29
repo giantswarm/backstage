@@ -1,46 +1,40 @@
 import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from '../KubeObject';
 
-type ClusterInterface = crds.capi.v1beta1.Cluster;
+type ClusterV1Beta1 = crds.capi.v1beta1.Cluster;
+type ClusterV1Beta2 = crds.capi.v1beta2.Cluster;
+type ClusterInterface = ClusterV1Beta1 | ClusterV1Beta2;
 
 export class Cluster extends KubeObject<ClusterInterface> {
-  static apiVersion = 'v1beta1';
-  static group = 'cluster.x-k8s.io';
-  static kind = 'Cluster' as const;
-  static plural = 'clusters';
+  static readonly supportedVersions = ['v1beta1'] as const;
+  static readonly group = 'cluster.x-k8s.io';
+  static readonly kind = 'Cluster' as const;
+  static readonly plural = 'clusters';
+
+  /**
+   * Type guard to check if this cluster is v1beta1.
+   */
+  isV1Beta1(): this is Cluster & { jsonData: ClusterV1Beta1 } {
+    return this.getApiVersionSuffix() === 'v1beta1';
+  }
+
+  /**
+   * Type guard to check if this cluster is v1beta2.
+   */
+  isV1Beta2(): this is Cluster & { jsonData: ClusterV1Beta2 } {
+    return this.getApiVersionSuffix() === 'v1beta2';
+  }
 
   getDeletionTimestamp() {
     return this.jsonData.metadata?.deletionTimestamp;
   }
 
   getInfrastructureRef() {
-    const infrastructureRef = this.jsonData.spec?.infrastructureRef;
-    if (!infrastructureRef) {
-      return undefined;
-    }
-
-    const { kind, apiVersion, name, namespace } = infrastructureRef;
-
-    if (!kind || !apiVersion || !name) {
-      return undefined;
-    }
-
-    return { kind, apiVersion, name, namespace };
+    return this.jsonData.spec?.infrastructureRef;
   }
 
   getControlPlaneRef() {
-    const controlPlaneRef = this.jsonData.spec?.controlPlaneRef;
-    if (!controlPlaneRef) {
-      return undefined;
-    }
-
-    const { kind, apiVersion, name, namespace } = controlPlaneRef;
-
-    if (!kind || !apiVersion || !name) {
-      return undefined;
-    }
-
-    return { kind, apiVersion, name, namespace };
+    return this.jsonData.spec?.controlPlaneRef;
   }
 
   getControlPlaneEndpoint() {

@@ -1,6 +1,9 @@
 export * from './capi';
 export * from './giantswarm/platform';
 export * from './ApiDiscovery';
+export * from './VersionTypes';
+export * from './versionUtils';
+export * from './CustomResourceMatcher';
 
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
