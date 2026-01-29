@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   ActionBarPrimitive,
   BranchPickerPrimitive,
+  useAssistantApi,
 } from '@assistant-ui/react';
 import { useApi, featureFlagsApiRef } from '@backstage/core-plugin-api';
 import IconButton from '@material-ui/core/IconButton';
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
+import ButtonBase from '@material-ui/core/ButtonBase';
 import Typography from '@material-ui/core/Typography';
 import Tooltip from '@material-ui/core/Tooltip';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -29,15 +31,52 @@ import {
   ToolGroup,
 } from './assistant-ui-components';
 
+const EXAMPLE_QUESTIONS = [
+  'What applications are available for deployment?',
+  'Are there any clusters unhealthy right now?',
+  'Who are my team mates?',
+  "What are my organization's workload clusters?",
+  "Show me one of the applications I own and where it's deployed",
+  'What tools do you have available?',
+  'What can I do here in the portal?',
+];
+
 const ThreadWelcome = () => {
   const classes = useStyles();
+  const api = useAssistantApi();
+
+  const selectedQuestions = useMemo(() => {
+    const shuffled = [...EXAMPLE_QUESTIONS].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3);
+  }, []);
+
+  const handleSuggestionClick = (question: string) => {
+    api
+      .thread()
+      .append({ role: 'user', content: [{ type: 'text', text: question }] });
+  };
 
   return (
     <div className={classes.welcomeContainer}>
-      <Typography className={classes.welcomeTitle}>Hello! 👋</Typography>
-      <Typography className={classes.welcomeSubtitle}>
+      <Typography className={classes.welcomeTitle}>
         How can I help you today?
       </Typography>
+      <Typography className={classes.welcomeSubtitle}>
+        Not sure what to do here? Try one of these questions.
+      </Typography>
+      <div className={classes.suggestionsContainer}>
+        {selectedQuestions.map(question => (
+          <ButtonBase
+            key={question}
+            className={classes.suggestionCard}
+            onClick={() => handleSuggestionClick(question)}
+          >
+            <Typography className={classes.suggestionText}>
+              {question}
+            </Typography>
+          </ButtonBase>
+        ))}
+      </div>
     </div>
   );
 };
@@ -205,7 +244,7 @@ const Composer = () => {
             fullWidth
             multiline
             maxRows={4}
-            placeholder="Send a message..."
+            placeholder="Ask a question..."
             className={classes.composerInput}
           />
         </ComposerPrimitive.Input>
