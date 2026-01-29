@@ -5,6 +5,21 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add dynamic API version discovery for Kubernetes resources.
+- Add automatic API version issue reporting to Sentry.
+
+### Changed
+
+- Refactor ProviderClusterLocation to separate components per provider.
+- Integrate API version incompatibility errors into error display system.
+
+### Fixed
+
+- Handle missing namespace in TypedLocalObjectReference for CAPI v1beta2.
+- Fix findResourceByRef to support multi-version API matching.
+
 ## [0.99.0] - 2026-01-29
 
 See [./docs/releases/v0.99.0-changelog.md](./docs/releases/v0.99.0-changelog.md) for more information.
