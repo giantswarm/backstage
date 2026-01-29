@@ -8,6 +8,10 @@
       matchPackageNames: ['@ai-sdk{/,}**'],
     },
     {
+      groupName: 'assistant-ui packages',
+      matchPackageNames: ['@assistant-ui{/,}**'],
+    },
+    {
       groupName: 'backstage packages',
       matchPackageNames: ['@backstage{/,}**'],
     },
