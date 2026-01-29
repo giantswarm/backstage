@@ -209,13 +209,13 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-devtools@npm:^0.2.0":
-  version: 0.2.0
-  resolution: "@assistant-ui/react-devtools@npm:0.2.0"
+  version: 0.2.1
+  resolution: "@assistant-ui/react-devtools@npm:0.2.1"
   dependencies:
-    zod: "npm:^4.3.5"
+    zod: "npm:^4.3.6"
   peerDependencies:
-    "@assistant-ui/react": ^0.12.0
-    "@assistant-ui/tap": ^0.4.0
+    "@assistant-ui/react": ^0.12.3
+    "@assistant-ui/tap": ^0.4.2
     "@types/react": "*"
     "@types/react-dom": "*"
     react: ^18 || ^19
@@ -225,7 +225,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/a1773bfe0222a7d6c721b1aace450e54f9209469a3b6028e73ec766a09c03d513c20b118f30ef5075fbc03dfec031e0b74e84e15fa3be60e3aa94352dfc1c95e
+  checksum: 10c0/e17438fe21d6a55705825d94f896e437fcc3ed152fc61f4ec8b6ed4a67f30c04a6697f63605da91dd06277d2a6147be009647b42e39185da01de5a39f7797600
   languageName: node
   linkType: hard
 
@@ -39611,7 +39611,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.25 || ^4.0, zod@npm:^4.2.1, zod@npm:^4.3.5":
+"zod@npm:^3.25 || ^4.0, zod@npm:^4.2.1, zod@npm:^4.3.5, zod@npm:^4.3.6":
   version: 4.3.6
   resolution: "zod@npm:4.3.6"
   checksum: 10c0/860d25a81ab41d33aa25f8d0d07b091a04acb426e605f396227a796e9e800c44723ed96d0f53a512b57be3d1520f45bf69c0cb3b378a232a00787a2609625307
