@@ -5,6 +5,24 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add skills to AI chat agent.
+- Add tool to fetch current user info in AI chat agent.
+- Show suggestions to start with in AI chat.
+- Add feature flag ai-chat-verbose-debugging to toggle reasoning and tool usage info.
+
+### Changed
+
+- Reduce list indentation in chat responses.
+- Remove feature flag experimental-data-fetching.
+
+### Fixed
+
+- Fix Card display of the ClusterAboutCard component.
+- Fix ErrorsProvider component causing constant re-renders.
+- Handle MCP connection failures gracefully.
+
 ## [0.98.0] - 2026-01-27
 
 See [./docs/releases/v0.98.0-changelog.md](./docs/releases/v0.98.0-changelog.md) for more information.
