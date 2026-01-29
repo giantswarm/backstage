@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.8.2
+
+### Patch Changes
+
+- 40626f8: Fix the issue in the ErrorsProvider component that was causing constant re-renders.
+
 ## 0.8.1
 
 ### Patch Changes

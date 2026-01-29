@@ -1,5 +1,17 @@
 # app
 
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies [9fb2244]
+- Updated dependencies [31207f3]
+- Updated dependencies [ccaf194]
+- Updated dependencies [5475c38]
+- Updated dependencies [13198eb]
+  - @giantswarm/backstage-plugin-gs@0.51.4
+  - @giantswarm/backstage-plugin-ai-chat@0.4.0
+
 ## 0.26.0
 
 ### Minor Changes

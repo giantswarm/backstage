@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.51.4
+
+### Patch Changes
+
+- 9fb2244: Fix Card display of the ClusterAboutCard component.
+- 5475c38: Remove feature flag experimental-data-fetching
+- Updated dependencies [40626f8]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.8.2
+
 ## 0.51.3
 
 ### Patch Changes

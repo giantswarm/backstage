@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.4.0
+
+### Minor Changes
+
+- 061ff6d: Add tool getCurrentUserInfo to agent to fetch info on the current user
+- b61a7b3: Add skills to agent
+
+### Patch Changes
+
+- b32909b: Handle MCP connection failures gracefully
+
 ## 0.3.0
 
 ### Minor Changes
