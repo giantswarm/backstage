@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-01-29
+
 ### Added
 
 - Add skills to AI chat agent.
@@ -1765,7 +1767,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.98.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.99.0...HEAD
+[0.99.0]: https://github.com/giantswarm/backstage/compare/v0.98.0...v0.99.0
 [0.98.0]: https://github.com/giantswarm/backstage/compare/v0.98.0...v0.98.0
 [0.98.0]: https://github.com/giantswarm/backstage/compare/v0.97.1...v0.98.0
 [0.97.1]: https://github.com/giantswarm/backstage/compare/v0.97.0...v0.97.1
