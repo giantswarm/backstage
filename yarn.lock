@@ -8313,7 +8313,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@giantswarm/backstage-plugin-ai-chat-backend@npm:^0.3.0, @giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend":
+"@giantswarm/backstage-plugin-ai-chat-backend@npm:^0.4.0, @giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend"
   dependencies:
@@ -18787,7 +18787,7 @@ __metadata:
     "@backstage/plugin-signals-backend": "backstage:^"
     "@backstage/plugin-techdocs-backend": "backstage:^"
     "@devangelista/backstage-scaffolder-kubernetes": "npm:^0.5.0"
-    "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.3.0"
+    "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.4.0"
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.11.0"
     "@giantswarm/backstage-plugin-gs-backend": "npm:^0.3.0"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.10.0"

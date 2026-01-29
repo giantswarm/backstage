@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.4.0
+
+### Minor Changes
+
+- 13198eb: Show suggestions to start with in AI chat
+
+### Patch Changes
+
+- 31207f3: Add feature flag ai-chat-verbose-debugging to toggle reasoning and tool usage info
+- ccaf194: Reduce list indentation in chat responses
+
 ## 0.3.0
 
 ### Minor Changes

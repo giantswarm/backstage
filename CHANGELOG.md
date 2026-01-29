@@ -23,6 +23,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix ErrorsProvider component causing constant re-renders.
 - Handle MCP connection failures gracefully.
 
+See [./docs/releases/v0.99.0-changelog.md](./docs/releases/v0.99.0-changelog.md) for more information.
+
 ## [0.98.0] - 2026-01-27
 
 See [./docs/releases/v0.98.0-changelog.md](./docs/releases/v0.98.0-changelog.md) for more information.
