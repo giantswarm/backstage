@@ -1,5 +1,19 @@
 # app
 
+## 0.26.2
+
+### Patch Changes
+
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.9.0
+  - @giantswarm/backstage-plugin-gs@0.51.5
+  - @giantswarm/backstage-plugin-flux@0.6.6
+
 ## 0.26.1
 
 ### Patch Changes

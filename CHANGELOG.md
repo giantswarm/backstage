@@ -20,6 +20,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Handle missing namespace in TypedLocalObjectReference for CAPI v1beta2.
 - Fix findResourceByRef to support multi-version API matching.
 
+See [./docs/releases/v0.100.0-changelog.md](./docs/releases/v0.100.0-changelog.md) for more information.
+
 ## [0.99.0] - 2026-01-29
 
 See [./docs/releases/v0.99.0-changelog.md](./docs/releases/v0.99.0-changelog.md) for more information.

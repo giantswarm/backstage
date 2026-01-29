@@ -1,5 +1,22 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.7.1
+
+### Patch Changes
+
+- edee516: Integrate API version incompatibility errors into the error display system
+  - Add IncompatibilityErrorInfo type and ErrorInfoUnion discriminated union
+  - Update useShowErrors to handle both regular fetch errors and incompatibility errors
+  - Include incompatibilities in errors array from useResource and useResources hooks
+  - Add IncompatibilityPanel component for displaying incompatibility details
+  - Move getIncompatibilityMessage and getErrorMessage helpers to kubernetes-react
+
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.9.0
+
 ## 0.7.0
 
 ### Minor Changes
