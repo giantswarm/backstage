@@ -80,9 +80,9 @@ function defaultJoinScopes(scopes: Set<string>) {
  * backend auth plugin through the standardized API, and requests user permission
  * via the OAuthRequestApi.
  */
-export class DefaultAuthConnector<AuthSession>
-  implements AuthConnector<AuthSession>
-{
+export class DefaultAuthConnector<
+  AuthSession,
+> implements AuthConnector<AuthSession> {
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly environment: string;
   private readonly provider: AuthProviderInfo;
