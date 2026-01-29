@@ -6,7 +6,7 @@ type ClusterV1Beta2 = crds.capi.v1beta2.Cluster;
 type ClusterInterface = ClusterV1Beta1 | ClusterV1Beta2;
 
 export class Cluster extends KubeObject<ClusterInterface> {
-  static readonly supportedVersions = ['v1beta1'] as const;
+  static readonly supportedVersions = ['v1beta1', 'v1beta2'] as const;
   static readonly group = 'cluster.x-k8s.io';
   static readonly kind = 'Cluster' as const;
   static readonly plural = 'clusters';
