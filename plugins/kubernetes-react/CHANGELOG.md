@@ -1,5 +1,35 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.9.0
+
+### Minor Changes
+
+- edee516: Add dynamic API version discovery for Kubernetes resources
+  - Add useApiDiscovery hooks to automatically detect supported API versions
+  - Support multi-version resources with `supportedVersions` array on KubeObject classes
+  - Add version utilities for comparing and selecting preferred API versions
+  - Improve resource fetching to use cluster-supported versions
+
+### Patch Changes
+
+- edee516: Move Sentry API version issue reporting into useResource and useResources hooks
+  - Add automatic `useReportApiVersionIssues` call inside `useResource` and `useResources` hooks
+  - Expose `clientOutdated` from `useResource` return value for consistency
+  - Developers no longer need to manually call `useReportApiVersionIssues` when using these hooks
+
+- edee516: Handle missing namespace in TypedLocalObjectReference for CAPI v1beta2
+  - Update Cluster.getInfrastructureRef() and getControlPlaneRef() to handle both v1beta1 ObjectReference and v1beta2 TypedLocalObjectReference formats
+  - Update ProviderCluster.getIdentityRef() with the same namespace fallback pattern
+  - Include apiGroup in returned refs for proper resource matching with findResourceByRef()
+  - When namespace is missing from a reference, fall back to the parent resource's namespace
+
+- edee516: Integrate API version incompatibility errors into the error display system
+  - Add IncompatibilityErrorInfo type and ErrorInfoUnion discriminated union
+  - Update useShowErrors to handle both regular fetch errors and incompatibility errors
+  - Include incompatibilities in errors array from useResource and useResources hooks
+  - Add IncompatibilityPanel component for displaying incompatibility details
+  - Move getIncompatibilityMessage and getErrorMessage helpers to kubernetes-react
+
 ## 0.8.2
 
 ### Patch Changes

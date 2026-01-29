@@ -1,5 +1,41 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.51.5
+
+### Patch Changes
+
+- edee516: Refactor ProviderClusterLocation to separate components per provider
+  - Split ProviderClusterLocation into AWSClusterLocation and AzureClusterLocation
+  - Use ClusterSwitch pattern for provider-specific rendering
+  - Remove useProviderClusterForCluster hook (was calling 4 useResource hooks with only one enabled)
+  - Each provider component now uses a single useResource hook
+
+- edee516: Handle missing namespace in TypedLocalObjectReference for CAPI v1beta2
+  - Update Cluster.getInfrastructureRef() and getControlPlaneRef() to handle both v1beta1 ObjectReference and v1beta2 TypedLocalObjectReference formats
+  - Update ProviderCluster.getIdentityRef() with the same namespace fallback pattern
+  - Include apiGroup in returned refs for proper resource matching with findResourceByRef()
+  - When namespace is missing from a reference, fall back to the parent resource's namespace
+
+- edee516: Improve findResourceByRef to support multi-version API matching
+  - Match resources by API group instead of exact apiVersion to handle version differences
+  - Support both ObjectReference (apiVersion) and TypedLocalObjectReference (apiGroup) formats
+  - Add comprehensive test coverage
+
+- edee516: Integrate API version incompatibility errors into the error display system
+  - Add IncompatibilityErrorInfo type and ErrorInfoUnion discriminated union
+  - Update useShowErrors to handle both regular fetch errors and incompatibility errors
+  - Include incompatibilities in errors array from useResource and useResources hooks
+  - Add IncompatibilityPanel component for displaying incompatibility details
+  - Move getIncompatibilityMessage and getErrorMessage helpers to kubernetes-react
+
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+- Updated dependencies [edee516]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.9.0
+  - @giantswarm/backstage-plugin-flux-react@0.7.1
+  - @giantswarm/backstage-plugin-flux@0.6.6
+
 ## 0.51.4
 
 ### Patch Changes
