@@ -35,6 +35,10 @@ import {
   KubernetesClient,
 } from '@giantswarm/backstage-plugin-gs';
 import { scaffolderApiRef } from '@backstage/plugin-scaffolder-react';
+import {
+  mcpAuthProvidersApiRef,
+  MCPAuthProviders,
+} from '@giantswarm/backstage-plugin-ai-chat';
 import ErrorReporter from './utils/ErrorReporter';
 
 export const apis: AnyApiFactory[] = [
@@ -136,7 +140,7 @@ export const apis: AnyApiFactory[] = [
     },
     factory: ({ microsoftAuthApi, googleAuthApi, gsAuthProvidersApi }) => {
       const oidcProviders = {
-        ...gsAuthProvidersApi.getAuthApis(),
+        ...gsAuthProvidersApi.getKubernetesAuthApis(),
       };
 
       return new KubernetesAuthProviders({
@@ -144,6 +148,17 @@ export const apis: AnyApiFactory[] = [
         googleAuthApi,
         oidcProviders,
       });
+    },
+  }),
+  createApiFactory({
+    api: mcpAuthProvidersApiRef,
+    deps: {
+      gsAuthProvidersApi: gsAuthProvidersApiRef,
+    },
+    factory: ({ gsAuthProvidersApi }) => {
+      const authProviders = gsAuthProvidersApi.getMCPAuthApis();
+
+      return new MCPAuthProviders(authProviders);
     },
   }),
   createApiFactory({
