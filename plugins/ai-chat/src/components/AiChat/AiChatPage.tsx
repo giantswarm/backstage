@@ -5,9 +5,11 @@ import {
   useApi,
   identityApiRef,
   discoveryApiRef,
+  configApiRef,
 } from '@backstage/core-plugin-api';
+import { mcpAuthProvidersApiRef } from '../../api';
 import { Thread } from './Thread';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   useChatRuntime,
   AssistantChatTransport,
@@ -48,6 +50,8 @@ const InitialMessageHandler = ({ isReady }: InitialMessageHandlerProps) => {
 export const AiChatPage = () => {
   const identityApi = useApi(identityApiRef);
   const discoveryApi = useApi(discoveryApiRef);
+  const configApi = useApi(configApiRef);
+  const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
 
   const { value: apiUrl } = useAsync(async () => {
     const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
@@ -55,13 +59,60 @@ export const AiChatPage = () => {
     return `${baseUrl}/chat`;
   }, [discoveryApi]);
 
+  // Parse MCP config once to extract auth providers
+  const mcpAuthProviders = useMemo(() => {
+    const mcpServers = configApi.getOptionalConfigArray('aiChat.mcp');
+    if (!mcpServers) {
+      return [];
+    }
+
+    const providers: string[] = [];
+    for (const serverConfig of mcpServers) {
+      const authProvider = serverConfig.getOptionalString('authProvider');
+      if (authProvider && !providers.includes(authProvider)) {
+        providers.push(authProvider);
+      }
+    }
+
+    return providers;
+  }, [configApi]);
+
+  // Get MCP authentication headers in parallel
+  const getMCPAuthHeaders = useCallback(async () => {
+    const mcpHeaders: { [key: string]: string } = {};
+
+    const results = await Promise.allSettled(
+      mcpAuthProviders.map(async authProvider => {
+        const credentials =
+          await mcpAuthProvidersApi.getCredentials(authProvider);
+        if (credentials.token) {
+          return { authProvider, authToken: credentials.token };
+        }
+
+        return null;
+      }),
+    );
+
+    results.forEach(result => {
+      if (result.status === 'fulfilled' && result.value) {
+        const { authProvider, authToken } = result.value;
+        mcpHeaders[`backstage-ai-chat-authorization-${authProvider}`] =
+          authToken;
+      }
+    });
+
+    return mcpHeaders;
+  }, [mcpAuthProviders, mcpAuthProvidersApi]);
+
   const getHeaders = useCallback(async () => {
     const { token } = await identityApi.getCredentials();
+    const mcpHeaders = await getMCPAuthHeaders();
 
     return {
       Authorization: `Bearer ${token}`,
+      ...mcpHeaders,
     };
-  }, [identityApi]);
+  }, [identityApi, getMCPAuthHeaders]);
 
   const runtime = useChatRuntime({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
