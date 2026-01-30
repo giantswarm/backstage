@@ -164,10 +164,10 @@ export async function getMcpTools(
         },
       });
 
-      const serverResources = getResources(mcpClient, serverName, logger);
+      const serverResources = await getResources(mcpClient, serverName, logger);
       Object.assign(resources, serverResources);
 
-      const serverTools = getTools(
+      const serverTools = await getTools(
         mcpClient,
         serverName,
         logger,
