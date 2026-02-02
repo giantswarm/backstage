@@ -7,10 +7,6 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.101.0] - 2026-02-02
 
-See [./docs/releases/v0.101.0-changelog.md](./docs/releases/v0.101.0-changelog.md) for more information.
-
-## [0.101.0] - 2026-02-02
-
 ### Added
 
 - Add OAuth2 PKCE authentication support for MCP servers with custom authenticator and CIMD router.
@@ -23,10 +19,6 @@ See [./docs/releases/v0.101.0-changelog.md](./docs/releases/v0.101.0-changelog.m
 - Improve container registry error handling with user-friendly messages for missing repositories.
 
 See [./docs/releases/v0.101.0-changelog.md](./docs/releases/v0.101.0-changelog.md) for more information.
-
-## [0.100.0] - 2026-01-29
-
-See [./docs/releases/v0.100.0-changelog.md](./docs/releases/v0.100.0-changelog.md) for more information.
 
 ## [0.100.0] - 2026-01-29
 
@@ -49,10 +41,6 @@ See [./docs/releases/v0.100.0-changelog.md](./docs/releases/v0.100.0-changelog.m
 
 ## [0.99.0] - 2026-01-29
 
-See [./docs/releases/v0.99.0-changelog.md](./docs/releases/v0.99.0-changelog.md) for more information.
-
-## [0.99.0] - 2026-01-29
-
 ### Added
 
 - Add skills to AI chat agent.
@@ -72,10 +60,6 @@ See [./docs/releases/v0.99.0-changelog.md](./docs/releases/v0.99.0-changelog.md)
 - Handle MCP connection failures gracefully.
 
 See [./docs/releases/v0.99.0-changelog.md](./docs/releases/v0.99.0-changelog.md) for more information.
-
-## [0.98.0] - 2026-01-27
-
-See [./docs/releases/v0.98.0-changelog.md](./docs/releases/v0.98.0-changelog.md) for more information.
 
 ## [0.98.0] - 2026-01-27
 
@@ -1814,13 +1798,9 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 - Disable anonymous access.
 
 [Unreleased]: https://github.com/giantswarm/backstage/compare/v0.101.0...HEAD
-[0.101.0]: https://github.com/giantswarm/backstage/compare/v0.101.0...v0.101.0
 [0.101.0]: https://github.com/giantswarm/backstage/compare/v0.100.0...v0.101.0
-[0.100.0]: https://github.com/giantswarm/backstage/compare/v0.100.0...v0.100.0
 [0.100.0]: https://github.com/giantswarm/backstage/compare/v0.99.0...v0.100.0
-[0.99.0]: https://github.com/giantswarm/backstage/compare/v0.99.0...v0.99.0
 [0.99.0]: https://github.com/giantswarm/backstage/compare/v0.98.0...v0.99.0
-[0.98.0]: https://github.com/giantswarm/backstage/compare/v0.98.0...v0.98.0
 [0.98.0]: https://github.com/giantswarm/backstage/compare/v0.97.1...v0.98.0
 [0.97.1]: https://github.com/giantswarm/backstage/compare/v0.97.0...v0.97.1
 [0.97.0]: https://github.com/giantswarm/backstage/compare/v0.96.4...v0.97.0
