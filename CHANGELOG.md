@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-02-02
+
 ### Added
 
 - Add OAuth2 PKCE authentication support for MCP servers with custom authenticator and CIMD router.
@@ -1807,7 +1809,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.100.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.101.0...HEAD
+[0.101.0]: https://github.com/giantswarm/backstage/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/giantswarm/backstage/compare/v0.100.0...v0.100.0
 [0.100.0]: https://github.com/giantswarm/backstage/compare/v0.99.0...v0.100.0
 [0.99.0]: https://github.com/giantswarm/backstage/compare/v0.99.0...v0.99.0
