@@ -7,14 +7,6 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.101.0] - 2026-02-02
 
-See [./docs/releases/v0.101.0-changelog.md](./docs/releases/v0.101.0-changelog.md) for more information.
-
-## [0.101.0] - 2026-02-02
-
-See [./docs/releases/v0.101.0-changelog.md](./docs/releases/v0.101.0-changelog.md) for more information.
-
-## [0.101.0] - 2026-02-02
-
 ### Added
 
 - Add OAuth2 PKCE authentication support for MCP servers with custom authenticator and CIMD router.
