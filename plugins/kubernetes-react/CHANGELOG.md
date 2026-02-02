@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.9.1
+
+### Patch Changes
+
+- 81beb57: Fix HelmRelease.getChartName() to support chartRef pattern for OCIRepository-based charts.
+
 ## 0.9.0
 
 ### Minor Changes
