@@ -18,7 +18,11 @@ export const ProviderSettings = () => {
               {authApi && (
                 <ProviderSettingsItem
                   title={providerDisplayName}
-                  description={`Provides single sign-on authentication for the Giant Swarm installation "${installationName}"`}
+                  description={
+                    providerName.startsWith('mcp-')
+                      ? `Provides single sign-on authentication for the MCP server`
+                      : `Provides single sign-on authentication for the Giant Swarm installation "${installationName}"`
+                  }
                   authApi={authApi}
                   icon={GiantSwarmIcon}
                 />

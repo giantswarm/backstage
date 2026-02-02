@@ -21,7 +21,13 @@ import Router from 'express-promise-router';
 import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
 import { frontendTools } from './frontendTools';
-import { listSkills, getSkill, createUserTools } from './tools';
+import {
+  listSkills,
+  getSkill,
+  createUserTools,
+  createResourceTools,
+} from './tools';
+import { extractMcpAuthTokens, deduplicateToolCallIds } from './utils';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -102,14 +108,15 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
-    const { tools: mcpTools, failedServers } = await getMcpTools(
-      config,
-      logger,
-    );
-    logger.debug('==================MCP TOOLS====================');
-    logger.debug(JSON.stringify(mcpTools));
-    logger.debug('===============================================');
+    const authTokens = extractMcpAuthTokens(req.headers);
 
+    const {
+      tools: mcpTools,
+      resources: mcpResources,
+      failedServers,
+    } = await getMcpTools(config, authTokens, logger);
+    logger.info(`MCP tools available: ${Object.keys(mcpTools).length}`);
+    logger.info(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
     if (failedServers.length > 0) {
       logger.warn(
         `${failedServers.length} MCP server(s) failed to connect: ${failedServers.map(s => s.name).join(', ')}`,
@@ -118,6 +125,9 @@ export async function createRouter(
 
     // User-scoped tools that need access to the current request's credentials
     const userTools = createUserTools(userInfo, credentials);
+
+    // MCP resource tools
+    const mcpResourceTools = createResourceTools(mcpResources);
 
     // Build effective system prompt, including MCP server failure info if any
     let effectiveSystemPrompt = defaultSystemPrompt;
@@ -137,6 +147,9 @@ export async function createRouter(
         messages as UIMessage[],
       );
 
+      // Deduplicate tool call IDs to prevent Anthropic API errors
+      const deduplicatedMessages = deduplicateToolCallIds(modelMessages);
+
       // For Anthropic models, prepend system message with cache control
       // to enable prompt caching for the system prompt.
       // See: https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#cache-control
@@ -153,13 +166,14 @@ export async function createRouter(
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
-          ? [systemMessage, ...modelMessages]
-          : modelMessages,
+          ? [systemMessage, ...deduplicatedMessages]
+          : deduplicatedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {
           ...frontendTools(tools),
           ...mcpTools,
+          ...mcpResourceTools,
           // Skill tools
           listSkills,
           getSkill,

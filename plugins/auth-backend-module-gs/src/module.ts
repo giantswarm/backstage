@@ -14,8 +14,11 @@ import {
   oidcAuthenticator,
   OidcAuthResult,
 } from '@backstage/plugin-auth-backend-module-oidc-provider';
+import { oauth2Authenticator } from './oauth2/authenticator';
+import { createCimdRouter } from './oauth2/cimdRouter';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
+const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
 
 type IdPClaim = {
   connector_id: string;
@@ -86,15 +89,17 @@ export const authModuleGsProviders = createBackendModule({
         providersExtensionPoint: authProvidersExtensionPoint,
         config: coreServices.rootConfig,
         logger: coreServices.rootLogger,
+        httpRouter: coreServices.httpRouter,
       },
-      async init({ providersExtensionPoint, config, logger }) {
+      async init({ providersExtensionPoint, config, logger, httpRouter }) {
+        const baseUrl = config.getString('backend.baseUrl');
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
-        const customProviders = configuredProviders.filter(provider =>
+
+        const customOIDCProviders = configuredProviders.filter(provider =>
           provider.startsWith(OIDC_PROVIDER_NAME_PREFIX),
         );
-
-        for (const providerName of customProviders) {
+        for (const providerName of customOIDCProviders) {
           try {
             logger.info(`Configuring auth provider: ${providerName}`);
 
@@ -125,6 +130,37 @@ export const authModuleGsProviders = createBackendModule({
             );
             logger.error((err as Error).toString());
           }
+        }
+
+        const customMCPProviders = configuredProviders.filter(provider =>
+          provider.startsWith(MCP_PROVIDER_NAME_PREFIX),
+        );
+
+        for (const providerName of customMCPProviders) {
+          logger.info(`Configuring auth provider: ${providerName}`);
+
+          const authEnvironment = config.getString('auth.environment');
+          const providerConfig = providersConfig
+            .getConfig(providerName)
+            .getConfig(authEnvironment);
+
+          const extraRedirectUris =
+            providerConfig.getOptionalStringArray('extraRedirectUris');
+          // Register CIMD router to serve client metadata documents
+          const cimdRouter = createCimdRouter(
+            baseUrl,
+            providerName,
+            { extraRedirectUris },
+            logger,
+          );
+          httpRouter.use(cimdRouter);
+
+          providersExtensionPoint.registerProvider({
+            providerId: providerName,
+            factory: createOAuthProviderFactory({
+              authenticator: oauth2Authenticator,
+            }),
+          });
         }
       },
     });

@@ -1,8 +1,10 @@
 import {
+  createApiFactory,
   createPlugin,
   createRoutableExtension,
 } from '@backstage/core-plugin-api';
 
+import { mcpAuthProvidersApiRef, MCPAuthProviders } from './api';
 import { rootRouteRef } from './routes';
 
 export const aiChatPlugin = createPlugin({
@@ -10,6 +12,13 @@ export const aiChatPlugin = createPlugin({
   routes: {
     root: rootRouteRef,
   },
+  apis: [
+    createApiFactory({
+      api: mcpAuthProvidersApiRef,
+      deps: {},
+      factory: () => new MCPAuthProviders(),
+    }),
+  ],
   featureFlags: [
     {
       name: 'ai-chat-verbose-debugging',
