@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { Table } from '@backstage/core-components';
-import { Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { useHelmChartTags } from '../../../hooks/useHelmChartTags';
 import { ChartTagData, getInitialColumns } from './columns';
+import { parseChartRef } from '../../../utils/parseChartRef';
 
 const TABLE_ID = 'chart-tags';
 
@@ -38,8 +39,21 @@ export const ChartTagsTable = ({
     [visibleColumns],
   );
 
+  let emptyContent = null;
   if (error) {
-    return <Typography color="error">{error.message}</Typography>;
+    if (error.name !== 'NotFoundError') {
+      return <Typography color="error">{error.message}</Typography>;
+    }
+
+    const { repository } = parseChartRef(chartRef);
+    emptyContent = (
+      <Box px={2} py={8}>
+        <Typography variant="inherit" color="textSecondary">
+          The repository <code>{repository}</code> is not available in the
+          registry.
+        </Typography>
+      </Box>
+    );
   }
 
   return (
@@ -59,6 +73,7 @@ export const ChartTagsTable = ({
         </Typography>
       }
       columns={columns}
+      emptyContent={emptyContent}
     />
   );
 };

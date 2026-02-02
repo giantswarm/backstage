@@ -86,7 +86,7 @@ export class AcrRegistryClient {
     if (!response.ok) {
       const errorText = await response.text();
       const baseMessage = `Failed to fetch tags from ACR API for ${normalized}/${repository}`;
-      const detailedMessage = `${baseMessage}: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`;
+      const detailedMessage = `${baseMessage}. Status: ${response.status}${errorText ? `. ${errorText}` : '.'}`;
 
       switch (response.status) {
         case 400:
