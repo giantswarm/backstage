@@ -64,6 +64,18 @@ const testDefaultBehaviour = (renderHookFn: any) => {
     );
   });
 
+  it('should correctly parse branch@sha1:commit revision format', () => {
+    const url = 'https://github.example.com/test-project/test-repo';
+    const revision = 'main@sha1:abc123def456';
+    const path = './test/repo/path';
+
+    const { result } = renderHookFn({ url, revision, path });
+
+    expect(result.current).toBe(
+      'https://github.example.com/test-project/test-repo/blob/abc123def456/test/repo/path',
+    );
+  });
+
   it('should return undefined if url does not math any known patterns', () => {
     const url = 'https://example.net/test-project/test-repo.git';
     const revision = '1234567890';

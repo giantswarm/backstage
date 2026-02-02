@@ -1,5 +1,6 @@
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { formatTemplateString } from '../utils/formatTemplateString';
+import { parseFluxRevision } from '../utils/parseFluxRevision';
 
 const defaultGitOpsRepositories = [
   {
@@ -48,7 +49,7 @@ export const useGitOpsSourceLink = ({
 
   const data = {
     PATH: path,
-    REVISION: revision,
+    REVISION: parseFluxRevision(revision),
   };
 
   const gitopsRepository = gitopsRepositories.find(item => {
