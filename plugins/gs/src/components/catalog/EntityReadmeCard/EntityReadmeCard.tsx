@@ -16,6 +16,7 @@ import { useCurrentEntityChart } from '../EntityChartContext';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { useHelmChartReadme } from '../../hooks/useHelmChartReadme';
 import { QueryClientProvider } from '../../QueryClientProvider';
+import { parseChartRef } from '../../utils/parseChartRef';
 
 const COLLAPSED_MAX_HEIGHT = 250;
 
@@ -115,13 +116,22 @@ const ReadmeCardContent = () => {
     }
 
     if (error) {
+      if (error.name === 'NotFoundError') {
+        const { repository } = parseChartRef(selectedChart.ref);
+        return (
+          <Typography variant="inherit" color="textSecondary">
+            The repository <code>{repository}</code> is not available in the
+            registry.
+          </Typography>
+        );
+      }
       return <Typography color="error">{error.message}</Typography>;
     }
 
     if (!readme) {
       return (
-        <Typography variant="body2" color="textSecondary">
-          No README available
+        <Typography variant="inherit" color="textSecondary">
+          No README available.
         </Typography>
       );
     }

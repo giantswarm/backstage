@@ -77,7 +77,7 @@ export class OciRegistryClient {
     if (!response.ok) {
       const errorText = await response.text();
       const baseMessage = `Failed to fetch tags from OCI registry for ${normalized}/${repository}`;
-      const detailedMessage = `${baseMessage}: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`;
+      const detailedMessage = `${baseMessage}. Status: ${response.status}${errorText ? `. ${errorText}` : '.'}`;
 
       switch (response.status) {
         case 400:
@@ -157,7 +157,7 @@ export class OciRegistryClient {
     if (!response.ok) {
       const errorText = await response.text();
       const baseMessage = `Failed to fetch manifest from OCI registry for ${normalized}/${repository}:${tag}`;
-      const detailedMessage = `${baseMessage}: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`;
+      const detailedMessage = `${baseMessage}. Status: ${response.status}${errorText ? `. ${errorText}` : '.'}`;
 
       switch (response.status) {
         case 400:

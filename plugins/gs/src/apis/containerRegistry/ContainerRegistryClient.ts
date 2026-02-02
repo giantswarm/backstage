@@ -30,9 +30,11 @@ export class ContainerRegistryClient implements ContainerRegistryApi {
 
     if (!response.ok) {
       const error = new Error(
-        `Failed to fetch tags for  ${registry}/${repository}. Reason: ${response.statusText}.`,
+        `Failed to fetch tags for ${registry}/${repository}. Status: ${response.status}.`,
       );
       error.name = response.status === 401 ? 'UnauthorizedError' : error.name;
+      error.name = response.status === 403 ? 'ForbiddenError' : error.name;
+      error.name = response.status === 404 ? 'NotFoundError' : error.name;
 
       throw error;
     }
@@ -58,10 +60,15 @@ export class ContainerRegistryClient implements ContainerRegistryApi {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(
+      const error = new Error(
         errorData.error?.message ||
-          `Failed to fetch tag manifest: ${response.statusText}`,
+          `Failed to fetch tag manifest. Status: ${response.status}.`,
       );
+      error.name = response.status === 401 ? 'UnauthorizedError' : error.name;
+      error.name = response.status === 403 ? 'ForbiddenError' : error.name;
+      error.name = response.status === 404 ? 'NotFoundError' : error.name;
+
+      throw error;
     }
 
     return response.json();

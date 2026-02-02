@@ -14,6 +14,7 @@ import { useCurrentEntityChart } from '../EntityChartContext';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { DateComponent } from '../../UI';
 import { QueryClientProvider } from '../../QueryClientProvider';
+import { parseChartRef } from '../../utils/parseChartRef';
 
 const MAX_TAGS_TO_DISPLAY = 5;
 
@@ -86,12 +87,21 @@ const VersionHistoryCardContent = () => {
     }
 
     if (error) {
+      if (error.name === 'NotFoundError') {
+        const { repository } = parseChartRef(selectedChart.ref);
+        return (
+          <Typography variant="inherit" color="textSecondary">
+            The repository <code>{repository}</code> is not available in the
+            registry.
+          </Typography>
+        );
+      }
       return <Typography color="error">{error.message}</Typography>;
     }
 
     if (!tags || tags.length === 0) {
       return (
-        <Typography variant="body2" color="textSecondary">
+        <Typography variant="inherit" color="textSecondary">
           No tags found
         </Typography>
       );
