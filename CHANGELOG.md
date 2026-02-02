@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix HelmRelease.getChartName() to support chartRef pattern for OCIRepository-based charts.
+
 ## [0.101.0] - 2026-02-02
 
 ### Added
