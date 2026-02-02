@@ -5,6 +5,25 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-02-02
+
+See [./docs/releases/v0.101.0-changelog.md](./docs/releases/v0.101.0-changelog.md) for more information.
+
+## [0.101.0] - 2026-02-02
+
+### Added
+
+- Add OAuth2 PKCE authentication support for MCP servers with custom authenticator and CIMD router.
+- Add authentication provider support and multi-installation features for MCP servers.
+- Add MCP resources loading exposed as callable tools.
+
+### Fixed
+
+- Fix GitOpsCard source URL generation for Flux CD revision formats like `main@sha1:abc123` and `sha256:abc123`.
+- Improve container registry error handling with user-friendly messages for missing repositories.
+
+See [./docs/releases/v0.101.0-changelog.md](./docs/releases/v0.101.0-changelog.md) for more information.
+
 ## [0.100.0] - 2026-01-29
 
 See [./docs/releases/v0.100.0-changelog.md](./docs/releases/v0.100.0-changelog.md) for more information.
@@ -1794,7 +1813,9 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.100.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.101.0...HEAD
+[0.101.0]: https://github.com/giantswarm/backstage/compare/v0.101.0...v0.101.0
+[0.101.0]: https://github.com/giantswarm/backstage/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/giantswarm/backstage/compare/v0.100.0...v0.100.0
 [0.100.0]: https://github.com/giantswarm/backstage/compare/v0.99.0...v0.100.0
 [0.99.0]: https://github.com/giantswarm/backstage/compare/v0.99.0...v0.99.0

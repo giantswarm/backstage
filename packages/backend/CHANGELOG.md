@@ -1,5 +1,16 @@
 # backend
 
+## 0.14.4
+
+### Patch Changes
+
+- Updated dependencies [a68a2b2]
+- Updated dependencies [d070c3a]
+- Updated dependencies [a68a2b2]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.12.0
+  - @giantswarm/backstage-plugin-gs-backend@0.3.2
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.5.0
+
 ## 0.14.3
 
 ### Patch Changes
