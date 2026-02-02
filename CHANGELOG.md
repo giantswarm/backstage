@@ -5,6 +5,17 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add OAuth2 PKCE authentication support for MCP servers with custom authenticator and CIMD router.
+- Add authentication provider support and multi-installation features for MCP servers.
+- Add MCP resources loading exposed as callable tools.
+
+### Fixed
+
+- Fix GitOpsCard source URL generation for Flux CD revision formats like `main@sha1:abc123` and `sha256:abc123`.
+- Improve container registry error handling with user-friendly messages for missing repositories.
+
 ## [0.100.0] - 2026-01-29
 
 See [./docs/releases/v0.100.0-changelog.md](./docs/releases/v0.100.0-changelog.md) for more information.
