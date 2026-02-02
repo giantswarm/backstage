@@ -1,5 +1,26 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.5.0
+
+### Minor Changes
+
+- a68a2b2: Add OAuth2 PKCE authentication support for MCP servers
+  - Add custom OAuth2 authenticator with PKCE (Proof Key for Code Exchange) support for secure public client authentication
+  - Add CIMD (Client ID Metadata Document) router to serve OAuth client metadata for MCP server authorization flows
+  - Register MCP auth providers (prefixed with `mcp-`) in the backend auth module
+  - Add `MCPAuthProviders` API in ai-chat plugin to fetch credentials for configured MCP auth providers
+  - Update AI Chat page to automatically inject MCP auth tokens into request headers
+  - Refactor `GSAuthProviders` to separate Kubernetes and MCP auth providers with dedicated methods
+
+### Patch Changes
+
+- a68a2b2: Add authentication provider support and multi-installation features for MCP servers
+  - Add `authProvider` configuration option to inject authentication tokens from request headers into MCP server requests
+  - Add `installation` option to prefix tool names and descriptions for multi-installation setups
+  - Add MCP resources loading and expose them as callable tools
+  - Add `deduplicateToolCallIds` utility to fix Anthropic API errors with duplicate tool call IDs
+  - Add TypeScript config schema for AI chat configuration
+
 ## 0.4.0
 
 ### Minor Changes

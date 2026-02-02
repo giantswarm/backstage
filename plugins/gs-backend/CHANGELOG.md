@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.3.2
+
+### Patch Changes
+
+- d070c3a: Improve container registry error handling with user-friendly messages for missing repositories and consistent HTTP status code reporting.
+
 ## 0.3.1
 
 ### Patch Changes

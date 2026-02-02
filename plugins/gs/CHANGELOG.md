@@ -1,5 +1,22 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.52.0
+
+### Minor Changes
+
+- a68a2b2: Add OAuth2 PKCE authentication support for MCP servers
+  - Add custom OAuth2 authenticator with PKCE (Proof Key for Code Exchange) support for secure public client authentication
+  - Add CIMD (Client ID Metadata Document) router to serve OAuth client metadata for MCP server authorization flows
+  - Register MCP auth providers (prefixed with `mcp-`) in the backend auth module
+  - Add `MCPAuthProviders` API in ai-chat plugin to fetch credentials for configured MCP auth providers
+  - Update AI Chat page to automatically inject MCP auth tokens into request headers
+  - Refactor `GSAuthProviders` to separate Kubernetes and MCP auth providers with dedicated methods
+
+### Patch Changes
+
+- d070c3a: Improve container registry error handling with user-friendly messages for missing repositories and consistent HTTP status code reporting.
+- d4b1b9a: Fix GitOpsCard source URL generation for new Flux CD revision formats. The revision field now correctly parses formats like `main@sha1:abc123...` and `sha256:abc123...` to extract the commit SHA for URL construction.
+
 ## 0.51.5
 
 ### Patch Changes
