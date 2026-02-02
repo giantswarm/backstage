@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$TOOL_INPUT\" | jq -r '.command' | grep -q 'git commit'; then yarn prettier:fix > /dev/null 2>&1; fi"
+            "command": "if echo \"$TOOL_INPUT\" | jq -r '.command' | grep -q 'git commit'; then yarn prettier:fix > /dev/null 2>&1 && git add -u; fi"
           }
         ]
       }
