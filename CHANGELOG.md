@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add OCIRepository support for Helm chart name resolution and HelmRelease source helpers.
+
+### Changed
+
+- Refactor Version component to extract helper components for better maintainability.
+- Prevent AI chat from guessing hostnames for links.
+
 ## [0.101.1] - 2026-02-02
 
 See [./docs/releases/v0.101.1-changelog.md](./docs/releases/v0.101.1-changelog.md) for more information.
