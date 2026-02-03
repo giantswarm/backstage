@@ -44,6 +44,7 @@ describe('<Version />', () => {
     for (const testCase of testCases) {
       const { getByText, queryByRole } = await renderComponent({
         version: testCase.version,
+        truncate: false,
       });
       expect(getByText(testCase.expected)).toBeInTheDocument();
       expect(queryByRole('link')).not.toBeInTheDocument();
@@ -75,6 +76,7 @@ describe('<Version />', () => {
         const { getByRole } = await renderComponent({
           version: testCase.version,
           sourceLocation,
+          truncate: false,
         });
         expect(
           getByRole('link', { name: testCase.expectedText }),
@@ -84,7 +86,7 @@ describe('<Version />', () => {
   });
 
   describe('when highlighted', () => {
-    it('truncates version commit hash', async () => {
+    it('renders full version without truncation', async () => {
       const sourceLocation = 'https://github.com/organization/project-slug';
       const testCases = [
         {
@@ -102,7 +104,7 @@ describe('<Version />', () => {
         {
           version: '0.24.2-9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca',
           highlight: true,
-          expectedText: '0.24.2-9ec68',
+          expectedText: '0.24.2-9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca',
           expectedLink: `${sourceLocation}/commit/9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca`,
         },
       ];
@@ -112,6 +114,7 @@ describe('<Version />', () => {
           version: testCase.version,
           highlight: testCase.highlight,
           sourceLocation,
+          truncate: false,
         });
         expect(
           getByRole('link', { name: testCase.expectedText }),
@@ -138,12 +141,15 @@ describe('<Version />', () => {
       ];
 
       for (const testCase of testCases) {
-        const { getByText } = await renderComponent({
+        const { getByTitle } = await renderComponent({
           version: testCase.version,
           displayWarning: testCase.displayWarning,
           warningMessageVersion: testCase.warningMessageVersion,
+          truncate: false,
         });
-        expect(getByText(testCase.expected)).toBeInTheDocument();
+
+        // The warning message is in the SVG title attribute (accessible via getByTitle)
+        expect(getByTitle(testCase.expected)).toBeInTheDocument();
       }
     });
   });

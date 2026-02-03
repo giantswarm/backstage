@@ -127,7 +127,11 @@ export const getInitialColumns = ({
       title: 'Release',
       field: ClusterColumns.releaseVersion,
       render: row => {
-        return <Version version={row.releaseVersion || ''} highlight />;
+        return (
+          <Box maxWidth={200}>
+            <Version version={row.releaseVersion || ''} highlight />
+          </Box>
+        );
       },
       customSort: semverCompareSort(row => row.releaseVersion),
     },
@@ -141,12 +145,14 @@ export const getInitialColumns = ({
         }
 
         return (
-          <Version
-            version={row.appVersion}
-            highlight
-            sourceLocation={row.appSourceLocation}
-            displayWarning={false}
-          />
+          <Box maxWidth={200}>
+            <Version
+              version={row.appVersion}
+              highlight
+              sourceLocation={row.appSourceLocation}
+              displayWarning={false}
+            />
+          </Box>
         );
       },
       customSort: semverCompareSort(row => row.appVersion),

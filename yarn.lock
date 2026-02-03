@@ -8520,6 +8520,7 @@ __metadata:
     lodash: "npm:^4.17.21"
     msw: "npm:^2.0.0"
     qs: "npm:^6.14.0"
+    react-middle-ellipsis: "npm:^1.3.0"
     react-use: "npm:^17.2.4"
     semver: "npm:^7.6.0"
     use-local-storage-state: "npm:^19.1.0"
@@ -33966,7 +33967,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-middle-ellipsis@npm:^1.2.2":
+"react-middle-ellipsis@npm:^1.2.2, react-middle-ellipsis@npm:^1.3.0":
   version: 1.3.0
   resolution: "react-middle-ellipsis@npm:1.3.0"
   dependencies:

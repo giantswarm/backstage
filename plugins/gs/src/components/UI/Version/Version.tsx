@@ -1,6 +1,7 @@
 import semver from 'semver';
 import { Box, Tooltip, styled } from '@material-ui/core';
 import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
+import MiddleEllipsis from 'react-middle-ellipsis';
 import { getCommitURL, getReleaseNotesURL } from '../../utils/helpers';
 import { ColorWrapper } from '../ColorWrapper';
 import { ExternalLink } from '../ExternalLink';
@@ -14,10 +15,9 @@ const StyledReportProblemOutlined = styled(ReportProblemOutlined)(
 );
 
 const COMMIT_HASH_REGEXP = /\b[0-9a-f]{40}\b/;
-const COMMIT_HASH_LENGTH_LIMIT = 5;
 const INVALID_VERSION = 'n/a';
 
-function getCommitHash(version: string) {
+function getCommitHash(version: string): string | null {
   const semverVersion = semver.parse(version);
   if (!semverVersion) {
     return null;
@@ -33,31 +33,86 @@ function getCommitHash(version: string) {
   return null;
 }
 
-type FormatVersionOptions = {
-  truncateCommitHash?: boolean;
-};
-
-function formatVersion(
-  version: string,
-  { truncateCommitHash = false }: FormatVersionOptions = {},
-) {
+function formatVersion(version: string): string {
   const semverVersion = semver.parse(version);
   if (!semverVersion) {
     return INVALID_VERSION;
   }
 
-  const versionStr = semverVersion.toString();
+  return semverVersion.toString();
+}
 
-  const commitHash = getCommitHash(version);
-  if (truncateCommitHash && commitHash) {
-    return versionStr.slice(
-      0,
-      versionStr.length - commitHash.length + COMMIT_HASH_LENGTH_LIMIT,
+type TruncatedVersionProps = {
+  label: string;
+  commitHash: string | null;
+};
+
+const TruncatedVersion = ({ label, commitHash }: TruncatedVersionProps) => {
+  const prefix = commitHash
+    ? label.slice(0, label.length - commitHash.length)
+    : null;
+
+  if (prefix) {
+    return (
+      <>
+        <Box component="span" flexShrink={0}>
+          {prefix}
+        </Box>
+        <Box component="span" overflow="hidden" minWidth={0}>
+          <MiddleEllipsis>
+            <span>{commitHash}</span>
+          </MiddleEllipsis>
+        </Box>
+      </>
     );
   }
 
-  return versionStr;
-}
+  return (
+    <MiddleEllipsis>
+      <span>{label}</span>
+    </MiddleEllipsis>
+  );
+};
+
+type VersionTextProps = {
+  label: string;
+  commitHash: string | null;
+  truncate?: boolean;
+  highlight?: boolean;
+};
+
+const VersionText = ({
+  label,
+  commitHash,
+  truncate,
+  highlight,
+}: VersionTextProps) => {
+  if (label === INVALID_VERSION) {
+    return <>{label}</>;
+  }
+
+  const content = truncate ? (
+    <TruncatedVersion label={label} commitHash={commitHash} />
+  ) : (
+    label
+  );
+
+  if (!highlight) {
+    return <>{content}</>;
+  }
+
+  return (
+    <ColorWrapper str={label}>
+      {truncate ? (
+        <Box component="span" display="flex">
+          {content}
+        </Box>
+      ) : (
+        content
+      )}
+    </ColorWrapper>
+  );
+};
 
 export type VersionProps = {
   /**
@@ -84,6 +139,12 @@ export type VersionProps = {
    * If true, the version will be displayed in a colored box, where the color is unique for the version.
    */
   highlight?: boolean;
+
+  /**
+   * If true, long versions will be truncated with middle ellipsis and show full version on hover.
+   * @default true
+   */
+  truncate?: boolean;
 };
 
 export const Version = ({
@@ -92,45 +153,72 @@ export const Version = ({
   displayWarning,
   warningMessageVersion,
   highlight,
+  truncate = true,
 }: VersionProps) => {
-  const versionLabel = formatVersion(version, {
-    truncateCommitHash: highlight,
-  });
+  const versionLabel = formatVersion(version);
   const commitHash = getCommitHash(version);
+  const hasValidVersion = versionLabel !== INVALID_VERSION;
+  const displayLinkToProject = sourceLocation && hasValidVersion;
 
-  const displayLinkToProject =
-    sourceLocation && versionLabel !== INVALID_VERSION;
+  const versionText = (
+    <VersionText
+      label={versionLabel}
+      commitHash={commitHash}
+      truncate={truncate}
+      highlight={highlight}
+    />
+  );
 
-  const versionComponent =
-    highlight && versionLabel !== INVALID_VERSION ? (
-      <ColorWrapper str={versionLabel}>{versionLabel}</ColorWrapper>
-    ) : (
-      versionLabel
-    );
+  const versionComponent = truncate ? (
+    <Box
+      component="span"
+      whiteSpace="nowrap"
+      overflow="hidden"
+      maxWidth="100%"
+      display="flex"
+      title={versionLabel}
+    >
+      {versionText}
+    </Box>
+  ) : (
+    versionText
+  );
 
   const warningMessage = warningMessageVersion
     ? `Last attempted version is ${warningMessageVersion}`
     : 'Last applied version is different from the attempted version.';
 
   return (
-    <Box display="flex" alignItems="center" color="primary">
+    <Box
+      display="flex"
+      alignItems="center"
+      color="primary"
+      overflow={truncate ? 'hidden' : undefined}
+      minWidth={truncate ? 0 : undefined}
+      maxWidth={truncate ? '100%' : undefined}
+    >
       {displayLinkToProject ? (
-        <ExternalLink
-          href={
-            commitHash
-              ? getCommitURL(sourceLocation, commitHash)
-              : getReleaseNotesURL(sourceLocation, versionLabel)
-          }
+        <Box
+          overflow={truncate ? 'hidden' : undefined}
+          minWidth={truncate ? 0 : undefined}
         >
-          {versionComponent}
-        </ExternalLink>
+          <ExternalLink
+            href={
+              commitHash
+                ? getCommitURL(sourceLocation, commitHash)
+                : getReleaseNotesURL(sourceLocation, versionLabel)
+            }
+          >
+            {versionComponent}
+          </ExternalLink>
+        </Box>
       ) : (
         versionComponent
       )}
 
       {displayWarning && (
         <Tooltip title={warningMessage}>
-          <StyledReportProblemOutlined titleAccess={warningMessage} />
+          <StyledReportProblemOutlined />
         </Tooltip>
       )}
     </Box>
