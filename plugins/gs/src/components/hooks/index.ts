@@ -11,6 +11,7 @@ export * from './useDisabledInstallations';
 export * from './useFriendlyItemsConfiguration';
 export * from './useGitOpsSourceLink';
 export * from './useGrafanaDashboardLink';
+export * from './useHelmChartNameForDeployment';
 export * from './useHelmChartReadme';
 export * from './useHelmChartTagManifest';
 export * from './useHelmChartTags';

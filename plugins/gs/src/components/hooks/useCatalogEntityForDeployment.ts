@@ -4,12 +4,21 @@ import {
   HelmRelease,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCatalogEntitiesForDeployments } from './useCatalogEntitiesForDeployments';
+import { useHelmChartNameForDeployment } from './useHelmChartNameForDeployment';
+import { useMemo } from 'react';
 
 export function useCatalogEntityForDeployment(deployment: App | HelmRelease) {
-  const { catalogEntities, catalogEntitiesMap } =
-    useCatalogEntitiesForDeployments();
+  const {
+    catalogEntities,
+    catalogEntitiesMap,
+    isLoading: isLoadingCatalogEntities,
+  } = useCatalogEntitiesForDeployments();
 
-  const chartName = deployment.getChartName();
+  const {
+    chartName,
+    isLoading: isLoadingChartName,
+    errorMessage: chartNameErrorMessage,
+  } = useHelmChartNameForDeployment(deployment);
 
   const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
 
@@ -17,5 +26,16 @@ export function useCatalogEntityForDeployment(deployment: App | HelmRelease) {
     entity => stringifyEntityRef(entity) === entityRef,
   );
 
-  return { catalogEntity };
+  return useMemo(() => {
+    return {
+      catalogEntity,
+      isLoading: isLoadingCatalogEntities || isLoadingChartName,
+      errorMessage: chartNameErrorMessage,
+    };
+  }, [
+    catalogEntity,
+    chartNameErrorMessage,
+    isLoadingCatalogEntities,
+    isLoadingChartName,
+  ]);
 }

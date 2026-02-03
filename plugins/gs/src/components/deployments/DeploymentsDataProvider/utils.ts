@@ -3,6 +3,7 @@ import { formatVersion } from '../../utils/helpers';
 import {
   App,
   HelmRelease,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   findTargetClusterName,
@@ -14,6 +15,7 @@ import { calculateDeploymentLabels } from '../utils/calculateLabels';
 import { getUpdatedTimestamp } from '../utils/getUpdatedTimestamp';
 import { getSourceKind, getSourceName } from '../utils/getSource';
 import { getAttemptedVersion, getVersion } from '../utils/getVersion';
+import { findHelmChartName } from '../utils/findHelmChartName';
 
 export type DeploymentData = {
   installationName: string;
@@ -38,12 +40,14 @@ export type DeploymentData = {
 
 export function collectDeploymentData({
   deployment,
+  ociRepository,
   catalogEntitiesMap,
 }: {
   deployment: App | HelmRelease;
+  ociRepository?: OCIRepository | null;
   catalogEntitiesMap: { [deploymentName: string]: string };
 }): DeploymentData {
-  const chartName = deployment.getChartName();
+  const chartName = findHelmChartName(deployment, ociRepository);
   const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
   const app = entityRef ? parseEntityRef(entityRef).name : undefined;
 

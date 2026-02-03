@@ -22,9 +22,12 @@ import { collectDeploymentData, DeploymentData } from './utils';
 import {
   App,
   HelmRelease,
+  OCIRepository,
   useResources,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { findHelmChartName } from '../utils/findHelmChartName';
+import { findResourceByRef } from '../../utils/findResourceByRef';
 
 export type DefaultDeploymentFilters = {
   app?: AppFilter;
@@ -91,44 +94,75 @@ export const DeploymentsDataProvider = ({
     retry: retryHelmReleases,
   } = useResources(activeInstallations, HelmRelease);
 
-  const isLoading = isLoadingApps || isLoadingHelmReleases;
+  const {
+    resources: ociRepositoryResources,
+    isLoading: isLoadingOCIRepositories,
+    errors: ociRepositoryErrors,
+    retry: retryOCIRepositories,
+  } = useResources(activeInstallations, OCIRepository);
+
+  const isLoading =
+    isLoadingApps || isLoadingHelmReleases || isLoadingOCIRepositories;
 
   const errors = useMemo(() => {
-    return [...appErrors, ...helmReleaseErrors];
-  }, [appErrors, helmReleaseErrors]);
+    return [...appErrors, ...helmReleaseErrors, ...ociRepositoryErrors];
+  }, [appErrors, helmReleaseErrors, ociRepositoryErrors]);
   useShowErrors(errors);
 
   const retry = useCallback(() => {
     retryApps();
     retryHelmReleases();
-  }, [retryApps, retryHelmReleases]);
+    retryOCIRepositories();
+  }, [retryApps, retryHelmReleases, retryOCIRepositories]);
 
   const deploymentsData: DeploymentData[] = useMemo(() => {
     if (isLoading) {
       return [];
     }
 
-    let resources = [...appResources, ...helmReleaseResources];
+    const resources = [...appResources, ...helmReleaseResources];
 
-    if (deploymentNames) {
-      resources = resources.filter(resource => {
-        const chartName = resource.getChartName();
+    // Helper to find OCIRepository for a resource
+    const findOciRepository = (resource: App | HelmRelease) => {
+      if (!ociRepositoryResources.length) return null;
 
-        return chartName && deploymentNames.includes(chartName);
-      });
-    }
+      const chartRef =
+        resource instanceof HelmRelease && resource.getChartRef();
+      if (chartRef && chartRef.kind === 'OCIRepository') {
+        return findResourceByRef(ociRepositoryResources, {
+          installationName: resource.cluster,
+          ...chartRef,
+        });
+      }
+      return null;
+    };
 
-    return resources.map(resource => {
-      return collectDeploymentData({
-        deployment: resource,
-        catalogEntitiesMap,
-      });
-    });
+    return resources.reduce<DeploymentData[]>((acc, resource) => {
+      const ociRepository = findOciRepository(resource);
+
+      // If deploymentNames filter is active, check if resource matches
+      if (deploymentNames) {
+        const chartName = findHelmChartName(resource, ociRepository);
+        if (!chartName || !deploymentNames.includes(chartName)) {
+          return acc;
+        }
+      }
+
+      acc.push(
+        collectDeploymentData({
+          deployment: resource,
+          ociRepository,
+          catalogEntitiesMap,
+        }),
+      );
+      return acc;
+    }, []);
   }, [
     isLoading,
     appResources,
     helmReleaseResources,
     deploymentNames,
+    ociRepositoryResources,
     catalogEntitiesMap,
   ]);
 
