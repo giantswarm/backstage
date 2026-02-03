@@ -185,7 +185,6 @@ export const getInitialColumns = ({
               version={row.version}
               sourceLocation={sourceLocation}
               highlight
-              truncate
               displayWarning={row.version !== row.attemptedVersion}
               warningMessageVersion={row.attemptedVersion}
             />

@@ -142,6 +142,7 @@ export type VersionProps = {
 
   /**
    * If true, long versions will be truncated with middle ellipsis and show full version on hover.
+   * @default true
    */
   truncate?: boolean;
 };
@@ -152,7 +153,7 @@ export const Version = ({
   displayWarning,
   warningMessageVersion,
   highlight,
-  truncate,
+  truncate = true,
 }: VersionProps) => {
   const versionLabel = formatVersion(version);
   const commitHash = getCommitHash(version);

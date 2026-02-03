@@ -44,6 +44,7 @@ describe('<Version />', () => {
     for (const testCase of testCases) {
       const { getByText, queryByRole } = await renderComponent({
         version: testCase.version,
+        truncate: false,
       });
       expect(getByText(testCase.expected)).toBeInTheDocument();
       expect(queryByRole('link')).not.toBeInTheDocument();
@@ -75,6 +76,7 @@ describe('<Version />', () => {
         const { getByRole } = await renderComponent({
           version: testCase.version,
           sourceLocation,
+          truncate: false,
         });
         expect(
           getByRole('link', { name: testCase.expectedText }),
@@ -112,6 +114,7 @@ describe('<Version />', () => {
           version: testCase.version,
           highlight: testCase.highlight,
           sourceLocation,
+          truncate: false,
         });
         expect(
           getByRole('link', { name: testCase.expectedText }),
@@ -142,6 +145,7 @@ describe('<Version />', () => {
           version: testCase.version,
           displayWarning: testCase.displayWarning,
           warningMessageVersion: testCase.warningMessageVersion,
+          truncate: false,
         });
 
         // The warning message is in the SVG title attribute (accessible via getByTitle)

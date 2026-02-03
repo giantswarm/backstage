@@ -28,7 +28,6 @@ export function DeploymentRevisionsCard() {
               version={formatVersion(lastAppliedRevision ?? '')}
               sourceLocation={sourceLocation}
               displayWarning={lastAppliedRevision !== lastAttemptedRevision}
-              truncate
             />
           </AboutFieldValue>
         </AboutField>
@@ -37,7 +36,6 @@ export function DeploymentRevisionsCard() {
             <Version
               version={formatVersion(lastAttemptedRevision ?? '')}
               sourceLocation={sourceLocation}
-              truncate
             />
           </AboutFieldValue>
         </AboutField>
