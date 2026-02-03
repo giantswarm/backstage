@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Refactor Version component to extract helper components for better maintainability.
 - Prevent AI chat from guessing hostnames for links.
 
+See [./docs/releases/v0.101.2-changelog.md](./docs/releases/v0.101.2-changelog.md) for more information.
+
 ## [0.101.1] - 2026-02-02
 
 See [./docs/releases/v0.101.1-changelog.md](./docs/releases/v0.101.1-changelog.md) for more information.
