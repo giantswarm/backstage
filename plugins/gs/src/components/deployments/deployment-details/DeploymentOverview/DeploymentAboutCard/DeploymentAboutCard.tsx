@@ -8,6 +8,7 @@ import { Grid, Tooltip, Typography } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import {
   AboutFieldValue,
+  AsyncValue,
   ClusterLink,
   DateComponent,
   NotAvailable,
@@ -15,7 +16,10 @@ import {
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
-import { useCatalogEntityForDeployment } from '../../../../hooks';
+import {
+  useCatalogEntityForDeployment,
+  useHelmChartNameForDeployment,
+} from '../../../../hooks';
 import { formatSource } from '../../../../utils/helpers';
 import {
   findTargetClusterName,
@@ -41,7 +45,11 @@ export function DeploymentAboutCard() {
 
   const clusterType = findTargetClusterType(deployment);
 
-  const chartName = deployment.getChartName();
+  const {
+    chartName,
+    isLoading: chartNameIsLoading,
+    errorMessage: chartNameErrorMessage,
+  } = useHelmChartNameForDeployment(deployment);
 
   let clusterEl: ReactNode = clusterName ? clusterName : <NotAvailable />;
   if (clusterName && clusterNamespace) {
@@ -124,7 +132,17 @@ export function DeploymentAboutCard() {
           label="Chart name"
           value={chartName}
           gridSizes={{ xs: 6, md: 4 }}
-        />
+        >
+          <AboutFieldValue>
+            <AsyncValue
+              isLoading={chartNameIsLoading}
+              value={chartName}
+              errorMessage={chartNameErrorMessage}
+            >
+              {value => value || <NotAvailable />}
+            </AsyncValue>
+          </AboutFieldValue>
+        </AboutField>
 
         <AboutField label="Created" gridSizes={{ xs: 6, md: 4 }}>
           <AboutFieldValue>

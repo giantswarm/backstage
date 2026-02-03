@@ -4,12 +4,13 @@ import {
   HelmRelease,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCatalogEntitiesForDeployments } from './useCatalogEntitiesForDeployments';
+import { useHelmChartNameForDeployment } from './useHelmChartNameForDeployment';
 
 export function useCatalogEntityForDeployment(deployment: App | HelmRelease) {
   const { catalogEntities, catalogEntitiesMap } =
     useCatalogEntitiesForDeployments();
 
-  const chartName = deployment.getChartName();
+  const { chartName } = useHelmChartNameForDeployment(deployment);
 
   const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
 

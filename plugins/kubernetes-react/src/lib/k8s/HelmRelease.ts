@@ -40,19 +40,24 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
     return this.jsonData.spec?.chart;
   }
 
-  getChartName() {
-    // First try the inline chart definition
-    const chartName = this.jsonData.spec?.chart?.spec?.chart;
-    if (chartName) {
-      return chartName;
+  getChartRef():
+    | {
+        apiVersion?: string;
+        kind: 'OCIRepository' | 'HelmChart' | 'ExternalArtifact';
+        name: string;
+        namespace: string;
+      }
+    | undefined {
+    const ref = this.jsonData.spec?.chartRef;
+    if (!ref || !ref.kind || !ref.name) {
+      return undefined;
     }
-
-    // Fall back to chartRef.name for OCIRepository-based charts
-    return this.jsonData.spec?.chartRef?.name;
-  }
-
-  getChartRef() {
-    return this.jsonData.spec?.chartRef;
+    return {
+      apiVersion: ref.apiVersion,
+      kind: ref.kind,
+      name: ref.name,
+      namespace: ref.namespace ?? this.getNamespace() ?? '',
+    };
   }
 
   getChartSourceRef() {

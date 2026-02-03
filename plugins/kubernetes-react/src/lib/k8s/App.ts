@@ -13,8 +13,8 @@ export class App extends KubeObject<AppInterface> {
     return this.jsonData.status;
   }
 
-  getChartName() {
-    return this.jsonData.spec?.name;
+  getSpec() {
+    return this.jsonData.spec;
   }
 
   getKubeConfig() {
