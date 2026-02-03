@@ -8,7 +8,7 @@ import {
   sortAndFilterOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { DateComponent, NotAvailable, Version } from '../../UI';
-import { Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { DeploymentActions } from '../DeploymentActions';
 import {
   clusterDetailsRouteRef,
@@ -180,13 +180,16 @@ export const getInitialColumns = ({
       field: DeploymentColumns.version,
       render: row => {
         return (
-          <Version
-            version={row.version}
-            sourceLocation={sourceLocation}
-            highlight
-            displayWarning={row.version !== row.attemptedVersion}
-            warningMessageVersion={row.attemptedVersion}
-          />
+          <Box maxWidth={200}>
+            <Version
+              version={row.version}
+              sourceLocation={sourceLocation}
+              highlight
+              truncate
+              displayWarning={row.version !== row.attemptedVersion}
+              warningMessageVersion={row.attemptedVersion}
+            />
+          </Box>
         );
       },
       customSort: semverCompareSort(row => row.version),

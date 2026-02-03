@@ -84,7 +84,7 @@ describe('<Version />', () => {
   });
 
   describe('when highlighted', () => {
-    it('truncates version commit hash', async () => {
+    it('renders full version without truncation', async () => {
       const sourceLocation = 'https://github.com/organization/project-slug';
       const testCases = [
         {
@@ -102,7 +102,7 @@ describe('<Version />', () => {
         {
           version: '0.24.2-9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca',
           highlight: true,
-          expectedText: '0.24.2-9ec68',
+          expectedText: '0.24.2-9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca',
           expectedLink: `${sourceLocation}/commit/9ec68e75e1d35d5afea9ff9f03ccb2ca862ff6ca`,
         },
       ];

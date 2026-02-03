@@ -15,7 +15,6 @@ const StyledReportProblemOutlined = styled(ReportProblemOutlined)(
 );
 
 const COMMIT_HASH_REGEXP = /\b[0-9a-f]{40}\b/;
-const COMMIT_HASH_LENGTH_LIMIT = 5;
 const INVALID_VERSION = 'n/a';
 
 function getCommitHash(version: string) {
@@ -34,30 +33,13 @@ function getCommitHash(version: string) {
   return null;
 }
 
-type FormatVersionOptions = {
-  truncateCommitHash?: boolean;
-};
-
-function formatVersion(
-  version: string,
-  { truncateCommitHash = false }: FormatVersionOptions = {},
-) {
+function formatVersion(version: string) {
   const semverVersion = semver.parse(version);
   if (!semverVersion) {
     return INVALID_VERSION;
   }
 
-  const versionStr = semverVersion.toString();
-
-  const commitHash = getCommitHash(version);
-  if (truncateCommitHash && commitHash) {
-    return versionStr.slice(
-      0,
-      versionStr.length - commitHash.length + COMMIT_HASH_LENGTH_LIMIT,
-    );
-  }
-
-  return versionStr;
+  return semverVersion.toString();
 }
 
 export type VersionProps = {
@@ -100,9 +82,7 @@ export const Version = ({
   highlight,
   truncate,
 }: VersionProps) => {
-  const versionLabel = formatVersion(version, {
-    truncateCommitHash: highlight,
-  });
+  const versionLabel = formatVersion(version);
   const commitHash = getCommitHash(version);
 
   const displayLinkToProject =
@@ -121,6 +101,23 @@ export const Version = ({
       ? versionLabel.slice(0, versionLabel.length - commitHash.length)
       : null;
 
+  const truncatedContent = versionPrefix ? (
+    <>
+      <Box component="span" flexShrink={0}>
+        {versionPrefix}
+      </Box>
+      <Box component="span" overflow="hidden" minWidth={0}>
+        <MiddleEllipsis>
+          <span>{commitHash}</span>
+        </MiddleEllipsis>
+      </Box>
+    </>
+  ) : (
+    <MiddleEllipsis>
+      <span>{versionLabel}</span>
+    </MiddleEllipsis>
+  );
+
   const versionComponent = truncate ? (
     <Box
       component="span"
@@ -130,31 +127,14 @@ export const Version = ({
       display="flex"
       title={versionLabel}
     >
-      {versionPrefix ? (
-        <>
-          <Box component="span" flexShrink={0}>
-            {highlight ? (
-              <ColorWrapper str={versionLabel}>{versionPrefix}</ColorWrapper>
-            ) : (
-              versionPrefix
-            )}
+      {highlight ? (
+        <ColorWrapper str={versionLabel}>
+          <Box component="span" display="flex">
+            {truncatedContent}
           </Box>
-          <Box component="span" overflow="hidden" minWidth={0}>
-            <MiddleEllipsis>
-              <span>
-                {highlight ? (
-                  <ColorWrapper str={versionLabel}>{commitHash}</ColorWrapper>
-                ) : (
-                  commitHash
-                )}
-              </span>
-            </MiddleEllipsis>
-          </Box>
-        </>
+        </ColorWrapper>
       ) : (
-        <MiddleEllipsis>
-          <span>{versionContent}</span>
-        </MiddleEllipsis>
+        truncatedContent
       )}
     </Box>
   ) : (
@@ -172,13 +152,12 @@ export const Version = ({
       color="primary"
       overflow={truncate ? 'hidden' : undefined}
       minWidth={truncate ? 0 : undefined}
-      width={truncate ? '100%' : undefined}
+      maxWidth={truncate ? '100%' : undefined}
     >
       {displayLinkToProject ? (
         <Box
           overflow={truncate ? 'hidden' : undefined}
           minWidth={truncate ? 0 : undefined}
-          flex={truncate ? 1 : undefined}
         >
           <ExternalLink
             href={
@@ -196,7 +175,7 @@ export const Version = ({
 
       {displayWarning && (
         <Tooltip title={warningMessage}>
-          <StyledReportProblemOutlined titleAccess={warningMessage} />
+          <StyledReportProblemOutlined />
         </Tooltip>
       )}
     </Box>
