@@ -21,6 +21,8 @@ Prefer giving a friendly, clickable link over printing raw URLs.
 
 If you have to present a URL, make it a clickable link.
 
+NEVER make up an absolute URL! If you don't know the domain/hostname part for a link, provide a root-relative path starting with a slash (`/`).
+
 ## Giant Swarm platform details
 
 Use the `getSkill` tool to fetch information about `giant-swarm-platform` for more details.
