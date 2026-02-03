@@ -120,46 +120,43 @@ export const DeploymentsDataProvider = ({
       return [];
     }
 
-    let resources = [...appResources, ...helmReleaseResources];
+    const resources = [...appResources, ...helmReleaseResources];
 
-    if (deploymentNames) {
-      resources = resources.filter(resource => {
-        let ociRepository = null;
-        if (ociRepositoryResources.length) {
-          const chartRef =
-            resource instanceof HelmRelease && resource.getChartRef();
-          if (chartRef && chartRef.kind === 'OCIRepository') {
-            ociRepository = findResourceByRef(ociRepositoryResources, {
-              installationName: resource.cluster,
-              ...chartRef,
-            });
-          }
-        }
+    // Helper to find OCIRepository for a resource
+    const findOciRepository = (resource: App | HelmRelease) => {
+      if (!ociRepositoryResources.length) return null;
+
+      const chartRef =
+        resource instanceof HelmRelease && resource.getChartRef();
+      if (chartRef && chartRef.kind === 'OCIRepository') {
+        return findResourceByRef(ociRepositoryResources, {
+          installationName: resource.cluster,
+          ...chartRef,
+        });
+      }
+      return null;
+    };
+
+    return resources.reduce<DeploymentData[]>((acc, resource) => {
+      const ociRepository = findOciRepository(resource);
+
+      // If deploymentNames filter is active, check if resource matches
+      if (deploymentNames) {
         const chartName = findHelmChartName(resource, ociRepository);
-
-        return chartName && deploymentNames.includes(chartName);
-      });
-    }
-
-    return resources.map(resource => {
-      let ociRepository = null;
-      if (ociRepositoryResources.length) {
-        const chartRef =
-          resource instanceof HelmRelease && resource.getChartRef();
-        if (chartRef && chartRef.kind === 'OCIRepository') {
-          ociRepository = findResourceByRef(ociRepositoryResources, {
-            installationName: resource.cluster,
-            ...chartRef,
-          });
+        if (!chartName || !deploymentNames.includes(chartName)) {
+          return acc;
         }
       }
 
-      return collectDeploymentData({
-        deployment: resource,
-        ociRepository,
-        catalogEntitiesMap,
-      });
-    });
+      acc.push(
+        collectDeploymentData({
+          deployment: resource,
+          ociRepository,
+          catalogEntitiesMap,
+        }),
+      );
+      return acc;
+    }, []);
   }, [
     isLoading,
     appResources,
