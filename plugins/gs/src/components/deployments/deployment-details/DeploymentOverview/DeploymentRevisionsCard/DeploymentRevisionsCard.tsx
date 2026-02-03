@@ -1,5 +1,5 @@
 import { InfoCard } from '@backstage/core-components';
-import { Grid, Typography } from '@material-ui/core';
+import { Grid } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { formatVersion } from '../../../../utils/helpers';
 import { getSourceLocationFromEntity } from '../../../../utils/entity';
@@ -24,23 +24,21 @@ export function DeploymentRevisionsCard() {
       <Grid container spacing={5}>
         <AboutField label="Last applied" gridSizes={{ xs: 6 }}>
           <AboutFieldValue>
-            <Typography variant="inherit">
-              <Version
-                version={formatVersion(lastAppliedRevision ?? '')}
-                sourceLocation={sourceLocation}
-                displayWarning={lastAppliedRevision !== lastAttemptedRevision}
-              />
-            </Typography>
+            <Version
+              version={formatVersion(lastAppliedRevision ?? '')}
+              sourceLocation={sourceLocation}
+              displayWarning={lastAppliedRevision !== lastAttemptedRevision}
+              truncate
+            />
           </AboutFieldValue>
         </AboutField>
         <AboutField label="Last attempted" gridSizes={{ xs: 6 }}>
           <AboutFieldValue>
-            <Typography variant="inherit">
-              <Version
-                version={formatVersion(lastAttemptedRevision ?? '')}
-                sourceLocation={sourceLocation}
-              />
-            </Typography>
+            <Version
+              version={formatVersion(lastAttemptedRevision ?? '')}
+              sourceLocation={sourceLocation}
+              truncate
+            />
           </AboutFieldValue>
         </AboutField>
       </Grid>
