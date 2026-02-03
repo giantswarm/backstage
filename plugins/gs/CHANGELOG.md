@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.52.1
+
+### Patch Changes
+
+- b535e10: Add OCIRepository support to getSource helper functions for HelmRelease resources.
+- 68b52c4: Refactor Version component to extract helper components for better maintainability.
+- 286d31a: Improve Helm chart name resolution with OCIRepository support.
+- Updated dependencies [286d31a]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.9.2
+
 ## 0.52.0
 
 ### Minor Changes
