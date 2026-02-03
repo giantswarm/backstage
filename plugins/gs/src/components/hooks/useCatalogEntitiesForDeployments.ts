@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 export function useCatalogEntitiesForDeployments() {
   const catalogApi = useApi(catalogApiRef);
 
-  const { data: catalogEntities } = useQuery({
+  const { data: catalogEntities, isLoading } = useQuery({
     queryKey: ['catalog-entities', 'kind', 'component'],
     queryFn: () =>
       catalogApi.getEntities({
@@ -21,7 +21,7 @@ export function useCatalogEntitiesForDeployments() {
     if (!catalogEntities) {
       return {
         catalogEntities: [],
-        catalogEntitiesMap: {},
+        catalogEntitiesMap: {} as Record<string, string>,
       };
     }
 
@@ -44,6 +44,7 @@ export function useCatalogEntitiesForDeployments() {
     return {
       catalogEntities,
       catalogEntitiesMap,
+      isLoading,
     };
-  }, [catalogEntities]);
+  }, [catalogEntities, isLoading]);
 }

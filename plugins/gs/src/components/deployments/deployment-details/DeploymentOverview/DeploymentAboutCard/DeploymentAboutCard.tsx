@@ -34,7 +34,11 @@ export function DeploymentAboutCard() {
 
   const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
-  const { catalogEntity } = useCatalogEntityForDeployment(deployment);
+  const {
+    catalogEntity,
+    isLoading: isLoadingCatalogEntity,
+    errorMessage: catalogEntityErrorMessage,
+  } = useCatalogEntityForDeployment(deployment);
 
   const name = deployment.getName();
   const namespace = deployment.getNamespace();
@@ -47,7 +51,7 @@ export function DeploymentAboutCard() {
 
   const {
     chartName,
-    isLoading: chartNameIsLoading,
+    isLoading: isLoadingChartName,
     errorMessage: chartNameErrorMessage,
   } = useHelmChartNameForDeployment(deployment);
 
@@ -68,9 +72,7 @@ export function DeploymentAboutCard() {
     : undefined;
   const entityLink: ReactNode = entityRef ? (
     <EntityRefLink entityRef={entityRef} />
-  ) : (
-    <NotAvailable />
-  );
+  ) : null;
 
   const createdTimestamp = deployment.getCreatedTimestamp();
 
@@ -125,7 +127,15 @@ export function DeploymentAboutCard() {
           <AboutFieldValue>{clusterEl}</AboutFieldValue>
         </AboutField>
         <AboutField label="App" gridSizes={{ xs: 6, md: 4 }}>
-          <AboutFieldValue>{entityLink}</AboutFieldValue>
+          <AboutFieldValue>
+            <AsyncValue
+              isLoading={isLoadingCatalogEntity}
+              value={entityLink}
+              errorMessage={catalogEntityErrorMessage}
+            >
+              {value => value || <NotAvailable />}
+            </AsyncValue>
+          </AboutFieldValue>
         </AboutField>
 
         <AboutField
@@ -135,7 +145,7 @@ export function DeploymentAboutCard() {
         >
           <AboutFieldValue>
             <AsyncValue
-              isLoading={chartNameIsLoading}
+              isLoading={isLoadingChartName}
               value={chartName}
               errorMessage={chartNameErrorMessage}
             >
