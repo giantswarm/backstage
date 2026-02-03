@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.9.2
+
+### Patch Changes
+
+- 286d31a: Improve Helm chart name resolution with OCIRepository support.
+
 ## 0.9.1
 
 ### Patch Changes

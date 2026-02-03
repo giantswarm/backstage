@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.5.1
+
+### Patch Changes
+
+- 2f059dd: Modify system prompt to prevent guessing of hostnames for links in the chat
+
 ## 0.5.0
 
 ### Minor Changes
