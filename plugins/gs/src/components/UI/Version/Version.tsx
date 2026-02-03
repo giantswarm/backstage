@@ -17,7 +17,7 @@ const StyledReportProblemOutlined = styled(ReportProblemOutlined)(
 const COMMIT_HASH_REGEXP = /\b[0-9a-f]{40}\b/;
 const INVALID_VERSION = 'n/a';
 
-function getCommitHash(version: string) {
+function getCommitHash(version: string): string | null {
   const semverVersion = semver.parse(version);
   if (!semverVersion) {
     return null;
@@ -33,7 +33,7 @@ function getCommitHash(version: string) {
   return null;
 }
 
-function formatVersion(version: string) {
+function formatVersion(version: string): string {
   const semverVersion = semver.parse(version);
   if (!semverVersion) {
     return INVALID_VERSION;
@@ -41,6 +41,78 @@ function formatVersion(version: string) {
 
   return semverVersion.toString();
 }
+
+type TruncatedVersionProps = {
+  label: string;
+  commitHash: string | null;
+};
+
+const TruncatedVersion = ({ label, commitHash }: TruncatedVersionProps) => {
+  const prefix = commitHash
+    ? label.slice(0, label.length - commitHash.length)
+    : null;
+
+  if (prefix) {
+    return (
+      <>
+        <Box component="span" flexShrink={0}>
+          {prefix}
+        </Box>
+        <Box component="span" overflow="hidden" minWidth={0}>
+          <MiddleEllipsis>
+            <span>{commitHash}</span>
+          </MiddleEllipsis>
+        </Box>
+      </>
+    );
+  }
+
+  return (
+    <MiddleEllipsis>
+      <span>{label}</span>
+    </MiddleEllipsis>
+  );
+};
+
+type VersionTextProps = {
+  label: string;
+  commitHash: string | null;
+  truncate?: boolean;
+  highlight?: boolean;
+};
+
+const VersionText = ({
+  label,
+  commitHash,
+  truncate,
+  highlight,
+}: VersionTextProps) => {
+  if (label === INVALID_VERSION) {
+    return <>{label}</>;
+  }
+
+  const content = truncate ? (
+    <TruncatedVersion label={label} commitHash={commitHash} />
+  ) : (
+    label
+  );
+
+  if (!highlight) {
+    return <>{content}</>;
+  }
+
+  return (
+    <ColorWrapper str={label}>
+      {truncate ? (
+        <Box component="span" display="flex">
+          {content}
+        </Box>
+      ) : (
+        content
+      )}
+    </ColorWrapper>
+  );
+};
 
 export type VersionProps = {
   /**
@@ -84,38 +156,16 @@ export const Version = ({
 }: VersionProps) => {
   const versionLabel = formatVersion(version);
   const commitHash = getCommitHash(version);
+  const hasValidVersion = versionLabel !== INVALID_VERSION;
+  const displayLinkToProject = sourceLocation && hasValidVersion;
 
-  const displayLinkToProject =
-    sourceLocation && versionLabel !== INVALID_VERSION;
-
-  const versionContent =
-    highlight && versionLabel !== INVALID_VERSION ? (
-      <ColorWrapper str={versionLabel}>{versionLabel}</ColorWrapper>
-    ) : (
-      versionLabel
-    );
-
-  // When truncating with a commit hash, only truncate the hash part
-  const versionPrefix =
-    truncate && commitHash
-      ? versionLabel.slice(0, versionLabel.length - commitHash.length)
-      : null;
-
-  const truncatedContent = versionPrefix ? (
-    <>
-      <Box component="span" flexShrink={0}>
-        {versionPrefix}
-      </Box>
-      <Box component="span" overflow="hidden" minWidth={0}>
-        <MiddleEllipsis>
-          <span>{commitHash}</span>
-        </MiddleEllipsis>
-      </Box>
-    </>
-  ) : (
-    <MiddleEllipsis>
-      <span>{versionLabel}</span>
-    </MiddleEllipsis>
+  const versionText = (
+    <VersionText
+      label={versionLabel}
+      commitHash={commitHash}
+      truncate={truncate}
+      highlight={highlight}
+    />
   );
 
   const versionComponent = truncate ? (
@@ -127,18 +177,10 @@ export const Version = ({
       display="flex"
       title={versionLabel}
     >
-      {highlight ? (
-        <ColorWrapper str={versionLabel}>
-          <Box component="span" display="flex">
-            {truncatedContent}
-          </Box>
-        </ColorWrapper>
-      ) : (
-        truncatedContent
-      )}
+      {versionText}
     </Box>
   ) : (
-    versionContent
+    versionText
   );
 
   const warningMessage = warningMessageVersion

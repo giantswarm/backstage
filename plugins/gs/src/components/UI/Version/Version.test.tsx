@@ -138,12 +138,14 @@ describe('<Version />', () => {
       ];
 
       for (const testCase of testCases) {
-        const { getByText } = await renderComponent({
+        const { getByTitle } = await renderComponent({
           version: testCase.version,
           displayWarning: testCase.displayWarning,
           warningMessageVersion: testCase.warningMessageVersion,
         });
-        expect(getByText(testCase.expected)).toBeInTheDocument();
+
+        // The warning message is in the SVG title attribute (accessible via getByTitle)
+        expect(getByTitle(testCase.expected)).toBeInTheDocument();
       }
     });
   });
