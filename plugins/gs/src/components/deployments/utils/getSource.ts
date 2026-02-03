@@ -8,17 +8,29 @@ function formatAppCatalogName(name: string) {
 }
 
 function getHelmReleaseSourceKind(helmRelease: HelmRelease) {
+  // Try traditional chart source first
   const sourceRef = helmRelease.getChartSourceRef();
+  if (sourceRef?.kind) {
+    return sourceRef.kind;
+  }
 
-  return sourceRef?.kind;
+  // Fall back to chartRef for OCIRepository-based charts
+  const chartRef = helmRelease.getChartRef();
+  return chartRef?.kind;
 }
 
 function getHelmReleaseSourceName(
   helmRelease: HelmRelease,
 ): string | undefined {
+  // Try traditional chart source first
   const sourceRef = helmRelease.getChartSourceRef();
+  if (sourceRef?.name) {
+    return sourceRef.name;
+  }
 
-  return sourceRef?.name;
+  // Fall back to chartRef for OCIRepository-based charts
+  const chartRef = helmRelease.getChartRef();
+  return chartRef?.name;
 }
 
 export function getSourceKind(deployment: App | HelmRelease) {
