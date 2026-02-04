@@ -40,7 +40,7 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
   const defaultColumns: TableColumn<CatalogTableRow>[] = useMemo(() => {
     return [
       noWrapColumn(
-        columnFactories.createNameColumnWithIcon({
+        CatalogTable.columns.createNameColumn({
           defaultKind: filters.kind?.value,
         }),
       ),

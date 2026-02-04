@@ -21,6 +21,11 @@ import {
   apiDocsConfigRef,
   defaultDefinitionWidgets,
 } from '@backstage/plugin-api-docs';
+import {
+  catalogApiRef,
+  entityPresentationApiRef,
+} from '@backstage/plugin-catalog-react';
+import { DefaultEntityPresentationApi } from '@backstage/plugin-catalog';
 import { crdApiWidget } from '@terasky/backstage-plugin-api-docs-module-crd';
 import {
   createFetchApi,
@@ -35,6 +40,7 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  createGSEntityPresentationRenderer,
   gsAuthProvidersApiRef,
   GSDiscoveryApiClient,
   GSScaffolderApiClient,
@@ -203,5 +209,14 @@ export const apis: AnyApiFactory[] = [
         kubernetesAuthProvidersApi,
       });
     },
+  }),
+  createApiFactory({
+    api: entityPresentationApiRef,
+    deps: { catalogApi: catalogApiRef },
+    factory: ({ catalogApi }) =>
+      DefaultEntityPresentationApi.create({
+        catalogApi,
+        renderer: createGSEntityPresentationRenderer(),
+      }),
   }),
 ];

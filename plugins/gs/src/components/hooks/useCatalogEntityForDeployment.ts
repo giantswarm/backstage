@@ -1,4 +1,3 @@
-import { stringifyEntityRef } from '@backstage/catalog-model';
 import {
   App,
   HelmRelease,
@@ -8,11 +7,8 @@ import { useHelmChartNameForDeployment } from './useHelmChartNameForDeployment';
 import { useMemo } from 'react';
 
 export function useCatalogEntityForDeployment(deployment: App | HelmRelease) {
-  const {
-    catalogEntities,
-    catalogEntitiesMap,
-    isLoading: isLoadingCatalogEntities,
-  } = useCatalogEntitiesForDeployments();
+  const { catalogEntitiesMap, isLoading: isLoadingCatalogEntities } =
+    useCatalogEntitiesForDeployments();
 
   const {
     chartName,
@@ -20,11 +16,7 @@ export function useCatalogEntityForDeployment(deployment: App | HelmRelease) {
     errorMessage: chartNameErrorMessage,
   } = useHelmChartNameForDeployment(deployment);
 
-  const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
-
-  const catalogEntity = catalogEntities.find(
-    entity => stringifyEntityRef(entity) === entityRef,
-  );
+  const catalogEntity = chartName ? catalogEntitiesMap[chartName] : undefined;
 
   return useMemo(() => {
     return {

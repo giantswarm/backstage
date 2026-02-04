@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAsyncEntity } from '@backstage/plugin-catalog-react';
+import { getIconUrlFromEntity } from '../../utils/entity';
 
-const ICON_ANNOTATION = 'giantswarm.io/icon-url';
 const ICON_CONTAINER_ID = 'gs-entity-header-icon-container';
 
 export const EntityHeaderIcon = () => {
@@ -12,7 +12,7 @@ export const EntityHeaderIcon = () => {
   );
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const iconUrl = entity?.metadata.annotations?.[ICON_ANNOTATION];
+  const iconUrl = entity ? getIconUrlFromEntity(entity) : undefined;
 
   useEffect(() => {
     if (!iconUrl) {
