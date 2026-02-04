@@ -11,19 +11,16 @@ Create changeset files for projects using @changesets/cli.
 ## Context
 
 - Existing changesets: !`ls .changeset/*.md 2>/dev/null | head -5`
-- Package name: !`cat package.json 2>/dev/null | jq -r '.name // "unknown"'`
-- Workspaces: !`cat package.json 2>/dev/null | jq -r '.workspaces // empty'`
+- Workspace packages: !`for dir in packages/* plugins/*; do [ -f "$dir/package.json" ] && jq -r '.name' "$dir/package.json"; done 2>/dev/null | sort`
 
 ## Instructions
 
 ### Step 1: Detect Packages
 
-1. Check if monorepo or single-package:
-   - Look for `workspaces` in `package.json`
-   - Look for `pnpm-workspace.yaml`
-
-2. For monorepos: Find all `package.json` files in workspace directories and extract names
-3. For single-package: Use the `name` from root `package.json`
+1. This is a monorepo with workspaces in `packages/*` and `plugins/*`
+2. Find all `package.json` files in workspace directories and extract names
+3. **IMPORTANT**: Never use the root package name ("root") - only use actual workspace package names
+4. Common packages for app-wide changes: `app`, `backend`
 
 ### Step 2: Gather Information
 
@@ -62,6 +59,8 @@ Summary description here.
 Rules:
 
 - Package names MUST be quoted
+- Only use actual workspace package names (e.g., `app`, `backend`, `@giantswarm/backstage-plugin-gs`)
+- NEVER use the root package name ("root") - it will break `yarn changeset version`
 - End file with newline
 - Create `.changeset/` directory if missing
 
