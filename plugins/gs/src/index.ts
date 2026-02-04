@@ -47,3 +47,4 @@ export { EntityVersionHistoryCard as EntityGSVersionHistoryCard } from './compon
 export { EntityReadmeCard as EntityGSReadmeCard } from './components/catalog/EntityReadmeCard';
 export { EntityChartProvider as EntityGSChartProvider } from './components/catalog/EntityChartContext';
 export { columnFactories as GSColumnFactories } from './components/catalog/columns';
+export { EntityHeaderIcon as EntityGSHeaderIcon } from './components/catalog/EntityHeaderIcon';

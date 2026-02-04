@@ -40,6 +40,10 @@ This annotation is used on installation resource entities to specify the escalat
 
 This annotation is used on component entities to specify the Grafana dashboard to link to. The value must be the path part of the dashboard URL, starting with `/`. The host name part will be generated based on the respective installation's base domain.
 
+### giantswarm.io/icon-url
+
+If this annotation is present, the value is used as the URL of the icon shown in the entity header of the entity.
+
 ### giantswarm.io/ingress-host
 
 An annotation we set on component entities in rare cases to provide a link from the component's deployments list to the (only) ingress URL of a web application.
