@@ -1,12 +1,54 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 
+/**
+ * Gets CHANGELOG.md files that have been modified.
+ *
+ * This function handles two scenarios:
+ * 1. Changes are uncommitted (local development) - uses git status
+ * 2. Changes are already committed (CI environment) - uses git diff HEAD^ HEAD
+ *
+ * This prevents empty release notes when the script runs after changes are committed.
+ */
 function getModifiedFiles(): string[] {
-  const output = execSync('git status --porcelain').toString();
-  return output
+  // First, try to find uncommitted changes (local development scenario)
+  const statusOutput = execSync('git status --porcelain').toString();
+  const uncommittedFiles = statusOutput
     .split('\n')
     .filter(line => line.trim().endsWith('CHANGELOG.md'))
-    .map(line => line.trim().split(' ').pop() as string);
+    .map(line => line.trim().split(' ').pop() as string)
+    .filter(Boolean);
+
+  if (uncommittedFiles.length > 0) {
+    console.log(
+      `Found ${uncommittedFiles.length} modified CHANGELOG.md files (uncommitted)`,
+    );
+    return uncommittedFiles;
+  }
+
+  // Fall back to comparing with parent commit (CI scenario where changes are already committed)
+  try {
+    const diffOutput = execSync('git diff --name-only HEAD^ HEAD').toString();
+    const committedFiles = diffOutput
+      .split('\n')
+      .filter(line => line.endsWith('CHANGELOG.md'))
+      .filter(Boolean);
+
+    if (committedFiles.length > 0) {
+      console.log(
+        `Found ${committedFiles.length} modified CHANGELOG.md files (in last commit)`,
+      );
+      return committedFiles;
+    }
+  } catch {
+    // HEAD^ might not exist (e.g., initial commit)
+    console.warn('Could not compare with parent commit');
+  }
+
+  console.warn(
+    'No modified CHANGELOG.md files found. Release notes will be empty.',
+  );
+  return [];
 }
 
 /**
@@ -201,7 +243,16 @@ function writeReleaseNotes(version: string, releaseNotes: string): string {
 
   const releaseDocPath = `${releaseDir}/v${version}-changelog.md`;
   const releaseNotesHeader = `# Release v${version}\n\n`;
-  fs.writeFileSync(releaseDocPath, releaseNotesHeader + releaseNotes, 'utf-8');
+
+  // If no package changes, add a note explaining this is a non-package release
+  const content = releaseNotes.trim()
+    ? releaseNotes
+    : `This release contains no package changes. See the root CHANGELOG.md for details about this release.
+
+Note: It is also possible that changesets were not added for this release. Check the git history for any package changes that may not be documented here.
+`;
+
+  fs.writeFileSync(releaseDocPath, releaseNotesHeader + content, 'utf-8');
 
   return releaseDocPath;
 }
