@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Show icon for entities when `giantswarm.io/icon-url` annotation is provided.
+
 ## [0.102.0] - 2026-02-04
 
 ### Added
