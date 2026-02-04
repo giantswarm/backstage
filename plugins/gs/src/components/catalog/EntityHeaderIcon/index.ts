@@ -1,0 +1,1 @@
+export { EntityHeaderIcon } from './EntityHeaderIcon';

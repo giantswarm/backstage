@@ -1,4 +1,4 @@
-import { parseEntityRef } from '@backstage/catalog-model';
+import { Entity } from '@backstage/catalog-model';
 import { formatVersion } from '../../utils/helpers';
 import {
   App,
@@ -34,7 +34,7 @@ export type DeploymentData = {
   chartName?: string;
   apiVersion: string;
   labels?: string[];
-  entityRef?: string;
+  entity?: Entity;
   app?: string;
 };
 
@@ -45,11 +45,11 @@ export function collectDeploymentData({
 }: {
   deployment: App | HelmRelease;
   ociRepository?: OCIRepository | null;
-  catalogEntitiesMap: { [deploymentName: string]: string };
+  catalogEntitiesMap: { [deploymentName: string]: Entity };
 }): DeploymentData {
   const chartName = findHelmChartName(deployment, ociRepository);
-  const entityRef = chartName ? catalogEntitiesMap[chartName] : undefined;
-  const app = entityRef ? parseEntityRef(entityRef).name : undefined;
+  const entity = chartName ? catalogEntitiesMap[chartName] : undefined;
+  const app = entity ? entity.metadata.name : undefined;
 
   const version = getVersion(deployment);
   const attemptedVersion = getAttemptedVersion(deployment);
@@ -71,7 +71,7 @@ export function collectDeploymentData({
     chartName,
     apiVersion: deployment.getApiVersion(),
     labels: calculateDeploymentLabels(deployment),
-    entityRef,
+    entity,
     app,
   };
 }
