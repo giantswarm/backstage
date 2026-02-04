@@ -49,8 +49,6 @@
     "typescript": "~5.9.0"
   },
   "resolutions": {
-    "@backstage/core-app-api": "^1.19.4",
-    "@backstage/core-plugin-api": "^1.12.2",
     "@types/express": "^5",
     "@types/express-serve-static-core": "^5",
     "@types/react": "^18",
