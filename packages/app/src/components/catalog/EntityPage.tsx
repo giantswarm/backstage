@@ -34,6 +34,7 @@ import {
   EntityCircleCIContent,
   isCircleCIAvailable,
 } from '@backstage/plugin-circleci';
+import { EntityApiDefinitionCard } from '@backstage/plugin-api-docs';
 import { EntityGithubPullRequestsContent } from '@roadiehq/backstage-plugin-github-pull-requests';
 import {
   Entity,
@@ -378,6 +379,9 @@ const apiPage = (
         </Grid>
         <Grid item md={6} xs={12}>
           <EntityCatalogGraphCard variant="gridItem" height={400} />
+        </Grid>
+        <Grid item md={12}>
+          <EntityApiDefinitionCard />
         </Grid>
       </Grid>
     </EntityLayout.Route>

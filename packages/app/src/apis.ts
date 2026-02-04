@@ -16,6 +16,12 @@ import {
   microsoftAuthApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
+import { ApiEntity } from '@backstage/catalog-model';
+import {
+  apiDocsConfigRef,
+  defaultDefinitionWidgets,
+} from '@backstage/plugin-api-docs';
+import { crdApiWidget } from '@terasky/backstage-plugin-api-docs-module-crd';
 import {
   createFetchApi,
   FetchMiddlewares,
@@ -42,6 +48,21 @@ import {
 import ErrorReporter from './utils/ErrorReporter';
 
 export const apis: AnyApiFactory[] = [
+  createApiFactory({
+    api: apiDocsConfigRef,
+    deps: {},
+    factory: () => {
+      const definitionWidgets = defaultDefinitionWidgets();
+      definitionWidgets.push(crdApiWidget);
+      return {
+        getApiDefinitionWidget: (apiEntity: ApiEntity) => {
+          return definitionWidgets.find(
+            (d: { type: string }) => d.type === apiEntity.spec.type,
+          );
+        },
+      };
+    },
+  }),
   createApiFactory({
     api: errorReporterApiRef,
     deps: {},
