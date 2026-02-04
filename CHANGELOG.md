@@ -13,6 +13,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Update Backstage from 1.43.3 to 1.47.3 with Node.js 22/24 support, Jest 30 compatibility, and various plugin updates.
 
+See [./docs/releases/v0.102.0-changelog.md](./docs/releases/v0.102.0-changelog.md) for more information.
+
 ## [0.101.2] - 2026-02-03
 
 ### Added
