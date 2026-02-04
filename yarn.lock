@@ -20,14 +20,14 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/anthropic@npm:^3.0.23":
-  version: 3.0.35
-  resolution: "@ai-sdk/anthropic@npm:3.0.35"
+  version: 3.0.36
+  resolution: "@ai-sdk/anthropic@npm:3.0.36"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.7"
     "@ai-sdk/provider-utils": "npm:4.0.13"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/33c581a6606aa40a99bc9acff752225a7a35d83ce278d37cfc26ae100eae58c5c8e3b13a3cdf8dc57d3b11cf5f85ec889a436d1a211c653510d4e7ef0db509f5
+  checksum: 10c0/63b7dfa2403487a8a2bb96f52979248092d65321c7c95caf83e43cf213aa343a1d67dc133df2df754aa8cf3072da119c4c2833f4c6c06095a9b49cd0a8da78da
   languageName: node
   linkType: hard
 
