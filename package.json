@@ -24,7 +24,8 @@
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new",
     "postinstall": "yarn patch-package",
-    "release": "yarn changeset version && yarn install --no-immutable && ts-node scripts/prepare-release.ts && yarn prettier --write --log-level silent '{packages,plugins}/*/{package.json,CHANGELOG.md}' 'docs/releases/*.md' './{package.json,CHANGELOG.md}'"
+    "release": "yarn changeset version && yarn install --no-immutable && ts-node scripts/prepare-release.ts && yarn prettier --write --log-level silent '{packages,plugins}/*/{package.json,CHANGELOG.md}' 'docs/releases/*.md' './{package.json,CHANGELOG.md}'",
+    "prepare": "husky"
   },
   "workspaces": {
     "packages": [
@@ -39,6 +40,8 @@
     "@playwright/test": "^1.32.3",
     "concurrently": "^9.0.0",
     "env-cmd": "^11.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "node-gyp": "^11.0.0",
     "prettier": "^3.0.0",
     "ts-node": "^10.9.2",
