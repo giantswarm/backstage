@@ -18,8 +18,10 @@ import { formatSource } from '../../utils/helpers';
 import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
+import { stringifyEntityRef } from '@backstage/catalog-model';
 
 export const DeploymentColumns = {
+  app: 'entityRef',
   name: 'name',
   installationName: 'installationName',
   clusterName: 'clusterName',
@@ -78,15 +80,18 @@ export const getInitialColumns = ({
     },
     {
       title: 'App',
-      field: 'entityRef',
+      field: DeploymentColumns.app,
       hidden: context === 'catalog-entity',
       render: row => {
-        return row.entityRef ? (
-          <EntityRefLink entityRef={row.entityRef} />
+        return row.entity ? (
+          <EntityRefLink entityRef={row.entity} />
         ) : (
           <NotAvailable />
         );
       },
+      ...sortAndFilterOptions(row =>
+        row.entity ? stringifyEntityRef(row.entity) : '',
+      ),
       cellStyle: {
         overflow: 'hidden',
         whiteSpace: 'nowrap',
