@@ -3,7 +3,7 @@
   "version": "0.101.2",
   "private": true,
   "engines": {
-    "node": "20 || 22 || 24"
+    "node": "22 || 24"
   },
   "scripts": {
     "start": "yarn env-cmd yarn backstage-cli repo start",
@@ -37,10 +37,14 @@
     "@backstage/cli": "backstage:^",
     "@backstage/e2e-test-utils": "backstage:^",
     "@changesets/cli": "^2.27.8",
+    "@jest/environment-jsdom-abstract": "^30.0.0",
     "@playwright/test": "^1.32.3",
+    "@types/jest": "^30.0.0",
     "concurrently": "^9.0.0",
     "env-cmd": "^11.0.0",
     "husky": "^9.1.7",
+    "jest": "^30.2.0",
+    "jsdom": "^27.1.0",
     "lint-staged": "^16.2.7",
     "node-gyp": "^11.0.0",
     "prettier": "^3.0.0",
@@ -48,6 +52,9 @@
     "typescript": "~5.9.0"
   },
   "resolutions": {
+    "@backstage/core-app-api": "backstage:^",
+    "@types/express": "^5",
+    "@types/express-serve-static-core": "^5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "isolated-vm": "^6.0.2",
