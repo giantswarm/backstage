@@ -24,6 +24,7 @@ export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/Dis
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
+export { createCustomEntityPresentationRenderer as createGSEntityPresentationRenderer } from './apis/entityPresentation';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
 export { CustomFluxPage as GSCustomFluxPage } from './components/flux/CustomFluxPage';
 export { EntityAppDeploymentCard as EntityGSAppDeploymentCard } from './components/catalog/EntityAppDeploymentCard';
@@ -35,6 +36,7 @@ export { ProviderSettings as GSProviderSettings } from './components/ProviderSet
 export { MainMenu as GSMainMenu } from './components/MainMenu';
 export { FeatureEnabled as GSFeatureEnabled } from './components/FeatureEnabled';
 export {
+  getIconUrlFromEntity as getGSIconUrlFromEntity,
   isEntityDeploymentsAvailable as isEntityGSDeploymentsAvailable,
   isEntityLatestReleaseAvailable as isEntityGSLatestReleaseAvailable,
   isEntityHelmChartsAvailable as isEntityGSHelmChartsAvailable,

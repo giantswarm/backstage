@@ -1,6 +1,5 @@
 import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
-import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { Box, Typography } from '@material-ui/core';
 import {
   getHelmChartsAppVersionsFromEntity,
@@ -51,45 +50,6 @@ export function autoWidthColumn<T extends TableColumn<any>>(column: T) {
 }
 
 export const columnFactories = Object.freeze({
-  createNameColumnWithIcon(options?: {
-    defaultKind?: string;
-  }): TableColumn<CatalogTableRow> {
-    return {
-      title: 'Name',
-      field: 'resolved.name',
-      highlight: true,
-      defaultSort: 'asc',
-      customFilterAndSearch: (query, row) =>
-        row.resolved.name
-          .toLocaleUpperCase('en-US')
-          .includes(query.toLocaleUpperCase('en-US')),
-      render: ({ entity }) => {
-        const iconUrl = entity.metadata.annotations?.['giantswarm.io/icon-url'];
-
-        return (
-          <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-            {iconUrl && (
-              <img
-                src={iconUrl}
-                alt=""
-                style={{
-                  width: 20,
-                  height: 20,
-                  objectFit: 'contain',
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            <EntityRefLink
-              entityRef={entity}
-              defaultKind={options?.defaultKind}
-              hideIcon={Boolean(iconUrl)}
-            />
-          </Box>
-        );
-      },
-    };
-  },
   createDescriptionColumn(): TableColumn<CatalogTableRow> {
     return {
       title: 'Description',

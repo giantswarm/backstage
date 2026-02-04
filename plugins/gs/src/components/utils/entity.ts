@@ -3,6 +3,7 @@ import { formatVersion } from './helpers';
 import { parseChartRef } from './parseChartRef';
 
 export const GS_DEPLOYMENT_NAMES = 'giantswarm.io/deployment-names';
+export const GS_ICON_URL = 'giantswarm.io/icon-url';
 export const GS_INGRESS_HOST = 'giantswarm.io/ingress-host';
 export const GS_GRAFANA_DASHBOARD = 'giantswarm.io/grafana-dashboard';
 export const GS_HELMCHART_APP_VERSIONS = 'giantswarm.io/helmchart-app-versions';
@@ -30,6 +31,10 @@ export const getSourceLocationFromEntity = (entity: Entity) => {
   return location && location.startsWith('url:')
     ? location.replace(/^url:/, '')
     : location;
+};
+
+export const getIconUrlFromEntity = (entity: Entity) => {
+  return entity.metadata.annotations?.[GS_ICON_URL];
 };
 
 export const getIngressHostFromEntity = (entity: Entity) => {
