@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add ability to render APIs of type CRD.
+
+### Changed
+
+- Update Backstage from 1.43.3 to 1.47.3 with Node.js 22/24 support, Jest 30 compatibility, and various plugin updates.
+
 ## [0.101.2] - 2026-02-03
 
 ### Added
