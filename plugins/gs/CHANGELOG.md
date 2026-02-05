@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.53.0
+
+### Minor Changes
+
+- 7cc2c17: Show icon for entities if giantswarm.io/icon-url annotation is given
+
 ## 0.52.1
 
 ### Patch Changes

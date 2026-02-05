@@ -5,10 +5,13 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
-## [0.102.0] - 2026-02-04
+See [./docs/releases/v0.102.0-changelog.md](./docs/releases/v0.102.0-changelog.md) for more information.
+
+## [0.102.0] - 2026-02-05
 
 ### Added
 
+- Show icon for entities if `giantswarm.io/icon-url` annotation is given.
 - Add ability to render APIs of type CRD.
 
 ### Changed
@@ -1837,7 +1840,6 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 [Unreleased]: https://github.com/giantswarm/backstage/compare/v0.102.0...HEAD
 [0.102.0]: https://github.com/giantswarm/backstage/compare/v0.101.2...v0.102.0
 [0.101.2]: https://github.com/giantswarm/backstage/compare/v0.101.1...v0.101.2
-[0.101.1]: https://github.com/giantswarm/backstage/compare/v0.101.1...v0.101.1
 [0.101.1]: https://github.com/giantswarm/backstage/compare/v0.101.0...v0.101.1
 [0.101.0]: https://github.com/giantswarm/backstage/compare/v0.100.0...v0.101.0
 [0.100.0]: https://github.com/giantswarm/backstage/compare/v0.99.0...v0.100.0
