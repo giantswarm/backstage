@@ -203,6 +203,71 @@ Use `@backstage/core-components` Table with the following patterns:
    - `semverCompareSort()` - Version sorting
    - `sortAndFilterOptions()` - Custom sort and filter
 
+### Kubernetes Resource Classes
+
+Resource classes in `plugins/kubernetes-react/src/lib/k8s/` wrap Kubernetes CRDs.
+
+#### New Resources: Use Latest Version Only
+
+When creating a new resource class, use only the latest available API version:
+
+```typescript
+import { crds } from '@giantswarm/k8s-types';
+import { KubeObject } from './KubeObject';
+
+type MyResourceInterface = crds.mygroup.v1.MyResource;
+
+export class MyResource extends KubeObject<MyResourceInterface> {
+  static readonly supportedVersions = ['v1'] as const;
+  static readonly group = 'mygroup.example.io';
+  static readonly kind = 'MyResource' as const;
+  static readonly plural = 'myresources';
+}
+```
+
+#### Multi-Version Resources (when backward compatibility needed)
+
+For resources that must support multiple API versions:
+
+```typescript
+// 1. Define version-specific types - ONLY versions in @giantswarm/k8s-types
+type MyResourceV1Beta1 = crds.mygroup.v1beta1.MyResource;
+type MyResourceV1Beta2 = crds.mygroup.v1beta2.MyResource;
+
+// 2. Version map (source of truth)
+type MyResourceVersions = {
+  'v1beta1': MyResourceV1Beta1;
+  'v1beta2': MyResourceV1Beta2;
+};
+
+// 3. Interface is union
+type MyResourceInterface = MyResourceVersions[keyof MyResourceVersions];
+
+export class MyResource extends KubeObject<MyResourceInterface> {
+  // 4. satisfies provides compile-time enforcement
+  static readonly supportedVersions = ['v1beta1', 'v1beta2'] as const
+    satisfies readonly (keyof MyResourceVersions)[];
+
+  // 5. REQUIRED: Type guards for each supported version
+  isV1Beta1(): this is MyResource & { jsonData: MyResourceV1Beta1 } {
+    return this.getApiVersionSuffix() === 'v1beta1';
+  }
+
+  isV1Beta2(): this is MyResource & { jsonData: MyResourceV1Beta2 } {
+    return this.getApiVersionSuffix() === 'v1beta2';
+  }
+}
+```
+
+**Rules:**
+
+- For NEW resources: Use only the latest available API version
+- NEVER add a version to `supportedVersions` without a corresponding type in `@giantswarm/k8s-types`
+- Multi-version resources MUST use a version map with `satisfies` for compile-time safety
+- Multi-version resources MUST have type guard methods (`isV1Beta1()`, etc.) for each version
+- Check available types: `node_modules/@giantswarm/k8s-types/dist/types/crds/`
+- Reference: `plugins/kubernetes-react/src/lib/k8s/capi/Cluster.ts`
+
 ### Naming Conventions
 
 - Components: PascalCase (e.g., `GSClustersPage`, `EntityGSDeploymentsContent`)
