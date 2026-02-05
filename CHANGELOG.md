@@ -5,14 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
-See [./docs/releases/v0.103.1-changelog.md](./docs/releases/v0.103.1-changelog.md) for more information.
-
 ## [0.103.1] - 2026-02-05
 
 ### Fixed
 
 - Fix markdown styling in AI chat for inline code elements and list items.
 - Fix EntityHeaderIcon selector to work in production builds.
+
+See [./docs/releases/v0.103.1-changelog.md](./docs/releases/v0.103.1-changelog.md) for more information.
 
 ## [0.103.0] - 2026-02-05
 
