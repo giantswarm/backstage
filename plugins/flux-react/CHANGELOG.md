@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.8.0
+
+### Minor Changes
+
+- 3e3dd4c: Add support for ImageRepository, ImagePolicy, and ImageUpdateAutomation
+
+### Patch Changes
+
+- Updated dependencies [b4b5fc2]
+- Updated dependencies [3e3dd4c]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.10.0
+
 ## 0.7.1
 
 ### Patch Changes
