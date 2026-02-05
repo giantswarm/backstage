@@ -16,6 +16,40 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Box } from '@material-ui/core';
 
+type ReadyCondition = {
+  status: string;
+  lastTransitionTime?: string;
+  message?: string;
+};
+
+function addStatusMetadata(
+  metadata: Record<string, any>,
+  readyCondition: ReadyCondition | undefined,
+) {
+  if (readyCondition) {
+    if (readyCondition.status === 'False') {
+      metadata.Status = (
+        <>
+          Last reconciliation failed{' '}
+          <DateComponent value={readyCondition.lastTransitionTime} relative />
+        </>
+      );
+    } else {
+      metadata.Status = (
+        <>
+          Last reconciled{' '}
+          <DateComponent value={readyCondition.lastTransitionTime} relative />
+        </>
+      );
+    }
+    metadata.Message = (
+      <ConditionMessage message={readyCondition.message ?? ''} />
+    );
+  } else {
+    metadata.Status = 'Unknown';
+  }
+}
+
 const KustomizationMetadata = ({
   kustomization,
 }: {
@@ -147,26 +181,7 @@ const ImagePolicyMetadata = ({ imagePolicy }: { imagePolicy: ImagePolicy }) => {
     metadata['Latest Image'] = latestImage;
   }
 
-  if (readyCondition) {
-    if (readyCondition.status === 'False') {
-      metadata.Status = (
-        <>
-          Last reconciliation failed{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    } else {
-      metadata.Status = (
-        <>
-          Last reconciled{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    }
-    metadata.Message = <ConditionMessage message={readyCondition.message} />;
-  } else {
-    metadata.Status = 'Unknown';
-  }
+  addStatusMetadata(metadata, readyCondition);
 
   return (
     <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="110px" />
@@ -198,26 +213,7 @@ const ImageRepositoryMetadata = ({
     metadata['Tags Found'] = lastScanResult.tagCount;
   }
 
-  if (readyCondition) {
-    if (readyCondition.status === 'False') {
-      metadata.Status = (
-        <>
-          Last reconciliation failed{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    } else {
-      metadata.Status = (
-        <>
-          Last reconciled{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    }
-    metadata.Message = <ConditionMessage message={readyCondition.message} />;
-  } else {
-    metadata.Status = 'Unknown';
-  }
+  addStatusMetadata(metadata, readyCondition);
 
   return (
     <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="110px" />
@@ -248,26 +244,7 @@ const ImageUpdateAutomationMetadata = ({
     );
   }
 
-  if (readyCondition) {
-    if (readyCondition.status === 'False') {
-      metadata.Status = (
-        <>
-          Last reconciliation failed{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    } else {
-      metadata.Status = (
-        <>
-          Last reconciled{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    }
-    metadata.Message = <ConditionMessage message={readyCondition.message} />;
-  } else {
-    metadata.Status = 'Unknown';
-  }
+  addStatusMetadata(metadata, readyCondition);
 
   return (
     <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="110px" />
@@ -287,36 +264,48 @@ type ResourceMetadataProps = {
 };
 
 export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
+  const kind = resource.getKind();
+
+  const renderMetadata = () => {
+    switch (kind) {
+      case Kustomization.kind:
+        return (
+          <KustomizationMetadata kustomization={resource as Kustomization} />
+        );
+      case HelmRelease.kind:
+        return <HelmReleaseMetadata helmRelease={resource as HelmRelease} />;
+      case GitRepository.kind:
+      case OCIRepository.kind:
+      case HelmRepository.kind:
+        return (
+          <RepositoryMetadata
+            repository={
+              resource as GitRepository | OCIRepository | HelmRepository
+            }
+          />
+        );
+      case ImagePolicy.kind:
+        return <ImagePolicyMetadata imagePolicy={resource as ImagePolicy} />;
+      case ImageRepository.kind:
+        return (
+          <ImageRepositoryMetadata
+            imageRepository={resource as ImageRepository}
+          />
+        );
+      case ImageUpdateAutomation.kind:
+        return (
+          <ImageUpdateAutomationMetadata
+            imageUpdateAutomation={resource as ImageUpdateAutomation}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <Box mt={3} px={2}>
-      {resource.getKind() === Kustomization.kind ? (
-        <KustomizationMetadata kustomization={resource as Kustomization} />
-      ) : null}
-      {resource.getKind() === HelmRelease.kind ? (
-        <HelmReleaseMetadata helmRelease={resource as HelmRelease} />
-      ) : null}
-      {resource.getKind() === GitRepository.kind ||
-      resource.getKind() === OCIRepository.kind ||
-      resource.getKind() === HelmRepository.kind ? (
-        <RepositoryMetadata
-          repository={
-            resource as GitRepository | OCIRepository | HelmRepository
-          }
-        />
-      ) : null}
-      {resource.getKind() === ImagePolicy.kind ? (
-        <ImagePolicyMetadata imagePolicy={resource as ImagePolicy} />
-      ) : null}
-      {resource.getKind() === ImageRepository.kind ? (
-        <ImageRepositoryMetadata
-          imageRepository={resource as ImageRepository}
-        />
-      ) : null}
-      {resource.getKind() === ImageUpdateAutomation.kind ? (
-        <ImageUpdateAutomationMetadata
-          imageUpdateAutomation={resource as ImageUpdateAutomation}
-        />
-      ) : null}
+      {renderMetadata()}
     </Box>
   );
 };
