@@ -4,7 +4,7 @@ import { FluxObject } from './FluxObject';
 type ImageUpdateAutomationInterface = crds.fluxcd.v1.ImageUpdateAutomation;
 
 export class ImageUpdateAutomation extends FluxObject<ImageUpdateAutomationInterface> {
-  static readonly supportedVersions = ['v1beta1', 'v1beta2', 'v1'] as const;
+  static readonly supportedVersions = ['v1'] as const;
   static readonly group = 'image.toolkit.fluxcd.io';
   static readonly kind = 'ImageUpdateAutomation' as const;
   static readonly plural = 'imageupdateautomations';
