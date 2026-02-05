@@ -5,6 +5,9 @@ import {
   HelmRelease,
   GitRepository,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   OCIRepository,
   Kustomization,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -43,6 +46,9 @@ export const SelectedResourceDrawer = ({
   gitRepositories,
   ociRepositories,
   helmRepositories,
+  imagePolicies,
+  imageRepositories,
+  imageUpdateAutomations,
   treeBuilder,
   isLoadingResources,
   onClose,
@@ -58,6 +64,9 @@ export const SelectedResourceDrawer = ({
   gitRepositories: GitRepository[];
   ociRepositories: OCIRepository[];
   helmRepositories: HelmRepository[];
+  imagePolicies: ImagePolicy[];
+  imageRepositories: ImageRepository[];
+  imageUpdateAutomations: ImageUpdateAutomation[];
   treeBuilder?: KustomizationTreeBuilder;
   isLoadingResources: boolean;
   onClose: () => void;
@@ -71,6 +80,7 @@ export const SelectedResourceDrawer = ({
     if (selectedResourceRef.kind === Kustomization.kind.toLowerCase()) {
       return kustomizations.find(
         k =>
+          k.cluster === selectedResourceRef.cluster &&
           k.getNamespace() === selectedResourceRef.namespace &&
           k.getName() === selectedResourceRef.name,
       );
@@ -79,6 +89,7 @@ export const SelectedResourceDrawer = ({
     if (selectedResourceRef.kind === HelmRelease.kind.toLowerCase()) {
       return helmReleases.find(
         h =>
+          h.cluster === selectedResourceRef.cluster &&
           h.getNamespace() === selectedResourceRef.namespace &&
           h.getName() === selectedResourceRef.name,
       );
@@ -87,6 +98,7 @@ export const SelectedResourceDrawer = ({
     if (selectedResourceRef.kind === GitRepository.kind.toLowerCase()) {
       return gitRepositories.find(
         r =>
+          r.cluster === selectedResourceRef.cluster &&
           r.getNamespace() === selectedResourceRef.namespace &&
           r.getName() === selectedResourceRef.name,
       );
@@ -95,6 +107,7 @@ export const SelectedResourceDrawer = ({
     if (selectedResourceRef.kind === OCIRepository.kind.toLowerCase()) {
       return ociRepositories.find(
         r =>
+          r.cluster === selectedResourceRef.cluster &&
           r.getNamespace() === selectedResourceRef.namespace &&
           r.getName() === selectedResourceRef.name,
       );
@@ -103,8 +116,36 @@ export const SelectedResourceDrawer = ({
     if (selectedResourceRef.kind === HelmRepository.kind.toLowerCase()) {
       return helmRepositories.find(
         r =>
+          r.cluster === selectedResourceRef.cluster &&
           r.getNamespace() === selectedResourceRef.namespace &&
           r.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === ImagePolicy.kind.toLowerCase()) {
+      return imagePolicies.find(
+        p =>
+          p.cluster === selectedResourceRef.cluster &&
+          p.getNamespace() === selectedResourceRef.namespace &&
+          p.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === ImageRepository.kind.toLowerCase()) {
+      return imageRepositories.find(
+        r =>
+          r.cluster === selectedResourceRef.cluster &&
+          r.getNamespace() === selectedResourceRef.namespace &&
+          r.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === ImageUpdateAutomation.kind.toLowerCase()) {
+      return imageUpdateAutomations.find(
+        a =>
+          a.cluster === selectedResourceRef.cluster &&
+          a.getNamespace() === selectedResourceRef.namespace &&
+          a.getName() === selectedResourceRef.name,
       );
     }
 
@@ -116,6 +157,9 @@ export const SelectedResourceDrawer = ({
     gitRepositories,
     ociRepositories,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
   ]);
 
   // const prevActiveCluster = useRef(activeCluster);
@@ -156,6 +200,7 @@ export const SelectedResourceDrawer = ({
             allGitRepositories={gitRepositories}
             allOCIRepositories={ociRepositories}
             allHelmRepositories={helmRepositories}
+            allImageRepositories={imageRepositories}
             isLoadingResources={isLoadingResources}
           />
         ) : null}

@@ -2,6 +2,9 @@ import {
   GitRepository,
   HelmRelease,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -25,7 +28,10 @@ export type KustomizationTreeNodeData = {
     | HelmRelease
     | GitRepository
     | OCIRepository
-    | HelmRepository;
+    | HelmRepository
+    | ImagePolicy
+    | ImageRepository
+    | ImageUpdateAutomation;
   hasChildren: boolean;
   hasChildrenInCompactView: boolean;
 };
@@ -44,6 +50,10 @@ export class KustomizationTreeBuilder {
   private gitRepositories: Map<string, GitRepository> = new Map();
   private ociRepositories: Map<string, OCIRepository> = new Map();
   private helmRepositories: Map<string, HelmRepository> = new Map();
+  private imagePolicies: Map<string, ImagePolicy> = new Map();
+  private imageRepositories: Map<string, ImageRepository> = new Map();
+  private imageUpdateAutomations: Map<string, ImageUpdateAutomation> =
+    new Map();
 
   constructor(
     kustomizations: Kustomization[],
@@ -51,6 +61,9 @@ export class KustomizationTreeBuilder {
     gitRepositories: GitRepository[],
     ociRepositories: OCIRepository[],
     helmRepositories: HelmRepository[],
+    imagePolicies: ImagePolicy[] = [],
+    imageRepositories: ImageRepository[] = [],
+    imageUpdateAutomations: ImageUpdateAutomation[] = [],
   ) {
     kustomizations.forEach(k => {
       const key = this.getKey(k.getName(), k.getNamespace());
@@ -83,10 +96,47 @@ export class KustomizationTreeBuilder {
       const key = this.getKey(h.getName(), h.getNamespace());
       this.helmRepositories.set(key, h);
     });
+
+    imagePolicies.forEach(p => {
+      const key = this.getKey(p.getName(), p.getNamespace());
+      this.imagePolicies.set(key, p);
+    });
+
+    imageRepositories.forEach(r => {
+      const key = this.getKey(r.getName(), r.getNamespace());
+      this.imageRepositories.set(key, r);
+    });
+
+    imageUpdateAutomations.forEach(a => {
+      const key = this.getKey(a.getName(), a.getNamespace());
+      this.imageUpdateAutomations.set(key, a);
+    });
   }
 
   private getKey(name: string, namespace?: string): string {
     return namespace ? `${namespace}/${name}` : name;
+  }
+
+  private findImagePoliciesForRepository(
+    imageRepository: ImageRepository,
+  ): ImagePolicy[] {
+    const repoName = imageRepository.getName();
+    const repoNamespace = imageRepository.getNamespace();
+    const repoCluster = imageRepository.cluster;
+
+    return Array.from(this.imagePolicies.values()).filter(policy => {
+      if (policy.cluster !== repoCluster) {
+        return false;
+      }
+
+      const ref = policy.getImageRepositoryRef();
+      if (!ref) {
+        return false;
+      }
+
+      const refNamespace = ref.namespace ?? policy.getNamespace();
+      return ref.name === repoName && refNamespace === repoNamespace;
+    });
   }
 
   private findRoots(): Kustomization[] {
@@ -202,57 +252,128 @@ export class KustomizationTreeBuilder {
 
     // Find children - kustomizations that depend on this one
     const childResources = this.sortChildResources(this.findChildren(key));
-    const children: KustomizationTreeNode[] = childResources.map(child => {
-      if (child.kind === Kustomization.kind) {
-        const childKustomizationKey = this.getKey(child.name, child.namespace);
-        const childKustomization = this.kustomizations.get(
-          childKustomizationKey,
-        );
-        if (childKustomization) {
-          return this.buildSubtree(childKustomization, new Set(visited));
-        }
+
+    // Filter out ImagePolicies that have a parent ImageRepository in the same inventory
+    // (they will be shown as children of the ImageRepository instead)
+    const filteredChildResources = childResources.filter(child => {
+      if (child.kind !== ImagePolicy.kind) {
+        return true;
       }
 
-      let childResource:
-        | HelmRelease
-        | HelmRepository
-        | GitRepository
-        | OCIRepository
-        | undefined;
       const childKey = this.getKey(child.name, child.namespace);
-      if (child.kind === HelmRelease.kind) {
-        childResource = this.helmReleases.get(childKey);
-      }
-      if (child.kind === HelmRepository.kind) {
-        childResource = this.helmRepositories.get(childKey);
-      }
-      if (child.kind === GitRepository.kind) {
-        childResource = this.gitRepositories.get(childKey);
-      }
-      if (child.kind === OCIRepository.kind) {
-        childResource = this.ociRepositories.get(childKey);
+      const imagePolicy = this.imagePolicies.get(childKey);
+      if (!imagePolicy) {
+        return true;
       }
 
-      const targetCluster =
-        childResource instanceof HelmRelease
-          ? findTargetClusterName(childResource)
-          : undefined;
+      const ref = imagePolicy.getImageRepositoryRef();
+      if (!ref) {
+        return true;
+      }
 
-      return {
-        id: `${kustomization.cluster}-${child.kind}-${child.namespace}-${child.name}`,
-        nodeData: {
-          ...child,
-          label: child.name,
-          cluster: kustomization.cluster,
-          resource: childResource,
-          targetCluster,
-          hasChildren: false,
-          hasChildrenInCompactView: false,
-        },
-        children: [],
-        displayInCompactView: child.group.endsWith(COMPACT_GROUP),
-      };
+      // Check if the referenced ImageRepository is in the same inventory
+      const refNamespace = ref.namespace ?? imagePolicy.getNamespace();
+      const hasParentInInventory = childResources.some(
+        r =>
+          r.kind === ImageRepository.kind &&
+          r.name === ref.name &&
+          r.namespace === refNamespace,
+      );
+
+      // Filter out if parent ImageRepository is in inventory
+      return !hasParentInInventory;
     });
+
+    const children: KustomizationTreeNode[] = filteredChildResources.map(
+      child => {
+        if (child.kind === Kustomization.kind) {
+          const childKustomizationKey = this.getKey(
+            child.name,
+            child.namespace,
+          );
+          const childKustomization = this.kustomizations.get(
+            childKustomizationKey,
+          );
+          if (childKustomization) {
+            return this.buildSubtree(childKustomization, new Set(visited));
+          }
+        }
+
+        let childResource:
+          | HelmRelease
+          | HelmRepository
+          | GitRepository
+          | OCIRepository
+          | ImagePolicy
+          | ImageRepository
+          | ImageUpdateAutomation
+          | undefined;
+        const childKey = this.getKey(child.name, child.namespace);
+        if (child.kind === HelmRelease.kind) {
+          childResource = this.helmReleases.get(childKey);
+        }
+        if (child.kind === HelmRepository.kind) {
+          childResource = this.helmRepositories.get(childKey);
+        }
+        if (child.kind === GitRepository.kind) {
+          childResource = this.gitRepositories.get(childKey);
+        }
+        if (child.kind === OCIRepository.kind) {
+          childResource = this.ociRepositories.get(childKey);
+        }
+        if (child.kind === ImagePolicy.kind) {
+          childResource = this.imagePolicies.get(childKey);
+        }
+        if (child.kind === ImageRepository.kind) {
+          childResource = this.imageRepositories.get(childKey);
+        }
+        if (child.kind === ImageUpdateAutomation.kind) {
+          childResource = this.imageUpdateAutomations.get(childKey);
+        }
+
+        const targetCluster =
+          childResource instanceof HelmRelease
+            ? findTargetClusterName(childResource)
+            : undefined;
+
+        // For ImageRepository, find child ImagePolicies
+        let imageRepositoryChildren: KustomizationTreeNode[] = [];
+        if (childResource instanceof ImageRepository) {
+          const childPolicies =
+            this.findImagePoliciesForRepository(childResource);
+          imageRepositoryChildren = childPolicies.map(policy => ({
+            id: `${kustomization.cluster}-${ImagePolicy.kind}-${policy.getNamespace()}-${policy.getName()}`,
+            nodeData: {
+              label: policy.getName(),
+              kind: policy.getKind(),
+              name: policy.getName(),
+              namespace: policy.getNamespace(),
+              cluster: policy.cluster,
+              resource: policy,
+              hasChildren: false,
+              hasChildrenInCompactView: false,
+            },
+            children: [],
+            displayInCompactView: true,
+          }));
+        }
+
+        return {
+          id: `${kustomization.cluster}-${child.kind}-${child.namespace}-${child.name}`,
+          nodeData: {
+            ...child,
+            label: child.name,
+            cluster: kustomization.cluster,
+            resource: childResource,
+            targetCluster,
+            hasChildren: imageRepositoryChildren.length > 0,
+            hasChildrenInCompactView: imageRepositoryChildren.length > 0,
+          },
+          children: imageRepositoryChildren,
+          displayInCompactView: child.group.endsWith(COMPACT_GROUP),
+        };
+      },
+    );
 
     visited.delete(key);
 
@@ -282,7 +403,12 @@ export class KustomizationTreeBuilder {
   }
 
   findParentKustomization(
-    resource: Kustomization | HelmRelease,
+    resource:
+      | Kustomization
+      | HelmRelease
+      | ImageRepository
+      | ImagePolicy
+      | ImageUpdateAutomation,
   ): Kustomization | null {
     for (const [key, inventoryEntries] of this.inventories.entries()) {
       const matchingInventoryEntry = inventoryEntries?.find(

@@ -5,6 +5,9 @@ import {
   GitRepository,
   OCIRepository,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResources } from '../../hooks/useFluxResources';
@@ -26,6 +29,9 @@ export type FluxOverviewData = {
   gitRepositories: GitRepository[];
   ociRepositories: OCIRepository[];
   helmRepositories: HelmRepository[];
+  imagePolicies: ImagePolicy[];
+  imageRepositories: ImageRepository[];
+  imageUpdateAutomations: ImageUpdateAutomation[];
   isLoading: boolean;
   activeCluster: string | null;
   setActiveCluster: (cluster: string | null) => void;
@@ -82,6 +88,9 @@ export const FluxOverviewDataProvider = ({
       gitRepositories,
       ociRepositories,
       helmRepositories,
+      imagePolicies,
+      imageRepositories,
+      imageUpdateAutomations,
     },
     isLoading,
     errors,
@@ -100,6 +109,9 @@ export const FluxOverviewDataProvider = ({
       gitRepositories,
       ociRepositories,
       helmRepositories,
+      imagePolicies,
+      imageRepositories,
+      imageUpdateAutomations,
     );
 
     return { treeBuilder: builder, tree: builder.buildTree() };
@@ -109,6 +121,9 @@ export const FluxOverviewDataProvider = ({
     gitRepositories,
     ociRepositories,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
     isLoading,
   ]);
 
@@ -133,6 +148,9 @@ export const FluxOverviewDataProvider = ({
       gitRepositories,
       ociRepositories,
       helmRepositories,
+      imagePolicies,
+      imageRepositories,
+      imageUpdateAutomations,
       isLoading,
       activeCluster,
       setActiveCluster,
@@ -159,6 +177,9 @@ export const FluxOverviewDataProvider = ({
     gitRepositories,
     ociRepositories,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
     isLoading,
     activeCluster,
     resourceType,

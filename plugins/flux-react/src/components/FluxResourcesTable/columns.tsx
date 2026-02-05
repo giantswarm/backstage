@@ -16,6 +16,9 @@ import {
   GitRepository,
   OCIRepository,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   FluxResourceStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getResourceColorVariant } from '../../utils/getResourceColorVariant';
@@ -117,7 +120,10 @@ export const getInitialColumns = ({
             row.kind === HelmRelease.kind ||
             row.kind === GitRepository.kind ||
             row.kind === OCIRepository.kind ||
-            row.kind === HelmRepository.kind) &&
+            row.kind === HelmRepository.kind ||
+            row.kind === ImagePolicy.kind ||
+            row.kind === ImageRepository.kind ||
+            row.kind === ImageUpdateAutomation.kind) &&
           onClick
         ) {
           return (
