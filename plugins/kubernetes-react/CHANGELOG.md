@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.10.0
+
+### Minor Changes
+
+- b4b5fc2: Add v1 version support to OCIRepository and HelmRepository resources
+- 3e3dd4c: Add support for Flux ImagePolicy, ImageRepository, ImageUpdateAutomation
+
 ## 0.9.2
 
 ### Patch Changes
