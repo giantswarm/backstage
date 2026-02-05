@@ -19,14 +19,14 @@ export const EntityHeaderIcon = () => {
       return undefined;
     }
 
-    // Find the header's left items box and insert our container BEFORE it (as a sibling)
+    // Find the header's first child and insert our container BEFORE it
     const setupContainer = () => {
-      const leftItemsBox = document.querySelector(
-        '[class*="BackstageHeader-leftItemsBox"]',
-      );
-      if (!leftItemsBox || !leftItemsBox.parentNode) {
+      const header = document.querySelector('main > header');
+      if (!header || !header.firstElementChild) {
         return;
       }
+
+      const firstChild = header.firstElementChild;
 
       // Check if container already exists
       let container = document.getElementById(ICON_CONTAINER_ID);
@@ -35,8 +35,8 @@ export const EntityHeaderIcon = () => {
         container.id = ICON_CONTAINER_ID;
         // Use display:contents so this wrapper doesn't affect flex layout
         container.style.display = 'contents';
-        // Insert BEFORE the leftItemsBox (as a sibling in the parent flex container)
-        leftItemsBox.parentNode.insertBefore(container, leftItemsBox);
+        // Insert BEFORE the first child (as a sibling in the parent flex container)
+        header.insertBefore(container, firstChild);
       }
       containerRef.current = container as HTMLDivElement;
       setPortalContainer(container as HTMLDivElement);
