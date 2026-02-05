@@ -5,6 +5,9 @@ import {
   HelmRelease,
   GitRepository,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   OCIRepository,
   Kustomization,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -43,6 +46,9 @@ export const SelectedResourceDrawer = ({
   gitRepositories,
   ociRepositories,
   helmRepositories,
+  imagePolicies,
+  imageRepositories,
+  imageUpdateAutomations,
   treeBuilder,
   isLoadingResources,
   onClose,
@@ -58,6 +64,9 @@ export const SelectedResourceDrawer = ({
   gitRepositories: GitRepository[];
   ociRepositories: OCIRepository[];
   helmRepositories: HelmRepository[];
+  imagePolicies: ImagePolicy[];
+  imageRepositories: ImageRepository[];
+  imageUpdateAutomations: ImageUpdateAutomation[];
   treeBuilder?: KustomizationTreeBuilder;
   isLoadingResources: boolean;
   onClose: () => void;
@@ -108,6 +117,30 @@ export const SelectedResourceDrawer = ({
       );
     }
 
+    if (selectedResourceRef.kind === ImagePolicy.kind.toLowerCase()) {
+      return imagePolicies.find(
+        p =>
+          p.getNamespace() === selectedResourceRef.namespace &&
+          p.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === ImageRepository.kind.toLowerCase()) {
+      return imageRepositories.find(
+        r =>
+          r.getNamespace() === selectedResourceRef.namespace &&
+          r.getName() === selectedResourceRef.name,
+      );
+    }
+
+    if (selectedResourceRef.kind === ImageUpdateAutomation.kind.toLowerCase()) {
+      return imageUpdateAutomations.find(
+        a =>
+          a.getNamespace() === selectedResourceRef.namespace &&
+          a.getName() === selectedResourceRef.name,
+      );
+    }
+
     return undefined;
   }, [
     selectedResourceRef,
@@ -116,6 +149,9 @@ export const SelectedResourceDrawer = ({
     gitRepositories,
     ociRepositories,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
   ]);
 
   // const prevActiveCluster = useRef(activeCluster);
@@ -156,6 +192,7 @@ export const SelectedResourceDrawer = ({
             allGitRepositories={gitRepositories}
             allOCIRepositories={ociRepositories}
             allHelmRepositories={helmRepositories}
+            allImageRepositories={imageRepositories}
             isLoadingResources={isLoadingResources}
           />
         ) : null}

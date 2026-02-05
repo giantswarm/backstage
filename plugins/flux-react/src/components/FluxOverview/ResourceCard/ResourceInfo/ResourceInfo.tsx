@@ -5,6 +5,9 @@ import {
   GitRepository,
   OCIRepository,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ResourceHeading } from '../ResourceHeading';
 import { ResourceStatus } from '../ResourceStatus';
@@ -21,7 +24,10 @@ type ResourceInfoProps = {
     | HelmRelease
     | GitRepository
     | OCIRepository
-    | HelmRepository;
+    | HelmRepository
+    | ImagePolicy
+    | ImageRepository
+    | ImageUpdateAutomation;
   readyStatus: 'True' | 'False' | 'Unknown';
   isDependencyNotReady: boolean;
   isReconciling: boolean;

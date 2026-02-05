@@ -3,6 +3,9 @@ import {
   GitRepository,
   HelmRelease,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -106,7 +109,10 @@ type ResourceCardProps = {
     | HelmRelease
     | GitRepository
     | OCIRepository
-    | HelmRepository;
+    | HelmRepository
+    | ImagePolicy
+    | ImageRepository
+    | ImageUpdateAutomation;
   highlighted?: boolean;
   error?: boolean;
 };

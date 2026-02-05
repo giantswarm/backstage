@@ -3,6 +3,9 @@ import {
   GitRepository,
   HelmRelease,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
   useResources,
@@ -26,6 +29,11 @@ export function useFluxResources(clusters: string | string[] | null) {
   const [gitRepositoriesEnabled, setGitRepositoriesEnabled] = useState(true);
   const [ociRepositoriesEnabled, setOciRepositoriesEnabled] = useState(true);
   const [helmRepositoriesEnabled, setHelmRepositoriesEnabled] = useState(true);
+  const [imagePoliciesEnabled, setImagePoliciesEnabled] = useState(true);
+  const [imageRepositoriesEnabled, setImageRepositoriesEnabled] =
+    useState(true);
+  const [imageUpdateAutomationsEnabled, setImageUpdateAutomationsEnabled] =
+    useState(true);
 
   const {
     resources: kustomizations,
@@ -97,6 +105,48 @@ export function useFluxResources(clusters: string | string[] | null) {
     },
   );
 
+  const {
+    resources: imagePolicies,
+    isLoading: isLoadingImagePolicies,
+    errors: imagePoliciesErrors,
+  } = useResources(
+    clusters!,
+    ImagePolicy,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && imagePoliciesEnabled,
+    },
+  );
+
+  const {
+    resources: imageRepositories,
+    isLoading: isLoadingImageRepositories,
+    errors: imageRepositoriesErrors,
+  } = useResources(
+    clusters!,
+    ImageRepository,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && imageRepositoriesEnabled,
+    },
+  );
+
+  const {
+    resources: imageUpdateAutomations,
+    isLoading: isLoadingImageUpdateAutomations,
+    errors: imageUpdateAutomationsErrors,
+  } = useResources(
+    clusters!,
+    ImageUpdateAutomation,
+    {},
+    {
+      refetchInterval,
+      enabled: Boolean(clusters) && imageUpdateAutomationsEnabled,
+    },
+  );
+
   useEffect(() => {
     if (kustomizationsErrors.some(isNotFoundError)) {
       setKustomizationsEnabled(false);
@@ -117,12 +167,27 @@ export function useFluxResources(clusters: string | string[] | null) {
     if (helmRepositoriesErrors.some(isNotFoundError)) {
       setHelmRepositoriesEnabled(false);
     }
+
+    if (imagePoliciesErrors.some(isNotFoundError)) {
+      setImagePoliciesEnabled(false);
+    }
+
+    if (imageRepositoriesErrors.some(isNotFoundError)) {
+      setImageRepositoriesEnabled(false);
+    }
+
+    if (imageUpdateAutomationsErrors.some(isNotFoundError)) {
+      setImageUpdateAutomationsEnabled(false);
+    }
   }, [
     kustomizationsErrors,
     helmReleasesErrors,
     gitRepositoriesErrors,
     ociRepositoriesErrors,
     helmRepositoriesErrors,
+    imagePoliciesErrors,
+    imageRepositoriesErrors,
+    imageUpdateAutomationsErrors,
   ]);
 
   const isLoading =
@@ -130,7 +195,10 @@ export function useFluxResources(clusters: string | string[] | null) {
     isLoadingHelmReleases ||
     isLoadingGitRepositories ||
     isLoadingOciRepositories ||
-    isLoadingHelmRepositories;
+    isLoadingHelmRepositories ||
+    isLoadingImagePolicies ||
+    isLoadingImageRepositories ||
+    isLoadingImageUpdateAutomations;
 
   const errors = useMemo(() => {
     return [
@@ -139,6 +207,9 @@ export function useFluxResources(clusters: string | string[] | null) {
       ...gitRepositoriesErrors,
       ...helmRepositoriesErrors,
       ...ociRepositoriesErrors,
+      ...imagePoliciesErrors,
+      ...imageRepositoriesErrors,
+      ...imageUpdateAutomationsErrors,
     ].filter(errorInfo => !isNotFoundError(errorInfo));
   }, [
     kustomizationsErrors,
@@ -146,10 +217,17 @@ export function useFluxResources(clusters: string | string[] | null) {
     gitRepositoriesErrors,
     helmRepositoriesErrors,
     ociRepositoriesErrors,
+    imagePoliciesErrors,
+    imageRepositoriesErrors,
+    imageUpdateAutomationsErrors,
   ]);
 
   useEffect(() => {
-    const reconciling = kustomizations.some(k => k.isReconciling());
+    const reconciling =
+      kustomizations.some(k => k.isReconciling()) ||
+      imagePolicies.some(p => p.isReconciling()) ||
+      imageRepositories.some(r => r.isReconciling()) ||
+      imageUpdateAutomations.some(a => a.isReconciling());
 
     const newInterval = reconciling
       ? RECONCILING_INTERVAL
@@ -160,12 +238,18 @@ export function useFluxResources(clusters: string | string[] | null) {
     }
   }, [
     kustomizations,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
     refetchInterval,
     kustomizationsErrors,
     helmReleasesErrors,
     gitRepositoriesErrors,
     helmRepositoriesErrors,
     ociRepositoriesErrors,
+    imagePoliciesErrors,
+    imageRepositoriesErrors,
+    imageUpdateAutomationsErrors,
   ]);
 
   return useMemo(() => {
@@ -176,6 +260,9 @@ export function useFluxResources(clusters: string | string[] | null) {
         gitRepositories,
         ociRepositories,
         helmRepositories,
+        imagePolicies,
+        imageRepositories,
+        imageUpdateAutomations,
       },
       isLoading,
       errors,
@@ -185,6 +272,9 @@ export function useFluxResources(clusters: string | string[] | null) {
     gitRepositories,
     helmReleases,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
     isLoading,
     kustomizations,
     ociRepositories,

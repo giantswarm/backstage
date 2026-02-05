@@ -3,6 +3,9 @@ import {
   GitRepository,
   HelmRelease,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -11,6 +14,7 @@ import { KustomizationDetails } from '../KustomizationDetails';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
 import { RepositoryDetails } from '../RepositoryDetails';
+import { ImageAutomationDetails } from '../ImageAutomationDetails';
 
 type DetailsProps = {
   resourceRef: {
@@ -24,12 +28,16 @@ type DetailsProps = {
     | HelmRelease
     | GitRepository
     | OCIRepository
-    | HelmRepository;
+    | HelmRepository
+    | ImagePolicy
+    | ImageRepository
+    | ImageUpdateAutomation;
   allKustomizations: Kustomization[];
   allHelmReleases: HelmRelease[];
   allGitRepositories: GitRepository[];
   allOCIRepositories: OCIRepository[];
   allHelmRepositories: HelmRepository[];
+  allImageRepositories: ImageRepository[];
   treeBuilder?: KustomizationTreeBuilder;
   isLoadingResources: boolean;
 };
@@ -42,6 +50,7 @@ export const Details = ({
   allGitRepositories,
   allOCIRepositories,
   allHelmRepositories,
+  allImageRepositories,
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
@@ -62,6 +71,12 @@ export const Details = ({
       resourceKindName = 'OCIRepository';
     } else if (resourceRef.kind === HelmRepository.kind.toLowerCase()) {
       resourceKindName = 'HelmRepository';
+    } else if (resourceRef.kind === ImagePolicy.kind.toLowerCase()) {
+      resourceKindName = 'ImagePolicy';
+    } else if (resourceRef.kind === ImageRepository.kind.toLowerCase()) {
+      resourceKindName = 'ImageRepository';
+    } else if (resourceRef.kind === ImageUpdateAutomation.kind.toLowerCase()) {
+      resourceKindName = 'ImageUpdateAutomation';
     }
 
     return (
@@ -108,6 +123,17 @@ export const Details = ({
           }
           allKustomizations={allKustomizations}
           allHelmReleases={allHelmReleases}
+        />
+      )}
+      {(resource.getKind() === ImagePolicy.kind ||
+        resource.getKind() === ImageRepository.kind ||
+        resource.getKind() === ImageUpdateAutomation.kind) && (
+        <ImageAutomationDetails
+          resource={
+            resource as ImagePolicy | ImageRepository | ImageUpdateAutomation
+          }
+          allImageRepositories={allImageRepositories}
+          treeBuilder={treeBuilder}
         />
       )}
     </Box>

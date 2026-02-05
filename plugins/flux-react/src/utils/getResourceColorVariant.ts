@@ -15,6 +15,18 @@ export function getResourceColorVariant(kind: string) {
     case 'Kustomization':
       variant = 'orange';
       break;
+    case 'OCIRepository':
+      variant = 'teal';
+      break;
+    case 'ImagePolicy':
+      variant = 'green';
+      break;
+    case 'ImageRepository':
+      variant = 'yellow';
+      break;
+    case 'ImageUpdateAutomation':
+      variant = 'brown';
+      break;
 
     default:
       variant = 'gray';

@@ -10,6 +10,9 @@ import {
   GitRepository,
   OCIRepository,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   FixedSizeTree as Tree,
@@ -124,7 +127,10 @@ const Node = ({
     data.kind === HelmRelease.kind ||
     data.kind === GitRepository.kind ||
     data.kind === OCIRepository.kind ||
-    data.kind === HelmRepository.kind;
+    data.kind === HelmRepository.kind ||
+    data.kind === ImagePolicy.kind ||
+    data.kind === ImageRepository.kind ||
+    data.kind === ImageUpdateAutomation.kind;
 
   return (
     <div

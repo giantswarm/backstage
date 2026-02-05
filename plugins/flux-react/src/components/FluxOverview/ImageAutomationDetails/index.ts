@@ -1,0 +1,1 @@
+export { ImageAutomationDetails } from './ImageAutomationDetails';

@@ -3,6 +3,9 @@ import {
   HelmRelease,
   GitRepository,
   HelmRepository,
+  ImagePolicy,
+  ImageRepository,
+  ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
   useShowErrors,
@@ -39,6 +42,9 @@ export type FluxResourcesData = FiltersData<DefaultFluxResourceFilters> & {
   gitRepositories: GitRepository[];
   ociRepositories: OCIRepository[];
   helmRepositories: HelmRepository[];
+  imagePolicies: ImagePolicy[];
+  imageRepositories: ImageRepository[];
+  imageUpdateAutomations: ImageUpdateAutomation[];
 
   treeBuilder?: KustomizationTreeBuilder;
   selectedResourceRef: SelectedResourceRef | null;
@@ -82,6 +88,9 @@ export const FluxResourcesDataProvider = ({
       gitRepositories,
       ociRepositories,
       helmRepositories,
+      imagePolicies,
+      imageRepositories,
+      imageUpdateAutomations,
     },
     isLoading,
     errors,
@@ -100,6 +109,9 @@ export const FluxResourcesDataProvider = ({
       ...gitRepositories,
       ...ociRepositories,
       ...helmRepositories,
+      ...imagePolicies,
+      ...imageRepositories,
+      ...imageUpdateAutomations,
     ];
 
     return resources.map(resource => collectResourceData(resource));
@@ -110,6 +122,9 @@ export const FluxResourcesDataProvider = ({
     gitRepositories,
     ociRepositories,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
   ]);
 
   const treeBuilder = useMemo(() => {
@@ -171,6 +186,9 @@ export const FluxResourcesDataProvider = ({
       gitRepositories,
       ociRepositories,
       helmRepositories,
+      imagePolicies,
+      imageRepositories,
+      imageUpdateAutomations,
       treeBuilder,
 
       filters,
@@ -188,6 +206,9 @@ export const FluxResourcesDataProvider = ({
     gitRepositories,
     helmReleases,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
     isLoading,
     kustomizations,
     ociRepositories,

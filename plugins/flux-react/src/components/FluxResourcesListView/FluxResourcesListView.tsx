@@ -16,6 +16,9 @@ const Content = ({ filters }: { filters: ReactNode }) => {
     gitRepositories,
     ociRepositories,
     helmRepositories,
+    imagePolicies,
+    imageRepositories,
+    imageUpdateAutomations,
     isLoading,
     treeBuilder,
     selectedResourceRef,
@@ -52,6 +55,9 @@ const Content = ({ filters }: { filters: ReactNode }) => {
           gitRepositories={gitRepositories}
           ociRepositories={ociRepositories}
           helmRepositories={helmRepositories}
+          imagePolicies={imagePolicies}
+          imageRepositories={imageRepositories}
+          imageUpdateAutomations={imageUpdateAutomations}
           isLoadingResources={isLoading}
           treeBuilder={treeBuilder}
           onClose={() => {
