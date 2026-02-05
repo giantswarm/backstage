@@ -5,6 +5,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix markdown styling in AI chat for inline code elements and list items.
+- Fix EntityHeaderIcon selector to work in production builds.
+
 ## [0.103.0] - 2026-02-05
 
 ### Added
