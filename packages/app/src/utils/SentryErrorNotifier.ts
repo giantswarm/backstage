@@ -47,6 +47,25 @@ export class SentryErrorNotifier implements IErrorReporterNotifier {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     extraInfo?: Record<string, any>,
   ): Promise<void> {
+    // Handle warning level separately using captureMessage
+    if (extraInfo?.level === 'warning') {
+      const { level, ...restExtraInfo } = extraInfo;
+      let message: string;
+      if (error instanceof Error) {
+        message = error.message;
+      } else if (typeof error === 'string') {
+        message = error;
+      } else {
+        message = JSON.stringify(error);
+      }
+
+      Sentry.captureMessage(message, {
+        level: 'warning',
+        extra: restExtraInfo,
+      });
+      return Promise.resolve();
+    }
+
     switch (true) {
       case error instanceof Error:
         Sentry.captureException(error, { extra: extraInfo });
