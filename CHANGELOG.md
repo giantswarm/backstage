@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-02-05
+
 ### Added
 
 - Add support for Flux image automation resources (ImagePolicy, ImageRepository, ImageUpdateAutomation).
@@ -1840,7 +1842,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.102.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.103.0...HEAD
+[0.103.0]: https://github.com/giantswarm/backstage/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/giantswarm/backstage/compare/v0.101.2...v0.102.0
 [0.101.2]: https://github.com/giantswarm/backstage/compare/v0.101.1...v0.101.2
 [0.101.1]: https://github.com/giantswarm/backstage/compare/v0.101.0...v0.101.1
