@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.5.1
+
+### Patch Changes
+
+- 77e6969: Fix markdown styling in AI chat: add display inline-block to inline code elements and vertical spacing to list items
+
 ## 0.5.0
 
 ### Minor Changes

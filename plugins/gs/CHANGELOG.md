@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.53.2
+
+### Patch Changes
+
+- 7cd0eac: Fix EntityHeaderIcon selector to use structural selector instead of class names that break in production
+
 ## 0.53.1
 
 ### Patch Changes
