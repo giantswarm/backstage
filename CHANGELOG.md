@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.103.1] - 2026-02-05
+
 ### Fixed
 
 - Fix markdown styling in AI chat for inline code elements and list items.
@@ -1849,7 +1851,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.103.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.103.1...HEAD
+[0.103.1]: https://github.com/giantswarm/backstage/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/giantswarm/backstage/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/giantswarm/backstage/compare/v0.101.2...v0.102.0
 [0.101.2]: https://github.com/giantswarm/backstage/compare/v0.101.1...v0.101.2
