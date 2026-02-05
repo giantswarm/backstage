@@ -30,6 +30,7 @@ const useStyles = makeStyles((theme: Theme) =>
       borderRadius: theme.shape.borderRadius / 2,
       fontFamily: 'monospace',
       fontSize: '0.875rem',
+      display: 'inline-block',
     },
     blockquote: {
       borderLeft: `4px solid ${theme.palette.divider}`,
@@ -49,6 +50,11 @@ const useStyles = makeStyles((theme: Theme) =>
       marginTop: theme.spacing(1),
       marginBottom: theme.spacing(1),
       paddingInlineStart: theme.spacing(3),
+
+      '& > li': {
+        marginTop: theme.spacing(0.5),
+        marginBottom: theme.spacing(0.5),
+      },
     },
     paragraph: {
       margin: theme.spacing(1, 0),
