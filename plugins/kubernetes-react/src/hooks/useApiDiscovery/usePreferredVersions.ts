@@ -8,6 +8,7 @@ import {
 } from '../../lib/k8s/CustomResourceMatcher';
 import {
   APIGroup,
+  APIResourceList,
   ResolvedGVKWithCompatibility,
 } from '../../lib/k8s/ApiDiscovery';
 import {
@@ -17,6 +18,7 @@ import {
 import {
   checkVersionCompatibility,
   getLatestVersion,
+  sortVersions,
 } from '../../lib/k8s/versionUtils';
 
 const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
@@ -88,7 +90,8 @@ export function usePreferredVersions(
   // Skip discovery for core APIs (they use /api/v1 not /apis)
   const shouldDiscover = enableDiscovery && !gvk.isCore;
 
-  const queries = useQueries({
+  // Stage 1: Query API group to get available versions
+  const groupQueries = useQueries({
     queries: clusters.map(cluster => ({
       queryKey: ['cluster', cluster, 'api-discovery', gvk.group],
       queryFn: async (): Promise<APIGroup> => {
@@ -116,6 +119,90 @@ export function usePreferredVersions(
     })),
   });
 
+  // Determine which versions to check for each cluster (compatible versions sorted newest to oldest)
+  const versionsToCheck = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    clusters.forEach((cluster, index) => {
+      const query = groupQueries[index];
+      if (query.data?.versions) {
+        const serverVersions = query.data.versions.map(v => v.version);
+        const clientSet = new Set(supportedVersions);
+        const compatible = serverVersions.filter(v => clientSet.has(v));
+        // Sort from newest to oldest so we prefer newer versions
+        result[cluster] = sortVersions(compatible).reverse();
+      } else {
+        result[cluster] = [];
+      }
+    });
+    return result;
+  }, [clusters, groupQueries, supportedVersions]);
+
+  // Stage 2: For each cluster, query API resources for each compatible version
+  // to find which version actually has our resource
+  const resourceQueries = useQueries({
+    queries: clusters.flatMap(cluster => {
+      const versions = versionsToCheck[cluster] || [];
+      return versions.map(version => ({
+        queryKey: [
+          'cluster',
+          cluster,
+          'api-resources',
+          gvk.group,
+          version,
+          gvk.plural,
+        ],
+        queryFn: async (): Promise<{
+          cluster: string;
+          version: string;
+          hasResource: boolean;
+        }> => {
+          const path = `/apis/${gvk.group}/${version}`;
+          const response = await kubernetesApi.proxy({
+            clusterName: cluster,
+            path,
+          });
+
+          if (!response.ok) {
+            // If we get 404, the version doesn't exist for this resource
+            return { cluster, version, hasResource: false };
+          }
+
+          const resourceList: APIResourceList = await response.json();
+          const hasResource = resourceList.resources.some(
+            r => r.name === gvk.plural,
+          );
+          return { cluster, version, hasResource };
+        },
+        enabled: shouldDiscover && versions.length > 0,
+        staleTime: CACHE_TIME,
+        gcTime: CACHE_TIME,
+        retry: false,
+      }));
+    }),
+  });
+
+  // Build a map of cluster -> best version (first version that has the resource)
+  const clusterBestVersions = useMemo(() => {
+    const result: Record<string, string | undefined> = {};
+    clusters.forEach(cluster => {
+      const versions = versionsToCheck[cluster] || [];
+      // Find the first version (from newest to oldest) that has the resource
+      for (const version of versions) {
+        const query = resourceQueries.find(
+          q =>
+            q.data?.cluster === cluster &&
+            q.data?.version === version &&
+            q.data?.hasResource,
+        );
+        if (query?.data?.hasResource) {
+          result[cluster] = version;
+          break;
+        }
+      }
+    });
+    return result;
+  }, [clusters, versionsToCheck, resourceQueries]);
+
   const {
     clustersGVKs,
     clustersQueryEnabled,
@@ -140,21 +227,34 @@ export function usePreferredVersions(
         return;
       }
 
-      const query = queries[index];
+      const query = groupQueries[index];
 
       if (query.data?.versions) {
         const serverVersions = query.data.versions.map(v => v.version);
+        const serverPreferredVersion = query.data.preferredVersion?.version;
+
+        // Use the best version that actually has the resource, if discovered
+        const bestVersion = clusterBestVersions[cluster];
+
         const compatibility = checkVersionCompatibility(
           supportedVersions,
           serverVersions,
+          // Prefer the version that actually has the resource over the server's preferred
+          bestVersion ?? serverPreferredVersion,
         );
 
         if (compatibility.isCompatible && compatibility.resolvedVersion) {
+          // If we discovered a best version, use it; otherwise use compatibility result
+          const resolvedVersion = bestVersion ?? compatibility.resolvedVersion;
+
           gvks[cluster] = {
             ...baseGVK,
-            apiVersion: compatibility.resolvedVersion,
+            apiVersion: resolvedVersion,
             isDiscovered: true,
-            compatibility,
+            compatibility: {
+              ...compatibility,
+              resolvedVersion,
+            },
           };
           queryEnabled[cluster] = true;
 
@@ -206,7 +306,8 @@ export function usePreferredVersions(
   }, [
     clusters,
     gvk,
-    queries,
+    groupQueries,
+    clusterBestVersions,
     shouldDiscover,
     supportedVersions,
     fallbackToStatic,
@@ -219,19 +320,23 @@ export function usePreferredVersions(
 
     return clusters
       .map((cluster, index) => {
-        const query = queries[index];
+        const query = groupQueries[index];
         if (query.error) {
           return { cluster, error: query.error };
         }
         return null;
       })
       .filter((error): error is DiscoveryError => error !== null);
-  }, [clusters, queries, shouldDiscover]);
+  }, [clusters, groupQueries, shouldDiscover]);
 
   const isDiscovering =
-    shouldDiscover && queries.some(query => query.isLoading);
+    shouldDiscover &&
+    (groupQueries.some(query => query.isLoading) ||
+      resourceQueries.some(query => query.isLoading));
   const isReady =
-    !shouldDiscover || queries.every(query => !query.isLoading && !query.error);
+    !shouldDiscover ||
+    (groupQueries.every(query => !query.isLoading && !query.error) &&
+      resourceQueries.every(query => !query.isLoading));
 
   return {
     clustersGVKs,
