@@ -20,4 +20,8 @@ export class GitRepository extends FluxObject<GitRepositoryInterface> {
   getRevision() {
     return this.jsonData.status?.artifact?.revision;
   }
+
+  getInterval() {
+    return this.jsonData.spec?.interval;
+  }
 }

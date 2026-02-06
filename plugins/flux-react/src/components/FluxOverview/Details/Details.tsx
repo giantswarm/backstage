@@ -37,7 +37,9 @@ type DetailsProps = {
   allGitRepositories: GitRepository[];
   allOCIRepositories: OCIRepository[];
   allHelmRepositories: HelmRepository[];
+  allImagePolicies: ImagePolicy[];
   allImageRepositories: ImageRepository[];
+  allImageUpdateAutomations: ImageUpdateAutomation[];
   treeBuilder?: KustomizationTreeBuilder;
   isLoadingResources: boolean;
 };
@@ -50,7 +52,9 @@ export const Details = ({
   allGitRepositories,
   allOCIRepositories,
   allHelmRepositories,
+  allImagePolicies,
   allImageRepositories,
+  allImageUpdateAutomations,
   treeBuilder,
   isLoadingResources,
 }: DetailsProps) => {
@@ -59,25 +63,57 @@ export const Details = ({
   }
 
   if (!resource) {
-    // Determine the resource kind name for display
+    // Determine the resource kind name and count of available resources for display
     let resourceKindName = resourceRef.kind;
+    let resourcesInCluster = 0;
+
     if (resourceRef.kind === Kustomization.kind.toLowerCase()) {
       resourceKindName = 'Kustomization';
+      resourcesInCluster = allKustomizations.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     } else if (resourceRef.kind === HelmRelease.kind.toLowerCase()) {
       resourceKindName = 'HelmRelease';
+      resourcesInCluster = allHelmReleases.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     } else if (resourceRef.kind === GitRepository.kind.toLowerCase()) {
       resourceKindName = 'GitRepository';
+      resourcesInCluster = allGitRepositories.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     } else if (resourceRef.kind === OCIRepository.kind.toLowerCase()) {
       resourceKindName = 'OCIRepository';
+      resourcesInCluster = allOCIRepositories.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     } else if (resourceRef.kind === HelmRepository.kind.toLowerCase()) {
       resourceKindName = 'HelmRepository';
+      resourcesInCluster = allHelmRepositories.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     } else if (resourceRef.kind === ImagePolicy.kind.toLowerCase()) {
       resourceKindName = 'ImagePolicy';
+      resourcesInCluster = allImagePolicies.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     } else if (resourceRef.kind === ImageRepository.kind.toLowerCase()) {
       resourceKindName = 'ImageRepository';
+      resourcesInCluster = allImageRepositories.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     } else if (resourceRef.kind === ImageUpdateAutomation.kind.toLowerCase()) {
       resourceKindName = 'ImageUpdateAutomation';
+      resourcesInCluster = allImageUpdateAutomations.filter(
+        r => r.cluster === resourceRef.cluster,
+      ).length;
     }
+
+    // Generate a diagnostic message based on whether any resources of this type exist
+    const diagnosticMessage =
+      resourcesInCluster === 0
+        ? `No ${resourceKindName} resources were found in cluster ${resourceRef.cluster}. This could indicate a permissions issue or that this resource type is not available.`
+        : `This resource is referenced in a Kustomization inventory but could not be found. It may have been deleted or the inventory data may be stale.`;
 
     return (
       <Box>
@@ -88,6 +124,9 @@ export const Details = ({
             {resourceRef.name}
           </strong>{' '}
           in cluster <strong>{resourceRef.cluster}</strong> not found.
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          {diagnosticMessage}
         </Typography>
       </Box>
     );
@@ -132,7 +171,9 @@ export const Details = ({
           resource={
             resource as ImagePolicy | ImageRepository | ImageUpdateAutomation
           }
+          allImagePolicies={allImagePolicies}
           allImageRepositories={allImageRepositories}
+          allGitRepositories={allGitRepositories}
           treeBuilder={treeBuilder}
         />
       )}
