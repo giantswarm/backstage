@@ -38,7 +38,6 @@ import {
   KubernetesAuthProviders,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
-import { errorReporterApiRef } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   createGSEntityPresentationRenderer,
   gsAuthProvidersApiRef,
@@ -51,7 +50,8 @@ import {
   mcpAuthProvidersApiRef,
   MCPAuthProviders,
 } from '@giantswarm/backstage-plugin-ai-chat';
-import ErrorReporter from './utils/ErrorReporter';
+import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
+import { ErrorReporterApi } from './apis/errorReporter';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -71,8 +71,8 @@ export const apis: AnyApiFactory[] = [
   }),
   createApiFactory({
     api: errorReporterApiRef,
-    deps: {},
-    factory: () => ErrorReporter.getInstance(),
+    deps: { configApi: configApiRef },
+    factory: ({ configApi }) => ErrorReporterApi.fromConfig(configApi),
   }),
   createApiFactory({
     api: discoveryApiRef,

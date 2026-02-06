@@ -8,7 +8,7 @@ import {
   useNavigationType,
 } from 'react-router-dom';
 
-import { IErrorReporterNotifier } from './ErrorReporter';
+import { IErrorReporterNotifier } from './ErrorReporterApi';
 
 export interface ISentryErrorNotifierConfig {
   dsn: string;
