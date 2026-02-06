@@ -51,7 +51,7 @@ import {
   MCPAuthProviders,
 } from '@giantswarm/backstage-plugin-ai-chat';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
-import { ErrorReporterApi } from './apis/errorReporter';
+import { SentryErrorReporter } from './apis/errorReporter';
 
 export const apis: AnyApiFactory[] = [
   createApiFactory({
@@ -72,7 +72,7 @@ export const apis: AnyApiFactory[] = [
   createApiFactory({
     api: errorReporterApiRef,
     deps: { configApi: configApiRef },
-    factory: ({ configApi }) => ErrorReporterApi.fromConfig(configApi),
+    factory: ({ configApi }) => SentryErrorReporter.fromConfig(configApi),
   }),
   createApiFactory({
     api: discoveryApiRef,
