@@ -33,7 +33,6 @@ import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 
 import { SignInPage } from '@backstage/core-components';
-import { ErrorReporterProvider } from './utils/ErrorReporterProvider';
 
 import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
 import { HomePage } from './components/home/HomePage';
@@ -221,15 +220,13 @@ const routes = (
 export default app.createRoot(
   <>
     <TelemetryProvider>
-      <ErrorReporterProvider>
-        <AlertDisplay />
-        <OAuthRequestDialog />
-        <SignalsDisplay />
-        <AppRouter>
-          <VisitListener />
-          <Root>{routes}</Root>
-        </AppRouter>
-      </ErrorReporterProvider>
+      <AlertDisplay />
+      <OAuthRequestDialog />
+      <SignalsDisplay />
+      <AppRouter>
+        <VisitListener />
+        <Root>{routes}</Root>
+      </AppRouter>
     </TelemetryProvider>
   </>,
 );

@@ -8086,6 +8086,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-error-reporter-react@workspace:^, @giantswarm/backstage-plugin-error-reporter-react@workspace:plugins/error-reporter-react":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-error-reporter-react@workspace:plugins/error-reporter-react"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
+    "@testing-library/jest-dom": "npm:^6.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-flux-react@npm:^0.8.0, @giantswarm/backstage-plugin-flux-react@workspace:^, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react"
@@ -8261,6 +8276,7 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
+    "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.2.0"
     "@material-ui/core": "npm:^4.9.13"
@@ -19406,6 +19422,7 @@ __metadata:
     "@backstage/theme": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"
+    "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
