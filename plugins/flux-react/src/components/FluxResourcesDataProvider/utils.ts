@@ -13,6 +13,7 @@ export type FluxResourceData = {
   kind: string;
   targetCluster?: string;
   status: FluxResourceStatus;
+  createdTimestamp?: string;
 };
 
 export function collectResourceData(resource: FluxObject): FluxResourceData {
@@ -28,5 +29,6 @@ export function collectResourceData(resource: FluxObject): FluxResourceData {
     kind: resource.getKind(),
     targetCluster,
     status: resource.getOrCalculateFluxStatus(),
+    createdTimestamp: resource.getCreatedTimestamp(),
   };
 }

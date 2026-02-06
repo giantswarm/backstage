@@ -42,4 +42,8 @@ export class HelmRepository extends FluxObject<HelmRepositoryInterface> {
   getRevision() {
     return this.jsonData.status?.artifact?.revision;
   }
+
+  getInterval() {
+    return this.jsonData.spec?.interval;
+  }
 }
