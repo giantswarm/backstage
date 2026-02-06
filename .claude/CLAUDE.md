@@ -27,6 +27,17 @@ yarn start app
 
 Use the test-runner subagent for testing.
 
+```bash
+# Run tests
+yarn test
+
+# Run tests with coverage
+yarn test:all
+
+# Run Playwright E2E tests
+yarn test:e2e
+```
+
 ### Code Quality
 
 ```bash
@@ -68,6 +79,15 @@ yarn build-image
 # Clean build artifacts
 yarn clean
 ```
+
+### Development Setup
+
+- **Devcontainer**: Optional development environment (VS Code devcontainer support)
+- **Environment Variables**: Requires `.env` file (not checked in), secrets in 1Password, uses `env-cmd` for loading
+- **Local Config**: Copy `app-config.local.yaml.example` to `app-config.local.yaml`
+- **Database**: Uses in-memory SQLite by default. Run PostgreSQL via Docker (see `docs/development.md`) to test with Postgres
+- **HTTPS**: Configure via `certificate.yaml` (see `certificate.yaml.example`)
+- **Ports**: Frontend on 3000, Backend on 7007
 
 ## Architecture Overview
 
@@ -275,6 +295,7 @@ export class MyResource extends KubeObject<MyResourceInterface> {
 - Utilities: camelCase (e.g., `generateUID`, `parseDate`)
 - Plugins: lowercase-with-hyphens (e.g., `gs`, `flux-react`)
 - Exports: Components prefixed with `GS` for Giant Swarm customizations
+- File organization: Hooks in `hooks/` subdirectories, utilities in `utils/` subdirectories
 
 ## Configuration Files
 
@@ -299,11 +320,19 @@ export class MyResource extends KubeObject<MyResourceInterface> {
 
 ## Important Notes
 
+### Build & Deployment
+
+- **Docker**: Backend Dockerfile in `packages/backend/Dockerfile`
+- **Helm**: Charts in `helm/backstage/` directory
+- **CI/CD**: CircleCI (see `.circleci/config.yml`)
+- **Release Process**: Uses Changesets (`yarn release` command)
+
 ### Dependencies
 
 - Backstage packages use `backstage:^` version specifier (managed by Backstage CLI)
 - Uses `patch-package` for dependency patches (applied in postinstall)
 - Custom resolutions for React types and CodeMirror versions in root `package.json`
+- Dependency updates: Renovate configured with grouped updates for Backstage packages
 
 ### Secrets
 
@@ -318,3 +347,17 @@ Never commit:
 
 - Run `yarn prettier:fix` before committing
 - Check types with `yarn tsc` before committing
+- Pre-commit: lint-staged configured for automatic linting/formatting
+
+### Key Features & Integrations
+
+- **Authentication**: GitHub OAuth, custom GS auth module
+- **Kubernetes**: Full integration with custom React hooks and components
+- **Flux**: Flux CD integration for GitOps workflows
+- **Scaffolder**: Custom templates and field extensions
+- **TechDocs**: Custom TechDocs backend module
+- **Monitoring**: Sentry integration, TelemetryDeck integration
+
+### Ownership
+
+- Code Owners: Team Honeybadger (@giantswarm/team-honeybadger)

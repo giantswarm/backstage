@@ -1,9 +1,6 @@
 ---
+name: components
 description: Component file structure and organization patterns for React components in this repository
-alwaysApply: false
-globs:
-  - '**/components/**/*.tsx'
-  - '**/components/**/*.ts'
 ---
 
 ## Component Directory Structure

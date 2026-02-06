@@ -1,9 +1,6 @@
 ---
+name: tables
 description: Patterns for implementing tables using '@backstage/core-components' Table, including column definitions, sorting, filtering, and visibility persistence.
-alwaysApply: false
-globs:
-  - '**/components/**/*Table*/**'
-  - '**/components/**/columns.tsx'
 ---
 
 ## Table Structure

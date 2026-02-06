@@ -1,7 +1,8 @@
 ---
+name: common
 description: Common rules for working with this repository
-alwaysApply: false
 ---
+
 ## General
 
 - This is a NodeJS project
