@@ -29,6 +29,34 @@ export interface APIGroup {
 }
 
 /**
+ * Represents a single API resource within a version.
+ * Returned by Kubernetes API discovery at /apis/{group}/{version}
+ */
+export interface APIResource {
+  /** Plural name of the resource, e.g., "gitrepositories" */
+  name: string;
+  /** Singular name, e.g., "gitrepository" */
+  singularName: string;
+  /** Whether the resource is namespaced */
+  namespaced: boolean;
+  /** Kind name, e.g., "GitRepository" */
+  kind: string;
+  /** Supported verbs like ["get", "list", "create", ...] */
+  verbs: string[];
+}
+
+/**
+ * Represents the list of resources available at a specific API version.
+ * Returned by Kubernetes API discovery at /apis/{group}/{version}
+ */
+export interface APIResourceList {
+  /** Full group/version string */
+  groupVersion: string;
+  /** List of available resources at this version */
+  resources: APIResource[];
+}
+
+/**
  * Extended GVK that includes discovery metadata.
  * Used when resolving API versions dynamically.
  */
