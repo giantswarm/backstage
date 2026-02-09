@@ -81,9 +81,14 @@ export const apis: AnyApiFactory[] = [
     deps: {
       configApi: configApiRef,
       identityApi: identityApiRef,
+      errorReporterApi: errorReporterApiRef,
     },
-    factory: ({ configApi, identityApi }) =>
-      TelemetryDeckAnalyticsApi.fromConfig({ configApi, identityApi }),
+    factory: ({ configApi, identityApi, errorReporterApi }) =>
+      TelemetryDeckAnalyticsApi.fromConfig({
+        configApi,
+        identityApi,
+        errorReporterApi,
+      }),
   }),
   createApiFactory({
     api: discoveryApiRef,

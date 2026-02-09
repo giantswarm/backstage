@@ -9,24 +9,29 @@ import {
   getGuestUserEntityRef,
   getTelemetryPageViewPayload,
 } from '../../utils/telemetry';
+import { ErrorReporterApi } from '@giantswarm/backstage-plugin-error-reporter-react';
 
 export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly configApi: ConfigApi;
   private readonly identityApi: IdentityApi;
+  private readonly errorReporterApi?: ErrorReporterApi;
   private td: TelemetryDeck | undefined;
   private initPromise: Promise<TelemetryDeck> | undefined;
 
   private constructor(options: {
     configApi: ConfigApi;
     identityApi: IdentityApi;
+    errorReporterApi?: ErrorReporterApi;
   }) {
     this.configApi = options.configApi;
     this.identityApi = options.identityApi;
+    this.errorReporterApi = options.errorReporterApi;
   }
 
   static fromConfig(options: {
     configApi: ConfigApi;
     identityApi: IdentityApi;
+    errorReporterApi?: ErrorReporterApi;
   }): TelemetryDeckAnalyticsApi {
     return new TelemetryDeckAnalyticsApi(options);
   }
@@ -83,6 +88,14 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
 
     const pathname = event.subject.split('?')[0].split('#')[0];
     const payload = getTelemetryPageViewPayload(pathname);
+
+    if (payload.page === 'Unknown page') {
+      this.errorReporterApi?.notify(`Untracked page view: ${pathname}`, {
+        level: 'warning',
+        type: 'untracked_page_view',
+        path: pathname,
+      });
+    }
 
     this.getOrCreateInstance()
       .then(td => td.signal('pageview', payload))
