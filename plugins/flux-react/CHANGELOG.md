@@ -1,5 +1,21 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.9.0
+
+### Minor Changes
+
+- 8e3e4a4: Enhance Flux details panel with additional metadata
+  - Add creation timestamp, interval, and resource-specific metadata to details panel and list view
+  - Extract `findHelmReleaseChartName` utility into flux-react for shared use
+  - Add convenience accessors to HelmRelease, GitRepository, OCIRepository, and HelmRepository resource classes
+
+### Patch Changes
+
+- Updated dependencies [23e9f63]
+- Updated dependencies [8e3e4a4]
+- Updated dependencies [8e3e4a4]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.11.0
+
 ## 0.8.0
 
 ### Minor Changes

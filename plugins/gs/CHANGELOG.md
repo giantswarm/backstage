@@ -1,5 +1,26 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.53.3
+
+### Patch Changes
+
+- 4166fda: Fix AsyncValue component to properly handle falsy values
+  - Make `value` prop required instead of optional
+  - Use explicit loading/error state checks instead of truthiness check on value, so falsy values (empty string, `0`, `null`) render correctly
+  - Update consumers to handle nullable values with explicit `<NotAvailable />` fallbacks
+
+- 8e3e4a4: Enhance Flux details panel with additional metadata
+  - Add creation timestamp, interval, and resource-specific metadata to details panel and list view
+  - Extract `findHelmReleaseChartName` utility into flux-react for shared use
+  - Add convenience accessors to HelmRelease, GitRepository, OCIRepository, and HelmRepository resource classes
+
+- Updated dependencies [23e9f63]
+- Updated dependencies [8e3e4a4]
+- Updated dependencies [8e3e4a4]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.11.0
+  - @giantswarm/backstage-plugin-flux-react@0.9.0
+  - @giantswarm/backstage-plugin-flux@0.6.8
+
 ## 0.53.2
 
 ### Patch Changes

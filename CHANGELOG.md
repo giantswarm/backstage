@@ -5,6 +5,26 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-02-09
+
+### Added
+
+- Extract error reporter API into dedicated `@giantswarm/backstage-plugin-error-reporter-react` package.
+- Enhance Flux details panel with creation timestamp, interval, and resource-specific metadata.
+- Add missing pages to telemetry tracking (Home, Catalog graph, Deployment details, Flux, AI Chat).
+
+### Changed
+
+- Replace TelemetryProvider with standard Backstage AnalyticsApi implementation for TelemetryDeck.
+- Report unknown page telemetry events as warnings via errorReporterApi.
+
+### Fixed
+
+- Fix AsyncValue component to properly handle falsy values.
+- Fix API version discovery for resources with different version support.
+
+See [./docs/releases/v0.104.0-changelog.md](./docs/releases/v0.104.0-changelog.md) for more information.
+
 ## [0.103.1] - 2026-02-05
 
 ### Fixed
@@ -1853,7 +1873,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.103.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.104.0...HEAD
+[0.104.0]: https://github.com/giantswarm/backstage/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/giantswarm/backstage/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/giantswarm/backstage/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/giantswarm/backstage/compare/v0.101.2...v0.102.0
