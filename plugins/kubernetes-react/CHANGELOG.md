@@ -1,5 +1,39 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.11.0
+
+### Minor Changes
+
+- 23e9f63: Extract error reporter API into dedicated package
+
+  **New package: `@giantswarm/backstage-plugin-error-reporter-react`**
+  - Provides `ErrorReporterApi` interface and `errorReporterApiRef` for reporting errors to external services
+  - Can be used by any plugin that needs to report errors
+
+  **Breaking change in `@giantswarm/backstage-plugin-kubernetes-react`**
+  - Removed `errorReporterApiRef` export (now in `@giantswarm/backstage-plugin-error-reporter-react`)
+  - Error reporter is now optional: if not registered, only console logging occurs
+  - API version issues are now always logged to console in addition to error reporter
+
+  **Changes in `app`**
+  - Removed `ErrorReporterProvider` React context wrapper
+  - Error reporter is now registered as a standard Backstage API via `createApiFactory`
+  - Simplified implementation by merging `SentryErrorNotifier` into `SentryErrorReporter`
+
+### Patch Changes
+
+- 8e3e4a4: Fix API version discovery for resources with different version support
+  - Implement two-stage API discovery that queries available versions and then checks which version actually serves the specific resource
+  - Extract shared query logic into `queryFactories.ts` for use by both `usePreferredVersion` and `usePreferredVersions`
+
+- 8e3e4a4: Enhance Flux details panel with additional metadata
+  - Add creation timestamp, interval, and resource-specific metadata to details panel and list view
+  - Extract `findHelmReleaseChartName` utility into flux-react for shared use
+  - Add convenience accessors to HelmRelease, GitRepository, OCIRepository, and HelmRepository resource classes
+
+- Updated dependencies [23e9f63]
+  - @giantswarm/backstage-plugin-error-reporter-react@0.2.0
+
 ## 0.10.0
 
 ### Minor Changes

@@ -21,6 +21,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix AsyncValue component to properly handle falsy values.
 - Fix API version discovery for resources with different version support.
 
+See [./docs/releases/v0.104.0-changelog.md](./docs/releases/v0.104.0-changelog.md) for more information.
+
 ## [0.103.1] - 2026-02-05
 
 ### Fixed
