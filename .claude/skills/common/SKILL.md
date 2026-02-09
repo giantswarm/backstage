@@ -12,7 +12,7 @@ description: Common rules for working with this repository
 ## Project Structure
 
 - **Monorepo**: Uses Yarn workspaces with packages in `packages/` and plugins in `plugins/`
-- **Packages**: 
+- **Packages**:
   - `packages/app` - Frontend application (React)
   - `packages/backend` - Main backend service
   - `packages/backend-headless-service` - Headless backend service
@@ -40,7 +40,7 @@ description: Common rules for working with this repository
 ## Development Setup
 
 - **Devcontainer**: Recommended development environment (VS Code devcontainer support)
-- **Environment Variables**: 
+- **Environment Variables**:
   - Requires `.env` file (not checked in)
   - Secrets stored in 1Password secure notes
   - Uses `env-cmd` for loading environment variables
@@ -57,7 +57,7 @@ description: Common rules for working with this repository
 - **Utilities**: camelCase (e.g., `generateUID`, `parseDate`, `toTitleCase`)
 - **Plugins**: lowercase with hyphens (e.g., `gs`, `flux-react`, `kubernetes-react`)
 - **Exports**: Components exported with `GS` prefix for Giant Swarm customizations
-- **File Structure**: 
+- **File Structure**:
   - Components organized by feature/domain in subdirectories
   - Each component directory typically contains: component file, `index.ts`, and sometimes tests
   - Hooks in `hooks/` subdirectories
@@ -67,7 +67,7 @@ description: Common rules for working with this repository
 
 - **Unit Tests**: Jest with `.test.ts` or `.test.tsx` naming convention
 - **E2E Tests**: Playwright tests in `e2e-tests/` directories
-- **Test Commands**: 
+- **Test Commands**:
   - `yarn test` - Run tests
   - `yarn test:all` - Run tests with coverage
   - `yarn test:e2e` - Run Playwright E2E tests
@@ -78,12 +78,12 @@ description: Common rules for working with this repository
 
 - **Linting**: ESLint with Backstage configuration
 - **Formatting**: Prettier (Backstage config)
-- **Lint Commands**: 
+- **Lint Commands**:
   - `yarn lint` - Lint changed files since origin/main
   - `yarn lint:all` - Lint all files
   - `yarn fix` - Auto-fix linting issues
 - **Pre-commit**: lint-staged configured for automatic linting/formatting
-- **Type Checking**: 
+- **Type Checking**:
   - `yarn tsc` - Type check with incremental mode
   - `yarn tsc:full` - Full type check without skipping lib checks
 
