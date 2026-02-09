@@ -132,9 +132,7 @@ export function DeploymentAboutCard() {
               isLoading={isLoadingCatalogEntity}
               value={entityLink}
               errorMessage={catalogEntityErrorMessage}
-            >
-              {value => value || <NotAvailable />}
-            </AsyncValue>
+            />
           </AboutFieldValue>
         </AboutField>
 
@@ -148,9 +146,7 @@ export function DeploymentAboutCard() {
               isLoading={isLoadingChartName}
               value={chartName}
               errorMessage={chartNameErrorMessage}
-            >
-              {value => value || <NotAvailable />}
-            </AsyncValue>
+            />
           </AboutFieldValue>
         </AboutField>
 

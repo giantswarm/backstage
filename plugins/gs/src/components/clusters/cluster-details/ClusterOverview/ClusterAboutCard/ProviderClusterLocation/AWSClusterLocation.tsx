@@ -50,8 +50,6 @@ export const AWSClusterLocation = () => {
       isLoading={isLoading}
       errorMessage={errorMessage}
       value={location}
-    >
-      {value => value}
-    </AsyncValue>
+    />
   );
 };
