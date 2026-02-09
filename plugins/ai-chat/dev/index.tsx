@@ -1,8 +1,7 @@
 import { createDevApp } from '@backstage/dev-utils';
-import { aiChatPlugin, AiChatPage } from '../src/plugin';
+import { AiChatPage } from '../src/components/AiChat';
 
 createDevApp()
-  .registerPlugin(aiChatPlugin)
   .addPage({
     element: <AiChatPage />,
     title: 'Root Page',

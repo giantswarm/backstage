@@ -31,6 +31,7 @@
     "@assistant-ui/react-markdown": "^0.12.0",
     "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
+    "@backstage/frontend-plugin-api": "backstage:^",
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/theme": "backstage:^",
     "@material-ui/core": "^4.9.13",
