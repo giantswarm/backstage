@@ -18,6 +18,7 @@ import {
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { NotAvailable } from '@giantswarm/backstage-plugin-ui-react';
 
 type GitOpsCardProps = {
   deployment: App | HelmRelease;
@@ -122,14 +123,18 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
                 <ErrorStatus errorMessage={message} notAvailable={false} />
               )}
             >
-              {value => (
-                <Box display="flex" alignItems="center">
-                  <Box marginLeft={-0.5} marginRight={1}>
-                    <Typography variant="inherit">·</Typography>
+              {value =>
+                value ? (
+                  <Box display="flex" alignItems="center">
+                    <Box marginLeft={-0.5} marginRight={1}>
+                      <Typography variant="inherit">·</Typography>
+                    </Box>
+                    <ExternalLink href={value}>Source</ExternalLink>
                   </Box>
-                  <ExternalLink href={value}>Source</ExternalLink>
-                </Box>
-              )}
+                ) : (
+                  <NotAvailable />
+                )
+              }
             </AsyncValue>
           </Box>
         </Box>

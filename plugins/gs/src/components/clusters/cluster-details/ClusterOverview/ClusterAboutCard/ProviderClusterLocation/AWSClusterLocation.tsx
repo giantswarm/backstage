@@ -7,6 +7,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '../../../../../UI';
+import { NotAvailable } from '@giantswarm/backstage-plugin-ui-react';
 
 export const AWSClusterLocation = () => {
   const { cluster, installationName } = useCurrentCluster();
@@ -51,7 +52,7 @@ export const AWSClusterLocation = () => {
       errorMessage={errorMessage}
       value={location}
     >
-      {value => value}
+      {value => value ?? <NotAvailable />}
     </AsyncValue>
   );
 };

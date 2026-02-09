@@ -133,7 +133,7 @@ export function DeploymentAboutCard() {
               value={entityLink}
               errorMessage={catalogEntityErrorMessage}
             >
-              {value => value || <NotAvailable />}
+              {value => value ?? <NotAvailable />}
             </AsyncValue>
           </AboutFieldValue>
         </AboutField>
@@ -149,7 +149,7 @@ export function DeploymentAboutCard() {
               value={chartName}
               errorMessage={chartNameErrorMessage}
             >
-              {value => value || <NotAvailable />}
+              {value => value ?? <NotAvailable />}
             </AsyncValue>
           </AboutFieldValue>
         </AboutField>

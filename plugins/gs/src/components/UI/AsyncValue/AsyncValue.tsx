@@ -11,7 +11,7 @@ const defaultRenderErrorFn = (errorMessage: string) => (
 interface AsyncValueProps<T> {
   children?: (value: T) => ReactNode;
   renderError?: (message: string) => ReactNode;
-  value?: T;
+  value: T;
   isLoading: boolean;
   errorMessage?: string;
   height?: number;
@@ -36,7 +36,7 @@ export const AsyncValue = <T extends ReactNode>({
         </Box>
       )}
 
-      {value && (children ? children(value) : value)}
+      {!isLoading && !errorMessage && (children ? children(value) : value)}
 
       {errorMessage && renderError(errorMessage)}
     </>

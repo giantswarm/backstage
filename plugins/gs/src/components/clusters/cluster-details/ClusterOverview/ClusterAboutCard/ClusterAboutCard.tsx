@@ -188,13 +188,17 @@ export function ClusterAboutCard() {
                 value={k8sVersion}
                 errorMessage={controlPlaneErrorMessage}
               >
-                {value => (
-                  <KubernetesVersion
-                    version={formatVersion(value)}
-                    hideIcon={false}
-                    hideLabel
-                  />
-                )}
+                {value =>
+                  value ? (
+                    <KubernetesVersion
+                      version={formatVersion(value)}
+                      hideIcon={false}
+                      hideLabel
+                    />
+                  ) : (
+                    <NotAvailable />
+                  )
+                }
               </AsyncValue>
             </AboutFieldValue>
           </AboutField>
