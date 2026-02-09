@@ -6,22 +6,18 @@ import {
   CustomResourceMatcher,
   MultiVersionResourceMatcher,
 } from '../../lib/k8s/CustomResourceMatcher';
-import {
-  APIGroup,
-  APIResourceList,
-  ResolvedGVKWithCompatibility,
-} from '../../lib/k8s/ApiDiscovery';
+import { ResolvedGVKWithCompatibility } from '../../lib/k8s/ApiDiscovery';
 import {
   ClientOutdatedState,
   IncompatibilityState,
 } from '../../lib/k8s/VersionTypes';
 import {
-  checkVersionCompatibility,
-  getLatestVersion,
-  sortVersions,
-} from '../../lib/k8s/versionUtils';
-
-const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
+  getSupportedVersions,
+  apiGroupQueryOptions,
+  apiResourceQueryOptions,
+  computeVersionsToCheck,
+  resolvePreferredVersion,
+} from './queryFactories';
 
 export interface UsePreferredVersionsOptions {
   /** Enable API version discovery. Defaults to true. */
@@ -53,21 +49,6 @@ export interface UsePreferredVersionsResult {
 }
 
 /**
- * Extracts supported versions from a GVK, handling both single-version
- * and multi-version resource matchers.
- */
-function getSupportedVersions(
-  gvk: CustomResourceMatcher | MultiVersionResourceMatcher,
-): readonly string[] {
-  // Check if it's a MultiVersionResourceMatcher
-  if ('supportedVersions' in gvk && gvk.supportedVersions.length > 0) {
-    return gvk.supportedVersions;
-  }
-  // Fallback to single apiVersion
-  return gvk.apiVersion ? [gvk.apiVersion] : [];
-}
-
-/**
  * Hook to resolve the preferred API version for multiple clusters.
  * Uses Kubernetes API discovery to find the server's preferred version
  * for the given API group on each cluster.
@@ -93,29 +74,8 @@ export function usePreferredVersions(
   // Stage 1: Query API group to get available versions
   const groupQueries = useQueries({
     queries: clusters.map(cluster => ({
-      queryKey: ['cluster', cluster, 'api-discovery', gvk.group],
-      queryFn: async (): Promise<APIGroup> => {
-        const path = `/apis/${gvk.group}`;
-        const response = await kubernetesApi.proxy({
-          clusterName: cluster,
-          path,
-        });
-
-        if (!response.ok) {
-          const error = new Error(
-            `Failed to discover API group ${gvk.group} from ${cluster}. Reason: ${response.statusText}.`,
-          );
-          error.name = response.status === 404 ? 'NotFoundError' : error.name;
-          error.name = response.status === 403 ? 'ForbiddenError' : error.name;
-          throw error;
-        }
-
-        return response.json();
-      },
+      ...apiGroupQueryOptions(kubernetesApi, cluster, gvk.group),
       enabled: shouldDiscover,
-      staleTime: CACHE_TIME,
-      gcTime: CACHE_TIME,
-      retry: false,
     })),
   });
 
@@ -126,10 +86,10 @@ export function usePreferredVersions(
       const query = groupQueries[index];
       if (query.data?.versions) {
         const serverVersions = query.data.versions.map(v => v.version);
-        const clientSet = new Set(supportedVersions);
-        const compatible = serverVersions.filter(v => clientSet.has(v));
-        // Sort from newest to oldest so we prefer newer versions
-        result[cluster] = sortVersions(compatible).reverse();
+        result[cluster] = computeVersionsToCheck(
+          serverVersions,
+          supportedVersions,
+        );
       } else {
         result[cluster] = [];
       }
@@ -143,40 +103,14 @@ export function usePreferredVersions(
     queries: clusters.flatMap(cluster => {
       const versions = versionsToCheck[cluster] || [];
       return versions.map(version => ({
-        queryKey: [
-          'cluster',
+        ...apiResourceQueryOptions(
+          kubernetesApi,
           cluster,
-          'api-resources',
           gvk.group,
           version,
           gvk.plural,
-        ],
-        queryFn: async (): Promise<{
-          cluster: string;
-          version: string;
-          hasResource: boolean;
-        }> => {
-          const path = `/apis/${gvk.group}/${version}`;
-          const response = await kubernetesApi.proxy({
-            clusterName: cluster,
-            path,
-          });
-
-          if (!response.ok) {
-            // If we get 404, the version doesn't exist for this resource
-            return { cluster, version, hasResource: false };
-          }
-
-          const resourceList: APIResourceList = await response.json();
-          const hasResource = resourceList.resources.some(
-            r => r.name === gvk.plural,
-          );
-          return { cluster, version, hasResource };
-        },
+        ),
         enabled: shouldDiscover && versions.length > 0,
-        staleTime: CACHE_TIME,
-        gcTime: CACHE_TIME,
-        retry: false,
       }));
     }),
   });
@@ -214,86 +148,31 @@ export function usePreferredVersions(
     const incompats: IncompatibilityState[] = [];
     const outdatedStates: ClientOutdatedState[] = [];
 
-    const baseGVK: ResolvedGVKWithCompatibility = {
-      ...gvk,
-      supportedVersions,
-      isDiscovered: false,
-    };
-
     clusters.forEach((cluster, index) => {
-      if (!shouldDiscover) {
-        gvks[cluster] = baseGVK;
-        queryEnabled[cluster] = true;
-        return;
-      }
-
       const query = groupQueries[index];
+      const serverVersions = query.data?.versions
+        ? query.data.versions.map(v => v.version)
+        : undefined;
 
-      if (query.data?.versions) {
-        const serverVersions = query.data.versions.map(v => v.version);
-        const serverPreferredVersion = query.data.preferredVersion?.version;
+      const resolved = resolvePreferredVersion({
+        gvk,
+        supportedVersions,
+        cluster,
+        shouldDiscover,
+        serverVersions,
+        serverPreferredVersion: query.data?.preferredVersion?.version,
+        bestVersion: clusterBestVersions[cluster],
+        discoveryError: query.error,
+        fallbackToStatic,
+      });
 
-        // Use the best version that actually has the resource, if discovered
-        const bestVersion = clusterBestVersions[cluster];
-
-        const compatibility = checkVersionCompatibility(
-          supportedVersions,
-          serverVersions,
-          // Prefer the version that actually has the resource over the server's preferred
-          bestVersion ?? serverPreferredVersion,
-        );
-
-        if (compatibility.isCompatible && compatibility.resolvedVersion) {
-          // If we discovered a best version, use it; otherwise use compatibility result
-          const resolvedVersion = bestVersion ?? compatibility.resolvedVersion;
-
-          gvks[cluster] = {
-            ...baseGVK,
-            apiVersion: resolvedVersion,
-            isDiscovered: true,
-            compatibility: {
-              ...compatibility,
-              resolvedVersion,
-            },
-          };
-          queryEnabled[cluster] = true;
-
-          // Check if client is outdated (compatible but server has newer versions)
-          if (compatibility.isClientOutdated) {
-            const clientLatest = getLatestVersion(supportedVersions);
-            const serverLatest = getLatestVersion(serverVersions);
-            if (clientLatest && serverLatest) {
-              outdatedStates.push({
-                resourceClass: gvk.plural,
-                cluster,
-                clientLatestVersion: clientLatest,
-                serverLatestVersion: serverLatest,
-                clientVersions: supportedVersions,
-                serverVersions,
-              });
-            }
-          }
-        } else {
-          // Incompatible versions
-          gvks[cluster] = {
-            ...baseGVK,
-            compatibility,
-          };
-          queryEnabled[cluster] = false;
-          incompats.push({
-            resourceClass: gvk.plural,
-            cluster,
-            clientVersions: supportedVersions,
-            serverVersions,
-          });
-        }
-      } else if (query.error && fallbackToStatic) {
-        gvks[cluster] = baseGVK;
-        queryEnabled[cluster] = true;
-      } else {
-        // Default to static version while discovering or on error without fallback
-        gvks[cluster] = baseGVK;
-        queryEnabled[cluster] = true;
+      gvks[cluster] = resolved.resolvedGVK;
+      queryEnabled[cluster] = resolved.queryEnabled;
+      if (resolved.incompatibility) {
+        incompats.push(resolved.incompatibility);
+      }
+      if (resolved.clientOutdated) {
+        outdatedStates.push(resolved.clientOutdated);
       }
     });
 

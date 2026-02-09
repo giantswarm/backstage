@@ -1,4 +1,3 @@
-export { useApiDiscovery } from './useApiDiscovery';
 export {
   usePreferredVersion,
   type UsePreferredVersionOptions,
