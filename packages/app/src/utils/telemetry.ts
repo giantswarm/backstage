@@ -6,8 +6,16 @@ export function getTelemetryPageViewPayload(pathname: string): {
   let payload = {};
 
   switch (true) {
+    case pathname === '/':
+      payload = { page: 'Home' };
+      break;
+
     case pathname === '/catalog':
       payload = { page: 'Catalog index' };
+      break;
+
+    case pathname === '/catalog-graph':
+      payload = { page: 'Catalog graph' };
       break;
 
     case pathname.startsWith('/catalog'): {
@@ -77,6 +85,36 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     case pathname === '/deployments':
       payload = { page: 'Deployments index' };
+      break;
+
+    case pathname.startsWith('/deployments'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Deployment details',
+        installation: parts[2],
+        deploymentKind: parts[3],
+        deploymentNamespace: parts[4],
+        deploymentName: parts[5],
+        tab: parts[6] ?? 'overview',
+      };
+      break;
+    }
+
+    case pathname === '/flux':
+      payload = { page: 'Flux index' };
+      break;
+
+    case pathname.startsWith('/flux'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Flux',
+        view: parts[2],
+      };
+      break;
+    }
+
+    case pathname === '/ai-chat':
+      payload = { page: 'AI Chat' };
       break;
 
     case pathname === '/search':

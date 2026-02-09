@@ -1,6 +1,14 @@
 import { getTelemetryPageViewPayload } from './telemetry';
 
 describe('getTelemetryPageViewPayload', () => {
+  it('should return correct payload for home page', () => {
+    const result = getTelemetryPageViewPayload('/');
+    expect(result).toEqual({
+      page: 'Home',
+      path: '/',
+    });
+  });
+
   it('should return correct payload for catalog index page', () => {
     const result = getTelemetryPageViewPayload('/catalog');
     expect(result).toEqual({
@@ -34,6 +42,14 @@ describe('getTelemetryPageViewPayload', () => {
       entityName: 'my-component',
       tab: 'pull-requests',
       path: '/catalog/default/component/my-component/pull-requests',
+    });
+  });
+
+  it('should return correct payload for catalog graph page', () => {
+    const result = getTelemetryPageViewPayload('/catalog-graph');
+    expect(result).toEqual({
+      page: 'Catalog graph',
+      path: '/catalog-graph',
     });
   });
 
@@ -135,6 +151,70 @@ describe('getTelemetryPageViewPayload', () => {
       clusterName: 'demo-cluster',
       tab: 'ssh-access',
       path: '/clusters/installation/org-demo/demo-cluster/ssh-access',
+    });
+  });
+
+  it('should return correct payload for deployment details page', () => {
+    const result = getTelemetryPageViewPayload(
+      '/deployments/gorilla/helmrelease/org-demo/my-app',
+    );
+    expect(result).toEqual({
+      page: 'Deployment details',
+      installation: 'gorilla',
+      deploymentKind: 'helmrelease',
+      deploymentNamespace: 'org-demo',
+      deploymentName: 'my-app',
+      tab: 'overview',
+      path: '/deployments/gorilla/helmrelease/org-demo/my-app',
+    });
+  });
+
+  it('should return correct payload for deployment details page with tab', () => {
+    const result = getTelemetryPageViewPayload(
+      '/deployments/gorilla/helmrelease/org-demo/my-app/resources',
+    );
+    expect(result).toEqual({
+      page: 'Deployment details',
+      installation: 'gorilla',
+      deploymentKind: 'helmrelease',
+      deploymentNamespace: 'org-demo',
+      deploymentName: 'my-app',
+      tab: 'resources',
+      path: '/deployments/gorilla/helmrelease/org-demo/my-app/resources',
+    });
+  });
+
+  it('should return correct payload for flux index page', () => {
+    const result = getTelemetryPageViewPayload('/flux');
+    expect(result).toEqual({
+      page: 'Flux index',
+      path: '/flux',
+    });
+  });
+
+  it('should return correct payload for flux tree view', () => {
+    const result = getTelemetryPageViewPayload('/flux/tree');
+    expect(result).toEqual({
+      page: 'Flux',
+      view: 'tree',
+      path: '/flux/tree',
+    });
+  });
+
+  it('should return correct payload for flux list view', () => {
+    const result = getTelemetryPageViewPayload('/flux/list');
+    expect(result).toEqual({
+      page: 'Flux',
+      view: 'list',
+      path: '/flux/list',
+    });
+  });
+
+  it('should return correct payload for AI Chat page', () => {
+    const result = getTelemetryPageViewPayload('/ai-chat');
+    expect(result).toEqual({
+      page: 'AI Chat',
+      path: '/ai-chat',
     });
   });
 
