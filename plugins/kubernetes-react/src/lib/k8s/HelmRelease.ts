@@ -64,10 +64,6 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
     return this.jsonData.spec?.chart?.spec.sourceRef;
   }
 
-  getChartName() {
-    return this.jsonData.spec?.chart?.spec?.chart;
-  }
-
   getReleaseName() {
     return this.jsonData.spec?.releaseName;
   }

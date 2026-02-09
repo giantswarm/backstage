@@ -113,6 +113,7 @@ type ResourceCardProps = {
     | ImagePolicy
     | ImageRepository
     | ImageUpdateAutomation;
+  source?: GitRepository | OCIRepository | HelmRepository;
   highlighted?: boolean;
   error?: boolean;
 };
@@ -124,6 +125,7 @@ export const ResourceCard = ({
   kind,
   targetCluster,
   resource,
+  source,
   highlighted,
   error,
 }: ResourceCardProps) => {
@@ -162,7 +164,7 @@ export const ResourceCard = ({
           isSuspended={isSuspended}
           resource={resource}
         />
-        {resource && <ResourceMetadata resource={resource} />}
+        {resource && <ResourceMetadata resource={resource} source={source} />}
       </Box>
     </ResourceWrapper>
   );

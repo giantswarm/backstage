@@ -15,6 +15,7 @@ import {
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Box } from '@material-ui/core';
+import { findHelmReleaseChartName } from '../../../../utils/findHelmReleaseChartName';
 
 type ReadyCondition = {
   status: string;
@@ -91,10 +92,15 @@ const KustomizationMetadata = ({
   );
 };
 
-const HelmReleaseMetadata = ({ helmRelease }: { helmRelease: HelmRelease }) => {
+const HelmReleaseMetadata = ({
+  helmRelease,
+  ociRepository,
+}: {
+  helmRelease: HelmRelease;
+  ociRepository?: OCIRepository;
+}) => {
   const readyCondition = helmRelease.findReadyCondition();
-  const chartRef = helmRelease.getChartRef();
-  const chartName = helmRelease.getChartName();
+  const chartName = findHelmReleaseChartName(helmRelease, ociRepository);
   const chartVersion = helmRelease.getLastAppliedRevision();
   const releaseName = helmRelease.getReleaseName();
   const targetNamespace = helmRelease.getTargetNamespace();
@@ -106,14 +112,7 @@ const HelmReleaseMetadata = ({ helmRelease }: { helmRelease: HelmRelease }) => {
   const metadata: { [key: string]: any } = {};
   addCreatedMetadata(metadata, helmRelease.getCreatedTimestamp());
 
-  // Chart reference (either chartRef or chart name from spec)
-  if (chartRef) {
-    metadata.Chart = chartRef.namespace
-      ? `${chartRef.kind}/${chartRef.namespace}/${chartRef.name}`
-      : `${chartRef.kind}/${chartRef.name}`;
-  } else if (chartName) {
-    metadata.Chart = chartName;
-  }
+  metadata.Chart = chartName;
 
   if (chartVersion) {
     metadata['Chart Version'] = chartVersion;
@@ -367,9 +366,13 @@ type ResourceMetadataProps = {
     | ImagePolicy
     | ImageRepository
     | ImageUpdateAutomation;
+  source?: GitRepository | OCIRepository | HelmRepository;
 };
 
-export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
+export const ResourceMetadata = ({
+  resource,
+  source,
+}: ResourceMetadataProps) => {
   const kind = resource.getKind();
 
   const renderMetadata = () => {
@@ -379,7 +382,12 @@ export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
           <KustomizationMetadata kustomization={resource as Kustomization} />
         );
       case HelmRelease.kind:
-        return <HelmReleaseMetadata helmRelease={resource as HelmRelease} />;
+        return (
+          <HelmReleaseMetadata
+            helmRelease={resource as HelmRelease}
+            ociRepository={source instanceof OCIRepository ? source : undefined}
+          />
+        );
       case GitRepository.kind:
       case OCIRepository.kind:
       case HelmRepository.kind:
