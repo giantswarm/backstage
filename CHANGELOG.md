@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-02-09
+
 ### Added
 
 - Extract error reporter API into dedicated `@giantswarm/backstage-plugin-error-reporter-react` package.
@@ -1867,7 +1869,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.103.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.104.0...HEAD
+[0.104.0]: https://github.com/giantswarm/backstage/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/giantswarm/backstage/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/giantswarm/backstage/compare/v0.102.0...v0.103.0
 [0.102.0]: https://github.com/giantswarm/backstage/compare/v0.101.2...v0.102.0
