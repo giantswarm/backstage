@@ -26,7 +26,11 @@ import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
 import { AlertDisplay, OAuthRequestDialog } from '@backstage/core-components';
-import { createApp } from '@backstage/app-defaults';
+import { createApp } from '@backstage/frontend-defaults';
+import {
+  convertLegacyAppOptions,
+  convertLegacyAppRoot,
+} from '@backstage/core-compat-api';
 import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 
@@ -43,7 +47,6 @@ import {
   GSClustersPage,
   GSCustomCatalogPage,
   GSInstallationsPage,
-  GSFeatureEnabled,
   GSProviderSettings,
   GSStepLayout,
   GSProviderConfigPickerFieldExtension,
@@ -63,9 +66,10 @@ import {
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { FluxPage, fluxPlugin } from '@giantswarm/backstage-plugin-flux';
-import { AiChatPage } from '@giantswarm/backstage-plugin-ai-chat';
+import { AiChatPage, aiChatPlugin } from '@giantswarm/backstage-plugin-ai-chat';
 
-const app = createApp({
+// Convert legacy app options to new frontend system features
+const legacyAppOptions = convertLegacyAppOptions({
   apis,
   components: {
     SignInPage: props => {
@@ -82,19 +86,7 @@ const app = createApp({
       return <SignInPage {...props} auto providers={providers} />;
     },
   },
-  bindRoutes({ bind }) {
-    bind(catalogPlugin.externalRoutes, {
-      createComponent: scaffolderPlugin.routes.root,
-      viewTechDoc: techdocsPlugin.routes.docRoot,
-    });
-    bind(orgPlugin.externalRoutes, {
-      catalogIndex: catalogPlugin.routes.catalogIndex,
-    });
-    bind(gsPlugin.externalRoutes, {
-      fluxOverview: fluxPlugin.routes.overview,
-      fluxResources: fluxPlugin.routes.root,
-    });
-  },
+  // Note: bindRoutes moved to app-config.yaml under app.routes.bindings
   featureFlags: [
     {
       pluginId: '',
@@ -102,11 +94,25 @@ const app = createApp({
       description:
         'Show Kubernetes resources for service components. Requires matching labels on resources.',
     },
+    {
+      pluginId: 'ai-chat',
+      name: 'ai-chat-verbose-debugging',
+    },
   ],
   icons: {
     giantswarm: GiantSwarmIcon,
     grafana: GrafanaIcon,
   },
+  // Legacy plugins that need route bindings
+  plugins: [
+    catalogPlugin,
+    orgPlugin,
+    scaffolderPlugin,
+    techdocsPlugin,
+    gsPlugin,
+    fluxPlugin,
+    aiChatPlugin,
+  ],
 });
 
 const createHeaderOptions = {
@@ -136,11 +142,7 @@ const routes = (
     />
     <Route
       path="/create"
-      element={
-        <GSFeatureEnabled feature="scaffolder">
-          <ScaffolderPage headerOptions={createHeaderOptions} />
-        </GSFeatureEnabled>
-      }
+      element={<ScaffolderPage headerOptions={createHeaderOptions} />}
     >
       <ScaffolderFieldExtensions>
         <GSChartPickerFieldExtension />
@@ -177,45 +179,18 @@ const routes = (
       }
     />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
-    <Route
-      path="/clusters"
-      element={
-        <GSFeatureEnabled feature="clustersPage">
-          <GSClustersPage />
-        </GSFeatureEnabled>
-      }
-    />
-    <Route
-      path="/deployments"
-      element={
-        <GSFeatureEnabled feature="deploymentsPage">
-          <GSDeploymentsPage />
-        </GSFeatureEnabled>
-      }
-    />
-    <Route
-      path="/installations"
-      element={
-        <GSFeatureEnabled feature="installationsPage">
-          <GSInstallationsPage />
-        </GSFeatureEnabled>
-      }
-    />
-    <Route
-      path="/flux"
-      element={
-        <GSFeatureEnabled feature="fluxPage">
-          <FluxPage />
-        </GSFeatureEnabled>
-      }
-    >
+    <Route path="/clusters" element={<GSClustersPage />} />
+    <Route path="/deployments" element={<GSDeploymentsPage />} />
+    <Route path="/installations" element={<GSInstallationsPage />} />
+    <Route path="/flux" element={<FluxPage />}>
       <GSCustomFluxPage />
     </Route>
     <Route path="/ai-chat" element={<AiChatPage />} />
   </FlatRoutes>
 );
 
-export default app.createRoot(
+// Convert legacy app root to new frontend system features
+const legacyAppRoot = convertLegacyAppRoot(
   <>
     <AlertDisplay />
     <OAuthRequestDialog />
@@ -226,3 +201,32 @@ export default app.createRoot(
     </AppRouter>
   </>,
 );
+
+// Create app with new frontend system in hybrid mode
+// This allows running both legacy and new-style plugins together
+const app = createApp({
+  features: [
+    legacyAppOptions,
+    ...legacyAppRoot,
+    // Add new NFS plugins here as they are migrated:
+    // import('@giantswarm/backstage-plugin-flux/alpha'),
+    // import('@giantswarm/backstage-plugin-ai-chat/alpha'),
+    // import('@giantswarm/backstage-plugin-gs/alpha'),
+  ],
+  bindRoutes({ bind }) {
+    bind(catalogPlugin.externalRoutes, {
+      createComponent: scaffolderPlugin.routes.root,
+      viewTechDoc: techdocsPlugin.routes.docRoot,
+    });
+    bind(orgPlugin.externalRoutes, {
+      catalogIndex: catalogPlugin.routes.catalogIndex,
+    });
+    bind(gsPlugin.externalRoutes, {
+      fluxOverview: fluxPlugin.routes.overview,
+      fluxResources: fluxPlugin.routes.root,
+    });
+  },
+});
+
+// The app.createRoot() returns a React element that can be rendered directly
+export default app.createRoot();
