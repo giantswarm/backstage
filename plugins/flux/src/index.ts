@@ -1,1 +1,1 @@
-export { fluxPlugin, FluxPage } from './plugin';
+export { fluxPlugin as default } from './plugin';

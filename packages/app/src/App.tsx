@@ -59,13 +59,12 @@ import {
   GSYamlValuesValidationFieldExtension,
   gsAuthApiRef,
   GSDeploymentsPage,
-  GSCustomFluxPage,
   gsPlugin,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
-import { FluxPage, fluxPlugin } from '@giantswarm/backstage-plugin-flux';
+import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 
 // Convert legacy app options to new frontend system features
@@ -110,7 +109,6 @@ const legacyAppOptions = convertLegacyAppOptions({
     scaffolderPlugin,
     techdocsPlugin,
     gsPlugin,
-    fluxPlugin,
   ],
 });
 
@@ -181,9 +179,6 @@ const routes = (
     <Route path="/clusters" element={<GSClustersPage />} />
     <Route path="/deployments" element={<GSDeploymentsPage />} />
     <Route path="/installations" element={<GSInstallationsPage />} />
-    <Route path="/flux" element={<FluxPage />}>
-      <GSCustomFluxPage />
-    </Route>
   </FlatRoutes>
 );
 
@@ -208,7 +203,7 @@ const app = createApp({
     ...legacyAppRoot,
     // Add new NFS plugins here as they are migrated:
     aiChatPlugin,
-    // import('@giantswarm/backstage-plugin-flux/alpha'),
+    fluxPlugin,
     // import('@giantswarm/backstage-plugin-gs/alpha'),
   ],
   bindRoutes({ bind }) {

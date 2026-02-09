@@ -1,8 +1,7 @@
 import { createDevApp } from '@backstage/dev-utils';
-import { fluxPlugin, FluxPage } from '../src/plugin';
+import { FluxPage } from '../src/components/FluxPage';
 
 createDevApp()
-  .registerPlugin(fluxPlugin)
   .addPage({
     element: <FluxPage />,
     title: 'Root Page',

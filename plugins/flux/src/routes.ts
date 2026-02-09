@@ -1,17 +1,16 @@
-import { createRouteRef, createSubRouteRef } from '@backstage/core-plugin-api';
+import {
+  createRouteRef,
+  createSubRouteRef,
+} from '@backstage/frontend-plugin-api';
 
-export const rootRouteRef = createRouteRef({
-  id: 'flux',
-});
+export const rootRouteRef = createRouteRef();
 
 export const overviewSubRouteRef = createSubRouteRef({
-  id: 'flux-overview',
   path: '/tree',
   parent: rootRouteRef,
 });
 
 export const resourcesSubRouteRef = createSubRouteRef({
-  id: 'flux-resources',
   path: '/list',
   parent: rootRouteRef,
 });
