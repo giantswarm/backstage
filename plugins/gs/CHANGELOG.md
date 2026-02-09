@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.53.3
+
+### Patch Changes
+
+- 4166fda: Fix AsyncValue component to properly handle falsy values
+  - Make `value` prop required instead of optional
+  - Use explicit loading/error state checks instead of truthiness check on value, so falsy values (empty string, `0`, `null`) render correctly
+  - Update consumers to handle nullable values with explicit `<NotAvailable />` fallbacks
+
+- Updated dependencies [23e9f63]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.11.0
+  - @giantswarm/backstage-plugin-flux@0.6.8
+  - @giantswarm/backstage-plugin-flux-react@0.8.1
+
 ## 0.53.2
 
 ### Patch Changes

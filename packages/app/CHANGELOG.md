@@ -1,5 +1,38 @@
 # app
 
+## 0.29.0
+
+### Minor Changes
+
+- 7c1ad33: Replace TelemetryProvider with standard Backstage AnalyticsApi implementation for TelemetryDeck
+
+### Patch Changes
+
+- 7c1ad33: Add missing pages to telemetry tracking (Home, Catalog graph, Deployment details, Flux, AI Chat)
+- 23e9f63: Extract error reporter API into dedicated package
+
+  **New package: `@giantswarm/backstage-plugin-error-reporter-react`**
+  - Provides `ErrorReporterApi` interface and `errorReporterApiRef` for reporting errors to external services
+  - Can be used by any plugin that needs to report errors
+
+  **Breaking change in `@giantswarm/backstage-plugin-kubernetes-react`**
+  - Removed `errorReporterApiRef` export (now in `@giantswarm/backstage-plugin-error-reporter-react`)
+  - Error reporter is now optional: if not registered, only console logging occurs
+  - API version issues are now always logged to console in addition to error reporter
+
+  **Changes in `app`**
+  - Removed `ErrorReporterProvider` React context wrapper
+  - Error reporter is now registered as a standard Backstage API via `createApiFactory`
+  - Simplified implementation by merging `SentryErrorNotifier` into `SentryErrorReporter`
+
+- c77afe4: Report "Unknown page" telemetry events as warnings via errorReporterApi so they surface in Sentry
+- Updated dependencies [23e9f63]
+- Updated dependencies [4166fda]
+  - @giantswarm/backstage-plugin-error-reporter-react@0.2.0
+  - @giantswarm/backstage-plugin-kubernetes-react@0.11.0
+  - @giantswarm/backstage-plugin-gs@0.53.3
+  - @giantswarm/backstage-plugin-flux@0.6.8
+
 ## 0.28.1
 
 ### Patch Changes
