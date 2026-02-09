@@ -7,7 +7,6 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '../../../../../UI';
-import { NotAvailable } from '@giantswarm/backstage-plugin-ui-react';
 
 export const AzureClusterLocation = () => {
   const { cluster, installationName } = useCurrentCluster();
@@ -51,8 +50,6 @@ export const AzureClusterLocation = () => {
       isLoading={isLoading}
       errorMessage={errorMessage}
       value={location}
-    >
-      {value => value ?? <NotAvailable />}
-    </AsyncValue>
+    />
   );
 };
