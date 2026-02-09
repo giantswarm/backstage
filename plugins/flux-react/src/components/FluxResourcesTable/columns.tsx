@@ -3,6 +3,7 @@ import { Link, TableColumn } from '@backstage/core-components';
 import { Typography, Box } from '@material-ui/core';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
 import {
+  DateComponent,
   isTableColumnHidden,
   sortAndFilterOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -35,6 +36,7 @@ export const FluxResourceColumns = {
   namespace: 'namespace',
   status: 'status',
   statusDetails: 'statusDetails',
+  created: 'createdTimestamp',
 } as const;
 
 function formatStatus(status: FluxResourceStatus) {
@@ -163,6 +165,16 @@ export const getInitialColumns = ({
       title: 'Namespace',
       field: FluxResourceColumns.namespace,
       render: row => <IconText icon={LocalOfferIcon}>{row.namespace}</IconText>,
+    },
+    {
+      title: 'Created',
+      field: FluxResourceColumns.created,
+      type: 'datetime',
+      hidden: true,
+      render: row =>
+        row.createdTimestamp ? (
+          <DateComponent value={row.createdTimestamp} relative />
+        ) : null,
     },
     {
       title: 'Status',
