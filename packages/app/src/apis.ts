@@ -5,6 +5,7 @@ import {
 } from '@backstage/integration-react';
 import {
   AnyApiFactory,
+  analyticsApiRef,
   configApiRef,
   createApiFactory,
   discoveryApiRef,
@@ -16,6 +17,7 @@ import {
   microsoftAuthApiRef,
   oauthRequestApiRef,
 } from '@backstage/core-plugin-api';
+import { TelemetryDeckAnalyticsApi } from './apis/analytics';
 import { ApiEntity } from '@backstage/catalog-model';
 import {
   apiDocsConfigRef,
@@ -73,6 +75,15 @@ export const apis: AnyApiFactory[] = [
     api: errorReporterApiRef,
     deps: {},
     factory: () => ErrorReporter.getInstance(),
+  }),
+  createApiFactory({
+    api: analyticsApiRef,
+    deps: {
+      configApi: configApiRef,
+      identityApi: identityApiRef,
+    },
+    factory: ({ configApi, identityApi }) =>
+      TelemetryDeckAnalyticsApi.fromConfig({ configApi, identityApi }),
   }),
   createApiFactory({
     api: discoveryApiRef,

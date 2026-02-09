@@ -1,4 +1,4 @@
-import { PropsWithChildren, useEffect } from 'react';
+import { PropsWithChildren } from 'react';
 import { makeStyles } from '@material-ui/core';
 import FolderIcon from '@material-ui/icons/Folder';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
@@ -26,9 +26,6 @@ import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import { GSFeatureEnabled, GSMainMenu } from '@giantswarm/backstage-plugin-gs';
 import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat';
-import { useTelemetryDeck } from '@typedigital/telemetrydeck-react';
-import { useLocation } from 'react-router-dom';
-import { getTelemetryPageViewPayload } from '../../utils/telemetry';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -59,20 +56,6 @@ const SidebarLogo = () => {
 };
 
 export const Root = ({ children }: PropsWithChildren<{}>) => {
-  const { signal } = useTelemetryDeck();
-  const location = useLocation();
-
-  useEffect(() => {
-    (async () => {
-      try {
-        await signal('pageview', getTelemetryPageViewPayload(location));
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.log('Error sending telemetry signal', error);
-      }
-    })();
-  }, [location, signal]);
-
   return (
     <SidebarPage>
       <Sidebar>

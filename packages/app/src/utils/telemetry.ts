@@ -1,10 +1,8 @@
-import { Location } from 'react-router-dom';
 import sha256 from 'crypto-js/sha256';
 
-export function getTelemetryPageViewPayload(location: Location): {
+export function getTelemetryPageViewPayload(pathname: string): {
   [key: string]: string;
 } {
-  const pathname = location.pathname;
   let payload = {};
 
   switch (true) {
@@ -91,7 +89,7 @@ export function getTelemetryPageViewPayload(location: Location): {
 
   return {
     ...payload,
-    path: location.pathname,
+    path: pathname,
   };
 }
 
