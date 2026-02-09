@@ -15,12 +15,24 @@ import {
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Box } from '@material-ui/core';
+import { findHelmReleaseChartName } from '../../../../utils/findHelmReleaseChartName';
 
 type ReadyCondition = {
   status: string;
   lastTransitionTime?: string;
   message?: string;
 };
+
+function addCreatedMetadata(
+  metadata: Record<string, any>,
+  createdTimestamp: string | undefined,
+) {
+  metadata.Created = createdTimestamp ? (
+    <DateComponent value={createdTimestamp} relative />
+  ) : (
+    <NotAvailable />
+  );
+}
 
 function addStatusMetadata(
   metadata: Record<string, any>,
@@ -58,10 +70,10 @@ const KustomizationMetadata = ({
   const revision = kustomization.getLastAppliedRevision();
   const readyCondition = kustomization.findReadyCondition();
 
-  const metadata: { [key: string]: any } = {
-    Path: kustomization.getPath(),
-    Revision: revision ? revision : <NotAvailable />,
-  };
+  const metadata: { [key: string]: any } = {};
+  addCreatedMetadata(metadata, kustomization.getCreatedTimestamp());
+  metadata.Path = kustomization.getPath();
+  metadata.Revision = revision ? revision : <NotAvailable />;
 
   if (readyCondition) {
     metadata.Status = (
@@ -80,25 +92,62 @@ const KustomizationMetadata = ({
   );
 };
 
-const HelmReleaseMetadata = ({ helmRelease }: { helmRelease: HelmRelease }) => {
+const HelmReleaseMetadata = ({
+  helmRelease,
+  ociRepository,
+}: {
+  helmRelease: HelmRelease;
+  ociRepository?: OCIRepository;
+}) => {
   const readyCondition = helmRelease.findReadyCondition();
+  const chartName = findHelmReleaseChartName(helmRelease, ociRepository);
+  const chartVersion = helmRelease.getLastAppliedRevision();
+  const releaseName = helmRelease.getReleaseName();
+  const targetNamespace = helmRelease.getTargetNamespace();
+  const sourceRef = helmRelease.getChartSourceRef();
+  const interval = helmRelease.getInterval();
+  const installFailures = helmRelease.getInstallFailures();
+  const upgradeFailures = helmRelease.getUpgradeFailures();
 
   const metadata: { [key: string]: any } = {};
+  addCreatedMetadata(metadata, helmRelease.getCreatedTimestamp());
 
-  if (readyCondition) {
-    metadata.Status = (
-      <>
-        Last reconciled{' '}
-        <DateComponent value={readyCondition.lastTransitionTime} relative />
-      </>
-    );
-    metadata.Message = <ConditionMessage message={readyCondition.message} />;
-  } else {
-    metadata.Status = 'Unknown';
+  metadata.Chart = chartName;
+
+  if (chartVersion) {
+    metadata['Chart Version'] = chartVersion;
   }
 
+  if (releaseName) {
+    metadata['Release Name'] = releaseName;
+  }
+
+  if (targetNamespace) {
+    metadata['Target Namespace'] = targetNamespace;
+  }
+
+  if (sourceRef) {
+    metadata.Source = sourceRef.namespace
+      ? `${sourceRef.kind}/${sourceRef.namespace}/${sourceRef.name}`
+      : `${sourceRef.kind}/${sourceRef.name}`;
+  }
+
+  if (interval) {
+    metadata.Interval = interval;
+  }
+
+  if (installFailures && installFailures > 0) {
+    metadata['Install Failures'] = installFailures;
+  }
+
+  if (upgradeFailures && upgradeFailures > 0) {
+    metadata['Upgrade Failures'] = upgradeFailures;
+  }
+
+  addStatusMetadata(metadata, readyCondition);
+
   return (
-    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="76px" />
+    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="120px" />
   );
 };
 
@@ -107,9 +156,9 @@ const RepositoryMetadata = ({
 }: {
   repository: GitRepository | OCIRepository | HelmRepository;
 }) => {
-  const metadata: { [key: string]: any } = {
-    URL: repository.getURL(),
-  };
+  const metadata: { [key: string]: any } = {};
+  addCreatedMetadata(metadata, repository.getCreatedTimestamp());
+  metadata.URL = repository.getURL();
 
   if (repository instanceof GitRepository) {
     const reference = repository.getReference();
@@ -130,6 +179,11 @@ const RepositoryMetadata = ({
     } else if (reference?.digest) {
       metadata.Digest = reference.digest;
     }
+  }
+
+  const interval = repository.getInterval();
+  if (interval) {
+    metadata.Interval = interval;
   }
 
   const revision = repository.getRevision();
@@ -164,12 +218,36 @@ const RepositoryMetadata = ({
   );
 };
 
+function formatPolicyType(
+  policy: ReturnType<ImagePolicy['getPolicy']>,
+): string {
+  if (!policy) {
+    return 'Not configured';
+  }
+
+  if (policy.semver) {
+    return `Semver: ${policy.semver.range}`;
+  }
+  if (policy.alphabetical) {
+    return `Alphabetical (${policy.alphabetical.order ?? 'asc'})`;
+  }
+  if (policy.numerical) {
+    return `Numerical (${policy.numerical.order ?? 'asc'})`;
+  }
+
+  return 'Unknown';
+}
+
 const ImagePolicyMetadata = ({ imagePolicy }: { imagePolicy: ImagePolicy }) => {
   const readyCondition = imagePolicy.findReadyCondition();
   const imageRepositoryRef = imagePolicy.getImageRepositoryRef();
-  const latestImage = imagePolicy.getLatestImage();
+  const latestRef = imagePolicy.getLatestRef();
+  const policy = imagePolicy.getPolicy();
 
   const metadata: { [key: string]: any } = {};
+  addCreatedMetadata(metadata, imagePolicy.getCreatedTimestamp());
+
+  metadata['Policy Type'] = formatPolicyType(policy);
 
   if (imageRepositoryRef) {
     metadata['Image Repository'] = imageRepositoryRef.namespace
@@ -177,8 +255,8 @@ const ImagePolicyMetadata = ({ imagePolicy }: { imagePolicy: ImagePolicy }) => {
       : imageRepositoryRef.name;
   }
 
-  if (latestImage) {
-    metadata['Latest Image'] = latestImage;
+  if (latestRef) {
+    metadata['Latest Image'] = `${latestRef.name}:${latestRef.tag}`;
   }
 
   addStatusMetadata(metadata, readyCondition);
@@ -196,11 +274,17 @@ const ImageRepositoryMetadata = ({
   const readyCondition = imageRepository.findReadyCondition();
   const image = imageRepository.getImage();
   const lastScanResult = imageRepository.getLastScanResult();
+  const provider = imageRepository.getProvider();
 
   const metadata: { [key: string]: any } = {};
+  addCreatedMetadata(metadata, imageRepository.getCreatedTimestamp());
 
   if (image) {
     metadata.Image = image;
+  }
+
+  if (provider && provider !== 'generic') {
+    metadata.Provider = provider;
   }
 
   if (lastScanResult?.scanTime) {
@@ -211,6 +295,10 @@ const ImageRepositoryMetadata = ({
 
   if (lastScanResult?.tagCount !== undefined) {
     metadata['Tags Found'] = lastScanResult.tagCount;
+  }
+
+  if (lastScanResult?.latestTags && lastScanResult.latestTags.length > 0) {
+    metadata['Latest Tags'] = lastScanResult.latestTags.slice(0, 5).join(', ');
   }
 
   addStatusMetadata(metadata, readyCondition);
@@ -229,13 +317,30 @@ const ImageUpdateAutomationMetadata = ({
   const sourceRef = imageUpdateAutomation.getSourceRef();
   const lastAutomationRunTime =
     imageUpdateAutomation.getLastAutomationRunTime();
+  const git = imageUpdateAutomation.getGit();
+  const updateConfig = imageUpdateAutomation.getUpdateConfig();
 
   const metadata: { [key: string]: any } = {};
+  addCreatedMetadata(metadata, imageUpdateAutomation.getCreatedTimestamp());
 
   if (sourceRef) {
     metadata.Source = sourceRef.namespace
       ? `${sourceRef.kind}/${sourceRef.namespace}/${sourceRef.name}`
       : `${sourceRef.kind}/${sourceRef.name}`;
+  }
+
+  if (git?.commit?.author?.email) {
+    metadata['Commit Author'] = git.commit.author.name
+      ? `${git.commit.author.name} <${git.commit.author.email}>`
+      : git.commit.author.email;
+  }
+
+  if (git?.push?.branch) {
+    metadata['Push Branch'] = git.push.branch;
+  }
+
+  if (updateConfig?.path) {
+    metadata['Update Path'] = updateConfig.path;
   }
 
   if (lastAutomationRunTime) {
@@ -247,7 +352,7 @@ const ImageUpdateAutomationMetadata = ({
   addStatusMetadata(metadata, readyCondition);
 
   return (
-    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="110px" />
+    <StructuredMetadataList metadata={metadata} fixedKeyColumnWidth="120px" />
   );
 };
 
@@ -261,9 +366,13 @@ type ResourceMetadataProps = {
     | ImagePolicy
     | ImageRepository
     | ImageUpdateAutomation;
+  source?: GitRepository | OCIRepository | HelmRepository;
 };
 
-export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
+export const ResourceMetadata = ({
+  resource,
+  source,
+}: ResourceMetadataProps) => {
   const kind = resource.getKind();
 
   const renderMetadata = () => {
@@ -273,7 +382,12 @@ export const ResourceMetadata = ({ resource }: ResourceMetadataProps) => {
           <KustomizationMetadata kustomization={resource as Kustomization} />
         );
       case HelmRelease.kind:
-        return <HelmReleaseMetadata helmRelease={resource as HelmRelease} />;
+        return (
+          <HelmReleaseMetadata
+            helmRelease={resource as HelmRelease}
+            ociRepository={source instanceof OCIRepository ? source : undefined}
+          />
+        );
       case GitRepository.kind:
       case OCIRepository.kind:
       case HelmRepository.kind:

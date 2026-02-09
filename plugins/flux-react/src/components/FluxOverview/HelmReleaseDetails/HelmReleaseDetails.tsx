@@ -96,6 +96,7 @@ export const HelmReleaseDetails = ({
           namespace={helmRelease.getNamespace()}
           targetCluster={findTargetClusterName(helmRelease)}
           resource={helmRelease}
+          source={source}
           highlighted
         />
       </Section>

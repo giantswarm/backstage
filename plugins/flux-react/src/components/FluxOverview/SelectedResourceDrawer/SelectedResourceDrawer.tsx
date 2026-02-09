@@ -200,7 +200,9 @@ export const SelectedResourceDrawer = ({
             allGitRepositories={gitRepositories}
             allOCIRepositories={ociRepositories}
             allHelmRepositories={helmRepositories}
+            allImagePolicies={imagePolicies}
             allImageRepositories={imageRepositories}
+            allImageUpdateAutomations={imageUpdateAutomations}
             isLoadingResources={isLoadingResources}
           />
         ) : null}
