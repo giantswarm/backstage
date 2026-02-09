@@ -27,6 +27,7 @@
   "dependencies": {
     "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
+    "@backstage/frontend-plugin-api": "backstage:^",
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
