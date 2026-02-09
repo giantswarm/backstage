@@ -1,4 +1,7 @@
 import { useMemo } from 'react';
+import { useApi } from '@backstage/core-plugin-api';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import {
   CustomResourceMatcher,
   MultiVersionResourceMatcher,
@@ -9,10 +12,12 @@ import {
   IncompatibilityState,
 } from '../../lib/k8s/VersionTypes';
 import {
-  checkVersionCompatibility,
-  getLatestVersion,
-} from '../../lib/k8s/versionUtils';
-import { useApiDiscovery } from './useApiDiscovery';
+  getSupportedVersions,
+  apiGroupQueryOptions,
+  apiResourceQueryOptions,
+  computeVersionsToCheck,
+  resolvePreferredVersion,
+} from './queryFactories';
 
 export interface UsePreferredVersionOptions {
   /** Enable API version discovery. Defaults to true. */
@@ -41,24 +46,10 @@ export interface UsePreferredVersionResult {
 }
 
 /**
- * Extracts supported versions from a GVK, handling both single-version
- * and multi-version resource matchers.
- */
-function getSupportedVersions(
-  gvk: CustomResourceMatcher | MultiVersionResourceMatcher,
-): readonly string[] {
-  // Check if it's a MultiVersionResourceMatcher
-  if ('supportedVersions' in gvk && gvk.supportedVersions.length > 0) {
-    return gvk.supportedVersions;
-  }
-  // Fallback to single apiVersion
-  return gvk.apiVersion ? [gvk.apiVersion] : [];
-}
-
-/**
  * Hook to resolve the preferred API version for a single cluster.
  * Uses Kubernetes API discovery to find the server's available versions
  * and checks compatibility with the resource class's supported versions.
+ * Verifies that the resource actually exists at the resolved version (Stage 2).
  *
  * @param cluster - The cluster name
  * @param gvk - The static GVK from the resource class
@@ -76,6 +67,7 @@ export function usePreferredVersion(
     fallbackToStatic = true,
   } = options;
 
+  const kubernetesApi = useApi(kubernetesApiRef);
   const supportedVersions = getSupportedVersions(gvk);
 
   // Skip discovery for core APIs (they use /api/v1 not /apis)
@@ -83,132 +75,92 @@ export function usePreferredVersion(
   const shouldDiscover =
     enableDiscovery && !gvk.isCore && !explicitVersion && Boolean(cluster);
 
-  const discoveryQuery = useApiDiscovery(cluster, gvk.group, {
+  // Stage 1: Discover available API versions for the group
+  const discoveryQuery = useQuery({
+    ...apiGroupQueryOptions(kubernetesApi, cluster, gvk.group),
     enabled: shouldDiscover,
   });
 
-  const result = useMemo((): {
-    resolvedGVK: ResolvedGVKWithCompatibility;
-    queryEnabled: boolean;
-    incompatibility: IncompatibilityState | undefined;
-    clientOutdated: ClientOutdatedState | undefined;
-  } => {
-    const baseGVK: ResolvedGVKWithCompatibility = {
-      ...gvk,
-      supportedVersions,
-      isDiscovered: false,
-    };
-
-    // If explicit version is provided, use it
-    if (explicitVersion) {
-      return {
-        resolvedGVK: {
-          ...baseGVK,
-          apiVersion: explicitVersion,
-        },
-        queryEnabled: true,
-        incompatibility: undefined,
-        clientOutdated: undefined,
-      };
+  // Determine which versions to check (compatible versions sorted newest to oldest)
+  const versionsToCheck = useMemo(() => {
+    if (!discoveryQuery.data?.versions) {
+      return [];
     }
+    const serverVersions = discoveryQuery.data.versions.map(v => v.version);
+    return computeVersionsToCheck(serverVersions, supportedVersions);
+  }, [discoveryQuery.data, supportedVersions]);
 
-    // If discovery is disabled or it's a core API, use static version
-    if (!shouldDiscover) {
-      return {
-        resolvedGVK: baseGVK,
-        queryEnabled: true,
-        incompatibility: undefined,
-        clientOutdated: undefined,
-      };
-    }
+  // Stage 2: Verify which versions actually have the resource
+  // Uses useQueries so cache is shared with usePreferredVersions
+  const resourceQueries = useQueries({
+    queries: versionsToCheck.map(version => ({
+      ...apiResourceQueryOptions(
+        kubernetesApi,
+        cluster,
+        gvk.group,
+        version,
+        gvk.plural,
+      ),
+      enabled: shouldDiscover && versionsToCheck.length > 0,
+    })),
+  });
 
-    // If discovery succeeded, check version compatibility
-    if (discoveryQuery.data?.versions) {
-      const serverVersions = discoveryQuery.data.versions.map(v => v.version);
-      const compatibility = checkVersionCompatibility(
-        supportedVersions,
-        serverVersions,
+  // Find the best version (first from newest to oldest that has the resource)
+  const bestVersion = useMemo(() => {
+    for (const version of versionsToCheck) {
+      const query = resourceQueries.find(
+        q =>
+          q.data?.cluster === cluster &&
+          q.data?.version === version &&
+          q.data?.hasResource,
       );
-
-      if (compatibility.isCompatible && compatibility.resolvedVersion) {
-        // Check if client is outdated (compatible but server has newer versions)
-        let clientOutdated: ClientOutdatedState | undefined;
-        if (compatibility.isClientOutdated) {
-          const clientLatest = getLatestVersion(supportedVersions);
-          const serverLatest = getLatestVersion(serverVersions);
-          if (clientLatest && serverLatest) {
-            clientOutdated = {
-              resourceClass: gvk.plural,
-              cluster,
-              clientLatestVersion: clientLatest,
-              serverLatestVersion: serverLatest,
-              clientVersions: supportedVersions,
-              serverVersions,
-            };
-          }
-        }
-
-        return {
-          resolvedGVK: {
-            ...baseGVK,
-            apiVersion: compatibility.resolvedVersion,
-            isDiscovered: true,
-            compatibility,
-          },
-          queryEnabled: true,
-          incompatibility: undefined,
-          clientOutdated,
-        };
+      if (query?.data?.hasResource) {
+        return version;
       }
-
-      // Incompatible versions
-      return {
-        resolvedGVK: {
-          ...baseGVK,
-          compatibility,
-        },
-        queryEnabled: false,
-        incompatibility: {
-          resourceClass: gvk.plural,
-          cluster,
-          clientVersions: supportedVersions,
-          serverVersions,
-        },
-        clientOutdated: undefined,
-      };
     }
+    return undefined;
+  }, [versionsToCheck, resourceQueries, cluster]);
 
-    // If discovery failed and fallback is enabled, use static version
-    if (discoveryQuery.error && fallbackToStatic) {
-      return {
-        resolvedGVK: baseGVK,
-        queryEnabled: true,
-        incompatibility: undefined,
-        clientOutdated: undefined,
-      };
-    }
+  const serverVersions = discoveryQuery.data?.versions
+    ? discoveryQuery.data.versions.map(v => v.version)
+    : undefined;
 
-    // Default to static version while discovering (or on error without fallback)
-    return {
-      resolvedGVK: baseGVK,
-      queryEnabled: true,
-      incompatibility: undefined,
-      clientOutdated: undefined,
-    };
-  }, [
-    gvk,
-    cluster,
-    explicitVersion,
-    shouldDiscover,
-    supportedVersions,
-    discoveryQuery.data,
-    discoveryQuery.error,
-    fallbackToStatic,
-  ]);
+  const result = useMemo(
+    () =>
+      resolvePreferredVersion({
+        gvk,
+        supportedVersions,
+        cluster,
+        shouldDiscover,
+        explicitVersion,
+        serverVersions,
+        serverPreferredVersion: discoveryQuery.data?.preferredVersion?.version,
+        bestVersion,
+        discoveryError: discoveryQuery.error,
+        fallbackToStatic,
+      }),
+    [
+      gvk,
+      supportedVersions,
+      cluster,
+      shouldDiscover,
+      explicitVersion,
+      serverVersions,
+      discoveryQuery.data?.preferredVersion?.version,
+      bestVersion,
+      discoveryQuery.error,
+      fallbackToStatic,
+    ],
+  );
+
+  const isDiscovering =
+    shouldDiscover &&
+    (discoveryQuery.isLoading ||
+      resourceQueries.some(query => query.isLoading));
 
   return {
     resolvedGVK: result.resolvedGVK,
-    isDiscovering: shouldDiscover && discoveryQuery.isLoading,
+    isDiscovering,
     discoveryError: discoveryQuery.error,
     isDiscovered: result.resolvedGVK.isDiscovered ?? false,
     queryEnabled: result.queryEnabled,
