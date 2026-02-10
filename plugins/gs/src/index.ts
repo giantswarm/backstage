@@ -26,7 +26,6 @@ export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
 export { createCustomEntityPresentationRenderer as createGSEntityPresentationRenderer } from './apis/entityPresentation';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
-export { CustomFluxPage as GSCustomFluxPage } from './components/flux/CustomFluxPage';
 export { EntityAppDeploymentCard as EntityGSAppDeploymentCard } from './components/catalog/EntityAppDeploymentCard';
 export { EntityInstallationDetailsCard as EntityGSInstallationDetailsCard } from './components/catalog/EntityInstallationDetailsCard';
 export { EntityKratixResourcesCard as EntityGSKratixResourcesCard } from './components/catalog/EntityKratixResourcesCard';
@@ -50,3 +49,4 @@ export { EntityReadmeCard as EntityGSReadmeCard } from './components/catalog/Ent
 export { EntityChartProvider as EntityGSChartProvider } from './components/catalog/EntityChartContext';
 export { columnFactories as GSColumnFactories } from './components/catalog/columns';
 export { EntityHeaderIcon as EntityGSHeaderIcon } from './components/catalog/EntityHeaderIcon';
+export { useDisabledInstallations } from './components/hooks/useDisabledInstallations';
