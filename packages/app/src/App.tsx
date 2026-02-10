@@ -66,6 +66,7 @@ import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
+import { fluxPluginOverrides } from './flux';
 
 // Convert legacy app options to new frontend system features
 const legacyAppOptions = convertLegacyAppOptions({
@@ -204,6 +205,7 @@ const app = createApp({
     // Add new NFS plugins here as they are migrated:
     aiChatPlugin,
     fluxPlugin,
+    fluxPluginOverrides,
     // import('@giantswarm/backstage-plugin-gs/alpha'),
   ],
   bindRoutes({ bind }) {

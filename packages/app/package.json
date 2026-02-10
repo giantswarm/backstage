@@ -53,6 +53,7 @@
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^",
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^",
     "@giantswarm/backstage-plugin-flux": "workspace:^",
+    "@giantswarm/backstage-plugin-flux-react": "workspace:^",
     "@giantswarm/backstage-plugin-gs": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@k-phoen/backstage-plugin-grafana": "^0.1.22",
