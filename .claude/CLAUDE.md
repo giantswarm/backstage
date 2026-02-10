@@ -358,6 +358,22 @@ Never commit:
 - **TechDocs**: Custom TechDocs backend module
 - **Monitoring**: Sentry integration, TelemetryDeck integration
 
+### Upstream Reference
+
+This project customizes [Backstage](https://github.com/backstage/backstage). Two upstream repos serve as reference for idiomatic patterns:
+
+- **Backstage monorepo** — core packages, plugins, and APIs
+- **Community plugins** — additional plugins maintained by the community
+
+Use the `/upstream-search` skill to search these repos for implementation patterns, API usage examples, and reference code. Claude should proactively check upstream when implementing features that likely exist in the Backstage ecosystem (NFS patterns, backend plugins, scaffolder extensions, catalog entities, etc.).
+
+**Developer setup** — clone the repos and set env vars in `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export BACKSTAGE_UPSTREAM_DIR="/path/to/backstage/backstage"
+export COMMUNITY_PLUGINS_DIR="/path/to/backstage/community-plugins"
+```
+
 ### Ownership
 
 - Code Owners: Team Honeybadger (@giantswarm/team-honeybadger)
