@@ -358,6 +358,40 @@ Never commit:
 - **TechDocs**: Custom TechDocs backend module
 - **Monitoring**: Sentry integration, TelemetryDeck integration
 
+### Upstream Reference
+
+This project customizes [Backstage](https://github.com/backstage/backstage). Two upstream repos serve as reference for idiomatic patterns:
+
+- **Backstage monorepo** — core packages, plugins, and APIs
+- **Community plugins** — additional plugins maintained by the community
+
+Use the `/upstream-search` skill to search these repos for implementation patterns, API usage examples, and reference code. Claude should proactively check upstream when implementing features that likely exist in the Backstage ecosystem (NFS patterns, backend plugins, scaffolder extensions, catalog entities, etc.).
+
+**Developer setup** — clone the repos and set env vars in `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export BACKSTAGE_UPSTREAM_DIR="/path/to/backstage/backstage"
+export COMMUNITY_PLUGINS_DIR="/path/to/backstage/community-plugins"
+```
+
+### Backstage Plugin Skills
+
+Two Claude Code skills provide guided workflows for building new Backstage plugins:
+
+- **`/backstage-frontend-plugin`** — New Frontend System: `createFrontendPlugin`, blueprints, routes, Utility APIs, testing. Use when creating pages, nav items, entity content, or cards.
+- **`/backstage-backend-plugin`** — New Backend System: `createBackendPlugin`, core services, DI, httpRouter, secure-by-default auth, Knex DB, testing. Use when creating APIs or background jobs.
+
+These skills require the external skills repo. Clone it and set the env var:
+
+```bash
+git clone git@github.com:rothenbergt/backstage-agent-skills.git
+
+# In ~/.zshrc or ~/.bashrc
+export BACKSTAGE_AGENT_SKILLS_DIR="/path/to/backstage-agent-skills"
+```
+
+Without the env var, the skills will hard-stop and ask you to configure it.
+
 ### Ownership
 
 - Code Owners: Team Honeybadger (@giantswarm/team-honeybadger)
