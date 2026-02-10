@@ -9,12 +9,11 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 ## Context
 
-- Skills repo dir: !`echo "${BACKSTAGE_AGENT_SKILLS_DIR:-NOT SET}"`
-- Skills repo available: !`[ -d "${BACKSTAGE_AGENT_SKILLS_DIR}/backstage-frontend-plugin" ] && echo "YES" || echo "NO"`
+- Skills repo dir: !`echo $BACKSTAGE_AGENT_SKILLS_DIR`
 
 ## Instructions
 
-Check the context above. If the skills repo is available (shows "YES"), follow the **Full Mode** instructions. Otherwise, follow **Standalone Mode**.
+Check the context above. If the skills repo dir is not empty, follow the **Full Mode** instructions. Otherwise, follow **Standalone Mode**.
 
 ---
 

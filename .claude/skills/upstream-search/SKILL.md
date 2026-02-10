@@ -10,16 +10,14 @@ Search upstream Backstage repositories for reference implementations, patterns, 
 
 ## Context
 
-- Backstage upstream repo: !`echo "${BACKSTAGE_UPSTREAM_DIR:-NOT SET}"`
-- Community plugins repo: !`echo "${COMMUNITY_PLUGINS_DIR:-NOT SET}"`
-- Backstage upstream available: !`[ -d "${BACKSTAGE_UPSTREAM_DIR}" ] && echo "YES" || echo "NO"`
-- Community plugins available: !`[ -d "${COMMUNITY_PLUGINS_DIR}" ] && echo "YES" || echo "NO"`
+- Backstage upstream repo: !`echo $BACKSTAGE_UPSTREAM_DIR`
+- Community plugins repo: !`echo $COMMUNITY_PLUGINS_DIR`
 
 ## Repository Availability
 
-Check the context above. If a repo path shows "NOT SET" or availability shows "NO", that repo is unavailable.
+Check the context above. If a repo path is empty, that repo is unavailable.
 
-**If repos are unavailable**, tell the user:
+**IMPORTANT: If repos are unavailable, you MUST stop and ask the user.** Do NOT silently fall back to `node_modules` or any other source. Show the user this setup guide and ask how they want to proceed:
 
 > To enable upstream search, clone the repos locally and set environment variables in your shell profile:
 >
@@ -34,10 +32,12 @@ Check the context above. If a repo path shows "NOT SET" or availability shows "N
 > - https://github.com/backstage/backstage
 > - https://github.com/backstage/community-plugins
 
-Only if the user explicitly says they don't want to clone the repos, offer these alternatives:
+Then ask the user whether they want to:
 
-- Search `node_modules/@backstage/` for installed package sources
-- Use `gh api` to search GitHub repositories
+1. Set up the repos now (recommended)
+2. Use a fallback approach instead (search `node_modules/@backstage/` or `gh api`)
+
+**Do NOT proceed with any search until the user responds.**
 
 ## Repository Structure
 
@@ -89,6 +89,10 @@ Search upstream **before implementing** when:
 - Adding search collators or decorators
 - Building custom permission rules
 - Unsure about the idiomatic way to use a Backstage API
+
+## Tool Usage
+
+**NEVER use Bash** (e.g., `ls`, `find`, `cat`) for file operations — only `Read`, `Glob`, and `Grep` are allowed. To list directory contents, use `Glob` with pattern `*` and the directory as `path` (e.g., `Glob: pattern="*" path=/some/dir`). This avoids permission prompts that would interrupt the user.
 
 ## Search Strategy
 
