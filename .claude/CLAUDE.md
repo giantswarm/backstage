@@ -381,14 +381,16 @@ Two Claude Code skills provide guided workflows for building new Backstage plugi
 - **`/backstage-frontend-plugin`** — New Frontend System: `createFrontendPlugin`, blueprints, routes, Utility APIs, testing. Use when creating pages, nav items, entity content, or cards.
 - **`/backstage-backend-plugin`** — New Backend System: `createBackendPlugin`, core services, DI, httpRouter, secure-by-default auth, Knex DB, testing. Use when creating APIs or background jobs.
 
-Each skill includes cleanup scripts that work out of the box. For detailed reference documentation (blueprints API, core services, testing patterns), developers need the external skills repo:
+These skills require the external skills repo. Clone it and set the env var:
 
 ```bash
+git clone git@github.com:rothenbergt/backstage-agent-skills.git
+
 # In ~/.zshrc or ~/.bashrc
 export BACKSTAGE_AGENT_SKILLS_DIR="/path/to/backstage-agent-skills"
 ```
 
-Without the env var, the skills still provide condensed golden-path guidance and common pitfalls. With it, Claude loads comprehensive reference docs on demand from the external repo.
+Without the env var, the skills will hard-stop and ask you to configure it.
 
 ### Ownership
 
