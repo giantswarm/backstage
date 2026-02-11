@@ -9,7 +9,12 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, makeStyles, Paper, PaperProps } from '@material-ui/core';
+import {
+  DateComponent,
+  NotAvailable,
+  StructuredMetadataList,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { Box, Divider, makeStyles, Paper, PaperProps } from '@material-ui/core';
 import classNames from 'classnames';
 import { ResourceMetadata } from './ResourceMetadata';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
@@ -164,7 +169,31 @@ export const ResourceCard = ({
           isSuspended={isSuspended}
           resource={resource}
         />
-        {resource && <ResourceMetadata resource={resource} source={source} />}
+        {resource && (
+          <Box mt={2} px={2}>
+            <StructuredMetadataList
+              metadata={{
+                Created: resource.getCreatedTimestamp() ? (
+                  <DateComponent
+                    value={resource.getCreatedTimestamp()}
+                    relative
+                  />
+                ) : (
+                  <NotAvailable />
+                ),
+              }}
+              fixedKeyColumnWidth="120px"
+            />
+          </Box>
+        )}
+        {resource && (
+          <>
+            <Box mt={2}>
+              <Divider />
+            </Box>
+            <ResourceMetadata resource={resource} source={source} />
+          </>
+        )}
       </Box>
     </ResourceWrapper>
   );
