@@ -9,8 +9,9 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, makeStyles, Paper, PaperProps } from '@material-ui/core';
+import { Box, Divider, makeStyles, Paper, PaperProps } from '@material-ui/core';
 import classNames from 'classnames';
+import { CopyCommandMenu } from './CopyCommandMenu';
 import { ResourceMetadata } from './ResourceMetadata';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
 import { ResourceInfo } from './ResourceInfo';
@@ -165,6 +166,16 @@ export const ResourceCard = ({
           resource={resource}
         />
         {resource && <ResourceMetadata resource={resource} source={source} />}
+        {resource && (
+          <>
+            <Box mt={1}>
+              <Divider />
+            </Box>
+            <Box display="flex" mt={1}>
+              <CopyCommandMenu resource={resource} />
+            </Box>
+          </>
+        )}
       </Box>
     </ResourceWrapper>
   );
