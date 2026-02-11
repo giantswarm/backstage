@@ -35,7 +35,11 @@ export const KustomizationDetails = ({
     treeBuilder?.findParentKustomization(kustomization);
 
   const parentSource = parentKustomization
-    ? findKustomizationSource(parentKustomization, allGitRepositories, allOCIRepositories)
+    ? findKustomizationSource(
+        parentKustomization,
+        allGitRepositories,
+        allOCIRepositories,
+      )
     : undefined;
 
   const dependsOn = kustomization.getDependsOn();

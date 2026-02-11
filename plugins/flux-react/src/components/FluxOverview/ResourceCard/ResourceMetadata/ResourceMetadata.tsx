@@ -521,8 +521,7 @@ export const ResourceMetadata = ({
       resource instanceof Kustomization
         ? resource.getLastAppliedRevision()
         : undefined,
-    path:
-      resource instanceof Kustomization ? resource.getPath() : undefined,
+    path: resource instanceof Kustomization ? resource.getPath() : undefined,
   });
 
   const repositorySourceUrl = useGitSourceLink({
