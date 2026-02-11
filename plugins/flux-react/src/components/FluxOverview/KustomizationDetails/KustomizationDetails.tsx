@@ -8,34 +8,7 @@ import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
 import { findTargetClusterName } from '../../../utils/findTargetClusterName';
-
-function useSource(
-  kustomization: Kustomization,
-  allGitRepositories: GitRepository[],
-  allOCIRepositories: OCIRepository[],
-): GitRepository | OCIRepository | undefined {
-  const sourceRef = kustomization.getSourceRef();
-  if (!sourceRef) {
-    return undefined;
-  }
-
-  const name = sourceRef.name;
-  const namespace = sourceRef.namespace ?? kustomization.getNamespace();
-
-  if (sourceRef?.kind === GitRepository.kind) {
-    return allGitRepositories.find(
-      r => r.getName() === name && r.getNamespace() === namespace,
-    );
-  }
-
-  if (sourceRef?.kind === OCIRepository.kind) {
-    return allOCIRepositories.find(
-      r => r.getName() === name && r.getNamespace() === namespace,
-    );
-  }
-
-  return undefined;
-}
+import { findKustomizationSource } from '../../../utils/findKustomizationSource';
 
 type KustomizationDetailsProps = {
   kustomization: Kustomization;
@@ -52,7 +25,7 @@ export const KustomizationDetails = ({
   allGitRepositories,
   allOCIRepositories,
 }: KustomizationDetailsProps) => {
-  const source = useSource(
+  const source = findKustomizationSource(
     kustomization,
     allGitRepositories,
     allOCIRepositories,
@@ -60,6 +33,10 @@ export const KustomizationDetails = ({
 
   const parentKustomization =
     treeBuilder?.findParentKustomization(kustomization);
+
+  const parentSource = parentKustomization
+    ? findKustomizationSource(parentKustomization, allGitRepositories, allOCIRepositories)
+    : undefined;
 
   const dependsOn = kustomization.getDependsOn();
   const dependencies = dependsOn
@@ -85,6 +62,7 @@ export const KustomizationDetails = ({
           namespace={kustomization.getNamespace()}
           targetCluster={findTargetClusterName(kustomization)}
           resource={kustomization}
+          source={source}
           highlighted
         />
       </Section>
@@ -98,6 +76,7 @@ export const KustomizationDetails = ({
             namespace={parentKustomization.getNamespace()}
             targetCluster={findTargetClusterName(parentKustomization)}
             resource={parentKustomization}
+            source={parentSource}
           />
         </Section>
       ) : null}
@@ -130,6 +109,11 @@ export const KustomizationDetails = ({
                   namespace={resource.getNamespace()}
                   targetCluster={findTargetClusterName(resource)}
                   resource={resource}
+                  source={findKustomizationSource(
+                    resource,
+                    allGitRepositories,
+                    allOCIRepositories,
+                  )}
                 />
               </Grid>
             ))}

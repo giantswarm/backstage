@@ -9,6 +9,7 @@ import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
 import { findTargetClusterName } from '../../../utils/findTargetClusterName';
+import { findKustomizationSource } from '../../../utils/findKustomizationSource';
 
 function useSource(
   helmRelease: HelmRelease,
@@ -73,6 +74,14 @@ export const HelmReleaseDetails = ({
 
   const parentKustomization = treeBuilder?.findParentKustomization(helmRelease);
 
+  const parentKustomizationSource = parentKustomization
+    ? findKustomizationSource(
+        parentKustomization,
+        allGitRepositories,
+        allOCIRepositories,
+      )
+    : undefined;
+
   const dependsOn = helmRelease.getDependsOn();
   const dependencies = dependsOn
     ? (dependsOn
@@ -110,6 +119,7 @@ export const HelmReleaseDetails = ({
             namespace={parentKustomization.getNamespace()}
             targetCluster={findTargetClusterName(parentKustomization)}
             resource={parentKustomization}
+            source={parentKustomizationSource}
           />
         </Section>
       ) : null}

@@ -14,9 +14,33 @@ import {
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { Box, Divider } from '@material-ui/core';
+import { Box, Divider, Link, styled } from '@material-ui/core';
+import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
 import { findHelmReleaseChartName } from '../../../../utils/findHelmReleaseChartName';
+import { useGitSourceLink } from '../../../../hooks/useGitSourceLink';
 import { ReactNode } from 'react';
+
+const StyledLaunchIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
+  marginLeft: theme.spacing(0.5),
+  fontSize: 'inherit',
+}));
+
+function ExternalLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link href={href} target="_blank" rel="noopener noreferrer">
+      <Box display="flex" alignItems="center">
+        {children}
+        <StyledLaunchIcon />
+      </Box>
+    </Link>
+  );
+}
 
 type Metadata = { [key: string]: ReactNode };
 
@@ -59,9 +83,19 @@ function buildStatusMetadata(
 
 // --- Kustomization ---
 
-function getKustomizationSpec(kustomization: Kustomization): Metadata {
+function getKustomizationSpec(
+  kustomization: Kustomization,
+  sourceUrl?: string,
+): Metadata {
   const metadata: Metadata = {};
-  metadata.Path = kustomization.getPath();
+  const path = kustomization.getPath();
+
+  metadata.Path =
+    path && sourceUrl ? (
+      <ExternalLink href={sourceUrl}>{path}</ExternalLink>
+    ) : (
+      path
+    );
 
   const interval = kustomization.getInterval();
   if (interval) {
@@ -79,12 +113,25 @@ function getKustomizationSpec(kustomization: Kustomization): Metadata {
   return metadata;
 }
 
-function getKustomizationStatus(kustomization: Kustomization): Metadata {
+function getKustomizationStatus(
+  kustomization: Kustomization,
+  sourceUrl?: string,
+): Metadata {
   const revision = kustomization.getLastAppliedRevision();
   const readyCondition = kustomization.findReadyCondition();
 
   const metadata: Metadata = {};
-  metadata.Revision = revision ? revision : <NotAvailable />;
+
+  if (revision) {
+    metadata.Revision = sourceUrl ? (
+      <ExternalLink href={sourceUrl}>{revision}</ExternalLink>
+    ) : (
+      revision
+    );
+  } else {
+    metadata.Revision = <NotAvailable />;
+  }
+
   Object.assign(metadata, buildStatusMetadata(readyCondition));
 
   return metadata;
@@ -200,6 +247,7 @@ function getRepositorySpec(
 
 function getRepositoryStatus(
   repository: GitRepository | OCIRepository | HelmRepository,
+  repositorySourceUrl?: string,
 ): Metadata {
   const readyCondition = repository.findReadyCondition();
 
@@ -207,7 +255,11 @@ function getRepositoryStatus(
 
   const revision = repository.getRevision();
   if (revision) {
-    metadata.Revision = revision;
+    metadata.Revision = repositorySourceUrl ? (
+      <ExternalLink href={repositorySourceUrl}>{revision}</ExternalLink>
+    ) : (
+      revision
+    );
   }
 
   Object.assign(metadata, buildStatusMetadata(readyCondition));
@@ -378,17 +430,29 @@ function getImageUpdateAutomationStatus(
 
 // --- Main component ---
 
+type SourceUrls = {
+  kustomizationSourceUrl?: string;
+  repositorySourceUrl?: string;
+};
+
 function getSpecAndStatus(
   resource: ResourceMetadataProps['resource'],
   source?: ResourceMetadataProps['source'],
+  sourceUrls?: SourceUrls,
 ): { spec: Metadata; status: Metadata } {
   const kind = resource.getKind();
 
   switch (kind) {
     case Kustomization.kind:
       return {
-        spec: getKustomizationSpec(resource as Kustomization),
-        status: getKustomizationStatus(resource as Kustomization),
+        spec: getKustomizationSpec(
+          resource as Kustomization,
+          sourceUrls?.kustomizationSourceUrl,
+        ),
+        status: getKustomizationStatus(
+          resource as Kustomization,
+          sourceUrls?.kustomizationSourceUrl,
+        ),
       };
     case HelmRelease.kind:
       return {
@@ -407,6 +471,7 @@ function getSpecAndStatus(
         ),
         status: getRepositoryStatus(
           resource as GitRepository | OCIRepository | HelmRepository,
+          sourceUrls?.repositorySourceUrl,
         ),
       };
     case ImagePolicy.kind:
@@ -450,7 +515,26 @@ export const ResourceMetadata = ({
   source,
   fixedKeyColumnWidth = '120px',
 }: ResourceMetadataProps) => {
-  const { spec, status } = getSpecAndStatus(resource, source);
+  const kustomizationSourceUrl = useGitSourceLink({
+    url: source instanceof GitRepository ? source.getURL() : undefined,
+    revision:
+      resource instanceof Kustomization
+        ? resource.getLastAppliedRevision()
+        : undefined,
+    path:
+      resource instanceof Kustomization ? resource.getPath() : undefined,
+  });
+
+  const repositorySourceUrl = useGitSourceLink({
+    url: resource instanceof GitRepository ? resource.getURL() : undefined,
+    revision:
+      resource instanceof GitRepository ? resource.getRevision() : undefined,
+  });
+
+  const { spec, status } = getSpecAndStatus(resource, source, {
+    kustomizationSourceUrl,
+    repositorySourceUrl,
+  });
 
   const hasSpec = Object.keys(spec).length > 0;
   const hasStatus = Object.keys(status).length > 0;

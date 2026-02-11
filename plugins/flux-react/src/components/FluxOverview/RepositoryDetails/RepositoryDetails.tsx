@@ -144,6 +144,7 @@ export const RepositoryDetails = ({
                       : undefined
                   }
                   resource={resource}
+                  source={repository}
                 />
               </Grid>
             ))}
