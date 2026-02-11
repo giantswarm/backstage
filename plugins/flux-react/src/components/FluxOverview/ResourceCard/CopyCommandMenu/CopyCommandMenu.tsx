@@ -66,10 +66,7 @@ const fluxReconcileTypeMap: Record<string, string> = {
   ImageUpdateAutomation: 'image update',
 };
 
-function buildFluxCommand(
-  subcommand: string,
-  resource: KubeObject,
-): string {
+function buildFluxCommand(subcommand: string, resource: KubeObject): string {
   const fluxType = fluxReconcileTypeMap[resource.getKind()];
   const name = resource.getName();
   const namespace = resource.getNamespace();
@@ -203,16 +200,18 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
         getContentAnchorEl={null}
       >
         {commands
-          .filter(command => !command.isApplicable || command.isApplicable(resource))
+          .filter(
+            command => !command.isApplicable || command.isApplicable(resource),
+          )
           .map(command => (
-          <MenuItem
-            key={command.id}
-            className={classes.menuItem}
-            onClick={() => handleCopy(command)}
-          >
-            <Typography variant="body2">{command.label}</Typography>
-          </MenuItem>
-        ))}
+            <MenuItem
+              key={command.id}
+              className={classes.menuItem}
+              onClick={() => handleCopy(command)}
+            >
+              <Typography variant="body2">{command.label}</Typography>
+            </MenuItem>
+          ))}
       </Menu>
     </Box>
   );
