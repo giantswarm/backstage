@@ -25,6 +25,22 @@ export class Kustomization extends FluxObject<KustomizationInterface> {
     return this.jsonData.spec?.path;
   }
 
+  getInterval() {
+    return this.jsonData.spec?.interval;
+  }
+
+  getTimeout() {
+    return this.jsonData.spec?.timeout;
+  }
+
+  getForce() {
+    return this.jsonData.spec?.force;
+  }
+
+  getPrune() {
+    return this.jsonData.spec?.prune;
+  }
+
   getSourceRef() {
     const sourceRef = this.jsonData.spec?.sourceRef;
     if (!sourceRef) {

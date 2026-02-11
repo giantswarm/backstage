@@ -46,4 +46,8 @@ export class HelmRepository extends FluxObject<HelmRepositoryInterface> {
   getInterval() {
     return this.jsonData.spec?.interval;
   }
+
+  getTimeout() {
+    return this.jsonData.spec?.timeout;
+  }
 }
