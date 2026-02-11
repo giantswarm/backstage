@@ -51,6 +51,10 @@ export class ImageUpdateAutomation extends FluxObject<ImageUpdateAutomationInter
     return this.jsonData.spec?.git;
   }
 
+  getInterval() {
+    return this.jsonData.spec?.interval;
+  }
+
   getLastAutomationRunTime() {
     return this.jsonData.status?.lastAutomationRunTime;
   }

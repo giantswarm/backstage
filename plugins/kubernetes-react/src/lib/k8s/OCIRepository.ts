@@ -49,4 +49,8 @@ export class OCIRepository extends FluxObject<OCIRepositoryInterface> {
   getInterval() {
     return this.jsonData.spec?.interval;
   }
+
+  getTimeout() {
+    return this.jsonData.spec?.timeout;
+  }
 }

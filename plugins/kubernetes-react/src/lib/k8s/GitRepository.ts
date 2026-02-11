@@ -24,4 +24,8 @@ export class GitRepository extends FluxObject<GitRepositoryInterface> {
   getInterval() {
     return this.jsonData.spec?.interval;
   }
+
+  getTimeout() {
+    return this.jsonData.spec?.timeout;
+  }
 }

@@ -76,6 +76,10 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
     return this.jsonData.spec?.interval;
   }
 
+  getTimeout() {
+    return this.jsonData.spec?.timeout;
+  }
+
   getInstallFailures() {
     return this.jsonData.status?.installFailures;
   }

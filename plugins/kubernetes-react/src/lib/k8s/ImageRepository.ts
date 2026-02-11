@@ -43,6 +43,10 @@ export class ImageRepository extends FluxObject<ImageRepositoryInterface> {
     return this.jsonData.spec?.provider;
   }
 
+  getInterval() {
+    return this.jsonData.spec?.interval;
+  }
+
   getLastScanResult() {
     return this.jsonData.status?.lastScanResult;
   }
