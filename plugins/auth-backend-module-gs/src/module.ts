@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 import {
   coreServices,
   createBackendModule,
+  LoggerService,
 } from '@backstage/backend-plugin-api';
 import {
   authProvidersExtensionPoint,
@@ -10,10 +11,7 @@ import {
   OAuthAuthenticatorResult,
   SignInResolver,
 } from '@backstage/plugin-auth-node';
-import {
-  oidcAuthenticator,
-  OidcAuthResult,
-} from '@backstage/plugin-auth-backend-module-oidc-provider';
+import { oidcAuthenticator, OidcAuthResult } from './oidc/authenticator';
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
 
@@ -79,6 +77,26 @@ const customSignInResolver: SignInResolver<
   return signInWithGuestUser(ctx);
 };
 
+function createLoggingSignInResolver(
+  resolver: SignInResolver<OAuthAuthenticatorResult<OidcAuthResult>>,
+  providerName: string,
+  logger: LoggerService,
+): SignInResolver<OAuthAuthenticatorResult<OidcAuthResult>> {
+  return async (info, ctx) => {
+    try {
+      return await resolver(info, ctx);
+    } catch (error) {
+      const userInfo = info.result.fullProfile.userinfo;
+      logger.error(
+        `Sign-in resolver failed for provider '${providerName}', ` +
+          `email=${userInfo.email ?? 'unknown'}, ` +
+          `connector=${(userInfo.federated_claims as IdPClaim)?.connector_id ?? 'unknown'}: ${error}`,
+      );
+      throw error;
+    }
+  };
+}
+
 /** @public */
 export const authModuleGsProviders = createBackendModule({
   pluginId: 'auth',
@@ -115,13 +133,19 @@ export const authModuleGsProviders = createBackendModule({
             const isMainAuthProvider =
               config.getOptionalString('gs.authProvider') === providerName;
 
+            const loggingSignInResolver = isMainAuthProvider
+              ? createLoggingSignInResolver(
+                  customSignInResolver,
+                  providerName,
+                  logger,
+                )
+              : undefined;
+
             providersExtensionPoint.registerProvider({
               providerId: providerName,
               factory: createOAuthProviderFactory({
                 authenticator: oidcAuthenticator,
-                signInResolver: isMainAuthProvider
-                  ? customSignInResolver
-                  : undefined,
+                signInResolver: loggingSignInResolver,
               }),
             });
           } catch (err) {
