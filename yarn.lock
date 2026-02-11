@@ -227,14 +227,14 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-ai-sdk@npm:^1.3.1":
-  version: 1.3.6
-  resolution: "@assistant-ui/react-ai-sdk@npm:1.3.6"
+  version: 1.3.7
+  resolution: "@assistant-ui/react-ai-sdk@npm:1.3.7"
   dependencies:
     "@ai-sdk/react": "npm:^3.0.75"
     ai: "npm:^6.0.73"
     zod: "npm:^4.3.6"
   peerDependencies:
-    "@assistant-ui/react": ^0.12.9
+    "@assistant-ui/react": ^0.12.10
     "@types/react": "*"
     assistant-cloud: "*"
     react: ^18 || ^19
@@ -243,7 +243,7 @@ __metadata:
       optional: true
     assistant-cloud:
       optional: true
-  checksum: 10c0/e5da636ff4f0101499686dfeb7c38ffa92b3fb4183a0556f9dbc208b1ad641473ca01ff52d70be158f0dd5a204e38b559e04b5709885fd70c8f38f7cccd0ff85
+  checksum: 10c0/3721f8f0ea86a5e63b37922dd212a3eb5e644c78d4aa9c02a790233b380d8ed26b1cccb89a5e4b17ed9bf9e01eeb35cd20e66936ddfbac5bfd38a2a4b6ee8cf5
   languageName: node
   linkType: hard
 
@@ -288,11 +288,11 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react@npm:^0.12.1":
-  version: 0.12.9
-  resolution: "@assistant-ui/react@npm:0.12.9"
+  version: 0.12.10
+  resolution: "@assistant-ui/react@npm:0.12.10"
   dependencies:
     "@assistant-ui/store": "npm:^0.1.6"
-    "@assistant-ui/tap": "npm:^0.4.5"
+    "@assistant-ui/tap": "npm:^0.4.6"
     "@radix-ui/primitive": "npm:^1.1.3"
     "@radix-ui/react-compose-refs": "npm:^1.1.2"
     "@radix-ui/react-context": "npm:^1.1.3"
@@ -318,7 +318,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/6ff1bc5fb136818f74a7712d420c0cc8b149d7ffdd37cbe5389a51b7626368d9c68d77e1678280f9de09eadf0d5607c9e2a295aa766e6fa851e2ad6c1f944cf9
+  checksum: 10c0/2ee77e4026c92e1d4d5bd00991906a4be05df7f30d7e56479bf2360c56df4bc71c5ffb7efee257d18274e3acf41d612c51930dba308c3b344dd113bca6b0a5a5
   languageName: node
   linkType: hard
 
@@ -350,6 +350,21 @@ __metadata:
     react:
       optional: true
   checksum: 10c0/2f98b76e95a4d7969f8b5c1b251981c85a8f80e9a40bfd4f9db49564810ca61c568db0e9279ca18928951b5f3548e8040984788e4144a19339181b20117fc5bd
+  languageName: node
+  linkType: hard
+
+"@assistant-ui/tap@npm:^0.4.6":
+  version: 0.4.6
+  resolution: "@assistant-ui/tap@npm:0.4.6"
+  peerDependencies:
+    "@types/react": "*"
+    react: ^18 || ^19
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+    react:
+      optional: true
+  checksum: 10c0/9d14885fed6186e89b7be7ea9a3cf20bb9be8980f003f64d4ccf65bac22d6d8f87403228aa85e698bd7f37402da6d674fb34653def5a7cf11f1fc48642e076c4
   languageName: node
   linkType: hard
 
