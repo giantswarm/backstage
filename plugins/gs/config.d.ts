@@ -27,12 +27,6 @@ export interface Config {
     };
 
     /** @deepVisibility frontend */
-    gitopsRepositories?: {
-      targetUrl: string;
-      gitRepositoryUrlPattern: string;
-    }[];
-
-    /** @deepVisibility frontend */
     homepage?: {
       resources?: {
         label: string;

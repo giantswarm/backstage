@@ -11,6 +11,7 @@
     "main": "dist/index.esm.js",
     "types": "dist/index.d.ts"
   },
+  "configSchema": "config.d.ts",
   "backstage": {
     "role": "web-library",
     "pluginId": "flux"
@@ -56,6 +57,7 @@
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "config.d.ts"
   ]
 }

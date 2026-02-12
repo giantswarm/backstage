@@ -39,6 +39,11 @@ techdocs:
   publisher:
     type: 'local'
 
+# flux:
+#   gitRepositoryPatterns:
+#     - targetUrl: 'https://${{HOSTNAME}}/projects/${{PROJECT_NAME}}/repos/${{REPOSITORY_NAME}}/browse/${{PATH}}?at=${{REVISION}}'
+#       gitRepositoryUrlPattern: '^https:\/\/(?<HOSTNAME>bitbucket.+?)\/scm\/(?<PROJECT_NAME>.+?)\/(?<REPOSITORY_NAME>.+?)(\.git)?$'
+
 # gs:
 #   authProvider: oidc-mcname
 #   installations:

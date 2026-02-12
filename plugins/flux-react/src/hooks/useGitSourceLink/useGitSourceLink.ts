@@ -57,7 +57,7 @@ export function useGitSourceLink({
 }): string | undefined {
   const config = useApi(configApiRef);
   const customPatternsConfig = config.getOptionalConfigArray(
-    'gs.gitopsRepositories',
+    'flux.gitRepositoryPatterns',
   );
 
   if (!url || !revision) {
