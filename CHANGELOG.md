@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add CLI command button to Flux resource details.
+- Add links to source repository in Kustomization and GitRepository resources.
+- Display more resource details in Flux resource views.
+
+### Changed
+
+- Move ExternalLink, AsyncValue, and ErrorStatus components from gs plugin to ui-react shared library.
+- Move GitOpsCard and related utilities from gs plugin to flux-react.
+- Add getters to kubernetes-react resource classes.
+
 ## [0.104.0] - 2026-02-09
 
 ### Added
