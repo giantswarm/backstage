@@ -7,7 +7,6 @@ export { ColorWrapper } from './ColorWrapper';
 export { ContentRow } from './ContentRow';
 export { DateComponent } from './Date';
 export { DetailsPane } from './DetailsPane';
-export { ExternalLink } from './ExternalLink';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { GridItem } from './GridItem';
 export { Heading } from './Heading';

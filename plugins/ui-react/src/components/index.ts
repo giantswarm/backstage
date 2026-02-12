@@ -4,6 +4,7 @@ export * from './AsyncValue';
 export * from './Autocomplete';
 export * from './ContentRow';
 export * from './DateComponent';
+export * from './ExternalLink';
 export * from './MultiplePicker';
 export * from './MultipleSelect';
 export * from './NotAvailable';

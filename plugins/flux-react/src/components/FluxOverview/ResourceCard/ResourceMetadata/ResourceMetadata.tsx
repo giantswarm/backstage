@@ -11,36 +11,14 @@ import {
 import {
   ConditionMessage,
   DateComponent,
+  ExternalLink,
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { Box, Divider, Link, styled } from '@material-ui/core';
-import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
+import { Box, Divider } from '@material-ui/core';
 import { findHelmReleaseChartName } from '../../../../utils/findHelmReleaseChartName';
 import { useGitSourceLink } from '../../../../hooks/useGitSourceLink';
 import { ReactNode } from 'react';
-
-const StyledLaunchIcon = styled(LaunchOutlinedIcon)(({ theme }) => ({
-  marginLeft: theme.spacing(0.5),
-  fontSize: 'inherit',
-}));
-
-function ExternalLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: ReactNode;
-}) {
-  return (
-    <Link href={href} target="_blank" rel="noopener noreferrer">
-      <Box display="flex" alignItems="center">
-        {children}
-        <StyledLaunchIcon />
-      </Box>
-    </Link>
-  );
-}
 
 type Metadata = { [key: string]: ReactNode };
 
