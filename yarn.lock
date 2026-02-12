@@ -8128,6 +8128,7 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react"
   dependencies:
     "@backstage/cli": "backstage:^"
+    "@backstage/core-app-api": "backstage:^"
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/test-utils": "backstage:^"
