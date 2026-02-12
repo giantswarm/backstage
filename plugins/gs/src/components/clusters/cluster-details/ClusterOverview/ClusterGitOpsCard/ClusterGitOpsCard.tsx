@@ -1,5 +1,7 @@
-import { isManagedByFlux } from '../../../../deployments/utils/isManagedByFlux';
-import { GitOpsCard } from '../../../../GitOpsCard';
+import {
+  GitOpsCard,
+  isManagedByFlux,
+} from '@giantswarm/backstage-plugin-flux-react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
 export const ClusterGitOpsCard = () => {

@@ -14,3 +14,5 @@ export { FluxStatusCard } from './FluxStatusCard';
 
 export { useFluxOverviewData } from './FluxOverviewDataProvider';
 export { useFluxResourcesData } from './FluxResourcesDataProvider';
+
+export { GitOpsCard } from './GitOpsCard';
