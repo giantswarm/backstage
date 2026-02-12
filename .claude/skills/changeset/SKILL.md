@@ -11,7 +11,7 @@ Create changeset files for projects using @changesets/cli.
 ## Context
 
 - Existing changesets: !`ls .changeset/*.md 2>/dev/null | head -5`
-- Workspace packages: !`for dir in packages/* plugins/*; do [ -f "$dir/package.json" ] && jq -r '.name' "$dir/package.json"; done 2>/dev/null | sort`
+- Workspace packages: !`find packages plugins -maxdepth 2 -name package.json -exec jq -r .name {} \; 2>/dev/null | sort`
 
 ## Instructions
 
