@@ -1,8 +1,8 @@
 import { ReactNode } from 'react';
 import { Progress } from '@backstage/core-components';
 import { Box } from '@material-ui/core';
-import { ErrorStatus } from '../ErrorStatus/ErrorStatus';
-import { NotAvailable } from '../NotAvailable/NotAvailable';
+import { ErrorStatus } from '../ErrorStatus';
+import { NotAvailable } from '../NotAvailable';
 
 const progressHeight = 4;
 

@@ -1,13 +1,9 @@
 import { Box, Card, CardContent, Typography } from '@material-ui/core';
-import { useGitOpsSourceLink } from '../hooks';
-import { GitOpsIcon } from '../../assets/icons/CustomIcons';
-import { AsyncValue, ExternalLink } from '../UI';
 import { useMemo } from 'react';
-import { ErrorStatus } from '../UI/ErrorStatus/ErrorStatus';
 import {
   getKustomizationName,
   getKustomizationNamespace,
-} from '../deployments/utils/isManagedByFlux';
+} from '../../utils/isManagedByFlux';
 import {
   App,
   getErrorMessage,
@@ -18,6 +14,13 @@ import {
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  AsyncValue,
+  ErrorStatus,
+  ExternalLink,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { useGitSourceLink } from '../../hooks';
+import { GitOpsIcon } from '../../assets/icons';
 
 type GitOpsCardProps = {
   deployment: App | HelmRelease;
@@ -99,7 +102,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
     errorMessage = getIncompatibilityMessage(gitRepositoryIncompatibility);
   }
 
-  const sourceUrl = useGitOpsSourceLink({
+  const sourceUrl = useGitSourceLink({
     url: gitRepositoryUrl,
     revision: gitRepositoryRevision,
     path: kustomizationPath,

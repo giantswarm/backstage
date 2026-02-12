@@ -4,7 +4,7 @@ import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
 import MiddleEllipsis from 'react-middle-ellipsis';
 import { getCommitURL, getReleaseNotesURL } from '../../utils/helpers';
 import { ColorWrapper } from '../ColorWrapper';
-import { ExternalLink } from '../ExternalLink';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 const StyledReportProblemOutlined = styled(ReportProblemOutlined)(
   ({ theme }) => ({

@@ -3,12 +3,14 @@ import {
   ImagePolicy,
   ImageRepository,
   ImageUpdateAutomation,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Box, Grid } from '@material-ui/core';
 import { ResourceCard } from '../ResourceCard';
 import { Section } from '../../UI';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { findTargetClusterName } from '../../../utils/findTargetClusterName';
+import { findKustomizationSource } from '../../../utils/findKustomizationSource';
 
 function findImageRepository(
   imagePolicy: ImagePolicy,
@@ -62,8 +64,7 @@ function findSourceGitRepository(
     return undefined;
   }
 
-  const name = sourceRef.name;
-  const namespace = sourceRef.namespace ?? imageUpdateAutomation.getNamespace();
+  const { name, namespace } = sourceRef;
 
   return allGitRepositories.find(
     r =>
@@ -79,12 +80,14 @@ type ImagePolicyDetailsProps = {
   parentKustomization?: ReturnType<
     KustomizationTreeBuilder['findParentKustomization']
   >;
+  parentKustomizationSource?: GitRepository | OCIRepository;
 };
 
 const ImagePolicyDetails = ({
   imagePolicy,
   parentImageRepository,
   parentKustomization,
+  parentKustomizationSource,
 }: ImagePolicyDetailsProps) => {
   return (
     <Box>
@@ -108,6 +111,7 @@ const ImagePolicyDetails = ({
             namespace={parentKustomization.getNamespace()}
             targetCluster={findTargetClusterName(parentKustomization)}
             resource={parentKustomization}
+            source={parentKustomizationSource}
           />
         </Section>
       ) : null}
@@ -133,12 +137,14 @@ type ImageRepositoryDetailsProps = {
   parentKustomization?: ReturnType<
     KustomizationTreeBuilder['findParentKustomization']
   >;
+  parentKustomizationSource?: GitRepository | OCIRepository;
 };
 
 const ImageRepositoryDetails = ({
   imageRepository,
   childImagePolicies,
   parentKustomization,
+  parentKustomizationSource,
 }: ImageRepositoryDetailsProps) => {
   return (
     <Box>
@@ -162,6 +168,7 @@ const ImageRepositoryDetails = ({
             namespace={parentKustomization.getNamespace()}
             targetCluster={findTargetClusterName(parentKustomization)}
             resource={parentKustomization}
+            source={parentKustomizationSource}
           />
         </Section>
       ) : null}
@@ -197,12 +204,14 @@ type ImageUpdateAutomationDetailsProps = {
   parentKustomization?: ReturnType<
     KustomizationTreeBuilder['findParentKustomization']
   >;
+  parentKustomizationSource?: GitRepository | OCIRepository;
 };
 
 const ImageUpdateAutomationDetails = ({
   imageUpdateAutomation,
   sourceGitRepository,
   parentKustomization,
+  parentKustomizationSource,
 }: ImageUpdateAutomationDetailsProps) => {
   return (
     <Box>
@@ -226,6 +235,7 @@ const ImageUpdateAutomationDetails = ({
             namespace={parentKustomization.getNamespace()}
             targetCluster={findTargetClusterName(parentKustomization)}
             resource={parentKustomization}
+            source={parentKustomizationSource}
           />
         </Section>
       ) : null}
@@ -266,12 +276,16 @@ export const ImageAutomationDetails = ({
       allImageRepositories,
     );
     const parentKustomization = treeBuilder?.findParentKustomization(resource);
+    const parentKustomizationSource = parentKustomization
+      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
+      : undefined;
 
     return (
       <ImagePolicyDetails
         imagePolicy={resource}
         parentImageRepository={parentImageRepository}
         parentKustomization={parentKustomization}
+        parentKustomizationSource={parentKustomizationSource}
       />
     );
   }
@@ -282,12 +296,16 @@ export const ImageAutomationDetails = ({
       allImagePolicies,
     );
     const parentKustomization = treeBuilder?.findParentKustomization(resource);
+    const parentKustomizationSource = parentKustomization
+      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
+      : undefined;
 
     return (
       <ImageRepositoryDetails
         imageRepository={resource}
         childImagePolicies={childImagePolicies}
         parentKustomization={parentKustomization}
+        parentKustomizationSource={parentKustomizationSource}
       />
     );
   }
@@ -298,12 +316,16 @@ export const ImageAutomationDetails = ({
       allGitRepositories,
     );
     const parentKustomization = treeBuilder?.findParentKustomization(resource);
+    const parentKustomizationSource = parentKustomization
+      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
+      : undefined;
 
     return (
       <ImageUpdateAutomationDetails
         imageUpdateAutomation={resource}
         sourceGitRepository={sourceGitRepository}
         parentKustomization={parentKustomization}
+        parentKustomizationSource={parentKustomizationSource}
       />
     );
   }

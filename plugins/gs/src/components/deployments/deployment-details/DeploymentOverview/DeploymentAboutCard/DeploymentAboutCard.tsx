@@ -8,7 +8,6 @@ import { Grid, Tooltip, Typography } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import {
   AboutFieldValue,
-  AsyncValue,
   ClusterLink,
   DateComponent,
   NotAvailable,
@@ -28,6 +27,7 @@ import {
 } from '../../../utils/findTargetCluster';
 import { getSourceKind, getSourceName } from '../../../utils/getSource';
 import { getUpdatedTimestamp } from '../../../utils/getUpdatedTimestamp';
+import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 
 export function DeploymentAboutCard() {
   const { deployment, installationName } = useCurrentDeployment();

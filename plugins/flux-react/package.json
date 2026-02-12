@@ -11,6 +11,7 @@
     "main": "dist/index.esm.js",
     "types": "dist/index.d.ts"
   },
+  "configSchema": "config.d.ts",
   "backstage": {
     "role": "web-library",
     "pluginId": "flux"
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^",
+    "@backstage/core-app-api": "backstage:^",
     "@backstage/test-utils": "backstage:^",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
@@ -56,6 +58,7 @@
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "config.d.ts"
   ]
 }

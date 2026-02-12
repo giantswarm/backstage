@@ -2,10 +2,10 @@ import { configApiRef } from '@backstage/core-plugin-api';
 import { ApiProvider } from '@backstage/core-app-api';
 import { mockApis, TestApiRegistry } from '@backstage/test-utils';
 import { renderHook } from '@testing-library/react';
-import { useGitOpsSourceLink } from './useGitOpsSourceLink';
+import { useGitSourceLink } from './useGitSourceLink';
 
 const testDefaultBehaviour = (renderHookFn: any) => {
-  it('should return undefined if url, revision, or path is missing', () => {
+  it('should return undefined if url and revision are missing', () => {
     const { result: result1 } = renderHookFn({});
     expect(result1.current).toBeUndefined();
 
@@ -18,11 +18,17 @@ const testDefaultBehaviour = (renderHookFn: any) => {
       revision: '1234567890',
     });
     expect(result3.current).toBeUndefined();
+  });
 
-    const { result: result4 } = renderHookFn({
-      path: './test/repo/path',
-    });
-    expect(result4.current).toBeUndefined();
+  it('should return URL without path when path is not provided', () => {
+    const url = 'https://github.example.com/test-project/test-repo';
+    const revision = '1234567890';
+
+    const { result } = renderHookFn({ url, revision });
+
+    expect(result.current).toBe(
+      'https://github.example.com/test-project/test-repo/tree/1234567890',
+    );
   });
 
   it('should return correct URL for GitHub (SSH)', () => {
@@ -38,7 +44,7 @@ const testDefaultBehaviour = (renderHookFn: any) => {
     });
 
     expect(result1.current).toEqual(
-      'https://github.example.com/test-project/test-repo/blob/1234567890/test/repo/path',
+      'https://github.example.com/test-project/test-repo/tree/1234567890/test/repo/path',
     );
 
     const { result: result2 } = renderHookFn({
@@ -48,7 +54,7 @@ const testDefaultBehaviour = (renderHookFn: any) => {
     });
 
     expect(result2.current).toEqual(
-      'https://github.example.com/test-project/test-repo/blob/1234567890/test/repo/path',
+      'https://github.example.com/test-project/test-repo/tree/1234567890/test/repo/path',
     );
   });
 
@@ -60,7 +66,7 @@ const testDefaultBehaviour = (renderHookFn: any) => {
     const { result } = renderHookFn({ url, revision, path });
 
     expect(result.current).toBe(
-      'https://github.example.com/test-project/test-repo/blob/1234567890/test/repo/path',
+      'https://github.example.com/test-project/test-repo/tree/1234567890/test/repo/path',
     );
   });
 
@@ -72,11 +78,11 @@ const testDefaultBehaviour = (renderHookFn: any) => {
     const { result } = renderHookFn({ url, revision, path });
 
     expect(result.current).toBe(
-      'https://github.example.com/test-project/test-repo/blob/abc123def456/test/repo/path',
+      'https://github.example.com/test-project/test-repo/tree/abc123def456/test/repo/path',
     );
   });
 
-  it('should return undefined if url does not math any known patterns', () => {
+  it('should return undefined if url does not match any known patterns', () => {
     const url = 'https://example.net/test-project/test-repo.git';
     const revision = '1234567890';
     const path = './test/repo/path';
@@ -87,7 +93,7 @@ const testDefaultBehaviour = (renderHookFn: any) => {
   });
 };
 
-describe('useGitOpsSourceLink', () => {
+describe('useGitSourceLink', () => {
   describe('when configuration for Git repository URL patterns is not provided', () => {
     const configApiMock = mockApis.config({
       data: {},
@@ -109,7 +115,7 @@ describe('useGitOpsSourceLink', () => {
     }) => {
       return renderHook(
         () => {
-          return useGitOpsSourceLink({ url, revision, path });
+          return useGitSourceLink({ url, revision, path });
         },
         {
           wrapper,
@@ -123,19 +129,19 @@ describe('useGitOpsSourceLink', () => {
   describe('when configuration for Git repository URL patterns is provided', () => {
     const configApiMock = mockApis.config({
       data: {
-        gs: {
-          gitopsRepositories: [
+        flux: {
+          gitRepositoryPatterns: [
             {
               targetUrl:
                 'https://${{HOSTNAME}}/projects/${{PROJECT_NAME}}/repos/${{REPOSITORY_NAME}}/browse/${{PATH}}?at=${{REVISION}}',
               gitRepositoryUrlPattern:
-                '^https:\/\/(?<HOSTNAME>bitbucket.+?)\/scm\/(?<PROJECT_NAME>.+?)\/(?<REPOSITORY_NAME>.+?)(\.git)?$',
+                '^https:\\/\\/(?<HOSTNAME>bitbucket.+?)\\/scm\\/(?<PROJECT_NAME>.+?)\\/(?<REPOSITORY_NAME>.+?)(\\.git)?$',
             },
             {
               targetUrl:
                 'https://${{HOSTNAME}}/${{REPOSITORY_PATH}}/-/tree/${{REVISION}}/${{PATH}}',
               gitRepositoryUrlPattern:
-                '^ssh:\/\/git@(?<HOSTNAME>gitlab.+?)\/(?<REPOSITORY_PATH>.+?)(\.git)?$',
+                '^ssh:\\/\\/git@(?<HOSTNAME>gitlab.+?)\\/(?<REPOSITORY_PATH>.+?)(\\.git)?$',
             },
           ],
         },
@@ -158,7 +164,7 @@ describe('useGitOpsSourceLink', () => {
     }) => {
       return renderHook(
         () => {
-          return useGitOpsSourceLink({ url, revision, path });
+          return useGitSourceLink({ url, revision, path });
         },
         {
           wrapper,

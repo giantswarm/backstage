@@ -35,12 +35,11 @@ function findResourcesUsingSource(
 
     const sourceRef = kustomization.getSourceRef();
     if (sourceRef) {
-      const sourceNamespace =
-        sourceRef.namespace ?? kustomization.getNamespace();
+      const { name, namespace, kind } = sourceRef;
       if (
-        sourceRef.name === repoName &&
-        sourceNamespace === repoNamespace &&
-        sourceRef.kind === repoKind
+        name === repoName &&
+        namespace === repoNamespace &&
+        kind === repoKind
       ) {
         const key = getResourceKey(kustomization);
         resourcesMap.set(key, kustomization);
@@ -144,6 +143,7 @@ export const RepositoryDetails = ({
                       : undefined
                   }
                   resource={resource}
+                  source={repository}
                 />
               </Grid>
             ))}

@@ -1,6 +1,8 @@
+import {
+  GitOpsCard,
+  isManagedByFlux,
+} from '@giantswarm/backstage-plugin-flux-react';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
-import { GitOpsCard } from '../../../../GitOpsCard';
-import { isManagedByFlux } from '../../../utils/isManagedByFlux';
 
 export const DeploymentGitOpsCard = () => {
   const { deployment, installationName } = useCurrentDeployment();
