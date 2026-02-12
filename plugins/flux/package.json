@@ -1,6 +1,6 @@
 {
   "name": "@giantswarm/backstage-plugin-flux",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "license": "Apache-2.0",
   "private": true,
   "main": "src/index.ts",

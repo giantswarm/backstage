@@ -1,5 +1,26 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.53.4
+
+### Patch Changes
+
+- b1b1b7a: Move ExternalLink component from gs plugin to ui-react.
+- b1b1b7a: Move GitOpsCard and related utilities from gs plugin to flux-react.
+- b1b1b7a: Move `AsyncValue` component from `gs` plugin to `ui-react` shared library.
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [cd3f13e]
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [cd3f13e]
+- Updated dependencies [134df14]
+  - @giantswarm/backstage-plugin-ui-react@0.7.2
+  - @giantswarm/backstage-plugin-flux-react@0.10.0
+  - @giantswarm/backstage-plugin-gs-common@0.20.1
+  - @giantswarm/backstage-plugin-kubernetes-react@0.11.1
+  - @giantswarm/backstage-plugin-flux@0.6.9
+
 ## 0.53.3
 
 ### Patch Changes

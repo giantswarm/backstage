@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.7.2
+
+### Patch Changes
+
+- b1b1b7a: Move ExternalLink component from gs plugin to ui-react.
+- b1b1b7a: Move `AsyncValue` component from `gs` plugin to `ui-react` shared library.
+- b1b1b7a: Move ErrorStatus component from gs plugin to ui-react.
+
 ## 0.7.1
 
 ### Patch Changes

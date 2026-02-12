@@ -17,6 +17,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Move GitOpsCard and related utilities from gs plugin to flux-react.
 - Add getters to kubernetes-react resource classes.
 
+See [./docs/releases/v0.105.0-changelog.md](./docs/releases/v0.105.0-changelog.md) for more information.
+
 ## [0.104.0] - 2026-02-09
 
 ### Added

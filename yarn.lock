@@ -8138,7 +8138,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-flux-react@npm:^0.9.0, @giantswarm/backstage-plugin-flux-react@workspace:^, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
+"@giantswarm/backstage-plugin-flux-react@npm:^0.10.0, @giantswarm/backstage-plugin-flux-react@workspace:^, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react"
   dependencies:
@@ -8223,7 +8223,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-gs-common@npm:^0.20.0, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
+"@giantswarm/backstage-plugin-gs-common@npm:^0.20.1, @giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-common@workspace:plugins/gs-common"
   dependencies:
@@ -8254,8 +8254,8 @@ __metadata:
     "@backstage/theme": "backstage:^"
     "@backstage/types": "backstage:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
-    "@giantswarm/backstage-plugin-flux-react": "npm:^0.9.0"
-    "@giantswarm/backstage-plugin-gs-common": "npm:^0.20.0"
+    "@giantswarm/backstage-plugin-flux-react": "npm:^0.10.0"
+    "@giantswarm/backstage-plugin-gs-common": "npm:^0.20.1"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.2"
