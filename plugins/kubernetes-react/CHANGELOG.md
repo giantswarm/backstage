@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.11.1
+
+### Patch Changes
+
+- cd3f13e: Add getters
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [b1b1b7a]
+  - @giantswarm/backstage-plugin-ui-react@0.7.2
+
 ## 0.11.0
 
 ### Minor Changes

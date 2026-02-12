@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.20.1
+
+### Patch Changes
+
+- b1b1b7a: Move GitOpsCard and related utilities from gs plugin to flux-react.
+
 ## 0.20.0
 
 ### Minor Changes

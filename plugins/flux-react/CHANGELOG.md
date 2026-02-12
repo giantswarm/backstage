@@ -1,5 +1,24 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.10.0
+
+### Minor Changes
+
+- b1b1b7a: Add links to source repository in Kustomization, GitRepository
+- 134df14: Add CLI command button to resource details
+
+### Patch Changes
+
+- b1b1b7a: Move ExternalLink component from gs plugin to ui-react.
+- b1b1b7a: Move GitOpsCard and related utilities from gs plugin to flux-react.
+- cd3f13e: Display more resource details, add some structure
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [b1b1b7a]
+- Updated dependencies [cd3f13e]
+  - @giantswarm/backstage-plugin-ui-react@0.7.2
+  - @giantswarm/backstage-plugin-kubernetes-react@0.11.1
+
 ## 0.9.0
 
 ### Minor Changes

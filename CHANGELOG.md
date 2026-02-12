@@ -5,6 +5,22 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-02-12
+
+### Added
+
+- Add CLI command button to Flux resource details.
+- Add links to source repository in Kustomization and GitRepository resources.
+- Display more resource details in Flux resource views.
+
+### Changed
+
+- Move ExternalLink, AsyncValue, and ErrorStatus components from gs plugin to ui-react shared library.
+- Move GitOpsCard and related utilities from gs plugin to flux-react.
+- Add getters to kubernetes-react resource classes.
+
+See [./docs/releases/v0.105.0-changelog.md](./docs/releases/v0.105.0-changelog.md) for more information.
+
 ## [0.104.0] - 2026-02-09
 
 ### Added
@@ -1873,7 +1889,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.104.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.105.0...HEAD
+[0.105.0]: https://github.com/giantswarm/backstage/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/giantswarm/backstage/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/giantswarm/backstage/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/giantswarm/backstage/compare/v0.102.0...v0.103.0
