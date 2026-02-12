@@ -40,7 +40,15 @@ export class ImageUpdateAutomation extends FluxObject<ImageUpdateAutomationInter
   }
 
   getSourceRef() {
-    return this.jsonData.spec?.sourceRef;
+    const sourceRef = this.jsonData.spec?.sourceRef;
+    if (!sourceRef) {
+      return undefined;
+    }
+
+    return {
+      ...sourceRef,
+      namespace: sourceRef.namespace ?? this.getNamespace(),
+    };
   }
 
   getUpdateConfig() {

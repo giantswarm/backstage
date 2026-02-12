@@ -64,8 +64,7 @@ function findSourceGitRepository(
     return undefined;
   }
 
-  const name = sourceRef.name;
-  const namespace = sourceRef.namespace ?? imageUpdateAutomation.getNamespace();
+  const { name, namespace } = sourceRef;
 
   return allGitRepositories.find(
     r =>

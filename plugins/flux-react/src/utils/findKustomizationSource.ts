@@ -14,8 +14,7 @@ export function findKustomizationSource(
     return undefined;
   }
 
-  const name = sourceRef.name;
-  const namespace = sourceRef.namespace ?? kustomization.getNamespace();
+  const { name, namespace } = sourceRef;
 
   if (sourceRef.kind === GitRepository.kind) {
     return allGitRepositories.find(
