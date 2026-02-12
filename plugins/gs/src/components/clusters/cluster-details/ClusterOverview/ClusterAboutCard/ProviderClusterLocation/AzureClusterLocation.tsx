@@ -6,7 +6,7 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
-import { AsyncValue } from '../../../../../UI';
+import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 
 export const AzureClusterLocation = () => {
   const { cluster, installationName } = useCurrentCluster();

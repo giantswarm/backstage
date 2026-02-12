@@ -25,7 +25,6 @@ import {
 } from '../../../utils';
 import {
   AboutFieldValue,
-  AsyncValue,
   DateComponent,
   KubernetesVersion,
   NotAvailable,
@@ -48,6 +47,7 @@ import {
   AzureProviderIcon,
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
+import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 
 interface ProviderLocationDisplayProps {
   provider: string;
