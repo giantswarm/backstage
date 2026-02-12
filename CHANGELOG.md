@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-02-12
+
 ### Added
 
 - Add CLI command button to Flux resource details.
@@ -1887,7 +1889,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.104.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.105.0...HEAD
+[0.105.0]: https://github.com/giantswarm/backstage/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/giantswarm/backstage/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/giantswarm/backstage/compare/v0.103.0...v0.103.1
 [0.103.0]: https://github.com/giantswarm/backstage/compare/v0.102.0...v0.103.0
