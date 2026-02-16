@@ -338,22 +338,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/tap@npm:^0.4.5":
-  version: 0.4.5
-  resolution: "@assistant-ui/tap@npm:0.4.5"
-  peerDependencies:
-    "@types/react": "*"
-    react: ^18 || ^19
-  peerDependenciesMeta:
-    "@types/react":
-      optional: true
-    react:
-      optional: true
-  checksum: 10c0/2f98b76e95a4d7969f8b5c1b251981c85a8f80e9a40bfd4f9db49564810ca61c568db0e9279ca18928951b5f3548e8040984788e4144a19339181b20117fc5bd
-  languageName: node
-  linkType: hard
-
-"@assistant-ui/tap@npm:^0.4.6":
+"@assistant-ui/tap@npm:0.4.6":
   version: 0.4.6
   resolution: "@assistant-ui/tap@npm:0.4.6"
   peerDependencies:
