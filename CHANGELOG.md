@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Convert app shell to New Frontend System hybrid mode.
+- Migrate flux plugin to New Frontend System.
+- Migrate ai-chat plugin to New Frontend System.
+
 ## [0.105.0] - 2026-02-12
 
 ### Added
