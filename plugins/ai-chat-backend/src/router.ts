@@ -20,6 +20,7 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
+import { McpClientCache } from './McpClientCache';
 import { frontendTools } from './frontendTools';
 import {
   listSkills,
@@ -46,6 +47,8 @@ export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
   const { httpAuth, logger, config, userInfo } = options;
+
+  const mcpClientCache = new McpClientCache(logger);
 
   const router = Router();
   router.use(express.json({ limit: '2mb' }));
@@ -114,7 +117,7 @@ export async function createRouter(
       tools: mcpTools,
       resources: mcpResources,
       failedServers,
-    } = await getMcpTools(config, authTokens, logger);
+    } = await getMcpTools(config, authTokens, logger, mcpClientCache);
     logger.info(`MCP tools available: ${Object.keys(mcpTools).length}`);
     logger.info(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
     if (failedServers.length > 0) {
@@ -133,7 +136,7 @@ export async function createRouter(
     let effectiveSystemPrompt = defaultSystemPrompt;
     if (failedServers.length > 0) {
       const failureNote = `\n\n---\n**Note:** The following MCP tool server(s) are currently unavailable: ${failedServers.map(s => s.name).join(', ')}. Some tools may not be available. If the user asks about functionality that requires these servers, let them know there's a connectivity issue.`;
-      effectiveSystemPrompt = defaultSystemPrompt + failureNote;
+      effectiveSystemPrompt += failureNote;
     }
 
     try {

@@ -6,6 +6,14 @@ import {
   MCPClient,
 } from '@ai-sdk/mcp';
 import { AuthTokens } from './utils';
+import { McpClientCache } from './McpClientCache';
+
+interface McpServerConfig {
+  url: string;
+  headers?: Record<string, string>;
+  installation?: string;
+  authToken?: string;
+}
 
 function getMcpServerHeaders(mcpConfig: Config): Record<string, string> {
   const serverHeaders = mcpConfig.getOptionalConfig('headers');
@@ -20,15 +28,11 @@ function getMcpServerHeaders(mcpConfig: Config): Record<string, string> {
   return headers;
 }
 
-function readMcpServersFromConfig(config: Config, authTokens: AuthTokens) {
-  const mcpServers: Record<
-    string,
-    {
-      url: string;
-      headers?: Record<string, string>;
-      installation?: string;
-    }
-  > = {};
+function readMcpServersFromConfig(
+  config: Config,
+  authTokens: AuthTokens,
+): Record<string, McpServerConfig> {
+  const mcpServers: Record<string, McpServerConfig> = {};
 
   const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
   if (mcpConfigs && mcpConfigs.length > 0) {
@@ -49,6 +53,7 @@ function readMcpServersFromConfig(config: Config, authTokens: AuthTokens) {
           url,
           headers: { Authorization: `Bearer ${token}` },
           installation,
+          authToken: token,
         };
 
         return;
@@ -102,29 +107,33 @@ async function getResources(
   return resources;
 }
 
+function collectTools(mcpClientTools: ToolSet, installation?: string): ToolSet {
+  const tools: ToolSet = {};
+  Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
+    const toolInstance = tool as Tool;
+
+    if (installation) {
+      toolInstance.description = `${toolInstance.description} (for installation: ${installation})`;
+      const prefixedToolName = `${installation}_${toolName}`;
+      tools[prefixedToolName] = toolInstance;
+    } else {
+      tools[toolName] = toolInstance;
+    }
+  });
+  return tools;
+}
+
 async function getTools(
   mcpClient: MCPClient,
   serverName: string,
   logger: LoggerService,
   installation?: string,
 ): Promise<ToolSet> {
-  const tools: ToolSet = {};
-
   try {
-    const mcpClientTools = await mcpClient.tools();
-    Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
-      const toolInstance = tool as Tool;
-
-      if (installation) {
-        // Prefix tool name and description with installation
-        toolInstance.description = `${toolInstance.description} (for installation: ${installation})`;
-        const prefixedToolName = `${installation}_${toolName}`;
-        tools[prefixedToolName] = toolInstance;
-      } else {
-        tools[toolName] = toolInstance;
-      }
-    });
+    const mcpClientTools = (await mcpClient.tools()) as ToolSet;
+    const tools = collectTools(mcpClientTools, installation);
     logger.info(`Successfully loaded tools from MCP server: ${serverName}`);
+    return tools;
   } catch (toolError) {
     const errorMessage =
       toolError instanceof Error ? toolError.message : String(toolError);
@@ -133,36 +142,43 @@ async function getTools(
     );
   }
 
-  return tools;
+  return {};
 }
 
 export interface McpToolsResult {
   tools: ToolSet;
   resources: { [resourceName: string]: string };
   failedServers: Array<{ name: string; error: string }>;
+  connectedServers: string[];
 }
 
 export async function getMcpTools(
   config: Config,
   authTokens: AuthTokens,
   logger: LoggerService,
+  clientCache: McpClientCache,
 ): Promise<McpToolsResult> {
   const mcpServers = readMcpServersFromConfig(config, authTokens);
 
   const tools: ToolSet = {};
   const resources: { [resourceName: string]: string } = {};
   const failedServers: Array<{ name: string; error: string }> = [];
+  const connectedServers: string[] = [];
 
   for (const [serverName, server] of Object.entries(mcpServers)) {
+    const cacheKey = McpClientCache.buildKey(serverName, server.authToken);
+
     try {
-      const mcpClient = await createMCPClient({
-        name: serverName,
-        transport: {
-          type: 'http',
-          url: server.url,
-          headers: server.headers,
-        },
-      });
+      const mcpClient = await clientCache.getOrCreate(cacheKey, () =>
+        createMCPClient({
+          name: serverName,
+          transport: {
+            type: 'http',
+            url: server.url,
+            headers: server.headers,
+          },
+        }),
+      );
 
       const serverResources = await getResources(mcpClient, serverName, logger);
       Object.assign(resources, serverResources);
@@ -174,6 +190,7 @@ export async function getMcpTools(
         server.installation,
       );
       Object.assign(tools, serverTools);
+      connectedServers.push(serverName);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -181,8 +198,10 @@ export async function getMcpTools(
         `Failed to connect to MCP server '${serverName}' at ${server.url}: ${errorMessage}`,
       );
       failedServers.push({ name: serverName, error: errorMessage });
+      // Evict broken session so the next request retries
+      await clientCache.invalidate(cacheKey);
     }
   }
 
-  return { tools, resources, failedServers };
+  return { tools, resources, failedServers, connectedServers };
 }
