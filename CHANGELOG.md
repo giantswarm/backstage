@@ -11,6 +11,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Migrate flux plugin to New Frontend System.
 - Migrate ai-chat plugin to New Frontend System.
 
+See [./docs/releases/v0.106.0-changelog.md](./docs/releases/v0.106.0-changelog.md) for more information.
+
 ## [0.105.0] - 2026-02-12
 
 ### Added

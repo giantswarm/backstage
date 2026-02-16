@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-flux
 
+## 0.7.0
+
+### Minor Changes
+
+- f09f501: Migrate flux plugin to New Frontend System
+
 ## 0.6.9
 
 ### Patch Changes
