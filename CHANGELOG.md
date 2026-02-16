@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-02-16
+
+### Changed
+
+- Convert app shell to New Frontend System hybrid mode.
+- Migrate flux plugin to New Frontend System.
+- Migrate ai-chat plugin to New Frontend System.
+
+See [./docs/releases/v0.106.0-changelog.md](./docs/releases/v0.106.0-changelog.md) for more information.
+
 ## [0.105.0] - 2026-02-12
 
 ### Added
@@ -1889,7 +1899,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.105.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.106.0...HEAD
+[0.106.0]: https://github.com/giantswarm/backstage/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/giantswarm/backstage/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/giantswarm/backstage/compare/v0.103.1...v0.104.0
 [0.103.1]: https://github.com/giantswarm/backstage/compare/v0.103.0...v0.103.1

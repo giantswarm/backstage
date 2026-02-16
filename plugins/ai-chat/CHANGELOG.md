@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.6.0
+
+### Minor Changes
+
+- f09f501: Migrate ai-chat plugin to New Frontend System
+
 ## 0.5.1
 
 ### Patch Changes
