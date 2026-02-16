@@ -1,10 +1,34 @@
 import { createDevApp } from '@backstage/dev-utils';
-import { fluxPlugin, FluxPage } from '../src/plugin';
+import {
+  FluxResourcesListViewClusterPicker,
+  FluxResourcesListViewKindPicker,
+  FluxResourcesListViewStatusPicker,
+  FluxResourcesTreeViewClusterPicker,
+  FluxResourcesTreeViewResourceTypePicker,
+  FluxResourcesTreeViewTreeSearch,
+} from '@giantswarm/backstage-plugin-flux-react';
+import { FluxPage } from '../src/components/FluxPage';
 
 createDevApp()
-  .registerPlugin(fluxPlugin)
   .addPage({
-    element: <FluxPage />,
+    element: (
+      <FluxPage
+        listFilters={
+          <>
+            <FluxResourcesListViewClusterPicker />
+            <FluxResourcesListViewKindPicker />
+            <FluxResourcesListViewStatusPicker />
+          </>
+        }
+        treeFilters={
+          <>
+            <FluxResourcesTreeViewClusterPicker />
+            <FluxResourcesTreeViewResourceTypePicker />
+            <FluxResourcesTreeViewTreeSearch />
+          </>
+        }
+      />
+    ),
     title: 'Root Page',
     path: '/flux',
   })
