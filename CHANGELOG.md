@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add MCP client cache with TTL-based eviction for persistent connections across requests.
+- Add muster-specific system prompt with tool discovery and calling conventions.
+
+### Fixed
+
+- Fix tool call sanitization for AI SDK v6 compatibility.
+
 ## [0.106.0] - 2026-02-16
 
 ### Changed
