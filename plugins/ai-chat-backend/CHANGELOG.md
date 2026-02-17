@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.6.0
+
+### Minor Changes
+
+- 8e87dfe: Add MCP client cache with TTL-based eviction for persistent connections across requests.
+
+### Patch Changes
+
+- 8e87dfe: Fix tool call sanitization for AI SDK v6 compatibility: add missing `input` field fallback and handle array-based tool-result messages.
+- 8e87dfe: Add muster-specific system prompt with instructions for tool discovery, authentication, and calling conventions.
+
 ## 0.5.1
 
 ### Patch Changes
