@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Fix tool call sanitization for AI SDK v6 compatibility.
 
+See [./docs/releases/v0.107.0-changelog.md](./docs/releases/v0.107.0-changelog.md) for more information.
+
 ## [0.106.0] - 2026-02-16
 
 ### Changed
