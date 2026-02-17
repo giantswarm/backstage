@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-02-17
+
 ### Added
 
 - Add MCP client cache with TTL-based eviction for persistent connections across requests.
@@ -1910,7 +1912,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.106.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.107.0...HEAD
+[0.107.0]: https://github.com/giantswarm/backstage/compare/v0.106.0...v0.107.0
 [0.106.0]: https://github.com/giantswarm/backstage/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/giantswarm/backstage/compare/v0.104.0...v0.105.0
 [0.104.0]: https://github.com/giantswarm/backstage/compare/v0.103.1...v0.104.0
