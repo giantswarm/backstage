@@ -1,6 +1,8 @@
 /**
- * Ensures all tool call IDs in the message array are unique.
- * Anthropic API requires tool_use IDs to be unique across all messages.
+ * Sanitizes model messages for Anthropic API compatibility:
+ * 1. Ensures all tool call IDs are unique (Anthropic requires unique tool_use IDs)
+ * 2. Ensures all tool calls have an `input` field (Anthropic requires it, even if empty)
+ *
  * Uses a queue to match tool results with their corresponding tool calls.
  */
 export function deduplicateToolCallIds(messages: any[]): any[] {
@@ -15,36 +17,48 @@ export function deduplicateToolCallIds(messages: any[]): any[] {
         if (part.type === 'tool-call' && part.toolCallId) {
           const originalId = part.toolCallId;
 
+          // Ensure input is always defined (Anthropic requires tool_use.input)
+          const sanitizedPart =
+            part.input === undefined ? { ...part, input: {} } : part;
+
           if (allSeenToolCallIds.has(originalId)) {
             // Duplicate detected - generate new unique ID
             const newId = `${originalId}_dup${counter++}`;
             allSeenToolCallIds.add(newId);
             pendingToolCalls.push({ originalId, renamedId: newId });
-            return { ...part, toolCallId: newId };
+            return { ...sanitizedPart, toolCallId: newId };
           }
 
           // First occurrence of this ID
           allSeenToolCallIds.add(originalId);
           pendingToolCalls.push({ originalId, renamedId: originalId });
+          return sanitizedPart;
         }
         return part;
       });
       return { ...message, content: newContent };
     }
 
-    // Handle tool result messages - match with corresponding tool call
-    if (message.role === 'tool' && message.toolCallId) {
-      const originalId = message.toolCallId;
-      // Find the first pending tool call with this original ID (FIFO order)
-      const index = pendingToolCalls.findIndex(
-        p => p.originalId === originalId,
-      );
+    // Handle tool result messages - match with corresponding tool call.
+    // Tool messages contain an array of tool-result parts, each with its own
+    // toolCallId (AI SDK v6 ToolModelMessage format).
+    if (message.role === 'tool' && Array.isArray(message.content)) {
+      const newContent = message.content.map((part: any) => {
+        if (part.type === 'tool-result' && part.toolCallId) {
+          const originalId = part.toolCallId;
+          const index = pendingToolCalls.findIndex(
+            p => p.originalId === originalId,
+          );
 
-      if (index !== -1) {
-        const { renamedId } = pendingToolCalls[index];
-        pendingToolCalls.splice(index, 1); // Remove from pending queue
-        return { ...message, toolCallId: renamedId };
-      }
+          if (index !== -1) {
+            const { renamedId } = pendingToolCalls[index];
+            pendingToolCalls.splice(index, 1);
+            return { ...part, toolCallId: renamedId };
+          }
+        }
+        return part;
+      });
+      return { ...message, content: newContent };
     }
 
     return message;

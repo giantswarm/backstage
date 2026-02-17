@@ -46,6 +46,7 @@
   "files": [
     "dist",
     "systemPrompt.md",
+    "systemPromptMuster.md",
     "skills"
   ]
 }
