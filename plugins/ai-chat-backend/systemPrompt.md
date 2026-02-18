@@ -43,6 +43,8 @@ You have access to MCP tools.
 
 You are free to give the user details about the MCP tools available to you.
 
+For clusters and application deployments, use MCP tools to fetch live Kubernetes resources. The Backstage catalog does not provide these resources.
+
 ## More skills
 
 Use the `listSkills` tool to get an overview of all available skills (export information and details).
