@@ -10,6 +10,8 @@ import {
   useElementFilter,
   useRouteRefParams,
 } from '@backstage/core-plugin-api';
+import Grid from '@material-ui/core/Grid';
+import { makeStyles } from '@material-ui/core/styles';
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
 import { useAsyncDeployment } from '../DeploymentDetailsPage/useCurrentDeployment';
@@ -19,6 +21,14 @@ import {
   App,
   HelmRelease,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat';
+import { getAggregatedStatus } from '../utils/getStatus';
+
+const useStyles = makeStyles(theme => ({
+  headerAction: {
+    color: theme.page.fontColor,
+  },
+}));
 
 export type DeploymentLayoutRouteProps = {
   path: string;
@@ -108,11 +118,28 @@ const PageContent = ({
   return <RoutedTabs routes={routes} />;
 };
 
+function getAIChatMessage(
+  deployment: App | HelmRelease,
+  installationName: string,
+): { message: string; isTroubleshoot: boolean } {
+  const name = deployment.getName();
+  const namespace = deployment.getNamespace();
+  const kind = deployment instanceof HelmRelease ? 'HelmRelease' : 'App';
+  const isTroubleshoot = getAggregatedStatus(deployment) === 'failed';
+
+  const message = isTroubleshoot
+    ? `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${installationName}' and help me troubleshoot it.`
+    : `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${installationName}', and show me basic details, so that I can ask further questions about it.`;
+
+  return { message, isTroubleshoot };
+}
+
 export interface DeploymentLayoutProps {
   children?: React.ReactNode;
 }
 
 export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
+  const classes = useStyles();
   const { name } = useRouteRefParams(deploymentDetailsRouteRef);
 
   const {
@@ -131,7 +158,23 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
 
   return (
     <Page themeId="service">
-      <Header title={name} type={type} />
+      <Header title={name} type={type}>
+        {deployment &&
+          (() => {
+            const { message, isTroubleshoot } = getAIChatMessage(
+              deployment,
+              installationName,
+            );
+            return (
+              <Grid item className={classes.headerAction}>
+                <AIChatButton
+                  troubleshoot={isTroubleshoot}
+                  items={[{ label: 'AI Chat', message }]}
+                />
+              </Grid>
+            );
+          })()}
+      </Header>
       <PageContent
         isLoading={isLoading}
         error={error}

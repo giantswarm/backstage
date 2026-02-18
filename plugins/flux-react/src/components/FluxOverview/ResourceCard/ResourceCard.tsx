@@ -16,6 +16,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Box, Divider, makeStyles, Paper, PaperProps } from '@material-ui/core';
 import classNames from 'classnames';
+import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat';
 import { CopyCommandMenu } from './CopyCommandMenu';
 import { ResourceMetadata } from './ResourceMetadata';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
@@ -200,8 +201,19 @@ export const ResourceCard = ({
             <Box mt={1}>
               <Divider />
             </Box>
-            <Box display="flex" mt={1}>
+            <Box display="flex" alignItems="center" mt={1}>
               <CopyCommandMenu resource={resource} />
+              {readyStatus === 'False' && (
+                <AIChatButton
+                  label="Troubleshoot with AI"
+                  items={[
+                    {
+                      label: 'Troubleshoot with AI',
+                      message: `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}' and help me understand why it is not in a Ready state.`,
+                    },
+                  ]}
+                />
+              )}
             </Box>
           </>
         )}

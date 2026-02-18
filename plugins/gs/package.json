@@ -39,6 +39,7 @@
     "@backstage/plugin-user-settings": "backstage:^",
     "@backstage/theme": "backstage:^",
     "@backstage/types": "backstage:^",
+    "@giantswarm/backstage-plugin-ai-chat": "workspace:^",
     "@giantswarm/backstage-plugin-flux": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "^0.10.0",
     "@giantswarm/backstage-plugin-gs-common": "^0.20.1",
