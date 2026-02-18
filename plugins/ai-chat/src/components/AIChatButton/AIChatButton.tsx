@@ -13,7 +13,7 @@ import { AIChatIcon } from '../../assets/icons';
 
 const AI_CHAT_PATH = '/ai-chat';
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles(() => ({
   button: {
     textTransform: 'none',
     paddingLeft: 11,
