@@ -6,7 +6,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 
 import { mcpAuthProvidersApiRef, MCPAuthProviders } from './api';
-import { AIChatIcon } from './assets/icons';
+import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { rootRouteRef } from './routes';
 
 const aiChatPage = PageBlueprint.make({

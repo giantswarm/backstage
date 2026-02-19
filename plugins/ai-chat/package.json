@@ -35,6 +35,7 @@
     "@backstage/plugin-catalog-react": "backstage:^",
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/theme": "backstage:^",
+    "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-ui/core": "^4.9.13",
     "@material-ui/icons": "^4.9.1",
