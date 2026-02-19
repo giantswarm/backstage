@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add Inspect/Troubleshoot with AI button.
+
+### Changed
+
+- Improve link rendering in AI chat markdown.
+- Add syntax highlighting to verbose tool call details.
+
 ## [0.107.0] - 2026-02-17
 
 ### Added
