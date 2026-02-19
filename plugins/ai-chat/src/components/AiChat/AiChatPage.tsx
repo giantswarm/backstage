@@ -9,6 +9,7 @@ import {
 } from '@backstage/core-plugin-api';
 import { mcpAuthProvidersApiRef } from '../../api';
 import { Thread } from './Thread';
+import { GeneratePortalUrlTool } from './tools';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   useChatRuntime,
@@ -131,6 +132,7 @@ export const AiChatPage = () => {
       <Content>
         <AssistantRuntimeProvider runtime={runtime}>
           <InitialMessageHandler isReady={Boolean(apiUrl)} />
+          <GeneratePortalUrlTool />
           <DevToolsModal />
           <Thread />
         </AssistantRuntimeProvider>

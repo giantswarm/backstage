@@ -10,7 +10,9 @@ import {
 
 import {
   appDeploymentTemplateRouteRef,
+  clusterDetailsRouteRef,
   clustersRouteRef,
+  deploymentDetailsRouteRef,
   deploymentsRouteRef,
   entityDeploymentsRouteRef,
   entityKratixResourcesRouteRef,
@@ -123,7 +125,9 @@ export const gsPlugin = createPlugin({
   routes: {
     root: rootRouteRef,
     clustersPage: clustersRouteRef,
+    clusterDetails: clusterDetailsRouteRef,
     deploymentsPage: deploymentsRouteRef,
+    deploymentDetails: deploymentDetailsRouteRef,
     entityContent: entityDeploymentsRouteRef,
     entityKratixResourcesContent: entityKratixResourcesRouteRef,
   },
