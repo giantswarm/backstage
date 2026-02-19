@@ -95,9 +95,9 @@ export const GeneratePortalUrlTool = () => {
   useAssistantTool({
     toolName: 'generatePortalUrl',
     description:
-      'Generates a URL path for a page in the Giant Swarm developer portal. ' +
-      'Use this whenever you need to link to a specific resource or page. ' +
-      'Returns the URL path string (e.g. "/clusters/gazelle/org-team/mycluster").',
+      'Generates a URL for a page in the Giant Swarm developer portal. ' +
+      'Use whenever you need to link to a specific resource or page. ' +
+      'Returns the root-relative path string.',
     parameters,
     execute: async (params: Params) => {
       switch (params.pageType) {
