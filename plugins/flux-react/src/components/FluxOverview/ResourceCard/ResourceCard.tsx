@@ -16,7 +16,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Box, Divider, makeStyles, Paper, PaperProps } from '@material-ui/core';
 import classNames from 'classnames';
-import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat';
+import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { CopyCommandMenu } from './CopyCommandMenu';
 import { ResourceMetadata } from './ResourceMetadata';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
@@ -201,7 +201,7 @@ export const ResourceCard = ({
             <Box mt={1}>
               <Divider />
             </Box>
-            <Box display="flex" alignItems="center" mt={1}>
+            <Box display="flex" alignItems="center" mt={1} gridGap={8}>
               <CopyCommandMenu resource={resource} />
               {readyStatus === 'False' && (
                 <AIChatButton

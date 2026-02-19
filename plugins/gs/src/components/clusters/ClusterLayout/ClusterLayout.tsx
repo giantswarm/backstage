@@ -19,7 +19,7 @@ import { clusterDetailsRouteRef } from '../../../routes';
 import { useCurrentUser } from '../../hooks';
 import { ClusterAppStatus } from './ClusterAppStatus';
 import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat';
+import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { calculateClusterStatus, getClusterDescription } from '../utils';
 import { ClusterStatuses } from '../ClusterStatus';
 

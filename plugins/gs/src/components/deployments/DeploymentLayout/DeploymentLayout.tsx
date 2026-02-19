@@ -21,7 +21,7 @@ import {
   App,
   HelmRelease,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat';
+import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { getAggregatedStatus } from '../utils/getStatus';
 
 const useStyles = makeStyles(theme => ({
