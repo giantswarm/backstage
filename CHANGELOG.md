@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Improve link rendering in AI chat markdown.
 - Add syntax highlighting to verbose tool call details.
 
+See [./docs/releases/v0.108.0-changelog.md](./docs/releases/v0.108.0-changelog.md) for more information.
+
 ## [0.107.0] - 2026-02-17
 
 ### Added

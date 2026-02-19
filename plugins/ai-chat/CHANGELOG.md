@@ -1,5 +1,20 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.7.0
+
+### Minor Changes
+
+- d3fd8a5: Add Inspect/Troubleshoot with AI button
+
+### Patch Changes
+
+- 24c279b: Improve link rendering in AI chat
+- bb1a3a4: Syntax highlighting for verbose tool call details
+- Updated dependencies [24c279b]
+- Updated dependencies [d3fd8a5]
+  - @giantswarm/backstage-plugin-ui-react@0.7.3
+  - @giantswarm/backstage-plugin-ai-chat-react@0.2.0
+
 ## 0.6.0
 
 ### Minor Changes
