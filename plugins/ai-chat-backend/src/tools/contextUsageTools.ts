@@ -44,9 +44,7 @@ export function createContextUsageTool(userRef: string) {
         'Returns token usage details from the most recent completed step for the current user. ' +
         'Includes input tokens, output tokens, total tokens, cache details (for Anthropic), ' +
         'and reasoning token breakdown. Call this when the user asks about context size, ' +
-        'token usage, or how much of the context window is being used. ' +
-        'IMPORTANT: The result is rendered as a rich UI card directly visible to the user. ' +
-        'Do NOT repeat or summarize the data in your response — the card is self-explanatory.',
+        'token usage, or how much of the context window is being used.',
       inputSchema: z.object({}),
       execute: async () => {
         const usage = usageByUser.get(userRef);
