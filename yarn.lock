@@ -14443,8 +14443,8 @@ __metadata:
   linkType: hard
 
 "@roadiehq/scaffolder-backend-module-utils@npm:^4.1.1":
-  version: 4.1.1
-  resolution: "@roadiehq/scaffolder-backend-module-utils@npm:4.1.1"
+  version: 4.1.2
+  resolution: "@roadiehq/scaffolder-backend-module-utils@npm:4.1.2"
   dependencies:
     "@backstage/backend-plugin-api": "npm:^1.4.4"
     "@backstage/config": "npm:^1.3.5"
@@ -14459,7 +14459,7 @@ __metadata:
     yaml: "npm:^2.6.1"
     yawn-yaml: "npm:^2.3.0"
     zod: "npm:^3.19.1"
-  checksum: 10c0/d1f061ac0476b385921f88b296b1ed8e55b6af6b32d72420acc9f83a58a7fa2802465be1a63678d7c39cf41a76fd1b26c160f9370bee9647492493051e8de937
+  checksum: 10c0/aeaed78156d65377fd09439e772b67d36a562ff385318c6906501b7005dd631b3375abe56a5a22817dc77d3ea26cd6a0f68980ffea741054c1a060ddc60cee0f
   languageName: node
   linkType: hard
 
