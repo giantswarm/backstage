@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.7.3
+
+### Patch Changes
+
+- 24c279b: Improve link rendering in AI chat
+
 ## 0.7.2
 
 ### Patch Changes
