@@ -14,7 +14,7 @@ type ExternalLinkProps = {
 export const ExternalLink = ({ href, children }: ExternalLinkProps) => {
   return (
     <Link href={href} target="_blank" rel="noopener noreferrer">
-      <Box display="flex" alignItems="center">
+      <Box display="inline-flex" alignItems="center">
         {children}
         <StyledLaunchOutlinedIcon />
       </Box>
