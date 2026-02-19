@@ -27,6 +27,8 @@ import {
   getSkill,
   createUserTools,
   createResourceTools,
+  createContextUsageTool,
+  recordUsage,
 } from './tools';
 import { extractMcpAuthTokens, deduplicateToolCallIds } from './utils';
 
@@ -136,6 +138,9 @@ export async function createRouter(
     // User-scoped tools that need access to the current request's credentials
     const userTools = createUserTools(userInfo, credentials);
 
+    // Context usage tool (scoped to user)
+    const contextUsageTools = createContextUsageTool(userRef);
+
     // MCP resource tools
     const mcpResourceTools = createResourceTools(mcpResources);
 
@@ -192,6 +197,8 @@ export async function createRouter(
           getSkill,
           // User tools (request-scoped)
           ...userTools,
+          // Context usage tool
+          ...contextUsageTools,
         } as ToolSet,
         providerOptions: isAnthropicModel
           ? {
@@ -200,6 +207,9 @@ export async function createRouter(
               },
             }
           : undefined,
+        onStepFinish({ usage }) {
+          recordUsage(userRef, usage, modelName);
+        },
       });
 
       // Set headers for streaming
