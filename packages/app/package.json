@@ -51,6 +51,7 @@
     "@backstage/theme": "backstage:^",
     "@backstage/ui": "backstage:^",
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^",
+    "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^",
     "@giantswarm/backstage-plugin-flux": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",

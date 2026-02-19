@@ -1,4 +1,5 @@
 import { useState, MouseEvent } from 'react';
+import classNames from 'classnames';
 import {
   Box,
   Button,
@@ -20,9 +21,6 @@ const useStyles = makeStyles(() => ({
     paddingRight: 11,
   },
   troubleshootButton: {
-    textTransform: 'none',
-    paddingLeft: 11,
-    paddingRight: 11,
     backgroundColor: '#9a2c28',
     color: '#ffffff',
     '&:hover': {
@@ -93,7 +91,10 @@ export const AIChatButton = ({
     <Box>
       <Tooltip title={displayTooltip}>
         <Button
-          className={troubleshoot ? classes.troubleshootButton : classes.button}
+          className={classNames(
+            classes.button,
+            troubleshoot && classes.troubleshootButton,
+          )}
           color="inherit"
           size="small"
           startIcon={<AIChatIcon />}
