@@ -62,7 +62,8 @@ const parameters = z.object({
     .array(z.string())
     .optional()
     .describe(
-      'Optional for: flux-list, flux-tree. Array of management cluster names to filter by.',
+      'Optional for: flux-list (supports multiple clusters), flux-tree (uses only the first cluster). ' +
+        'Array of management cluster names to filter by.',
     ),
 });
 
@@ -193,10 +194,9 @@ export const GeneratePortalUrlTool = () => {
         case 'flux-tree': {
           const base = fluxRoute ? fluxRoute() : '/flux';
           if (params.clusters && params.clusters.length > 0) {
-            const query = params.clusters
-              .map(c => `clusters=${encodeURIComponent(c)}`)
-              .join('&');
-            return { url: `${base}/tree?${query}` };
+            return {
+              url: `${base}/tree?cluster=${encodeURIComponent(params.clusters[0])}`,
+            };
           }
           return { url: `${base}/tree` };
         }
