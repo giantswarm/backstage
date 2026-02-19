@@ -6,12 +6,14 @@ import {
 import remarkGfm from 'remark-gfm';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import Typography from '@material-ui/core/Typography';
-import Link from '@material-ui/core/Link';
+import { Link as BackstageLink } from '@backstage/core-components';
 import Table from '@material-ui/core/Table';
 import TableBody from '@material-ui/core/TableBody';
 import TableCell from '@material-ui/core/TableCell';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import { EntityRefLink } from '@backstage/plugin-catalog-react';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -109,11 +111,50 @@ const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
         {children}
       </Typography>
     ),
-    a: ({ href, children }) => (
-      <Link href={href} target="_blank" rel="noopener noreferrer">
-        {children}
-      </Link>
-    ),
+    a: ({ href, children }) => {
+      if (!href) {
+        return <>{children}</>;
+      }
+
+      let url: URL;
+      try {
+        url = new URL(href, window.location.origin);
+      } catch {
+        return <>{children}</>;
+      }
+
+      // External link: different origin
+      if (url.origin !== window.location.origin) {
+        return <ExternalLink href={href}>{children}</ExternalLink>;
+      }
+
+      // Catalog entity link: /catalog/:namespace/:kind/:name
+      const catalogMatch = url.pathname.match(
+        /^\/catalog\/([^/]+)\/([^/]+)\/([^/]+)/,
+      );
+      if (catalogMatch) {
+        const [, namespace, kind, name] = catalogMatch;
+
+        return (
+          <EntityRefLink
+            entityRef={{ namespace, kind, name }}
+            target="_blank"
+            rel="noopener noreferrer"
+          />
+        );
+      }
+
+      // Other internal links: SPA navigation
+      return (
+        <BackstageLink
+          to={url.pathname}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {children}
+        </BackstageLink>
+      );
+    },
     blockquote: ({ children }) => (
       <blockquote className={classes.blockquote}>{children}</blockquote>
     ),
