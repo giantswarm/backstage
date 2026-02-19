@@ -1,7 +1,6 @@
 # Clusters in Backstage
 
-- Users can view all the management and workload clusters they have access to in the Backstage portal.
-  - The link to this list view is [Clusters](/clusters).
+- Users can view all the management and workload clusters they have access to in the Backstage portal, in the clusters list.
   - The list view provides these details:
     - Cluster name
     - Cluster type (management or workload)
@@ -15,7 +14,7 @@
     - AWS account id (for AWS clusters)
     - Creation date and time
     - Status (e. g. Ready)
-- Users can see details of clusters in the portal. The URI for that looks like `/clusters/:installation/:org-namespace/:clustername`
+- Users can see details of clusters in the portal on the cluster details page.
   - That page provides:
     - Cluster name
     - Cluster type (management or workload)
