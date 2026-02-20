@@ -1,6 +1,6 @@
 import { ResourceRequestsTable } from '../../kratix/ResourceRequestsTable';
 import { entityRouteRef, useEntity } from '@backstage/plugin-catalog-react';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 type KratixResource = {
   installationName: string;
@@ -12,7 +12,7 @@ type KratixResource = {
 export function EntityKratixResourcesCard() {
   const { entity } = useEntity();
 
-  const entityRoute = useRouteRef(entityRouteRef);
+  const entityRoute = useRouteRef(entityRouteRef)!;
   const baseRoute = entityRoute({
     kind: entity.kind.toLocaleLowerCase('en-US'),
     namespace:

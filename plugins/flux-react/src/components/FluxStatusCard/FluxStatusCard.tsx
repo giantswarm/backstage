@@ -1,7 +1,7 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { InfoCard, Link } from '@backstage/core-components';
 import { Box, Typography } from '@material-ui/core';
-import { ExternalRouteRef, useRouteRef } from '@backstage/core-plugin-api';
+import { ExternalRouteRef, useRouteRef } from '@backstage/frontend-plugin-api';
 import { DeploymentStatus } from './DeploymentStatus';
 import { ResourceStatus } from './ResourceStatus';
 

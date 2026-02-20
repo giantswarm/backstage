@@ -4,7 +4,8 @@ import {
   EntityRefLink,
   useEntity,
 } from '@backstage/plugin-catalog-react';
-import { useApi, useRouteRef } from '@backstage/core-plugin-api';
+import { useApi } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { InfoCard, Progress } from '@backstage/core-components';
 import useAsync from 'react-use/esm/useAsync';
 import { Link as RouterLink } from 'react-router-dom';
@@ -48,7 +49,7 @@ export function EntityKratixStatusCard() {
     }
   }, [stale]);
 
-  const kratixResourcesRoute = useRouteRef(entityKratixResourcesRouteRef);
+  const kratixResourcesRoute = useRouteRef(entityKratixResourcesRouteRef)!;
 
   const handleRefreshClick = () => {
     setStale(true);

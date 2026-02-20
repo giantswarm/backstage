@@ -1,6 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { ClusterTypes } from '../../clusters/utils';
 import {
@@ -37,7 +37,7 @@ export const ClusterLink = ({
   name,
   type,
 }: ClusterLinkProps) => {
-  const clusterDetailsRouteLink = useRouteRef(clusterDetailsRouteRef);
+  const clusterDetailsRouteLink = useRouteRef(clusterDetailsRouteRef)!;
   const classes = useStyles();
 
   const Icon =

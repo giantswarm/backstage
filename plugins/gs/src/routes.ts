@@ -2,55 +2,35 @@ import {
   createExternalRouteRef,
   createRouteRef,
   createSubRouteRef,
-} from '@backstage/core-plugin-api';
+} from '@backstage/frontend-plugin-api';
 
-export const rootRouteRef = createRouteRef({
-  id: 'gs',
-});
+export const rootRouteRef = createRouteRef();
 
-export const clustersRouteRef = createRouteRef({
-  id: 'gs-clusters',
-});
+export const clustersRouteRef = createRouteRef();
 
 export const clusterDetailsRouteRef = createSubRouteRef({
-  id: 'gs-clusters/cluster-details',
   path: '/:installationName/:namespace/:name/*',
   parent: clustersRouteRef,
 });
 
-export const installationsRouteRef = createRouteRef({
-  id: 'gs-installations',
-});
+export const installationsRouteRef = createRouteRef();
 
-export const deploymentsRouteRef = createRouteRef({
-  id: 'gs-deployments',
-});
+export const deploymentsRouteRef = createRouteRef();
 
 export const deploymentDetailsRouteRef = createSubRouteRef({
-  id: 'gs-deployments/deployment-details',
   path: '/:installationName/:kind/:namespace/:name/*',
   parent: deploymentsRouteRef,
 });
 
-export const entityDeploymentsRouteRef = createRouteRef({
-  id: 'gs-entity-deployments',
-});
+export const entityDeploymentsRouteRef = createRouteRef();
 
-export const entityKratixResourcesRouteRef = createRouteRef({
-  id: 'gs-entity-kratix-resources',
-});
+export const entityKratixResourcesRouteRef = createRouteRef();
 
-export const fluxOverviewExternalRouteRef = createExternalRouteRef({
-  id: 'flux-overview',
-});
+export const fluxOverviewExternalRouteRef = createExternalRouteRef();
 
-export const fluxResourcesExternalRouteRef = createExternalRouteRef({
-  id: 'flux-resources',
-});
+export const fluxResourcesExternalRouteRef = createExternalRouteRef();
 
 export const appDeploymentTemplateRouteRef = createExternalRouteRef({
-  id: 'app-deployment-template',
-  optional: true,
   params: ['namespace', 'templateName'],
   defaultTarget: 'scaffolder.selectedTemplate',
 });
