@@ -2,23 +2,8 @@
 export { gsPlugin as default } from './plugin';
 export { gsPlugin } from './plugin';
 
-// Legacy scaffolder compat (Phase 2 will migrate these to NFS)
-export {
-  gsScaffolderPlugin,
-  GSChartPickerFieldExtension,
-  GSChartTagPickerFieldExtension,
-  GSClusterPickerFieldExtension,
-  GSProviderConfigPickerFieldExtension,
-  GSOIDCTokenFieldExtension,
-  GSSecretStorePickerFieldExtension,
-  GSTemplateStringInputFieldExtension,
-  GSInstallationPickerFieldExtension,
-  GSReleasePickerFieldExtension,
-  GSOrganizationPickerFieldExtension,
-  GSYamlValuesEditorFieldExtension,
-  GSYamlValuesValidationFieldExtension,
-  GSStepLayout,
-} from './scaffolderPlugin';
+// Raw StepLayout component for scaffolder page override
+export { StepLayout } from './components/scaffolder/StepLayout/StepLayout';
 
 // Entity content as raw components (no longer routable extensions)
 export { EntityDeploymentsContent as EntityGSDeploymentsContent } from './components/deployments/EntityDeploymentsContent';

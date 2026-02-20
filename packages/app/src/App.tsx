@@ -5,11 +5,7 @@ import {
   catalogPlugin,
 } from '@backstage/plugin-catalog';
 import { SignalsDisplay } from '@backstage/plugin-signals';
-import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
-import {
-  ScaffolderFieldExtensions,
-  ScaffolderLayouts,
-} from '@backstage/plugin-scaffolder-react';
+import scaffolderPlugin from '@backstage/plugin-scaffolder/alpha';
 import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
 import {
@@ -40,21 +36,8 @@ import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
 import { HomePage } from './components/home/HomePage';
 
 import gsPlugin, {
-  GSChartPickerFieldExtension,
-  GSChartTagPickerFieldExtension,
-  GSClusterPickerFieldExtension,
-  GSTemplateStringInputFieldExtension,
   GSCustomCatalogPage,
   GSProviderSettings,
-  GSStepLayout,
-  GSProviderConfigPickerFieldExtension,
-  GSOIDCTokenFieldExtension,
-  GSInstallationPickerFieldExtension,
-  GSReleasePickerFieldExtension,
-  GSOrganizationPickerFieldExtension,
-  GSSecretStorePickerFieldExtension,
-  GSYamlValuesEditorFieldExtension,
-  GSYamlValuesValidationFieldExtension,
   gsAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
 
@@ -70,6 +53,7 @@ import {
   kubernetesApiOverrides,
   aiChatApiOverrides,
 } from './apiOverrides';
+import { scaffolderPluginOverrides } from './scaffolder';
 
 // Convert legacy app options to new frontend system features
 const legacyAppOptions = convertLegacyAppOptions({
@@ -108,12 +92,6 @@ const legacyAppOptions = convertLegacyAppOptions({
   },
 });
 
-const createHeaderOptions = {
-  pageTitleOverride: 'Create things',
-  title: 'Create things',
-  subtitle: 'Create new things from templates',
-};
-
 const routes = (
   <FlatRoutes>
     <Route path="/" element={<HomepageCompositionRoot />}>
@@ -133,28 +111,6 @@ const routes = (
       path="/docs/:namespace/:kind/:name/*"
       element={<TechDocsReaderPage />}
     />
-    <Route
-      path="/create"
-      element={<ScaffolderPage headerOptions={createHeaderOptions} />}
-    >
-      <ScaffolderFieldExtensions>
-        <GSChartPickerFieldExtension />
-        <GSChartTagPickerFieldExtension />
-        <GSClusterPickerFieldExtension />
-        <GSProviderConfigPickerFieldExtension />
-        <GSOIDCTokenFieldExtension />
-        <GSSecretStorePickerFieldExtension />
-        <GSTemplateStringInputFieldExtension />
-        <GSInstallationPickerFieldExtension />
-        <GSReleasePickerFieldExtension />
-        <GSOrganizationPickerFieldExtension />
-        <GSYamlValuesEditorFieldExtension />
-        <GSYamlValuesValidationFieldExtension />
-      </ScaffolderFieldExtensions>
-      <ScaffolderLayouts>
-        <GSStepLayout />
-      </ScaffolderLayouts>
-    </Route>
     <Route path="/search" element={<SearchPage />}>
       {searchPage}
     </Route>
@@ -199,6 +155,8 @@ const app = createApp({
     fluxPlugin,
     fluxPluginOverrides,
     gsPlugin,
+    scaffolderPlugin,
+    scaffolderPluginOverrides,
     // API overrides for upstream NFS plugins (custom GS implementations):
     catalogApiOverrides,
     scaffolderApiOverrides,

@@ -1,2 +1,2 @@
 export { ChartPicker } from './ChartPicker';
-export { ChartPickerSchema } from './schema';
+export { ChartPickerSchema, ChartPickerFieldSchema } from './schema';

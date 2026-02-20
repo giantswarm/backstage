@@ -1,2 +1,2 @@
 export { ReleasePicker } from './ReleasePicker';
-export { ReleasePickerSchema } from './schema';
+export { ReleasePickerSchema, ReleasePickerFieldSchema } from './schema';
