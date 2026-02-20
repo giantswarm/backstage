@@ -1,5 +1,6 @@
 import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';
+import { ClusterNodePools } from '../cluster-details/ClusterNodePools';
 import { ClusterOverview } from '../cluster-details/ClusterOverview';
 import { ClusterSSHAccess } from '../cluster-details/ClusterSSHAccess';
 import { QueryClientProvider } from '../../QueryClientProvider';
@@ -13,6 +14,11 @@ export const ClusterDetailsPage = () => {
           <ClusterLayout.Route path="/" title="Overview">
             <ErrorsProvider>
               <ClusterOverview />
+            </ErrorsProvider>
+          </ClusterLayout.Route>
+          <ClusterLayout.Route path="/node-pools" title="Node pools">
+            <ErrorsProvider>
+              <ClusterNodePools />
             </ErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route

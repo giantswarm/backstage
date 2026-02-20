@@ -18,6 +18,7 @@ export * from './useHelmChartValuesSchema';
 export * from './useHelmChartValuesYaml';
 export * from './useInstallationsInfo';
 export * from './useK8sVersionEOLDate';
+export * from './useNodePoolsForCluster';
 export * from './useResourceRequests';
 export * from './useResourceRequestStatusDetails';
 export * from './useTemplateString';

@@ -1,8 +1,13 @@
 export { AWSCluster } from './AWSCluster';
 export { AWSClusterRoleIdentity } from './AWSClusterRoleIdentity';
+export { AWSMachinePool } from './AWSMachinePool';
 export { AzureCluster } from './AzureCluster';
+export { AzureMachineTemplate } from './AzureMachineTemplate';
 export { Cluster } from './Cluster';
 export { ControlPlane } from './ControlPlane';
+export { KarpenterMachinePool } from './KarpenterMachinePool';
+export { MachineDeployment } from './MachineDeployment';
+export { MachinePool } from './MachinePool';
 export { ProviderCluster } from './ProviderCluster';
 export { VCDCluster } from './VCDCluster';
 export { VSphereCluster } from './VSphereCluster';
