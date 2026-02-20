@@ -1,0 +1,1 @@
+export { GeneratePortalUrlTool } from './GeneratePortalUrlTool';

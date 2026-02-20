@@ -28,7 +28,11 @@ import {
   createUserTools,
   createResourceTools,
 } from './tools';
-import { extractMcpAuthTokens, deduplicateToolCallIds } from './utils';
+import {
+  extractMcpAuthTokens,
+  deduplicateToolCallIds,
+  summarizeToolsForLogging,
+} from './utils';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -176,6 +180,24 @@ export async function createRouter(
           }
         : undefined;
 
+      const allTools = {
+        ...frontendTools(tools),
+        ...mcpTools,
+        ...mcpResourceTools,
+        // Skill tools
+        listSkills,
+        getSkill,
+        // User tools (request-scoped)
+        ...userTools,
+      } as ToolSet;
+
+      // Log the full model context for debugging tool usage issues.
+      // Use `debug` level to avoid noise in production; set
+      // LOG_LEVEL=debug or use the Backstage logger config to enable.
+      logger.debug(
+        `Full model context: ${JSON.stringify({ systemPrompt: effectiveSystemPrompt, tools: summarizeToolsForLogging(allTools), messageCount: deduplicatedMessages.length })}`,
+      );
+
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
@@ -183,16 +205,7 @@ export async function createRouter(
           : deduplicatedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
-        tools: {
-          ...frontendTools(tools),
-          ...mcpTools,
-          ...mcpResourceTools,
-          // Skill tools
-          listSkills,
-          getSkill,
-          // User tools (request-scoped)
-          ...userTools,
-        } as ToolSet,
+        tools: allTools,
         providerOptions: isAnthropicModel
           ? {
               anthropic: {

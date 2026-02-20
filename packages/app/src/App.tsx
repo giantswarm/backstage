@@ -220,6 +220,13 @@ const app = createApp({
       fluxOverview: fluxPlugin.routes.overview,
       fluxResources: fluxPlugin.routes.root,
     });
+    bind(aiChatPlugin.externalRoutes, {
+      clusterDetail: gsPlugin.routes.clusterDetails,
+      deploymentDetail: gsPlugin.routes.deploymentDetails,
+      catalogEntity: catalogPlugin.routes.catalogEntity,
+      techdocsEntity: techdocsPlugin.routes.docRoot,
+      flux: fluxPlugin.routes.root,
+    });
   },
 });
 
