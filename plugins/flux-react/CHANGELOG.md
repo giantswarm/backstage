@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.11.0
+
+### Minor Changes
+
+- d3fd8a5: Add Inspect/Troubleshoot with AI button
+
+### Patch Changes
+
+- Updated dependencies [24c279b]
+- Updated dependencies [d3fd8a5]
+  - @giantswarm/backstage-plugin-ui-react@0.7.3
+  - @giantswarm/backstage-plugin-ai-chat-react@0.2.0
+
 ## 0.10.0
 
 ### Minor Changes

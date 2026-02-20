@@ -25,7 +25,7 @@ import {
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import { GSFeatureEnabled, GSMainMenu } from '@giantswarm/backstage-plugin-gs';
-import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat';
+import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat-react';
 
 const useSidebarLogoStyles = makeStyles({
   root: {

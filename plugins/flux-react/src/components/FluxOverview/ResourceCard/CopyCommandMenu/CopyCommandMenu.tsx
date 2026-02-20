@@ -1,7 +1,7 @@
 import { useEffect, useState, MouseEvent } from 'react';
 import {
   Box,
-  IconButton,
+  Button,
   Menu,
   MenuItem,
   Tooltip,
@@ -18,6 +18,7 @@ import { TerminalIcon } from '../../../../assets/icons';
 const useStyles = makeStyles(theme => ({
   button: {
     padding: theme.spacing(0.5),
+    minWidth: 'unset',
   },
   menuItem: {
     minWidth: 200,
@@ -171,7 +172,7 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
   return (
     <Box>
       <Tooltip title="Copy CLI command">
-        <IconButton
+        <Button
           className={classes.button}
           size="small"
           onClick={handleOpen}
@@ -183,7 +184,7 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
           ) : (
             <TerminalIcon fontSize="small" />
           )}
-        </IconButton>
+        </Button>
       </Tooltip>
       <Menu
         anchorEl={anchorEl}

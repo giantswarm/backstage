@@ -5,6 +5,19 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-02-19
+
+### Added
+
+- Add Inspect/Troubleshoot with AI button.
+
+### Changed
+
+- Improve link rendering in AI chat markdown.
+- Add syntax highlighting to verbose tool call details.
+
+See [./docs/releases/v0.108.0-changelog.md](./docs/releases/v0.108.0-changelog.md) for more information.
+
 ## [0.107.0] - 2026-02-17
 
 ### Added
@@ -1912,7 +1925,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.107.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.108.0...HEAD
+[0.108.0]: https://github.com/giantswarm/backstage/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/giantswarm/backstage/compare/v0.106.0...v0.107.0
 [0.106.0]: https://github.com/giantswarm/backstage/compare/v0.105.0...v0.106.0
 [0.105.0]: https://github.com/giantswarm/backstage/compare/v0.104.0...v0.105.0

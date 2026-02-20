@@ -24,10 +24,10 @@
       matchPackageNames: ['date-fns', 'date-fns-tz'],
     },
   ],
-  prConcurrentLimit: 1,
+  prConcurrentLimit: 2,
   schedule: [
     'every weekend',
-    'every weekday after 6pm',
-    'every weekday before 6am',
+    'every weekday after 5pm',
+    'every weekday before 8am',
   ],
 }
