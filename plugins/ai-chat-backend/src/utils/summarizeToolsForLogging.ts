@@ -29,7 +29,8 @@ export function summarizeToolsForLogging(
         // LazySchema — call it to get the Schema object
         try {
           const resolved = schema();
-          entry.parameters = resolved?.jsonSchema ?? '[lazy - could not resolve]';
+          entry.parameters =
+            resolved?.jsonSchema ?? '[lazy - could not resolve]';
         } catch {
           entry.parameters = '[lazy - error resolving]';
         }
