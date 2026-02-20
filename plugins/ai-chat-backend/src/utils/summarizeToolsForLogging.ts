@@ -24,7 +24,7 @@ export function summarizeToolsForLogging(
 
     // Extract JSON schema from the various FlexibleSchema formats
     const schema = tool.inputSchema;
-    if (schema != null) {
+    if (schema !== null && schema !== undefined) {
       if (typeof schema === 'function') {
         // LazySchema — call it to get the Schema object
         try {
