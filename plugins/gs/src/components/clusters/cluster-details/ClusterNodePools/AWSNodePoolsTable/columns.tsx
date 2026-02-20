@@ -64,11 +64,7 @@ export function getInitialColumns({
       field: AWSNodePoolColumns.nodesReady,
       type: 'numeric',
       render: row =>
-        row.readyReplicas !== undefined ? (
-          row.readyReplicas
-        ) : (
-          <NotAvailable />
-        ),
+        row.readyReplicas !== undefined ? row.readyReplicas : <NotAvailable />,
     },
     {
       title: 'Instance type',

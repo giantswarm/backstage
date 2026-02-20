@@ -53,11 +53,7 @@ export function getInitialColumns({
       field: AzureNodePoolColumns.nodesReady,
       type: 'numeric',
       render: row =>
-        row.readyReplicas !== undefined ? (
-          row.readyReplicas
-        ) : (
-          <NotAvailable />
-        ),
+        row.readyReplicas !== undefined ? row.readyReplicas : <NotAvailable />,
     },
     {
       title: 'VM size',
