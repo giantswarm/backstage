@@ -7,6 +7,7 @@ import { DeploymentStatusCard } from './DeploymentStatusCard';
 import { DeploymentRevisionsCard } from './DeploymentRevisionsCard';
 import { GridItem } from '../../../UI';
 import { DeploymentGitOpsCard } from './DeploymentGitOpsCard';
+import { DeploymentResourceUsageCard } from './DeploymentResourceUsageCard';
 
 export const DeploymentOverview = () => (
   <Grid container spacing={3} alignItems="stretch">
@@ -29,6 +30,9 @@ export const DeploymentOverview = () => (
     {/* Right column section */}
     <GridItem md={6} xs={12}>
       <GridItem container spacing={3}>
+        <GridItem xs={12}>
+          <DeploymentResourceUsageCard />
+        </GridItem>
         <GridItem xs={12}>
           <DeploymentToolsCard />
         </GridItem>
