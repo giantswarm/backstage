@@ -33,7 +33,7 @@ const useStyles = makeStyles(() => ({
 }));
 
 export type AIChatButtonItem = {
-  label: string;
+  label?: string;
   message: string;
 };
 
@@ -119,13 +119,15 @@ export const AIChatButton = ({
           }}
           getContentAnchorEl={null}
         >
-          {items.map(item => (
+          {items.map((item, index) => (
             <MenuItem
-              key={item.label}
+              key={item.label ?? index}
               className={classes.menuItem}
               onClick={() => handleItemClick(item)}
             >
-              <Typography variant="body2">{item.label}</Typography>
+              <Typography variant="body2">
+                {item.label ?? displayLabel}
+              </Typography>
             </MenuItem>
           ))}
         </Menu>

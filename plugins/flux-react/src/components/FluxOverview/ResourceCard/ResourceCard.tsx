@@ -203,17 +203,17 @@ export const ResourceCard = ({
             </Box>
             <Box display="flex" alignItems="center" mt={1} gridGap={8}>
               <CopyCommandMenu resource={resource} />
-              {readyStatus === 'False' && (
-                <AIChatButton
-                  label="Troubleshoot with AI"
-                  items={[
-                    {
-                      label: 'Troubleshoot with AI',
-                      message: `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}' and help me understand why it is not in a Ready state.`,
-                    },
-                  ]}
-                />
-              )}
+              <AIChatButton
+                troubleshoot={readyStatus === 'False'}
+                items={[
+                  {
+                    message:
+                      readyStatus === 'False'
+                        ? `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}' and help me understand why it is not in a Ready state.`
+                        : `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}', and show me basic details, so that I can ask further questions about it.`,
+                  },
+                ]}
+              />
             </Box>
           </>
         )}
