@@ -1,0 +1,1 @@
+export { AzureNodePoolsTable } from './AzureNodePoolsTable';

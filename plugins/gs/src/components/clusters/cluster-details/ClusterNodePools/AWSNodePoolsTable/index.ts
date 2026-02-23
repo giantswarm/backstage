@@ -1,0 +1,1 @@
+export { AWSNodePoolsTable } from './AWSNodePoolsTable';
