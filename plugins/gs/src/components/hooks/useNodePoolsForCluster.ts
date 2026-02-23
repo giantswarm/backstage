@@ -4,19 +4,18 @@ import {
   AWSMachinePool,
   AzureCluster,
   AzureMachineTemplate,
+  Cluster,
   KarpenterMachinePool,
   MachineDeployment,
   MachinePool,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Labels } from '@giantswarm/backstage-plugin-gs-common';
-import { useCurrentCluster } from '../clusters/ClusterDetailsPage/useCurrentCluster';
 
-export function useNodePoolsForCluster() {
-  const { installationName, cluster } = useCurrentCluster();
-
+export function useNodePoolsForCluster(cluster: Cluster) {
   const clusterName = cluster.getName();
   const clusterNamespace = cluster.getNamespace();
+  const installationName = cluster.cluster;
   const infraRef = cluster.getInfrastructureRef();
 
   const isAWS = infraRef?.kind === AWSCluster.kind;

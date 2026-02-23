@@ -6,12 +6,14 @@ import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { useNodePoolsForCluster } from '../../../../hooks';
 import { AzureNodePoolRow, getInitialColumns } from './columns';
+import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
 const TABLE_ID = 'azure-node-pools';
 
 export const AzureNodePoolsTable = () => {
+  const { cluster } = useCurrentCluster();
   const { machineDeployments, azureMachineTemplates, isLoading, errors } =
-    useNodePoolsForCluster();
+    useNodePoolsForCluster(cluster);
 
   useShowErrors(errors);
 
