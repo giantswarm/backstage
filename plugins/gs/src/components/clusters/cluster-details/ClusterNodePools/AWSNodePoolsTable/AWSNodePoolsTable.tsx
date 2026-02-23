@@ -8,19 +8,16 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
-import { useNodePoolsForCluster } from '../../../../hooks';
+import { useNodePoolsForAWSCluster } from '../../../../hooks';
 import { AWSNodePoolRow, getInitialColumns } from './columns';
+import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
 const TABLE_ID = 'aws-node-pools';
 
 export const AWSNodePoolsTable = () => {
-  const {
-    machinePools,
-    awsMachinePools,
-    karpenterMachinePools,
-    isLoading,
-    errors,
-  } = useNodePoolsForCluster();
+  const { cluster } = useCurrentCluster();
+  const { machinePools, awsMachinePools, isLoading, errors } =
+    useNodePoolsForAWSCluster(cluster);
 
   useShowErrors(errors);
 
@@ -92,7 +89,7 @@ export const AWSNodePoolsTable = () => {
         created: pool.getCreatedTimestamp(),
       };
     });
-  }, [machinePools, awsMachinePools, karpenterMachinePools]);
+  }, [machinePools, awsMachinePools]);
 
   return (
     <Table<AWSNodePoolRow>
