@@ -1,34 +1,13 @@
 import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from '../KubeObject';
 
-type MachineDeploymentV1Beta1 = crds.capi.v1beta1.MachineDeployment;
-type MachineDeploymentV1Beta2 = crds.capi.v1beta2.MachineDeployment;
-
-type MachineDeploymentVersions = {
-  v1beta1: MachineDeploymentV1Beta1;
-  v1beta2: MachineDeploymentV1Beta2;
-};
-
-type MachineDeploymentInterface =
-  MachineDeploymentVersions[keyof MachineDeploymentVersions];
+type MachineDeploymentInterface = crds.capi.v1beta2.MachineDeployment;
 
 export class MachineDeployment extends KubeObject<MachineDeploymentInterface> {
-  static readonly supportedVersions = ['v1beta1', 'v1beta2'] as const;
+  static readonly supportedVersions = ['v1beta2'] as const;
   static readonly group = 'cluster.x-k8s.io';
   static readonly kind = 'MachineDeployment' as const;
   static readonly plural = 'machinedeployments';
-
-  isV1Beta1(): this is MachineDeployment & {
-    jsonData: MachineDeploymentV1Beta1;
-  } {
-    return this.getApiVersionSuffix() === 'v1beta1';
-  }
-
-  isV1Beta2(): this is MachineDeployment & {
-    jsonData: MachineDeploymentV1Beta2;
-  } {
-    return this.getApiVersionSuffix() === 'v1beta2';
-  }
 
   getDesiredReplicas(): number | undefined {
     return this.jsonData.spec?.replicas;
