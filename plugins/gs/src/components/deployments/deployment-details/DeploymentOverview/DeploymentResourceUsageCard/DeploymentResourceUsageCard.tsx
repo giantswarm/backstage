@@ -1,4 +1,4 @@
-import { InfoCard } from '@backstage/core-components';
+import { InfoCard, Progress } from '@backstage/core-components';
 import { Box, LinearProgress, Typography, makeStyles } from '@material-ui/core';
 import Alert from '@material-ui/lab/Alert';
 import {
@@ -175,6 +175,14 @@ export function DeploymentResourceUsageCard() {
     cpuRequests === undefined &&
     memoryUsage === undefined &&
     memoryRequests === undefined;
+
+  if (isLoading) {
+    return (
+      <InfoCard title="Resource Usage">
+        <Progress />
+      </InfoCard>
+    );
+  }
 
   if (hasNoData) {
     return (

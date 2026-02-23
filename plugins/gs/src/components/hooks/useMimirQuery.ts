@@ -49,7 +49,6 @@ export function useMimirQuery(options: {
     },
     enabled: Boolean(enabled && installationName && query),
     staleTime: 30_000,
-    retry: 1,
   });
 
   return useMemo(
