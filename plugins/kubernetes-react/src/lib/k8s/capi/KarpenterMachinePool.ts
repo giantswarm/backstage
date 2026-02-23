@@ -1,7 +1,8 @@
 import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from '../KubeObject';
 
-type KarpenterMachinePoolInterface = crds.capa.v1alpha1.KarpenterMachinePool;
+type KarpenterMachinePoolInterface =
+  crds.giantswarm.v1alpha1.KarpenterMachinePool;
 
 export class KarpenterMachinePool extends KubeObject<KarpenterMachinePoolInterface> {
   static readonly supportedVersions = ['v1alpha1'] as const;

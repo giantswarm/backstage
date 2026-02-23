@@ -8,7 +8,7 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
-import { useNodePoolsForCluster } from '../../../../hooks';
+import { useNodePoolsForAWSCluster } from '../../../../hooks';
 import { AWSNodePoolRow, getInitialColumns } from './columns';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
@@ -17,7 +17,7 @@ const TABLE_ID = 'aws-node-pools';
 export const AWSNodePoolsTable = () => {
   const { cluster } = useCurrentCluster();
   const { machinePools, awsMachinePools, isLoading, errors } =
-    useNodePoolsForCluster(cluster);
+    useNodePoolsForAWSCluster(cluster);
 
   useShowErrors(errors);
 

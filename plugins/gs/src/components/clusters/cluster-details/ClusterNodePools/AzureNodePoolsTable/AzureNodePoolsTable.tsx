@@ -4,7 +4,7 @@ import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
-import { useNodePoolsForCluster } from '../../../../hooks';
+import { useNodePoolsForAzureCluster } from '../../../../hooks';
 import { AzureNodePoolRow, getInitialColumns } from './columns';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
@@ -13,7 +13,7 @@ const TABLE_ID = 'azure-node-pools';
 export const AzureNodePoolsTable = () => {
   const { cluster } = useCurrentCluster();
   const { machineDeployments, azureMachineTemplates, isLoading, errors } =
-    useNodePoolsForCluster(cluster);
+    useNodePoolsForAzureCluster(cluster);
 
   useShowErrors(errors);
 
