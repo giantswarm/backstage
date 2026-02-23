@@ -26,3 +26,5 @@ export * from './useResourceRequestStatusDetails';
 export * from './useTemplateString';
 export * from './useProviderClustersForClusters';
 export * from './useProviderClusterIdentitiesForProviderClusters';
+export * from './useMimirQuery';
+export * from './useMimirResourceUsage';

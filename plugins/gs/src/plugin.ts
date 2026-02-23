@@ -83,6 +83,7 @@ import {
   ContainerRegistryClient,
   containerRegistryApiRef,
 } from './apis/containerRegistry';
+import { MimirClient, mimirApiRef } from './apis/mimir';
 
 export const gsPlugin = createPlugin({
   id: 'gs',
@@ -118,6 +119,15 @@ export const gsPlugin = createPlugin({
       },
       factory: ({ discoveryApi, fetchApi }) =>
         new ContainerRegistryClient({ discoveryApi, fetchApi }),
+    }),
+    createApiFactory({
+      api: mimirApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+      },
+      factory: ({ discoveryApi, fetchApi }) =>
+        new MimirClient({ discoveryApi, fetchApi }),
     }),
   ],
   routes: {
