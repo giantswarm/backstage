@@ -33,11 +33,13 @@ auth:
   environment: development
 
 techdocs:
-  builder: 'local'
+  builder: local
   generator:
-    runIn: 'docker'
+    runIn: docker
   publisher:
-    type: 'local'
+    type: local
+    local:
+      publishDirectory: ../../volumes/techdocs
 
 # flux:
 #   gitRepositoryPatterns:
