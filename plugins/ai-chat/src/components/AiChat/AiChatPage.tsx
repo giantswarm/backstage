@@ -14,9 +14,54 @@ import {
   useChatRuntime,
   AssistantChatTransport,
 } from '@assistant-ui/react-ai-sdk';
-import { lastAssistantMessageIsCompleteWithToolCalls } from 'ai';
+import {
+  lastAssistantMessageIsCompleteWithToolCalls,
+  isToolUIPart,
+  getToolName,
+  UIMessage,
+} from 'ai';
 import useAsync from 'react-use/esm/useAsync';
 import { useSearchParams } from 'react-router-dom';
+
+/**
+ * Tools whose results are rendered as self-contained UI cards.
+ * When the last assistant step contains ONLY these tools, we skip the
+ * automatic re-send so the model does not generate redundant prose.
+ */
+const SELF_RENDERING_TOOLS = new Set(['getContextUsage']);
+
+function shouldSendAutomatically({
+  messages,
+}: {
+  messages: UIMessage[];
+}): boolean {
+  if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) {
+    return false;
+  }
+
+  // Check the tool calls in the last step of the last message.
+  // If every tool call is self-rendering, suppress the resend.
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || lastMessage.role !== 'assistant') return false;
+
+  const lastStepStart = lastMessage.parts.reduce(
+    (idx, part, i) => (part.type === 'step-start' ? i : idx),
+    -1,
+  );
+
+  const toolParts = lastMessage.parts
+    .slice(lastStepStart + 1)
+    .filter(isToolUIPart);
+
+  if (
+    toolParts.length > 0 &&
+    toolParts.every(part => SELF_RENDERING_TOOLS.has(getToolName(part)))
+  ) {
+    return false;
+  }
+
+  return true;
+}
 
 interface InitialMessageHandlerProps {
   isReady: boolean;
@@ -115,7 +160,7 @@ export const AiChatPage = () => {
   }, [identityApi, getMCPAuthHeaders]);
 
   const runtime = useChatRuntime({
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    sendAutomaticallyWhen: shouldSendAutomatically,
     transport: new AssistantChatTransport({
       api: apiUrl,
       headers: getHeaders,

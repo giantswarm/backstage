@@ -91,6 +91,12 @@ For clusters and application deployments, use MCP tools to fetch live Kubernetes
 
 Clusters are often referred to by their name, which is unique within an installation, but not guaranteed to be unique across installations. Hence, the user will often name both a management cluster (or installation, which are synonymous) and the name of a workload cluster of interest. For better understanding, use tools to look up existing management cluster names.
 
+## Tools with custom UI
+
+Some tools render their results as rich UI cards directly visible to the user. When you call such a tool, do NOT repeat, summarize, or comment on the data — the card is self-explanatory. Simply let the card speak for itself.
+
+Tools with custom UI: `getContextUsage`
+
 ## More skills
 
 Use the `listSkills` tool to get an overview of all available skills (export information and details).

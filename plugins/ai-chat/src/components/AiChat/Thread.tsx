@@ -29,6 +29,7 @@ import {
   MarkdownText,
   ToolFallback,
   ToolGroup,
+  ContextUsageDisplay,
 } from './assistant-ui-components';
 
 const EXAMPLE_QUESTIONS = [
@@ -175,14 +176,25 @@ const AssistantMessage = () => {
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            ...(verboseDebugging && {
-              Reasoning: Reasoning,
-              ReasoningGroup: ReasoningGroup,
-              ToolGroup: ToolGroup,
-              tools: {
-                Fallback: ToolFallback,
-              },
-            }),
+            ...(verboseDebugging
+              ? {
+                  Reasoning: Reasoning,
+                  ReasoningGroup: ReasoningGroup,
+                  ToolGroup: ToolGroup,
+                  tools: {
+                    by_name: {
+                      getContextUsage: ContextUsageDisplay,
+                    },
+                    Fallback: ToolFallback,
+                  },
+                }
+              : {
+                  tools: {
+                    by_name: {
+                      getContextUsage: ContextUsageDisplay,
+                    },
+                  },
+                }),
           }}
         />
         <MessagePrimitive.Error>
