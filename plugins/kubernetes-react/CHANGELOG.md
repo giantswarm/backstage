@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.12.0
+
+### Minor Changes
+
+- dde73a8: Add node pools table to cluster details
+
 ## 0.11.1
 
 ### Patch Changes

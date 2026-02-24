@@ -19,6 +19,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Remove unused `apiEndpoint` field from installation config schema.
 
+See [./docs/releases/v0.109.0-changelog.md](./docs/releases/v0.109.0-changelog.md) for more information.
+
 ## [0.108.0] - 2026-02-19
 
 ### Added

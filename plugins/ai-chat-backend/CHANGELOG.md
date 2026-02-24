@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.7.0
+
+### Minor Changes
+
+- 5850ce3: Add tool to display context window usage
+
 ## 0.6.0
 
 ### Minor Changes
