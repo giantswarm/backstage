@@ -28,6 +28,7 @@
     "@backstage/core-app-api": "backstage:^",
     "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
+    "@backstage/frontend-plugin-api": "backstage:^",
     "@backstage/integration": "backstage:^",
     "@backstage/integration-react": "backstage:^",
     "@backstage/plugin-catalog": "backstage:^",

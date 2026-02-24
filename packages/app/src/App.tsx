@@ -39,14 +39,13 @@ import { SignInPage } from '@backstage/core-components';
 import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
 import { HomePage } from './components/home/HomePage';
 
-import {
+import gsPlugin, {
+  gsScaffolderPlugin,
   GSChartPickerFieldExtension,
   GSChartTagPickerFieldExtension,
   GSClusterPickerFieldExtension,
   GSTemplateStringInputFieldExtension,
-  GSClustersPage,
   GSCustomCatalogPage,
-  GSInstallationsPage,
   GSProviderSettings,
   GSStepLayout,
   GSProviderConfigPickerFieldExtension,
@@ -58,8 +57,6 @@ import {
   GSYamlValuesEditorFieldExtension,
   GSYamlValuesValidationFieldExtension,
   gsAuthApiRef,
-  GSDeploymentsPage,
-  gsPlugin,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
@@ -109,7 +106,7 @@ const legacyAppOptions = convertLegacyAppOptions({
     orgPlugin,
     scaffolderPlugin,
     techdocsPlugin,
-    gsPlugin,
+    gsScaffolderPlugin,
   ],
 });
 
@@ -177,9 +174,6 @@ const routes = (
       }
     />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
-    <Route path="/clusters" element={<GSClustersPage />} />
-    <Route path="/deployments" element={<GSDeploymentsPage />} />
-    <Route path="/installations" element={<GSInstallationsPage />} />
   </FlatRoutes>
 );
 
@@ -202,11 +196,11 @@ const app = createApp({
   features: [
     legacyAppOptions,
     ...legacyAppRoot,
-    // Add new NFS plugins here as they are migrated:
+    // NFS plugins:
     aiChatPlugin,
     fluxPlugin,
     fluxPluginOverrides,
-    // import('@giantswarm/backstage-plugin-gs/alpha'),
+    gsPlugin,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {

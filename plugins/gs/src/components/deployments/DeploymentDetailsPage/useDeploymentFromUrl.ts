@@ -1,4 +1,4 @@
-import { useRouteRefParams } from '@backstage/core-plugin-api';
+import { useRouteRefParams } from '@backstage/frontend-plugin-api';
 import { deploymentDetailsRouteRef } from '../../../routes';
 import {
   App,

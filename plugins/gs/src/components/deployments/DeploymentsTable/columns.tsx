@@ -1,6 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
-import { RouteRef, useRouteRef } from '@backstage/core-plugin-api';
+import { RouteRef, useRouteRef } from '@backstage/frontend-plugin-api';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import {
   isTableColumnHidden,
@@ -57,7 +57,7 @@ export const getInitialColumns = ({
       defaultSort: 'asc',
       render: row => {
         const LinkWrapper = () => {
-          const routeLink = useRouteRef(deploymentDetailsRouteRef);
+          const routeLink = useRouteRef(deploymentDetailsRouteRef)!;
           return (
             <Link
               component={RouterLink}
@@ -108,7 +108,7 @@ export const getInitialColumns = ({
       render: row => {
         if (row.clusterName && row.clusterNamespace) {
           const LinkWrapper = () => {
-            const routeLink = useRouteRef(clusterDetailsRouteRef);
+            const routeLink = useRouteRef(clusterDetailsRouteRef)!;
 
             return (
               <Link

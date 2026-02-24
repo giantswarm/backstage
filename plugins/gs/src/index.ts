@@ -1,11 +1,10 @@
+// NFS plugin (default + named)
+export { gsPlugin as default } from './plugin';
+export { gsPlugin } from './plugin';
+
+// Legacy scaffolder compat (Phase 2 will migrate these to NFS)
 export {
-  gsPlugin,
-  gsPlugin as plugin,
-  GSClustersPage,
-  GSInstallationsPage,
-  GSDeploymentsPage,
-  EntityGSDeploymentsContent,
-  EntityGSKratixResourcesContent,
+  gsScaffolderPlugin,
   GSChartPickerFieldExtension,
   GSChartTagPickerFieldExtension,
   GSClusterPickerFieldExtension,
@@ -19,7 +18,12 @@ export {
   GSYamlValuesEditorFieldExtension,
   GSYamlValuesValidationFieldExtension,
   GSStepLayout,
-} from './plugin';
+} from './scaffolderPlugin';
+
+// Entity content as raw components (no longer routable extensions)
+export { EntityDeploymentsContent as EntityGSDeploymentsContent } from './components/deployments/EntityDeploymentsContent';
+export { EntityKratixResourcesContent as EntityGSKratixResourcesContent } from './components/catalog/EntityKratixResourcesContent';
+
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';

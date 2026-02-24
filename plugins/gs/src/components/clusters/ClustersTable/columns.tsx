@@ -1,5 +1,5 @@
 import { Link as RouterLink } from 'react-router-dom';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
 import {
@@ -81,7 +81,7 @@ export const getInitialColumns = ({
       defaultSort: 'asc',
       render: row => {
         const LinkWrapper = () => {
-          const routeLink = useRouteRef(clusterDetailsRouteRef);
+          const routeLink = useRouteRef(clusterDetailsRouteRef)!;
           return (
             <Link
               component={RouterLink}

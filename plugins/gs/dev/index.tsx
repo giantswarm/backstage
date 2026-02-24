@@ -1,10 +1,10 @@
 import { createDevApp } from '@backstage/dev-utils';
-import { gsPlugin, GSClustersPage } from '../src/plugin';
+import { gsScaffolderPlugin } from '../src/scaffolderPlugin';
 
 createDevApp()
-  .registerPlugin(gsPlugin)
+  .registerPlugin(gsScaffolderPlugin)
   .addPage({
-    element: <GSClustersPage />,
+    element: <div>Giant Swarm plugin (pages are NFS blueprints)</div>,
     title: 'Giant Swarm plugin',
     path: '/gs',
   })

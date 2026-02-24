@@ -8,8 +8,8 @@ import {
 import {
   attachComponentData,
   useElementFilter,
-  useRouteRefParams,
 } from '@backstage/core-plugin-api';
+import { useRouteRefParams } from '@backstage/frontend-plugin-api';
 import Grid from '@material-ui/core/Grid';
 import { makeStyles } from '@material-ui/core/styles';
 import { TabProps } from '@material-ui/core/Tab';

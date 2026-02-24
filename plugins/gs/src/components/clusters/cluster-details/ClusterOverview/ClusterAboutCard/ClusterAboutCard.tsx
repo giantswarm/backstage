@@ -1,6 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Box,
   Card,
@@ -108,7 +108,7 @@ function ProviderLocationDisplay({ provider }: ProviderLocationDisplayProps) {
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();
 
-  const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef);
+  const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
 
   const controlPlaneRef = cluster.getControlPlaneRef();
   if (!controlPlaneRef) {

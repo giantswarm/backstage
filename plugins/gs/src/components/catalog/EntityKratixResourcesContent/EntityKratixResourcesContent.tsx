@@ -1,6 +1,6 @@
 import { ResourceRequestsTable } from '../../kratix/ResourceRequestsTable';
 import { useEntity } from '@backstage/plugin-catalog-react';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { entityKratixResourcesRouteRef } from '../../../routes';
 import {
   Content,
@@ -20,7 +20,7 @@ export const EntityKratixResourcesContent = () => {
 
   const entityName = entity.metadata.name;
 
-  const kratixResourcesRoute = useRouteRef(entityKratixResourcesRouteRef);
+  const kratixResourcesRoute = useRouteRef(entityKratixResourcesRouteRef)!;
   const baseRoute = kratixResourcesRoute();
 
   const kratixResources = entity.metadata.kratixResources;

@@ -1,6 +1,6 @@
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { InfoCard } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button, makeStyles, Typography } from '@material-ui/core';
 import { appDeploymentTemplateRouteRef } from '../../../routes';
 import { stringifyEntityRef } from '@backstage/catalog-model';

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
-import { RouteRef } from '@backstage/core-plugin-api';
+import { RouteRef } from '@backstage/frontend-plugin-api';
 import SyncIcon from '@material-ui/icons/Sync';
 import { Typography } from '@material-ui/core';
 import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';

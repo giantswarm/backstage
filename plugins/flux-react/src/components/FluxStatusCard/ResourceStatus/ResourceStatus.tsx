@@ -1,7 +1,7 @@
 import { Box, Typography } from '@material-ui/core';
 import { useFluxResources } from '../../../hooks/useFluxResources';
 import { ResourceStatusRow } from './ResourceStatusRow';
-import { ExternalRouteRef, useRouteRef } from '@backstage/core-plugin-api';
+import { ExternalRouteRef, useRouteRef } from '@backstage/frontend-plugin-api';
 
 type ResourceStatusProps = {
   cluster: string;
