@@ -19,8 +19,7 @@ export interface PrometheusMetric {
 
 export const ContainerCpuUsageSecondsTotal = {
   name: 'container_cpu_usage_seconds_total',
-  description:
-    'Cumulative CPU time consumed by a container, in core-seconds.',
+  description: 'Cumulative CPU time consumed by a container, in core-seconds.',
   type: 'counter',
   source: 'cAdvisor',
 } as const satisfies PrometheusMetric;
