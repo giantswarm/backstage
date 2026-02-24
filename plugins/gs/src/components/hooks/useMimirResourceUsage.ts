@@ -1,6 +1,12 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
 import { MimirQueryResponse } from '../../apis/mimir/types';
+import {
+  ContainerCpuUsageSecondsTotal,
+  ContainerMemoryWorkingSetBytes,
+  KubePodContainerResourceRequests,
+  KubePodContainerResourceLimits,
+} from '../../apis/mimir/metrics';
 
 function extractScalar(
   response: MimirQueryResponse | undefined,
@@ -53,10 +59,10 @@ export function useMimirResourceUsage(options: {
   const isEnabled = Boolean(clusterName && namespace && deploymentName);
   const labelSelector = `cluster_id="${clusterName}",namespace="${namespace}",pod=~"${deploymentName}-.*",container!=""`;
 
-  const cpuUsageQuery = `sum(rate(container_cpu_usage_seconds_total{${labelSelector}}[5m]))`;
-  const memoryUsageQuery = `sum(avg_over_time(container_memory_working_set_bytes{${labelSelector}}[5m]))`;
-  const requestsQuery = `sum by (resource)(kube_pod_container_resource_requests{${labelSelector},resource=~"cpu|memory"})`;
-  const limitsQuery = `sum by (resource)(kube_pod_container_resource_limits{${labelSelector},resource=~"cpu|memory"})`;
+  const cpuUsageQuery = `sum(rate(${ContainerCpuUsageSecondsTotal.name}{${labelSelector}}[5m]))`;
+  const memoryUsageQuery = `sum(avg_over_time(${ContainerMemoryWorkingSetBytes.name}{${labelSelector}}[5m]))`;
+  const requestsQuery = `sum by (resource)(${KubePodContainerResourceRequests.name}{${labelSelector},resource=~"cpu|memory"})`;
+  const limitsQuery = `sum by (resource)(${KubePodContainerResourceLimits.name}{${labelSelector},resource=~"cpu|memory"})`;
 
   const {
     data: cpuUsageData,
