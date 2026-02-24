@@ -6,8 +6,11 @@ import {
 } from '@backstage/frontend-plugin-api';
 
 import { mcpAuthProvidersApiRef, MCPAuthProviders } from './api';
-import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat-react';
-import { rootRouteRef } from './routes';
+import {
+  AIChatIcon,
+  aiChatApiRef,
+  rootRouteRef,
+} from '@giantswarm/backstage-plugin-ai-chat-react';
 
 const aiChatPage = PageBlueprint.make({
   params: {
@@ -25,7 +28,18 @@ const aiChatNavItem = NavItemBlueprint.make({
   },
 });
 
+const aiChatServiceApi = ApiBlueprint.make({
+  name: 'service',
+  params: defineParams =>
+    defineParams({
+      api: aiChatApiRef,
+      deps: {},
+      factory: () => ({}),
+    }),
+});
+
 const mcpAuthProvidersApi = ApiBlueprint.make({
+  name: 'mcp-auth-providers',
   params: defineParams =>
     defineParams({
       api: mcpAuthProvidersApiRef,
@@ -36,7 +50,12 @@ const mcpAuthProvidersApi = ApiBlueprint.make({
 
 export const aiChatPlugin = createFrontendPlugin({
   pluginId: 'ai-chat',
-  extensions: [aiChatPage, aiChatNavItem, mcpAuthProvidersApi],
+  extensions: [
+    aiChatPage,
+    aiChatNavItem,
+    aiChatServiceApi,
+    mcpAuthProvidersApi,
+  ],
   routes: {
     root: rootRouteRef,
   },
