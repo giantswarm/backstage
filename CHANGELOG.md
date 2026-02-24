@@ -5,6 +5,20 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add node pools table to cluster details.
+- Add metrics display to deployments details page.
+- Add tool to display context window usage in AI chat.
+
+### Changed
+
+- Make AIChatButton conditionally visible based on ai-chat plugin availability.
+
+### Removed
+
+- Remove unused `apiEndpoint` field from installation config schema.
+
 ## [0.108.0] - 2026-02-19
 
 ### Added
