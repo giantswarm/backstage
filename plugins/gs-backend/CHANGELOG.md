@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.4.0
+
+### Minor Changes
+
+- cb579b3: Add metrics display to deployments details page
+
 ## 0.3.2
 
 ### Patch Changes

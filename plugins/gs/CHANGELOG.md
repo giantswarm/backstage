@@ -1,5 +1,22 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.55.0
+
+### Minor Changes
+
+- cb579b3: Add metrics display to deployments details page
+- dde73a8: Add node pools table to cluster details
+
+### Patch Changes
+
+- 4ba7cab: Remove unused `apiEndpoint` field from installation config schema.
+- Updated dependencies [cd72c54]
+- Updated dependencies [dde73a8]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.2.1
+  - @giantswarm/backstage-plugin-kubernetes-react@0.12.0
+  - @giantswarm/backstage-plugin-flux@0.7.2
+  - @giantswarm/backstage-plugin-flux-react@0.11.1
+
 ## 0.54.0
 
 ### Minor Changes

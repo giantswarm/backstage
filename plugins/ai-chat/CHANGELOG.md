@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.8.0
+
+### Minor Changes
+
+- 5850ce3: Add tool to display context window usage
+
+### Patch Changes
+
+- cd72c54: Make AIChatButton conditionally visible based on ai-chat plugin availability using NFS Utility API and route ref.
+- Updated dependencies [cd72c54]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.2.1
+
 ## 0.7.0
 
 ### Minor Changes
