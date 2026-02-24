@@ -8064,6 +8064,7 @@ __metadata:
     classnames: "npm:^2.5.1"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
   peerDependencies:
+    "@backstage/core-plugin-api": "*"
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: "*"
   languageName: unknown

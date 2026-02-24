@@ -9,10 +9,11 @@ import {
   Typography,
   makeStyles,
 } from '@material-ui/core';
+import { useApiHolder, useRouteRef } from '@backstage/core-plugin-api';
 import { useNavigate } from 'react-router-dom';
 import { AIChatIcon } from '../../assets/icons';
-
-const AI_CHAT_PATH = '/ai-chat';
+import { aiChatApiRef } from '../../api';
+import { rootRouteRef } from '../../routes';
 
 const useStyles = makeStyles(() => ({
   button: {
@@ -50,6 +51,9 @@ export const AIChatButton = ({
   label,
   troubleshoot,
 }: AIChatButtonProps) => {
+  const apiHolder = useApiHolder();
+  const aiChatApi = apiHolder.get(aiChatApiRef);
+  const chatPath = useRouteRef(rootRouteRef);
   const displayLabel =
     label ?? (troubleshoot ? 'Troubleshoot with AI' : 'Inspect with AI');
   const displayTooltip = tooltip ?? displayLabel;
@@ -57,13 +61,13 @@ export const AIChatButton = ({
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  if (items.length === 0) {
+  if (!aiChatApi || items.length === 0) {
     return null;
   }
 
   const navigateToChat = (message: string) => {
     const params = new URLSearchParams({ message });
-    navigate(`${AI_CHAT_PATH}?${params.toString()}`);
+    navigate(`${chatPath()}?${params.toString()}`);
   };
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
