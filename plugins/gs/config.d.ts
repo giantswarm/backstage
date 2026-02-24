@@ -85,23 +85,4 @@ export interface Config {
       };
     };
   };
-
-  auth?: {
-    providers?: {
-      [provider: string]: {
-        [authEnv: string]: {
-          /** @visibility frontend */
-          dexClientId?: string;
-          /** @visibility frontend */
-          dexClientSecret?: string;
-          /** @visibility frontend */
-          dexMetadataUrl?: string;
-          /** @visibility frontend */
-          dexTokenEndpoint?: string;
-          /** @visibility frontend */
-          dexUserinfoEndpoint?: string;
-        };
-      };
-    };
-  };
 }
