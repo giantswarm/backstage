@@ -50,7 +50,6 @@ techdocs:
 #     mcname:
 #       pipeline: stable-testing
 #       providers: [capa]
-#       apiEndpoint: https://localhost:7007/api/proxy/gs/api/mcname
 #       authProvider: oidc
 #       oidcTokenProvider: oidc-mcname
 #       baseDomain: mcname.awsprod.gigantic.io
