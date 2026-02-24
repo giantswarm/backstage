@@ -40,7 +40,6 @@ export interface Config {
       [installationName: string]: {
         pipeline: string;
         providers?: string[];
-        apiEndpoint: string;
         authProvider: string;
         oidcTokenProvider?: string;
         backendUrl?: string;
