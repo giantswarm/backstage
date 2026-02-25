@@ -1,2 +1,5 @@
 export { ProviderConfigPicker } from './ProviderConfigPicker';
-export { ProviderConfigPickerSchema } from './schema';
+export {
+  ProviderConfigPickerSchema,
+  ProviderConfigPickerFieldSchema,
+} from './schema';

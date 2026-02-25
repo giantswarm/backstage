@@ -1,2 +1,5 @@
 export { YamlValuesValidation } from './YamlValuesValidation';
-export { YamlValuesValidationSchema } from './schema';
+export {
+  YamlValuesValidationSchema,
+  YamlValuesValidationFieldSchema,
+} from './schema';

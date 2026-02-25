@@ -5,6 +5,10 @@ import {
   ApiBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
+  FormFieldBlueprint,
+  createFormField,
+} from '@backstage/plugin-scaffolder-react/alpha';
+import {
   configApiRef,
   discoveryApiRef,
   fetchApiRef,
@@ -165,6 +169,178 @@ const mimirApi = ApiBlueprint.make({
     }),
 });
 
+// Scaffolder form field extensions
+const chartPickerFormField = FormFieldBlueprint.make({
+  name: 'chart-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/ChartPicker').then(m =>
+        createFormField({
+          name: 'GSChartPicker',
+          component: m.ChartPicker,
+          schema: m.ChartPickerFieldSchema,
+        }),
+      ),
+  },
+});
+
+const chartTagPickerFormField = FormFieldBlueprint.make({
+  name: 'chart-tag-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/ChartTagPicker').then(m =>
+        createFormField({
+          name: 'GSChartTagPicker',
+          component: m.ChartTagPicker,
+          schema: m.ChartTagPickerFieldSchema,
+        }),
+      ),
+  },
+});
+
+const clusterPickerFormField = FormFieldBlueprint.make({
+  name: 'cluster-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/ClusterPicker').then(m =>
+        createFormField({
+          name: 'GSClusterPicker',
+          component: m.ClusterPicker,
+          schema: m.ClusterPickerFieldSchema,
+          validation: m.clusterPickerValidation,
+        }),
+      ),
+  },
+});
+
+const providerConfigPickerFormField = FormFieldBlueprint.make({
+  name: 'provider-config-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/ProviderConfigPicker').then(m =>
+        createFormField({
+          name: 'GSProviderConfigPicker',
+          component: m.ProviderConfigPicker,
+          schema: m.ProviderConfigPickerFieldSchema,
+        }),
+      ),
+  },
+});
+
+const oidcTokenFormField = FormFieldBlueprint.make({
+  name: 'oidc-token',
+  params: {
+    field: () =>
+      import('./components/scaffolder/OIDCToken').then(m =>
+        createFormField({
+          name: 'GSOIDCToken',
+          component: m.OIDCToken,
+          schema: m.OIDCTokenFieldSchema,
+        }),
+      ),
+  },
+});
+
+const installationPickerFormField = FormFieldBlueprint.make({
+  name: 'installation-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/InstallationPicker').then(m =>
+        createFormField({
+          name: 'GSInstallationPicker',
+          component: m.InstallationPicker,
+          schema: m.InstallationPickerFieldSchema,
+          validation: m.installationPickerValidation,
+        }),
+      ),
+  },
+});
+
+const releasePickerFormField = FormFieldBlueprint.make({
+  name: 'release-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/ReleasePicker').then(m =>
+        createFormField({
+          name: 'GSReleasePicker',
+          component: m.ReleasePicker,
+          schema: m.ReleasePickerFieldSchema,
+        }),
+      ),
+  },
+});
+
+const organizationPickerFormField = FormFieldBlueprint.make({
+  name: 'organization-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/OrganizationPicker').then(m =>
+        createFormField({
+          name: 'GSOrganizationPicker',
+          component: m.OrganizationPicker,
+          schema: m.OrganizationPickerFieldSchema,
+        }),
+      ),
+  },
+});
+
+const secretStorePickerFormField = FormFieldBlueprint.make({
+  name: 'secret-store-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/SecretStorePicker').then(m =>
+        createFormField({
+          name: 'GSSecretStorePicker',
+          component: m.SecretStorePicker,
+          schema: m.SecretStorePickerFieldSchema,
+        }),
+      ),
+  },
+});
+
+const templateStringInputFormField = FormFieldBlueprint.make({
+  name: 'template-string-input',
+  params: {
+    field: () =>
+      import('./components/scaffolder/TemplateStringInput').then(m =>
+        createFormField({
+          name: 'GSTemplateStringInput',
+          component: m.TemplateStringInput,
+          schema: m.TemplateStringInputFieldSchema,
+        }),
+      ),
+  },
+});
+
+const yamlValuesEditorFormField = FormFieldBlueprint.make({
+  name: 'yaml-values-editor',
+  params: {
+    field: () =>
+      import('./components/scaffolder/YamlValuesEditor').then(m =>
+        createFormField({
+          name: 'GSYamlValuesEditor',
+          component: m.YamlValuesEditor,
+          schema: m.YamlValuesEditorFieldSchema,
+          validation: m.yamlValuesEditorValidation,
+        }),
+      ),
+  },
+});
+
+const yamlValuesValidationFormField = FormFieldBlueprint.make({
+  name: 'yaml-values-validation',
+  params: {
+    field: () =>
+      import('./components/scaffolder/YamlValuesValidation').then(m =>
+        createFormField({
+          name: 'GSYamlValuesValidation',
+          component: m.YamlValuesValidation,
+          schema: m.YamlValuesValidationFieldSchema,
+        }),
+      ),
+  },
+});
+
 export const gsPlugin = createFrontendPlugin({
   pluginId: 'gs',
   extensions: [
@@ -178,6 +354,18 @@ export const gsPlugin = createFrontendPlugin({
     gsAuthApi,
     containerRegistryApi,
     mimirApi,
+    chartPickerFormField,
+    chartTagPickerFormField,
+    clusterPickerFormField,
+    providerConfigPickerFormField,
+    oidcTokenFormField,
+    installationPickerFormField,
+    releasePickerFormField,
+    organizationPickerFormField,
+    secretStorePickerFormField,
+    templateStringInputFormField,
+    yamlValuesEditorFormField,
+    yamlValuesValidationFormField,
   ],
   routes: {
     root: rootRouteRef,

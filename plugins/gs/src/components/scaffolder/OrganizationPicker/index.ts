@@ -1,2 +1,5 @@
 export { OrganizationPicker } from './OrganizationPicker';
-export { OrganizationPickerSchema } from './schema';
+export {
+  OrganizationPickerSchema,
+  OrganizationPickerFieldSchema,
+} from './schema';

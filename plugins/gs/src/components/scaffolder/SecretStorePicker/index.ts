@@ -1,2 +1,5 @@
 export { SecretStorePicker } from './SecretStorePicker';
-export { SecretStorePickerSchema } from './schema';
+export {
+  SecretStorePickerSchema,
+  SecretStorePickerFieldSchema,
+} from './schema';

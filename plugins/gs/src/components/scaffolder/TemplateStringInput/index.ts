@@ -1,2 +1,5 @@
 export { TemplateStringInput } from './TemplateStringInput';
-export { TemplateStringInputSchema } from './schema';
+export {
+  TemplateStringInputSchema,
+  TemplateStringInputFieldSchema,
+} from './schema';
