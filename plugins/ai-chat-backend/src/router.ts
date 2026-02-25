@@ -182,11 +182,12 @@ export async function createRouter(
     try {
       // Select the appropriate provider based on model type
       // When Azure is configured, non-Anthropic models route through Azure
+      const openaiCompatibleModel = isAzureConfigured
+        ? azure(modelName)
+        : openai(modelName);
       const selectedModel = isAnthropicModel
         ? anthropic(modelName)
-        : isAzureConfigured
-          ? azure(modelName)
-          : openai(modelName);
+        : openaiCompatibleModel;
 
       // Convert UI messages to model messages
       const modelMessages = await convertToModelMessages(
@@ -255,19 +256,20 @@ export async function createRouter(
 
   // Health check endpoint
   router.get('/health', (_, res) => {
+    const openaiCompatibleProvider = isAzureConfigured
+      ? 'azure-openai'
+      : 'openai';
+    const openaiCompatibleConfigured = isAzureConfigured
+      ? !!azureApiKey
+      : !!openaiApiKey;
+
     res.json({
       status: 'ok',
       model: modelName,
-      provider: isAnthropicModel
-        ? 'anthropic'
-        : isAzureConfigured
-          ? 'azure-openai'
-          : 'openai',
+      provider: isAnthropicModel ? 'anthropic' : openaiCompatibleProvider,
       configured: isAnthropicModel
         ? !!anthropicApiKey
-        : isAzureConfigured
-          ? !!azureApiKey
-          : !!openaiApiKey,
+        : openaiCompatibleConfigured,
       openaiConfigured: !!openaiApiKey,
       anthropicConfigured: !!anthropicApiKey,
       azureConfigured: isAzureConfigured,
