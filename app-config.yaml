@@ -4,6 +4,17 @@ app:
   extensions:
     - api:home/visits
     - app-root-element:home/visit-listener
+    - page:gs/clusters
+    - nav-item:gs/clusters
+    - page:gs/deployments
+    - nav-item:gs/deployments
+    - page:gs/installations
+    - nav-item:gs/installations
+    - page:flux
+    - nav-item:flux
+    - page:ai-chat
+    - nav-item:ai-chat
+    - api:ai-chat/service
   telemetrydeck:
     appID: ''
     salt: ${TELEMETRYDECK_SALT}

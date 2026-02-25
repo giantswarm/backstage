@@ -20,18 +20,21 @@ import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { makeStyles } from '@material-ui/core';
-import HomeIcon from '@material-ui/icons/Home';
+import { ReactNode } from 'react';
 import FolderIcon from '@material-ui/icons/Folder';
-import LibraryBooks from '@material-ui/icons/LibraryBooks';
-import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
-import SettingsIcon from '@material-ui/icons/Settings';
 import LogoFull from './components/Root/LogoFull';
 import LogoIcon from './components/Root/LogoIcon';
-import { GSFeatureEnabled } from '@giantswarm/backstage-plugin-gs';
 
-const useSidebarLogoStyles = makeStyles({
+const useStyles = makeStyles({
+  navItemIcon: {
+    display: 'inline-flex',
+    '& > svg': {
+      fontSize: '1.25rem',
+    },
+  },
+
   root: {
     width: sidebarConfig.drawerWidthClosed,
     height: 3 * sidebarConfig.logoHeight,
@@ -46,8 +49,13 @@ const useSidebarLogoStyles = makeStyles({
   },
 });
 
+const NavItemIcon = ({ children }: { children: ReactNode }) => {
+  const classes = useStyles();
+  return <span className={classes.navItemIcon}>{children}</span>;
+};
+
 const SidebarLogo = () => {
-  const classes = useSidebarLogoStyles();
+  const classes = useStyles();
   const { isOpen } = useSidebarOpenState();
 
   return (
@@ -67,19 +75,15 @@ export const navModule = createFrontendModule({
         component: ({ navItems }) => {
           const nav = navItems.withComponent(item => (
             <SidebarItem
-              icon={() => item.icon}
+              icon={() => <NavItemIcon>{item.icon}</NavItemIcon>}
               to={item.href}
               text={item.title}
             />
           ));
 
-          // Consume items that are handled manually or not needed in sidebar
-          nav.take('page:home');
+          // Consume items rendered as hardcoded SidebarItems below
           nav.take('page:search');
-          nav.take('page:user-settings');
           nav.take('page:catalog');
-          nav.take('page:techdocs');
-          nav.take('page:scaffolder');
 
           return (
             <Sidebar>
@@ -89,37 +93,17 @@ export const navModule = createFrontendModule({
               </SidebarGroup>
               <SidebarDivider />
               <SidebarGroup label="Menu" icon={<MenuIcon />}>
-                <SidebarItem icon={HomeIcon} to="/" text="Home" />
+                {nav.take('page:home')}
                 <SidebarItem icon={FolderIcon} to="catalog" text="Catalog" />
-                <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-              </SidebarGroup>
-              <SidebarDivider />
-              <SidebarGroup>
-                <GSFeatureEnabled feature="deploymentsPage">
-                  {nav.take('page:gs/deployments')}
-                </GSFeatureEnabled>
-                <GSFeatureEnabled feature="clustersPage">
-                  {nav.take('page:gs/clusters')}
-                </GSFeatureEnabled>
-                <GSFeatureEnabled feature="installationsPage">
-                  {nav.take('page:gs/installations')}
-                </GSFeatureEnabled>
-                <GSFeatureEnabled feature="fluxPage">
-                  {nav.take('page:flux')}
-                </GSFeatureEnabled>
-              </SidebarGroup>
-              <SidebarGroup label="Menu" icon={<MenuIcon />}>
-                <GSFeatureEnabled feature="aiChat">
-                  {nav.take('page:ai-chat')}
-                </GSFeatureEnabled>
-                <GSFeatureEnabled feature="scaffolder">
-                  <SidebarDivider />
-                  <SidebarItem
-                    icon={CreateComponentIcon}
-                    to="create"
-                    text="Create..."
-                  />
-                </GSFeatureEnabled>
+                {nav.take('page:techdocs')}
+                <SidebarDivider />
+                {nav.take('page:gs/deployments')}
+                {nav.take('page:gs/clusters')}
+                {nav.take('page:gs/installations')}
+                {nav.take('page:flux')}
+                {nav.take('page:ai-chat')}
+                <SidebarDivider />
+                {nav.take('page:scaffolder')}
               </SidebarGroup>
               <SidebarSpace />
               <SidebarGroup
@@ -127,11 +111,7 @@ export const navModule = createFrontendModule({
                 icon={<UserSettingsSignInAvatar />}
                 to="/settings"
               >
-                <SidebarItem
-                  icon={SettingsIcon}
-                  to="/settings"
-                  text="Settings"
-                />
+                {nav.take('page:user-settings')}
               </SidebarGroup>
             </Sidebar>
           );
