@@ -12,14 +12,22 @@ import { KindFilter } from '../filters';
 
 export const APP_VALUE = 'app';
 export const HELM_RELEASE_VALUE = 'helmrelease';
+export const DEPLOYMENT_VALUE = 'deployment';
+export const STATEFULSET_VALUE = 'statefulset';
+export const DAEMONSET_VALUE = 'daemonset';
 
-const APP_LABEL = 'Giant Swarm App';
-const HELM_RELEASE_LABEL = 'Flux HelmRelease';
+const KIND_LABELS: Record<string, string> = {
+  [APP_VALUE]: 'Giant Swarm App',
+  [HELM_RELEASE_VALUE]: 'Flux HelmRelease',
+  [DEPLOYMENT_VALUE]: 'Deployment',
+  [STATEFULSET_VALUE]: 'StatefulSet',
+  [DAEMONSET_VALUE]: 'DaemonSet',
+};
 
 const TITLE = 'Deployment type';
 
 function formatOption(item: DeploymentData): MultiplePickerOption | undefined {
-  const label = item.kind === APP_VALUE ? APP_LABEL : HELM_RELEASE_LABEL;
+  const label = KIND_LABELS[item.kind] ?? item.kind;
   const value = item.kind;
 
   return { value, label };

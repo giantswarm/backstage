@@ -6,6 +6,7 @@ type DetailsPaneParams = {
   kind: string;
   namespace?: string;
   name: string;
+  clusterName?: string;
 };
 
 export const KRATIX_RESOURCE_REQUEST_DETAILS_PANE_ID =
@@ -25,6 +26,7 @@ export function useDetailsPane(paneId: string) {
         kind,
         namespace,
         name,
+        clusterName,
       }: DetailsPaneParams,
     ) {
       const params = new URLSearchParams({
@@ -37,6 +39,9 @@ export function useDetailsPane(paneId: string) {
       if (namespace) {
         params.set('namespace', namespace);
       }
+      if (clusterName) {
+        params.set('cluster', clusterName);
+      }
 
       return `${baseRoute}?${params.toString()}`;
     },
@@ -45,17 +50,20 @@ export function useDetailsPane(paneId: string) {
       kind: string | null;
       namespace: string | null;
       name: string | null;
+      clusterName: string | null;
     } {
       const installationName = searchParams.get('installation');
       const kind = searchParams.get('kind');
       const namespace = searchParams.get('namespace');
       const name = searchParams.get('name');
+      const clusterName = searchParams.get('cluster');
 
       return {
         installationName,
         kind,
         namespace,
         name,
+        clusterName,
       };
     },
     close() {
@@ -65,6 +73,7 @@ export function useDetailsPane(paneId: string) {
         params.delete('apiVersion');
         params.delete('name');
         params.delete('namespace');
+        params.delete('cluster');
         params.delete('pane');
 
         return params;

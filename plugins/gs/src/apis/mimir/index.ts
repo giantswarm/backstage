@@ -11,6 +11,15 @@ export {
   ContainerMemoryWorkingSetBytes,
   KubePodContainerResourceRequests,
   KubePodContainerResourceLimits,
+  KubeDeploymentSpecReplicas,
+  KubeDeploymentStatusReplicasReady,
+  KubeStatefulsetReplicas,
+  KubeStatefulsetStatusReplicasReady,
+  KubeDaemonsetStatusDesiredNumberScheduled,
+  KubeDaemonsetStatusNumberReady,
+  KubeDeploymentLabels,
+  KubeStatefulsetLabels,
+  KubeDaemonsetLabels,
   MetricsRegistry,
 } from './metrics';
 export type { PrometheusMetric } from './metrics';

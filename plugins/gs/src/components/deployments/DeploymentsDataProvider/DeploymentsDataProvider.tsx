@@ -7,7 +7,10 @@ import {
   useState,
 } from 'react';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
-import { useCatalogEntitiesForDeployments } from '../../hooks';
+import {
+  useCatalogEntitiesForDeployments,
+  useMimirWorkloads,
+} from '../../hooks';
 import {
   AppFilter,
   KindFilter,
@@ -19,6 +22,7 @@ import {
   VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
+import { mergeWorkloads, workloadToDeploymentData } from './mimirUtils';
 import {
   App,
   HelmRelease,
@@ -44,6 +48,7 @@ export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   data: DeploymentData[];
   filteredData: DeploymentData[];
   isLoading: boolean;
+  isLoadingWorkloads: boolean;
   retry: () => void;
   setActiveInstallations: (installations: string[]) => void;
 };
@@ -101,6 +106,9 @@ export const DeploymentsDataProvider = ({
     retry: retryOCIRepositories,
   } = useResources(activeInstallations, OCIRepository);
 
+  const { workloads: mimirWorkloads, isLoading: isLoadingMimirWorkloads } =
+    useMimirWorkloads({ installations: activeInstallations });
+
   const isLoading =
     isLoadingApps || isLoadingHelmReleases || isLoadingOCIRepositories;
 
@@ -137,7 +145,7 @@ export const DeploymentsDataProvider = ({
       return null;
     };
 
-    return resources.reduce<DeploymentData[]>((acc, resource) => {
+    const k8sData = resources.reduce<DeploymentData[]>((acc, resource) => {
       const ociRepository = findOciRepository(resource);
 
       // If deploymentNames filter is active, check if resource matches
@@ -157,6 +165,11 @@ export const DeploymentsDataProvider = ({
       );
       return acc;
     }, []);
+
+    // Merge Mimir workloads: enrich CRD entries with metrics, keep unmatched as standalone
+    const mimirData = mimirWorkloads.map(workloadToDeploymentData);
+
+    return mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
   }, [
     isLoading,
     appResources,
@@ -164,6 +177,7 @@ export const DeploymentsDataProvider = ({
     deploymentNames,
     ociRepositoryResources,
     catalogEntitiesMap,
+    mimirWorkloads,
   ]);
 
   const contextValue: DeploymentsData = useMemo(() => {
@@ -179,6 +193,7 @@ export const DeploymentsDataProvider = ({
       data: deploymentsData,
       filteredData: filteredData,
       isLoading,
+      isLoadingWorkloads: isLoadingMimirWorkloads,
       retry,
       setActiveInstallations,
 
@@ -190,6 +205,7 @@ export const DeploymentsDataProvider = ({
     deploymentsData,
     filters,
     isLoading,
+    isLoadingMimirWorkloads,
     queryParameters,
     retry,
     updateFilters,
