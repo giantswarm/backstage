@@ -40,7 +40,6 @@ import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
 import { HomePage } from './components/home/HomePage';
 
 import gsPlugin, {
-  gsScaffolderPlugin,
   GSChartPickerFieldExtension,
   GSChartTagPickerFieldExtension,
   GSClusterPickerFieldExtension,
@@ -64,6 +63,13 @@ import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
+import {
+  catalogApiOverrides,
+  scaffolderApiOverrides,
+  apiDocsApiOverrides,
+  kubernetesApiOverrides,
+  aiChatApiOverrides,
+} from './apiOverrides';
 
 // Convert legacy app options to new frontend system features
 const legacyAppOptions = convertLegacyAppOptions({
@@ -100,14 +106,6 @@ const legacyAppOptions = convertLegacyAppOptions({
     giantswarm: GiantSwarmIcon,
     grafana: GrafanaIcon,
   },
-  // Legacy plugins that need route bindings
-  plugins: [
-    catalogPlugin,
-    orgPlugin,
-    scaffolderPlugin,
-    techdocsPlugin,
-    gsScaffolderPlugin,
-  ],
 });
 
 const createHeaderOptions = {
@@ -201,6 +199,12 @@ const app = createApp({
     fluxPlugin,
     fluxPluginOverrides,
     gsPlugin,
+    // API overrides for upstream NFS plugins (custom GS implementations):
+    catalogApiOverrides,
+    scaffolderApiOverrides,
+    apiDocsApiOverrides,
+    kubernetesApiOverrides,
+    aiChatApiOverrides,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
