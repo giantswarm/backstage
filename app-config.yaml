@@ -1,6 +1,9 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
+  extensions:
+    - api:home/visits
+    - app-root-element:home/visit-listener
   telemetrydeck:
     appID: ''
     salt: ${TELEMETRYDECK_SALT}
