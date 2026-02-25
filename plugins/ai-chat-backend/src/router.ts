@@ -8,6 +8,7 @@ import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createAzure } from '@ai-sdk/azure';
 import {
   convertToModelMessages,
   streamText,
@@ -72,9 +73,20 @@ export async function createRouter(
   const anthropicApiKey = config.getOptionalString('aiChat.anthropic.apiKey');
   const anthropicBaseUrl = config.getOptionalString('aiChat.anthropic.baseUrl');
 
+  // Get Azure OpenAI configuration
+  const azureApiKey = config.getOptionalString('aiChat.azure.apiKey');
+  const azureResourceName = config.getOptionalString(
+    'aiChat.azure.resourceName',
+  );
+  const azureBaseUrl = config.getOptionalString('aiChat.azure.baseUrl');
+  const azureApiVersion = config.getOptionalString('aiChat.azure.apiVersion');
+  const isAzureConfigured = !!(
+    azureApiKey &&
+    (azureResourceName || azureBaseUrl)
+  );
+
   // Determine which provider to use based on model name
   const isAnthropicModel = modelName.startsWith('claude-');
-  const isOpenAIModel = modelName.startsWith('gpt-');
 
   // Validate configuration
   if (isAnthropicModel && !anthropicApiKey) {
@@ -83,7 +95,13 @@ export async function createRouter(
     );
   }
 
-  if (isOpenAIModel && !openaiApiKey) {
+  if (!isAnthropicModel && isAzureConfigured && !azureApiKey) {
+    logger.warn(
+      'Azure OpenAI configured but no API key set. Set aiChat.azure.apiKey in app-config.yaml',
+    );
+  }
+
+  if (!isAnthropicModel && !isAzureConfigured && !openaiApiKey) {
     logger.warn(
       'No OpenAI API key configured for OpenAI model. Set aiChat.openai.apiKey in app-config.yaml',
     );
@@ -98,6 +116,13 @@ export async function createRouter(
   const anthropic = createAnthropic({
     apiKey: anthropicApiKey,
     baseURL: anthropicBaseUrl,
+  });
+
+  const azure = createAzure({
+    apiKey: azureApiKey,
+    resourceName: azureResourceName,
+    baseURL: azureBaseUrl,
+    apiVersion: azureApiVersion,
   });
 
   router.post('/chat', async (req, res) => {
@@ -156,9 +181,12 @@ export async function createRouter(
 
     try {
       // Select the appropriate provider based on model type
+      // When Azure is configured, non-Anthropic models route through Azure
       const selectedModel = isAnthropicModel
         ? anthropic(modelName)
-        : openai(modelName);
+        : isAzureConfigured
+          ? azure(modelName)
+          : openai(modelName);
 
       // Convert UI messages to model messages
       const modelMessages = await convertToModelMessages(
@@ -230,10 +258,19 @@ export async function createRouter(
     res.json({
       status: 'ok',
       model: modelName,
-      provider: isAnthropicModel ? 'anthropic' : 'openai',
-      configured: isAnthropicModel ? !!anthropicApiKey : !!openaiApiKey,
+      provider: isAnthropicModel
+        ? 'anthropic'
+        : isAzureConfigured
+          ? 'azure-openai'
+          : 'openai',
+      configured: isAnthropicModel
+        ? !!anthropicApiKey
+        : isAzureConfigured
+          ? !!azureApiKey
+          : !!openaiApiKey,
       openaiConfigured: !!openaiApiKey,
       anthropicConfigured: !!anthropicApiKey,
+      azureConfigured: isAzureConfigured,
     });
   });
 

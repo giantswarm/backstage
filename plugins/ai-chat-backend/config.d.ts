@@ -27,6 +27,29 @@ export interface Config {
       baseUrl?: string;
     };
 
+    azure?: {
+      /**
+       * Azure OpenAI API key
+       * @visibility secret
+       */
+      apiKey: string;
+      /**
+       * Azure resource name (used to construct endpoint URL)
+       * @visibility backend
+       */
+      resourceName?: string;
+      /**
+       * Optional: full base URL (overrides resourceName)
+       * @visibility backend
+       */
+      baseUrl?: string;
+      /**
+       * Optional: API version override
+       * @visibility backend
+       */
+      apiVersion?: string;
+    };
+
     /** Model to use for AI chat (default: gpt-4o-mini) */
     model?: string;
 

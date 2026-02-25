@@ -136,6 +136,13 @@ aiChat:
     # Optional: custom base URL for OpenAI-compatible APIs
     # baseUrl: https://api.openai.com/v1
 
+  # Azure OpenAI configuration (when configured, used instead of direct OpenAI)
+  # azure:
+  #   apiKey: ${AZURE_OPENAI_API_KEY}
+  #   resourceName: my-resource  # constructs https://my-resource.openai.azure.com/openai
+  #   # baseUrl: https://my-resource.openai.azure.com/openai  # alternative: full URL
+  #   # apiVersion: '2024-10-21'  # optional API version override
+
   # Model to use (default: gpt-4o-mini)
   model: gpt-4o-mini
 
