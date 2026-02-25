@@ -17,7 +17,6 @@ import {
   DefaultProviderSettings,
   UserSettingsPage,
 } from '@backstage/plugin-user-settings';
-import { apis } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
@@ -54,10 +53,10 @@ import {
   aiChatApiOverrides,
 } from './apiOverrides';
 import { scaffolderPluginOverrides } from './scaffolder';
+import { appApiOverrides } from './appModules';
 
 // Convert legacy app options to new frontend system features
 const legacyAppOptions = convertLegacyAppOptions({
-  apis,
   components: {
     SignInPage: props => {
       const providers = [];
@@ -157,6 +156,8 @@ const app = createApp({
     gsPlugin,
     scaffolderPlugin,
     scaffolderPluginOverrides,
+    // App-level API overrides (core APIs: discovery, fetch, auth, etc.):
+    appApiOverrides,
     // API overrides for upstream NFS plugins (custom GS implementations):
     catalogApiOverrides,
     scaffolderApiOverrides,
