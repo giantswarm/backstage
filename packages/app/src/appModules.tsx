@@ -1,14 +1,18 @@
 /**
- * NFS app-level modules that override core API defaults.
+ * NFS app-level module that provides core API overrides, custom icons,
+ * sign-in page, and feature flags.
  *
  * In Backstage 1.48+, only modules with pluginId: 'app' can override
- * core APIs (discovery, fetch, auth, etc.). These were previously
- * registered via convertLegacyAppOptions({ apis: [...] }).
+ * core APIs and provide app-level extensions like SignInPage and icons.
  */
 import {
   createFrontendModule,
   ApiBlueprint,
 } from '@backstage/frontend-plugin-api';
+import {
+  IconBundleBlueprint,
+  SignInPageBlueprint,
+} from '@backstage/plugin-app-react';
 import {
   analyticsApiRef,
   configApiRef,
@@ -17,6 +21,7 @@ import {
   githubAuthApiRef,
   identityApiRef,
   oauthRequestApiRef,
+  useApi,
 } from '@backstage/core-plugin-api';
 import {
   ScmAuth,
@@ -28,13 +33,21 @@ import {
   FetchMiddlewares,
   GithubAuth,
 } from '@backstage/core-app-api';
-import { GSDiscoveryApiClient } from '@giantswarm/backstage-plugin-gs';
+import {
+  GSDiscoveryApiClient,
+  gsAuthApiRef,
+} from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { SentryErrorReporter } from './apis/errorReporter';
 import { TelemetryDeckAnalyticsApi } from './apis/analytics';
+import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 
-export const appApiOverrides = createFrontendModule({
+export const appOverrides = createFrontendModule({
   pluginId: 'app',
+  featureFlags: [
+    { name: 'show-kubernetes-resources' },
+    { name: 'ai-chat-verbose-debugging' },
+  ],
   extensions: [
     ApiBlueprint.make({
       name: 'error-reporter',
@@ -134,6 +147,38 @@ export const appApiOverrides = createFrontendModule({
               defaultScopes: ['read:user', 'repo', 'read:org'],
             }),
         }),
+    }),
+    IconBundleBlueprint.make({
+      name: 'gs-icons',
+      params: {
+        icons: {
+          giantswarm: GiantSwarmIcon,
+          grafana: GrafanaIcon,
+        },
+      },
+    }),
+    SignInPageBlueprint.make({
+      params: {
+        loader: async () => {
+          const { SignInPage } = await import('@backstage/core-components');
+          const DexSignInPage = (props: {
+            onSignInSuccess: (identityApi: any) => void;
+          }) => {
+            const configApi = useApi(configApiRef);
+            const providers = [];
+            if (configApi.has('gs.authProvider')) {
+              providers.push({
+                id: 'dex-auth-provider',
+                title: 'Dex',
+                message: 'Sign in using Dex',
+                apiRef: gsAuthApiRef,
+              });
+            }
+            return <SignInPage {...props} auto providers={providers} />;
+          };
+          return DexSignInPage;
+        },
+      },
     }),
   ],
 });
