@@ -1,0 +1,1 @@
+export { scaffolderPluginOverrides } from './overrides';

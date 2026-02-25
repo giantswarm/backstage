@@ -22,25 +22,14 @@ Update all @backstage packages to the latest release version.
 
 Read `backstage.json` to get the current Backstage release version.
 
-### Step 2: Check for Available Updates
-
-Run the versions check command to see what updates are available:
-
-```bash
-yarn backstage-cli versions:check
-```
-
-If the command returns no output or indicates packages are up to date, inform the user
-and ask if they want to check for next (weekly) releases instead.
-
-### Step 3: Choose Release Channel
+### Step 2: Choose Release Channel
 
 Use AskUserQuestion to ask the user which release channel to use:
 
 1. **Latest stable release** (Recommended) - Monthly releases, most stable
 2. **Next release** - Weekly releases with newer features but potentially less stable
 
-### Step 4: Run Version Bump
+### Step 3: Run Version Bump
 
 Execute the appropriate command based on user selection:
 
@@ -56,7 +45,7 @@ yarn backstage-cli versions:bump
 yarn backstage-cli versions:bump --release next
 ```
 
-### Step 5: Install Dependencies
+### Step 4: Install Dependencies
 
 After bumping versions, install the new dependencies:
 
@@ -64,7 +53,7 @@ After bumping versions, install the new dependencies:
 yarn install
 ```
 
-### Step 6: Review Migration Notes
+### Step 5: Review Migration Notes
 
 Provide the user with resources to check for breaking changes:
 
@@ -74,7 +63,7 @@ Provide the user with resources to check for breaking changes:
 
 Ask the user if they want you to fetch and summarize the changelog for relevant versions.
 
-### Step 7: Verify Update
+### Step 6: Verify Update
 
 Run verification commands to ensure no breaking changes:
 
@@ -88,7 +77,7 @@ If type checking passes, run linting:
 yarn lint
 ```
 
-### Step 8: Summary
+### Step 7: Summary
 
 Display:
 
