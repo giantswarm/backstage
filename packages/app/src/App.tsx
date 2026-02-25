@@ -22,14 +22,9 @@ import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
 import { AlertDisplay, OAuthRequestDialog } from '@backstage/core-components';
 import { createApp } from '@backstage/frontend-defaults';
-import {
-  convertLegacyAppOptions,
-  convertLegacyAppRoot,
-} from '@backstage/core-compat-api';
+import { convertLegacyAppRoot } from '@backstage/core-compat-api';
 import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
-
-import { SignInPage } from '@backstage/core-components';
 
 import { HomepageCompositionRoot, VisitListener } from '@backstage/plugin-home';
 import { HomePage } from './components/home/HomePage';
@@ -37,11 +32,7 @@ import { HomePage } from './components/home/HomePage';
 import gsPlugin, {
   GSCustomCatalogPage,
   GSProviderSettings,
-  gsAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
-
-import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
@@ -53,43 +44,7 @@ import {
   aiChatApiOverrides,
 } from './apiOverrides';
 import { scaffolderPluginOverrides } from './scaffolder';
-import { appApiOverrides } from './appModules';
-
-// Convert legacy app options to new frontend system features
-const legacyAppOptions = convertLegacyAppOptions({
-  components: {
-    SignInPage: props => {
-      const providers = [];
-      const configApi = useApi(configApiRef);
-      if (configApi.has('gs.authProvider')) {
-        providers.push({
-          id: 'dex-auth-provider',
-          title: 'Dex',
-          message: 'Sign in using Dex',
-          apiRef: gsAuthApiRef,
-        });
-      }
-      return <SignInPage {...props} auto providers={providers} />;
-    },
-  },
-  // Note: bindRoutes moved to app-config.yaml under app.routes.bindings
-  featureFlags: [
-    {
-      pluginId: '',
-      name: 'show-kubernetes-resources',
-      description:
-        'Show Kubernetes resources for service components. Requires matching labels on resources.',
-    },
-    {
-      pluginId: 'ai-chat',
-      name: 'ai-chat-verbose-debugging',
-    },
-  ],
-  icons: {
-    giantswarm: GiantSwarmIcon,
-    grafana: GrafanaIcon,
-  },
-});
+import { appOverrides } from './appModules';
 
 const routes = (
   <FlatRoutes>
@@ -147,7 +102,6 @@ const legacyAppRoot = convertLegacyAppRoot(
 // This allows running both legacy and new-style plugins together
 const app = createApp({
   features: [
-    legacyAppOptions,
     ...legacyAppRoot,
     // NFS plugins:
     aiChatPlugin,
@@ -156,8 +110,8 @@ const app = createApp({
     gsPlugin,
     scaffolderPlugin,
     scaffolderPluginOverrides,
-    // App-level API overrides (core APIs: discovery, fetch, auth, etc.):
-    appApiOverrides,
+    // App-level overrides (core APIs, icons, sign-in page, feature flags):
+    appOverrides,
     // API overrides for upstream NFS plugins (custom GS implementations):
     catalogApiOverrides,
     scaffolderApiOverrides,
