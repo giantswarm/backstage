@@ -32,6 +32,7 @@ const aiChatNavItem = NavItemBlueprint.make({
 
 const aiChatServiceApi = ApiBlueprint.make({
   name: 'service',
+  disabled: true,
   params: defineParams =>
     defineParams({
       api: aiChatApiRef,
