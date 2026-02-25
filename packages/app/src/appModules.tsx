@@ -149,8 +149,8 @@ export const appOverrides = createFrontendModule({
       name: 'gs-icons',
       params: {
         icons: {
-          giantswarm: GiantSwarmIcon,
-          grafana: GrafanaIcon,
+          giantswarm: <GiantSwarmIcon />,
+          grafana: <GrafanaIcon />,
         },
       },
     }),
