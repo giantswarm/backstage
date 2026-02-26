@@ -44,6 +44,7 @@ import { MimirClient, mimirApiRef } from './apis/mimir';
 // Pages
 const clustersPage = PageBlueprint.make({
   name: 'clusters',
+  disabled: true,
   params: {
     path: '/clusters',
     routeRef: clustersRouteRef,
@@ -56,6 +57,7 @@ const clustersPage = PageBlueprint.make({
 
 const deploymentsPage = PageBlueprint.make({
   name: 'deployments',
+  disabled: true,
   params: {
     path: '/deployments',
     routeRef: deploymentsRouteRef,
@@ -68,6 +70,7 @@ const deploymentsPage = PageBlueprint.make({
 
 const installationsPage = PageBlueprint.make({
   name: 'installations',
+  disabled: true,
   params: {
     path: '/installations',
     routeRef: installationsRouteRef,
@@ -82,6 +85,7 @@ const installationsPage = PageBlueprint.make({
 // Nav items (forward-compat; not consumed by legacy sidebar)
 const clustersNavItem = NavItemBlueprint.make({
   name: 'clusters',
+  disabled: true,
   params: {
     title: 'Clusters',
     icon: StorageIcon,
@@ -91,6 +95,7 @@ const clustersNavItem = NavItemBlueprint.make({
 
 const deploymentsNavItem = NavItemBlueprint.make({
   name: 'deployments',
+  disabled: true,
   params: {
     title: 'Deployments',
     icon: CloudUploadIcon,
@@ -100,6 +105,7 @@ const deploymentsNavItem = NavItemBlueprint.make({
 
 const installationsNavItem = NavItemBlueprint.make({
   name: 'installations',
+  disabled: true,
   params: {
     title: 'Installations',
     icon: ApartmentIcon,

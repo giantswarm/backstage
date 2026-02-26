@@ -24,7 +24,6 @@ import {
   EntityMembersListCard,
   EntityOwnershipCard,
 } from '@backstage/plugin-org';
-import { FeatureFlagged } from '@backstage/core-app-api';
 import { EmptyState } from '@backstage/core-components';
 import {
   Direction,
@@ -53,7 +52,6 @@ import {
   isDashboardSelectorAvailable,
 } from '@k-phoen/backstage-plugin-grafana';
 
-import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
 import {
   EntityGSDeploymentsContent,
   EntityGSKratixResourcesContent,
@@ -256,12 +254,6 @@ const componentEntityPage = (
     >
       <EntityGSVersionHistoryContent />
     </EntityLayout.Route>
-
-    <FeatureFlagged with="show-kubernetes-resources">
-      <EntityLayout.Route path="/kubernetes" title="Kubernetes">
-        <EntityKubernetesContent refreshIntervalMs={30000} />
-      </EntityLayout.Route>
-    </FeatureFlagged>
 
     <EntityLayout.Route path="/pull-requests" title="Pull Requests">
       <EntityGithubPullRequestsContent />

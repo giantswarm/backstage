@@ -50,14 +50,6 @@ export interface Config {
         };
       };
     };
-    /** @visibility frontend */
-    features?: {
-      [featureName: string]: {
-        /** @visibility frontend */
-        enabled: boolean;
-      };
-    };
-
     /** @deepVisibility frontend */
     friendlyAnnotations?: {
       selector: string;

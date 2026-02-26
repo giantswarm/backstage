@@ -21,8 +21,6 @@ export { EntityKratixResourcesCard as EntityGSKratixResourcesCard } from './comp
 export { EntityKratixStatusCard as EntityGSKratixStatusCard } from './components/catalog/EntityKratixStatusCard';
 export { ResourcesCard as GSHomePageResources } from './components/home/ResourcesCard';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
-export { MainMenu as GSMainMenu } from './components/MainMenu';
-export { FeatureEnabled as GSFeatureEnabled } from './components/FeatureEnabled';
 export {
   getIconUrlFromEntity as getGSIconUrlFromEntity,
   isEntityDeploymentsAvailable as isEntityGSDeploymentsAvailable,

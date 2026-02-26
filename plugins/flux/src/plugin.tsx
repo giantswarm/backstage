@@ -24,6 +24,7 @@ import {
 } from './filters';
 
 const fluxNavItem = NavItemBlueprint.make({
+  disabled: true,
   params: {
     title: 'Flux',
     icon: FluxIcon,
@@ -32,6 +33,7 @@ const fluxNavItem = NavItemBlueprint.make({
 });
 
 const fluxPage = PageBlueprint.makeWithOverrides({
+  disabled: true,
   inputs: {
     listFilters: createExtensionInput([coreExtensionData.reactElement]),
     treeFilters: createExtensionInput([coreExtensionData.reactElement]),

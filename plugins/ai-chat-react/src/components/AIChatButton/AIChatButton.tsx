@@ -45,25 +45,21 @@ type AIChatButtonProps = {
   troubleshoot?: boolean;
 };
 
-export const AIChatButton = ({
+type AIChatButtonInnerProps = AIChatButtonProps & {
+  displayLabel: string;
+  displayTooltip: string;
+};
+
+const AIChatButtonInner = ({
   items,
-  tooltip,
-  label,
+  displayLabel,
+  displayTooltip,
   troubleshoot,
-}: AIChatButtonProps) => {
-  const apiHolder = useApiHolder();
-  const aiChatApi = apiHolder.get(aiChatApiRef);
+}: AIChatButtonInnerProps) => {
   const chatPath = useRouteRef(rootRouteRef);
-  const displayLabel =
-    label ?? (troubleshoot ? 'Troubleshoot with AI' : 'Inspect with AI');
-  const displayTooltip = tooltip ?? displayLabel;
   const classes = useStyles();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-
-  if (!aiChatApi || items.length === 0) {
-    return null;
-  }
 
   const navigateToChat = (message: string) => {
     const params = new URLSearchParams({ message });
@@ -137,5 +133,33 @@ export const AIChatButton = ({
         </Menu>
       )}
     </Box>
+  );
+};
+
+export const AIChatButton = ({
+  items,
+  tooltip,
+  label,
+  troubleshoot,
+}: AIChatButtonProps) => {
+  const apiHolder = useApiHolder();
+  const aiChatApi = apiHolder.get(aiChatApiRef);
+  const displayLabel =
+    label ?? (troubleshoot ? 'Troubleshoot with AI' : 'Inspect with AI');
+  const displayTooltip = tooltip ?? displayLabel;
+
+  if (!aiChatApi || items.length === 0) {
+    return null;
+  }
+
+  return (
+    <AIChatButtonInner
+      items={items}
+      tooltip={tooltip}
+      label={label}
+      troubleshoot={troubleshoot}
+      displayLabel={displayLabel}
+      displayTooltip={displayTooltip}
+    />
   );
 };

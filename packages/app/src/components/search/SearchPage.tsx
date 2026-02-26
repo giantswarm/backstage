@@ -25,8 +25,8 @@ import {
 import { useApi } from '@backstage/core-plugin-api';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  bar: {
-    padding: theme.spacing(1, 0),
+  searchBar: {
+    backgroundColor: theme.palette.background.paper,
   },
   filters: {
     padding: theme.spacing(2),
@@ -39,7 +39,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-const SearchPage = () => {
+export const SearchPage = () => {
   const classes = useStyles();
   const { types } = useSearch();
   const catalogApi = useApi(catalogApiRef);
@@ -50,9 +50,7 @@ const SearchPage = () => {
       <Content>
         <Grid container direction="row">
           <Grid item xs={12}>
-            <Paper className={classes.bar}>
-              <SearchBar />
-            </Paper>
+            <SearchBar className={classes.searchBar} />
           </Grid>
           <Grid item xs={3}>
             <SearchType.Accordion
@@ -119,5 +117,3 @@ const SearchPage = () => {
     </Page>
   );
 };
-
-export const searchPage = <SearchPage />;

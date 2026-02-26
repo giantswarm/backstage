@@ -1,6 +1,43 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
+  extensions:
+    - api:home/visits
+    - app-root-element:home/visit-listener
+    - page:gs/clusters
+    - nav-item:gs/clusters
+    - page:gs/deployments
+    - nav-item:gs/deployments
+    - page:gs/installations
+    - nav-item:gs/installations
+    - page:flux
+    - nav-item:flux
+    - page:ai-chat
+    - nav-item:ai-chat
+    - api:ai-chat/service
+    # Disable extensions that target inputs on pages we fully override
+    # (our custom pages compose their own UI, not extension slots)
+    - home-page-widget:home/toolkit: false
+    - home-page-widget:home/starred-entities: false
+    - home-page-widget:home/random-joke: false
+    - catalog-filter:catalog/kind: false
+    - catalog-filter:catalog/type: false
+    - catalog-filter:catalog/list: false
+    - catalog-filter:catalog/mode: false
+    - catalog-filter:catalog/lifecycle: false
+    - catalog-filter:catalog/tag: false
+    - catalog-filter:catalog/processing-status: false
+    - catalog-filter:catalog/namespace: false
+    - entity-content:catalog/overview: false
+    - entity-content:techdocs: false
+    - entity-content:kubernetes/kubernetes: false
+    - entity-content:api-docs/definition: false
+    - entity-content:api-docs/apis: false
+    - entity-context-menu-item:catalog/unregister-entity: false
+    - entity-context-menu-item:catalog/inspect-entity: false
+    - entity-context-menu-item:catalog/copy-entity-url: false
+    - search-result-list-item:catalog: false
+    - search-result-list-item:techdocs: false
   telemetrydeck:
     appID: ''
     salt: ${TELEMETRYDECK_SALT}

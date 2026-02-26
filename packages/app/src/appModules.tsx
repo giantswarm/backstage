@@ -44,10 +44,7 @@ import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
 
 export const appOverrides = createFrontendModule({
   pluginId: 'app',
-  featureFlags: [
-    { name: 'show-kubernetes-resources' },
-    { name: 'ai-chat-verbose-debugging' },
-  ],
+  featureFlags: [{ name: 'ai-chat-verbose-debugging' }],
   extensions: [
     ApiBlueprint.make({
       name: 'error-reporter',
@@ -152,8 +149,8 @@ export const appOverrides = createFrontendModule({
       name: 'gs-icons',
       params: {
         icons: {
-          giantswarm: GiantSwarmIcon,
-          grafana: GrafanaIcon,
+          giantswarm: <GiantSwarmIcon />,
+          grafana: <GrafanaIcon />,
         },
       },
     }),

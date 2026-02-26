@@ -3465,30 +3465,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/core-compat-api@backstage:^::backstage=1.48.2&npm=0.5.8, @backstage/core-compat-api@npm:^0.5.8":
-  version: 0.5.8
-  resolution: "@backstage/core-compat-api@npm:0.5.8"
-  dependencies:
-    "@backstage/core-plugin-api": "npm:^1.12.3"
-    "@backstage/frontend-plugin-api": "npm:^0.14.0"
-    "@backstage/plugin-app-react": "npm:^0.2.0"
-    "@backstage/plugin-catalog-react": "npm:^2.0.0"
-    "@backstage/types": "npm:^1.2.2"
-    "@backstage/version-bridge": "npm:^1.0.12"
-    lodash: "npm:^4.17.21"
-    zod: "npm:^3.25.76"
-  peerDependencies:
-    "@types/react": ^17.0.0 || ^18.0.0
-    react: ^17.0.0 || ^18.0.0
-    react-dom: ^17.0.0 || ^18.0.0
-    react-router-dom: ^6.30.2
-  peerDependenciesMeta:
-    "@types/react":
-      optional: true
-  checksum: 10c0/b41c961c17cc74a8ef112a3b6a123f15e1334dc2a3a36445af865e7b597a4447bc21fb128ba0baebb742f29e5c2ae6e0fa1ccdfa80fd9b1638da1c1b1a10b8ec
-  languageName: node
-  linkType: hard
-
 "@backstage/core-compat-api@npm:^0.3.0":
   version: 0.3.0
   resolution: "@backstage/core-compat-api@npm:0.3.0"
@@ -3525,6 +3501,30 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/f10b434fba3a57676eb30f3a93b4b59ea24def59424c4caadb08979e4757340b751cf59cc18701f63ffebb856d1edbec61dc87328d42b87c0e4d69b2e717e8ed
+  languageName: node
+  linkType: hard
+
+"@backstage/core-compat-api@npm:^0.5.8":
+  version: 0.5.8
+  resolution: "@backstage/core-compat-api@npm:0.5.8"
+  dependencies:
+    "@backstage/core-plugin-api": "npm:^1.12.3"
+    "@backstage/frontend-plugin-api": "npm:^0.14.0"
+    "@backstage/plugin-app-react": "npm:^0.2.0"
+    "@backstage/plugin-catalog-react": "npm:^2.0.0"
+    "@backstage/types": "npm:^1.2.2"
+    "@backstage/version-bridge": "npm:^1.0.12"
+    lodash: "npm:^4.17.21"
+    zod: "npm:^3.25.76"
+  peerDependencies:
+    "@types/react": ^17.0.0 || ^18.0.0
+    react: ^17.0.0 || ^18.0.0
+    react-dom: ^17.0.0 || ^18.0.0
+    react-router-dom: ^6.30.2
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+  checksum: 10c0/b41c961c17cc74a8ef112a3b6a123f15e1334dc2a3a36445af865e7b597a4447bc21fb128ba0baebb742f29e5c2ae6e0fa1ccdfa80fd9b1638da1c1b1a10b8ec
   languageName: node
   linkType: hard
 
@@ -20198,7 +20198,6 @@ __metadata:
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/core-app-api": "backstage:^"
-    "@backstage/core-compat-api": "backstage:^"
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/frontend-app-api": "backstage:^"
