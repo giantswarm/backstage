@@ -53,6 +53,7 @@
   },
   "resolutions": {
     "@backstage/core-app-api": "backstage:^",
+    "@backstage/core-plugin-api": "backstage:^",
     "@types/express": "^5",
     "@types/express-serve-static-core": "^5",
     "@types/react": "^18",
