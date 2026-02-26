@@ -5,6 +5,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix "App context is not available" and missing Grafana API errors on group entity pages.
+- Fix TechDocs generation failure on Python 3.13 by adding setuptools dependency.
+
 ## [0.110.0] - 2026-02-26
 
 ### Added
