@@ -32,15 +32,15 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/azure@npm:^3.0.34":
-  version: 3.0.34
-  resolution: "@ai-sdk/azure@npm:3.0.34"
+  version: 3.0.35
+  resolution: "@ai-sdk/azure@npm:3.0.35"
   dependencies:
-    "@ai-sdk/openai": "npm:3.0.33"
+    "@ai-sdk/openai": "npm:3.0.34"
     "@ai-sdk/provider": "npm:3.0.8"
     "@ai-sdk/provider-utils": "npm:4.0.15"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/d9cbf6d305f4bb0673b27968c8b933be6c44f8b02220d071e613778131e6aec6963d02372f2eed6b749a6f7bda9bb6c8d26a91b2d75f30880ac906a37e85ebf5
+  checksum: 10c0/d25795ef529842eaf365437dad6e43e6be9270b71e05a25a8ad88b1e57ffb7595bb1a178cdc1d67934d06b333ce4b88a35e13a0bddaf898e6d954b6c3429fe76
   languageName: node
   linkType: hard
 
@@ -83,19 +83,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/openai@npm:3.0.33":
-  version: 3.0.33
-  resolution: "@ai-sdk/openai@npm:3.0.33"
-  dependencies:
-    "@ai-sdk/provider": "npm:3.0.8"
-    "@ai-sdk/provider-utils": "npm:4.0.15"
-  peerDependencies:
-    zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/8da23bd54efa70d7adacf9efdd004c2af6cb72e42220b3dc2f658aff2902d134ac38f2d4a86e6723fa0de3eb0438b31b94bf1351a195400f5339ac46d6728493
-  languageName: node
-  linkType: hard
-
-"@ai-sdk/openai@npm:^3.0.19":
+"@ai-sdk/openai@npm:3.0.34, @ai-sdk/openai@npm:^3.0.19":
   version: 3.0.34
   resolution: "@ai-sdk/openai@npm:3.0.34"
   dependencies:
