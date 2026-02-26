@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import { makeFieldSchemaFromZod } from '@backstage/plugin-scaffolder';
 
-export const YamlValuesValidationFieldSchema = makeFieldSchemaFromZod(
-  z.boolean(),
+export const SecretYamlValuesEditorFieldSchema = makeFieldSchemaFromZod(
+  z.string().optional().describe('YAML string (stored in secrets context)'),
   z.object({
+    secretsKey: z
+      .string()
+      .describe(
+        'Key used within the template secrets context to store the secret values',
+      ),
     chartRef: z
       .string()
       .optional()
@@ -24,25 +29,14 @@ export const YamlValuesValidationFieldSchema = makeFieldSchemaFromZod(
       .describe(
         'The name of the field containing the chart tag to fetch values schema for',
       ),
-    valuesFields: z
-      .array(z.string())
-      .describe(
-        'The list of fields with values to validate against the schema',
-      ),
-    secretValuesKeys: z
-      .array(z.string())
-      .optional()
-      .describe(
-        'The list of secrets context keys containing secret values to validate against the schema',
-      ),
   }),
 );
 
-export const YamlValuesValidationSchema =
-  YamlValuesValidationFieldSchema.schema;
+export const SecretYamlValuesEditorSchema =
+  SecretYamlValuesEditorFieldSchema.schema;
 
-export type YamlValuesValidationProps =
-  typeof YamlValuesValidationFieldSchema.type;
+export type SecretYamlValuesEditorProps =
+  typeof SecretYamlValuesEditorFieldSchema.type;
 
-export type YamlValuesValidationValue =
-  typeof YamlValuesValidationFieldSchema.TOutput;
+export type SecretYamlValuesEditorValue =
+  typeof SecretYamlValuesEditorFieldSchema.TOutput;
