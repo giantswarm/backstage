@@ -1,5 +1,11 @@
 # backend
 
+## 0.16.1
+
+### Patch Changes
+
+- 8fc5501: Fix TechDocs generation failure on Python 3.13 by adding setuptools dependency to the Docker image. The `distutils` module was removed from the Python standard library in 3.12, breaking `mkdocs-monorepo-plugin`.
+
 ## 0.16.0
 
 ### Minor Changes

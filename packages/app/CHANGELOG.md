@@ -1,5 +1,11 @@
 # app
 
+## 0.31.1
+
+### Patch Changes
+
+- 8fc5501: Fix "App context is not available" and missing Grafana API errors on group entity pages. Add `@backstage/core-plugin-api` to yarn resolutions to ensure all plugins use the NFS-compatible version, and register the Grafana legacy plugin API via `ApiBlueprint` in the app module.
+
 ## 0.31.0
 
 ### Minor Changes
