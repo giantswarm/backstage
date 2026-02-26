@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-02-26
+
 ### Added
 
 - Add support for Azure OpenAI in AI chat backend.
@@ -1971,7 +1973,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.109.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.0...HEAD
+[0.110.0]: https://github.com/giantswarm/backstage/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/giantswarm/backstage/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/giantswarm/backstage/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/giantswarm/backstage/compare/v0.106.0...v0.107.0
