@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.110.1] - 2026-02-26
+
+### Fixed
+
+- Fix "App context is not available" and missing Grafana API errors on group entity pages.
+- Fix TechDocs generation failure on Python 3.13 by adding setuptools dependency.
+
+See [./docs/releases/v0.110.1-changelog.md](./docs/releases/v0.110.1-changelog.md) for more information.
+
 ## [0.110.0] - 2026-02-26
 
 ### Added
@@ -1973,7 +1982,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.1...HEAD
+[0.110.1]: https://github.com/giantswarm/backstage/compare/v0.110.0...v0.110.1
 [0.110.0]: https://github.com/giantswarm/backstage/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/giantswarm/backstage/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/giantswarm/backstage/compare/v0.107.0...v0.108.0
