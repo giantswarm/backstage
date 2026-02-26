@@ -123,6 +123,7 @@ export async function createRouter(
     resourceName: azureResourceName,
     baseURL: azureBaseUrl,
     apiVersion: azureApiVersion,
+    useDeploymentBasedUrls: true,
   });
 
   router.post('/chat', async (req, res) => {
@@ -183,7 +184,7 @@ export async function createRouter(
       // Select the appropriate provider based on model type
       // When Azure is configured, non-Anthropic models route through Azure
       const openaiCompatibleModel = isAzureConfigured
-        ? azure(modelName)
+        ? azure.chat(modelName)
         : openai(modelName);
       const selectedModel = isAnthropicModel
         ? anthropic(modelName)
