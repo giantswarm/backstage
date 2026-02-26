@@ -5,14 +5,10 @@ import {
   CardContent,
   LinearProgress,
   Typography,
-  useTheme,
 } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
-import LightAsync from 'react-syntax-highlighter/dist/esm/light-async';
-import json from 'react-syntax-highlighter/dist/esm/languages/hljs/json';
-import stackoverflowDark from 'react-syntax-highlighter/dist/esm/styles/hljs/stackoverflow-dark';
-import stackoverflowLight from 'react-syntax-highlighter/dist/esm/styles/hljs/stackoverflow-light';
+import { JsonHighlight } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ContentRow,
   ClusterLink,
@@ -31,8 +27,6 @@ import {
   useMimirWorkloadDiagnostics,
   WorkloadDiagnostics,
 } from '../../hooks/useMimirWorkloadDiagnostics';
-
-LightAsync.registerLanguage('json', json);
 
 export const WORKLOAD_DETAILS_PANE_ID = 'workloadDetails';
 
@@ -379,19 +373,12 @@ function DiagnosticsCard({ workload }: { workload: DeploymentData }) {
 }
 
 function RawDataAccordion({ data }: { data: DeploymentData }) {
-  const theme = useTheme();
-  const style =
-    theme.palette.type === 'dark' ? stackoverflowDark : stackoverflowLight;
-
   return (
     <Card>
       <CardContent>
         <SimpleAccordion title="Raw data">
           <Box width="100%">
-            <LightAsync
-              language="json"
-              style={style}
-              wrapLongLines
+            <JsonHighlight
               customStyle={{
                 margin: 0,
                 padding: 16,
@@ -400,7 +387,7 @@ function RawDataAccordion({ data }: { data: DeploymentData }) {
               }}
             >
               {JSON.stringify(data, null, 2)}
-            </LightAsync>
+            </JsonHighlight>
           </Box>
         </SimpleAccordion>
       </CardContent>

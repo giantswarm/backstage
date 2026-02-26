@@ -17,6 +17,7 @@ import { getSourceKind, getSourceName } from '../utils/getSource';
 import { getAttemptedVersion, getVersion } from '../utils/getVersion';
 import { findHelmChartName } from '../utils/findHelmChartName';
 import { MimirWorkloadMetric } from '../../hooks/useMimirWorkloads';
+import { findTargetNamespace } from '../utils/findTargetNamespace';
 
 export type DeploymentData = {
   installationName: string;
@@ -67,10 +68,7 @@ export function collectDeploymentData({
     clusterType: findTargetClusterType(deployment),
     name: deployment.getName(),
     namespace: deployment.getNamespace(),
-    targetNamespace:
-      deployment instanceof HelmRelease
-        ? deployment.getTargetNamespace()
-        : deployment.getNamespace(),
+    targetNamespace: findTargetNamespace(deployment),
     version: formatVersion(version ?? ''),
     attemptedVersion: formatVersion(attemptedVersion ?? ''),
     status: getAggregatedStatus(deployment),

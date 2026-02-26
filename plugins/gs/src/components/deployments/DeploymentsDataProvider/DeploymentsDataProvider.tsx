@@ -48,7 +48,6 @@ export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   data: DeploymentData[];
   filteredData: DeploymentData[];
   isLoading: boolean;
-  isLoadingWorkloads: boolean;
   retry: () => void;
   setActiveInstallations: (installations: string[]) => void;
 };
@@ -110,7 +109,10 @@ export const DeploymentsDataProvider = ({
     useMimirWorkloads({ installations: activeInstallations });
 
   const isLoading =
-    isLoadingApps || isLoadingHelmReleases || isLoadingOCIRepositories;
+    isLoadingApps ||
+    isLoadingHelmReleases ||
+    isLoadingOCIRepositories ||
+    isLoadingMimirWorkloads;
 
   const errors = useMemo(() => {
     return [...appErrors, ...helmReleaseErrors, ...ociRepositoryErrors];
@@ -166,8 +168,13 @@ export const DeploymentsDataProvider = ({
       return acc;
     }, []);
 
+    // Filter Mimir workloads by deploymentNames (same as k8s resources above)
+    const filteredMimirWorkloads = deploymentNames
+      ? mimirWorkloads.filter(w => deploymentNames.includes(w.name))
+      : mimirWorkloads;
+
     // Merge Mimir workloads: enrich CRD entries with metrics, keep unmatched as standalone
-    const mimirData = mimirWorkloads.map(workloadToDeploymentData);
+    const mimirData = filteredMimirWorkloads.map(workloadToDeploymentData);
 
     return mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
   }, [
@@ -193,7 +200,6 @@ export const DeploymentsDataProvider = ({
       data: deploymentsData,
       filteredData: filteredData,
       isLoading,
-      isLoadingWorkloads: isLoadingMimirWorkloads,
       retry,
       setActiveInstallations,
 
@@ -205,7 +211,6 @@ export const DeploymentsDataProvider = ({
     deploymentsData,
     filters,
     isLoading,
-    isLoadingMimirWorkloads,
     queryParameters,
     retry,
     updateFilters,
