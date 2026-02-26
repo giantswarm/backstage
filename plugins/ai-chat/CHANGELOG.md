@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.9.0
+
+### Minor Changes
+
+- 915083b: Replace GSFeatureEnabled with NFS config-based extension toggling. Page and nav-item blueprints are now disabled by default and enabled via `app.extensions` in app-config.yaml. Delete FeatureEnabled and MainMenu components from gs plugin.
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+
+### Patch Changes
+
+- cb36dac: Fix config visibility annotations to prevent sensitive backend configuration from being exposed to the frontend.
+- Updated dependencies [ebd466f]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.3.0
+  - @giantswarm/backstage-plugin-ui-react@0.8.0
+
 ## 0.8.0
 
 ### Minor Changes

@@ -1,5 +1,29 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.56.0
+
+### Minor Changes
+
+- 668ab64: Migrate GS plugin to New Frontend System (NFS) with PageBlueprint, NavItemBlueprint, and ApiBlueprint. Scaffolder field extensions remain on a temporary legacy compat plugin.
+- 915083b: Replace GSFeatureEnabled with NFS config-based extension toggling. Page and nav-item blueprints are now disabled by default and enabled via `app.extensions` in app-config.yaml. Delete FeatureEnabled and MainMenu components from gs plugin.
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+- d8aa6f6: Migrate scaffolder to NFS: convert field extensions to FormFieldBlueprint, replace legacy scaffolder route with NFS page override, and remove temporary gsScaffolderPlugin.
+- 4ef43b2: Add GSSecretYamlValuesEditor scaffolder field extension that routes secret values through the template secrets context instead of regular parameters, preventing them from being persisted in the scaffolder task database. Also fix potential secret content leak in YAML validation console logging.
+- 0a0bea4: Add workload display based on Mimir metrics
+
+### Patch Changes
+
+- cb36dac: Fix config visibility annotations to prevent sensitive backend configuration from being exposed to the frontend.
+- Updated dependencies [668ab64]
+- Updated dependencies [915083b]
+- Updated dependencies [ebd466f]
+  - @giantswarm/backstage-plugin-flux-react@0.12.0
+  - @giantswarm/backstage-plugin-flux@0.8.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.3.0
+  - @giantswarm/backstage-plugin-gs-common@0.21.0
+  - @giantswarm/backstage-plugin-kubernetes-react@0.13.0
+  - @giantswarm/backstage-plugin-ui-react@0.8.0
+
 ## 0.55.0
 
 ### Minor Changes

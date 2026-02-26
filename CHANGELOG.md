@@ -5,6 +5,36 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-02-26
+
+### Added
+
+- Add support for Azure OpenAI in AI chat backend.
+- Add GSSecretYamlValuesEditor scaffolder field extension for secure secret handling.
+- Add workload display based on Mimir metrics to Deployments overview.
+
+### Changed
+
+- Update Backstage dependencies from 1.47.3 to 1.48.2.
+- Migrate GS plugin to New Frontend System (NFS) with PageBlueprint, NavItemBlueprint, and ApiBlueprint.
+- Migrate routes, sidebar, icons, sign-in page, feature flags, and app-level APIs to NFS.
+- Migrate scaffolder field extensions to NFS FormFieldBlueprint.
+- Replace GSFeatureEnabled with NFS config-based extension toggling.
+
+### Fixed
+
+- Fix API_FACTORY_CONFLICT errors by migrating custom API overrides to NFS.
+- Fix config visibility annotations to prevent backend config exposure to frontend.
+- Truncate generated AI tool name to 64 characters.
+
+### Removed
+
+- Remove EntityKubernetesContent and show-kubernetes-resources feature flag.
+- Remove convertLegacyAppRoot and convertLegacyAppOptions compat bridges.
+- Remove FeatureEnabled and MainMenu components from GS plugin.
+
+See [./docs/releases/v0.110.0-changelog.md](./docs/releases/v0.110.0-changelog.md) for more information.
+
 ## [0.109.0] - 2026-02-24
 
 ### Added
@@ -1943,7 +1973,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.109.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.0...HEAD
+[0.110.0]: https://github.com/giantswarm/backstage/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/giantswarm/backstage/compare/v0.108.0...v0.109.0
 [0.108.0]: https://github.com/giantswarm/backstage/compare/v0.107.0...v0.108.0
 [0.107.0]: https://github.com/giantswarm/backstage/compare/v0.106.0...v0.107.0

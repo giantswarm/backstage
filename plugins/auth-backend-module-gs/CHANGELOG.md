@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.13.0
+
+### Minor Changes
+
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+
 ## 0.12.0
 
 ### Minor Changes
