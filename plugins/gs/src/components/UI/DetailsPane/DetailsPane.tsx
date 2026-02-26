@@ -72,6 +72,7 @@ type DetailsPaneProps = {
     installationName: string;
     name: string;
     namespace: string;
+    clusterName?: string;
   }) => React.ReactElement | null;
 };
 
@@ -79,7 +80,7 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
   const classes = useDrawerStyles();
 
   const { isOpen, getParams, close } = useDetailsPane(paneId);
-  const { installationName, kind, namespace, name } = getParams();
+  const { installationName, kind, namespace, name, clusterName } = getParams();
 
   if (!installationName || !kind || !namespace || !name) {
     return null;
@@ -100,7 +101,13 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
     >
       <DrawerContent title={title ?? name} onClose={handleClose}>
         <ErrorsProvider>
-          {render({ kind, installationName, name, namespace })}
+          {render({
+            kind,
+            installationName,
+            name,
+            namespace,
+            clusterName: clusterName ?? undefined,
+          })}
         </ErrorsProvider>
       </DrawerContent>
     </Drawer>

@@ -7,7 +7,10 @@ import {
   useState,
 } from 'react';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
-import { useCatalogEntitiesForDeployments } from '../../hooks';
+import {
+  useCatalogEntitiesForDeployments,
+  useMimirWorkloads,
+} from '../../hooks';
 import {
   AppFilter,
   KindFilter,
@@ -19,6 +22,7 @@ import {
   VersionFilter,
 } from '../DeploymentsPage/filters/filters';
 import { collectDeploymentData, DeploymentData } from './utils';
+import { mergeWorkloads, workloadToDeploymentData } from './mimirUtils';
 import {
   App,
   HelmRelease,
@@ -101,8 +105,14 @@ export const DeploymentsDataProvider = ({
     retry: retryOCIRepositories,
   } = useResources(activeInstallations, OCIRepository);
 
+  const { workloads: mimirWorkloads, isLoading: isLoadingMimirWorkloads } =
+    useMimirWorkloads({ installations: activeInstallations });
+
   const isLoading =
-    isLoadingApps || isLoadingHelmReleases || isLoadingOCIRepositories;
+    isLoadingApps ||
+    isLoadingHelmReleases ||
+    isLoadingOCIRepositories ||
+    isLoadingMimirWorkloads;
 
   const errors = useMemo(() => {
     return [...appErrors, ...helmReleaseErrors, ...ociRepositoryErrors];
@@ -137,7 +147,7 @@ export const DeploymentsDataProvider = ({
       return null;
     };
 
-    return resources.reduce<DeploymentData[]>((acc, resource) => {
+    const k8sData = resources.reduce<DeploymentData[]>((acc, resource) => {
       const ociRepository = findOciRepository(resource);
 
       // If deploymentNames filter is active, check if resource matches
@@ -157,6 +167,16 @@ export const DeploymentsDataProvider = ({
       );
       return acc;
     }, []);
+
+    // Filter Mimir workloads by deploymentNames (same as k8s resources above)
+    const filteredMimirWorkloads = deploymentNames
+      ? mimirWorkloads.filter(w => deploymentNames.includes(w.name))
+      : mimirWorkloads;
+
+    // Merge Mimir workloads: enrich CRD entries with metrics, keep unmatched as standalone
+    const mimirData = filteredMimirWorkloads.map(workloadToDeploymentData);
+
+    return mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
   }, [
     isLoading,
     appResources,
@@ -164,6 +184,7 @@ export const DeploymentsDataProvider = ({
     deploymentNames,
     ociRepositoryResources,
     catalogEntitiesMap,
+    mimirWorkloads,
   ]);
 
   const contextValue: DeploymentsData = useMemo(() => {

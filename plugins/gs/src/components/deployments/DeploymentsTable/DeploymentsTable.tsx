@@ -7,6 +7,7 @@ import { DeploymentData, useDeploymentsData } from '../DeploymentsDataProvider';
 import { getInitialColumns } from './columns';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import useDebounce from 'react-use/esm/useDebounce';
+import { WorkloadDetailsPane } from '../WorkloadDetailsPane';
 
 export const DEPLOYMENTS_TABLE_ID = 'deployments';
 export const ENTITY_DEPLOYMENTS_TABLE_ID = 'entity-deployments';
@@ -129,12 +130,15 @@ export const DeploymentsTable = ({
   );
 
   return (
-    <DeploymentsTableView
-      columns={columns}
-      loading={isLoading}
-      deploymentsData={deploymentsData}
-      retry={retry}
-      onChangeColumnHidden={handleChangeColumnHidden}
-    />
+    <>
+      <DeploymentsTableView
+        columns={columns}
+        loading={isLoading}
+        deploymentsData={deploymentsData}
+        retry={retry}
+        onChangeColumnHidden={handleChangeColumnHidden}
+      />
+      <WorkloadDetailsPane />
+    </>
   );
 };

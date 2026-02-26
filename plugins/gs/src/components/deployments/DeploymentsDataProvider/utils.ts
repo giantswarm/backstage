@@ -16,6 +16,8 @@ import { getUpdatedTimestamp } from '../utils/getUpdatedTimestamp';
 import { getSourceKind, getSourceName } from '../utils/getSource';
 import { getAttemptedVersion, getVersion } from '../utils/getVersion';
 import { findHelmChartName } from '../utils/findHelmChartName';
+import { MimirWorkloadMetric } from '../../hooks/useMimirWorkloads';
+import { findTargetNamespace } from '../utils/findTargetNamespace';
 
 export type DeploymentData = {
   installationName: string;
@@ -25,6 +27,7 @@ export type DeploymentData = {
   clusterType?: string;
   name: string;
   namespace?: string;
+  targetNamespace?: string;
   version: string;
   attemptedVersion: string;
   status?: string;
@@ -36,6 +39,9 @@ export type DeploymentData = {
   labels?: string[];
   entity?: Entity;
   app?: string;
+  replicaStatus?: { desired: number; ready: number };
+  kubeLabels?: Record<string, string>;
+  rawMetrics?: MimirWorkloadMetric[];
 };
 
 export function collectDeploymentData({
@@ -62,6 +68,7 @@ export function collectDeploymentData({
     clusterType: findTargetClusterType(deployment),
     name: deployment.getName(),
     namespace: deployment.getNamespace(),
+    targetNamespace: findTargetNamespace(deployment),
     version: formatVersion(version ?? ''),
     attemptedVersion: formatVersion(attemptedVersion ?? ''),
     status: getAggregatedStatus(deployment),

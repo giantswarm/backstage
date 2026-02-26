@@ -1,7 +1,6 @@
 import { FacetFilter } from '@giantswarm/backstage-plugin-ui-react';
 import { ClusterTypes } from '../../../clusters/utils';
 import { DeploymentData } from '../../DeploymentsDataProvider';
-import { APP_VALUE, HELM_RELEASE_VALUE } from './KindPicker/KindPicker';
 import {
   MC_VALUE,
   WC_VALUE,
@@ -15,9 +14,7 @@ export class KindFilter implements FacetFilter {
       return true;
     }
 
-    const kind = item.kind === 'app' ? APP_VALUE : HELM_RELEASE_VALUE;
-
-    return this.values.includes(kind);
+    return this.values.includes(item.kind);
   }
 
   toQueryValue(): string[] {

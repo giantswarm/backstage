@@ -1,4 +1,4 @@
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { RouteRef, useRouteRef } from '@backstage/frontend-plugin-api';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
@@ -19,6 +19,22 @@ import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
 import { stringifyEntityRef } from '@backstage/catalog-model';
+import { useDetailsPane } from '../../hooks';
+import { WORKLOAD_DETAILS_PANE_ID } from '../WorkloadDetailsPane';
+
+const KIND_LABELS: Record<string, string> = {
+  app: 'App',
+  helmrelease: 'HelmRelease',
+  deployment: 'Deployment',
+  statefulset: 'StatefulSet',
+  daemonset: 'DaemonSet',
+};
+
+const NATIVE_WORKLOAD_KINDS = new Set([
+  'deployment',
+  'statefulset',
+  'daemonset',
+]);
 
 export const DeploymentColumns = {
   app: 'entityRef',
@@ -31,6 +47,7 @@ export const DeploymentColumns = {
   source: 'source',
   chartName: 'chartName',
   version: 'version',
+  replicas: 'replicas',
   updated: 'updated',
   status: 'status',
 } as const;
@@ -56,6 +73,31 @@ export const getInitialColumns = ({
       highlight: true,
       defaultSort: 'asc',
       render: row => {
+        if (NATIVE_WORKLOAD_KINDS.has(row.kind)) {
+          const WorkloadLinkWrapper = () => {
+            const location = useLocation();
+            const { getRoute } = useDetailsPane(WORKLOAD_DETAILS_PANE_ID);
+            const to = getRoute(location.pathname, {
+              installationName: row.installationName,
+              apiVersion: row.apiVersion,
+              kind: row.kind,
+              namespace: row.namespace,
+              name: row.name,
+              clusterName: row.clusterName,
+            });
+
+            return (
+              <Link component={RouterLink} to={to}>
+                <Typography variant="inherit" noWrap>
+                  {row.name}
+                </Typography>
+              </Link>
+            );
+          };
+
+          return <WorkloadLinkWrapper />;
+        }
+
         const LinkWrapper = () => {
           const routeLink = useRouteRef(deploymentDetailsRouteRef)!;
           return (
@@ -146,7 +188,7 @@ export const getInitialColumns = ({
       title: 'Type',
       field: DeploymentColumns.kind,
       render: row => {
-        const label = row.kind === 'app' ? 'App' : 'HelmRelease';
+        const label = KIND_LABELS[row.kind] ?? row.kind;
 
         return (
           <Typography variant="inherit" noWrap>
@@ -184,6 +226,18 @@ export const getInitialColumns = ({
       title: 'Version',
       field: DeploymentColumns.version,
       render: row => {
+        if (!row.version) {
+          return <NotAvailable />;
+        }
+
+        if (NATIVE_WORKLOAD_KINDS.has(row.kind)) {
+          return (
+            <Typography variant="inherit" noWrap>
+              {row.version}
+            </Typography>
+          );
+        }
+
         return (
           <Box maxWidth={200}>
             <Version
@@ -197,6 +251,27 @@ export const getInitialColumns = ({
         );
       },
       customSort: semverCompareSort(row => row.version),
+    },
+    {
+      title: 'Replicas',
+      field: DeploymentColumns.replicas,
+      hidden: true,
+      render: row => {
+        if (!row.replicaStatus) {
+          return <NotAvailable />;
+        }
+
+        return (
+          <Typography variant="inherit" noWrap>
+            {row.replicaStatus.ready}/{row.replicaStatus.desired}
+          </Typography>
+        );
+      },
+      ...sortAndFilterOptions(row =>
+        row.replicaStatus
+          ? `${row.replicaStatus.ready}/${row.replicaStatus.desired}`
+          : '',
+      ),
     },
     {
       title: 'Updated',

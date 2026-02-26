@@ -6,6 +6,7 @@ export * from './ContentRow';
 export * from './DateComponent';
 export * from './ErrorStatus';
 export * from './ExternalLink';
+export * from './JsonHighlight';
 export * from './MultiplePicker';
 export * from './MultipleSelect';
 export * from './NotAvailable';
