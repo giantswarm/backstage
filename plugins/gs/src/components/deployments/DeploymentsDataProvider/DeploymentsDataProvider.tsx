@@ -48,7 +48,6 @@ export type DeploymentsData = FiltersData<DefaultDeploymentFilters> & {
   data: DeploymentData[];
   filteredData: DeploymentData[];
   isLoading: boolean;
-  isLoadingWorkloads: boolean;
   retry: () => void;
   setActiveInstallations: (installations: string[]) => void;
 };
@@ -110,7 +109,10 @@ export const DeploymentsDataProvider = ({
     useMimirWorkloads({ installations: activeInstallations });
 
   const isLoading =
-    isLoadingApps || isLoadingHelmReleases || isLoadingOCIRepositories;
+    isLoadingApps ||
+    isLoadingHelmReleases ||
+    isLoadingOCIRepositories ||
+    isLoadingMimirWorkloads;
 
   const errors = useMemo(() => {
     return [...appErrors, ...helmReleaseErrors, ...ociRepositoryErrors];
@@ -193,7 +195,6 @@ export const DeploymentsDataProvider = ({
       data: deploymentsData,
       filteredData: filteredData,
       isLoading,
-      isLoadingWorkloads: isLoadingMimirWorkloads,
       retry,
       setActiveInstallations,
 
@@ -205,7 +206,6 @@ export const DeploymentsDataProvider = ({
     deploymentsData,
     filters,
     isLoading,
-    isLoadingMimirWorkloads,
     queryParameters,
     retry,
     updateFilters,
