@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.12.0
+
+### Minor Changes
+
+- 668ab64: Migrate GS plugin to New Frontend System (NFS) with PageBlueprint, NavItemBlueprint, and ApiBlueprint. Scaffolder field extensions remain on a temporary legacy compat plugin.
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+
+### Patch Changes
+
+- Updated dependencies [ebd466f]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.3.0
+  - @giantswarm/backstage-plugin-kubernetes-react@0.13.0
+  - @giantswarm/backstage-plugin-ui-react@0.8.0
+
 ## 0.11.1
 
 ### Patch Changes

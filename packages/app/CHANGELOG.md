@@ -1,5 +1,37 @@
 # app
 
+## 0.31.0
+
+### Minor Changes
+
+- 668ab64: Migrate GS plugin to New Frontend System (NFS) with PageBlueprint, NavItemBlueprint, and ApiBlueprint. Scaffolder field extensions remain on a temporary legacy compat plugin.
+- ad5bd10: Migrate icons, sign-in page, and feature flags from legacy `convertLegacyAppOptions` to NFS extensions. Icons use `IconBundleBlueprint`, sign-in page uses `SignInPageBlueprint`, and feature flags use `createFrontendModule({ featureFlags })`. The `convertLegacyAppOptions` compat bridge is now fully removed.
+- 915083b: Migrate routes from legacy FlatRoutes to NFS PageBlueprint overrides. Upstream NFS plugins now provide pages directly, with custom override modules for home, catalog, search, and user settings pages.
+- 915083b: Remove EntityKubernetesContent and show-kubernetes-resources feature flag from entity page.
+- 2f4aec1: Migrate app-level APIs from legacy createApiFactory to NFS ApiBlueprint modules. All 7 core API overrides (error reporter, analytics, discovery, fetch, SCM integrations, SCM auth, GitHub auth) are now registered via `createFrontendModule({ pluginId: 'app' })` in `appModules.tsx`, replacing the legacy `apis.ts`.
+- 915083b: Remove convertLegacyAppRoot compat bridge and migrate sidebar to NFS NavContentBlueprint.
+- 915083b: Replace GSFeatureEnabled with NFS config-based extension toggling. Page and nav-item blueprints are now disabled by default and enabled via `app.extensions` in app-config.yaml. Delete FeatureEnabled and MainMenu components from gs plugin.
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+- d8aa6f6: Migrate scaffolder to NFS: convert field extensions to FormFieldBlueprint, replace legacy scaffolder route with NFS page override, and remove temporary gsScaffolderPlugin.
+
+### Patch Changes
+
+- ebd466f: Fix API_FACTORY_CONFLICT errors by migrating custom API overrides to NFS frontend modules.
+- Updated dependencies [668ab64]
+- Updated dependencies [cb36dac]
+- Updated dependencies [915083b]
+- Updated dependencies [ebd466f]
+- Updated dependencies [d8aa6f6]
+- Updated dependencies [4ef43b2]
+- Updated dependencies [0a0bea4]
+  - @giantswarm/backstage-plugin-gs@0.56.0
+  - @giantswarm/backstage-plugin-flux-react@0.12.0
+  - @giantswarm/backstage-plugin-ai-chat@0.9.0
+  - @giantswarm/backstage-plugin-flux@0.8.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.3.0
+  - @giantswarm/backstage-plugin-error-reporter-react@0.3.0
+  - @giantswarm/backstage-plugin-kubernetes-react@0.13.0
+
 ## 0.30.2
 
 ### Patch Changes

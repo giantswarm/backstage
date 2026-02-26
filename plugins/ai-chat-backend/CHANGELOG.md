@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.8.0
+
+### Minor Changes
+
+- 06dc087: Add support for Azure OpenAI
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+
+### Patch Changes
+
+- d6fda46: Truncate generated tool name to 64 characters
+- cb36dac: Fix config visibility annotations to prevent sensitive backend configuration from being exposed to the frontend.
+
 ## 0.7.0
 
 ### Minor Changes

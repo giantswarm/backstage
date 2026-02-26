@@ -1,5 +1,24 @@
 # backend
 
+## 0.16.0
+
+### Minor Changes
+
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+
+### Patch Changes
+
+- Updated dependencies [d6fda46]
+- Updated dependencies [06dc087]
+- Updated dependencies [cb36dac]
+- Updated dependencies [ebd466f]
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.8.0
+  - @internal/backend-common@0.4.0
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.13.0
+  - @giantswarm/backstage-plugin-gs-backend@0.5.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.11.0
+  - @giantswarm/backstage-plugin-techdocs-backend-module-gs@0.10.0
+
 ## 0.15.2
 
 ### Patch Changes

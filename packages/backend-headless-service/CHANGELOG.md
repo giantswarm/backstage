@@ -1,5 +1,18 @@
 # backend-headless-service
 
+## 0.6.0
+
+### Minor Changes
+
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+
+### Patch Changes
+
+- Updated dependencies [ebd466f]
+  - @internal/backend-common@0.4.0
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.13.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.11.0
+
 ## 0.5.1
 
 ### Patch Changes

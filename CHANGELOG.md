@@ -31,6 +31,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Remove convertLegacyAppRoot and convertLegacyAppOptions compat bridges.
 - Remove FeatureEnabled and MainMenu components from GS plugin.
 
+See [./docs/releases/v0.110.0-changelog.md](./docs/releases/v0.110.0-changelog.md) for more information.
+
 ## [0.109.0] - 2026-02-24
 
 ### Added

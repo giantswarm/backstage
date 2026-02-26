@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.8.0
+
+### Minor Changes
+
+- ebd466f: Update Backstage dependencies from 1.47.3 to 1.48.2.
+
 ## 0.7.3
 
 ### Patch Changes
