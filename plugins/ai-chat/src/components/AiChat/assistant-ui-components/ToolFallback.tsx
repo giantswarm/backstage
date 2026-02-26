@@ -4,17 +4,12 @@ import CheckIcon from '@material-ui/icons/Check';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import LoopIcon from '@material-ui/icons/Loop';
 import HighlightOffIcon from '@material-ui/icons/HighlightOff';
-import { Collapse, makeStyles, useTheme } from '@material-ui/core';
+import { Collapse, makeStyles } from '@material-ui/core';
 import {
   type ToolCallMessagePartStatus,
   type ToolCallMessagePartComponent,
 } from '@assistant-ui/react';
-import LightAsync from 'react-syntax-highlighter/dist/esm/light-async';
-import json from 'react-syntax-highlighter/dist/esm/languages/hljs/json';
-import stackoverflowDark from 'react-syntax-highlighter/dist/esm/styles/hljs/stackoverflow-dark';
-import stackoverflowLight from 'react-syntax-highlighter/dist/esm/styles/hljs/stackoverflow-light';
-
-LightAsync.registerLanguage('json', json);
+import { JsonHighlight } from '@giantswarm/backstage-plugin-ui-react';
 
 const ANIMATION_DURATION = 200;
 
@@ -266,25 +261,6 @@ function ToolFallbackContent({
   );
 }
 
-function JsonHighlight({ text }: { text: string }) {
-  const classes = useStyles();
-  const theme = useTheme();
-  const style =
-    theme.palette.type === 'dark' ? stackoverflowDark : stackoverflowLight;
-
-  return (
-    <LightAsync
-      language="json"
-      style={style}
-      wrapLongLines
-      customStyle={{ margin: 0, padding: 0, background: 'none' }}
-      codeTagProps={{ className: classes.codeBlock }}
-    >
-      {text}
-    </LightAsync>
-  );
-}
-
 function ToolFallbackArgs({
   argsText,
   className,
@@ -301,7 +277,12 @@ function ToolFallbackArgs({
       className={`${classes.args} ${className || ''}`}
     >
       <p className={classes.resultHeader}>Parameters:</p>
-      <JsonHighlight text={argsText} />
+      <JsonHighlight
+        customStyle={{ margin: 0, padding: 0, background: 'none' }}
+        codeTagProps={{ className: classes.codeBlock }}
+      >
+        {argsText}
+      </JsonHighlight>
     </div>
   );
 }
@@ -325,7 +306,12 @@ function ToolFallbackResult({
       className={`${classes.result} ${className || ''}`}
     >
       <p className={classes.resultHeader}>Result:</p>
-      <JsonHighlight text={text} />
+      <JsonHighlight
+        customStyle={{ margin: 0, padding: 0, background: 'none' }}
+        codeTagProps={{ className: classes.codeBlock }}
+      >
+        {text}
+      </JsonHighlight>
     </div>
   );
 }
