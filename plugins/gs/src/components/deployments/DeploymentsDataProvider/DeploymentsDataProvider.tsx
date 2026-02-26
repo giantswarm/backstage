@@ -168,8 +168,13 @@ export const DeploymentsDataProvider = ({
       return acc;
     }, []);
 
+    // Filter Mimir workloads by deploymentNames (same as k8s resources above)
+    const filteredMimirWorkloads = deploymentNames
+      ? mimirWorkloads.filter(w => deploymentNames.includes(w.name))
+      : mimirWorkloads;
+
     // Merge Mimir workloads: enrich CRD entries with metrics, keep unmatched as standalone
-    const mimirData = mimirWorkloads.map(workloadToDeploymentData);
+    const mimirData = filteredMimirWorkloads.map(workloadToDeploymentData);
 
     return mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
   }, [
