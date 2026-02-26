@@ -5,6 +5,7 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import WarningIcon from '@material-ui/icons/Warning';
 import * as yaml from 'js-yaml';
 import Ajv from 'ajv/dist/2020';
+import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import type { YamlValuesValidationProps } from './schema';
 import { useHelmChartValuesSchema } from '../../hooks';
 import { get } from 'lodash';
@@ -145,38 +146,66 @@ export const YamlValuesValidation = ({
   );
 
   const valuesFields = uiSchema?.['ui:options']?.valuesFields;
+  const secretValuesKeys = uiSchema?.['ui:options']?.secretValuesKeys;
 
   const { schema: jsonSchema } = useHelmChartValuesSchema(chartRef, chartTag);
+  const { secrets } = useTemplateSecrets();
 
   const values = useMemo(() => {
-    if (!valuesFields) {
+    if (!valuesFields && !secretValuesKeys) {
       return {};
     }
 
     const allFormData = (formContext.formData as Record<string, any>) ?? {};
 
     let allValues = {};
-    for (const field of valuesFields) {
-      if (field) {
-        const fieldValue = get(allFormData, field) ?? '';
-        let valuesObj: any = {};
 
-        // Parse values
-        if (fieldValue) {
-          try {
-            valuesObj = yaml.load(fieldValue) || {};
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error(err);
+    // Parse values from regular form fields
+    if (valuesFields) {
+      for (const field of valuesFields) {
+        if (field) {
+          const fieldValue = get(allFormData, field) ?? '';
+          let valuesObj: any = {};
+
+          if (fieldValue) {
+            try {
+              valuesObj = yaml.load(fieldValue) || {};
+            } catch {
+              // Log only the field name, not the content, to avoid leaking secrets
+              // eslint-disable-next-line no-console
+              console.warn('YAML parse error in field:', field);
+            }
           }
-        }
 
-        allValues = helmMerge(allValues, valuesObj);
+          allValues = helmMerge(allValues, valuesObj);
+        }
+      }
+    }
+
+    // Parse values from secrets context
+    if (secretValuesKeys) {
+      for (const key of secretValuesKeys) {
+        if (key) {
+          const secretValue = secrets[key] ?? '';
+          let valuesObj: any = {};
+
+          if (secretValue) {
+            try {
+              valuesObj = yaml.load(secretValue) || {};
+            } catch {
+              // Log only the key name, not the content, to avoid leaking secrets
+              // eslint-disable-next-line no-console
+              console.warn('YAML parse error in secret values key:', key);
+            }
+          }
+
+          allValues = helmMerge(allValues, valuesObj);
+        }
       }
     }
 
     return allValues;
-  }, [formContext.formData, valuesFields]);
+  }, [formContext.formData, valuesFields, secretValuesKeys, secrets]);
 
   const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
 
@@ -216,7 +245,11 @@ export const YamlValuesValidation = ({
       {title && <FormLabel>{title}</FormLabel>}
 
       <YamlValuesValidationResult
-        valuesFields={valuesFields}
+        valuesFields={
+          valuesFields || secretValuesKeys
+            ? [...(valuesFields ?? []), ...(secretValuesKeys ?? [])]
+            : undefined
+        }
         validationWarnings={validationWarnings}
       />
 
