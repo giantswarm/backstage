@@ -20,27 +20,27 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/anthropic@npm:^3.0.23":
-  version: 3.0.47
-  resolution: "@ai-sdk/anthropic@npm:3.0.47"
+  version: 3.0.48
+  resolution: "@ai-sdk/anthropic@npm:3.0.48"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.8"
     "@ai-sdk/provider-utils": "npm:4.0.15"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/5ef89958b11c06ea107980e645a01b1b1b81392fde5dcdab1d4752c52bed52adfb570567fa02543333c1b2ae38c11bcdad05f6b201ecd3a6a0072525f4de935e
+  checksum: 10c0/c06365a732da3bd2a27765630dd410420f83390f51783068533c9509026d0de9aafd7c746120c27bce4b946fb3cf4f3c54b96c44e9e44a8a465ecd830fd68246
   languageName: node
   linkType: hard
 
 "@ai-sdk/azure@npm:^3.0.34":
-  version: 3.0.35
-  resolution: "@ai-sdk/azure@npm:3.0.35"
+  version: 3.0.37
+  resolution: "@ai-sdk/azure@npm:3.0.37"
   dependencies:
-    "@ai-sdk/openai": "npm:3.0.34"
+    "@ai-sdk/openai": "npm:3.0.36"
     "@ai-sdk/provider": "npm:3.0.8"
     "@ai-sdk/provider-utils": "npm:4.0.15"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/d25795ef529842eaf365437dad6e43e6be9270b71e05a25a8ad88b1e57ffb7595bb1a178cdc1d67934d06b333ce4b88a35e13a0bddaf898e6d954b6c3429fe76
+  checksum: 10c0/3386f699104dba5be3f59bcfede412ca70722086dca1b60fac20cf0bc3d91d7b200cffe63047335699f0dc23c9e7169fed63e86c31348c03843b482937539e71
   languageName: node
   linkType: hard
 
@@ -83,15 +83,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/openai@npm:3.0.34, @ai-sdk/openai@npm:^3.0.19":
-  version: 3.0.34
-  resolution: "@ai-sdk/openai@npm:3.0.34"
+"@ai-sdk/openai@npm:3.0.36, @ai-sdk/openai@npm:^3.0.19":
+  version: 3.0.36
+  resolution: "@ai-sdk/openai@npm:3.0.36"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.8"
     "@ai-sdk/provider-utils": "npm:4.0.15"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/c490681ac4552b53ba51efcbfd0cf2f867ad215b85e3bb2818a3133fdf89ebb27f9d336115887bf9747e0bffe27d8563589920771e839aa46b49abf8a3c85d5b
+  checksum: 10c0/cf0f9d0b6d2d138af30601d26d8a957a1f18baa2a7441dc1c0ebeb9e61b107d900cd091545670653704954556002dd01733ca8316923d67bb2ed6e296610bc5e
   languageName: node
   linkType: hard
 
