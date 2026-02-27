@@ -38,28 +38,35 @@ const formatAccountIdForDisplay = (id: string) => {
 type AccountProps = {
   accountId: string;
   accountUrl?: string;
+  colored?: boolean;
 };
 
-export const Account = ({ accountId, accountUrl }: AccountProps) => {
+export const Account = ({ accountId, accountUrl, colored = true }: AccountProps) => {
   const classes = useStyles();
 
   const formattedAccountId = formatAccountIdForDisplay(accountId);
 
-  const accountComponent = (
-    <Typography
-      variant="body2"
-      className={classes.accountId}
-      data-formatted={formattedAccountId}
-    >
-      {accountId}
+  const accountComponent = colored ? (
+    <ColorWrapper str={accountId}>
+      <Typography
+        variant="body2"
+        className={classes.accountId}
+        data-formatted={formattedAccountId}
+      >
+        {accountId}
+      </Typography>
+    </ColorWrapper>
+  ) : (
+    <Typography variant="body2">
+      {formattedAccountId}
     </Typography>
   );
 
   return accountUrl ? (
     <ExternalLink href={accountUrl}>
-      <ColorWrapper str={accountId}>{accountComponent}</ColorWrapper>
+      {accountComponent}
     </ExternalLink>
   ) : (
-    <ColorWrapper str={accountId}>{accountComponent}</ColorWrapper>
+    accountComponent
   );
 };
