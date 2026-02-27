@@ -15,6 +15,9 @@ spec:
       component: backstage
   template:
     metadata:
+      annotations:
+          checksum/configmaps: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum | quote }}
+          checksum/secrets: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum | quote }}
       labels:
         app: {{ .Values.name }}
         component: backstage
