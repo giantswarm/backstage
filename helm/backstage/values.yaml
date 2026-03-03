@@ -70,7 +70,7 @@ circleci:
   # -- CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var)
   apiToken: ''
 
-# @schema additionalProperties:true
+# @schema additionalProperties:{"type":"object","properties":{"clientID":{"type":"string"},"clientSecret":{"type":"string"}},"required":["clientID","clientSecret"]}
 # -- Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars
 dexAuthCredentials: {}
 #  example:
@@ -200,7 +200,7 @@ backstage:
   # -- Additional command arguments passed to the Backstage container
   args: []
 
-  # @schema item:object
+  # @schema item:object;itemProperties:{"filename":{"type":"string"},"configMapRef":{"type":"string"}}
   # -- Extra app configuration files to inline into command arguments, each referencing a ConfigMap
   extraAppConfig: []
 
@@ -208,7 +208,7 @@ backstage:
   # -- Inline Backstage app configuration that generates a ConfigMap automatically. Do not use for sensitive data
   appConfig: {}
 
-  # @schema item:object
+  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.EnvVar
   # -- Extra environment variables for the Backstage container
   extraEnvVars: []
 
@@ -220,11 +220,11 @@ backstage:
   # -- Names of existing Secrets to mount as envFrom sources in the Backstage container
   extraEnvVarsSecrets: []
 
-  # @schema item:object
+  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.VolumeMount
   # -- Additional volume mounts for the Backstage container
   extraVolumeMounts: []
 
-  # @schema item:object
+  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Volume
   # -- Additional volumes for the Backstage pod
   extraVolumes: []
 
@@ -236,7 +236,7 @@ ingress:
   # @schema type:string
   # -- Ingress class name
   className: nginx
-  # @schema additionalProperties:true
+  # @schema additionalProperties:{"type":"string"}
   # -- Annotations applied to the Ingress resource
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-giantswarm
@@ -257,16 +257,16 @@ route:
   # @schema type:string
   # -- Route name (defaults to .Values.name)
   name: ''
-  # @schema additionalProperties:true
+  # @schema additionalProperties:{"type":"string"}
   # -- Annotations applied to the route resource
   annotations: {}
-  # @schema additionalProperties:true
+  # @schema additionalProperties:{"type":"string"}
   # -- Labels applied to the route resource
   labels: {}
   # @schema item:string
   # -- Hostnames for the route (supports Go templating)
   hostnames: []
-  # @schema item:object
+  # @schema item:object;itemProperties:{"name":{"type":"string"},"namespace":{"type":"string"},"sectionName":{"type":"string"}}
   # -- Parent Gateway references that this route attaches to
   parentRefs: []
   # @schema type:array
@@ -286,10 +286,10 @@ route:
     # @schema type:boolean
     # -- Enable the SecurityPolicy resource
     enabled: false
-    # @schema additionalProperties:true
+    # @schema additionalProperties:{"type":"string"}
     # -- Labels applied to the SecurityPolicy resource
     labels: {}
-    # @schema additionalProperties:true
+    # @schema additionalProperties:{"type":"string"}
     # -- Annotations applied to the SecurityPolicy resource
     annotations: {}
     # @schema type:object;additionalProperties:true
@@ -311,6 +311,6 @@ route:
     # -- Authorization rules for request-level access control
     authorization: {}
 
-# @schema item:object
+# @schema item:object;itemProperties:{"keyId":{"type":"string"},"publicKey":{"type":"string"},"privateKey":{"type":"string"}}
 # -- Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/
 pluginKeys: []

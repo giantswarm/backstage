@@ -67,15 +67,22 @@
                     "description": "Extra app configuration files to inline into command arguments, each referencing a ConfigMap",
                     "items": {
                         "type": "object",
-                        "additionalProperties": false
+                        "additionalProperties": false,
+                        "properties": {
+                            "configMapRef": {
+                                "type": "string"
+                            },
+                            "filename": {
+                                "type": "string"
+                            }
+                        }
                     }
                 },
                 "extraEnvVars": {
                     "type": "array",
                     "description": "Extra environment variables for the Backstage container",
                     "items": {
-                        "type": "object",
-                        "additionalProperties": false
+                        "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.EnvVar"
                     }
                 },
                 "extraEnvVarsCM": {
@@ -96,16 +103,14 @@
                     "type": "array",
                     "description": "Additional volume mounts for the Backstage container",
                     "items": {
-                        "type": "object",
-                        "additionalProperties": false
+                        "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.VolumeMount"
                     }
                 },
                 "extraVolumes": {
                     "type": "array",
                     "description": "Additional volumes for the Backstage pod",
                     "items": {
-                        "type": "object",
-                        "additionalProperties": false
+                        "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Volume"
                     }
                 }
             }
@@ -169,7 +174,22 @@
         "dexAuthCredentials": {
             "type": "object",
             "description": "Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars",
-            "additionalProperties": true
+            "additionalProperties": {
+                "type": "object",
+                "required": [
+                    "clientID",
+                    "clientSecret"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "clientID": {
+                        "type": "string"
+                    },
+                    "clientSecret": {
+                        "type": "string"
+                    }
+                }
+            }
         },
         "externalAccess": {
             "type": "object",
@@ -275,7 +295,6 @@
                 "annotations": {
                     "type": "object",
                     "description": "Annotations applied to the Ingress resource",
-                    "additionalProperties": true,
                     "properties": {
                         "cert-manager.io/cluster-issuer": {
                             "type": "string"
@@ -286,6 +305,9 @@
                         "nginx.ingress.kubernetes.io/force-ssl-redirect": {
                             "type": "string"
                         }
+                    },
+                    "additionalProperties": {
+                        "type": "string"
                     }
                 },
                 "className": {
@@ -330,7 +352,18 @@
             "description": "Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/",
             "items": {
                 "type": "object",
-                "additionalProperties": false
+                "additionalProperties": false,
+                "properties": {
+                    "keyId": {
+                        "type": "string"
+                    },
+                    "privateKey": {
+                        "type": "string"
+                    },
+                    "publicKey": {
+                        "type": "string"
+                    }
+                }
             }
         },
         "port": {
@@ -410,7 +443,9 @@
                 "annotations": {
                     "type": "object",
                     "description": "Annotations applied to the route resource",
-                    "additionalProperties": true
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "enabled": {
                     "type": "boolean",
@@ -441,7 +476,9 @@
                 "labels": {
                     "type": "object",
                     "description": "Labels applied to the route resource",
-                    "additionalProperties": true
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "matches": {
                     "type": "array",
@@ -474,7 +511,18 @@
                     "description": "Parent Gateway references that this route attaches to",
                     "items": {
                         "type": "object",
-                        "additionalProperties": false
+                        "additionalProperties": false,
+                        "properties": {
+                            "name": {
+                                "type": "string"
+                            },
+                            "namespace": {
+                                "type": "string"
+                            },
+                            "sectionName": {
+                                "type": "string"
+                            }
+                        }
                     }
                 },
                 "securityPolicy": {
@@ -485,7 +533,9 @@
                         "annotations": {
                             "type": "object",
                             "description": "Annotations applied to the SecurityPolicy resource",
-                            "additionalProperties": true
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         },
                         "authorization": {
                             "type": "object",
@@ -519,7 +569,9 @@
                         "labels": {
                             "type": "object",
                             "description": "Labels applied to the SecurityPolicy resource",
-                            "additionalProperties": true
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         },
                         "oidc": {
                             "type": "object",
