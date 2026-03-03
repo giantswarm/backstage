@@ -70,6 +70,10 @@ circleci:
   # -- CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var)
   apiToken: ''
 
+# @schema type:object;additionalProperties:true
+# -- Bitnami common library chart settings (subchart dependency)
+common: {}
+
 # @schema additionalProperties:{"type":"object","properties":{"clientID":{"type":"string"},"clientSecret":{"type":"string"}},"required":["clientID","clientSecret"]}
 # -- Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars
 dexAuthCredentials: {}

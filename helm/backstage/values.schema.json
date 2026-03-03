@@ -137,6 +137,11 @@
                 }
             }
         },
+        "common": {
+            "type": "object",
+            "description": "Bitnami common library chart settings (subchart dependency)",
+            "additionalProperties": true
+        },
         "database": {
             "type": "object",
             "description": "Database configuration",
