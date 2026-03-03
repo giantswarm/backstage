@@ -1,0 +1,21 @@
+values:
+  - helm/backstage/values.yaml
+
+draft: 2020
+indent: 4
+output: helm/backstage/values.schema.json
+
+bundle: false
+
+k8sSchemaURL: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/refs/heads/master/{{ .K8sSchemaVersion }}/
+k8sSchemaVersion: "v1.33.1"
+
+useHelmDocs: true
+
+noAdditionalProperties: true
+
+schemaRoot:
+  id: https://schema.giantswarm.io/backstage/v0.0.1
+  title: Backstage Helm Chart Values
+  description: Schema for Giant Swarm's Backstage Helm chart values
+  additionalProperties: false
