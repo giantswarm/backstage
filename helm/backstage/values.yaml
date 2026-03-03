@@ -1,263 +1,320 @@
+# yaml-language-server: $schema=values.schema.json
+
+# @schema type:string
+# -- Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.)
 name: backstage
 
+# -- Backstage service discovery settings
 backstageDiscovery:
-  # Value to set for the backstage.io/kubernetes-id label in resources, for discovery in Backstage.
+  # @schema type:string
+  # -- Value to set for the backstage.io/kubernetes-id label on all resources, used for entity discovery in Backstage
   kubernetesId: backstage
 
+# @schema type:integer;minimum:0
+# -- User ID for the pod security context (runAsUser)
 userID: 1000
+# @schema type:integer;minimum:0
+# -- Group ID for the pod security context (runAsGroup)
 groupID: 1000
 
+# -- Container image settings
 image:
+  # @schema type:string
+  # -- Container name in the pod spec
   name: backstage
+  # @schema type:string
+  # -- Image repository path (prepended with registry.domain to form the full image reference)
   repository: giantswarm/backstage
 
+# @schema type:integer;minimum:1;maximum:65535
+# -- Container port for the Backstage backend, also used for the Service and Ingress backend
 port: 7007
 
+# -- Container image registry settings
 registry:
+  # @schema type:string
+  # -- Container image registry domain prepended to image.repository
   domain: gsoci.azurecr.io
 
+# -- Resource requests, limits, and autoscaler settings for the Backstage container
 resources:
+  # -- Vertical Pod Autoscaler settings
   verticalPodAutoscaler:
+    # @schema type:boolean
+    # -- Enable the VerticalPodAutoscaler resource for automatic resource adjustment
     enabled: true
+  # -- CPU and memory resource requests
   requests:
+    # @schema type:string
+    # -- CPU resource request for the Backstage container
     cpu: 20m
+    # @schema type:string
+    # -- Memory resource request for the Backstage container
     memory: 250Mi
+  # -- CPU and memory resource limits
   limits:
+    # @schema type:string
+    # -- CPU resource limit for the Backstage container
     cpu: 500m
+    # @schema type:string
+    # -- Memory resource limit for the Backstage container
     memory: 600Mi
 
+# @schema type:string
+# -- Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var)
 authSessionSecret: ''
 
+# -- CircleCI integration settings
 circleci:
+  # @schema type:string
+  # -- CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var)
   apiToken: ''
 
+# @schema type:object;additionalProperties:true
+# -- Bitnami common library chart settings (subchart dependency)
+common: {}
+
+# @schema additionalProperties:{"type":"object","properties":{"clientID":{"type":"string"},"clientSecret":{"type":"string"}},"required":["clientID","clientSecret"]}
+# -- Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars
 dexAuthCredentials: {}
 #  example:
 #    clientID: "example"
 #    clientSecret: "example"
 
+# -- GitHub OAuth credentials for user authentication
 githubAuthCredentials:
+  # @schema type:string
+  # -- GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var)
   clientID: ''
+  # @schema type:string
+  # -- GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var)
   clientSecret: ''
 
+# -- GitHub App credentials for repository access and webhooks
 githubAppCredentials:
+  # @schema type:integer
+  # -- GitHub App ID
   appId: 0
+  # @schema type:string
+  # -- GitHub App webhook URL
   webhookUrl: ''
+  # @schema type:string
+  # -- GitHub App OAuth client ID
   clientId: ''
+  # @schema type:string
+  # -- GitHub App OAuth client secret
   clientSecret: ''
+  # @schema type:string
+  # -- GitHub App webhook secret
   webhookSecret: ''
+  # @schema type:string
+  # -- GitHub App private key (PEM format)
   privateKey: ''
 
+# -- Grafana integration settings
 grafana:
+  # @schema type:string
+  # -- Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var)
   apiToken: ''
 
+# -- Sentry error tracking settings
 sentry:
+  # -- Sentry settings for the frontend application
   app:
+    # @schema type:string
+    # -- Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var)
     dsn: ''
+  # -- Sentry settings for the backend service
   backend:
+    # @schema type:string
+    # -- Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var)
     dsn: ''
+  # @schema type:string
+  # -- Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var)
   reportURI: ''
 
+# -- TelemetryDeck analytics settings
 telemetrydeck:
+  # @schema type:string
+  # -- TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var)
   salt: ''
 
+# -- AWS credentials for S3 and other AWS service integrations
 aws:
+  # @schema type:string
+  # -- AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var)
   accessKeyID: ''
+  # @schema type:string
+  # -- AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var)
   secretAccessKey: ''
 
+# -- External access settings for programmatic API access
 externalAccess:
+  # @schema type:string
+  # -- Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var)
   mcpToken: ''
 
+# -- Anthropic AI provider settings
 anthropic:
+  # @schema type:string
+  # -- Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var)
   apiKey: ''
 
+# -- OpenAI provider settings
 openai:
+  # @schema type:string
+  # -- OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var)
   apiKey: ''
 
-# Allows to define the sharedConfig as a multiline string that generates a ConfigMap
-# automatically. Configuration defined here can be referenced in the main app configuration
-# with $include keyword.
-# E.g:
-# sharedConfig:
-#   gs:
-#     kubernetesVersions:
-#       '1.28':
-#         eolDate: '2024-10-28'
-#         minorVersion: '1.28'
+# @schema type:[object, string]
+# -- Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword
 sharedConfig: {}
 
-# Can be used to assign pods to the node pool. E.g. - giantswarm.io/machine-deployment: a1b2c
-# Docs - https://docs.giantswarm.io/advanced/node-pools/#assigning-workloads
+# @schema type:object;additionalProperties:true
+# -- Node selector labels to constrain pod scheduling to specific nodes
 nodeSelector: {}
 
+# -- Database configuration
 database:
-  # -- Database engine
-  # @schema
-  # default: sqlite
-  # enum: [sqlite,postgresql]
-  # @schema
+  # @schema enum:[sqlite, postgresql]
+  # -- Database engine to use
   engine: sqlite
 
-  # -- Settings for engine = "postgresql"
+  # -- Settings for the PostgreSQL database (only used when engine is "postgresql")
   postgresql:
-    # -- PostgreSQL cluster name suffix
-    # @schema
-    # default: cnpg
-    # @schema
+    # @schema type:string
+    # -- Suffix appended to the chart name to form the CNPG cluster resource name
     clusterNameSuffix: cnpg
 
-    # -- Size of the database volume
-    # @schema
-    # default: 5Gi
-    # @schema
+    # @schema type:string
+    # -- Persistent volume size for the PostgreSQL CNPG cluster
     storageSize: 5Gi
 
-    # -- PostgreSQL container image to use (.registry.domain will be prepended)
+    # @schema type:string
+    # -- PostgreSQL container image for the CNPG cluster (registry.domain is prepended)
     image: giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716
 
-# Upstream Backstage chart configuration
-# https://github.com/backstage/charts/blob/main/charts/backstage/values.yaml
-
-# -- Backstage parameters
-# @default -- See below
+# -- Backstage application parameters
 backstage:
-  # -- Backstage container command
+  # @schema item:string
+  # -- Container command to start the Backstage backend
   command: ['node', 'packages/backend']
 
-  # -- Backstage container command arguments
+  # @schema item:string
+  # -- Additional command arguments passed to the Backstage container
   args: []
 
-  # -- Extra app configuration files to inline into command arguments
+  # @schema item:object;itemProperties:{"filename":{"type":"string"},"configMapRef":{"type":"string"}}
+  # -- Extra app configuration files to inline into command arguments, each referencing a ConfigMap
   extraAppConfig: []
 
-  # Allows to define the appConfig as a multiline string that generates a ConfigMap
-  # automatically, not requiring to have it pre provisioned as with the extraAppConfig key.
-  # DO NOT USE if you need to put sensitive data in the appConfig.
-  # E.g:
-  # appConfig:
-  #   app:
-  #     baseUrl: https://somedomain.tld
-  # -- Generates ConfigMap and configures it in the Backstage pods
+  # @schema type:[object, string]
+  # -- Inline Backstage app configuration that generates a ConfigMap automatically. Do not use for sensitive data
   appConfig: {}
 
-  # -- Backstage container environment variables
+  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.EnvVar
+  # -- Extra environment variables for the Backstage container
   extraEnvVars: []
 
-  # -- Backstage container environment variables from existing ConfigMaps
+  # @schema item:string
+  # -- Names of existing ConfigMaps to mount as envFrom sources in the Backstage container
   extraEnvVarsCM: []
 
-  # -- Backstage container environment variables from existing Secrets
+  # @schema item:string
+  # -- Names of existing Secrets to mount as envFrom sources in the Backstage container
   extraEnvVarsSecrets: []
 
-  # -- Backstage container additional volume mounts
+  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.VolumeMount
+  # -- Additional volume mounts for the Backstage container
   extraVolumeMounts: []
 
-  # -- Backstage container additional volumes
+  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Volume
+  # -- Additional volumes for the Backstage pod
   extraVolumes: []
 
 # -- Traditional Ingress configuration
 ingress:
-  # -- Enable traditional Ingress resource
+  # @schema type:boolean
+  # -- Enable the Kubernetes Ingress resource for external HTTP access
   enabled: true
+  # @schema type:string
   # -- Ingress class name
   className: nginx
-  # -- Ingress annotations
+  # @schema additionalProperties:{"type":"string"}
+  # -- Annotations applied to the Ingress resource
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-giantswarm
     kubernetes.io/tls-acme: 'true'
     nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
-  # -- Hostnames for the Ingress
+  # @schema item:string
+  # -- Hostnames for the Ingress rules and TLS configuration
   hostnames: ['default-hostname']
 
 # -- Gateway API route configuration
 route:
-  # -- Enable Gateway API HTTPRoute
+  # @schema type:boolean
+  # -- Enable the Gateway API HTTPRoute resource
   enabled: false
-  # -- Route kind (HTTPRoute, GRPCRoute, TCPRoute, TLSRoute, UDPRoute)
+  # @schema enum:[HTTPRoute, GRPCRoute, TCPRoute, TLSRoute, UDPRoute]
+  # -- Route resource kind
   kind: HTTPRoute
+  # @schema type:string
   # -- Route name (defaults to .Values.name)
   name: ''
-  # -- Route annotations
+  # @schema additionalProperties:{"type":"string"}
+  # -- Annotations applied to the route resource
   annotations: {}
-  # -- Route labels
+  # @schema additionalProperties:{"type":"string"}
+  # -- Labels applied to the route resource
   labels: {}
-  # -- Hostnames for the route (supports templating)
-  # Example:
-  #   - backstage.example.com
+  # @schema item:string
+  # -- Hostnames for the route (supports Go templating)
   hostnames: []
-  # -- Parent Gateway references
-  # Example:
-  #   - name: giantswarm-default
-  #     namespace: envoy-gateway-system
+  # @schema item:object;itemProperties:{"name":{"type":"string"},"namespace":{"type":"string"},"sectionName":{"type":"string"}}
+  # -- Parent Gateway references that this route attaches to
   parentRefs: []
-  # -- Path matching rules
+  # @schema type:array
+  # -- Path matching rules for the route
   matches:
     - path:
         type: PathPrefix
         value: /
-  # -- Request/Response filters
+  # @schema type:array
+  # -- Request/Response filters applied to the route
   filters: []
-  # -- Additional custom rules
+  # @schema type:array
+  # -- Additional custom routing rules
   additionalRules: []
-  # -- Envoy Gateway SecurityPolicy configuration
-  # Note: This is specific to Envoy Gateway (gateway.envoyproxy.io/v1alpha1)
+  # -- Envoy Gateway SecurityPolicy configuration (gateway.envoyproxy.io/v1alpha1)
   securityPolicy:
-    # -- Enable SecurityPolicy resource
+    # @schema type:boolean
+    # -- Enable the SecurityPolicy resource
     enabled: false
-    # -- SecurityPolicy labels
+    # @schema additionalProperties:{"type":"string"}
+    # -- Labels applied to the SecurityPolicy resource
     labels: {}
-    # -- SecurityPolicy annotations
+    # @schema additionalProperties:{"type":"string"}
+    # -- Annotations applied to the SecurityPolicy resource
     annotations: {}
-    # -- Basic authentication (reference to htpasswd secret)
-    # Example:
-    #   users:
-    #     name: backstage-htpasswd
+    # @schema type:object;additionalProperties:true
+    # -- Basic authentication configuration (reference to htpasswd secret)
     basicAuth: {}
-    # -- CORS configuration
-    # Example:
-    #   allowOrigins:
-    #     - type: Exact
-    #       value: "https://example.com"
-    #   allowMethods:
-    #     - GET
-    #     - POST
-    #   allowHeaders:
-    #     - "Content-Type"
+    # @schema type:object;additionalProperties:true
+    # -- CORS (Cross-Origin Resource Sharing) policy configuration
     cors: {}
-    # -- JWT validation
-    # Example:
-    #   providers:
-    #     - name: example
-    #       issuer: "https://issuer.example.com"
-    #       audiences:
-    #         - backstage
+    # @schema type:object;additionalProperties:true
+    # -- JWT token validation configuration
     jwt: {}
-    # -- OIDC authentication
-    # Example:
-    #   provider:
-    #     issuer: "https://dex.example.com"
-    #     authorizationEndpoint: "https://dex.example.com/auth"
-    #     tokenEndpoint: "https://dex.example.com/token"
-    #     clientID: backstage
-    #     clientSecret:
-    #       name: backstage-oidc-secret
-    #   redirectURL: "https://backstage.example.com/oauth2/callback"
+    # @schema type:object;additionalProperties:true
+    # -- OIDC authentication provider configuration
     oidc: {}
-    # -- External authorization
-    # Example:
-    #   http:
-    #     backendRef:
-    #       name: ext-auth-service
-    #       port: 9001
+    # @schema type:object;additionalProperties:true
+    # -- External authorization service configuration
     extAuth: {}
-    # -- Authorization rules
-    # Example:
-    #   rules:
-    #     - action:
-    #         type: Deny
-    #       principal:
-    #         clientCIDRs:
-    #           - cidr: "0.0.0.0/0"
+    # @schema type:object;additionalProperties:true
+    # -- Authorization rules for request-level access control
     authorization: {}
 
+# @schema item:object;itemProperties:{"keyId":{"type":"string"},"publicKey":{"type":"string"},"privateKey":{"type":"string"}}
+# -- Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/
 pluginKeys: []
