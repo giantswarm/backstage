@@ -7,9 +7,6 @@ output: helm/backstage/values.schema.json
 
 bundle: false
 
-k8sSchemaURL: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/refs/heads/master/{{ .K8sSchemaVersion }}/
-k8sSchemaVersion: "v1.33.1"
-
 useHelmDocs: true
 
 noAdditionalProperties: true
