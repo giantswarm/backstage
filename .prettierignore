@@ -2,6 +2,7 @@ dist
 dist-types
 coverage
 helm/*/templates
+helm/backstage/values.schema.json
 .vscode
 .github
 .yarn
