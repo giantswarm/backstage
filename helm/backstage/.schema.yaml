@@ -15,7 +15,6 @@ useHelmDocs: true
 noAdditionalProperties: true
 
 schemaRoot:
-  id: https://schema.giantswarm.io/backstage/v0.0.1
   title: Backstage Helm Chart Values
   description: Schema for Giant Swarm's Backstage Helm chart values
   additionalProperties: false
