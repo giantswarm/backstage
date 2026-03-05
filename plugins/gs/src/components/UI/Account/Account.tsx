@@ -41,7 +41,11 @@ type AccountProps = {
   colored?: boolean;
 };
 
-export const Account = ({ accountId, accountUrl, colored = true }: AccountProps) => {
+export const Account = ({
+  accountId,
+  accountUrl,
+  colored = true,
+}: AccountProps) => {
   const classes = useStyles();
 
   const formattedAccountId = formatAccountIdForDisplay(accountId);
@@ -57,15 +61,11 @@ export const Account = ({ accountId, accountUrl, colored = true }: AccountProps)
       </Typography>
     </ColorWrapper>
   ) : (
-    <Typography variant="body2">
-      {formattedAccountId}
-    </Typography>
+    <Typography variant="body2">{formattedAccountId}</Typography>
   );
 
   return accountUrl ? (
-    <ExternalLink href={accountUrl}>
-      {accountComponent}
-    </ExternalLink>
+    <ExternalLink href={accountUrl}>{accountComponent}</ExternalLink>
   ) : (
     accountComponent
   );

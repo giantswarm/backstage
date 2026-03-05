@@ -63,8 +63,7 @@ export const AWSAccountField = () => {
     },
     {
       enabled:
-        !!identityRef &&
-        identityRef.kind === AWSClusterRoleIdentity.kind,
+        !!identityRef && identityRef.kind === AWSClusterRoleIdentity.kind,
     },
   );
 
@@ -89,8 +88,14 @@ export const AWSAccountField = () => {
   const errorMessage = awsClusterErrorMessage ?? identityErrorMessage;
 
   return (
-    <AsyncValue isLoading={isLoading} errorMessage={errorMessage} value={accountId}>
-      {value => <Account accountId={value} accountUrl={accountUrl} colored={false} />}
+    <AsyncValue
+      isLoading={isLoading}
+      errorMessage={errorMessage}
+      value={accountId}
+    >
+      {value => (
+        <Account accountId={value} accountUrl={accountUrl} colored={false} />
+      )}
     </AsyncValue>
   );
 };
