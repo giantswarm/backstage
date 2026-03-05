@@ -32,6 +32,8 @@ import {
 import { formatVersion } from '../../../../utils/helpers';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
+import { AWSAccountField } from './AWSAccountField';
+import { ClusterSwitch } from '../../ClusterSwitch';
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import {
   ControlPlane,
@@ -249,6 +251,19 @@ export function ClusterAboutCard() {
               )}
             </AboutFieldValue>
           </AboutField>
+
+          <ClusterSwitch
+            renderAWS={() => (
+              <AboutField label="AWS account" gridSizes={{ xs: 6, md: 4 }}>
+                <AboutFieldValue>
+                  <AWSAccountField />
+                </AboutFieldValue>
+              </AboutField>
+            )}
+            renderAzure={() => null}
+            renderVSphere={() => null}
+            renderVCD={() => null}
+          />
 
           <AboutField
             label="Organization"
