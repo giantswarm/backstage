@@ -222,6 +222,10 @@ export async function createRouter(
           }
         : undefined;
 
+      chatLogger.debug('Sending messages to API', {
+        messageCount: deduplicatedMessages.length,
+      });
+
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
@@ -251,7 +255,13 @@ export async function createRouter(
         onError({ error }) {
           chatLogger.error('Error during streaming:', error as Error);
         },
-        onStepFinish({ usage }) {
+        onStepFinish({ usage, finishReason, toolCalls }) {
+          chatLogger.debug('Step finished', {
+            finishReason,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            toolCalls: toolCalls.map(tc => tc.toolName),
+          });
           recordUsage(userRef, usage, modelName);
         },
       });
