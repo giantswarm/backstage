@@ -6,6 +6,7 @@ import {
   identityApiRef,
   discoveryApiRef,
   configApiRef,
+  featureFlagsApiRef,
 } from '@backstage/core-plugin-api';
 import { mcpAuthProvidersApiRef } from '../../api';
 import { Thread } from './Thread';
@@ -97,6 +98,8 @@ export const AiChatPage = () => {
   const discoveryApi = useApi(discoveryApiRef);
   const configApi = useApi(configApiRef);
   const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
+  const featureFlagsApi = useApi(featureFlagsApiRef);
+  const conversationIdRef = useRef<string | null>(null);
 
   const { value: apiUrl } = useAsync(async () => {
     const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
@@ -150,14 +153,25 @@ export const AiChatPage = () => {
   }, [mcpAuthProviders, mcpAuthProvidersApi]);
 
   const getHeaders = useCallback(async () => {
+    if (!conversationIdRef.current) {
+      conversationIdRef.current = crypto.randomUUID();
+      if (featureFlagsApi.isActive('ai-chat-verbose-debugging')) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `New AI Assistant conversation started with ID ${conversationIdRef.current}`,
+        );
+      }
+    }
+
     const { token } = await identityApi.getCredentials();
     const mcpHeaders = await getMCPAuthHeaders();
 
     return {
       Authorization: `Bearer ${token}`,
+      'X-Conversation-Id': conversationIdRef.current,
       ...mcpHeaders,
     };
-  }, [identityApi, getMCPAuthHeaders]);
+  }, [identityApi, getMCPAuthHeaders, featureFlagsApi]);
 
   const runtime = useChatRuntime({
     sendAutomaticallyWhen: shouldSendAutomatically,
