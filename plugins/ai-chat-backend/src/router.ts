@@ -130,8 +130,19 @@ export async function createRouter(
     // Verify user is authenticated
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
     const userRef = credentials.principal.userEntityRef;
+    const rawConversationId = req.headers['x-conversation-id'] as
+      | string
+      | undefined;
+    const conversationId =
+      rawConversationId && rawConversationId.length <= 64
+        ? rawConversationId
+        : undefined;
 
-    logger.info(`Chat request from user: ${userRef}`);
+    const chatLogger = logger.child({
+      ...(conversationId && { conversationId }),
+      userRef,
+    });
+    chatLogger.info('Chat request received');
 
     // Schema for chat request
     const chatRequestSchema = z.object({
@@ -152,11 +163,11 @@ export async function createRouter(
       resources: mcpResources,
       failedServers,
       connectedServers,
-    } = await getMcpTools(config, authTokens, logger, mcpClientCache);
-    logger.info(`MCP tools available: ${Object.keys(mcpTools).length}`);
-    logger.info(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
+    } = await getMcpTools(config, authTokens, chatLogger, mcpClientCache);
+    chatLogger.debug(`MCP tools available: ${Object.keys(mcpTools).length}`);
+    chatLogger.debug(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
     if (failedServers.length > 0) {
-      logger.warn(
+      chatLogger.warn(
         `${failedServers.length} MCP server(s) failed to connect: ${failedServers.map(s => s.name).join(', ')}`,
       );
     }
@@ -211,6 +222,10 @@ export async function createRouter(
           }
         : undefined;
 
+      chatLogger.debug('Sending messages to API', {
+        messageCount: deduplicatedMessages.length,
+      });
+
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
@@ -237,7 +252,16 @@ export async function createRouter(
               },
             }
           : undefined,
-        onStepFinish({ usage }) {
+        onError({ error }) {
+          chatLogger.error('Error during streaming:', error as Error);
+        },
+        onStepFinish({ usage, finishReason, toolCalls }) {
+          chatLogger.debug('Step finished', {
+            finishReason,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            toolCalls: toolCalls.map(tc => tc.toolName),
+          });
           recordUsage(userRef, usage, modelName);
         },
       });
@@ -250,7 +274,7 @@ export async function createRouter(
 
       result.pipeUIMessageStreamToResponse(res);
     } catch (error) {
-      logger.error('Error in chat endpoint', error as Error);
+      chatLogger.error('Error in chat endpoint', error as Error);
       throw error;
     }
   });
