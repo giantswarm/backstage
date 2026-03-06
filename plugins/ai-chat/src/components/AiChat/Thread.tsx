@@ -123,7 +123,7 @@ const AssistantActionBar = () => {
       autohideFloat="single-branch"
       className={classes.messageActions}
     >
-      <ActionBarPrimitive.Copy
+      <ActionBarPrimitive.Copy asChild
         onClick={() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
@@ -139,7 +139,7 @@ const AssistantActionBar = () => {
           </IconButton>
         </Tooltip>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Reload>
+      <ActionBarPrimitive.Reload asChild>
         <Tooltip title="Regenerate">
           <IconButton size="small" className={classes.actionButton}>
             <RefreshIcon fontSize="small" />
