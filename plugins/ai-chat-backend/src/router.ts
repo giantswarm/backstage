@@ -130,11 +130,18 @@ export async function createRouter(
     // Verify user is authenticated
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
     const userRef = credentials.principal.userEntityRef;
-    const conversationId = req.headers['x-conversation-id'] as
+    const rawConversationId = req.headers['x-conversation-id'] as
       | string
       | undefined;
+    const conversationId =
+      rawConversationId && rawConversationId.length <= 64
+        ? rawConversationId
+        : undefined;
 
-    const chatLogger = logger.child({ conversationId, userRef });
+    const chatLogger = logger.child({
+      ...(conversationId && { conversationId }),
+      userRef,
+    });
     chatLogger.info('Chat request received');
 
     // Schema for chat request
