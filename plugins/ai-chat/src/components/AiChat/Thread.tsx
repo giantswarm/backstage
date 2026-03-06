@@ -123,7 +123,8 @@ const AssistantActionBar = () => {
       autohideFloat="single-branch"
       className={classes.messageActions}
     >
-      <ActionBarPrimitive.Copy asChild
+      <ActionBarPrimitive.Copy
+        asChild
         onClick={() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
