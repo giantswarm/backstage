@@ -199,7 +199,7 @@ const AssistantMessage = () => {
         />
         <MessagePrimitive.Error>
           <div className={classes.errorMessage}>
-            Error occured. Please try again.
+            Error occurred. Please try again.
           </div>
         </MessagePrimitive.Error>
       </div>
