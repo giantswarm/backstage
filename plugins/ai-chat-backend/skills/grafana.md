@@ -29,6 +29,6 @@ You can provide links to specific metrics using the Explore function in Grafana.
 
 The query string of above URL in decoded format:
 
-   schemaVersion=1&panes={"row":{"datasource":"gs-mimir","queries":[{"refId":"A","expr":"up{cluster_id=\"operations\",namespace=\"giantswarm\"}","range":true,"datasource":{"type":"prometheus","uid":"gs-mimir"},"editorMode":"code","legendFormat":"__auto"}],"range":{"from":"now-1h","to":"now"},"compact":false}}&orgId=1
+schemaVersion=1&panes={"row":{"datasource":"gs-mimir","queries":[{"refId":"A","expr":"up{cluster_id=\"operations\",namespace=\"giantswarm\"}","range":true,"datasource":{"type":"prometheus","uid":"gs-mimir"},"editorMode":"code","legendFormat":"__auto"}],"range":{"from":"now-1h","to":"now"},"compact":false}}&orgId=1
 
 orgId=1 is important to enable the Grafana organization that both customers and Giant Swarm staff have access to.
