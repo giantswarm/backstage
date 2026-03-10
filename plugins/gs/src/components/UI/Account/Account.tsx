@@ -1,9 +1,10 @@
+import classNames from 'classnames';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { ColorWrapper } from '../../UI';
 import { Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles(theme => ({
   accountId: {
     position: 'relative',
     userSelect: 'text',
@@ -17,7 +18,7 @@ const useStyles = makeStyles(() => ({
       position: 'absolute',
       top: 0,
       left: 0,
-      color: 'white',
+      color: theme.palette.text.primary,
       userSelect: 'none',
       pointerEvents: 'none',
       whiteSpace: 'nowrap',
@@ -26,6 +27,18 @@ const useStyles = makeStyles(() => ({
 
     'a &:hover::before': {
       textDecoration: 'underline',
+    },
+  },
+
+  linked: {
+    '&::before': {
+      color: theme.palette.primary.main,
+    },
+  },
+
+  colored: {
+    '&::before': {
+      color: 'white',
     },
   },
 }));
@@ -38,28 +51,40 @@ const formatAccountIdForDisplay = (id: string) => {
 type AccountProps = {
   accountId: string;
   accountUrl?: string;
+  colored?: boolean;
 };
 
-export const Account = ({ accountId, accountUrl }: AccountProps) => {
+export const Account = ({
+  accountId,
+  accountUrl,
+  colored = true,
+}: AccountProps) => {
   const classes = useStyles();
 
   const formattedAccountId = formatAccountIdForDisplay(accountId);
 
-  const accountComponent = (
+  const accountContent = (
     <Typography
-      variant="body2"
-      className={classes.accountId}
+      variant="inherit"
+      className={classNames(classes.accountId, {
+        [classes.colored]: colored,
+        [classes.linked]: Boolean(accountUrl),
+      })}
       data-formatted={formattedAccountId}
     >
       {accountId}
     </Typography>
   );
 
-  return accountUrl ? (
-    <ExternalLink href={accountUrl}>
-      <ColorWrapper str={accountId}>{accountComponent}</ColorWrapper>
-    </ExternalLink>
+  const accountComponent = colored ? (
+    <ColorWrapper str={accountId}>{accountContent}</ColorWrapper>
   ) : (
-    <ColorWrapper str={accountId}>{accountComponent}</ColorWrapper>
+    accountContent
+  );
+
+  return accountUrl ? (
+    <ExternalLink href={accountUrl}>{accountComponent}</ExternalLink>
+  ) : (
+    accountComponent
   );
 };
