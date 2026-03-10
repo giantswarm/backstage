@@ -9,6 +9,7 @@ import catalogGraphPlugin from '@backstage/plugin-catalog-graph/alpha';
 import kubernetesPlugin from '@backstage/plugin-kubernetes/alpha';
 import apiDocsPlugin from '@backstage/plugin-api-docs/alpha';
 import signalsPlugin from '@backstage/plugin-signals/alpha';
+import githubActionsPlugin from '@backstage-community/plugin-github-actions/alpha';
 import { createApp } from '@backstage/frontend-defaults';
 
 import gsPlugin from '@giantswarm/backstage-plugin-gs';
@@ -24,6 +25,10 @@ import {
 } from './apiOverrides';
 import { scaffolderPluginOverrides } from './scaffolder';
 import { appOverrides } from './appModules';
+import {
+  circleCINfsPlugin,
+  githubPullRequestsNfsPlugin,
+} from './legacyPlugins';
 import { navModule } from './navModule';
 import {
   homePageOverrides,
@@ -51,6 +56,10 @@ const app = createApp({
     catalogGraphPlugin,
     kubernetesPlugin,
     apiDocsPlugin,
+    githubActionsPlugin,
+    // Legacy plugins converted for NFS route ref discovery:
+    circleCINfsPlugin,
+    githubPullRequestsNfsPlugin,
     // App-level overrides (core APIs, icons, sign-in page, feature flags):
     appOverrides,
     // Nav sidebar layout:
