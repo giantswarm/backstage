@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.110.2] - 2026-03-10
+
 ### Changed
 
 - Add Deployment annotations to automatically update the pod on config changes.
@@ -1989,7 +1991,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.2...HEAD
+[0.110.2]: https://github.com/giantswarm/backstage/compare/v0.110.1...v0.110.2
 [0.110.1]: https://github.com/giantswarm/backstage/compare/v0.110.0...v0.110.1
 [0.110.0]: https://github.com/giantswarm/backstage/compare/v0.109.0...v0.110.0
 [0.109.0]: https://github.com/giantswarm/backstage/compare/v0.108.0...v0.109.0
