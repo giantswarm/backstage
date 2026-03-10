@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Add Deployment annotations to automatically update the pod on config changes.
+
 ## [0.110.1] - 2026-02-26
 
 ### Fixed
