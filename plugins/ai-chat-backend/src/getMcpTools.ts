@@ -89,11 +89,13 @@ async function getResources(
       const resource = await mcpClient.readResource({ uri });
       resources[name] = (resource.contents[0]?.text as string) ?? '';
     }
-    logger.info(`Successfully loaded resources from MCP server: ${serverName}`);
+    logger.debug(
+      `Successfully loaded resources from MCP server: ${serverName}`,
+    );
   } catch (resourceError: any) {
     // Log a concise message if resources aren't supported
     if (resourceError?.message?.includes('does not support resources')) {
-      logger.info(
+      logger.debug(
         `MCP server ${serverName} does not support resources, skipping resource loading`,
       );
     } else {
@@ -132,7 +134,7 @@ async function getTools(
   try {
     const mcpClientTools = (await mcpClient.tools()) as ToolSet;
     const tools = collectTools(mcpClientTools, installation);
-    logger.info(`Successfully loaded tools from MCP server: ${serverName}`);
+    logger.debug(`Successfully loaded tools from MCP server: ${serverName}`);
     return tools;
   } catch (toolError) {
     const errorMessage =
