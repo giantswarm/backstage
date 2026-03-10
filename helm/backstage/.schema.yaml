@@ -1,0 +1,17 @@
+values:
+  - helm/backstage/values.yaml
+
+draft: 2020
+indent: 4
+output: helm/backstage/values.schema.json
+
+bundle: false
+
+useHelmDocs: true
+
+noAdditionalProperties: true
+
+schemaRoot:
+  title: Backstage Helm Chart Values
+  description: Schema for Giant Swarm's Backstage Helm chart values
+  additionalProperties: false

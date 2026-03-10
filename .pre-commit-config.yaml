@@ -1,0 +1,18 @@
+repos:
+  - repo: https://github.com/losisin/helm-values-schema-json
+    rev: v2.3.1
+    hooks:
+      - id: helm-schema
+        args:
+          - --config
+          - helm/backstage/.schema.yaml
+
+  - repo: https://github.com/giantswarm/schemalint
+    rev: v2.6.1
+    hooks:
+      - id: schemalint-normalize
+        args:
+          - helm/backstage/values.schema.json
+      - id: schemalint-verify
+        args:
+          - helm/backstage/values.schema.json
