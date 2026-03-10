@@ -1,9 +1,10 @@
+import classNames from 'classnames';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { ColorWrapper } from '../../UI';
 import { Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles(theme => ({
   accountId: {
     position: 'relative',
     userSelect: 'text',
@@ -17,7 +18,7 @@ const useStyles = makeStyles(() => ({
       position: 'absolute',
       top: 0,
       left: 0,
-      color: 'white',
+      color: theme.palette.text.primary,
       userSelect: 'none',
       pointerEvents: 'none',
       whiteSpace: 'nowrap',
@@ -26,6 +27,18 @@ const useStyles = makeStyles(() => ({
 
     'a &:hover::before': {
       textDecoration: 'underline',
+    },
+  },
+
+  linked: {
+    '&::before': {
+      color: theme.palette.primary.main,
+    },
+  },
+
+  colored: {
+    '&::before': {
+      color: 'white',
     },
   },
 }));
@@ -50,18 +63,23 @@ export const Account = ({
 
   const formattedAccountId = formatAccountIdForDisplay(accountId);
 
+  const accountContent = (
+    <Typography
+      variant="inherit"
+      className={classNames(classes.accountId, {
+        [classes.colored]: colored,
+        [classes.linked]: Boolean(accountUrl),
+      })}
+      data-formatted={formattedAccountId}
+    >
+      {accountId}
+    </Typography>
+  );
+
   const accountComponent = colored ? (
-    <ColorWrapper str={accountId}>
-      <Typography
-        variant="body2"
-        className={classes.accountId}
-        data-formatted={formattedAccountId}
-      >
-        {accountId}
-      </Typography>
-    </ColorWrapper>
+    <ColorWrapper str={accountId}>{accountContent}</ColorWrapper>
   ) : (
-    <Typography variant="body2">{formattedAccountId}</Typography>
+    accountContent
   );
 
   return accountUrl ? (
