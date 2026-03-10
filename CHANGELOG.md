@@ -8,6 +8,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 ### Changed
 
 - Add Deployment annotations to automatically update the pod on config changes.
+- Improve logging in AI chat with conversation ID and better log level differentiation.
 
 ## [0.110.1] - 2026-02-26
 
