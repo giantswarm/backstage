@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.8.1
+
+### Patch Changes
+
+- 55f532b: Improve logging in ai-chat. Add conversation ID, better differentiation of log levels.
+
 ## 0.8.0
 
 ### Minor Changes
