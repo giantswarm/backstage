@@ -8783,6 +8783,19 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-catalog-backend-module-gs@npm:^0.1.0, @giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs"
+  dependencies:
+    "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/catalog-model": "backstage:^"
+    "@backstage/cli": "backstage:^"
+    "@backstage/plugin-catalog-node": "backstage:^"
+    "@types/js-yaml": "npm:^4"
+    js-yaml: "npm:^4.1.0"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-error-reporter-react@workspace:^, @giantswarm/backstage-plugin-error-reporter-react@workspace:plugins/error-reporter-react":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-error-reporter-react@workspace:plugins/error-reporter-react"
@@ -21634,6 +21647,7 @@ __metadata:
     "@devangelista/backstage-scaffolder-kubernetes": "npm:^0.5.0"
     "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.8.0"
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.13.0"
+    "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.1.0"
     "@giantswarm/backstage-plugin-gs-backend": "npm:^0.5.0"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.11.0"
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "npm:^0.10.0"
