@@ -204,11 +204,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/core@npm:^0.1.3":
-  version: 0.1.3
-  resolution: "@assistant-ui/core@npm:0.1.3"
+"@assistant-ui/core@npm:^0.1.5":
+  version: 0.1.5
+  resolution: "@assistant-ui/core@npm:0.1.5"
   dependencies:
-    assistant-stream: "npm:^0.3.4"
+    assistant-stream: "npm:^0.3.5"
     nanoid: "npm:^5.1.6"
   peerDependencies:
     "@assistant-ui/store": ^0.2.2
@@ -226,7 +226,7 @@ __metadata:
       optional: true
     zustand:
       optional: true
-  checksum: 10c0/cf9acc4e7e9ff727f0f7ce707d4336fe2f2adf49b8dc054d218fbb9b238c85a78c45c5799d20a272445e9a6ee06a88b5712e4e31138e4bd8158c13e78b701955
+  checksum: 10c0/cd462173a5f7c6000134853258c646c85133b22d1cb6c623fc7fa9ec08e4af10b0642538d8cdb144dd5347818159a3c500580cf440ec8543e03027a7ac4d1792
   languageName: node
   linkType: hard
 
@@ -292,10 +292,10 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react@npm:^0.12.1":
-  version: 0.12.16
-  resolution: "@assistant-ui/react@npm:0.12.16"
+  version: 0.12.17
+  resolution: "@assistant-ui/react@npm:0.12.17"
   dependencies:
-    "@assistant-ui/core": "npm:^0.1.3"
+    "@assistant-ui/core": "npm:^0.1.5"
     "@assistant-ui/store": "npm:^0.2.2"
     "@assistant-ui/tap": "npm:^0.5.2"
     "@radix-ui/primitive": "npm:^1.1.3"
@@ -321,7 +321,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/fd4498410d6365e21a042e36f3ae52d79f8d408d2916157fb0a179e44ab317597edd8cf72712be0e9edc650923fc40a48fac1deadf6c63d36ff0f330ce0b0da6
+  checksum: 10c0/03dc4a6487cdb7e296e89c381498796cee618f6024ebb80259ca153241e7861e126c0fcd14fd915a89ed01b9eb4e72093b9ac00befe6b012381381f62e637e50
   languageName: node
   linkType: hard
 
@@ -21214,6 +21214,17 @@ __metadata:
     nanoid: "npm:^5.1.6"
     secure-json-parse: "npm:^4.1.0"
   checksum: 10c0/69bfefa781f7bd3e150e004a626f399d5f0c491787c3db5a2877ca426b00cb1adb0939ca03b099b113b79a4d88a88fe5045019aafe6b63767b13175b459f4412
+  languageName: node
+  linkType: hard
+
+"assistant-stream@npm:^0.3.5":
+  version: 0.3.5
+  resolution: "assistant-stream@npm:0.3.5"
+  dependencies:
+    "@standard-schema/spec": "npm:^1.1.0"
+    nanoid: "npm:^5.1.6"
+    secure-json-parse: "npm:^4.1.0"
+  checksum: 10c0/ee1eed2c6250a71ce43599108cbcf91113cd42f3cf8e9d41199a35efb3136a419025479805d3ae933dfc7b5900c54dcd8d32eabdabbf1631e510ef4cc3bc577c
   languageName: node
   linkType: hard
 
