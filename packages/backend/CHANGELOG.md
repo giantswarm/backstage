@@ -1,5 +1,18 @@
 # backend
 
+## 0.17.0
+
+### Minor Changes
+
+- 8d3e632: Add GiantSwarmLocationProcessor to handle "giantswarm" catalog location type, assigning the giantswarm namespace to entities from GS-sourced locations.
+
+### Patch Changes
+
+- Updated dependencies [8d3e632]
+- Updated dependencies [93e31f7]
+  - @giantswarm/backstage-plugin-catalog-backend-module-gs@0.2.0
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.9.0
+
 ## 0.16.1
 
 ### Patch Changes

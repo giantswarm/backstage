@@ -15,6 +15,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Fix legacy plugin route refs not discovered in NFS app for github-actions, circleci, and github-pull-requests plugins.
 
+See [./docs/releases/v0.111.0-changelog.md](./docs/releases/v0.111.0-changelog.md) for more information.
+
 ## [0.110.2] - 2026-03-10
 
 ### Changed
