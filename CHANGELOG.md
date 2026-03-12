@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-03-12
+
 ### Added
 
 - Add AWS account ID to cluster details page.
@@ -2003,7 +2005,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.111.0...HEAD
+[0.111.0]: https://github.com/giantswarm/backstage/compare/v0.110.2...v0.111.0
 [0.110.2]: https://github.com/giantswarm/backstage/compare/v0.110.1...v0.110.2
 [0.110.1]: https://github.com/giantswarm/backstage/compare/v0.110.0...v0.110.1
 [0.110.0]: https://github.com/giantswarm/backstage/compare/v0.109.0...v0.110.0
