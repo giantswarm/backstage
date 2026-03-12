@@ -29,4 +29,5 @@ export * from './useProviderClusterIdentitiesForProviderClusters';
 export * from './useMimirQuery';
 export * from './useMimirResourceUsage';
 export * from './useMimirWorkloadDiagnostics';
+export * from './useMimirWorkloadStatus';
 export * from './useMimirWorkloads';
