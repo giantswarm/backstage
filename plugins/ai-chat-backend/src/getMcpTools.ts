@@ -183,6 +183,7 @@ export async function getMcpTools(
                 url: server.url,
                 headers: server.headers,
                 sessionHeader: server.sessionHeader,
+                logger,
               })
             : {
                 type: 'http',

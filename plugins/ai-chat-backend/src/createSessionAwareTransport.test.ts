@@ -14,6 +14,14 @@ jest.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
+const mockLogger = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  child: jest.fn(),
+} as any;
+
 describe('createSessionAwareTransport', () => {
   const SESSION_HEADER = 'X-Muster-Session-ID';
 
@@ -27,6 +35,7 @@ describe('createSessionAwareTransport', () => {
       url: 'http://muster/mcp',
       headers: { Authorization: 'Bearer token' },
       sessionHeader: SESSION_HEADER,
+      logger: mockLogger,
     });
 
     expect(transport).toBeDefined();
@@ -37,6 +46,7 @@ describe('createSessionAwareTransport', () => {
     createSessionAwareTransport({
       url: 'http://muster/mcp',
       sessionHeader: SESSION_HEADER,
+      logger: mockLogger,
     });
 
     await capturedFetch('http://muster/mcp', {
@@ -53,6 +63,7 @@ describe('createSessionAwareTransport', () => {
     createSessionAwareTransport({
       url: 'http://muster/mcp',
       sessionHeader: SESSION_HEADER,
+      logger: mockLogger,
     });
 
     // First response includes session ID
@@ -77,10 +88,59 @@ describe('createSessionAwareTransport', () => {
     expect(headers.get(SESSION_HEADER)).toBe(sessionId);
   });
 
+  it('logs when a new session is started', async () => {
+    createSessionAwareTransport({
+      url: 'http://muster/mcp',
+      sessionHeader: SESSION_HEADER,
+      logger: mockLogger,
+    });
+
+    const sessionId = 'session-abc-123';
+    mockFetch.mockResolvedValueOnce(
+      new Response('', {
+        headers: new Headers({ [SESSION_HEADER]: sessionId }),
+      }),
+    );
+
+    await capturedFetch('http://muster/mcp', { method: 'POST' });
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      `New ${SESSION_HEADER} session started: ${sessionId}`,
+    );
+  });
+
+  it('does not log when session ID is unchanged', async () => {
+    createSessionAwareTransport({
+      url: 'http://muster/mcp',
+      sessionHeader: SESSION_HEADER,
+      logger: mockLogger,
+    });
+
+    const sessionId = 'session-abc-123';
+    mockFetch.mockResolvedValueOnce(
+      new Response('', {
+        headers: new Headers({ [SESSION_HEADER]: sessionId }),
+      }),
+    );
+    await capturedFetch('http://muster/mcp', { method: 'POST' });
+    mockLogger.debug.mockClear();
+
+    // Same session ID in second response
+    mockFetch.mockResolvedValueOnce(
+      new Response('', {
+        headers: new Headers({ [SESSION_HEADER]: sessionId }),
+      }),
+    );
+    await capturedFetch('http://muster/mcp', { method: 'POST' });
+
+    expect(mockLogger.debug).not.toHaveBeenCalled();
+  });
+
   it('updates session ID when response provides a new one', async () => {
     createSessionAwareTransport({
       url: 'http://muster/mcp',
       sessionHeader: SESSION_HEADER,
+      logger: mockLogger,
     });
 
     // First response
