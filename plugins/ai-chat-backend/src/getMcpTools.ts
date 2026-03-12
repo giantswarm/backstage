@@ -7,12 +7,14 @@ import {
 } from '@ai-sdk/mcp';
 import { AuthTokens } from './utils';
 import { McpClientCache } from './McpClientCache';
+import { createSessionAwareTransport } from './createSessionAwareTransport';
 
 interface McpServerConfig {
   url: string;
   headers?: Record<string, string>;
   installation?: string;
   authToken?: string;
+  sessionHeader?: string;
 }
 
 function getMcpServerHeaders(mcpConfig: Config): Record<string, string> {
@@ -40,6 +42,7 @@ function readMcpServersFromConfig(
       const name = mcp.getString('name');
       const url = mcp.getString('url');
       const installation = mcp.getOptionalString('installation');
+      const sessionHeader = mcp.getOptionalString('sessionHeader');
 
       // Rule 1: If authProvider is set, check if token exists
       const authProvider = mcp.getOptionalString('authProvider');
@@ -54,6 +57,7 @@ function readMcpServersFromConfig(
           headers: { Authorization: `Bearer ${token}` },
           installation,
           authToken: token,
+          sessionHeader,
         };
 
         return;
@@ -62,13 +66,13 @@ function readMcpServersFromConfig(
       // Rule 2: If headers configured, add server with those headers
       const headers = getMcpServerHeaders(mcp);
       if (headers) {
-        mcpServers[name] = { url, headers, installation };
+        mcpServers[name] = { url, headers, installation, sessionHeader };
 
         return;
       }
 
       // Rule 3: No headers and no authProvider, just add server
-      mcpServers[name] = { url, installation };
+      mcpServers[name] = { url, installation, sessionHeader };
     });
   }
 
@@ -174,11 +178,18 @@ export async function getMcpTools(
       const mcpClient = await clientCache.getOrCreate(cacheKey, () =>
         createMCPClient({
           name: serverName,
-          transport: {
-            type: 'http',
-            url: server.url,
-            headers: server.headers,
-          },
+          transport: server.sessionHeader
+            ? createSessionAwareTransport({
+                url: server.url,
+                headers: server.headers,
+                sessionHeader: server.sessionHeader,
+                logger,
+              })
+            : {
+                type: 'http',
+                url: server.url,
+                headers: server.headers,
+              },
         }),
       );
 

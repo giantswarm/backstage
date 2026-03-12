@@ -75,6 +75,12 @@ export interface Config {
       authProvider?: string;
       /** Optional: Installation name to prefix tool names and description */
       installation?: string;
+      /**
+       * Optional: Custom session header name (e.g. 'X-Muster-Session-ID')
+       * for servers that use non-standard session headers.
+       * @visibility backend
+       */
+      sessionHeader?: string;
     }>;
   };
 }
