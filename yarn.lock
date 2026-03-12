@@ -29769,12 +29769,12 @@ __metadata:
   linkType: hard
 
 "isolated-vm@npm:^6.0.2":
-  version: 6.1.1
-  resolution: "isolated-vm@npm:6.1.1"
+  version: 6.1.2
+  resolution: "isolated-vm@npm:6.1.2"
   dependencies:
     node-gyp: "npm:latest"
     node-gyp-build: "npm:^4.8.4"
-  checksum: 10c0/264879131aa43fb774c4e5798604569ad3868beb0407742185abeb03e0b65cd0b506efca1a852ecbb5cb3eeaacf5ea96d8611192a7a8636ae18877cd08fdb51e
+  checksum: 10c0/2209032b8296e6af49250f7e04ab904e9c331bbbf1bdf8eeca78e32ed6bd98c84ced42b785127f0f2828a1c5e66d82cb2bf1459e973620e19b485c5a00252e98
   languageName: node
   linkType: hard
 
