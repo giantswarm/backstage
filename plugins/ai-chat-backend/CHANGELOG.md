@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.9.0
+
+### Minor Changes
+
+- 93e31f7: Add custom session header support for MCP servers that use non-standard session headers (e.g. `X-Muster-Session-ID`).
+
 ## 0.8.1
 
 ### Patch Changes

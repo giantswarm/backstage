@@ -1,5 +1,13 @@
 # app
 
+## 0.31.2
+
+### Patch Changes
+
+- 6f3294a: Fix legacy plugin route refs not discovered in NFS app for github-actions, circleci, and github-pull-requests plugins.
+- Updated dependencies [b4e604e]
+  - @giantswarm/backstage-plugin-gs@0.57.0
+
 ## 0.31.1
 
 ### Patch Changes

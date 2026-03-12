@@ -5,6 +5,20 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-03-12
+
+### Added
+
+- Add AWS account ID to cluster details page.
+- Add GiantSwarmLocationProcessor to handle "giantswarm" catalog location type, assigning the giantswarm namespace to entities from GS-sourced locations.
+- Add custom session header support for MCP servers that use non-standard session headers.
+
+### Fixed
+
+- Fix legacy plugin route refs not discovered in NFS app for github-actions, circleci, and github-pull-requests plugins.
+
+See [./docs/releases/v0.111.0-changelog.md](./docs/releases/v0.111.0-changelog.md) for more information.
+
 ## [0.110.2] - 2026-03-10
 
 ### Changed
@@ -1991,7 +2005,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.110.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.111.0...HEAD
+[0.111.0]: https://github.com/giantswarm/backstage/compare/v0.110.2...v0.111.0
 [0.110.2]: https://github.com/giantswarm/backstage/compare/v0.110.1...v0.110.2
 [0.110.1]: https://github.com/giantswarm/backstage/compare/v0.110.0...v0.110.1
 [0.110.0]: https://github.com/giantswarm/backstage/compare/v0.109.0...v0.110.0

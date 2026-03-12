@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.57.0
+
+### Minor Changes
+
+- b4e604e: Add AWS account ID to cluster details page
+
 ## 0.56.0
 
 ### Minor Changes
