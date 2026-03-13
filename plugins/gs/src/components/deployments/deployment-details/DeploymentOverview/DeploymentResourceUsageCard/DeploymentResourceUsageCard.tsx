@@ -131,6 +131,7 @@ export function DeploymentResourceUsageCard() {
     clusterName,
     namespace,
     deploymentName,
+    refetchInterval: 30_000,
   });
 
   if (!clusterName) {
