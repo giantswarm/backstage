@@ -270,7 +270,7 @@ route:
   # @schema item:string
   # -- Hostnames for the route (supports Go templating)
   hostnames: []
-  # @schema item:object;itemProperties:{"name":{"type":"string"},"namespace":{"type":"string"},"sectionName":{"type":"string"}}
+  # @schema item:object;itemProperties:{"group":{"type":"string"},"kind":{"type":"string"},"name":{"type":"string"},"namespace":{"type":"string"},"sectionName":{"type":"string"}}
   # -- Parent Gateway references that this route attaches to
   parentRefs: []
   # @schema type:array
