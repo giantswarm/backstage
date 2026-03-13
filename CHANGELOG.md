@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add workload status to deployment details page.
+
+### Fixed
+
+- Fix invalid semver version case.
+
 ## [0.111.0] - 2026-03-12
 
 ### Added
