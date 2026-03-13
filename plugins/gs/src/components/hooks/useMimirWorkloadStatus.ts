@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useMimirQuery } from './useMimirQuery';
-import { MimirQueryResponse } from '../../apis/mimir/types';
+import { MimirQueryResponse, MimirMetricSample } from '../../apis/mimir/types';
 import {
   KubeDeploymentSpecReplicas,
   KubeDeploymentStatusReplicasReady,
@@ -17,37 +17,86 @@ export interface WorkloadReplicaStatus {
   readyReplicas: number;
 }
 
-function extractWorkloads(
+interface WorkloadKindInfo {
+  kind: WorkloadReplicaStatus['kind'];
+  nameLabel: string;
+  desiredMetric: string;
+  readyMetric: string;
+}
+
+const workloadKinds: WorkloadKindInfo[] = [
+  {
+    kind: 'Deployment',
+    nameLabel: 'deployment',
+    desiredMetric: KubeDeploymentSpecReplicas.name,
+    readyMetric: KubeDeploymentStatusReplicasReady.name,
+  },
+  {
+    kind: 'StatefulSet',
+    nameLabel: 'statefulset',
+    desiredMetric: KubeStatefulsetReplicas.name,
+    readyMetric: KubeStatefulsetStatusReplicasReady.name,
+  },
+  {
+    kind: 'DaemonSet',
+    nameLabel: 'daemonset',
+    desiredMetric: KubeDaemonsetStatusDesiredNumberScheduled.name,
+    readyMetric: KubeDaemonsetStatusNumberReady.name,
+  },
+];
+
+function buildOrQuery(
+  clusterSelector: string,
+  podPrefix: string,
+  metricKey: 'desiredMetric' | 'readyMetric',
+): string {
+  return workloadKinds
+    .map(
+      k =>
+        `${k[metricKey]}{${clusterSelector},${k.nameLabel}=~"${podPrefix}.*"}`,
+    )
+    .join(' or ');
+}
+
+function parseValue(sample: MimirMetricSample): number {
+  const n = parseFloat(sample.value?.[1] ?? '0');
+  return isNaN(n) ? 0 : n;
+}
+
+function buildWorkloads(
   desiredResponse: MimirQueryResponse | undefined,
   readyResponse: MimirQueryResponse | undefined,
-  kind: WorkloadReplicaStatus['kind'],
-  nameLabel: string,
 ): WorkloadReplicaStatus[] {
   const desiredResults = desiredResponse?.data?.result ?? [];
-  if (desiredResults.length === 0) return [];
+  const readyResults = readyResponse?.data?.result ?? [];
 
   const readyMap = new Map<string, number>();
-  for (const sample of readyResponse?.data?.result ?? []) {
-    const name = sample.metric[nameLabel];
-    const val = parseFloat(sample.value?.[1] ?? '0');
-    if (name && !isNaN(val)) {
-      readyMap.set(name, val);
+  for (const sample of readyResults) {
+    const metricName = sample.metric.__name__;
+    const kindInfo = workloadKinds.find(k => k.readyMetric === metricName);
+    if (!kindInfo) continue;
+    const name = sample.metric[kindInfo.nameLabel];
+    if (name) {
+      readyMap.set(`${kindInfo.kind}:${name}`, parseValue(sample));
     }
   }
 
-  return desiredResults
-    .map(sample => {
-      const name = sample.metric[nameLabel];
-      const desired = parseFloat(sample.value?.[1] ?? '0');
-      if (!name || isNaN(desired)) return null;
-      return {
-        kind,
-        name,
-        desiredReplicas: desired,
-        readyReplicas: readyMap.get(name) ?? 0,
-      };
-    })
-    .filter((w): w is WorkloadReplicaStatus => w !== null);
+  const workloads: WorkloadReplicaStatus[] = [];
+  for (const sample of desiredResults) {
+    const metricName = sample.metric.__name__;
+    const kindInfo = workloadKinds.find(k => k.desiredMetric === metricName);
+    if (!kindInfo) continue;
+    const name = sample.metric[kindInfo.nameLabel];
+    if (!name) continue;
+    workloads.push({
+      kind: kindInfo.kind,
+      name,
+      desiredReplicas: parseValue(sample),
+      readyReplicas: readyMap.get(`${kindInfo.kind}:${name}`) ?? 0,
+    });
+  }
+
+  return workloads;
 }
 
 export function useMimirWorkloadStatus(options: {
@@ -68,84 +117,34 @@ export function useMimirWorkloadStatus(options: {
   const isEnabled = Boolean(clusterName && namespace && podPrefix);
   const clusterSelector = `cluster_id="${clusterName}",namespace="${namespace}"`;
 
-  // Deployment queries
-  const deployDesiredQuery = `${KubeDeploymentSpecReplicas.name}{${clusterSelector},deployment=~"${podPrefix}.*"}`;
-  const deployReadyQuery = `${KubeDeploymentStatusReplicasReady.name}{${clusterSelector},deployment=~"${podPrefix}.*"}`;
-
-  // StatefulSet queries
-  const stsDesiredQuery = `${KubeStatefulsetReplicas.name}{${clusterSelector},statefulset=~"${podPrefix}.*"}`;
-  const stsReadyQuery = `${KubeStatefulsetStatusReplicasReady.name}{${clusterSelector},statefulset=~"${podPrefix}.*"}`;
-
-  // DaemonSet queries
-  const dsDesiredQuery = `${KubeDaemonsetStatusDesiredNumberScheduled.name}{${clusterSelector},daemonset=~"${podPrefix}.*"}`;
-  const dsReadyQuery = `${KubeDaemonsetStatusNumberReady.name}{${clusterSelector},daemonset=~"${podPrefix}.*"}`;
+  const desiredQuery = buildOrQuery(
+    clusterSelector,
+    podPrefix,
+    'desiredMetric',
+  );
+  const readyQuery = buildOrQuery(clusterSelector, podPrefix, 'readyMetric');
 
   const queryOpts = { installationName, enabled: isEnabled, refetchInterval };
 
   const {
-    data: deployDesired,
-    isLoading: l1,
-    error: e1,
-  } = useMimirQuery({
-    ...queryOpts,
-    query: deployDesiredQuery,
-  });
-  const {
-    data: deployReady,
-    isLoading: l2,
-    error: e2,
-  } = useMimirQuery({
-    ...queryOpts,
-    query: deployReadyQuery,
-  });
-  const {
-    data: stsDesired,
-    isLoading: l3,
-    error: e3,
-  } = useMimirQuery({
-    ...queryOpts,
-    query: stsDesiredQuery,
-  });
-  const {
-    data: stsReady,
-    isLoading: l4,
-    error: e4,
-  } = useMimirQuery({
-    ...queryOpts,
-    query: stsReadyQuery,
-  });
-  const {
-    data: dsDesired,
-    isLoading: l5,
-    error: e5,
-  } = useMimirQuery({
-    ...queryOpts,
-    query: dsDesiredQuery,
-  });
-  const {
-    data: dsReady,
-    isLoading: l6,
-    error: e6,
-  } = useMimirQuery({
-    ...queryOpts,
-    query: dsReadyQuery,
-  });
+    data: desiredData,
+    isLoading: desiredLoading,
+    error: desiredError,
+  } = useMimirQuery({ ...queryOpts, query: desiredQuery });
 
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l6;
-  const error = e1 || e2 || e3 || e4 || e5 || e6;
+  const {
+    data: readyData,
+    isLoading: readyLoading,
+    error: readyError,
+  } = useMimirQuery({ ...queryOpts, query: readyQuery });
 
-  const workloads = useMemo(() => {
-    return [
-      ...extractWorkloads(
-        deployDesired,
-        deployReady,
-        'Deployment',
-        'deployment',
-      ),
-      ...extractWorkloads(stsDesired, stsReady, 'StatefulSet', 'statefulset'),
-      ...extractWorkloads(dsDesired, dsReady, 'DaemonSet', 'daemonset'),
-    ];
-  }, [deployDesired, deployReady, stsDesired, stsReady, dsDesired, dsReady]);
+  const isLoading = desiredLoading || readyLoading;
+  const error = desiredError || readyError;
+
+  const workloads = useMemo(
+    () => buildWorkloads(desiredData, readyData),
+    [desiredData, readyData],
+  );
 
   return { workloads, isLoading, isEnabled, error };
 }
