@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import classNames from 'classnames';
 import {
   Box,
@@ -105,8 +105,16 @@ export const WorkloadStatusSummary = ({
     ? workloads.filter(w => !isWorkloadReady(w)).length
     : 0;
   const isUnavailable = !hasData && !workloadsLoading;
+  const shouldAutoExpand = hasData ? !allReady : isUnavailable;
 
-  const [expanded, setExpanded] = useState(hasData ? !allReady : isUnavailable);
+  const [expanded, setExpanded] = useState(false);
+  const hasResolved = useRef(false);
+
+  useEffect(() => {
+    if (workloadsLoading || hasResolved.current) return;
+    hasResolved.current = true;
+    setExpanded(shouldAutoExpand);
+  }, [workloadsLoading, shouldAutoExpand]);
 
   let headline: string;
   let icon: React.ReactElement;
