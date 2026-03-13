@@ -13,6 +13,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Fix invalid semver version case.
 
+See [./docs/releases/v0.112.0-changelog.md](./docs/releases/v0.112.0-changelog.md) for more information.
+
 ## [0.111.0] - 2026-03-12
 
 ### Added

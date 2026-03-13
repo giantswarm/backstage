@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.58.0
+
+### Minor Changes
+
+- 3e52c89: Add workload status to deployment details page
+
+### Patch Changes
+
+- 9efa04b: Fix invalid semver version case
+
 ## 0.57.0
 
 ### Minor Changes
