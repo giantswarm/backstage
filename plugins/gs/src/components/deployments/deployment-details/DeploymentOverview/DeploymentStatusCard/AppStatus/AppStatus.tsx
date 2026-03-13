@@ -11,6 +11,8 @@ import { ComponentProps, ComponentType } from 'react';
 import { InfoCard } from '@backstage/core-components';
 import { App } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getStatus } from '../../../../utils/getStatus';
+import { WorkloadReplicaStatus } from '../../../../../hooks/useMimirWorkloadStatus';
+import { WorkloadStatusSummary } from '../WorkloadStatusSummary';
 
 const IconWrapper = styled('div')(({ color }) => ({
   display: 'flex',
@@ -51,9 +53,21 @@ const StatusCard = ({
 
 type AppStatusProps = {
   app: App;
+  workloads?: WorkloadReplicaStatus[];
+  workloadsLoading?: boolean;
+  workloadsEnabled?: boolean;
+  workloadsError?: Error | null;
+  workloadsLabelSelector?: string;
 };
 
-export const AppStatus = ({ app }: AppStatusProps) => {
+export const AppStatus = ({
+  app,
+  workloads,
+  workloadsLoading = false,
+  workloadsEnabled = true,
+  workloadsError = null,
+  workloadsLabelSelector,
+}: AppStatusProps) => {
   const status = getStatus(app);
   if (!status) {
     return (
@@ -81,6 +95,15 @@ export const AppStatus = ({ app }: AppStatusProps) => {
           </ContentRow>
         )}
       </StatusCard>
+      <Box mt={2}>
+        <WorkloadStatusSummary
+          workloads={workloads ?? []}
+          workloadsLoading={workloadsLoading}
+          workloadsEnabled={workloadsEnabled}
+          workloadsError={workloadsError}
+          workloadsLabelSelector={workloadsLabelSelector}
+        />
+      </Box>
     </InfoCard>
   );
 };

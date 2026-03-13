@@ -22,6 +22,8 @@ import {
 } from '../../../../../UI';
 import { InfoCard } from '@backstage/core-components';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { WorkloadReplicaStatus } from '../../../../../hooks/useMimirWorkloadStatus';
+import { WorkloadStatusSummary } from '../WorkloadStatusSummary';
 
 const StyledCancelOutlinedIcon = styled(CancelOutlinedIcon)(({ theme }) => ({
   marginRight: 10,
@@ -74,9 +76,9 @@ const ConditionCard = ({
     setExpanded(!expanded);
   };
 
-  let conditionHeadline = condition.type;
+  let conditionHeadline = `HelmRelease ${condition.type}`;
   if (condition.status === 'False') {
-    conditionHeadline = `Not ${condition.type.toLowerCase()}`;
+    conditionHeadline = `HelmRelease Not ${condition.type.toLowerCase()}`;
   }
 
   return (
@@ -135,10 +137,20 @@ const ConditionCard = ({
 
 type HelmReleaseConditionsProps = {
   helmrelease: HelmRelease;
+  workloads?: WorkloadReplicaStatus[];
+  workloadsLoading?: boolean;
+  workloadsEnabled?: boolean;
+  workloadsError?: Error | null;
+  workloadsLabelSelector?: string;
 };
 
 export const HelmReleaseConditions = ({
   helmrelease,
+  workloads,
+  workloadsLoading = false,
+  workloadsEnabled = true,
+  workloadsError = null,
+  workloadsLabelSelector,
 }: HelmReleaseConditionsProps) => {
   const conditions = helmrelease.getStatusConditions();
   if (!conditions) {
@@ -171,6 +183,15 @@ export const HelmReleaseConditions = ({
             />
           </Grid>
         ))}
+        <Grid item xs={12}>
+          <WorkloadStatusSummary
+            workloads={workloads ?? []}
+            workloadsLoading={workloadsLoading}
+            workloadsEnabled={workloadsEnabled}
+            workloadsError={workloadsError}
+            workloadsLabelSelector={workloadsLabelSelector}
+          />
+        </Grid>
       </Grid>
     </InfoCard>
   );

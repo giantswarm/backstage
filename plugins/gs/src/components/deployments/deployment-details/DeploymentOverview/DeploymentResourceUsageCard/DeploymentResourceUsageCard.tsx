@@ -1,37 +1,13 @@
 import { InfoCard, Progress } from '@backstage/core-components';
 import { Box, LinearProgress, Typography, makeStyles } from '@material-ui/core';
 import Alert from '@material-ui/lab/Alert';
-import {
-  App,
-  HelmRelease,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { findTargetClusterName } from '../../../utils/findTargetCluster';
+import {
+  getWorkloadNamespace,
+  getWorkloadPodPrefix,
+} from '../../../utils/getWorkloadIdentifiers';
 import { useMimirResourceUsage } from '../../../../hooks/useMimirResourceUsage';
-
-/**
- * Derives the namespace where the workload pods actually run.
- * - For HelmRelease CRs: `spec.targetNamespace` (falls back to the CR namespace).
- * - For App CRs: `spec.namespace` is the target deployment namespace.
- */
-function getWorkloadNamespace(deployment: App | HelmRelease): string {
-  if (deployment instanceof HelmRelease) {
-    return deployment.getTargetNamespace() ?? deployment.getNamespace() ?? '';
-  }
-  return deployment.getSpec()?.namespace ?? deployment.getNamespace() ?? '';
-}
-
-/**
- * Derives the pod name prefix for the workload.
- * - For HelmRelease CRs: `spec.releaseName` (falls back to the CR name).
- * - For App CRs: the CR name.
- */
-function getWorkloadPodPrefix(deployment: App | HelmRelease): string {
-  if (deployment instanceof HelmRelease) {
-    return deployment.getReleaseName() ?? deployment.getName();
-  }
-  return deployment.getName();
-}
 
 const useStyles = makeStyles(theme => ({
   metricRow: {
@@ -155,6 +131,7 @@ export function DeploymentResourceUsageCard() {
     clusterName,
     namespace,
     deploymentName,
+    refetchInterval: 30_000,
   });
 
   if (!clusterName) {

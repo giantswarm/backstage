@@ -24,7 +24,7 @@ export const useDeploymentFromUrl = (): {
     installationName,
     App,
     { name, namespace },
-    { enabled: kind === 'app' },
+    { enabled: kind === 'app', refetchInterval: 30_000 },
   );
 
   const {
@@ -40,6 +40,7 @@ export const useDeploymentFromUrl = (): {
     },
     {
       enabled: kind === 'helmrelease',
+      refetchInterval: 30_000,
     },
   );
 

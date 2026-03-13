@@ -12,8 +12,9 @@ export function useMimirQuery(options: {
   installationName: string;
   query: string;
   enabled?: boolean;
+  refetchInterval?: number | false;
 }) {
-  const { installationName, query, enabled = true } = options;
+  const { installationName, query, enabled = true, refetchInterval } = options;
 
   const mimirApi = useApi(mimirApiRef);
   const kubernetesApi = useApi(kubernetesApiRef);
@@ -49,6 +50,7 @@ export function useMimirQuery(options: {
     },
     enabled: Boolean(enabled && installationName && query),
     staleTime: 30_000,
+    refetchInterval,
   });
 
   return useMemo(

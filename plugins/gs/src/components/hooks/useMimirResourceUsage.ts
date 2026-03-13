@@ -53,8 +53,15 @@ export function useMimirResourceUsage(options: {
   clusterName: string | undefined;
   namespace: string;
   deploymentName: string;
+  refetchInterval?: number | false;
 }): MimirResourceUsage {
-  const { installationName, clusterName, namespace, deploymentName } = options;
+  const {
+    installationName,
+    clusterName,
+    namespace,
+    deploymentName,
+    refetchInterval,
+  } = options;
 
   const isEnabled = Boolean(clusterName && namespace && deploymentName);
   const labelSelector = `cluster_id="${clusterName}",namespace="${namespace}",pod=~"${deploymentName}-.*",container!=""`;
@@ -72,6 +79,7 @@ export function useMimirResourceUsage(options: {
     installationName,
     query: cpuUsageQuery,
     enabled: isEnabled,
+    refetchInterval,
   });
 
   const {
@@ -82,6 +90,7 @@ export function useMimirResourceUsage(options: {
     installationName,
     query: memoryUsageQuery,
     enabled: isEnabled,
+    refetchInterval,
   });
 
   const {
@@ -92,12 +101,14 @@ export function useMimirResourceUsage(options: {
     installationName,
     query: requestsQuery,
     enabled: isEnabled,
+    refetchInterval,
   });
 
   const { data: limitsData, isLoading: limitsLoading } = useMimirQuery({
     installationName,
     query: limitsQuery,
     enabled: isEnabled,
+    refetchInterval,
   });
 
   return useMemo(
