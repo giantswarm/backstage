@@ -12,4 +12,4 @@ You have MCP tools that are provided by a tool aggregator called **muster**. Mus
 
 - When a server like `graveler-mcp-kubernetes` is connected, its tools appear in the `list_tools` output with names like `x_graveler-mcp-kubernetes_kubernetes_list`. Use `call_tool` with that exact name to invoke them.
 - Always try to use the available tools to answer the user's question rather than suggesting they use kubectl or other external tools.
-- Use `filter_tools` with a `pattern` (e.g. `*kubernetes*`) or `description_filter` to find relevant tools quickly.
+- Make sure to use `filter_tools` with a `pattern` (e.g. `*kubernetes*`) or `description_filter` to find relevant tools quickly. Avoid large responses by fetching complete lists!
