@@ -45,7 +45,7 @@ const workloadKinds: WorkloadKindInfo[] = [
   },
 ];
 
-function buildOrQuery(
+export function buildOrQuery(
   clusterSelector: string,
   podPrefix: string,
   metricKey: 'desiredMetric' | 'readyMetric',
@@ -63,7 +63,7 @@ function parseValue(sample: MimirMetricSample): number {
   return isNaN(n) ? 0 : n;
 }
 
-function buildWorkloads(
+export function buildWorkloads(
   desiredResponse: MimirQueryResponse | undefined,
   readyResponse: MimirQueryResponse | undefined,
 ): WorkloadReplicaStatus[] {
