@@ -24,9 +24,6 @@ const useStyles = makeStyles(theme => ({
   contentWrapper: {
     position: 'relative',
   },
-  content: {
-    overflow: 'hidden',
-  },
   fadeOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -103,6 +100,28 @@ const ReadmeCardContent = () => {
 
     return () => {
       resizeObserver.disconnect();
+    };
+  }, [readme, updateContentSize]);
+
+  // Detect when MarkdownContent finishes rendering its HTML inside the
+  // Collapse. The Collapse constrains the outer height, so ResizeObserver
+  // alone may not fire when content is injected asynchronously.
+  useEffect(() => {
+    if (!readme || !contentRef.current) {
+      return undefined;
+    }
+
+    const mutationObserver = new MutationObserver(() => {
+      updateContentSize();
+    });
+
+    mutationObserver.observe(contentRef.current, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => {
+      mutationObserver.disconnect();
     };
   }, [readme, updateContentSize]);
 

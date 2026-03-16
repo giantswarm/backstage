@@ -85,7 +85,7 @@ You have access to MCP tools.
 
 You are free to give the user details about the MCP tools available to you.
 
-## Clusters
+## Kubernetes
 
 For clusters and application deployments, use MCP tools to fetch live Kubernetes resources. The Backstage catalog does not provide these resources.
 
