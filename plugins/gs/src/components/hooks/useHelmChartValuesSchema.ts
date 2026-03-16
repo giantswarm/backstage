@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import $RefParser from '@apidevtools/json-schema-ref-parser';
 import { useHelmChartTagManifest } from './useHelmChartTagManifest';
 
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
@@ -39,7 +40,22 @@ export function useHelmChartValuesSchema(
           return null;
         }
 
-        return response.json();
+        const rawSchema = await response.json();
+
+        try {
+          return await $RefParser.dereference(schemaUrl, rawSchema, {
+            dereference: { circular: 'ignore' },
+          });
+        } catch (refErr) {
+          // If external $ref resolution fails (e.g. CORS), return the raw schema
+          // so that downstream consumers can still use the parts that don't need refs.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `Failed to resolve $ref references in schema from ${schemaUrl}:`,
+            refErr,
+          );
+          return rawSchema;
+        }
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn(`Error loading schema from ${schemaUrl}:`, err);

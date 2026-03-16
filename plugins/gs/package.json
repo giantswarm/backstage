@@ -24,6 +24,7 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
+    "@apidevtools/json-schema-ref-parser": "^15.3.1",
     "@backstage/catalog-model": "backstage:^",
     "@backstage/core-app-api": "backstage:^",
     "@backstage/core-components": "backstage:^",

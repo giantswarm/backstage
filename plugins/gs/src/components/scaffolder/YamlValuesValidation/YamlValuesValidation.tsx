@@ -231,9 +231,15 @@ export const YamlValuesValidation = ({
           });
         }
       } catch (err) {
-        warnings.push(
-          `Validation error: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        const message =
+          err instanceof Error ? err.message : String(err);
+        if (message.includes("can't resolve reference")) {
+          // Schema contains unresolved external $ref — skip validation
+          // eslint-disable-next-line no-console
+          console.warn('Schema validation skipped due to unresolved $ref:', message);
+        } else {
+          warnings.push(`Validation error: ${message}`);
+        }
       }
     }
 
