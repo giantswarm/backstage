@@ -6,7 +6,9 @@ import { containerRegistryServiceRef } from './services/ContainerRegistryService
 
 // Mock node-fetch
 jest.mock('node-fetch', () => jest.fn());
+
 import fetch from 'node-fetch';
+
 const mockFetch = fetch as unknown as jest.Mock;
 
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
