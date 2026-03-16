@@ -5,6 +5,7 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import WarningIcon from '@material-ui/icons/Warning';
 import * as yaml from 'js-yaml';
 import Ajv from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import type { YamlValuesValidationProps } from './schema';
 import { useHelmChartValuesSchema } from '../../hooks';
@@ -220,6 +221,16 @@ export const YamlValuesValidation = ({
     if (jsonSchema) {
       try {
         const ajv = new Ajv({ allErrors: true, strict: false });
+        addFormats(ajv);
+        // Register OpenAPI-specific formats that aren't in the JSON Schema spec
+        // so Ajv doesn't warn about them.
+        ajv.addFormat('int32', true);
+        ajv.addFormat('int64', true);
+        ajv.addFormat('float', true);
+        ajv.addFormat('double', true);
+        ajv.addFormat('byte', true);
+        ajv.addFormat('binary', true);
+        ajv.addFormat('password', true);
         const validate = ajv.compile(jsonSchema);
         const valid = validate(values);
 
@@ -231,12 +242,14 @@ export const YamlValuesValidation = ({
           });
         }
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : String(err);
+        const message = err instanceof Error ? err.message : String(err);
         if (message.includes("can't resolve reference")) {
           // Schema contains unresolved external $ref — skip validation
           // eslint-disable-next-line no-console
-          console.warn('Schema validation skipped due to unresolved $ref:', message);
+          console.warn(
+            'Schema validation skipped due to unresolved $ref:',
+            message,
+          );
         } else {
           warnings.push(`Validation error: ${message}`);
         }
