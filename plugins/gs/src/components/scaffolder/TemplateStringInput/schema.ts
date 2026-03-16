@@ -11,6 +11,10 @@ export const TemplateStringInputFieldSchema = makeFieldSchemaFromZod(
       .describe(
         'Template string for the initial value. Placeholder can be a function e.g. "admin-${{generateUID(5)}}", "created by ${{currentUser()}}", or other field name, e.g. "${{name}}", "${{description}}", etc.',
       ),
+    disabledWhenField: z
+      .string()
+      .optional()
+      .describe('Field name that, when truthy, disables this input'),
   }),
 );
 

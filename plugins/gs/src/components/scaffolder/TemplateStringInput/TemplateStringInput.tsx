@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TextField } from '@material-ui/core';
 import { TemplateStringInputProps } from './schema';
 import { useTemplateString } from '../../hooks/useTemplateString';
+import { get } from 'lodash';
 
 export const TemplateStringInput = (props: TemplateStringInputProps) => {
   const [initialValue, setInitialValue] = useState<string | undefined>(
@@ -21,9 +22,18 @@ export const TemplateStringInput = (props: TemplateStringInputProps) => {
 
   const autoFocus = uiSchema['ui:autofocus'];
   const initialValueTemplate = uiSchema['ui:options']?.initialValue ?? '';
+  const disabledWhenFieldOption = uiSchema['ui:options']?.disabledWhenField;
 
-  const allFormData = (formContext.formData as Record<string, any>) ?? {};
+  const allFormData = useMemo(
+    () => (formContext.formData as Record<string, any>) ?? {},
+    [formContext.formData],
+  );
   const templatedValue = useTemplateString(initialValueTemplate, allFormData);
+
+  const isDisabledByField = useMemo(() => {
+    if (!disabledWhenFieldOption) return false;
+    return Boolean(get(allFormData, disabledWhenFieldOption));
+  }, [disabledWhenFieldOption, allFormData]);
 
   useEffect(() => {
     if (!formData && !initialValue && templatedValue) {
@@ -37,13 +47,16 @@ export const TemplateStringInput = (props: TemplateStringInputProps) => {
       id={idSchema?.$id}
       label={title}
       placeholder={placeholder}
-      helperText={description}
+      helperText={isDisabledByField ? undefined : description}
       required={required}
       value={formData}
       onChange={({ target: { value } }) => onChange(value)}
       error={rawErrors?.length > 0 && !formData}
+      margin="dense"
+      variant="outlined"
       inputProps={{ autoFocus }}
       InputLabelProps={{ shrink: true }}
+      disabled={isDisabledByField}
     />
   );
 };

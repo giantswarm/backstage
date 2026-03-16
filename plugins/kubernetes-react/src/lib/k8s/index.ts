@@ -8,6 +8,7 @@ export * from './errorMessages';
 
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
+export { ConfigMap } from './ConfigMap';
 export { Deployment } from './Deployment';
 export { KubeObject } from './KubeObject';
 export { Namespace } from './Namespace';
@@ -22,6 +23,7 @@ export { OCIRepository } from './OCIRepository';
 export { Organization } from './Organization';
 export { ProviderConfig } from './ProviderConfig';
 export { Release, RELEASE_VERSION_PREFIXES } from './Release';
+export { Secret } from './Secret';
 export { SecretStore } from './SecretStore';
 export * from './KubeObject';
 export * from './FluxObject';

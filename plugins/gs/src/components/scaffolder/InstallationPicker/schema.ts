@@ -39,6 +39,10 @@ export const InstallationPickerFieldSchema = makeFieldSchemaFromZod(
       .describe(
         'The widget to use for the installation picker, e.g. "radio" or "select"',
       ),
+    disabledWhenField: z
+      .string()
+      .optional()
+      .describe('Field name that, when truthy, disables this picker'),
   }),
 );
 

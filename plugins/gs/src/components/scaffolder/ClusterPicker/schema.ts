@@ -17,6 +17,10 @@ export const ClusterPickerFieldSchema = makeFieldSchemaFromZod(
       .string()
       .optional()
       .describe('The name of the field to use for the installation'),
+    disabledWhenField: z
+      .string()
+      .optional()
+      .describe('Field name that, when truthy, disables this picker'),
   }),
 );
 

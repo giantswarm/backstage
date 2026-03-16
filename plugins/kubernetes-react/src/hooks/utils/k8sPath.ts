@@ -32,7 +32,8 @@ export function getK8sGetPath(
 ) {
   const url = k8sUrl.create({
     baseUrl,
-    apiVersion: `${gvk.group}/${gvk.apiVersion}`,
+    isCore: gvk.isCore,
+    apiVersion: gvk.isCore ? undefined : `${gvk.group}/${gvk.apiVersion}`,
     kind: gvk.plural,
     name,
     namespace,

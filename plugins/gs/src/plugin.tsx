@@ -318,6 +318,34 @@ const templateStringInputFormField = FormFieldBlueprint.make({
   },
 });
 
+const entityPickerFormField = FormFieldBlueprint.make({
+  name: 'entity-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/EntityPicker').then(m =>
+        createFormField({
+          name: 'GSEntityPicker',
+          component: m.EntityPicker,
+          schema: m.EntityPickerFieldSchema,
+        }),
+      ),
+  },
+});
+
+const deploymentPickerFormField = FormFieldBlueprint.make({
+  name: 'deployment-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/DeploymentPicker').then(m =>
+        createFormField({
+          name: 'GSDeploymentPicker',
+          component: m.DeploymentPicker,
+          schema: m.DeploymentPickerFieldSchema,
+        }),
+      ),
+  },
+});
+
 const yamlValuesEditorFormField = FormFieldBlueprint.make({
   name: 'yaml-values-editor',
   params: {
@@ -385,6 +413,8 @@ export const gsPlugin = createFrontendPlugin({
     organizationPickerFormField,
     secretStorePickerFormField,
     templateStringInputFormField,
+    entityPickerFormField,
+    deploymentPickerFormField,
     yamlValuesEditorFormField,
     secretYamlValuesEditorFormField,
     yamlValuesValidationFormField,

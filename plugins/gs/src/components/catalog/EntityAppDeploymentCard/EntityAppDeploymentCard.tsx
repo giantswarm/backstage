@@ -1,14 +1,10 @@
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { InfoCard } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button, makeStyles, Typography } from '@material-ui/core';
-import { appDeploymentTemplateRouteRef } from '../../../routes';
 import { stringifyEntityRef } from '@backstage/catalog-model';
-import { useCatalogEntityByRef } from '../../hooks';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { useCurrentEntityChart } from '../EntityChartContext';
-
-const TEMPLATE_NAME = 'app-deployment';
+import { useAppDeploymentTemplate } from '../../hooks';
 
 const useStyles = makeStyles(() => ({
   button: {
@@ -24,28 +20,7 @@ const CardContent = () => {
   const { entity } = useEntity();
   const { charts, selectedChart } = useCurrentEntityChart();
 
-  const { entity: templateEntityGS } = useCatalogEntityByRef({
-    kind: 'template',
-    name: TEMPLATE_NAME,
-    namespace: 'giantswarm',
-  });
-
-  const { entity: templateEntityDefault } = useCatalogEntityByRef({
-    kind: 'template',
-    name: TEMPLATE_NAME,
-    namespace: 'default',
-  });
-
-  const templateEntity = templateEntityGS || templateEntityDefault;
-
-  const templateRoute = useRouteRef(appDeploymentTemplateRouteRef);
-
-  const href =
-    templateRoute &&
-    templateRoute({
-      templateName: TEMPLATE_NAME,
-      namespace: templateEntity?.metadata.namespace ?? 'default',
-    });
+  const { available, getTemplateUrl } = useAppDeploymentTemplate();
 
   const formData: Record<string, string> = {
     entityRef: stringifyEntityRef(entity),
@@ -56,25 +31,21 @@ const CardContent = () => {
     formData.chartRef = selectedChart.ref;
   }
 
-  const searchParams = new URLSearchParams({
-    formData: JSON.stringify(formData),
-  });
-
-  const isDisabled = !templateEntity || !templateRoute;
+  const href = getTemplateUrl(formData);
 
   return (
     <InfoCard title="Deploy application">
-      {isDisabled ? (
+      {!available ? (
         <Typography variant="body2" color="textSecondary">
           App Deployment template not found
         </Typography>
       ) : (
         <Button
           variant="contained"
-          disabled={isDisabled}
+          disabled={!available}
           className={classes.button}
           color="primary"
-          href={`${href}?${searchParams.toString()}`}
+          href={href}
         >
           Deploy application
         </Button>
