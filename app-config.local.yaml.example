@@ -10,6 +10,7 @@ backend:
     pluginSources:
       - catalog
       - catalog-mcp
+      - gs
   baseUrl: https://localhost:7007
   listen:
     port: 7007
@@ -28,6 +29,7 @@ backend:
           - plugin: mcp-actions
           - plugin: catalog
           - plugin: catalog-mcp
+          - plugin: gs
 
 auth:
   environment: development
