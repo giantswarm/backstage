@@ -95,7 +95,7 @@ jobs:
 
       - run:
           name: Typecheck code using the TypeScript compiler
-          command: yarn run tsc
+          command: NODE_OPTIONS="--max-old-space-size=4096" yarn run tsc
 
       - run:
           name: Lint code using ESlint
