@@ -5,6 +5,21 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add deployment edit mode with DeploymentPicker and EntityPicker scaffolder fields.
+- Add MCP tool get-helm-chart-values for fetching Helm chart default values and schema.
+- Add ConfigMap and Secret resource classes, HelmRelease valuesFrom inspection methods, and core API resource path support.
+- Dereference external schema references in app deployment configuration.
+
+### Changed
+
+- Reduce system prompt instructions for muster.
+
+### Fixed
+
+- Show Troubleshoot button in case a Deployment workload is not ready.
+
 ## [0.112.0] - 2026-03-13
 
 ### Added
