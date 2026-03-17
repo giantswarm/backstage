@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.6.0
+
+### Minor Changes
+
+- a1fe62e: Add MCP tool get-helm-chart-values for fetching Helm chart default values and schema
+
 ## 0.5.0
 
 ### Minor Changes

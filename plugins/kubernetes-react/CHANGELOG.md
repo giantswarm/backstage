@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.14.0
+
+### Minor Changes
+
+- 9997d4a: Add ConfigMap and Secret resource classes, HelmRelease valuesFrom inspection methods, and core API resource path support.
+
 ## 0.13.0
 
 ### Minor Changes

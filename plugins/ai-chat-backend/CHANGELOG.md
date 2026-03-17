@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.9.1
+
+### Patch Changes
+
+- 38bcb3c: Reduce system prompt instructions for muster
+
 ## 0.9.0
 
 ### Minor Changes

@@ -20,6 +20,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Show Troubleshoot button in case a Deployment workload is not ready.
 
+See [./docs/releases/v0.113.0-changelog.md](./docs/releases/v0.113.0-changelog.md) for more information.
+
 ## [0.112.0] - 2026-03-13
 
 ### Added
