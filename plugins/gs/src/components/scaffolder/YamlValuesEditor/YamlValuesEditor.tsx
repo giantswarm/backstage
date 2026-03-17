@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { YamlValuesEditorProps } from './schema';
 import { YamlEditorFormField } from '../../UI';
 import { useHelmChartValuesSchema } from '../../hooks';
@@ -18,6 +18,7 @@ export const YamlValuesEditor = ({
     chartRefField: chartRefFieldOption,
     chartTag: chartTagOption,
     chartTagField: chartTagFieldOption,
+    initialValueField: initialValueFieldOption,
   } = uiSchema?.['ui:options'] ?? {};
 
   const chartRef = useValueFromOptions(
@@ -31,6 +32,18 @@ export const YamlValuesEditor = ({
     chartTagOption,
     chartTagFieldOption,
   );
+
+  const initialValue = useValueFromOptions<string>(
+    formContext,
+    undefined,
+    initialValueFieldOption,
+  );
+
+  useEffect(() => {
+    if (initialValue && formData === undefined) {
+      onChange(initialValue);
+    }
+  }, [initialValue, formData, onChange]);
 
   const values = formData || '';
 

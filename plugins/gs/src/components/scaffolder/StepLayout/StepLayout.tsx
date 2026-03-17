@@ -136,6 +136,20 @@ export const StepLayout: LayoutTemplate = ({
   const allFormData = (formContext.formData as Record<string, any>) ?? {};
   const note = useTemplateString(noteTemplate, allFormData);
 
+  const itemsContent = (
+    <Grid container spacing={3} direction="column">
+      {properties.map(element =>
+        element.hidden ? (
+          element.content
+        ) : (
+          <Grid key={element.content.key} item xs={12}>
+            {element.content}
+          </Grid>
+        ),
+      )}
+    </Grid>
+  );
+
   return (
     <Box maxWidth={formWidth} mt={2}>
       {description || note ? (
@@ -165,28 +179,10 @@ export const StepLayout: LayoutTemplate = ({
                   />
                 ) : null}
               </ExtraContent>
-              <Content>
-                <Grid container spacing={3} direction="column">
-                  {properties.map(element => (
-                    <Grid key={element.content.key} item xs={12}>
-                      {element.content}
-                    </Grid>
-                  ))}
-                </Grid>
-              </Content>
+              <Content>{itemsContent}</Content>
             </Grid>
           ) : (
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                <Grid container spacing={3} direction="column">
-                  {properties.map(element => (
-                    <Grid key={element.content.key} item xs={12}>
-                      {element.content}
-                    </Grid>
-                  ))}
-                </Grid>
-              </Grid>
-            </Grid>
+            itemsContent
           )}
         </ErrorsProvider>
       </QueryClientProvider>

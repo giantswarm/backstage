@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDisabledInstallations, useInstallationsInfo } from '../../hooks';
-import { Grid } from '@material-ui/core';
+import { Grid, TextField } from '@material-ui/core';
 import { InstallationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { InstallationInfo } from '../../hooks/useInstallationsInfo';
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 type InstallationFieldProps = {
   id?: string;
@@ -164,7 +165,14 @@ export const InstallationPicker = ({
     allowedProvidersField: allowedProvidersFieldOption,
     allowedPipelines = [],
     widget,
+    disabledWhenField: disabledWhenFieldOption,
   } = uiSchema?.['ui:options'] ?? {};
+
+  const isDisabledByField = useValueFromOptions<boolean>(
+    formContext,
+    undefined,
+    disabledWhenFieldOption,
+  );
 
   const allowedProviders = useMemo(() => {
     if (allowedProvidersOption) {
@@ -202,6 +210,21 @@ export const InstallationPicker = ({
     },
     [onChange],
   );
+
+  if (isDisabledByField) {
+    return (
+      <TextField
+        id={idSchema?.$id}
+        label={title}
+        required={required}
+        value={installationName ?? ''}
+        disabled
+        margin="dense"
+        variant="outlined"
+        InputLabelProps={{ shrink: true }}
+      />
+    );
+  }
 
   return (
     <InstallationPickerField

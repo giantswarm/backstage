@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import type { SecretYamlValuesEditorProps } from './schema';
 import { YamlEditorFormField } from '../../UI';
@@ -51,23 +51,38 @@ export const SecretYamlValuesEditor = ({
     };
   }, [jsonSchema]);
 
-  const { setSecrets } = useTemplateSecrets();
+  const { setSecrets, secrets } = useTemplateSecrets();
 
-  // Keep the actual YAML content in a ref so we can display it in the editor
-  // while storing the redacted placeholder in formData
-  const actualValueRef = useRef<string>('');
-
-  // Initialize from formData only if it's not the redacted placeholder
-  useEffect(() => {
+  // Track the actual YAML content as state so the editor re-renders when
+  // the value is populated asynchronously (e.g. by DeploymentPicker).
+  // A ref is kept in sync to avoid stale closures in handleChange.
+  const [displayValue, setDisplayValue] = useState(() => {
     if (formData && formData !== REDACTED_PLACEHOLDER) {
-      actualValueRef.current = formData;
+      return formData;
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return '';
+  });
+  const displayValueRef = useRef(displayValue);
+  const hasAppliedInitialValue = useRef(false);
+
+  // Apply initial value from secrets context (e.g. pre-populated by DeploymentPicker in edit mode)
+  useEffect(() => {
+    if (hasAppliedInitialValue.current || !secretsKey) return;
+
+    const secretValue = secrets[secretsKey] as string | undefined;
+    if (secretValue && !displayValueRef.current) {
+      hasAppliedInitialValue.current = true;
+      displayValueRef.current = secretValue;
+      setDisplayValue(secretValue);
+      onChange(REDACTED_PLACEHOLDER);
+    }
+  }, [secrets, secretsKey, onChange]);
 
   const handleChange = useCallback(
     (value?: string) => {
       const yamlContent = value || '';
-      actualValueRef.current = yamlContent;
+      displayValueRef.current = yamlContent;
+      setDisplayValue(yamlContent);
 
       if (secretsKey) {
         setSecrets({ [secretsKey]: yamlContent });
@@ -85,7 +100,7 @@ export const SecretYamlValuesEditor = ({
       label={title}
       helperText={description}
       required={required}
-      value={actualValueRef.current}
+      value={displayValue}
       onChange={handleChange}
       schema={processedJsonSchema}
       error={rawErrors.length > 0}

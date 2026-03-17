@@ -27,6 +27,12 @@ export const YamlValuesEditorFieldSchema = makeFieldSchemaFromZod(
       .describe(
         'The name of the field containing the chart tag to fetch values schema for',
       ),
+    initialValueField: z
+      .string()
+      .optional()
+      .describe(
+        'Field path to use as initial value when the editor is empty (e.g. for edit mode)',
+      ),
   }),
 );
 

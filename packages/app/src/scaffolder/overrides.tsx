@@ -58,6 +58,7 @@ const scaffolderPageOverride = PageBlueprint.makeWithOverrides({
           ScaffolderPage as unknown as React.ComponentType<{
             formFields?: unknown[];
             headerOptions?: Record<string, string>;
+            templateFilter?: (entity: any) => boolean;
             children?: React.ReactNode;
           }>;
 
@@ -65,6 +66,9 @@ const scaffolderPageOverride = PageBlueprint.makeWithOverrides({
           <ScaffolderRouter
             formFields={formFields}
             headerOptions={headerOptions}
+            templateFilter={entity =>
+              !entity.metadata?.tags?.includes('hidden')
+            }
           >
             <ScaffolderLayouts>
               <GSStepLayoutHolder />

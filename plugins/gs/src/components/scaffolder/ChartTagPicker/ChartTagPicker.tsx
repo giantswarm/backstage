@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { FormHelperText, Grid, TextField, Typography } from '@material-ui/core';
+import { Grid, TextField, Typography } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ChartTagPickerProps, ChartTagPickerValue } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
@@ -124,16 +124,17 @@ const ChartTagPickerField = ({
             <TextField
               {...params}
               label={label}
-              margin="dense"
-              variant="outlined"
+              helperText={helper}
               required={required}
               error={error}
               disabled={isDisabled}
+              margin="dense"
+              variant="outlined"
               InputProps={params.InputProps}
+              InputLabelProps={params.InputLabelProps}
             />
           )}
         />
-        {helper && <FormHelperText>{helper}</FormHelperText>}
 
         {tagsError && (
           <Typography

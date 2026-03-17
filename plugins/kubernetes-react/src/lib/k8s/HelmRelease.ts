@@ -87,4 +87,17 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
   getUpgradeFailures() {
     return this.jsonData.status?.upgradeFailures;
   }
+
+  getValuesFrom() {
+    return this.jsonData.spec?.valuesFrom;
+  }
+
+  getValues() {
+    return this.jsonData.spec?.values;
+  }
+
+  hasInlineValues() {
+    const values = this.getValues();
+    return values !== undefined && Object.keys(values).length > 0;
+  }
 }

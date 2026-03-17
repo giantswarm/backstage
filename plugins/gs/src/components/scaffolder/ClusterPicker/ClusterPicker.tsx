@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { SelectFormField } from '../../UI/SelectFormField';
-import { Grid } from '@material-ui/core';
+import { Grid, TextField } from '@material-ui/core';
 import { ClusterPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
@@ -84,12 +84,19 @@ export const ClusterPicker = ({
   const {
     installationName: installationNameOption,
     installationNameField: installationNameFieldOption,
+    disabledWhenField: disabledWhenFieldOption,
   } = uiSchema?.['ui:options'] ?? {};
 
   const installationName = useValueFromOptions(
     formContext,
     installationNameOption,
     installationNameFieldOption,
+  );
+
+  const isDisabledByField = useValueFromOptions<boolean>(
+    formContext,
+    undefined,
+    disabledWhenFieldOption,
   );
 
   const handleClusterSelect = useCallback(
@@ -108,6 +115,21 @@ export const ClusterPicker = ({
     },
     [onChange],
   );
+
+  if (isDisabledByField) {
+    return (
+      <TextField
+        id={idSchema?.$id}
+        label={title}
+        required={required}
+        value={clusterName ?? ''}
+        disabled
+        margin="dense"
+        variant="outlined"
+        InputLabelProps={{ shrink: true }}
+      />
+    );
+  }
 
   return (
     <ClusterPickerField

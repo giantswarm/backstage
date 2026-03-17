@@ -139,13 +139,22 @@ export const ChartPicker = ({
   idSchema,
   formContext,
 }: ChartPickerProps) => {
-  const { entityRef: entityRefOption, entityRefField: entityRefFieldOption } =
-    uiSchema?.['ui:options'] ?? {};
+  const {
+    entityRef: entityRefOption,
+    entityRefField: entityRefFieldOption,
+    disabledWhenField: disabledWhenFieldOption,
+  } = uiSchema?.['ui:options'] ?? {};
 
   const entityRef = useValueFromOptions(
     formContext,
     entityRefOption,
     entityRefFieldOption,
+  );
+
+  const isDisabledByField = useValueFromOptions<boolean>(
+    formContext,
+    undefined,
+    disabledWhenFieldOption,
   );
 
   const handleChange = useCallback(
@@ -156,6 +165,21 @@ export const ChartPicker = ({
     },
     [formData, onChange],
   );
+
+  if (isDisabledByField) {
+    return (
+      <TextField
+        id={idSchema?.$id}
+        label={title}
+        required={required}
+        value={formData ?? ''}
+        disabled
+        margin="dense"
+        variant="outlined"
+        InputLabelProps={{ shrink: true }}
+      />
+    );
+  }
 
   return (
     <ChartPickerField

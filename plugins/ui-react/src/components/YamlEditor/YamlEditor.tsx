@@ -146,6 +146,23 @@ export const YamlEditor = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
+  // Update document when initialValue changes after mount
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    const currentDoc = view.state.doc.toString();
+    if (initialValue !== currentDoc) {
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: currentDoc.length,
+          insert: initialValue,
+        },
+      });
+    }
+  }, [initialValue]);
+
   // Update schema when it changes
   useEffect(() => {
     if (viewRef.current && schema) {

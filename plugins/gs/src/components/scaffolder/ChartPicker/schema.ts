@@ -14,6 +14,10 @@ export const ChartPickerFieldSchema = makeFieldSchemaFromZod(
       .describe(
         'The name of the field containing the entity reference to fetch charts for',
       ),
+    disabledWhenField: z
+      .string()
+      .optional()
+      .describe('Field name that, when truthy, disables this picker'),
   }),
 );
 

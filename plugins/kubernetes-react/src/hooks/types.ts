@@ -12,4 +12,6 @@ export type QueryOptions<T> = {
     | number
     | false
     | ((query: Query<T>) => number | false | undefined);
+  staleTime?: number;
+  gcTime?: number;
 };

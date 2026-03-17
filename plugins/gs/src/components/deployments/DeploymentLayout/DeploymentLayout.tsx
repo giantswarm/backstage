@@ -32,6 +32,7 @@ import {
   getWorkloadNamespace,
   getWorkloadPodPrefix,
 } from '../utils/getWorkloadIdentifiers';
+import { EditDeploymentButton } from './EditDeploymentButton';
 
 const useStyles = makeStyles(theme => ({
   headerAction: {
@@ -210,6 +211,14 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
   return (
     <Page themeId="service">
       <Header title={name} type={type}>
+        {deployment && deployment instanceof HelmRelease && (
+          <Grid item className={classes.headerAction}>
+            <EditDeploymentButton
+              deployment={deployment}
+              installationName={installationName}
+            />
+          </Grid>
+        )}
         {deployment &&
           (() => {
             const { message, isTroubleshoot } = getAIChatMessage(
