@@ -23,6 +23,15 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { getAggregatedStatus } from '../utils/getStatus';
+import {
+  useMimirWorkloadStatus,
+  WorkloadReplicaStatus,
+} from '../../hooks/useMimirWorkloadStatus';
+import { findTargetClusterName } from '../utils/findTargetCluster';
+import {
+  getWorkloadNamespace,
+  getWorkloadPodPrefix,
+} from '../utils/getWorkloadIdentifiers';
 
 const useStyles = makeStyles(theme => ({
   headerAction: {
@@ -118,20 +127,48 @@ const PageContent = ({
   return <RoutedTabs routes={routes} />;
 };
 
+function isWorkloadReady(w: WorkloadReplicaStatus): boolean {
+  return w.readyReplicas >= w.desiredReplicas && w.desiredReplicas > 0;
+}
+
 function getAIChatMessage(
   deployment: App | HelmRelease,
   installationName: string,
+  workloads: WorkloadReplicaStatus[],
+  clusterName: string | undefined,
+  workloadNamespace: string,
 ): { message: string; isTroubleshoot: boolean } {
   const name = deployment.getName();
   const namespace = deployment.getNamespace();
   const kind = deployment instanceof HelmRelease ? 'HelmRelease' : 'App';
-  const isTroubleshoot = getAggregatedStatus(deployment) === 'failed';
+  const deploymentFailed = getAggregatedStatus(deployment) === 'failed';
+  const notReadyWorkloads = workloads.filter(w => !isWorkloadReady(w));
 
-  const message = isTroubleshoot
-    ? `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${installationName}' and help me troubleshoot it.`
-    : `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${installationName}', and show me basic details, so that I can ask further questions about it.`;
+  if (deploymentFailed) {
+    return {
+      isTroubleshoot: true,
+      message: `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${installationName}' and help me troubleshoot it.`,
+    };
+  }
 
-  return { message, isTroubleshoot };
+  if (notReadyWorkloads.length > 0 && clusterName) {
+    const workloadDescriptions = notReadyWorkloads
+      .map(
+        w =>
+          `The ${w.kind} this ${kind} creates, named '${w.name}' in namespace '${workloadNamespace}' on cluster '${clusterName}', is not Ready.`,
+      )
+      .join('\n\n');
+
+    return {
+      isTroubleshoot: true,
+      message: `There is a ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${installationName}'.\n\n${workloadDescriptions} Please investigate the root cause and help mitigating the problem.`,
+    };
+  }
+
+  return {
+    isTroubleshoot: false,
+    message: `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${installationName}', and show me basic details, so that I can ask further questions about it.`,
+  };
 }
 
 export interface DeploymentLayoutProps {
@@ -152,6 +189,20 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
   const { isGSUser, isLoading: currentUserIsLoading } =
     useCurrentUser(installationName);
 
+  const clusterName = deployment
+    ? findTargetClusterName(deployment)
+    : undefined;
+  const workloadNamespace = deployment ? getWorkloadNamespace(deployment) : '';
+  const podPrefix = deployment ? getWorkloadPodPrefix(deployment) : '';
+
+  const { workloads } = useMimirWorkloadStatus({
+    installationName,
+    clusterName,
+    namespace: workloadNamespace,
+    podPrefix,
+    refetchInterval: 30_000,
+  });
+
   const isLoading = deploymentIsLoading || currentUserIsLoading;
 
   const type = `resource - ${deployment && deployment instanceof App ? 'Giant Swarm App' : 'Flux HelmRelease'}`;
@@ -164,6 +215,9 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
             const { message, isTroubleshoot } = getAIChatMessage(
               deployment,
               installationName,
+              workloads,
+              clusterName,
+              workloadNamespace,
             );
             return (
               <Grid item className={classes.headerAction}>
