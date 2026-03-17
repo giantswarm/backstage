@@ -91,13 +91,15 @@ Kubernetes MCP tools are read-only.
 
 Clusters are often referred to by their name, which is unique within an installation, but not guaranteed to be unique across installations. Hence, the user will often name both a management cluster (or installation, which are synonymous) and the name of a workload cluster of interest. For better understanding, use tools to look up existing management cluster names.
 
+When investigating issues with applications, also check the cluster configuration. There may be specialties with regard to policies preventing certain things on some cluster, but not on others.
+
 ### Metrics
 
 You have access to Prometheus (Mimir) metrics via MCP tools.
 
 ### Helm charts
 
-For information about configuration options of a Helm chart, use `get-helm-chart-values` to fetch default values and schema.
+For information about configuration options of a Helm chart, use `get-helm-chart-values` to fetch default values and schema. This is very helpful if you have a HelmRelease with an OCIRepository as a source and want to find out more about the chart deployed.
 
 ### Tools with custom UI
 
