@@ -9509,7 +9509,7 @@ __metadata:
     lodash: "npm:^4.17.21"
     qs: "npm:^6.14.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
-    react-syntax-highlighter: "npm:^15.4.5"
+    react-syntax-highlighter: "npm:^16.0.0"
     react-use: "npm:^17.6.0"
     semver: "npm:^7.7.2"
     use-local-storage-state: "npm:^19.5.0"
