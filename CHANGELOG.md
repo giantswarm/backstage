@@ -5,6 +5,25 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-03-17
+
+### Added
+
+- Add deployment edit mode with DeploymentPicker and EntityPicker scaffolder fields.
+- Add MCP tool get-helm-chart-values for fetching Helm chart default values and schema.
+- Add ConfigMap and Secret resource classes, HelmRelease valuesFrom inspection methods, and core API resource path support.
+- Dereference external schema references in app deployment configuration.
+
+### Changed
+
+- Reduce system prompt instructions for muster.
+
+### Fixed
+
+- Show Troubleshoot button in case a Deployment workload is not ready.
+
+See [./docs/releases/v0.113.0-changelog.md](./docs/releases/v0.113.0-changelog.md) for more information.
+
 ## [0.112.0] - 2026-03-13
 
 ### Added
@@ -2017,7 +2036,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.112.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.113.0...HEAD
+[0.113.0]: https://github.com/giantswarm/backstage/compare/v0.112.0...v0.113.0
 [0.112.0]: https://github.com/giantswarm/backstage/compare/v0.111.0...v0.112.0
 [0.111.0]: https://github.com/giantswarm/backstage/compare/v0.110.2...v0.111.0
 [0.110.2]: https://github.com/giantswarm/backstage/compare/v0.110.1...v0.110.2

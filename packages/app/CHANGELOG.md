@@ -1,5 +1,22 @@
 # app
 
+## 0.32.0
+
+### Minor Changes
+
+- 9997d4a: Add deployment edit mode with DeploymentPicker and EntityPicker scaffolder fields, EditDeploymentButton on deployment pages, disabledWhenField support across pickers, and hidden template filtering.
+
+### Patch Changes
+
+- Updated dependencies [9997d4a]
+- Updated dependencies [9997d4a]
+- Updated dependencies [a0aa682]
+- Updated dependencies [b1526bc]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.14.0
+  - @giantswarm/backstage-plugin-gs@0.59.0
+  - @giantswarm/backstage-plugin-flux@0.8.1
+  - @giantswarm/backstage-plugin-flux-react@0.12.1
+
 ## 0.31.3
 
 ### Patch Changes
