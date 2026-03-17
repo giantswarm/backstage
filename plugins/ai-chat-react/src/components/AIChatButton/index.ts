@@ -1,2 +1,2 @@
 export { AIChatButton } from './AIChatButton';
-export type { AIChatButtonItem } from './AIChatButton';
+export type { AIChatButtonItem, AIChatButtonOpenMode } from './AIChatButton';

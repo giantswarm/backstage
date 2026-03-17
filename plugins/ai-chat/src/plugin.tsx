@@ -1,14 +1,17 @@
+import { lazy, Suspense } from 'react';
 import {
   createFrontendPlugin,
   PageBlueprint,
   NavItemBlueprint,
   ApiBlueprint,
+  AppRootElementBlueprint,
 } from '@backstage/frontend-plugin-api';
 
-import { mcpAuthProvidersApiRef, MCPAuthProviders } from './api';
+import { mcpAuthProvidersApiRef, MCPAuthProviders, AIChatDrawer } from './api';
 import {
   AIChatIcon,
   aiChatApiRef,
+  aiChatDrawerApiRef,
   rootRouteRef,
 } from '@giantswarm/backstage-plugin-ai-chat-react';
 
@@ -51,6 +54,35 @@ const mcpAuthProvidersApi = ApiBlueprint.make({
     }),
 });
 
+const aiChatDrawerApi = ApiBlueprint.make({
+  name: 'drawer',
+  disabled: true,
+  params: defineParams =>
+    defineParams({
+      api: aiChatDrawerApiRef,
+      deps: {},
+      factory: () => new AIChatDrawer(),
+    }),
+});
+
+const LazyAiChatDrawerProvider = lazy(() =>
+  import('./components/AiChatDrawer').then(m => ({
+    default: m.AiChatDrawerProvider,
+  })),
+);
+
+const aiChatDrawerElement = AppRootElementBlueprint.make({
+  name: 'drawer',
+  disabled: true,
+  params: {
+    element: (
+      <Suspense fallback={null}>
+        <LazyAiChatDrawerProvider />
+      </Suspense>
+    ),
+  },
+});
+
 export const aiChatPlugin = createFrontendPlugin({
   pluginId: 'ai-chat',
   extensions: [
@@ -58,6 +90,8 @@ export const aiChatPlugin = createFrontendPlugin({
     aiChatNavItem,
     aiChatServiceApi,
     mcpAuthProvidersApi,
+    aiChatDrawerApi,
+    aiChatDrawerElement,
   ],
   routes: {
     root: rootRouteRef,

@@ -12,7 +12,7 @@ import {
 import { useApiHolder, useRouteRef } from '@backstage/core-plugin-api';
 import { useNavigate } from 'react-router-dom';
 import { AIChatIcon } from '../../assets/icons';
-import { aiChatApiRef } from '../../api';
+import { aiChatApiRef, aiChatDrawerApiRef } from '../../api';
 import { rootRouteRef } from '../../routes';
 
 const useStyles = makeStyles(() => ({
@@ -38,11 +38,17 @@ export type AIChatButtonItem = {
   message: string;
 };
 
+export type AIChatButtonOpenMode = 'drawer' | 'navigate';
+
 type AIChatButtonProps = {
   items: AIChatButtonItem[];
   tooltip?: string;
   label?: string;
   troubleshoot?: boolean;
+  /** Controls how the AI chat is opened. 'drawer' opens the side drawer,
+   * 'navigate' navigates to the AI chat page. Defaults to 'drawer' when the
+   * drawer API is available, otherwise falls back to 'navigate'. */
+  openMode?: AIChatButtonOpenMode;
 };
 
 type AIChatButtonInnerProps = AIChatButtonProps & {
@@ -55,15 +61,22 @@ const AIChatButtonInner = ({
   displayLabel,
   displayTooltip,
   troubleshoot,
+  openMode,
 }: AIChatButtonInnerProps) => {
   const chatPath = useRouteRef(rootRouteRef);
   const classes = useStyles();
   const navigate = useNavigate();
+  const apiHolder = useApiHolder();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
-  const navigateToChat = (message: string) => {
-    const params = new URLSearchParams({ message });
-    navigate(`${chatPath()}?${params.toString()}`);
+  const openChat = (message: string) => {
+    const drawerApi = apiHolder.get(aiChatDrawerApiRef);
+    if (openMode !== 'navigate' && drawerApi) {
+      drawerApi.openDrawer(message);
+    } else {
+      const params = new URLSearchParams({ message });
+      navigate(`${chatPath()}?${params.toString()}`);
+    }
   };
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
@@ -71,7 +84,7 @@ const AIChatButtonInner = ({
     event.preventDefault();
 
     if (items.length === 1) {
-      navigateToChat(items[0].message);
+      openChat(items[0].message);
       return;
     }
 
@@ -84,7 +97,7 @@ const AIChatButtonInner = ({
 
   const handleItemClick = (item: AIChatButtonItem) => {
     handleClose();
-    navigateToChat(item.message);
+    openChat(item.message);
   };
 
   return (
@@ -141,6 +154,7 @@ export const AIChatButton = ({
   tooltip,
   label,
   troubleshoot,
+  openMode,
 }: AIChatButtonProps) => {
   const apiHolder = useApiHolder();
   const aiChatApi = apiHolder.get(aiChatApiRef);
@@ -158,6 +172,7 @@ export const AIChatButton = ({
       tooltip={tooltip}
       label={label}
       troubleshoot={troubleshoot}
+      openMode={openMode}
       displayLabel={displayLabel}
       displayTooltip={displayTooltip}
     />
