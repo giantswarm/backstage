@@ -1,4 +1,5 @@
 export * from './useAppDeploymentTemplate';
+export * from './useEditDeploymentTemplate';
 export * from './useCatalogEntitiesForDeployments';
 export * from './useCatalogEntityByRef';
 export * from './useCatalogEntityForDeployment';

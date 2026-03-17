@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { YamlValuesEditorProps } from './schema';
 import { YamlEditorFormField } from '../../UI';
 import { useHelmChartValuesSchema } from '../../hooks';
@@ -39,11 +39,8 @@ export const YamlValuesEditor = ({
     initialValueFieldOption,
   );
 
-  const hasAppliedInitialValue = useRef(false);
-
   useEffect(() => {
-    if (initialValue && !formData && !hasAppliedInitialValue.current) {
-      hasAppliedInitialValue.current = true;
+    if (initialValue && formData === undefined) {
       onChange(initialValue);
     }
   }, [initialValue, formData, onChange]);

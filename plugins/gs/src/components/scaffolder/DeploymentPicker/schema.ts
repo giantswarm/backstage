@@ -5,8 +5,6 @@ export const DeploymentPickerFieldSchema = makeFieldSchemaFromZod(
   z
     .object({
       currentValues: z.string().optional(),
-      hasExistingValues: z.boolean().optional(),
-      hasExistingSecrets: z.boolean().optional(),
     })
     .optional(),
   z.object({
