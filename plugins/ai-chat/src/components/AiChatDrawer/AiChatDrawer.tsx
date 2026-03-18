@@ -1,17 +1,15 @@
-import { useEffect } from 'react';
 import { Button, IconButton, Tooltip, makeStyles } from '@material-ui/core';
 import CloseIcon from '@material-ui/icons/Close';
 import AddIcon from '@material-ui/icons/Add';
 import { Thread } from '../AiChat/Thread';
-
-const DRAWER_WIDTH = 500;
+import { DEFAULT_WIDTH, useDrawerResize } from './useDrawerResize';
 
 const useStyles = makeStyles(theme => ({
   drawer: {
     position: 'fixed',
     top: 0,
     right: 0,
-    width: DRAWER_WIDTH,
+    width: DEFAULT_WIDTH,
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
@@ -21,6 +19,25 @@ const useStyles = makeStyles(theme => ({
     [theme.breakpoints.down('xs')]: {
       width: '100vw',
     },
+  },
+  resizeHandle: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 6,
+    height: '100%',
+    cursor: 'col-resize',
+    zIndex: 1,
+    '&:hover': {
+      backgroundColor: theme.palette.action.hover,
+    },
+    [theme.breakpoints.down('xs')]: {
+      display: 'none',
+    },
+  },
+  resizeHandleDragging: {
+    backgroundColor: theme.palette.primary.main,
+    opacity: 0.3,
   },
   backdrop: {
     position: 'fixed',
@@ -71,24 +88,10 @@ export const AiChatDrawer = ({
   variant,
 }: AiChatDrawerProps) => {
   const classes = useStyles();
-
-  // Shrink the main content area when the drawer is open in persistent mode.
-  useEffect(() => {
-    if (!open || variant !== 'persistent') {
-      return undefined;
-    }
-
-    const rootEl = document.getElementById('root');
-    if (!rootEl) {
-      return undefined;
-    }
-
-    rootEl.style.marginRight = `${DRAWER_WIDTH}px`;
-
-    return () => {
-      rootEl.style.marginRight = '';
-    };
-  }, [open, variant]);
+  const { width, drawerRef, resizeHandleProps, isDragging } = useDrawerResize({
+    variant,
+    open,
+  });
 
   if (!open) {
     return null;
@@ -110,7 +113,15 @@ export const AiChatDrawer = ({
           }}
         />
       )}
-      <div className={classes.drawer}>
+      <div
+        ref={drawerRef}
+        className={classes.drawer}
+        style={width ? { width } : undefined}
+      >
+        <div
+          className={`${classes.resizeHandle}${isDragging ? ` ${classes.resizeHandleDragging}` : ''}`}
+          {...resizeHandleProps}
+        />
         <div className={classes.header}>
           <div className={classes.headerLeft}>
             <Tooltip title="New conversation">
