@@ -5,6 +5,19 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-03-18
+
+### Added
+
+- Add AI chat drawer with persistent/overlay variants, FAB, and openMode prop.
+
+### Fixed
+
+- Fix scaffolder template fetch failing for entities registered via `giantswarm` location type.
+- Use SPA navigation for Edit Deployment button instead of full page reload.
+
+See [./docs/releases/v0.114.0-changelog.md](./docs/releases/v0.114.0-changelog.md) for more information.
+
 ## [0.113.0] - 2026-03-17
 
 ### Added
@@ -2036,7 +2049,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.113.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.114.0...HEAD
+[0.114.0]: https://github.com/giantswarm/backstage/compare/v0.113.0...v0.114.0
 [0.113.0]: https://github.com/giantswarm/backstage/compare/v0.112.0...v0.113.0
 [0.112.0]: https://github.com/giantswarm/backstage/compare/v0.111.0...v0.112.0
 [0.111.0]: https://github.com/giantswarm/backstage/compare/v0.110.2...v0.111.0
