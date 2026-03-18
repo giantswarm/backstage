@@ -108,6 +108,8 @@ For information about configuration options of a Helm chart, use `get-helm-chart
 
 Helm charts deployed via App or HelmRelease resources usually have a non-confidential configuration part and in some cases also a confidential part. With HelmRelease and App, the confidential part is given via a Secret resource. The Secret should only include confidential details like API keys. Non-confidential configuration should be given via a referenced ConfigMap or directly in the HelmRelease (spec.values).
 
+Helm charts that are represented in the portal's catalog can be deployed easily through the portal's "App Deployment" page/flow at the URI `/create/templates/<template-entity-namespace>/app-deployment`. The result is an OCIRepository and a HelmRelease resource in the management cluster. Applications deployed in this way can also be modified directly in the portal. There is an "Edit" button available on the deployment details page which allows the user to change the chart (OCI repository and tag), upgrade strategy (all, minor, patch, none), and the configuration (both confidential and non-confidential). Note: Editing only makes sense if the HelmRelease resource is not managed via gitops.
+
 ### Tools with custom UI
 
 Some tools render their results as rich UI cards directly visible to the user. When you call such a tool, do NOT repeat, summarize, or comment on the data — the card is self-explanatory. Simply let the card speak for itself.

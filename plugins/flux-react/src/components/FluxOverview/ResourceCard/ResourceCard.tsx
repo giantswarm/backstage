@@ -205,6 +205,7 @@ export const ResourceCard = ({
               <CopyCommandMenu resource={resource} />
               <AIChatButton
                 troubleshoot={readyStatus === 'False'}
+                openMode="navigate"
                 items={[
                   {
                     message:
