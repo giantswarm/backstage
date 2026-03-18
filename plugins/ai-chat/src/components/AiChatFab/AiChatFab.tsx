@@ -1,5 +1,6 @@
 import { Fab, makeStyles, Tooltip } from '@material-ui/core';
 import { useApiHolder, useRouteRef } from '@backstage/core-plugin-api';
+import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   AIChatIcon,
@@ -26,6 +27,22 @@ export const AiChatFab = () => {
   const { pathname } = useLocation();
 
   const drawerApi = apiHolder.get(aiChatDrawerApiRef);
+
+  // Inject a global <style> tag to add bottom padding so the FAB never
+  // overlaps page content. Using a stylesheet (rather than inline styles)
+  // ensures the rule survives content re-renders.
+  useEffect(() => {
+    if (!drawerApi) return undefined;
+
+    const styleEl = document.createElement('style');
+    styleEl.id = 'ai-chat-fab-padding';
+    styleEl.textContent = 'main { padding-bottom: 72px !important; }';
+    document.head.appendChild(styleEl);
+
+    return () => {
+      styleEl.remove();
+    };
+  }, [drawerApi]);
 
   if (!drawerApi || pathname.startsWith(chatPath())) {
     return null;
