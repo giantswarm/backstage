@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.59.1
+
+### Patch Changes
+
+- 5a216f5: Use SPA navigation for Edit Deployment button instead of full page reload.
+- Updated dependencies [d7cd901]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.0
+  - @giantswarm/backstage-plugin-flux-react@0.12.2
+
 ## 0.59.0
 
 ### Minor Changes

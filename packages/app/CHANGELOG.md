@@ -1,5 +1,16 @@
 # app
 
+## 0.32.1
+
+### Patch Changes
+
+- Updated dependencies [5a216f5]
+- Updated dependencies [d7cd901]
+  - @giantswarm/backstage-plugin-gs@0.59.1
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.0
+  - @giantswarm/backstage-plugin-ai-chat@0.10.0
+  - @giantswarm/backstage-plugin-flux-react@0.12.2
+
 ## 0.32.0
 
 ### Minor Changes

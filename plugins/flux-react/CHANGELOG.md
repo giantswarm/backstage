@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.12.2
+
+### Patch Changes
+
+- Updated dependencies [d7cd901]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.0
+
 ## 0.12.1
 
 ### Patch Changes
