@@ -106,6 +106,8 @@ You have access to Prometheus (Mimir) metrics via MCP tools.
 
 For information about configuration options of a Helm chart, use `get-helm-chart-values` to fetch default values and schema. This is very helpful if you have a HelmRelease with an OCIRepository as a source and want to find out more about the chart deployed.
 
+Helm charts deployed via App or HelmRelease resources usually have a non-confidential configuration part and in some cases also a confidential part. With HelmRelease and App, the confidential part is given via a Secret resource. The Secret should only include confidential details like API keys. Non-confidential configuration should be given via a referenced ConfigMap or directly in the HelmRelease (spec.values).
+
 ### Tools with custom UI
 
 Some tools render their results as rich UI cards directly visible to the user. When you call such a tool, do NOT repeat, summarize, or comment on the data — the card is self-explanatory. Simply let the card speak for itself.
