@@ -33,6 +33,9 @@ const useStyles = makeStyles((theme: Theme) =>
       fontFamily: 'monospace',
       fontSize: '0.875rem',
       display: 'inline-block',
+      maxWidth: '100%',
+      overflowX: 'auto',
+      verticalAlign: 'middle',
     },
     blockquote: {
       borderLeft: `4px solid ${theme.palette.divider}`,
@@ -180,10 +183,13 @@ const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
     ),
     pre: ({ children }) => <pre className={classes.codeBlock}>{children}</pre>,
     code: ({ children }) => {
-      // Check if it's inline code (no newlines) or code block
       const content = String(children);
       if (content.includes('\n')) {
-        return <code>{children}</code>;
+        return (
+          <pre className={classes.codeBlock}>
+            <code>{children}</code>
+          </pre>
+        );
       }
       return <code className={classes.inlineCode}>{children}</code>;
     },
