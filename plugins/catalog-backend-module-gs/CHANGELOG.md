@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-catalog-backend-module-gs
 
+## 0.2.1
+
+### Patch Changes
+
+- 7bcefbc: Fix scaffolder template fetch failing for entities registered via `giantswarm` location type by emitting `url` as the entity location type instead of `giantswarm`.
+
 ## 0.2.0
 
 ### Minor Changes
