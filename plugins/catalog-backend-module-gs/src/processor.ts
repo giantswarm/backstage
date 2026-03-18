@@ -66,7 +66,7 @@ export class GiantSwarmLocationProcessor implements CatalogProcessor {
       }
       emit(
         processingResult.entity(
-          { type: location.type, target: location.target },
+          { type: 'url', target: location.target },
           entity,
         ),
       );
@@ -87,10 +87,7 @@ export class GiantSwarmLocationProcessor implements CatalogProcessor {
           entity.metadata.namespace = NAMESPACE;
         }
         emit(
-          processingResult.entity(
-            { type: location.type, target: file.url },
-            entity,
-          ),
+          processingResult.entity({ type: 'url', target: file.url }, entity),
         );
       }
     }

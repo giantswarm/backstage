@@ -83,6 +83,7 @@ describe('GiantSwarmLocationProcessor', () => {
 
     const emitted = emit.mock.calls[0][0];
     expect(emitted.type).toBe('entity');
+    expect(emitted.location.type).toBe('url');
     expect(emitted.entity.metadata.namespace).toBe('giantswarm');
     expect(emitted.entity.metadata.name).toBe('my-component');
   });
@@ -136,7 +137,9 @@ describe('GiantSwarmLocationProcessor', () => {
     expect(emit).toHaveBeenCalledTimes(2);
     expect(emit.mock.calls[0][0].entity.metadata.namespace).toBe('giantswarm');
     expect(emit.mock.calls[1][0].entity.metadata.namespace).toBe('giantswarm');
+    expect(emit.mock.calls[0][0].location.type).toBe('url');
     expect(emit.mock.calls[0][0].location.target).toBe(file1Url);
+    expect(emit.mock.calls[1][0].location.type).toBe('url');
     expect(emit.mock.calls[1][0].location.target).toBe(file2Url);
   });
 
