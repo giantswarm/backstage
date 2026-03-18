@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add AI chat drawer with persistent/overlay variants, FAB, and openMode prop.
+
+### Fixed
+
+- Use SPA navigation for Edit Deployment button instead of full page reload.
+- Fix scaffolder template fetch for entities registered via `giantswarm` location type.
+
 ## [0.113.0] - 2026-03-17
 
 ### Added
