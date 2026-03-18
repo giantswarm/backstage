@@ -1,6 +1,7 @@
 import Button from '@material-ui/core/Button';
 import EditIcon from '@material-ui/icons/Edit';
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEditDeploymentTemplate } from '../../../hooks';
 import { useEditDeploymentData } from '../useEditDeploymentData';
@@ -98,7 +99,8 @@ export function EditDeploymentButton({
             color="inherit"
             size="small"
             startIcon={<EditIcon />}
-            href={editLink}
+            component={Link}
+            to={editLink ?? ''}
             disabled={isDisabled}
           >
             Edit
