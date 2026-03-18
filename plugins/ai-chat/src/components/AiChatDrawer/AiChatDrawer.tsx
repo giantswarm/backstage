@@ -1,6 +1,6 @@
 import { Button, IconButton, Tooltip, makeStyles } from '@material-ui/core';
 import CloseIcon from '@material-ui/icons/Close';
-import AddIcon from '@material-ui/icons/Add';
+
 import { Thread } from '../AiChat/Thread';
 import { DEFAULT_WIDTH, useDrawerResize } from './useDrawerResize';
 
@@ -124,14 +124,13 @@ export const AiChatDrawer = ({
         />
         <div className={classes.header}>
           <div className={classes.headerLeft}>
-            <Tooltip title="New conversation">
+            <Tooltip title="Clear conversation">
               <Button
                 className={classes.newThreadButton}
                 size="small"
-                startIcon={<AddIcon />}
                 onClick={onNewConversation}
               >
-                New Thread
+                Clear conversation
               </Button>
             </Tooltip>
           </div>
