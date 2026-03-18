@@ -71,6 +71,10 @@ const LazyAiChatDrawerProvider = lazy(() =>
   })),
 );
 
+const LazyAiChatFab = lazy(() =>
+  import('./components/AiChatFab').then(m => ({ default: m.AiChatFab })),
+);
+
 const aiChatDrawerElement = AppRootElementBlueprint.make({
   name: 'drawer',
   disabled: true,
@@ -78,6 +82,18 @@ const aiChatDrawerElement = AppRootElementBlueprint.make({
     element: (
       <Suspense fallback={null}>
         <LazyAiChatDrawerProvider />
+      </Suspense>
+    ),
+  },
+});
+
+const aiChatFabElement = AppRootElementBlueprint.make({
+  name: 'fab',
+  disabled: true,
+  params: {
+    element: (
+      <Suspense fallback={null}>
+        <LazyAiChatFab />
       </Suspense>
     ),
   },
@@ -92,6 +108,7 @@ export const aiChatPlugin = createFrontendPlugin({
     mcpAuthProvidersApi,
     aiChatDrawerApi,
     aiChatDrawerElement,
+    aiChatFabElement,
   ],
   routes: {
     root: rootRouteRef,

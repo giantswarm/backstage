@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { IconButton, Tooltip, Typography, makeStyles } from '@material-ui/core';
+import { Button, IconButton, Tooltip, makeStyles } from '@material-ui/core';
 import CloseIcon from '@material-ui/icons/Close';
 import AddIcon from '@material-ui/icons/Add';
 import { Thread } from '../AiChat/Thread';
@@ -50,6 +50,9 @@ const useStyles = makeStyles(theme => ({
     flex: 1,
     overflow: 'hidden',
   },
+  newThreadButton: {
+    textTransform: 'none',
+  },
 }));
 
 export type AiChatDrawerVariant = 'persistent' | 'overlay';
@@ -81,11 +84,9 @@ export const AiChatDrawer = ({
     }
 
     rootEl.style.marginRight = `${DRAWER_WIDTH}px`;
-    rootEl.style.transition = 'margin-right 0.2s ease-out';
 
     return () => {
       rootEl.style.marginRight = '';
-      rootEl.style.transition = '';
     };
   }, [open, variant]);
 
@@ -112,11 +113,15 @@ export const AiChatDrawer = ({
       <div className={classes.drawer}>
         <div className={classes.header}>
           <div className={classes.headerLeft}>
-            <Typography variant="h6">AI Assistant</Typography>
             <Tooltip title="New conversation">
-              <IconButton size="small" onClick={onNewConversation}>
-                <AddIcon />
-              </IconButton>
+              <Button
+                className={classes.newThreadButton}
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={onNewConversation}
+              >
+                New Thread
+              </Button>
             </Tooltip>
           </div>
           <Tooltip title="Close">

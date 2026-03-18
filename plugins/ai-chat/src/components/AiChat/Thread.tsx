@@ -304,11 +304,11 @@ const LoadingIndicator = () => {
   );
 };
 
-export const Thread = () => {
+export const Thread = ({ className }: { className?: string }) => {
   const classes = useStyles();
 
   return (
-    <ThreadPrimitive.Root className={classes.root}>
+    <ThreadPrimitive.Root className={className ?? classes.root}>
       <ThreadPrimitive.Viewport className={classes.messagesContainer}>
         <ThreadPrimitive.Empty>
           <ThreadWelcome />
