@@ -157,7 +157,11 @@ const UserMessage = () => {
   return (
     <MessagePrimitive.Root>
       <div className={classes.userMessage}>
-        <MessagePrimitive.Content />
+        <MessagePrimitive.Content
+          components={{
+            Text: MarkdownText,
+          }}
+        />
       </div>
       <BranchPicker />
     </MessagePrimitive.Root>
