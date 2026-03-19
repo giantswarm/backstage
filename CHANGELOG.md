@@ -5,6 +5,22 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.114.1] - 2026-03-19
+
+### Changed
+
+- Improve scaffolder field components: replace SelectFormField with Autocomplete in ClusterPicker and InstallationPicker, clear dependent fields when parent is cleared.
+- Add context window sizes for opus and sonnet 4.6 models in AI chat.
+
+### Fixed
+
+- Fix AI chat FAB: use more specific CSS selector for bottom padding and only display when authenticated.
+- Fix inline code and code block styling in AI chat markdown rendering.
+- Focus YamlEditor when clicking on the editor wrapper area.
+- Truncate MCP session IDs in log messages to avoid logging full UUIDs.
+
+See [./docs/releases/v0.114.1-changelog.md](./docs/releases/v0.114.1-changelog.md) for more information.
+
 ## [0.114.0] - 2026-03-18
 
 ### Added
@@ -2049,7 +2065,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.114.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.114.1...HEAD
+[0.114.1]: https://github.com/giantswarm/backstage/compare/v0.114.0...v0.114.1
 [0.114.0]: https://github.com/giantswarm/backstage/compare/v0.113.0...v0.114.0
 [0.113.0]: https://github.com/giantswarm/backstage/compare/v0.112.0...v0.113.0
 [0.112.0]: https://github.com/giantswarm/backstage/compare/v0.111.0...v0.112.0
