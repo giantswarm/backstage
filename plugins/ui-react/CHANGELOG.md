@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.8.1
+
+### Patch Changes
+
+- 843fedf: Focus YamlEditor when clicking on the editor wrapper area.
+
 ## 0.8.0
 
 ### Minor Changes

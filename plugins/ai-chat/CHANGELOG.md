@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.10.1
+
+### Patch Changes
+
+- 7ff0594: Fix AI chat FAB: use more specific CSS selector for bottom padding and only display when user is authenticated.
+- f2047ff: Fix inline code and code block styling in markdown rendering.
+- a119027: Add context window sizes for opus and sonnet 4.6 models
+- Updated dependencies [843fedf]
+  - @giantswarm/backstage-plugin-ui-react@0.8.1
+
 ## 0.10.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.59.2
+
+### Patch Changes
+
+- 843fedf: Replace SelectFormField with Autocomplete in ClusterPicker and InstallationPicker for consistent UX. Use TextField helperText prop in ChartPicker instead of separate FormHelperText. Clear dependent scaffolder fields (ChartPicker, ChartTagPicker) when parent entity is cleared, preventing stale values from persisting.
+- Updated dependencies [843fedf]
+  - @giantswarm/backstage-plugin-ui-react@0.8.1
+
 ## 0.59.1
 
 ### Patch Changes

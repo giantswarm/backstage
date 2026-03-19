@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.9.2
+
+### Patch Changes
+
+- 404399e: Truncate MCP session IDs in log messages to avoid logging full UUIDs.
+
 ## 0.9.1
 
 ### Patch Changes

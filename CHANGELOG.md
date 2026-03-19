@@ -17,6 +17,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Focus YamlEditor when clicking on the editor wrapper area.
 - Truncate MCP session IDs in log messages to avoid logging full UUIDs.
 
+See [./docs/releases/v0.114.1-changelog.md](./docs/releases/v0.114.1-changelog.md) for more information.
+
 ## [0.114.0] - 2026-03-18
 
 ### Added
