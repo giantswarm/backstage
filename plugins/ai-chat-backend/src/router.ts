@@ -137,6 +137,7 @@ export async function createRouter(
       rawConversationId && rawConversationId.length <= 64
         ? rawConversationId
         : undefined;
+    const requestId = crypto.randomUUID();
 
     const chatLogger = logger.child({
       ...(conversationId && { conversationId }),
@@ -175,8 +176,8 @@ export async function createRouter(
     // User-scoped tools that need access to the current request's credentials
     const userTools = createUserTools(userInfo, credentials);
 
-    // Context usage tool (scoped to user)
-    const contextUsageTools = createContextUsageTool(userRef);
+    // Context usage tool (scoped to user and conversation)
+    const contextUsageTools = createContextUsageTool(userRef, conversationId);
 
     // MCP resource tools
     const mcpResourceTools = createResourceTools(mcpResources);
@@ -256,13 +257,21 @@ export async function createRouter(
           chatLogger.error('Error during streaming:', error as Error);
         },
         onStepFinish({ usage, finishReason, toolCalls }) {
+          const cumulative = recordUsage(
+            userRef,
+            usage,
+            modelName,
+            conversationId,
+            requestId,
+          );
           chatLogger.debug('Step finished', {
             finishReason,
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
             toolCalls: toolCalls.map(tc => tc.toolName),
+            cumulativeInputTokens: cumulative.cumulativeInputTokens,
+            cumulativeOutputTokens: cumulative.cumulativeOutputTokens,
           });
-          recordUsage(userRef, usage, modelName);
         },
       });
 
