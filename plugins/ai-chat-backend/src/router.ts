@@ -137,6 +137,7 @@ export async function createRouter(
       rawConversationId && rawConversationId.length <= 64
         ? rawConversationId
         : undefined;
+    const requestId = crypto.randomUUID();
 
     const chatLogger = logger.child({
       ...(conversationId && { conversationId }),
@@ -261,6 +262,7 @@ export async function createRouter(
             usage,
             modelName,
             conversationId,
+            requestId,
           );
           chatLogger.debug('Step finished', {
             finishReason,

@@ -4,8 +4,20 @@ import { z } from 'zod';
 type UsageEntry = {
   /** Latest step usage — input tokens reflect the full context each step. */
   latest: LanguageModelUsage;
-  /** Cumulative output tokens across all steps in the conversation. */
-  cumulativeOutputTokens: number;
+  /**
+   * Sum of output tokens from all previous requests in this conversation.
+   * Does not include the current request's output (which is tracked via
+   * `currentRequestOutputTokens`).
+   */
+  previousOutputTokens: number;
+  /**
+   * The aggregated output tokens reported by onStepFinish for the current
+   * request. Since onStepFinish reports cumulative usage across steps within
+   * a request, we replace (not add) on each step.
+   */
+  currentRequestOutputTokens: number;
+  /** Opaque ID of the current request, used to detect request boundaries. */
+  currentRequestId: string | undefined;
   modelName: string;
   recordedAt: number;
 };
@@ -15,7 +27,7 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 /**
  * In-memory store for per-user token usage, keyed by `userRef:conversationId`.
  * Tracks the latest step's input data (which already includes the full context)
- * and accumulates output tokens across all steps.
+ * and accumulates output tokens across requests.
  */
 const usageByConversation = new Map<string, UsageEntry>();
 
@@ -25,24 +37,36 @@ function usageKey(userRef: string, conversationId?: string): string {
 
 /**
  * Record usage data after a streamText step completes.
- * Called from onStepFinish so that the getContextUsage tool
- * can return data from the immediately preceding step.
+ * Called from onStepFinish. The AI SDK reports aggregated usage across all
+ * steps within a single request, so we replace (not accumulate) within the
+ * same requestId and accumulate across different requestIds.
  */
 export function recordUsage(
   userRef: string,
   usage: LanguageModelUsage,
   modelName: string,
   conversationId?: string,
+  requestId?: string,
 ): { cumulativeInputTokens: number; cumulativeOutputTokens: number } {
   const key = usageKey(userRef, conversationId);
   const existing = usageByConversation.get(key);
 
+  let previousOutputTokens = existing?.previousOutputTokens ?? 0;
+
+  // When a new request starts, roll the previous request's output into the total
+  if (existing && existing.currentRequestId !== requestId) {
+    previousOutputTokens += existing.currentRequestOutputTokens;
+  }
+
+  const currentRequestOutputTokens = usage.outputTokens ?? 0;
   const cumulativeOutputTokens =
-    (existing?.cumulativeOutputTokens ?? 0) + (usage.outputTokens ?? 0);
+    previousOutputTokens + currentRequestOutputTokens;
 
   usageByConversation.set(key, {
     latest: usage,
-    cumulativeOutputTokens,
+    previousOutputTokens,
+    currentRequestOutputTokens,
+    currentRequestId: requestId,
     modelName,
     recordedAt: Date.now(),
   });
@@ -86,12 +110,14 @@ export function createContextUsageTool(
         }
 
         const { latest } = entry;
+        const cumulativeOutputTokens =
+          entry.previousOutputTokens + entry.currentRequestOutputTokens;
 
         return {
           available: true,
           modelName: entry.modelName,
           inputTokens: latest.inputTokens ?? null,
-          outputTokens: entry.cumulativeOutputTokens,
+          outputTokens: cumulativeOutputTokens,
           inputTokenDetails: {
             cachedTokens: latest.inputTokenDetails?.cacheReadTokens ?? null,
             cacheWriteTokens:
