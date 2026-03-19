@@ -40,7 +40,7 @@ const useStyles = makeStyles(theme => ({
   },
   grid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
     gap: theme.spacing(1),
     marginTop: theme.spacing(1),
   },
@@ -72,6 +72,11 @@ function formatNumber(n: number | null | undefined): string {
   return n.toLocaleString();
 }
 
+function formatCost(cost: number): string {
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
 // Known context window sizes by model prefix
 // More specific prefixes must come before less specific ones (startsWith matching)
 const CONTEXT_WINDOWS: Record<string, number> = {
@@ -97,20 +102,56 @@ function getContextWindow(modelName: string): number | null {
   return null;
 }
 
+// Per-token pricing in USD (price per million tokens)
+// Source: https://platform.claude.com/docs/en/about-claude/pricing
+interface TokenPricing {
+  inputPerMTok: number;
+  outputPerMTok: number;
+}
+
+const TOKEN_PRICING: Record<string, TokenPricing> = {
+  'claude-opus-4-6': { inputPerMTok: 5, outputPerMTok: 25 },
+  'claude-opus-4-5': { inputPerMTok: 5, outputPerMTok: 25 },
+  'claude-opus-4-1': { inputPerMTok: 15, outputPerMTok: 75 },
+  'claude-opus-4': { inputPerMTok: 15, outputPerMTok: 75 },
+  'claude-sonnet-4-6': { inputPerMTok: 3, outputPerMTok: 15 },
+  'claude-sonnet-4-5': { inputPerMTok: 3, outputPerMTok: 15 },
+  'claude-sonnet-4': { inputPerMTok: 3, outputPerMTok: 15 },
+  'claude-3-7-sonnet': { inputPerMTok: 3, outputPerMTok: 15 },
+  'claude-3-5-sonnet': { inputPerMTok: 3, outputPerMTok: 15 },
+  'claude-3-5-haiku': { inputPerMTok: 0.8, outputPerMTok: 4 },
+  'claude-3-opus': { inputPerMTok: 15, outputPerMTok: 75 },
+  'claude-3-haiku': { inputPerMTok: 0.25, outputPerMTok: 1.25 },
+};
+
+function getTokenPricing(modelName: string): TokenPricing | null {
+  for (const [prefix, pricing] of Object.entries(TOKEN_PRICING)) {
+    if (modelName.startsWith(prefix)) return pricing;
+  }
+  return null;
+}
+
+function estimateCost(result: UsageResult, pricing: TokenPricing): number {
+  const inputTokens = result.inputTokens ?? 0;
+  const outputTokens = result.outputTokens ?? 0;
+
+  return (
+    (inputTokens / 1_000_000) * pricing.inputPerMTok +
+    (outputTokens / 1_000_000) * pricing.outputPerMTok
+  );
+}
+
 interface UsageResult {
   available: boolean;
   message?: string;
   modelName?: string;
   inputTokens?: number | null;
   outputTokens?: number | null;
-  totalTokens?: number | null;
   inputTokenDetails?: {
     cachedTokens?: number | null;
     cacheWriteTokens?: number | null;
-    uncachedTokens?: number | null;
   };
   outputTokenDetails?: {
-    textTokens?: number | null;
     reasoningTokens?: number | null;
   };
 }
@@ -138,6 +179,9 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
     contextWindow && result.inputTokens
       ? Math.min((result.inputTokens / contextWindow) * 100, 100)
       : null;
+
+  const pricing = result.modelName ? getTokenPricing(result.modelName) : null;
+  const cost = pricing ? estimateCost(result, pricing) : null;
 
   return (
     <div className={classes.root}>
@@ -180,14 +224,19 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
             {formatNumber(result.outputTokens)}
           </Typography>
         </div>
-        <div className={classes.stat}>
-          <Typography className={classes.statLabel}>Total tokens</Typography>
-          <Typography className={classes.statValue}>
-            {formatNumber(result.totalTokens)}
-          </Typography>
-        </div>
-        {result.inputTokenDetails?.cachedTokens !== null &&
-          result.inputTokenDetails?.cachedTokens !== undefined && (
+        {result.inputTokenDetails?.cacheWriteTokens != null &&
+          result.inputTokenDetails.cacheWriteTokens > 0 && (
+            <div className={classes.stat}>
+              <Typography className={classes.statLabel}>
+                Cached (write)
+              </Typography>
+              <Typography className={classes.statValue}>
+                {formatNumber(result.inputTokenDetails.cacheWriteTokens)}
+              </Typography>
+            </div>
+          )}
+        {result.inputTokenDetails?.cachedTokens != null &&
+          result.inputTokenDetails.cachedTokens > 0 && (
             <div className={classes.stat}>
               <Typography className={classes.statLabel}>
                 Cached (read)
@@ -197,26 +246,8 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
               </Typography>
             </div>
           )}
-        {result.inputTokenDetails?.cacheWriteTokens !== null &&
-          result.inputTokenDetails?.cacheWriteTokens !== undefined && (
-            <div className={classes.stat}>
-              <Typography className={classes.statLabel}>Cache write</Typography>
-              <Typography className={classes.statValue}>
-                {formatNumber(result.inputTokenDetails.cacheWriteTokens)}
-              </Typography>
-            </div>
-          )}
-        {result.inputTokenDetails?.uncachedTokens !== null &&
-          result.inputTokenDetails?.uncachedTokens !== undefined && (
-            <div className={classes.stat}>
-              <Typography className={classes.statLabel}>Uncached</Typography>
-              <Typography className={classes.statValue}>
-                {formatNumber(result.inputTokenDetails.uncachedTokens)}
-              </Typography>
-            </div>
-          )}
-        {result.outputTokenDetails?.reasoningTokens !== null &&
-          result.outputTokenDetails?.reasoningTokens !== undefined && (
+        {result.outputTokenDetails?.reasoningTokens != null &&
+          result.outputTokenDetails.reasoningTokens > 0 && (
             <div className={classes.stat}>
               <Typography className={classes.statLabel}>
                 Reasoning tokens
@@ -226,15 +257,16 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
               </Typography>
             </div>
           )}
-        {result.outputTokenDetails?.textTokens !== null &&
-          result.outputTokenDetails?.textTokens !== undefined && (
-            <div className={classes.stat}>
-              <Typography className={classes.statLabel}>Text tokens</Typography>
-              <Typography className={classes.statValue}>
-                {formatNumber(result.outputTokenDetails.textTokens)}
-              </Typography>
-            </div>
-          )}
+        {cost !== null && (
+          <div className={classes.stat}>
+            <Typography className={classes.statLabel}>
+              Estimated cost
+            </Typography>
+            <Typography className={classes.statValue}>
+              {formatCost(cost)}
+            </Typography>
+          </div>
+        )}
       </div>
     </div>
   );

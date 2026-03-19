@@ -1,7 +1,11 @@
 import { tool, LanguageModelUsage } from 'ai';
 import { z } from 'zod';
 
-type UsageEntry = LanguageModelUsage & {
+type UsageEntry = {
+  /** Latest step usage — input tokens reflect the full context each step. */
+  latest: LanguageModelUsage;
+  /** Cumulative output tokens across all steps in the conversation. */
+  cumulativeOutputTokens: number;
   modelName: string;
   recordedAt: number;
 };
@@ -9,11 +13,15 @@ type UsageEntry = LanguageModelUsage & {
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
- * In-memory store for per-user token usage from the most recently completed
- * step. Updated via onStepFinish so data is available within the same
- * multi-step stream before the next tool call.
+ * In-memory store for per-user token usage, keyed by `userRef:conversationId`.
+ * Tracks the latest step's input data (which already includes the full context)
+ * and accumulates output tokens across all steps.
  */
-const usageByUser = new Map<string, UsageEntry>();
+const usageByConversation = new Map<string, UsageEntry>();
+
+function usageKey(userRef: string, conversationId?: string): string {
+  return conversationId ? `${userRef}:${conversationId}` : userRef;
+}
 
 /**
  * Record usage data after a streamText step completes.
@@ -24,31 +32,52 @@ export function recordUsage(
   userRef: string,
   usage: LanguageModelUsage,
   modelName: string,
-) {
-  usageByUser.set(userRef, { ...usage, modelName, recordedAt: Date.now() });
+  conversationId?: string,
+): { cumulativeInputTokens: number; cumulativeOutputTokens: number } {
+  const key = usageKey(userRef, conversationId);
+  const existing = usageByConversation.get(key);
+
+  const cumulativeOutputTokens =
+    (existing?.cumulativeOutputTokens ?? 0) + (usage.outputTokens ?? 0);
+
+  usageByConversation.set(key, {
+    latest: usage,
+    cumulativeOutputTokens,
+    modelName,
+    recordedAt: Date.now(),
+  });
 
   // Evict stale entries to prevent unbounded growth
   const cutoff = Date.now() - MAX_AGE_MS;
-  for (const [key, val] of usageByUser) {
-    if (val.recordedAt < cutoff) usageByUser.delete(key);
+  for (const [k, val] of usageByConversation) {
+    if (val.recordedAt < cutoff) usageByConversation.delete(k);
   }
+
+  return {
+    cumulativeInputTokens: usage.inputTokens ?? 0,
+    cumulativeOutputTokens,
+  };
 }
 
 /**
- * Creates the getContextUsage tool scoped to a specific user.
+ * Creates the getContextUsage tool scoped to a specific user and conversation.
  */
-export function createContextUsageTool(userRef: string) {
+export function createContextUsageTool(
+  userRef: string,
+  conversationId?: string,
+) {
   return {
     getContextUsage: tool({
       description:
-        'Returns token usage details from the most recent completed step for the current user. ' +
-        'Includes input tokens, output tokens, total tokens, cache details (for Anthropic), ' +
-        'and reasoning token breakdown. Call this when the user asks about context size, ' +
+        'Returns token usage details for the current conversation. ' +
+        'Input tokens reflect the current context size. Output tokens are cumulative ' +
+        'across all turns. Call this when the user asks about context size, ' +
         'token usage, or how much of the context window is being used.',
       inputSchema: z.object({}),
       execute: async () => {
-        const usage = usageByUser.get(userRef);
-        if (!usage) {
+        const key = usageKey(userRef, conversationId);
+        const entry = usageByConversation.get(key);
+        if (!entry) {
           return {
             available: false,
             message:
@@ -56,20 +85,20 @@ export function createContextUsageTool(userRef: string) {
           };
         }
 
+        const { latest } = entry;
+
         return {
           available: true,
-          modelName: usage.modelName,
-          inputTokens: usage.inputTokens ?? null,
-          outputTokens: usage.outputTokens ?? null,
-          totalTokens: usage.totalTokens ?? null,
+          modelName: entry.modelName,
+          inputTokens: latest.inputTokens ?? null,
+          outputTokens: entry.cumulativeOutputTokens,
           inputTokenDetails: {
-            cachedTokens: usage.inputTokenDetails?.cacheReadTokens ?? null,
-            cacheWriteTokens: usage.inputTokenDetails?.cacheWriteTokens ?? null,
-            uncachedTokens: usage.inputTokenDetails?.noCacheTokens ?? null,
+            cachedTokens: latest.inputTokenDetails?.cacheReadTokens ?? null,
+            cacheWriteTokens:
+              latest.inputTokenDetails?.cacheWriteTokens ?? null,
           },
           outputTokenDetails: {
-            textTokens: usage.outputTokenDetails?.textTokens ?? null,
-            reasoningTokens: usage.outputTokenDetails?.reasoningTokens ?? null,
+            reasoningTokens: latest.outputTokenDetails?.reasoningTokens ?? null,
           },
         };
       },
