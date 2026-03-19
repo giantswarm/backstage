@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { SelectFormField } from '../../UI/SelectFormField';
 import { Grid, TextField } from '@material-ui/core';
+import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ClusterPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
@@ -54,16 +54,29 @@ const ClusterPickerField = ({
   return (
     <Grid container spacing={3} direction="column">
       <Grid item>
-        <SelectFormField
+        <Autocomplete
           id={id}
-          label={label}
-          helperText={isLoading ? 'Loading clusters...' : helperText}
-          required={required}
-          error={error}
-          items={resourceNames}
-          selectedItem={selectedName ?? ''}
-          onChange={handleChange}
+          value={selectedName ?? null}
+          onChange={(_: any, newValue: string | null) => {
+            handleChange(newValue ?? '');
+          }}
+          options={resourceNames}
+          loading={isLoading}
           disabled={disabled}
+          renderInput={params => (
+            <TextField
+              {...params}
+              label={label}
+              helperText={isLoading ? 'Loading clusters...' : helperText}
+              required={required}
+              error={error}
+              disabled={disabled}
+              margin="dense"
+              variant="outlined"
+              InputProps={params.InputProps}
+              InputLabelProps={params.InputLabelProps}
+            />
+          )}
         />
       </Grid>
     </Grid>
