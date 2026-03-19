@@ -14,6 +14,7 @@ import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
+import classNames from 'classnames';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -28,7 +29,8 @@ const useStyles = makeStyles((theme: Theme) =>
     },
     inlineCode: {
       backgroundColor: theme.palette.type === 'dark' ? '#333' : '#eee',
-      padding: theme.spacing(0.25, 0.5),
+      padding: theme.spacing(0, 0.5),
+      margin: theme.spacing(0.25, 0),
       borderRadius: theme.shape.borderRadius / 2,
       fontFamily: 'monospace',
       fontSize: '0.875rem',
@@ -69,6 +71,30 @@ const useStyles = makeStyles((theme: Theme) =>
       marginTop: theme.spacing(2),
       marginBottom: theme.spacing(1),
     },
+    heading1: {
+      fontSize: '1.25rem',
+      fontWeight: 700,
+    },
+    heading2: {
+      fontSize: '1.125rem',
+      fontWeight: 700,
+    },
+    heading3: {
+      fontSize: '1rem',
+      fontWeight: 700,
+    },
+    heading4: {
+      fontSize: '1rem',
+      fontWeight: 500,
+    },
+    heading5: {
+      fontSize: '0.875rem',
+      fontWeight: 500,
+    },
+    heading6: {
+      fontSize: '0.875rem',
+      fontWeight: 400,
+    },
     hr: {
       border: 'none',
       borderTop: `1px solid ${theme.palette.divider}`,
@@ -80,32 +106,50 @@ const useStyles = makeStyles((theme: Theme) =>
 const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
   memoizeMarkdownComponents({
     h1: ({ children }) => (
-      <Typography variant="h4" className={classes.heading}>
+      <Typography
+        variant="h4"
+        className={classNames(classes.heading, classes.heading1)}
+      >
         {children}
       </Typography>
     ),
     h2: ({ children }) => (
-      <Typography variant="h5" className={classes.heading}>
+      <Typography
+        variant="h5"
+        className={classNames(classes.heading, classes.heading2)}
+      >
         {children}
       </Typography>
     ),
     h3: ({ children }) => (
-      <Typography variant="h6" className={classes.heading}>
+      <Typography
+        variant="h6"
+        className={classNames(classes.heading, classes.heading3)}
+      >
         {children}
       </Typography>
     ),
     h4: ({ children }) => (
-      <Typography variant="subtitle1" className={classes.heading}>
+      <Typography
+        variant="subtitle1"
+        className={classNames(classes.heading, classes.heading4)}
+      >
         {children}
       </Typography>
     ),
     h5: ({ children }) => (
-      <Typography variant="subtitle2" className={classes.heading}>
+      <Typography
+        variant="subtitle2"
+        className={classNames(classes.heading, classes.heading5)}
+      >
         {children}
       </Typography>
     ),
     h6: ({ children }) => (
-      <Typography variant="body2" className={classes.heading}>
+      <Typography
+        variant="body2"
+        className={classNames(classes.heading, classes.heading6)}
+      >
         {children}
       </Typography>
     ),
@@ -185,11 +229,7 @@ const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
     code: ({ children }) => {
       const content = String(children);
       if (content.includes('\n')) {
-        return (
-          <pre className={classes.codeBlock}>
-            <code>{children}</code>
-          </pre>
-        );
+        return <code>{children}</code>;
       }
       return <code className={classes.inlineCode}>{children}</code>;
     },
