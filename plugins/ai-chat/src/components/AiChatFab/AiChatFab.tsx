@@ -1,6 +1,12 @@
 import { Fab, makeStyles, Tooltip } from '@material-ui/core';
-import { useApiHolder, useRouteRef } from '@backstage/core-plugin-api';
+import {
+  useApi,
+  useApiHolder,
+  useRouteRef,
+  identityApiRef,
+} from '@backstage/core-plugin-api';
 import { useEffect } from 'react';
+import useAsync from 'react-use/esm/useAsync';
 import { useLocation } from 'react-router-dom';
 import {
   AIChatIcon,
@@ -23,10 +29,16 @@ const useStyles = makeStyles(theme => ({
 export const AiChatFab = () => {
   const classes = useStyles();
   const apiHolder = useApiHolder();
+  const identityApi = useApi(identityApiRef);
   const chatPath = useRouteRef(rootRouteRef);
   const { pathname } = useLocation();
 
   const drawerApi = apiHolder.get(aiChatDrawerApiRef);
+
+  const { value: identity } = useAsync(
+    () => identityApi.getBackstageIdentity(),
+    [identityApi],
+  );
 
   // Inject a global <style> tag to add bottom padding so the FAB never
   // overlaps page content. Using a stylesheet (rather than inline styles)
@@ -44,7 +56,11 @@ export const AiChatFab = () => {
     };
   }, [drawerApi]);
 
-  if (!drawerApi || pathname.startsWith(chatPath())) {
+  if (
+    !drawerApi ||
+    pathname.startsWith(chatPath()) ||
+    identity?.type !== 'user'
+  ) {
     return null;
   }
 
