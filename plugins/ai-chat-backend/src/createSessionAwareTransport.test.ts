@@ -105,7 +105,7 @@ describe('createSessionAwareTransport', () => {
     await capturedFetch('http://muster/mcp', { method: 'POST' });
 
     expect(mockLogger.debug).toHaveBeenCalledWith(
-      `New ${SESSION_HEADER} session started: ${sessionId}`,
+      `New ${SESSION_HEADER} session started: session-abc-...`,
     );
   });
 
