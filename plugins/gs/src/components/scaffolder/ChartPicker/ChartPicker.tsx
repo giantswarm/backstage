@@ -45,6 +45,14 @@ const ChartPickerField = ({
   const selectedChart = value ?? null;
 
   useEffect(() => {
+    // If entityRef was cleared, clear the selection
+    if (!entityRef) {
+      if (value !== undefined) {
+        onChange(undefined);
+      }
+      return;
+    }
+
     // Don't do anything while still loading or waiting for entity
     if (isLoadingEntity || !entity) {
       return;
@@ -65,7 +73,7 @@ const ChartPickerField = ({
 
     // Otherwise, select the first option
     onChange(chartOptions[0]);
-  }, [chartOptions, onChange, isLoadingEntity, entity, value]);
+  }, [entityRef, chartOptions, onChange, isLoadingEntity, entity, value]);
 
   const handleChange = useCallback(
     (_: any, newValue: string | null) => {

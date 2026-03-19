@@ -65,6 +65,14 @@ const ChartTagPickerField = ({
   const selectedVersion = value ?? null;
 
   useEffect(() => {
+    // If chartRef was cleared, clear the selection
+    if (!chartRef) {
+      if (value !== undefined) {
+        onChange(undefined);
+      }
+      return;
+    }
+
     // Don't do anything while still loading or waiting for tags
     if (isLoading || !tags) {
       return;
@@ -88,7 +96,15 @@ const ChartTagPickerField = ({
     if (defaultVersion) {
       onChange(defaultVersion);
     }
-  }, [sortedVersions, onChange, isLoading, tags, value, latestStableVersion]);
+  }, [
+    chartRef,
+    sortedVersions,
+    onChange,
+    isLoading,
+    tags,
+    value,
+    latestStableVersion,
+  ]);
 
   const handleChange = useCallback(
     (_: any, newValue: string | null) => {
