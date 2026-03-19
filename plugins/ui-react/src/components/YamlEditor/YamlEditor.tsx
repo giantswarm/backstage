@@ -171,11 +171,13 @@ export const YamlEditor = ({
   }, [schema]);
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className={classNames(
         classes.editorWrapper,
         error && classes.editorWrapperError,
       )}
+      onClick={() => viewRef.current?.focus()}
     >
       <div ref={editorRef} style={{ maxHeight: height, overflow: 'auto' }} />
     </div>
