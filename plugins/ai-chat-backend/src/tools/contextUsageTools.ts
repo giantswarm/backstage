@@ -72,7 +72,7 @@ export function createContextUsageTool(
         'Returns token usage details for the current conversation. ' +
         'Input tokens reflect the current context size. Output tokens are cumulative ' +
         'across all turns. Call this when the user asks about context size, ' +
-        'token usage, or how much of the context window is being used.',
+        'token usage, cost, model used, or how much of the context window is being used.',
       inputSchema: z.object({}),
       execute: async () => {
         const key = usageKey(userRef, conversationId);
