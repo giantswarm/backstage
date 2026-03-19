@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDisabledInstallations, useInstallationsInfo } from '../../hooks';
 import { Grid, TextField } from '@material-ui/core';
+import Autocomplete from '@material-ui/lab/Autocomplete';
 import { InstallationPickerProps } from './schema';
 import { RadioFormField } from '../../UI/RadioFormField';
-import { SelectFormField } from '../../UI/SelectFormField';
 import { InstallationInfo } from '../../hooks/useInstallationsInfo';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
@@ -130,16 +130,31 @@ const InstallationPickerField = ({
             onChange={handleChange}
           />
         ) : (
-          <SelectFormField
+          <Autocomplete
             id={id}
-            label={label}
-            helperText={helperText}
-            required={required}
-            error={error}
-            items={installations}
-            disabledItems={disabledInstallations}
-            selectedItem={selectedInstallation ?? ''}
-            onChange={handleChange}
+            value={selectedInstallation ?? null}
+            onChange={(_: any, newValue: string | null) => {
+              handleChange(newValue ?? '');
+            }}
+            options={installations}
+            getOptionLabel={option => {
+              const idx = installations.indexOf(option);
+              return idx >= 0 ? installationLabels[idx] : option;
+            }}
+            getOptionDisabled={option => disabledInstallations.includes(option)}
+            renderInput={params => (
+              <TextField
+                {...params}
+                label={label}
+                helperText={helperText}
+                required={required}
+                error={error}
+                margin="dense"
+                variant="outlined"
+                InputProps={params.InputProps}
+                InputLabelProps={params.InputLabelProps}
+              />
+            )}
           />
         )}
       </Grid>
