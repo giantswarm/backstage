@@ -224,7 +224,7 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
             {formatNumber(result.outputTokens)}
           </Typography>
         </div>
-        {result.inputTokenDetails?.cacheWriteTokens != null &&
+        {result.inputTokenDetails?.cacheWriteTokens !== null &&
           result.inputTokenDetails.cacheWriteTokens > 0 && (
             <div className={classes.stat}>
               <Typography className={classes.statLabel}>
@@ -235,7 +235,7 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
               </Typography>
             </div>
           )}
-        {result.inputTokenDetails?.cachedTokens != null &&
+        {result.inputTokenDetails?.cachedTokens !== null &&
           result.inputTokenDetails.cachedTokens > 0 && (
             <div className={classes.stat}>
               <Typography className={classes.statLabel}>
@@ -246,7 +246,7 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
               </Typography>
             </div>
           )}
-        {result.outputTokenDetails?.reasoningTokens != null &&
+        {result.outputTokenDetails?.reasoningTokens !== null &&
           result.outputTokenDetails.reasoningTokens > 0 && (
             <div className={classes.stat}>
               <Typography className={classes.statLabel}>
