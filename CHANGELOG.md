@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Improve scaffolder field components: replace SelectFormField with Autocomplete in ClusterPicker and InstallationPicker, clear dependent fields when parent is cleared.
+- Add context window sizes for opus and sonnet 4.6 models in AI chat.
+
+### Fixed
+
+- Fix AI chat FAB: use more specific CSS selector for bottom padding and only display when authenticated.
+- Fix inline code and code block styling in AI chat markdown rendering.
+- Focus YamlEditor when clicking on the editor wrapper area.
+- Truncate MCP session IDs in log messages to avoid logging full UUIDs.
+
 ## [0.114.0] - 2026-03-18
 
 ### Added
