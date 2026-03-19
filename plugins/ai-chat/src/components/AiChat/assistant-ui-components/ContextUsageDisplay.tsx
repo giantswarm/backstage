@@ -73,7 +73,11 @@ function formatNumber(n: number | null | undefined): string {
 }
 
 // Known context window sizes by model prefix
+// More specific prefixes must come before less specific ones (startsWith matching)
 const CONTEXT_WINDOWS: Record<string, number> = {
+  'claude-sonnet-4-6': 1_000_000,
+  'claude-opus-4-6': 1_000_000,
+  'claude-sonnet-4-5': 200_000,
   'claude-sonnet-4': 200_000,
   'claude-opus-4': 200_000,
   'claude-3-7-sonnet': 200_000,
