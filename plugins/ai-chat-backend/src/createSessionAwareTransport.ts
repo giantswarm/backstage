@@ -1,6 +1,14 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
+function truncateSessionId(sessionId: string): string {
+  const lastDash = sessionId.lastIndexOf('-');
+  if (lastDash === -1) {
+    return sessionId;
+  }
+  return `${sessionId.substring(0, lastDash + 1)}...`;
+}
+
 export function createSessionAwareTransport(options: {
   url: string;
   headers?: Record<string, string>;
@@ -23,7 +31,7 @@ export function createSessionAwareTransport(options: {
     const sessionId = response.headers.get(options.sessionHeader);
     if (sessionId && sessionId !== capturedSessionId) {
       options.logger.debug(
-        `New ${options.sessionHeader} session started: ${sessionId}`,
+        `New ${options.sessionHeader} session started: ${truncateSessionId(sessionId)}`,
       );
       capturedSessionId = sessionId;
     }
