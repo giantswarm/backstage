@@ -28,7 +28,8 @@ const useStyles = makeStyles((theme: Theme) =>
     },
     inlineCode: {
       backgroundColor: theme.palette.type === 'dark' ? '#333' : '#eee',
-      padding: theme.spacing(0.25, 0.5),
+      padding: theme.spacing(0, 0.5),
+      margin: theme.spacing(0.25, 0),
       borderRadius: theme.shape.borderRadius / 2,
       fontFamily: 'monospace',
       fontSize: '0.875rem',
@@ -185,11 +186,7 @@ const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
     code: ({ children }) => {
       const content = String(children);
       if (content.includes('\n')) {
-        return (
-          <pre className={classes.codeBlock}>
-            <code>{children}</code>
-          </pre>
-        );
+        return <code>{children}</code>;
       }
       return <code className={classes.inlineCode}>{children}</code>;
     },
