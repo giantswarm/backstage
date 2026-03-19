@@ -36,7 +36,7 @@ export const AiChatFab = () => {
 
     const styleEl = document.createElement('style');
     styleEl.id = 'ai-chat-fab-padding';
-    styleEl.textContent = 'main { padding-bottom: 72px !important; }';
+    styleEl.textContent = '#root div main { padding-bottom: 72px !important; }';
     document.head.appendChild(styleEl);
 
     return () => {
