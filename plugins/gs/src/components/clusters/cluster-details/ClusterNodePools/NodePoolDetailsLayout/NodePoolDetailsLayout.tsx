@@ -56,7 +56,8 @@ const useStyles = makeStyles(theme => ({
   },
   detailsContainer: {
     overflow: 'auto',
-    padding: theme.spacing(2),
+    paddingTop: theme.spacing(2),
+    paddingBottom: theme.spacing(2),
     minHeight: 0,
     flex: 1,
   },
@@ -313,7 +314,9 @@ export const NodePoolDetailsLayout = ({
           />
           <Box className={classes.detailsContainer}>
             <Box className={classes.detailsHeader}>
-              <Typography variant="h6">{selectedNodePool}</Typography>
+              <Typography variant="subtitle1" component="span">
+                <strong>{selectedNodePool}</strong>
+              </Typography>
               <IconButton size="small" onClick={onClose}>
                 <CloseIcon />
               </IconButton>

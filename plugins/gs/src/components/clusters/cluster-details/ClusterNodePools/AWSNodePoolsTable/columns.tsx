@@ -7,6 +7,7 @@ import {
 import { DateComponent, NotAvailable } from '../../../../UI';
 
 export type AWSNodePoolRow = {
+  id: string;
   name: string;
   type: 'ASG' | 'Karpenter';
   desiredReplicas: number | undefined;
@@ -87,7 +88,10 @@ export function getInitialColumns({
     {
       title: 'Availability zones',
       field: AWSNodePoolColumns.availabilityZones,
-      render: row => row.availabilityZones?.join(', ') ?? <NotAvailable />,
+      render: row =>
+        row.availabilityZones
+          ?.map(az => az.slice(-1).toUpperCase())
+          .join(', ') ?? <NotAvailable />,
     },
     {
       title: 'Scaling',

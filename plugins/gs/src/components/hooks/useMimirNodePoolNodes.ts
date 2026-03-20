@@ -6,16 +6,21 @@ import {
   KubeNodeCreated,
   KubeNodeLabels,
   KubeletRunningPods,
+  KubePodContainerResourceRequests,
 } from '../../apis/mimir/metrics';
 import { MimirQueryResponse } from '../../apis/mimir/types';
 
 export interface NodePoolNode {
+  id: string;
   node: string;
   instanceType: string | undefined;
   zone: string | undefined;
   ready: boolean;
+  conditions: string[];
   cpuAllocatable: number | undefined;
+  cpuRequests: number | undefined;
   memoryAllocatable: number | undefined;
+  memoryRequests: number | undefined;
   podsAllocatable: number | undefined;
   runningPods: number | undefined;
   created: Date | undefined;
@@ -24,33 +29,38 @@ export interface NodePoolNode {
 const REFETCH_INTERVAL = 30_000;
 
 function buildQuery(clusterName: string, nodePoolName: string): string {
-  const labels = `cluster_id="${clusterName}"`;
-  const nodeLabelsFilter = `${KubeNodeLabels.name}{${labels}, nodepool="${nodePoolName}"}`;
+  const l = `cluster_id="${clusterName}"`;
+  const byNR = 'node, cluster_id, resource'; // group-by for left side
 
   return [
     '(',
-    `  ${KubeNodeStatusAllocatable.name}{${labels}, resource=~"cpu|memory|pods"}`,
-    `  or label_replace(${KubeletRunningPods.name}{${labels}}, "resource", "running_pods", "", "")`,
-    `  or label_replace(${KubeNodeStatusCondition.name}{${labels}, condition="Ready", status="true"}, "resource", "ready", "", "")`,
-    `  or label_replace(${KubeNodeCreated.name}{${labels}}, "resource", "created", "", "")`,
+    `  max by (${byNR}) (${KubeNodeStatusAllocatable.name}{${l}, resource=~"cpu|memory|pods"})`,
+    `  or label_replace(sum by (node, cluster_id) (${KubePodContainerResourceRequests.name}{${l}, resource="cpu", node!=""}), "resource", "cpu_requests", "", "")`,
+    `  or label_replace(sum by (node, cluster_id) (${KubePodContainerResourceRequests.name}{${l}, resource="memory", node!=""}), "resource", "memory_requests", "", "")`,
+    `  or max by (${byNR}) (label_replace(${KubeletRunningPods.name}{${l}}, "resource", "running_pods", "", ""))`,
+    `  or max by (${byNR}) (label_replace(${KubeNodeStatusCondition.name}{${l}, condition="Ready", status="true"}, "resource", "ready", "", ""))`,
+    `  or max by (${byNR}) (label_replace(${KubeNodeStatusCondition.name}{${l}, condition!="Ready", status="true"} == 1, "resource", "condition_$1", "condition", "(.*)"))`,
+    `  or max by (${byNR}) (label_replace(${KubeNodeCreated.name}{${l}}, "resource", "created", "", ""))`,
     ')',
     '* on(node, cluster_id) group_left(nodepool, label_node_kubernetes_io_instance_type, zone)',
-    `  ${nodeLabelsFilter}`,
+    `  max by (node, cluster_id, nodepool, label_node_kubernetes_io_instance_type, zone) (${KubeNodeLabels.name}{${l}, nodepool="${nodePoolName}"})`,
   ].join(' ');
 }
 
 function parseResponse(data: MimirQueryResponse | undefined): NodePoolNode[] {
   if (!data?.data?.result?.length) return [];
 
-  // Group by node name
   const nodeMap = new Map<
     string,
     {
       instanceType?: string;
       zone?: string;
       ready: boolean;
+      conditions: string[];
       cpuAllocatable?: number;
+      cpuRequests?: number;
       memoryAllocatable?: number;
+      memoryRequests?: number;
       podsAllocatable?: number;
       runningPods?: number;
       created?: Date;
@@ -66,6 +76,7 @@ function parseResponse(data: MimirQueryResponse | undefined): NodePoolNode[] {
         instanceType: sample.metric.label_node_kubernetes_io_instance_type,
         zone: sample.metric.zone,
         ready: false,
+        conditions: [],
       });
     }
 
@@ -77,8 +88,14 @@ function parseResponse(data: MimirQueryResponse | undefined): NodePoolNode[] {
       case 'cpu':
         entry.cpuAllocatable = value;
         break;
+      case 'cpu_requests':
+        entry.cpuRequests = value;
+        break;
       case 'memory':
         entry.memoryAllocatable = value;
+        break;
+      case 'memory_requests':
+        entry.memoryRequests = value;
         break;
       case 'pods':
         entry.podsAllocatable = value;
@@ -92,16 +109,25 @@ function parseResponse(data: MimirQueryResponse | undefined): NodePoolNode[] {
       case 'created':
         entry.created = new Date(value * 1000);
         break;
+      default:
+        if (resource?.startsWith('condition_') && value === 1) {
+          entry.conditions.push(resource.replace('condition_', ''));
+        }
+        break;
     }
   }
 
   return Array.from(nodeMap.entries()).map(([node, entry]) => ({
+    id: node,
     node,
     instanceType: entry.instanceType,
     zone: entry.zone,
     ready: entry.ready,
+    conditions: entry.conditions,
     cpuAllocatable: entry.cpuAllocatable,
+    cpuRequests: entry.cpuRequests,
     memoryAllocatable: entry.memoryAllocatable,
+    memoryRequests: entry.memoryRequests,
     podsAllocatable: entry.podsAllocatable,
     runningPods: entry.runningPods,
     created: entry.created,

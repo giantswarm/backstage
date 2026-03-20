@@ -88,6 +88,7 @@ export const AWSNodePoolsTable = () => {
       }
 
       return {
+        id: pool.getName(),
         name: pool.getName(),
         type,
         desiredReplicas: pool.getDesiredReplicas(),
@@ -101,25 +102,6 @@ export const AWSNodePoolsTable = () => {
       };
     });
   }, [machinePools, awsMachinePools]);
-
-  // TODO: Remove mock data — temporary for testing long tables
-  const mockData: AWSNodePoolRow[] = useMemo(() => {
-    return Array.from({ length: 20 }, (_, i) => ({
-      name: `mock-pool-${String(i + 1).padStart(2, '0')}`,
-      type: (i % 3 === 0 ? 'Karpenter' : 'ASG') as 'ASG' | 'Karpenter',
-      desiredReplicas: 3 + (i % 5),
-      readyReplicas: 2 + (i % 5),
-      instanceType:
-        i % 3 === 0 ? undefined : `m5.${['large', 'xlarge', '2xlarge'][i % 3]}`,
-      availabilityZones: [`eu-west-1${String.fromCharCode(97 + (i % 3))}`],
-      minSize: i % 3 === 0 ? undefined : 1,
-      maxSize: i % 3 === 0 ? undefined : 10,
-      phase: ['Running', 'Provisioning', 'Running', 'Deleting'][i % 4],
-      created: new Date(Date.now() - i * 86400000).toISOString(),
-    }));
-  }, []);
-
-  const allData = useMemo(() => [...data, ...mockData], [data, mockData]);
 
   const details = selectedNodePool ? (
     <NodePoolNodes
@@ -141,11 +123,9 @@ export const AWSNodePoolsTable = () => {
           paging: false,
           columnsButton: true,
         }}
-        data={allData}
+        data={data}
         style={{ width: '100%' }}
-        title={
-          <Typography variant="h6">Node pools ({allData.length})</Typography>
-        }
+        title={<Typography variant="h6">Node pools ({data.length})</Typography>}
         columns={columns}
         onChangeColumnHidden={(column, hidden) => {
           if (column.field) {

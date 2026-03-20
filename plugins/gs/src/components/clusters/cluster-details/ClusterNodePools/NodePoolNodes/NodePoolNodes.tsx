@@ -33,7 +33,8 @@ export const NodePoolNodes = ({
   if (!isLoading && nodes.length === 0) {
     return (
       <Typography variant="body2" color="textSecondary">
-        No node metrics available for this node pool.
+        We can't display any details for this node pool, as there are no metrics
+        available.
       </Typography>
     );
   }

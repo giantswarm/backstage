@@ -75,6 +75,7 @@ export const AzureNodePoolsTable = () => {
       }
 
       return {
+        id: deployment.getName(),
         name: deployment.getName(),
         desiredReplicas: deployment.getDesiredReplicas(),
         readyReplicas: deployment.getReadyReplicas(),

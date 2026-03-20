@@ -7,6 +7,7 @@ import {
 import { DateComponent, NotAvailable } from '../../../../UI';
 
 export type AzureNodePoolRow = {
+  id: string;
   name: string;
   desiredReplicas: number | undefined;
   readyReplicas: number | undefined;
