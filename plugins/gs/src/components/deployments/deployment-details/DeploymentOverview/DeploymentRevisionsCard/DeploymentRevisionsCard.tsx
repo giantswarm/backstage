@@ -4,8 +4,7 @@ import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentD
 import { formatVersion } from '../../../../utils/helpers';
 import { getSourceLocationFromEntity } from '../../../../utils/entity';
 import { useCatalogEntityForDeployment } from '../../../../hooks';
-import { AboutField } from '@backstage/plugin-catalog';
-import { AboutFieldValue, Version } from '../../../../UI';
+import { AboutField, AboutFieldValue, Version } from '../../../../UI';
 import { getAttemptedVersion, getVersion } from '../../../utils/getVersion';
 
 export function DeploymentRevisionsCard() {

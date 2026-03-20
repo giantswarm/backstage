@@ -1,3 +1,4 @@
+export { AboutField } from './AboutField';
 export { AboutFieldValue } from './AboutFieldValue';
 export { Account } from './Account';
 export { ApplicationLink } from './ApplicationLink';

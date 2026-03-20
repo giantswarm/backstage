@@ -3,10 +3,10 @@ import { Link as RouterLink } from 'react-router-dom';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { InfoCard, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { AboutField } from '@backstage/plugin-catalog';
 import { Grid, Tooltip, Typography } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import {
+  AboutField,
   AboutFieldValue,
   ClusterLink,
   DateComponent,
