@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Table } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
@@ -27,12 +27,15 @@ export const AWSNodePoolsTable = () => {
   const { selectedNodePool, setSelectedNodePool, clearSelectedNodePool } =
     useSelectedNodePool();
 
+  const setSelectedNodePoolRef = useRef(setSelectedNodePool);
+  setSelectedNodePoolRef.current = setSelectedNodePool;
+
   const { visibleColumns, saveVisibleColumns } = useTableColumns(TABLE_ID);
 
-  const [columns, setColumns] = useState(
+  const [columns, setColumns] = useState(() =>
     getInitialColumns({
       visibleColumns,
-      onSelectNodePool: setSelectedNodePool,
+      onSelectNodePool: (name: string) => setSelectedNodePoolRef.current(name),
     }),
   );
 

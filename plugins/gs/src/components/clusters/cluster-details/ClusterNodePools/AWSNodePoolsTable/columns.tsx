@@ -1,5 +1,5 @@
 import { TableColumn } from '@backstage/core-components';
-import { Link } from '@material-ui/core';
+import { Link, Tooltip } from '@material-ui/core';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
@@ -89,9 +89,17 @@ export function getInitialColumns({
       title: 'Availability zones',
       field: AWSNodePoolColumns.availabilityZones,
       render: row =>
-        row.availabilityZones
-          ?.map(az => az.slice(-1).toUpperCase())
-          .join(', ') ?? <NotAvailable />,
+        row.availabilityZones ? (
+          <Tooltip title={row.availabilityZones.join(', ')} arrow>
+            <span>
+              {row.availabilityZones
+                .map(az => az.slice(-1).toUpperCase())
+                .join(', ')}
+            </span>
+          </Tooltip>
+        ) : (
+          <NotAvailable />
+        ),
     },
     {
       title: 'Scaling',

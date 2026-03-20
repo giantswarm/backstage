@@ -45,6 +45,23 @@ function ColumnHeader({ label, tooltip }: { label: string; tooltip: string }) {
   );
 }
 
+const useConditionStyles = makeStyles(theme => ({
+  error: {
+    color: theme.palette.error.main,
+    whiteSpace: 'nowrap' as const,
+  },
+}));
+
+function ConditionText({ conditions }: { conditions: string[] }) {
+  const classes = useConditionStyles();
+  if (conditions.length === 0) return <>{'\u2014'}</>;
+  return (
+    <Typography variant="body2" className={classes.error}>
+      {conditions.join(', ')}
+    </Typography>
+  );
+}
+
 const useRatioBarStyles = makeStyles(() => ({
   root: {
     display: 'flex',
@@ -136,7 +153,14 @@ export function getColumns(): TableColumn<NodePoolNode>[] {
       field: 'zone',
       width: '1%',
       ...sortAndFilterOptions(row => row.zone),
-      render: row => (row.zone ? shortenAZ(row.zone) : <NotAvailable />),
+      render: row =>
+        row.zone ? (
+          <Tooltip title={row.zone} arrow>
+            <span>{shortenAZ(row.zone)}</span>
+          </Tooltip>
+        ) : (
+          <NotAvailable />
+        ),
     },
     {
       title: 'Ready',
@@ -147,17 +171,7 @@ export function getColumns(): TableColumn<NodePoolNode>[] {
     {
       title: 'Conditions',
       field: 'conditions',
-      render: row =>
-        row.conditions.length > 0 ? (
-          <Typography
-            variant="body2"
-            style={{ color: '#d32f2f', whiteSpace: 'nowrap' }}
-          >
-            {row.conditions.join(', ')}
-          </Typography>
-        ) : (
-          '\u2014'
-        ),
+      render: row => <ConditionText conditions={row.conditions} />,
       customSort: (a, b) => a.conditions.length - b.conditions.length,
     },
     {

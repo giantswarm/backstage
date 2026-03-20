@@ -308,6 +308,9 @@ export const NodePoolDetailsLayout = ({
       {hasDetails && (
         <>
           <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize node pool details panel"
             className={`${classes.resizeHandle}${isDragging ? ` ${classes.resizeHandleDragging}` : ''}`}
             onMouseDown={onMouseDown}
             onDoubleClick={onDoubleClick}
