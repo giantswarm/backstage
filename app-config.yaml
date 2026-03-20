@@ -39,11 +39,12 @@ app:
     - entity-context-menu-item:catalog/unregister-entity: false
     - entity-context-menu-item:catalog/inspect-entity: false
     - entity-context-menu-item:catalog/copy-entity-url: false
-    - search-result-list-item:catalog: false
-    - search-result-list-item:techdocs: false
   telemetrydeck:
     appID: ''
     salt: ${TELEMETRYDECK_SALT}
+search:
+  defaultType: software-catalog
+
 organization:
   name: My Company
 

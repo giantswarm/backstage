@@ -6,8 +6,6 @@ import {
 import type { Entity } from '@backstage/catalog-model';
 import homePlugin from '@backstage/plugin-home/alpha';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
-import searchPlugin from '@backstage/plugin-search/alpha';
-
 // Home page — override path from /home to /
 const homePageOverride = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
@@ -114,30 +112,4 @@ const catalogEntityPageOverride = PageBlueprint.makeWithOverrides({
 export const catalogPageOverrides = createFrontendModule({
   pluginId: 'catalog',
   extensions: [catalogIndexPageOverride, catalogEntityPageOverride],
-});
-
-// Search page — render with custom SearchPage component
-const searchPageOverride = PageBlueprint.makeWithOverrides({
-  factory(originalFactory) {
-    return originalFactory({
-      noHeader: true,
-      routeRef: searchPlugin.routes.root,
-      path: '/search',
-      loader: async () => {
-        const { SearchPage } = await import('./components/search/SearchPage');
-        const { SearchContextProvider } =
-          await import('@backstage/plugin-search-react');
-        return (
-          <SearchContextProvider>
-            <SearchPage />
-          </SearchContextProvider>
-        );
-      },
-    });
-  },
-});
-
-export const searchPageOverrides = createFrontendModule({
-  pluginId: 'search',
-  extensions: [searchPageOverride],
 });

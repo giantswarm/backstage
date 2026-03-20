@@ -31,11 +31,7 @@ import {
 } from './legacyPlugins';
 import { navModule } from './modules/nav';
 import { userSettingsPluginOverrides } from './modules/userSettings';
-import {
-  homePageOverrides,
-  catalogPageOverrides,
-  searchPageOverrides,
-} from './routeOverrides';
+import { homePageOverrides, catalogPageOverrides } from './routeOverrides';
 
 const app = createApp({
   features: [
@@ -74,7 +70,6 @@ const app = createApp({
     // Page overrides for upstream NFS plugins:
     homePageOverrides,
     catalogPageOverrides,
-    searchPageOverrides,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
