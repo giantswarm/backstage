@@ -28,8 +28,18 @@ export interface NodePoolNode {
 
 const REFETCH_INTERVAL = 30_000;
 
+/**
+ * Sanitize a value for use inside a PromQL label matcher string.
+ * Strips characters that could break or escape the matcher: `"`, `}`, `\`, newlines.
+ */
+function sanitizePromQLValue(value: string): string {
+  return value.replace(/["}\\\n\r]/g, '');
+}
+
 function buildQuery(clusterName: string, nodePoolName: string): string {
-  const l = `cluster_id="${clusterName}"`;
+  const safeCluster = sanitizePromQLValue(clusterName);
+  const safeNodePool = sanitizePromQLValue(nodePoolName);
+  const l = `cluster_id="${safeCluster}"`;
   const byNR = 'node, cluster_id, resource'; // group-by for left side
 
   return [
@@ -43,7 +53,7 @@ function buildQuery(clusterName: string, nodePoolName: string): string {
     `  or max by (${byNR}) (label_replace(${KubeNodeCreated.name}{${l}}, "resource", "created", "", ""))`,
     ')',
     '* on(node, cluster_id) group_left(nodepool, label_node_kubernetes_io_instance_type, zone)',
-    `  max by (node, cluster_id, nodepool, label_node_kubernetes_io_instance_type, zone) (${KubeNodeLabels.name}{${l}, nodepool="${nodePoolName}"})`,
+    `  max by (node, cluster_id, nodepool, label_node_kubernetes_io_instance_type, zone) (${KubeNodeLabels.name}{${l}, nodepool="${safeNodePool}"})`,
   ].join(' ');
 }
 

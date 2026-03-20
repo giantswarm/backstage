@@ -1,6 +1,6 @@
 import { Table } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
-import { useMimirNodePoolNodes } from '../../../../hooks/useMimirNodePoolNodes';
+import { useMimirNodePoolNodes } from '../../../../hooks';
 import { getColumns } from './columns';
 
 interface NodePoolNodesProps {

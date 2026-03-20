@@ -8,7 +8,7 @@ import {
 } from '@material-ui/core';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { sortAndFilterOptions } from '@giantswarm/backstage-plugin-ui-react';
-import { NodePoolNode } from '../../../../hooks/useMimirNodePoolNodes';
+import { NodePoolNode } from '../../../../hooks';
 import { DateComponent, NotAvailable } from '../../../../UI';
 
 function shortenNodeName(name: string): string {
