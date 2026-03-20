@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Table } from '@backstage/core-components';
+import { StructuredMetadataTable, Table } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -7,6 +7,8 @@ import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { useNodePoolsForAzureCluster } from '../../../../hooks';
 import { AzureNodePoolRow, getInitialColumns } from './columns';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
+import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
+import { useSelectedNodePool } from '../useSelectedNodePool';
 
 const TABLE_ID = 'azure-node-pools';
 
@@ -17,9 +19,17 @@ export const AzureNodePoolsTable = () => {
 
   useShowErrors(errors);
 
+  const { selectedNodePool, setSelectedNodePool, clearSelectedNodePool } =
+    useSelectedNodePool();
+
   const { visibleColumns, saveVisibleColumns } = useTableColumns(TABLE_ID);
 
-  const [columns, setColumns] = useState(getInitialColumns({ visibleColumns }));
+  const [columns, setColumns] = useState(
+    getInitialColumns({
+      visibleColumns,
+      onSelectNodePool: setSelectedNodePool,
+    }),
+  );
 
   const handleChangeColumnHidden = useCallback(
     (field: string, hidden: boolean) => {
@@ -74,22 +84,33 @@ export const AzureNodePoolsTable = () => {
     });
   }, [machineDeployments, azureMachineTemplates]);
 
+  const selectedRow = data.find(row => row.name === selectedNodePool);
+  const details = selectedRow ? (
+    <StructuredMetadataTable metadata={selectedRow} />
+  ) : null;
+
   return (
-    <Table<AzureNodePoolRow>
-      isLoading={isLoading}
-      options={{
-        paging: false,
-        columnsButton: true,
-      }}
-      data={data}
-      style={{ width: '100%' }}
-      title={<Typography variant="h6">Node pools ({data.length})</Typography>}
-      columns={columns}
-      onChangeColumnHidden={(column, hidden) => {
-        if (column.field) {
-          handleChangeColumnHidden(column.field, hidden);
-        }
-      }}
-    />
+    <NodePoolDetailsLayout
+      selectedNodePool={selectedNodePool}
+      details={details}
+      onClose={clearSelectedNodePool}
+    >
+      <Table<AzureNodePoolRow>
+        isLoading={isLoading}
+        options={{
+          paging: false,
+          columnsButton: true,
+        }}
+        data={data}
+        style={{ width: '100%' }}
+        title={<Typography variant="h6">Node pools ({data.length})</Typography>}
+        columns={columns}
+        onChangeColumnHidden={(column, hidden) => {
+          if (column.field) {
+            handleChangeColumnHidden(column.field, hidden);
+          }
+        }}
+      />
+    </NodePoolDetailsLayout>
   );
 };

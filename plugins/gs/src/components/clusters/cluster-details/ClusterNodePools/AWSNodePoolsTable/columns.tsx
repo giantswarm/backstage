@@ -1,4 +1,5 @@
 import { TableColumn } from '@backstage/core-components';
+import { Link } from '@material-ui/core';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
@@ -32,8 +33,10 @@ const AWSNodePoolColumns = {
 
 export function getInitialColumns({
   visibleColumns,
+  onSelectNodePool,
 }: {
   visibleColumns: string[];
+  onSelectNodePool: (name: string) => void;
 }): TableColumn<AWSNodePoolRow>[] {
   const columns: TableColumn<AWSNodePoolRow>[] = [
     {
@@ -43,6 +46,16 @@ export function getInitialColumns({
       defaultSort: 'asc',
       cellStyle: { whiteSpace: 'nowrap' },
       ...sortAndFilterOptions(row => row.name),
+      render: row => (
+        <Link
+          component="button"
+          variant="body2"
+          style={{ fontWeight: 700 }}
+          onClick={() => onSelectNodePool(row.name)}
+        >
+          {row.name}
+        </Link>
+      ),
     },
     {
       title: 'Type',
