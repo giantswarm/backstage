@@ -30,11 +30,11 @@ import {
   githubPullRequestsNfsPlugin,
 } from './legacyPlugins';
 import { navModule } from './modules/nav';
+import { userSettingsPluginOverrides } from './modules/userSettings';
 import {
   homePageOverrides,
   catalogPageOverrides,
   searchPageOverrides,
-  userSettingsPageOverrides,
 } from './routeOverrides';
 
 const app = createApp({
@@ -52,6 +52,7 @@ const app = createApp({
     catalogPlugin,
     searchPlugin,
     userSettingsPlugin,
+    userSettingsPluginOverrides,
     techdocsPlugin,
     catalogGraphPlugin,
     kubernetesPlugin,
@@ -74,7 +75,6 @@ const app = createApp({
     homePageOverrides,
     catalogPageOverrides,
     searchPageOverrides,
-    userSettingsPageOverrides,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {

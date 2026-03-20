@@ -7,7 +7,6 @@ import type { Entity } from '@backstage/catalog-model';
 import homePlugin from '@backstage/plugin-home/alpha';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
 import searchPlugin from '@backstage/plugin-search/alpha';
-import userSettingsPlugin from '@backstage/plugin-user-settings/alpha';
 
 // Home page — override path from /home to /
 const homePageOverride = PageBlueprint.makeWithOverrides({
@@ -141,36 +140,4 @@ const searchPageOverride = PageBlueprint.makeWithOverrides({
 export const searchPageOverrides = createFrontendModule({
   pluginId: 'search',
   extensions: [searchPageOverride],
-});
-
-// User settings page — render with custom provider settings
-const userSettingsPageOverride = PageBlueprint.makeWithOverrides({
-  factory(originalFactory) {
-    return originalFactory({
-      noHeader: true,
-      routeRef: userSettingsPlugin.routes.root,
-      path: '/settings',
-      loader: async () => {
-        const { DefaultProviderSettings, UserSettingsPage } =
-          await import('@backstage/plugin-user-settings');
-        const { GSProviderSettings } =
-          await import('@giantswarm/backstage-plugin-gs');
-        return (
-          <UserSettingsPage
-            providerSettings={
-              <>
-                <DefaultProviderSettings configuredProviders={['github']} />
-                <GSProviderSettings />
-              </>
-            }
-          />
-        );
-      },
-    });
-  },
-});
-
-export const userSettingsPageOverrides = createFrontendModule({
-  pluginId: 'user-settings',
-  extensions: [userSettingsPageOverride],
 });
