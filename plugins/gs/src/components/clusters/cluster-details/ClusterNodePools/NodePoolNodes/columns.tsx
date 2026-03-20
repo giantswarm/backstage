@@ -104,12 +104,12 @@ function RatioBar({
   const classes = useRatioBarStyles();
   const percent = total > 0 ? (used / total) * 100 : 0;
 
-  const barColorClass =
-    variant === 'cpu'
-      ? classes.cpuBarColor
-      : variant === 'memory'
-        ? classes.memoryBarColor
-        : undefined;
+  const barColorClassMap: Record<BarVariant, string | undefined> = {
+    cpu: classes.cpuBarColor,
+    memory: classes.memoryBarColor,
+    default: undefined,
+  };
+  const barColorClass = barColorClassMap[variant];
 
   return (
     <Tooltip title={tooltip} arrow>

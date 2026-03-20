@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type MouseEventHandler,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Box, IconButton, Typography, makeStyles } from '@material-ui/core';
 import CloseIcon from '@material-ui/icons/Close';
 
@@ -103,7 +111,7 @@ function getOffsetRelativeTo(el: HTMLElement, ancestor: HTMLElement): number {
 }
 
 function useAvailableHeight(
-  ref: React.RefObject<HTMLElement>,
+  ref: RefObject<HTMLElement>,
   active: boolean,
 ): number | undefined {
   const [height, setHeight] = useState<number | undefined>(undefined);
@@ -112,7 +120,7 @@ function useAvailableHeight(
     const el = ref.current;
     if (!el || !active) {
       setHeight(undefined);
-      return;
+      return undefined;
     }
 
     const scrollAncestor = findScrollableAncestor(el);
@@ -157,9 +165,9 @@ function useAvailableHeight(
 }
 
 interface NodePoolDetailsLayoutProps {
-  children: React.ReactNode;
+  children: ReactNode;
   selectedNodePool: string | null;
-  details: React.ReactNode;
+  details: ReactNode;
   onClose: () => void;
 }
 
@@ -246,7 +254,7 @@ export const NodePoolDetailsLayout = ({
     [onMouseMove],
   );
 
-  const onMouseDown: React.MouseEventHandler = useCallback(
+  const onMouseDown: MouseEventHandler = useCallback(
     e => {
       e.preventDefault();
       if (!rootRef.current) return;
@@ -268,7 +276,7 @@ export const NodePoolDetailsLayout = ({
     [splitRatio, onMouseMove, onMouseUp],
   );
 
-  const onDoubleClick: React.MouseEventHandler = useCallback(() => {
+  const onDoubleClick: MouseEventHandler = useCallback(() => {
     setSplitRatio(DEFAULT_SPLIT_RATIO);
     try {
       localStorage.setItem(STORAGE_KEY, String(DEFAULT_SPLIT_RATIO));
@@ -308,9 +316,13 @@ export const NodePoolDetailsLayout = ({
       {hasDetails && (
         <>
           <div
-            role="separator"
+            role="slider"
             aria-orientation="horizontal"
             aria-label="Resize node pool details panel"
+            aria-valuemin={MIN_SPLIT_RATIO * 100}
+            aria-valuemax={MAX_SPLIT_RATIO * 100}
+            aria-valuenow={Math.round(splitRatio * 100)}
+            tabIndex={0}
             className={`${classes.resizeHandle}${isDragging ? ` ${classes.resizeHandleDragging}` : ''}`}
             onMouseDown={onMouseDown}
             onDoubleClick={onDoubleClick}
