@@ -46,6 +46,7 @@ const clustersPage = PageBlueprint.make({
   name: 'clusters',
   disabled: true,
   params: {
+    noHeader: true,
     path: '/clusters',
     routeRef: clustersRouteRef,
     loader: async () => {
@@ -59,6 +60,7 @@ const deploymentsPage = PageBlueprint.make({
   name: 'deployments',
   disabled: true,
   params: {
+    noHeader: true,
     path: '/deployments',
     routeRef: deploymentsRouteRef,
     loader: async () => {
@@ -72,6 +74,7 @@ const installationsPage = PageBlueprint.make({
   name: 'installations',
   disabled: true,
   params: {
+    noHeader: true,
     path: '/installations',
     routeRef: installationsRouteRef,
     loader: async () => {

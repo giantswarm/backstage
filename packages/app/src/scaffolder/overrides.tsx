@@ -20,6 +20,7 @@ const scaffolderPageOverride = PageBlueprint.makeWithOverrides({
       i.get(FormFieldBlueprint.dataRefs.formFieldLoader),
     );
     return originalFactory({
+      noHeader: true,
       routeRef: scaffolderPlugin.routes.root,
       path: '/create',
       loader: async () => {

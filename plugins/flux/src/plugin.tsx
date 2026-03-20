@@ -40,6 +40,7 @@ const fluxPage = PageBlueprint.makeWithOverrides({
   },
   factory(originalFactory, { inputs }) {
     return originalFactory({
+      noHeader: true,
       path: '/flux',
       routeRef: rootRouteRef,
       loader: async () => {
