@@ -29,7 +29,7 @@ import {
   circleCINfsPlugin,
   githubPullRequestsNfsPlugin,
 } from './legacyPlugins';
-import { navModule } from './navModule';
+import { navModule } from './modules/nav';
 import {
   homePageOverrides,
   catalogPageOverrides,
