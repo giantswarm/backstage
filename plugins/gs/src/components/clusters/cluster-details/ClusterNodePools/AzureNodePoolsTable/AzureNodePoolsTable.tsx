@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { StructuredMetadataTable, Table } from '@backstage/core-components';
+import { Table } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -9,11 +9,12 @@ import { AzureNodePoolRow, getInitialColumns } from './columns';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
 import { useSelectedNodePool } from '../useSelectedNodePool';
+import { NodePoolNodes } from '../NodePoolNodes';
 
 const TABLE_ID = 'azure-node-pools';
 
 export const AzureNodePoolsTable = () => {
-  const { cluster } = useCurrentCluster();
+  const { installationName, cluster } = useCurrentCluster();
   const { machineDeployments, azureMachineTemplates, isLoading, errors } =
     useNodePoolsForAzureCluster(cluster);
 
@@ -84,9 +85,12 @@ export const AzureNodePoolsTable = () => {
     });
   }, [machineDeployments, azureMachineTemplates]);
 
-  const selectedRow = data.find(row => row.name === selectedNodePool);
-  const details = selectedRow ? (
-    <StructuredMetadataTable metadata={selectedRow} />
+  const details = selectedNodePool ? (
+    <NodePoolNodes
+      installationName={installationName}
+      clusterName={cluster.getName()}
+      nodePoolName={selectedNodePool}
+    />
   ) : null;
 
   return (

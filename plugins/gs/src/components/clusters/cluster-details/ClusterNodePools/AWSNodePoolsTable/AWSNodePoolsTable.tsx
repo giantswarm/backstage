@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { StructuredMetadataTable, Table } from '@backstage/core-components';
+import { Table } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import {
@@ -13,11 +13,12 @@ import { AWSNodePoolRow, getInitialColumns } from './columns';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
 import { useSelectedNodePool } from '../useSelectedNodePool';
+import { NodePoolNodes } from '../NodePoolNodes';
 
 const TABLE_ID = 'aws-node-pools';
 
 export const AWSNodePoolsTable = () => {
-  const { cluster } = useCurrentCluster();
+  const { installationName, cluster } = useCurrentCluster();
   const { machinePools, awsMachinePools, isLoading, errors } =
     useNodePoolsForAWSCluster(cluster);
 
@@ -120,9 +121,12 @@ export const AWSNodePoolsTable = () => {
 
   const allData = useMemo(() => [...data, ...mockData], [data, mockData]);
 
-  const selectedRow = allData.find(row => row.name === selectedNodePool);
-  const details = selectedRow ? (
-    <StructuredMetadataTable metadata={selectedRow} />
+  const details = selectedNodePool ? (
+    <NodePoolNodes
+      installationName={installationName}
+      clusterName={cluster.getName()}
+      nodePoolName={selectedNodePool}
+    />
   ) : null;
 
   return (
