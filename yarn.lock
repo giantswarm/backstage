@@ -3774,7 +3774,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/cli-defaults@npm:^0.1.0":
+"@backstage/cli-defaults@backstage:^::backstage=1.49.2&npm=0.1.0, @backstage/cli-defaults@npm:^0.1.0":
   version: 0.1.0
   resolution: "@backstage/cli-defaults@npm:0.1.0"
   dependencies:
@@ -9910,7 +9910,6 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react"
   dependencies:
     "@backstage/cli": "backstage:^"
-    "@backstage/core-app-api": "backstage:^"
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
@@ -41050,6 +41049,7 @@ __metadata:
   resolution: "root@workspace:."
   dependencies:
     "@backstage/cli": "backstage:^"
+    "@backstage/cli-defaults": "backstage:^"
     "@backstage/e2e-test-utils": "backstage:^"
     "@changesets/cli": "npm:^2.27.8"
     "@jest/environment-jsdom-abstract": "npm:^30.0.0"
