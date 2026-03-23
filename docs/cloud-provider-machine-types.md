@@ -2,8 +2,8 @@
 
 We maintain two JSON data files for cloud provider VM/machine/instance type capabilities:
 
-- `plugins/gs/src/components/clusters/cluster-details/ClusterNodePools/NodePoolNodes/awsInstanceTypes.json`
-- `plugins/gs/src/components/clusters/cluster-details/ClusterNodePools/NodePoolNodes/azureVmTypes.json`
+- `plugins/gs/src/components/clusters/cluster-details/ClusterNodePools/data/awsInstanceTypes.json`
+- `plugins/gs/src/components/clusters/cluster-details/ClusterNodePools/data/azureVmTypes.json`
 
 Please do not edit these files manually!
 
