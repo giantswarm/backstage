@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.60.0
+
+### Minor Changes
+
+- c87b451: Add node pool details panel to cluster details / node pools
+
 ## 0.59.2
 
 ### Patch Changes
