@@ -31,7 +31,11 @@ import {
   createContextUsageTool,
   recordUsage,
 } from './tools';
-import { extractMcpAuthTokens, deduplicateToolCallIds } from './utils';
+import {
+  extractMcpAuthTokens,
+  deduplicateToolCallIds,
+  sanitizeMessages,
+} from './utils';
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -210,6 +214,14 @@ export async function createRouter(
       // Deduplicate tool call IDs to prevent Anthropic API errors
       const deduplicatedMessages = deduplicateToolCallIds(modelMessages);
 
+      // Strip unsupported file/image parts (e.g. pasted screenshots)
+      // to prevent "URL scheme must be http or https" errors from the AI SDK
+      const { messages: sanitizedMessages, hadUnsupportedContent } =
+        sanitizeMessages(deduplicatedMessages);
+      if (hadUnsupportedContent) {
+        chatLogger.info('Removed unsupported file/image content from messages');
+      }
+
       // For Anthropic models, prepend system message with cache control
       // to enable prompt caching for the system prompt.
       // See: https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#cache-control
@@ -230,8 +242,8 @@ export async function createRouter(
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
-          ? [systemMessage, ...deduplicatedMessages]
-          : deduplicatedMessages,
+          ? [systemMessage, ...sanitizedMessages]
+          : sanitizedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         tools: {

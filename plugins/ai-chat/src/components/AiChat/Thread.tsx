@@ -221,7 +221,7 @@ const EditComposer = () => {
 
   return (
     <ComposerPrimitive.Root className={classes.composerForm}>
-      <ComposerPrimitive.Input asChild>
+      <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
         <TextField
           variant="outlined"
           size="small"
@@ -252,7 +252,7 @@ const Composer = () => {
   return (
     <div className={classes.composerContainer}>
       <ComposerPrimitive.Root className={classes.composerForm}>
-        <ComposerPrimitive.Input asChild>
+        <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
           <TextField
             variant="outlined"
             // eslint-disable-next-line jsx-a11y/no-autofocus
