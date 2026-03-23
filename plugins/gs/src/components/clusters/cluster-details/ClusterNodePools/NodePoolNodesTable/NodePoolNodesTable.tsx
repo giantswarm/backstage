@@ -17,17 +17,18 @@ interface NodePoolNodesTableProps {
   nodePoolName: string;
   nodes: NodePoolNode[];
   isLoading: boolean;
+  provider: 'aws' | 'azure';
   onClose: () => void;
 }
-
-const columns = getColumns();
 
 export const NodePoolNodesTable = ({
   nodePoolName,
   nodes,
   isLoading,
+  provider,
   onClose,
 }: NodePoolNodesTableProps) => {
+  const columns = getColumns(provider);
   const classes = useStyles();
 
   return (
