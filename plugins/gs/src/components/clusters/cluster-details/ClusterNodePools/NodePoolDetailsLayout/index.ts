@@ -1,0 +1,1 @@
+export { NodePoolDetailsLayout } from './NodePoolDetailsLayout';

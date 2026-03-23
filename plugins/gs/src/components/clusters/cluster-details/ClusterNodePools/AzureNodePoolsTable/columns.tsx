@@ -1,4 +1,6 @@
 import { TableColumn } from '@backstage/core-components';
+import { Link, Tooltip } from '@material-ui/core';
+import { getVmSizeTooltip } from '../azureVmTypeInfo';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
@@ -6,6 +8,7 @@ import {
 import { DateComponent, NotAvailable } from '../../../../UI';
 
 export type AzureNodePoolRow = {
+  id: string;
   name: string;
   desiredReplicas: number | undefined;
   readyReplicas: number | undefined;
@@ -25,8 +28,10 @@ const AzureNodePoolColumns = {
 
 export function getInitialColumns({
   visibleColumns,
+  onSelectNodePool,
 }: {
   visibleColumns: string[];
+  onSelectNodePool: (name: string) => void;
 }): TableColumn<AzureNodePoolRow>[] {
   const columns: TableColumn<AzureNodePoolRow>[] = [
     {
@@ -36,6 +41,16 @@ export function getInitialColumns({
       defaultSort: 'asc',
       cellStyle: { whiteSpace: 'nowrap' },
       ...sortAndFilterOptions(row => row.name),
+      render: row => (
+        <Link
+          component="button"
+          variant="body2"
+          style={{ fontWeight: 700 }}
+          onClick={() => onSelectNodePool(row.name)}
+        >
+          {row.name}
+        </Link>
+      ),
     },
     {
       title: 'Nodes desired',
@@ -58,7 +73,16 @@ export function getInitialColumns({
     {
       title: 'VM size',
       field: AzureNodePoolColumns.vmSize,
-      render: row => row.vmSize ?? <NotAvailable />,
+      render: row => {
+        if (!row.vmSize) return <NotAvailable />;
+        const tip = getVmSizeTooltip(row.vmSize);
+        if (!tip) return row.vmSize;
+        return (
+          <Tooltip title={tip} arrow>
+            <span>{row.vmSize}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Phase',

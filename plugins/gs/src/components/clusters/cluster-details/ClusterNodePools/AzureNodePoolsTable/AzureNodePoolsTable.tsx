@@ -1,25 +1,34 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Table } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
-import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
-import { useNodePoolsForAzureCluster } from '../../../../hooks';
 import { AzureNodePoolRow, getInitialColumns } from './columns';
-import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 
 const TABLE_ID = 'azure-node-pools';
 
-export const AzureNodePoolsTable = () => {
-  const { cluster } = useCurrentCluster();
-  const { machineDeployments, azureMachineTemplates, isLoading, errors } =
-    useNodePoolsForAzureCluster(cluster);
+interface AzureNodePoolsTableProps {
+  data: AzureNodePoolRow[];
+  isLoading: boolean;
+  onSelectNodePool: (name: string) => void;
+}
 
-  useShowErrors(errors);
+export const AzureNodePoolsTable = ({
+  data,
+  isLoading,
+  onSelectNodePool,
+}: AzureNodePoolsTableProps) => {
+  const onSelectNodePoolRef = useRef(onSelectNodePool);
+  onSelectNodePoolRef.current = onSelectNodePool;
 
   const { visibleColumns, saveVisibleColumns } = useTableColumns(TABLE_ID);
 
-  const [columns, setColumns] = useState(getInitialColumns({ visibleColumns }));
+  const [columns, setColumns] = useState(() =>
+    getInitialColumns({
+      visibleColumns,
+      onSelectNodePool: (name: string) => onSelectNodePoolRef.current(name),
+    }),
+  );
 
   const handleChangeColumnHidden = useCallback(
     (field: string, hidden: boolean) => {
@@ -46,33 +55,6 @@ export const AzureNodePoolsTable = () => {
     10,
     [columns],
   );
-
-  const data: AzureNodePoolRow[] = useMemo(() => {
-    return machineDeployments.map(deployment => {
-      const infraRef = deployment.getInfrastructureRef();
-      const infraName = infraRef?.name;
-
-      let vmSize: string | undefined;
-
-      if (infraName) {
-        const template = azureMachineTemplates.find(
-          t => t.getName() === infraName,
-        );
-        if (template) {
-          vmSize = template.getVmSize();
-        }
-      }
-
-      return {
-        name: deployment.getName(),
-        desiredReplicas: deployment.getDesiredReplicas(),
-        readyReplicas: deployment.getReadyReplicas(),
-        vmSize,
-        phase: deployment.getPhase(),
-        created: deployment.getCreatedTimestamp(),
-      };
-    });
-  }, [machineDeployments, azureMachineTemplates]);
 
   return (
     <Table<AzureNodePoolRow>

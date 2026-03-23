@@ -1,4 +1,6 @@
 import { TableColumn } from '@backstage/core-components';
+import { Link, Tooltip } from '@material-ui/core';
+import { getInstanceTypeTooltip } from '../awsInstanceTypeInfo';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
@@ -6,6 +8,7 @@ import {
 import { DateComponent, NotAvailable } from '../../../../UI';
 
 export type AWSNodePoolRow = {
+  id: string;
   name: string;
   type: 'ASG' | 'Karpenter';
   desiredReplicas: number | undefined;
@@ -32,8 +35,10 @@ const AWSNodePoolColumns = {
 
 export function getInitialColumns({
   visibleColumns,
+  onSelectNodePool,
 }: {
   visibleColumns: string[];
+  onSelectNodePool: (name: string) => void;
 }): TableColumn<AWSNodePoolRow>[] {
   const columns: TableColumn<AWSNodePoolRow>[] = [
     {
@@ -43,6 +48,16 @@ export function getInitialColumns({
       defaultSort: 'asc',
       cellStyle: { whiteSpace: 'nowrap' },
       ...sortAndFilterOptions(row => row.name),
+      render: row => (
+        <Link
+          component="button"
+          variant="body2"
+          style={{ fontWeight: 700 }}
+          onClick={() => onSelectNodePool(row.name)}
+        >
+          {row.name}
+        </Link>
+      ),
     },
     {
       title: 'Type',
@@ -69,12 +84,32 @@ export function getInitialColumns({
     {
       title: 'Instance type',
       field: AWSNodePoolColumns.instanceType,
-      render: row => row.instanceType ?? <NotAvailable />,
+      render: row => {
+        if (!row.instanceType) return <NotAvailable />;
+        const tip = getInstanceTypeTooltip(row.instanceType);
+        if (!tip) return row.instanceType;
+        return (
+          <Tooltip title={tip} arrow>
+            <span>{row.instanceType}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Availability zones',
       field: AWSNodePoolColumns.availabilityZones,
-      render: row => row.availabilityZones?.join(', ') ?? <NotAvailable />,
+      render: row =>
+        row.availabilityZones ? (
+          <Tooltip title={row.availabilityZones.join(', ')} arrow>
+            <span>
+              {row.availabilityZones
+                .map(az => az.slice(-1).toUpperCase())
+                .join(', ')}
+            </span>
+          </Tooltip>
+        ) : (
+          <NotAvailable />
+        ),
     },
     {
       title: 'Scaling',

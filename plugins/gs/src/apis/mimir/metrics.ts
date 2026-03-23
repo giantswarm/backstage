@@ -176,6 +176,44 @@ export const KubeDaemonsetCreated = {
   source: 'kube-state-metrics',
 } as const satisfies PrometheusMetric;
 
+export const KubeNodeLabels = {
+  name: 'kube_node_labels',
+  description:
+    'Kubernetes labels of a node. Each label is exposed as a metric label with a `label_` prefix. Includes `nodepool` label for node pool membership.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeStatusAllocatable = {
+  name: 'kube_node_status_allocatable',
+  description:
+    'Allocatable resources of a node (CPU, memory, pods). The `resource` label indicates the resource type.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeStatusCondition = {
+  name: 'kube_node_status_condition',
+  description:
+    'The condition of a node. Labels include `condition` (Ready, DiskPressure, MemoryPressure, PIDPressure) and `status` (true, false, unknown).',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeNodeCreated = {
+  name: 'kube_node_created',
+  description: 'Unix creation timestamp for a node.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const KubeletRunningPods = {
+  name: 'kubelet_running_pods',
+  description: 'Number of pods currently running on the kubelet.',
+  type: 'gauge',
+  source: 'kubelet',
+} as const satisfies PrometheusMetric;
+
 /**
  * All registered metrics. Use this to enumerate or inspect the full set
  * of metrics the application relies on.
@@ -202,4 +240,9 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   KubeDeploymentCreated,
   KubeStatefulsetCreated,
   KubeDaemonsetCreated,
+  KubeNodeLabels,
+  KubeNodeStatusAllocatable,
+  KubeNodeStatusCondition,
+  KubeNodeCreated,
+  KubeletRunningPods,
 ];
