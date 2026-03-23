@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-03-23
+
 ### Added
 
 - Add node pool details panel to cluster details / node pools.
@@ -2076,7 +2078,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.114.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.115.0...HEAD
+[0.115.0]: https://github.com/giantswarm/backstage/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/giantswarm/backstage/compare/v0.114.0...v0.114.1
 [0.114.0]: https://github.com/giantswarm/backstage/compare/v0.113.0...v0.114.0
 [0.113.0]: https://github.com/giantswarm/backstage/compare/v0.112.0...v0.113.0
