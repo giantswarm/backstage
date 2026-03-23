@@ -111,6 +111,7 @@ export const AWSNodePoolsTable = () => {
       installationName={installationName}
       clusterName={cluster.getName()}
       nodePoolName={selectedNodePool}
+      onClose={clearSelectedNodePool}
     />
   ) : null;
 
@@ -118,7 +119,6 @@ export const AWSNodePoolsTable = () => {
     <NodePoolDetailsLayout
       selectedNodePool={selectedNodePool}
       details={details}
-      onClose={clearSelectedNodePool}
     >
       <Table<AWSNodePoolRow>
         isLoading={isLoading}
