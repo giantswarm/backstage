@@ -5,6 +5,12 @@ import {
   ApiBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
+  EntityCardBlueprint,
+  EntityContentBlueprint,
+  EntityContentLayoutBlueprint,
+  EntityHeaderBlueprint,
+} from '@backstage/plugin-catalog-react/alpha';
+import {
   FormFieldBlueprint,
   createFormField,
 } from '@backstage/plugin-scaffolder-react/alpha';
@@ -29,6 +35,12 @@ import {
   installationsRouteRef,
   rootRouteRef,
 } from './routes';
+import {
+  isEntityDeploymentsAvailable,
+  isEntityHelmChartTagged,
+  isEntityInstallationResource,
+  isEntityKratixResource,
+} from './components/utils/entity';
 import {
   gsAuthProvidersApiRef,
   GSAuthProviders,
@@ -176,6 +188,148 @@ const mimirApi = ApiBlueprint.make({
       factory: ({ discoveryApi, fetchApi }) =>
         new MimirClient({ discoveryApi, fetchApi }),
     }),
+});
+
+// Entity cards for the catalog entity overview page
+const appDeploymentEntityCard = EntityCardBlueprint.make({
+  name: 'app-deployment',
+  params: {
+    type: 'info',
+    filter: entity =>
+      (entity.metadata.tags ?? []).includes('helmchart-deployable'),
+    loader: async () => {
+      const { EntityAppDeploymentCard } =
+        await import('./components/catalog/EntityAppDeploymentCard');
+      return <EntityAppDeploymentCard />;
+    },
+  },
+});
+
+const installationDetailsEntityCard = EntityCardBlueprint.make({
+  name: 'installation-details',
+  params: {
+    type: 'info',
+    filter: entity => isEntityInstallationResource(entity),
+    loader: async () => {
+      const { EntityInstallationDetailsCard } =
+        await import('./components/catalog/EntityInstallationDetailsCard');
+      return <EntityInstallationDetailsCard />;
+    },
+  },
+});
+
+const kratixStatusEntityCard = EntityCardBlueprint.make({
+  name: 'kratix-status',
+  params: {
+    type: 'info',
+    filter: entity => isEntityKratixResource(entity),
+    loader: async () => {
+      const { EntityKratixStatusCard } =
+        await import('./components/catalog/EntityKratixStatusCard');
+      return <EntityKratixStatusCard />;
+    },
+  },
+});
+
+const versionHistoryEntityCard = EntityCardBlueprint.make({
+  name: 'version-history',
+  params: {
+    type: 'content',
+    filter: entity => isEntityHelmChartTagged(entity),
+    loader: async () => {
+      const { EntityVersionHistoryCard } =
+        await import('./components/catalog/EntityVersionHistoryCard');
+      return <EntityVersionHistoryCard />;
+    },
+  },
+});
+
+const readmeEntityCard = EntityCardBlueprint.make({
+  name: 'readme',
+  params: {
+    type: 'content',
+    filter: entity => isEntityHelmChartTagged(entity),
+    loader: async () => {
+      const { EntityReadmeCard } =
+        await import('./components/catalog/EntityReadmeCard');
+      return <EntityReadmeCard />;
+    },
+  },
+});
+
+// Entity content tabs for the catalog entity page
+const deploymentsEntityContent = EntityContentBlueprint.make({
+  name: 'deployments',
+  params: {
+    path: '/deployments',
+    title: 'Deployments',
+    group: 'deployment',
+    routeRef: entityDeploymentsRouteRef,
+    filter: entity => isEntityDeploymentsAvailable(entity),
+    loader: async () => {
+      const { EntityDeploymentsContent } =
+        await import('./components/deployments/EntityDeploymentsContent');
+      return <EntityDeploymentsContent />;
+    },
+  },
+});
+
+const versionHistoryEntityContent = EntityContentBlueprint.make({
+  name: 'version-history',
+  params: {
+    path: '/version-history',
+    title: 'Version History',
+    group: 'development',
+    filter: entity => isEntityHelmChartTagged(entity),
+    loader: async () => {
+      const { EntityVersionHistoryContent } =
+        await import('./components/catalog/EntityVersionHistoryContent');
+      return <EntityVersionHistoryContent />;
+    },
+  },
+});
+
+const kratixResourcesEntityContent = EntityContentBlueprint.make({
+  name: 'kratix-resources',
+  params: {
+    path: '/kratix-resources',
+    title: 'Kratix Resources',
+    group: 'operation',
+    routeRef: entityKratixResourcesRouteRef,
+    filter: entity => isEntityKratixResource(entity),
+    loader: async () => {
+      const { EntityKratixResourcesContent } =
+        await import('./components/catalog/EntityKratixResourcesContent');
+      return <EntityKratixResourcesContent />;
+    },
+  },
+});
+
+// Content layout for helm chart entities — wraps cards in EntityChartProvider
+const helmChartContentLayout = EntityContentLayoutBlueprint.make({
+  name: 'helm-chart',
+  params: {
+    filter: entity => isEntityHelmChartTagged(entity),
+    loader: async () => {
+      const { HelmChartContentLayout } =
+        await import('./components/catalog/HelmChartContentLayout');
+      return HelmChartContentLayout;
+    },
+  },
+});
+
+// Entity header icon
+const entityHeaderIcon = EntityHeaderBlueprint.make({
+  name: 'icon',
+  params: {
+    filter: entity =>
+      Boolean(entity.metadata.annotations?.['giantswarm.io/icon-url']),
+    loader: async () => {
+      const { EntityHeaderIcon } =
+        await import('./components/catalog/EntityHeaderIcon');
+      return <EntityHeaderIcon />;
+    },
+  },
 });
 
 // Scaffolder form field extensions
@@ -406,6 +560,21 @@ export const gsPlugin = createFrontendPlugin({
     gsAuthApi,
     containerRegistryApi,
     mimirApi,
+    // Entity cards
+    appDeploymentEntityCard,
+    installationDetailsEntityCard,
+    kratixStatusEntityCard,
+    versionHistoryEntityCard,
+    readmeEntityCard,
+    // Entity content tabs
+    deploymentsEntityContent,
+    versionHistoryEntityContent,
+    kratixResourcesEntityContent,
+    // Entity content layout
+    helmChartContentLayout,
+    // Entity header
+    entityHeaderIcon,
+    // Scaffolder form fields
     chartPickerFormField,
     chartTagPickerFormField,
     clusterPickerFormField,
