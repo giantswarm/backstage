@@ -1,20 +1,19 @@
-import { Table } from '@backstage/core-components';
 import { Typography } from '@material-ui/core';
 import { useMimirNodePoolNodes } from '../../../../hooks';
-import { getColumns } from './columns';
+import { NodePoolNodesTable } from '../NodePoolNodesTable';
 
 interface NodePoolNodesProps {
   installationName: string;
   clusterName: string;
   nodePoolName: string;
+  onClose: () => void;
 }
-
-const columns = getColumns();
 
 export const NodePoolNodes = ({
   installationName,
   clusterName,
   nodePoolName,
+  onClose,
 }: NodePoolNodesProps) => {
   const { nodes, isLoading, error } = useMimirNodePoolNodes({
     installationName,
@@ -40,17 +39,11 @@ export const NodePoolNodes = ({
   }
 
   return (
-    <Table
+    <NodePoolNodesTable
+      nodePoolName={nodePoolName}
+      nodes={nodes}
       isLoading={isLoading}
-      data={nodes}
-      columns={columns}
-      options={{
-        paging: false,
-        search: false,
-        toolbar: false,
-        padding: 'dense',
-      }}
-      style={{ width: '100%' }}
+      onClose={onClose}
     />
   );
 };
