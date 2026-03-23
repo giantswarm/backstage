@@ -1,6 +1,6 @@
 import { resolvePackagePath } from '@backstage/backend-plugin-api';
 import { tool } from 'ai';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { readFileSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 

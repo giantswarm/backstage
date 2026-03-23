@@ -1,5 +1,5 @@
 import { InputError } from '@backstage/errors';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';

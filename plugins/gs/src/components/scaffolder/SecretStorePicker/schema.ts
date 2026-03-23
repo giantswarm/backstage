@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { makeFieldSchemaFromZod } from '@backstage/plugin-scaffolder';
 
 export const SecretStorePickerFieldSchema = makeFieldSchemaFromZod(

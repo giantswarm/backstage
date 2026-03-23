@@ -34,7 +34,7 @@
     "express-promise-router": "^4.1.0",
     "node-fetch": "^3.3.2",
     "semver": "^7.7.3",
-    "zod": "^3.22.4"
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",

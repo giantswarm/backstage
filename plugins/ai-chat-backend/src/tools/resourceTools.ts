@@ -1,5 +1,5 @@
 import { tool, ToolSet } from 'ai';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /**
  * Convert MCP resources to tools that can be called on-demand

@@ -9762,7 +9762,7 @@ __metadata:
     express: "npm:^4.17.1"
     express-promise-router: "npm:^4.1.0"
     supertest: "npm:^6.2.4"
-    zod: "npm:^3.22.4"
+    zod: "npm:^3.25.0"
   languageName: unknown
   linkType: soft
 
@@ -9956,7 +9956,7 @@ __metadata:
     node-fetch: "npm:^3.3.2"
     semver: "npm:^7.7.3"
     supertest: "npm:^6.2.4"
-    zod: "npm:^3.22.4"
+    zod: "npm:^3.25.0"
   languageName: unknown
   linkType: soft
 
@@ -10038,7 +10038,7 @@ __metadata:
     semver: "npm:^7.6.0"
     use-local-storage-state: "npm:^19.1.0"
     zen-observable: "npm:^0.10.0"
-    zod: "npm:^3.22.4"
+    zod: "npm:^3.25.0"
   peerDependencies:
     react: ^18.0.2
     react-dom: ^18.0.2
@@ -10090,7 +10090,7 @@ __metadata:
     "@backstage/plugin-scaffolder-node": "backstage:^"
     "@types/js-yaml": "npm:^4"
     js-yaml: "npm:^4.1.0"
-    zod: "npm:^3.24.2"
+    zod: "npm:^3.25.0"
   languageName: unknown
   linkType: soft
 
@@ -45860,24 +45860,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.19.1, zod@npm:^3.22.4, zod@npm:^3.24.2, zod@npm:^3.25.76":
+"zod@npm:^3.25.76":
   version: 3.25.76
   resolution: "zod@npm:3.25.76"
   checksum: 10c0/5718ec35e3c40b600316c5b4c5e4976f7fee68151bc8f8d90ec18a469be9571f072e1bbaace10f1e85cf8892ea12d90821b200e980ab46916a6166a4260a983c
-  languageName: node
-  linkType: hard
-
-"zod@npm:^3.25 || ^4.0, zod@npm:^3.25.76 || ^4.0.0, zod@npm:^4.2.1, zod@npm:^4.3.6":
-  version: 4.3.6
-  resolution: "zod@npm:4.3.6"
-  checksum: 10c0/860d25a81ab41d33aa25f8d0d07b091a04acb426e605f396227a796e9e800c44723ed96d0f53a512b57be3d1520f45bf69c0cb3b378a232a00787a2609625307
-  languageName: node
-  linkType: hard
-
-"zod@npm:~3.18.0":
-  version: 3.18.0
-  resolution: "zod@npm:3.18.0"
-  checksum: 10c0/35b2db00009663c88371c3658b6a83a68845d8dd601e6680c1bbf80cb4036d093e43d3423a38314189051e49507906fdacf366d20b7c9a3c37b0c497ed34940a
   languageName: node
   linkType: hard
 

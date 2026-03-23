@@ -4,7 +4,7 @@ import {
   UserInfoService,
 } from '@backstage/backend-plugin-api';
 import { tool } from 'ai';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /**
  * Creates user-scoped tools that require access to the current request's credentials.
