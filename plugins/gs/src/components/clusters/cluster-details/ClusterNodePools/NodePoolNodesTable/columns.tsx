@@ -10,6 +10,8 @@ import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { sortAndFilterOptions } from '@giantswarm/backstage-plugin-ui-react';
 import { NodePoolNode } from '../../../../hooks';
 import { DateComponent, NotAvailable } from '../../../../UI';
+import { getInstanceTypeTooltip } from '../awsInstanceTypeInfo';
+import { getVmSizeTooltip } from '../azureVmTypeInfo';
 
 function shortenNodeName(name: string): string {
   return name.split('.')[0];
@@ -132,7 +134,12 @@ function RatioBar({
   );
 }
 
-export function getColumns(): TableColumn<NodePoolNode>[] {
+export function getColumns(
+  provider: 'aws' | 'azure',
+): TableColumn<NodePoolNode>[] {
+  const getTooltip =
+    provider === 'aws' ? getInstanceTypeTooltip : getVmSizeTooltip;
+
   return [
     {
       title: 'Node',
@@ -146,7 +153,16 @@ export function getColumns(): TableColumn<NodePoolNode>[] {
       title: 'Instance type',
       field: 'instanceType',
       ...sortAndFilterOptions(row => row.instanceType),
-      render: row => row.instanceType ?? <NotAvailable />,
+      render: row => {
+        if (!row.instanceType) return <NotAvailable />;
+        const tip = getTooltip(row.instanceType);
+        if (!tip) return row.instanceType;
+        return (
+          <Tooltip title={tip} arrow>
+            <span>{row.instanceType}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'AZ',

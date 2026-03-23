@@ -1,5 +1,6 @@
 import { TableColumn } from '@backstage/core-components';
 import { Link, Tooltip } from '@material-ui/core';
+import { getInstanceTypeTooltip } from '../awsInstanceTypeInfo';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
@@ -83,7 +84,16 @@ export function getInitialColumns({
     {
       title: 'Instance type',
       field: AWSNodePoolColumns.instanceType,
-      render: row => row.instanceType ?? <NotAvailable />,
+      render: row => {
+        if (!row.instanceType) return <NotAvailable />;
+        const tip = getInstanceTypeTooltip(row.instanceType);
+        if (!tip) return row.instanceType;
+        return (
+          <Tooltip title={tip} arrow>
+            <span>{row.instanceType}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Availability zones',

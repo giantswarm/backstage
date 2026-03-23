@@ -1,5 +1,6 @@
 import { TableColumn } from '@backstage/core-components';
-import { Link } from '@material-ui/core';
+import { Link, Tooltip } from '@material-ui/core';
+import { getVmSizeTooltip } from '../azureVmTypeInfo';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
@@ -72,7 +73,16 @@ export function getInitialColumns({
     {
       title: 'VM size',
       field: AzureNodePoolColumns.vmSize,
-      render: row => row.vmSize ?? <NotAvailable />,
+      render: row => {
+        if (!row.vmSize) return <NotAvailable />;
+        const tip = getVmSizeTooltip(row.vmSize);
+        if (!tip) return row.vmSize;
+        return (
+          <Tooltip title={tip} arrow>
+            <span>{row.vmSize}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Phase',

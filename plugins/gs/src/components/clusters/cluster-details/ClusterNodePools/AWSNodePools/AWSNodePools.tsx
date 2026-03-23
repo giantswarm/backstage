@@ -67,6 +67,7 @@ export const AWSNodePools = () => {
       installationName={installationName}
       clusterName={cluster.getName()}
       nodePoolName={selectedNodePool}
+      provider="aws"
       onClose={clearSelectedNodePool}
     />
   ) : null;
