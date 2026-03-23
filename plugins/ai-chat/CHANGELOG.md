@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.11.0
+
+### Minor Changes
+
+- 35dc69b: Improvements on the getContextUsage tool in AI chat, adding cost estimate, changing token calculation
+
+### Patch Changes
+
+- b3e9dd7: Reject attachments in AI chat
+
 ## 0.10.1
 
 ### Patch Changes

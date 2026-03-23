@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Improve getContextUsage tool in AI chat, adding cost estimate and changing token calculation.
 - Reject attachments in AI chat.
 
+See [./docs/releases/v0.115.0-changelog.md](./docs/releases/v0.115.0-changelog.md) for more information.
+
 ## [0.114.1] - 2026-03-19
 
 ### Changed
