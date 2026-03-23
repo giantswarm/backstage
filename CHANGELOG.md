@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add node pool details panel to cluster details / node pools.
+
+### Changed
+
+- Improve getContextUsage tool in AI chat, adding cost estimate and changing token calculation.
+- Reject attachments in AI chat.
+
 ## [0.114.1] - 2026-03-19
 
 ### Changed
