@@ -1,4 +1,4 @@
-import awsInstanceTypes from './NodePoolNodes/awsInstanceTypes.json';
+import awsInstanceTypes from './data/awsInstanceTypes.json';
 
 const instanceTypeData = awsInstanceTypes as Record<
   string,

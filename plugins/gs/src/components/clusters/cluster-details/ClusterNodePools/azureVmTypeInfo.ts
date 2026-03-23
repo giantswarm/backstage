@@ -1,4 +1,4 @@
-import azureVmTypes from './NodePoolNodes/azureVmTypes.json';
+import azureVmTypes from './data/azureVmTypes.json';
 
 interface AzureVmCapability {
   name: string;
