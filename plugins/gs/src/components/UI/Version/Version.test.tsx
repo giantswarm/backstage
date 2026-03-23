@@ -1,4 +1,4 @@
-import { renderInTestApp } from '@backstage/test-utils';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { cleanup } from '@testing-library/react';
 import { Version, VersionProps } from './Version';
 

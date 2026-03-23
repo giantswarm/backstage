@@ -5191,6 +5191,42 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage/frontend-test-utils@backstage:^::backstage=1.49.2&npm=0.5.1, @backstage/frontend-test-utils@npm:^0.5.1":
+  version: 0.5.1
+  resolution: "@backstage/frontend-test-utils@npm:0.5.1"
+  dependencies:
+    "@backstage/config": "npm:^1.3.6"
+    "@backstage/core-app-api": "npm:^1.19.6"
+    "@backstage/core-plugin-api": "npm:^1.12.4"
+    "@backstage/filter-predicates": "npm:^0.1.1"
+    "@backstage/frontend-app-api": "npm:^0.16.0"
+    "@backstage/frontend-plugin-api": "npm:^0.15.0"
+    "@backstage/plugin-app": "npm:^0.4.1"
+    "@backstage/plugin-app-react": "npm:^0.2.1"
+    "@backstage/plugin-permission-common": "npm:^0.9.7"
+    "@backstage/plugin-permission-react": "npm:^0.4.41"
+    "@backstage/test-utils": "npm:^1.7.16"
+    "@backstage/types": "npm:^1.2.2"
+    "@backstage/version-bridge": "npm:^1.0.12"
+    i18next: "npm:^22.4.15"
+    zen-observable: "npm:^0.10.0"
+    zod: "npm:^3.25.76 || ^4.0.0"
+  peerDependencies:
+    "@testing-library/react": ^16.0.0
+    "@types/jest": "*"
+    "@types/react": ^17.0.0 || ^18.0.0
+    react: ^17.0.0 || ^18.0.0
+    react-dom: ^17.0.0 || ^18.0.0
+    react-router-dom: ^6.30.2
+  peerDependenciesMeta:
+    "@types/jest":
+      optional: true
+    "@types/react":
+      optional: true
+  checksum: 10c0/474cc0582dae10386e665f1f7414f703e1b75d3a0ae703656bf60bc41edfea92a4a722e3e24e5ed3b48e942256f20cee73b5d002d4fddaab8d78dddcc9813c2c
+  languageName: node
+  linkType: hard
+
 "@backstage/frontend-test-utils@npm:^0.4.2":
   version: 0.4.2
   resolution: "@backstage/frontend-test-utils@npm:0.4.2"
@@ -8369,7 +8405,36 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/test-utils@backstage:^::backstage=1.49.2&npm=1.7.16, @backstage/test-utils@npm:^1.7.16":
+"@backstage/test-utils@npm:^1.7.14":
+  version: 1.7.14
+  resolution: "@backstage/test-utils@npm:1.7.14"
+  dependencies:
+    "@backstage/config": "npm:^1.3.6"
+    "@backstage/core-app-api": "npm:^1.19.3"
+    "@backstage/core-plugin-api": "npm:^1.12.1"
+    "@backstage/plugin-permission-common": "npm:^0.9.3"
+    "@backstage/plugin-permission-react": "npm:^0.4.39"
+    "@backstage/theme": "npm:^0.7.1"
+    "@backstage/types": "npm:^1.2.2"
+    "@material-ui/core": "npm:^4.12.2"
+    "@material-ui/icons": "npm:^4.9.1"
+    cross-fetch: "npm:^4.0.0"
+    i18next: "npm:^22.4.15"
+    zen-observable: "npm:^0.10.0"
+  peerDependencies:
+    "@testing-library/react": ^16.0.0
+    "@types/react": ^17.0.0 || ^18.0.0
+    react: ^17.0.0 || ^18.0.0
+    react-dom: ^17.0.0 || ^18.0.0
+    react-router-dom: ^6.3.0
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+  checksum: 10c0/8c2de7a9abe1dc2dbe5e010c362f8e601fbd37f4f5fd0a71c8949c2a1c35a12755a4d45d1a8c18d6652614803f91c275c17ec77ba42f46ac85b7b5ee35674b6a
+  languageName: node
+  linkType: hard
+
+"@backstage/test-utils@npm:^1.7.16":
   version: 1.7.16
   resolution: "@backstage/test-utils@npm:1.7.16"
   dependencies:
@@ -8398,35 +8463,6 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/1e8e2b6f9942505846bd615297e3aa95f049b6bf658fc95dc2688007c6a83bb19135063f21f86d91a6e5d3978a59158967de5007c9b13d396e170eff515d5945
-  languageName: node
-  linkType: hard
-
-"@backstage/test-utils@npm:^1.7.14":
-  version: 1.7.14
-  resolution: "@backstage/test-utils@npm:1.7.14"
-  dependencies:
-    "@backstage/config": "npm:^1.3.6"
-    "@backstage/core-app-api": "npm:^1.19.3"
-    "@backstage/core-plugin-api": "npm:^1.12.1"
-    "@backstage/plugin-permission-common": "npm:^0.9.3"
-    "@backstage/plugin-permission-react": "npm:^0.4.39"
-    "@backstage/theme": "npm:^0.7.1"
-    "@backstage/types": "npm:^1.2.2"
-    "@material-ui/core": "npm:^4.12.2"
-    "@material-ui/icons": "npm:^4.9.1"
-    cross-fetch: "npm:^4.0.0"
-    i18next: "npm:^22.4.15"
-    zen-observable: "npm:^0.10.0"
-  peerDependencies:
-    "@testing-library/react": ^16.0.0
-    "@types/react": ^17.0.0 || ^18.0.0
-    react: ^17.0.0 || ^18.0.0
-    react-dom: ^17.0.0 || ^18.0.0
-    react-router-dom: ^6.3.0
-  peerDependenciesMeta:
-    "@types/react":
-      optional: true
-  checksum: 10c0/8c2de7a9abe1dc2dbe5e010c362f8e601fbd37f4f5fd0a71c8949c2a1c35a12755a4d45d1a8c18d6652614803f91c275c17ec77ba42f46ac85b7b5ee35674b6a
   languageName: node
   linkType: hard
 
@@ -9771,7 +9807,6 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-ai-chat-react@workspace:plugins/ai-chat-react"
   dependencies:
     "@backstage/cli": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@material-ui/core": "npm:^4.9.13"
     "@testing-library/jest-dom": "npm:^6.0.0"
     "@testing-library/react": "npm:^14.0.0"
@@ -9800,7 +9835,6 @@ __metadata:
     "@backstage/frontend-plugin-api": "backstage:^"
     "@backstage/plugin-catalog-react": "backstage:^"
     "@backstage/plugin-kubernetes-react": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
@@ -9863,7 +9897,6 @@ __metadata:
   dependencies:
     "@backstage/cli": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@testing-library/jest-dom": "npm:^6.0.0"
     "@testing-library/react": "npm:^16.0.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
@@ -9881,7 +9914,7 @@ __metadata:
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
+    "@backstage/frontend-test-utils": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
@@ -9917,7 +9950,6 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/dev-utils": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
@@ -9980,6 +10012,7 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/dev-utils": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
+    "@backstage/frontend-test-utils": "backstage:^"
     "@backstage/integration": "backstage:^"
     "@backstage/integration-react": "backstage:^"
     "@backstage/plugin-catalog": "backstage:^"
@@ -9989,7 +10022,6 @@ __metadata:
     "@backstage/plugin-scaffolder": "backstage:^"
     "@backstage/plugin-scaffolder-react": "backstage:^"
     "@backstage/plugin-user-settings": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@backstage/types": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
@@ -10054,7 +10086,6 @@ __metadata:
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/plugin-kubernetes-react": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.4.0"
@@ -10117,7 +10148,6 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@codemirror/autocomplete": "npm:^6.20.0"
     "@codemirror/commands": "npm:^6.10.0"
     "@codemirror/language": "npm:^6.11.3"
@@ -22756,7 +22786,6 @@ __metadata:
     "@backstage/plugin-techdocs-module-addons-contrib": "backstage:^"
     "@backstage/plugin-techdocs-react": "backstage:^"
     "@backstage/plugin-user-settings": "backstage:^"
-    "@backstage/test-utils": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"

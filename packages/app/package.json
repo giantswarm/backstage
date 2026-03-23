@@ -72,7 +72,6 @@
     "react-router-dom": "^6.3.0"
   },
   "devDependencies": {
-    "@backstage/test-utils": "backstage:^",
     "@playwright/test": "^1.32.3",
     "@testing-library/dom": "^10.0.0",
     "@testing-library/jest-dom": "^6.4.2",
