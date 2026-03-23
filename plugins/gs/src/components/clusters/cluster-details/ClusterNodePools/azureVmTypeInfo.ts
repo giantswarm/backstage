@@ -1,5 +1,3 @@
-import azureVmTypes from './data/azureVmTypes.json';
-
 interface AzureVmCapability {
   name: string;
   value: string;
@@ -9,7 +7,11 @@ interface AzureVmType {
   capabilities: AzureVmCapability[];
 }
 
-const vmTypeData = azureVmTypes as Record<string, AzureVmType>;
+let vmTypeData: Record<string, AzureVmType> | undefined;
+
+import('./data/azureVmTypes.json').then(m => {
+  vmTypeData = m.default as Record<string, AzureVmType>;
+});
 
 function findCapability(
   capabilities: AzureVmCapability[],
@@ -19,6 +21,8 @@ function findCapability(
 }
 
 export function getVmSizeTooltip(vmSize: string): string | undefined {
+  if (!vmTypeData) return undefined;
+
   const info = vmTypeData[vmSize];
   if (!info) return undefined;
 
