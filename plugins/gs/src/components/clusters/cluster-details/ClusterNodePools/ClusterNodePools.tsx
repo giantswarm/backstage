@@ -1,12 +1,12 @@
 import { ClusterSwitch } from '../ClusterSwitch';
-import { AWSNodePoolsTable } from './AWSNodePoolsTable';
-import { AzureNodePoolsTable } from './AzureNodePoolsTable';
+import { AWSNodePools } from './AWSNodePools';
+import { AzureNodePools } from './AzureNodePools';
 
 export const ClusterNodePools = () => {
   return (
     <ClusterSwitch
-      renderAWS={() => <AWSNodePoolsTable />}
-      renderAzure={() => <AzureNodePoolsTable />}
+      renderAWS={() => <AWSNodePools />}
+      renderAzure={() => <AzureNodePools />}
       renderVSphere={() => null}
       renderVCD={() => null}
     />

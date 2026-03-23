@@ -1,17 +1,6 @@
-import { Table } from '@backstage/core-components';
-import { Box, IconButton, makeStyles, Typography } from '@material-ui/core';
+import { Typography } from '@material-ui/core';
 import { useMimirNodePoolNodes } from '../../../../hooks';
-import { getColumns } from './columns';
-import CloseIcon from '@material-ui/icons/Close';
-
-const useStyles = makeStyles(theme => ({
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: theme.spacing(2),
-  },
-}));
+import { NodePoolNodesTable } from '../NodePoolNodesTable';
 
 interface NodePoolNodesProps {
   installationName: string;
@@ -20,16 +9,12 @@ interface NodePoolNodesProps {
   onClose: () => void;
 }
 
-const columns = getColumns();
-
 export const NodePoolNodes = ({
   installationName,
   clusterName,
   nodePoolName,
   onClose,
 }: NodePoolNodesProps) => {
-  const classes = useStyles();
-
   const { nodes, isLoading, error } = useMimirNodePoolNodes({
     installationName,
     clusterName,
@@ -54,27 +39,11 @@ export const NodePoolNodes = ({
   }
 
   return (
-    <Table
+    <NodePoolNodesTable
+      nodePoolName={nodePoolName}
+      nodes={nodes}
       isLoading={isLoading}
-      data={nodes}
-      columns={columns}
-      options={{
-        paging: false,
-        padding: 'dense',
-      }}
-      components={{
-        Toolbar: () => (
-          <Box className={classes.toolbar}>
-            <Typography variant="h6">
-              {nodePoolName} nodes ({nodes.length})
-            </Typography>
-            <IconButton onClick={onClose}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        ),
-      }}
-      style={{ width: '100%' }}
+      onClose={onClose}
     />
   );
 };

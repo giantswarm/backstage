@@ -5,7 +5,6 @@ interface NodePoolDetailsLayoutProps {
   children: ReactNode;
   selectedNodePool: string | null;
   details: ReactNode;
-  onClose: () => void;
 }
 
 export const NodePoolDetailsLayout = ({
@@ -38,9 +37,9 @@ export const NodePoolDetailsLayout = ({
       {children}
 
       {hasDetails && (
-        <Box ref={detailsRef} mt={4}>
-          {details}
-        </Box>
+        <div ref={detailsRef}>
+          <Box mt={4}>{details}</Box>
+        </div>
       )}
     </Box>
   );
