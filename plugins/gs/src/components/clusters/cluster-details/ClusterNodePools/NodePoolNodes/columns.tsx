@@ -11,6 +11,7 @@ import { sortAndFilterOptions } from '@giantswarm/backstage-plugin-ui-react';
 import { NodePoolNode } from '../../../../hooks';
 import { DateComponent, NotAvailable } from '../../../../UI';
 import { getInstanceTypeTooltip } from '../awsInstanceTypeInfo';
+import { getVmSizeTooltip } from '../azureVmTypeInfo';
 
 function shortenNodeName(name: string): string {
   return name.split('.')[0];
@@ -149,7 +150,9 @@ export function getColumns(): TableColumn<NodePoolNode>[] {
       ...sortAndFilterOptions(row => row.instanceType),
       render: row => {
         if (!row.instanceType) return <NotAvailable />;
-        const tip = getInstanceTypeTooltip(row.instanceType);
+        const tip =
+          getInstanceTypeTooltip(row.instanceType) ||
+          getVmSizeTooltip(row.instanceType);
         if (!tip) return row.instanceType;
         return (
           <Tooltip title={tip} arrow>
