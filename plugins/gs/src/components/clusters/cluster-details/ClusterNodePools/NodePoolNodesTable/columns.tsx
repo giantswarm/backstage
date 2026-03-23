@@ -134,7 +134,12 @@ function RatioBar({
   );
 }
 
-export function getColumns(): TableColumn<NodePoolNode>[] {
+export function getColumns(
+  provider: 'aws' | 'azure',
+): TableColumn<NodePoolNode>[] {
+  const getTooltip =
+    provider === 'aws' ? getInstanceTypeTooltip : getVmSizeTooltip;
+
   return [
     {
       title: 'Node',
@@ -150,9 +155,7 @@ export function getColumns(): TableColumn<NodePoolNode>[] {
       ...sortAndFilterOptions(row => row.instanceType),
       render: row => {
         if (!row.instanceType) return <NotAvailable />;
-        const tip =
-          getInstanceTypeTooltip(row.instanceType) ||
-          getVmSizeTooltip(row.instanceType);
+        const tip = getTooltip(row.instanceType);
         if (!tip) return row.instanceType;
         return (
           <Tooltip title={tip} arrow>

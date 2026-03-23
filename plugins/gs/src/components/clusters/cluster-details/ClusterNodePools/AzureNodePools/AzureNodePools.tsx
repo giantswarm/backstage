@@ -51,6 +51,7 @@ export const AzureNodePools = () => {
       installationName={installationName}
       clusterName={cluster.getName()}
       nodePoolName={selectedNodePool}
+      provider="azure"
       onClose={clearSelectedNodePool}
     />
   ) : null;

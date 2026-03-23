@@ -1,6 +1,4 @@
-import awsInstanceTypes from './NodePoolNodes/awsInstanceTypes.json';
-
-const instanceTypeData = awsInstanceTypes as Record<
+type AwsInstanceTypeData = Record<
   string,
   {
     VCpuInfo?: { DefaultVCpus?: number };
@@ -9,9 +7,17 @@ const instanceTypeData = awsInstanceTypes as Record<
   }
 >;
 
+let instanceTypeData: AwsInstanceTypeData | undefined;
+
+import('./data/awsInstanceTypes.json').then(m => {
+  instanceTypeData = m.default as AwsInstanceTypeData;
+});
+
 export function getInstanceTypeTooltip(
   instanceType: string,
 ): string | undefined {
+  if (!instanceTypeData) return undefined;
+
   const info = instanceTypeData[instanceType];
   if (!info) return undefined;
 

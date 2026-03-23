@@ -6,6 +6,7 @@ interface NodePoolNodesProps {
   installationName: string;
   clusterName: string;
   nodePoolName: string;
+  provider: 'aws' | 'azure';
   onClose: () => void;
 }
 
@@ -13,6 +14,7 @@ export const NodePoolNodes = ({
   installationName,
   clusterName,
   nodePoolName,
+  provider,
   onClose,
 }: NodePoolNodesProps) => {
   const { nodes, isLoading, error } = useMimirNodePoolNodes({
@@ -43,6 +45,7 @@ export const NodePoolNodes = ({
       nodePoolName={nodePoolName}
       nodes={nodes}
       isLoading={isLoading}
+      provider={provider}
       onClose={onClose}
     />
   );
