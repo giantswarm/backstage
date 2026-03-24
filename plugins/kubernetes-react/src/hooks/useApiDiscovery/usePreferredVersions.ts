@@ -115,12 +115,13 @@ export function usePreferredVersions(
     }),
   });
 
-  // Build a map of cluster -> best version (first version that has the resource)
-  const clusterBestVersions = useMemo(() => {
-    const result: Record<string, string | undefined> = {};
+  // Build maps of cluster -> best version and cluster -> all versions where resource exists
+  const { clusterBestVersions, clusterResourceVersions } = useMemo(() => {
+    const bestVersions: Record<string, string | undefined> = {};
+    const resourceVersions: Record<string, string[]> = {};
     clusters.forEach(cluster => {
       const versions = versionsToCheck[cluster] || [];
-      // Find the first version (from newest to oldest) that has the resource
+      const available: string[] = [];
       for (const version of versions) {
         const query = resourceQueries.find(
           q =>
@@ -129,12 +130,18 @@ export function usePreferredVersions(
             q.data?.hasResource,
         );
         if (query?.data?.hasResource) {
-          result[cluster] = version;
-          break;
+          available.push(version);
+          if (!bestVersions[cluster]) {
+            bestVersions[cluster] = version;
+          }
         }
       }
+      resourceVersions[cluster] = available;
     });
-    return result;
+    return {
+      clusterBestVersions: bestVersions,
+      clusterResourceVersions: resourceVersions,
+    };
   }, [clusters, versionsToCheck, resourceQueries]);
 
   const {
@@ -162,6 +169,7 @@ export function usePreferredVersions(
         serverVersions,
         serverPreferredVersion: query.data?.preferredVersion?.version,
         bestVersion: clusterBestVersions[cluster],
+        resourceAvailableVersions: clusterResourceVersions[cluster],
         discoveryError: query.error,
         fallbackToStatic,
       });
@@ -187,6 +195,7 @@ export function usePreferredVersions(
     gvk,
     groupQueries,
     clusterBestVersions,
+    clusterResourceVersions,
     shouldDiscover,
     supportedVersions,
     fallbackToStatic,

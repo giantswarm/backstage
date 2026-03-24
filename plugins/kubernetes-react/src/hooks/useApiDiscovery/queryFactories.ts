@@ -128,6 +128,8 @@ interface ResolvePreferredVersionParams {
   serverVersions?: string[];
   serverPreferredVersion?: string;
   bestVersion?: string;
+  /** Versions where the specific resource actually exists on the server */
+  resourceAvailableVersions?: string[];
   discoveryError?: Error | null;
   fallbackToStatic: boolean;
 }
@@ -155,6 +157,7 @@ export function resolvePreferredVersion(
     serverVersions,
     serverPreferredVersion,
     bestVersion,
+    resourceAvailableVersions,
     discoveryError,
     fallbackToStatic,
   } = params;
@@ -199,10 +202,22 @@ export function resolvePreferredVersion(
     if (compatibility.isCompatible && compatibility.resolvedVersion) {
       const resolvedVersion = bestVersion ?? compatibility.resolvedVersion;
 
+      // For the "client outdated" check, use resource-level versions (where the
+      // resource actually exists) instead of group-level versions. This avoids
+      // false positives for resources that only exist in older API versions but
+      // share an API group with newer versions.
       let clientOutdated: ClientOutdatedState | undefined;
-      if (compatibility.isClientOutdated) {
+      const versionsForOutdatedCheck =
+        resourceAvailableVersions && resourceAvailableVersions.length > 0
+          ? resourceAvailableVersions
+          : serverVersions;
+      const resourceCompatibility = checkVersionCompatibility(
+        supportedVersions,
+        versionsForOutdatedCheck,
+      );
+      if (resourceCompatibility.isClientOutdated) {
         const clientLatest = getLatestVersion(supportedVersions);
-        const serverLatest = getLatestVersion(serverVersions);
+        const serverLatest = getLatestVersion(versionsForOutdatedCheck);
         if (clientLatest && serverLatest) {
           clientOutdated = {
             resourceClass: gvk.plural,
@@ -210,7 +225,7 @@ export function resolvePreferredVersion(
             clientLatestVersion: clientLatest,
             serverLatestVersion: serverLatest,
             clientVersions: supportedVersions,
-            serverVersions,
+            serverVersions: versionsForOutdatedCheck,
           };
         }
       }
