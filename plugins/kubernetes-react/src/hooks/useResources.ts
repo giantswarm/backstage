@@ -31,34 +31,15 @@ export function useResources<R extends KubeObject<any>>(
     clustersGVKs,
     isDiscovering,
     discoveryErrors,
-    clustersQueryEnabled,
     incompatibilities,
     clientOutdatedStates,
   } = usePreferredVersions(selectedClusters, staticGVK, {
     enableDiscovery,
   });
 
-  // Filter out clusters that are incompatible (queryEnabled = false)
-  const compatibleClusters = useMemo(() => {
-    return selectedClusters.filter(
-      cluster => clustersQueryEnabled[cluster] !== false,
-    );
-  }, [selectedClusters, clustersQueryEnabled]);
-
-  // Filter GVKs to only include compatible clusters
-  const compatibleClustersGVKs = useMemo(() => {
-    const result: Record<string, (typeof clustersGVKs)[string]> = {};
-    for (const cluster of compatibleClusters) {
-      if (clustersGVKs[cluster]) {
-        result[cluster] = clustersGVKs[cluster];
-      }
-    }
-    return result;
-  }, [compatibleClusters, clustersGVKs]);
-
   const queriesInfo = useListResources<KubeObjectInterface>(
-    compatibleClusters,
-    compatibleClustersGVKs,
+    Object.keys(clustersGVKs),
+    clustersGVKs,
     options,
     {
       ...restQueryOptions,

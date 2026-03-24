@@ -34,8 +34,6 @@ export interface UsePreferredVersionsResult {
   isDiscovering: boolean;
   /** Discovery errors per cluster */
   discoveryErrors: ErrorInfo[];
-  /** Map of cluster name to whether query should be enabled */
-  clustersQueryEnabled: Record<string, boolean>;
   /** List of incompatibility states for clusters with version mismatches */
   incompatibilities: IncompatibilityState[];
   /** List of client outdated states for clusters where server has newer versions */
@@ -131,56 +129,52 @@ export function usePreferredVersions(
     return resourceVersions;
   }, [clusters, versionsToCheck, resourceQueries]);
 
-  const {
-    clustersGVKs,
-    clustersQueryEnabled,
-    incompatibilities,
-    clientOutdatedStates,
-  } = useMemo(() => {
-    const gvks: Record<string, ResolvedGVKWithCompatibility> = {};
-    const queryEnabled: Record<string, boolean> = {};
-    const incompats: IncompatibilityState[] = [];
-    const outdatedStates: ClientOutdatedState[] = [];
+  const { clustersGVKs, incompatibilities, clientOutdatedStates } =
+    useMemo(() => {
+      const gvks: Record<string, ResolvedGVKWithCompatibility> = {};
+      const incompats: IncompatibilityState[] = [];
+      const outdatedStates: ClientOutdatedState[] = [];
 
-    clusters.forEach((cluster, index) => {
-      const query = groupQueries[index];
+      clusters.forEach((cluster, index) => {
+        const query = groupQueries[index];
 
-      const resolved = resolvePreferredVersion({
-        gvk,
-        clientVersions: supportedVersions,
-        cluster,
-        shouldDiscover,
-        discoverySucceeded: Boolean(query.data?.versions),
-        serverVersions: clusterResourceVersions[cluster],
-        discoveryError: query.error,
-        fallbackToStatic,
+        const resolved = resolvePreferredVersion({
+          gvk,
+          clientVersions: supportedVersions,
+          cluster,
+          shouldDiscover,
+          discoverySucceeded: Boolean(query.data?.versions),
+          serverVersions: clusterResourceVersions[cluster],
+          discoveryError: query.error,
+          fallbackToStatic,
+        });
+
+        // Only include compatible clusters in the GVKs map
+        if (resolved.queryEnabled) {
+          gvks[cluster] = resolved.resolvedGVK;
+        }
+        if (resolved.incompatibility) {
+          incompats.push(resolved.incompatibility);
+        }
+        if (resolved.clientOutdated) {
+          outdatedStates.push(resolved.clientOutdated);
+        }
       });
 
-      gvks[cluster] = resolved.resolvedGVK;
-      queryEnabled[cluster] = resolved.queryEnabled;
-      if (resolved.incompatibility) {
-        incompats.push(resolved.incompatibility);
-      }
-      if (resolved.clientOutdated) {
-        outdatedStates.push(resolved.clientOutdated);
-      }
-    });
-
-    return {
-      clustersGVKs: gvks,
-      clustersQueryEnabled: queryEnabled,
-      incompatibilities: incompats,
-      clientOutdatedStates: outdatedStates,
-    };
-  }, [
-    clusters,
-    gvk,
-    groupQueries,
-    clusterResourceVersions,
-    shouldDiscover,
-    supportedVersions,
-    fallbackToStatic,
-  ]);
+      return {
+        clustersGVKs: gvks,
+        incompatibilities: incompats,
+        clientOutdatedStates: outdatedStates,
+      };
+    }, [
+      clusters,
+      gvk,
+      groupQueries,
+      clusterResourceVersions,
+      shouldDiscover,
+      supportedVersions,
+      fallbackToStatic,
+    ]);
 
   const discoveryErrors = useMemo(() => {
     if (!shouldDiscover) {
@@ -212,7 +206,6 @@ export function usePreferredVersions(
     clustersGVKs,
     isDiscovering,
     discoveryErrors,
-    clustersQueryEnabled,
     incompatibilities,
     clientOutdatedStates,
   };
