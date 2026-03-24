@@ -45,7 +45,6 @@
     "@backstage/cli": "backstage:^",
     "@backstage/core-app-api": "backstage:^",
     "@backstage/dev-utils": "backstage:^",
-    "@backstage/test-utils": "backstage:^",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.0.0",

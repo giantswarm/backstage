@@ -1,5 +1,5 @@
 import { tool, LanguageModelUsage } from 'ai';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 type UsageEntry = {
   /** Latest step usage — input tokens reflect the full context each step. */

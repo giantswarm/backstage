@@ -13,6 +13,7 @@ import userSettingsPlugin from '@backstage/plugin-user-settings/alpha';
 const homePageOverride = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
     return originalFactory({
+      noHeader: true,
       routeRef: homePlugin.routes.root,
       path: '/',
       loader: async () => {
@@ -32,6 +33,7 @@ export const homePageOverrides = createFrontendModule({
 const catalogIndexPageOverride = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
     return originalFactory({
+      noHeader: true,
       routeRef: catalogPlugin.routes.catalogIndex,
       path: '/catalog',
       loader: async () => {
@@ -49,6 +51,7 @@ const catalogEntityPageOverride = PageBlueprint.makeWithOverrides({
   name: 'entity',
   factory(originalFactory) {
     return originalFactory({
+      noHeader: true,
       routeRef: catalogPlugin.routes.catalogEntity,
       path: '/catalog/:namespace/:kind/:name',
       loader: async () => {
@@ -118,6 +121,7 @@ export const catalogPageOverrides = createFrontendModule({
 const searchPageOverride = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
     return originalFactory({
+      noHeader: true,
       routeRef: searchPlugin.routes.root,
       path: '/search',
       loader: async () => {
@@ -143,6 +147,7 @@ export const searchPageOverrides = createFrontendModule({
 const userSettingsPageOverride = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
     return originalFactory({
+      noHeader: true,
       routeRef: userSettingsPlugin.routes.root,
       path: '/settings',
       loader: async () => {

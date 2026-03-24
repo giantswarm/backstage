@@ -1,6 +1,5 @@
 import { configApiRef } from '@backstage/core-plugin-api';
-import { ApiProvider } from '@backstage/core-app-api';
-import { mockApis, TestApiRegistry } from '@backstage/test-utils';
+import { TestApiProvider, mockApis } from '@backstage/frontend-test-utils';
 import { renderHook } from '@testing-library/react';
 import { useGitSourceLink } from './useGitSourceLink';
 
@@ -99,9 +98,12 @@ describe('useGitSourceLink', () => {
       data: {},
     });
 
-    const apis = TestApiRegistry.from([configApiRef, configApiMock]);
     const wrapper = ({ children }: { children?: any }) => {
-      return <ApiProvider apis={apis}>{children}</ApiProvider>;
+      return (
+        <TestApiProvider apis={[[configApiRef, configApiMock]]}>
+          {children}
+        </TestApiProvider>
+      );
     };
 
     const renderHookWithWrapper = ({
@@ -148,9 +150,12 @@ describe('useGitSourceLink', () => {
       },
     });
 
-    const apis = TestApiRegistry.from([configApiRef, configApiMock]);
     const wrapper = ({ children }: { children?: any }) => {
-      return <ApiProvider apis={apis}>{children}</ApiProvider>;
+      return (
+        <TestApiProvider apis={[[configApiRef, configApiMock]]}>
+          {children}
+        </TestApiProvider>
+      );
     };
 
     const renderHookWithWrapper = ({

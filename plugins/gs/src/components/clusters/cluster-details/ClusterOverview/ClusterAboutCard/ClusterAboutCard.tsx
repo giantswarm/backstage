@@ -10,7 +10,6 @@ import {
   Typography,
 } from '@material-ui/core';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
-import { AboutField } from '@backstage/plugin-catalog';
 import {
   calculateClusterType,
   calculateClusterProvider,
@@ -24,6 +23,7 @@ import {
   isManagementCluster,
 } from '../../../utils';
 import {
+  AboutField,
   AboutFieldValue,
   DateComponent,
   KubernetesVersion,

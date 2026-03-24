@@ -30,13 +30,12 @@
     "classnames": "^2.5.1"
   },
   "peerDependencies": {
-    "@backstage/core-plugin-api": "^1.12.3",
+    "@backstage/core-plugin-api": "^1.12.4",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0",
     "react-router-dom": "*"
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^",
-    "@backstage/test-utils": "backstage:^",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"

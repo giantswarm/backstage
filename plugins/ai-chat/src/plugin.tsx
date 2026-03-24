@@ -18,6 +18,7 @@ import {
 const aiChatPage = PageBlueprint.make({
   disabled: true,
   params: {
+    noHeader: true,
     path: '/ai-chat',
     loader: () => import('./components/AiChat').then(m => <m.AiChatPage />),
     routeRef: rootRouteRef,

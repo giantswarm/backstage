@@ -2,9 +2,9 @@ import { Fab, makeStyles, Tooltip } from '@material-ui/core';
 import {
   useApi,
   useApiHolder,
-  useRouteRef,
   identityApiRef,
 } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useEffect } from 'react';
 import useAsync from 'react-use/esm/useAsync';
 import { useLocation } from 'react-router-dom';
@@ -58,7 +58,7 @@ export const AiChatFab = () => {
 
   if (
     !drawerApi ||
-    pathname.startsWith(chatPath()) ||
+    (chatPath && pathname.startsWith(chatPath())) ||
     identity?.type !== 'user'
   ) {
     return null;

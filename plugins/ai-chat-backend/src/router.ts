@@ -16,7 +16,7 @@ import {
   UIMessage,
   SystemModelMessage,
 } from 'ai';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
 import { readFileSync } from 'fs';

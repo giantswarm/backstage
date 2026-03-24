@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^",
+    "@backstage/cli-defaults": "backstage:^",
     "@backstage/e2e-test-utils": "backstage:^",
     "@changesets/cli": "^2.27.8",
     "@jest/environment-jsdom-abstract": "^30.0.0",
@@ -70,7 +71,8 @@
     "@lezer/common": "1.5.1",
     "@lezer/highlight": "1.2.3",
     "codemirror-json-schema": "0.8.1",
-    "@assistant-ui/tap": "0.5.3"
+    "@assistant-ui/tap": "0.5.3",
+    "zod": "^3.25.76 || ^4.0.0"
   },
   "prettier": "@backstage/cli/config/prettier",
   "lint-staged": {
