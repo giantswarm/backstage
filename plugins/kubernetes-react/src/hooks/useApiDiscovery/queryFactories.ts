@@ -127,8 +127,6 @@ interface ResolvePreferredVersionParams {
   explicitVersion?: string;
   /** Whether Stage 1 API group discovery succeeded */
   discoverySucceeded: boolean;
-  serverPreferredVersion?: string;
-  bestVersion?: string;
   /** Versions where the specific resource actually exists on the server */
   serverVersions?: string[];
   discoveryError?: Error | null;
@@ -156,8 +154,6 @@ export function resolvePreferredVersion(
     shouldDiscover,
     explicitVersion,
     discoverySucceeded,
-    serverPreferredVersion,
-    bestVersion,
     serverVersions,
     discoveryError,
     fallbackToStatic,
@@ -198,11 +194,10 @@ export function resolvePreferredVersion(
     const compatibility = checkVersionCompatibility(
       clientVersions,
       serverVersions,
-      bestVersion ?? serverPreferredVersion,
     );
 
     if (compatibility.isCompatible && compatibility.resolvedVersion) {
-      const resolvedVersion = bestVersion ?? compatibility.resolvedVersion;
+      const resolvedVersion = compatibility.resolvedVersion;
 
       let clientOutdated: ClientOutdatedState | undefined;
       if (compatibility.isClientOutdated) {

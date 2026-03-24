@@ -93,40 +93,26 @@ export function getLatestVersion(
 
 /**
  * Checks version compatibility between client (resource class) and server versions.
- * Prefers the server's preferred version if compatible, otherwise falls back to the
- * latest compatible version.
+ * Resolves to the latest compatible version.
  *
  * @param clientVersions - Versions supported by the client (resource class)
  * @param serverVersions - Versions available on the server (from API discovery)
- * @param serverPreferredVersion - The server's preferred version (from API group discovery)
  * @returns Compatibility result with resolved version
  */
 export function checkVersionCompatibility(
   clientVersions: readonly string[],
   serverVersions: string[],
-  serverPreferredVersion?: string,
 ): VersionCompatibility {
   // Find intersection of client and server versions
   const clientSet = new Set(clientVersions);
   const compatibleVersions = serverVersions.filter(v => clientSet.has(v));
 
-  // Sort compatible versions
+  // Sort compatible versions and resolve to the latest
   const sortedCompatible = sortVersions(compatibleVersions);
-
-  // Prefer the server's preferred version if it's compatible,
-  // otherwise fall back to the latest compatible version.
-  // This is important because different resources in the same API group
-  // may support different versions (e.g., OCIRepository might only support v1beta2
-  // even if the group advertises v1 for other resources like GitRepository).
-  let resolvedVersion: string | undefined;
-  if (
-    serverPreferredVersion &&
-    compatibleVersions.includes(serverPreferredVersion)
-  ) {
-    resolvedVersion = serverPreferredVersion;
-  } else if (sortedCompatible.length > 0) {
-    resolvedVersion = sortedCompatible[sortedCompatible.length - 1];
-  }
+  const resolvedVersion =
+    sortedCompatible.length > 0
+      ? sortedCompatible[sortedCompatible.length - 1]
+      : undefined;
 
   // Determine if client is outdated (server has newer versions than client supports)
   const clientLatest = getLatestVersion(clientVersions);

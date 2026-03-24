@@ -115,9 +115,8 @@ export function usePreferredVersions(
     }),
   });
 
-  // Build maps of cluster -> best version and cluster -> all versions where resource exists
-  const { clusterBestVersions, clusterResourceVersions } = useMemo(() => {
-    const bestVersions: Record<string, string | undefined> = {};
+  // Build map of cluster -> all versions where resource exists
+  const clusterResourceVersions = useMemo(() => {
     const resourceVersions: Record<string, string[]> = {};
     clusters.forEach(cluster => {
       const versions = versionsToCheck[cluster] || [];
@@ -131,17 +130,11 @@ export function usePreferredVersions(
         );
         if (query?.data?.hasResource) {
           available.push(version);
-          if (!bestVersions[cluster]) {
-            bestVersions[cluster] = version;
-          }
         }
       }
       resourceVersions[cluster] = available;
     });
-    return {
-      clusterBestVersions: bestVersions,
-      clusterResourceVersions: resourceVersions,
-    };
+    return resourceVersions;
   }, [clusters, versionsToCheck, resourceQueries]);
 
   const {
@@ -164,8 +157,6 @@ export function usePreferredVersions(
         cluster,
         shouldDiscover,
         discoverySucceeded: Boolean(query.data?.versions),
-        serverPreferredVersion: query.data?.preferredVersion?.version,
-        bestVersion: clusterBestVersions[cluster],
         serverVersions: clusterResourceVersions[cluster],
         discoveryError: query.error,
         fallbackToStatic,
@@ -191,7 +182,6 @@ export function usePreferredVersions(
     clusters,
     gvk,
     groupQueries,
-    clusterBestVersions,
     clusterResourceVersions,
     shouldDiscover,
     supportedVersions,
