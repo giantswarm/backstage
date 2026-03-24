@@ -11,11 +11,11 @@ import {
   IncompatibilityState,
 } from '../../lib/k8s/VersionTypes';
 import { ErrorInfo, mapQueriesToClusters } from '../utils/queries';
+import { sortVersions } from '../../lib/k8s/versionUtils';
 import {
   getSupportedVersions,
   apiGroupQueryOptions,
   apiResourceQueryOptions,
-  computeVersionsToCheck,
   resolvePreferredVersion,
 } from './queryFactories';
 
@@ -77,23 +77,23 @@ export function usePreferredVersions(
     })),
   });
 
-  // Determine which versions to check for each cluster (compatible versions sorted newest to oldest)
+  // Collect all group versions for each cluster (sorted newest-first)
+  // We query all versions in Stage 2 (not just client-compatible ones) so that
+  // serverVersions reflects the true set of versions where the resource exists,
+  // enabling correct client-outdated detection.
   const versionsToCheck = useMemo(() => {
     const result: Record<string, string[]> = {};
     clusters.forEach((cluster, index) => {
       const query = groupQueries[index];
       if (query.data?.versions) {
-        const serverVersions = query.data.versions.map(v => v.version);
-        result[cluster] = computeVersionsToCheck(
-          serverVersions,
-          supportedVersions,
-        );
+        const versions = query.data.versions.map(v => v.version);
+        result[cluster] = sortVersions(versions).reverse();
       } else {
         result[cluster] = [];
       }
     });
     return result;
-  }, [clusters, groupQueries, supportedVersions]);
+  }, [clusters, groupQueries]);
 
   // Stage 2: For each cluster, query API resources for each compatible version
   // to find which version actually has our resource

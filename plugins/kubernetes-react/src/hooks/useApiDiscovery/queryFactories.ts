@@ -11,7 +11,6 @@ import {
 import {
   checkVersionCompatibility,
   getLatestVersion,
-  sortVersions,
 } from '../../lib/k8s/versionUtils';
 
 export const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
@@ -101,18 +100,6 @@ export function apiResourceQueryOptions(
     gcTime: CACHE_TIME,
     retry: false as const,
   };
-}
-
-/**
- * Computes the intersection of server and client versions, sorted newest-first.
- */
-export function computeVersionsToCheck(
-  serverVersions: string[],
-  clientVersions: readonly string[],
-): string[] {
-  const clientSet = new Set(clientVersions);
-  const compatible = serverVersions.filter(v => clientSet.has(v));
-  return sortVersions(compatible).reverse();
 }
 
 interface ResolvePreferredVersionParams {
