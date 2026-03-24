@@ -34,10 +34,8 @@ export interface UsePreferredVersionResult {
   isDiscovering: boolean;
   /** Discovery error, if any */
   discoveryError: Error | null;
-  /** Whether the resolved version was discovered from the cluster */
-  isDiscovered: boolean;
-  /** Whether the query should be enabled (false when incompatible) */
-  queryEnabled: boolean;
+  /** Whether the resolved version is compatible with the cluster */
+  isCompatible: boolean;
   /** Incompatibility state when versions don't match, undefined if compatible */
   incompatibility: IncompatibilityState | undefined;
   /** Client outdated state when server has newer versions, undefined if not outdated */
@@ -158,8 +156,7 @@ export function usePreferredVersion(
     resolvedGVK: result.resolvedGVK,
     isDiscovering,
     discoveryError: discoveryQuery.error,
-    isDiscovered: result.isDiscovered,
-    queryEnabled: result.queryEnabled,
+    isCompatible: result.isCompatible,
     incompatibility: result.incompatibility,
     clientOutdated: result.clientOutdated,
   };

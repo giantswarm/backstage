@@ -131,8 +131,7 @@ interface ResolvePreferredVersionParams {
 
 interface ResolvePreferredVersionResult {
   resolvedGVK: CustomResourceMatcher;
-  isDiscovered: boolean;
-  queryEnabled: boolean;
+  isCompatible: boolean;
   incompatibility: IncompatibilityState | undefined;
   clientOutdated: ClientOutdatedState | undefined;
 }
@@ -158,8 +157,7 @@ export function resolvePreferredVersion(
 
   const defaultResult: ResolvePreferredVersionResult = {
     resolvedGVK: gvk,
-    isDiscovered: false,
-    queryEnabled: true,
+    isCompatible: true,
     incompatibility: undefined,
     clientOutdated: undefined,
   };
@@ -206,8 +204,7 @@ export function resolvePreferredVersion(
 
       return {
         resolvedGVK: { ...gvk, apiVersion: resolvedVersion },
-        isDiscovered: true,
-        queryEnabled: true,
+        isCompatible: true,
         incompatibility: undefined,
         clientOutdated,
       };
@@ -216,8 +213,7 @@ export function resolvePreferredVersion(
     // Incompatible versions
     return {
       resolvedGVK: gvk,
-      isDiscovered: false,
-      queryEnabled: false,
+      isCompatible: false,
       incompatibility: {
         resourceClass: gvk.plural,
         cluster,

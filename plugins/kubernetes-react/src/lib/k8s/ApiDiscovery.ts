@@ -1,5 +1,3 @@
-import { CustomResourceMatcher } from './CustomResourceMatcher';
-
 /**
  * Represents a specific version of an API group.
  * Returned by Kubernetes API discovery at /apis/{group}
@@ -50,13 +48,4 @@ export interface APIResourceList {
   groupVersion: string;
   /** List of available resources at this version */
   resources: APIResource[];
-}
-
-/**
- * Extended GVK that includes discovery metadata.
- * Used when resolving API versions dynamically.
- */
-export interface ResolvedGVK extends CustomResourceMatcher {
-  /** Whether the apiVersion was discovered from the cluster */
-  isDiscovered?: boolean;
 }

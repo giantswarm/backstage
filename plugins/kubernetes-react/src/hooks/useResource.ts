@@ -28,7 +28,7 @@ export function useResource<R extends KubeObject<any>>(
     resolvedGVK,
     isDiscovering,
     discoveryError,
-    queryEnabled,
+    isCompatible,
     incompatibility,
     clientOutdated,
   } = usePreferredVersion(cluster, staticGVK, {
@@ -46,7 +46,7 @@ export function useResource<R extends KubeObject<any>>(
         (queryOptions?.enabled ?? true) &&
         !isDiscovering &&
         Boolean(cluster) &&
-        queryEnabled,
+        isCompatible,
     },
   );
 

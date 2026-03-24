@@ -149,7 +149,7 @@ export function usePreferredVersions(
         });
 
         // Only include compatible clusters in the GVKs map
-        if (resolved.queryEnabled) {
+        if (resolved.isCompatible) {
           gvks[cluster] = resolved.resolvedGVK;
         }
         if (resolved.incompatibility) {
