@@ -6,6 +6,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { useCatalogEntityForDeployment } from '../../hooks/useCatalogEntityForDeployment';
+import { deriveAutoUpgradeMode } from '../utils/getAutoUpgradeSettings';
 
 /**
  * Derives chart reference (OCI registry path) from an OCIRepository URL.
@@ -35,24 +36,6 @@ function deriveChartTag(
   }
 
   return undefined;
-}
-
-/**
- * Derives automatic upgrades setting from an OCIRepository semver range.
- * Manifest formats: ~X.Y.Z (patch), ^X.Y.Z (minor), >=X.Y.Z (major).
- */
-function deriveAutomaticUpgrades(
-  ref: { semver?: string; tag?: string } | undefined,
-): string {
-  if (!ref?.semver) return 'no-upgrades';
-
-  const semver = ref.semver;
-
-  if (semver.startsWith('~')) return 'patch-upgrades';
-  if (semver.startsWith('^')) return 'minor-upgrades';
-  if (semver.startsWith('>=')) return 'major-upgrades';
-
-  return 'no-upgrades';
 }
 
 export function useEditDeploymentData(
@@ -95,7 +78,7 @@ export function useEditDeploymentData(
       entityRef,
       chartRef: deriveChartRef(ociUrl),
       chartTag: deriveChartTag(ociRef),
-      automaticUpgrades: deriveAutomaticUpgrades(ociRef),
+      automaticUpgrades: deriveAutoUpgradeMode(ociRef),
       isLoading: isLoadingEntity || (needsOciRepository ? isLoadingOci : false),
     };
   }, [

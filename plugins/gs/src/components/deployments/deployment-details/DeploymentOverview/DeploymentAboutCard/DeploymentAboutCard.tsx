@@ -16,6 +16,11 @@ import { clusterDetailsRouteRef } from '../../../../../routes';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import {
+  HelmRelease,
+  OCIRepository,
+  useResource,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
   useCatalogEntityForDeployment,
   useHelmChartNameForDeployment,
 } from '../../../../hooks';
@@ -27,6 +32,10 @@ import {
 } from '../../../utils/findTargetCluster';
 import { getSourceKind, getSourceName } from '../../../utils/getSource';
 import { getUpdatedTimestamp } from '../../../utils/getUpdatedTimestamp';
+import {
+  deriveAutoUpgradeMode,
+  getAutoUpgradeLabel,
+} from '../../../utils/getAutoUpgradeSettings';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 
 export function DeploymentAboutCard() {
@@ -81,6 +90,30 @@ export function DeploymentAboutCard() {
   const sourceKind = getSourceKind(deployment);
 
   const sourceName = getSourceName(deployment);
+
+  const chartRef =
+    deployment instanceof HelmRelease ? deployment.getChartRef() : undefined;
+  const needsOciRepository = chartRef?.kind === 'OCIRepository';
+
+  const {
+    resource: ociRepository,
+    isLoading: isLoadingOci,
+    error: ociError,
+  } = useResource(
+    installationName,
+    OCIRepository,
+    {
+      name: chartRef?.name ?? '',
+      namespace: chartRef?.namespace ?? '',
+    },
+    {
+      enabled: Boolean(needsOciRepository),
+    },
+  );
+
+  const autoUpgradeMode = needsOciRepository
+    ? deriveAutoUpgradeMode(ociRepository?.getReference())
+    : undefined;
 
   return (
     <InfoCard title="About">
@@ -165,10 +198,26 @@ export function DeploymentAboutCard() {
           </AboutFieldValue>
         </AboutField>
 
+        {needsOciRepository && (
+          <AboutField label="Auto-upgrade" gridSizes={{ xs: 6, md: 4 }}>
+            <AboutFieldValue>
+              <AsyncValue
+                isLoading={isLoadingOci}
+                value={
+                  autoUpgradeMode
+                    ? getAutoUpgradeLabel(autoUpgradeMode)
+                    : undefined
+                }
+                errorMessage={ociError?.message}
+              />
+            </AboutFieldValue>
+          </AboutField>
+        )}
+
         <AboutField
           label="Source"
           value={formatSource(sourceKind, sourceName)}
-          gridSizes={{ xs: 12 }}
+          gridSizes={{ xs: 6, md: 4 }}
         />
       </Grid>
     </InfoCard>
