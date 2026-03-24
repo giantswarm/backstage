@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { Table } from '@backstage/core-components';
-import { Typography } from '@material-ui/core';
+import { Typography, useTheme } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { AWSNodePoolRow, getInitialColumns } from './columns';
@@ -10,14 +10,17 @@ const TABLE_ID = 'aws-node-pools';
 interface AWSNodePoolsTableProps {
   data: AWSNodePoolRow[];
   isLoading: boolean;
+  selectedNodePool?: string;
   onSelectNodePool: (name: string) => void;
 }
 
 export const AWSNodePoolsTable = ({
   data,
   isLoading,
+  selectedNodePool,
   onSelectNodePool,
 }: AWSNodePoolsTableProps) => {
+  const theme = useTheme();
   const onSelectNodePoolRef = useRef(onSelectNodePool);
   onSelectNodePoolRef.current = onSelectNodePool;
 
@@ -62,6 +65,10 @@ export const AWSNodePoolsTable = ({
       options={{
         paging: false,
         columnsButton: true,
+        rowStyle: (rowData: AWSNodePoolRow) =>
+          rowData.name === selectedNodePool
+            ? { backgroundColor: theme.palette.action.selected }
+            : {},
       }}
       data={data}
       style={{ width: '100%' }}

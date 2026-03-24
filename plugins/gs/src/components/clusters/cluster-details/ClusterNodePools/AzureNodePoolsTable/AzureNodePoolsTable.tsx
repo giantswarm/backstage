@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { Table } from '@backstage/core-components';
-import { Typography } from '@material-ui/core';
+import { Typography, useTheme } from '@material-ui/core';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { AzureNodePoolRow, getInitialColumns } from './columns';
@@ -10,14 +10,17 @@ const TABLE_ID = 'azure-node-pools';
 interface AzureNodePoolsTableProps {
   data: AzureNodePoolRow[];
   isLoading: boolean;
+  selectedNodePool?: string;
   onSelectNodePool: (name: string) => void;
 }
 
 export const AzureNodePoolsTable = ({
   data,
   isLoading,
+  selectedNodePool,
   onSelectNodePool,
 }: AzureNodePoolsTableProps) => {
+  const theme = useTheme();
   const onSelectNodePoolRef = useRef(onSelectNodePool);
   onSelectNodePoolRef.current = onSelectNodePool;
 
@@ -62,6 +65,10 @@ export const AzureNodePoolsTable = ({
       options={{
         paging: false,
         columnsButton: true,
+        rowStyle: (rowData: AzureNodePoolRow) =>
+          rowData.name === selectedNodePool
+            ? { backgroundColor: theme.palette.action.selected }
+            : {},
       }}
       data={data}
       style={{ width: '100%' }}

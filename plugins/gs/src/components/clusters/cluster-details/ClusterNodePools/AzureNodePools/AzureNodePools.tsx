@@ -64,6 +64,7 @@ export const AzureNodePools = () => {
       <AzureNodePoolsTable
         data={data}
         isLoading={isLoading}
+        selectedNodePool={selectedNodePool ?? undefined}
         onSelectNodePool={setSelectedNodePool}
       />
     </NodePoolDetailsLayout>
