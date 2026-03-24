@@ -4,27 +4,7 @@ import {
   createFrontendModule,
 } from '@backstage/frontend-plugin-api';
 import type { Entity } from '@backstage/catalog-model';
-import homePlugin from '@backstage/plugin-home/alpha';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
-// Home page — override path from /home to /
-const homePageOverride = PageBlueprint.makeWithOverrides({
-  factory(originalFactory) {
-    return originalFactory({
-      noHeader: true,
-      routeRef: homePlugin.routes.root,
-      path: '/',
-      loader: async () => {
-        const { HomePage } = await import('./components/home/HomePage');
-        return <HomePage />;
-      },
-    });
-  },
-});
-
-export const homePageOverrides = createFrontendModule({
-  pluginId: 'home',
-  extensions: [homePageOverride],
-});
 
 // Catalog index page — render GSCustomCatalogPage directly (full page component)
 const catalogIndexPageOverride = PageBlueprint.makeWithOverrides({

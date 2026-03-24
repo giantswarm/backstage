@@ -30,8 +30,9 @@ import {
   githubPullRequestsNfsPlugin,
 } from './legacyPlugins';
 import { navModule } from './modules/nav';
+import { homePluginOverrides } from './modules/home';
 import { userSettingsPluginOverrides } from './modules/userSettings';
-import { homePageOverrides, catalogPageOverrides } from './routeOverrides';
+import { catalogPageOverrides } from './routeOverrides';
 
 const app = createApp({
   features: [
@@ -45,6 +46,7 @@ const app = createApp({
     signalsPlugin,
     // Upstream NFS plugins (pages provided by routeOverrides or defaults):
     homePlugin,
+    homePluginOverrides,
     catalogPlugin,
     searchPlugin,
     userSettingsPlugin,
@@ -68,7 +70,6 @@ const app = createApp({
     kubernetesApiOverrides,
     aiChatApiOverrides,
     // Page overrides for upstream NFS plugins:
-    homePageOverrides,
     catalogPageOverrides,
   ],
   bindRoutes({ bind }) {
