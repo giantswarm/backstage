@@ -15,11 +15,10 @@ import {
   configApiRef,
   discoveryApiRef,
   fetchApiRef,
-  identityApiRef,
   microsoftAuthApiRef,
   googleAuthApiRef,
 } from '@backstage/core-plugin-api';
-import { scmIntegrationsApiRef } from '@backstage/integration-react';
+
 import {
   catalogApiRef,
   entityPresentationApiRef,
@@ -29,7 +28,6 @@ import {
   apiDocsConfigRef,
   defaultDefinitionWidgets,
 } from '@backstage/plugin-api-docs';
-import { scaffolderApiRef } from '@backstage/plugin-scaffolder-react';
 import {
   kubernetesApiRef,
   KubernetesAuthProviders,
@@ -39,7 +37,6 @@ import {
   createGSEntityPresentationRenderer,
   gsAuthProvidersApiRef,
   GSDiscoveryApiClient,
-  GSScaffolderApiClient,
   KubernetesClient,
 } from '@giantswarm/backstage-plugin-gs';
 import { ApiEntity } from '@backstage/catalog-model';
@@ -62,36 +59,6 @@ export const catalogApiOverrides = createFrontendModule({
             DefaultEntityPresentationApi.create({
               catalogApi,
               renderer: createGSEntityPresentationRenderer(),
-            }),
-        }),
-    }),
-  ],
-});
-
-export const scaffolderApiOverrides = createFrontendModule({
-  pluginId: 'scaffolder',
-  extensions: [
-    ApiBlueprint.make({
-      params: defineParams =>
-        defineParams({
-          api: scaffolderApiRef,
-          deps: {
-            discoveryApi: discoveryApiRef,
-            identityApi: identityApiRef,
-            scmIntegrationsApi: scmIntegrationsApiRef,
-            fetchApi: fetchApiRef,
-          },
-          factory: ({
-            scmIntegrationsApi,
-            discoveryApi,
-            identityApi,
-            fetchApi,
-          }) =>
-            new GSScaffolderApiClient({
-              discoveryApi,
-              identityApi,
-              scmIntegrationsApi,
-              fetchApi,
             }),
         }),
     }),

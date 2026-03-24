@@ -18,7 +18,6 @@ import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
 import {
   catalogApiOverrides,
-  scaffolderApiOverrides,
   apiDocsApiOverrides,
   kubernetesApiOverrides,
   aiChatApiOverrides,
@@ -65,7 +64,6 @@ const app = createApp({
     navModule,
     // API overrides for upstream NFS plugins (custom GS implementations):
     catalogApiOverrides,
-    scaffolderApiOverrides,
     apiDocsApiOverrides,
     kubernetesApiOverrides,
     aiChatApiOverrides,
