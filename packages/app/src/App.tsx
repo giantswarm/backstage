@@ -18,7 +18,7 @@ import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
 import { catalogApiOverrides } from './apiOverrides';
 import { scaffolderPluginOverrides } from './modules/scaffolder';
-import { appOverrides } from './appModules';
+import { appOverrides } from './modules/app';
 import {
   circleCINfsPlugin,
   githubPullRequestsNfsPlugin,

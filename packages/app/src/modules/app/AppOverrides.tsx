@@ -39,9 +39,9 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { grafanaPlugin } from '@k-phoen/backstage-plugin-grafana';
-import { SentryErrorReporter } from './apis/errorReporter';
-import { TelemetryDeckAnalyticsApi } from './apis/analytics';
-import { GiantSwarmIcon, GrafanaIcon } from './assets/icons/CustomIcons';
+import { SentryErrorReporter } from '../../apis/errorReporter';
+import { TelemetryDeckAnalyticsApi } from '../../apis/analytics';
+import { GiantSwarmIcon, GrafanaIcon } from '../../assets/icons/CustomIcons';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
