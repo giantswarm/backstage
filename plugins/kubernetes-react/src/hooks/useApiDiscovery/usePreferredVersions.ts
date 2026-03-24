@@ -157,19 +157,16 @@ export function usePreferredVersions(
 
     clusters.forEach((cluster, index) => {
       const query = groupQueries[index];
-      const serverVersions = query.data?.versions
-        ? query.data.versions.map(v => v.version)
-        : undefined;
 
       const resolved = resolvePreferredVersion({
         gvk,
-        supportedVersions,
+        clientVersions: supportedVersions,
         cluster,
         shouldDiscover,
-        serverVersions,
+        discoverySucceeded: Boolean(query.data?.versions),
         serverPreferredVersion: query.data?.preferredVersion?.version,
         bestVersion: clusterBestVersions[cluster],
-        resourceAvailableVersions: clusterResourceVersions[cluster],
+        serverVersions: clusterResourceVersions[cluster],
         discoveryError: query.error,
         fallbackToStatic,
       });

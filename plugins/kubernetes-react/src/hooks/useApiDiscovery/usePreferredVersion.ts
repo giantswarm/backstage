@@ -105,8 +105,10 @@ export function usePreferredVersion(
     })),
   });
 
-  // Find the best version (first from newest to oldest that has the resource)
-  const bestVersion = useMemo(() => {
+  // Find the best version and all versions where the resource exists
+  const { bestVersion, serverVersions } = useMemo(() => {
+    let best: string | undefined;
+    const available: string[] = [];
     for (const version of versionsToCheck) {
       const query = resourceQueries.find(
         q =>
@@ -115,27 +117,29 @@ export function usePreferredVersion(
           q.data?.hasResource,
       );
       if (query?.data?.hasResource) {
-        return version;
+        available.push(version);
+        if (!best) {
+          best = version;
+        }
       }
     }
-    return undefined;
+    return { bestVersion: best, serverVersions: available };
   }, [versionsToCheck, resourceQueries, cluster]);
 
-  const serverVersions = discoveryQuery.data?.versions
-    ? discoveryQuery.data.versions.map(v => v.version)
-    : undefined;
+  const discoverySucceeded = Boolean(discoveryQuery.data?.versions);
 
   const result = useMemo(
     () =>
       resolvePreferredVersion({
         gvk,
-        supportedVersions,
+        clientVersions: supportedVersions,
         cluster,
         shouldDiscover,
         explicitVersion,
-        serverVersions,
+        discoverySucceeded,
         serverPreferredVersion: discoveryQuery.data?.preferredVersion?.version,
         bestVersion,
+        serverVersions,
         discoveryError: discoveryQuery.error,
         fallbackToStatic,
       }),
@@ -145,9 +149,10 @@ export function usePreferredVersion(
       cluster,
       shouldDiscover,
       explicitVersion,
-      serverVersions,
+      discoverySucceeded,
       discoveryQuery.data?.preferredVersion?.version,
       bestVersion,
+      serverVersions,
       discoveryQuery.error,
       fallbackToStatic,
     ],

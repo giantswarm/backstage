@@ -121,15 +121,16 @@ export function computeVersionsToCheck(
 
 interface ResolvePreferredVersionParams {
   gvk: CustomResourceMatcher | MultiVersionResourceMatcher;
-  supportedVersions: readonly string[];
+  clientVersions: readonly string[];
   cluster: string;
   shouldDiscover: boolean;
   explicitVersion?: string;
-  serverVersions?: string[];
+  /** Whether Stage 1 API group discovery succeeded */
+  discoverySucceeded: boolean;
   serverPreferredVersion?: string;
   bestVersion?: string;
   /** Versions where the specific resource actually exists on the server */
-  resourceAvailableVersions?: string[];
+  serverVersions?: string[];
   discoveryError?: Error | null;
   fallbackToStatic: boolean;
 }
@@ -150,51 +151,52 @@ export function resolvePreferredVersion(
 ): ResolvePreferredVersionResult {
   const {
     gvk,
-    supportedVersions,
+    clientVersions,
     cluster,
     shouldDiscover,
     explicitVersion,
-    serverVersions,
+    discoverySucceeded,
     serverPreferredVersion,
     bestVersion,
-    resourceAvailableVersions,
+    serverVersions,
     discoveryError,
     fallbackToStatic,
   } = params;
 
   const baseGVK: ResolvedGVKWithCompatibility = {
     ...gvk,
-    supportedVersions,
+    supportedVersions: clientVersions,
     isDiscovered: false,
+  };
+
+  const defaultResult: ResolvePreferredVersionResult = {
+    resolvedGVK: baseGVK,
+    queryEnabled: true,
+    incompatibility: undefined,
+    clientOutdated: undefined,
   };
 
   // If explicit version is provided, use it
   if (explicitVersion) {
     return {
+      ...defaultResult,
       resolvedGVK: {
         ...baseGVK,
         apiVersion: explicitVersion,
       },
-      queryEnabled: true,
-      incompatibility: undefined,
-      clientOutdated: undefined,
     };
   }
 
   // If discovery is disabled or it's a core API, use static version
   if (!shouldDiscover) {
-    return {
-      resolvedGVK: baseGVK,
-      queryEnabled: true,
-      incompatibility: undefined,
-      clientOutdated: undefined,
-    };
+    return defaultResult;
   }
 
-  // If discovery succeeded, check version compatibility
-  if (serverVersions) {
+  // If discovery succeeded, check version compatibility using resource-level
+  // versions (where the resource actually exists on the server).
+  if (discoverySucceeded && serverVersions && serverVersions.length > 0) {
     const compatibility = checkVersionCompatibility(
-      supportedVersions,
+      clientVersions,
       serverVersions,
       bestVersion ?? serverPreferredVersion,
     );
@@ -202,30 +204,18 @@ export function resolvePreferredVersion(
     if (compatibility.isCompatible && compatibility.resolvedVersion) {
       const resolvedVersion = bestVersion ?? compatibility.resolvedVersion;
 
-      // For the "client outdated" check, use resource-level versions (where the
-      // resource actually exists) instead of group-level versions. This avoids
-      // false positives for resources that only exist in older API versions but
-      // share an API group with newer versions.
       let clientOutdated: ClientOutdatedState | undefined;
-      const versionsForOutdatedCheck =
-        resourceAvailableVersions && resourceAvailableVersions.length > 0
-          ? resourceAvailableVersions
-          : serverVersions;
-      const resourceCompatibility = checkVersionCompatibility(
-        supportedVersions,
-        versionsForOutdatedCheck,
-      );
-      if (resourceCompatibility.isClientOutdated) {
-        const clientLatest = getLatestVersion(supportedVersions);
-        const serverLatest = getLatestVersion(versionsForOutdatedCheck);
+      if (compatibility.isClientOutdated) {
+        const clientLatest = getLatestVersion(clientVersions);
+        const serverLatest = getLatestVersion(serverVersions);
         if (clientLatest && serverLatest) {
           clientOutdated = {
             resourceClass: gvk.plural,
             cluster,
             clientLatestVersion: clientLatest,
             serverLatestVersion: serverLatest,
-            clientVersions: supportedVersions,
-            serverVersions: versionsForOutdatedCheck,
+            clientVersions,
+            serverVersions: serverVersions,
           };
         }
       }
@@ -256,7 +246,7 @@ export function resolvePreferredVersion(
       incompatibility: {
         resourceClass: gvk.plural,
         cluster,
-        clientVersions: supportedVersions,
+        clientVersions,
         serverVersions,
       },
       clientOutdated: undefined,
@@ -265,19 +255,9 @@ export function resolvePreferredVersion(
 
   // If discovery failed and fallback is enabled, use static version
   if (discoveryError && fallbackToStatic) {
-    return {
-      resolvedGVK: baseGVK,
-      queryEnabled: true,
-      incompatibility: undefined,
-      clientOutdated: undefined,
-    };
+    return defaultResult;
   }
 
   // Default to static version while discovering (or on error without fallback)
-  return {
-    resolvedGVK: baseGVK,
-    queryEnabled: true,
-    incompatibility: undefined,
-    clientOutdated: undefined,
-  };
+  return defaultResult;
 }
