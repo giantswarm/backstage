@@ -16,13 +16,7 @@ import {
   entityPresentationApiRef,
 } from '@backstage/plugin-catalog-react';
 import { DefaultEntityPresentationApi } from '@backstage/plugin-catalog';
-import {
-  apiDocsConfigRef,
-  defaultDefinitionWidgets,
-} from '@backstage/plugin-api-docs';
 import { createGSEntityPresentationRenderer } from '@giantswarm/backstage-plugin-gs';
-import { ApiEntity } from '@backstage/catalog-model';
-import { crdApiWidget } from '@terasky/backstage-plugin-api-docs-module-crd';
 
 export const catalogApiOverrides = createFrontendModule({
   pluginId: 'catalog',
@@ -38,31 +32,6 @@ export const catalogApiOverrides = createFrontendModule({
               catalogApi,
               renderer: createGSEntityPresentationRenderer(),
             }),
-        }),
-    }),
-  ],
-});
-
-export const apiDocsApiOverrides = createFrontendModule({
-  pluginId: 'api-docs',
-  extensions: [
-    ApiBlueprint.make({
-      name: 'config',
-      params: defineParams =>
-        defineParams({
-          api: apiDocsConfigRef,
-          deps: {},
-          factory: () => {
-            const definitionWidgets = defaultDefinitionWidgets();
-            definitionWidgets.push(crdApiWidget);
-            return {
-              getApiDefinitionWidget: (apiEntity: ApiEntity) => {
-                return definitionWidgets.find(
-                  (d: { type: string }) => d.type === apiEntity.spec.type,
-                );
-              },
-            };
-          },
         }),
     }),
   ],
