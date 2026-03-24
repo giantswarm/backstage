@@ -175,16 +175,16 @@ export function resolvePreferredVersion(
 
       let clientOutdated: ClientOutdatedState | undefined;
       if (compatibility.isClientOutdated) {
-        const clientLatest = getLatestVersion(clientVersions);
-        const serverLatest = getLatestVersion(serverVersions);
-        if (clientLatest && serverLatest) {
+        const clientLatestVersion = getLatestVersion(clientVersions);
+        const serverLatestVersion = getLatestVersion(serverVersions);
+        if (clientLatestVersion && serverLatestVersion) {
           clientOutdated = {
             resourceClass: gvk.plural,
             cluster,
-            clientLatestVersion: clientLatest,
-            serverLatestVersion: serverLatest,
+            clientLatestVersion,
+            serverLatestVersion,
             clientVersions,
-            serverVersions: serverVersions,
+            serverVersions,
           };
         }
       }
