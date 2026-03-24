@@ -80,6 +80,7 @@ export const AWSNodePools = () => {
       <AWSNodePoolsTable
         data={data}
         isLoading={isLoading}
+        selectedNodePool={selectedNodePool}
         onSelectNodePool={setSelectedNodePool}
       />
     </NodePoolDetailsLayout>
