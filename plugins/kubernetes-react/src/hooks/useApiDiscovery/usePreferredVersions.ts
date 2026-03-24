@@ -11,6 +11,7 @@ import {
   ClientOutdatedState,
   IncompatibilityState,
 } from '../../lib/k8s/VersionTypes';
+import { ErrorInfo, mapQueriesToClusters } from '../utils/queries';
 import {
   getSupportedVersions,
   apiGroupQueryOptions,
@@ -26,20 +27,13 @@ export interface UsePreferredVersionsOptions {
   fallbackToStatic?: boolean;
 }
 
-export interface DiscoveryError {
-  cluster: string;
-  error: Error;
-}
-
 export interface UsePreferredVersionsResult {
   /** Map of cluster name to resolved GVK */
   clustersGVKs: Record<string, ResolvedGVKWithCompatibility>;
   /** Whether any discovery is in progress */
   isDiscovering: boolean;
   /** Discovery errors per cluster */
-  discoveryErrors: DiscoveryError[];
-  /** Whether all discoveries have completed */
-  isReady: boolean;
+  discoveryErrors: ErrorInfo[];
   /** Map of cluster name to whether query should be enabled */
   clustersQueryEnabled: Record<string, boolean>;
   /** List of incompatibility states for clusters with version mismatches */
@@ -192,32 +186,32 @@ export function usePreferredVersions(
     if (!shouldDiscover) {
       return [];
     }
-
-    return clusters
-      .map((cluster, index) => {
-        const query = groupQueries[index];
-        if (query.error) {
-          return { cluster, error: query.error };
-        }
-        return null;
-      })
-      .filter((error): error is DiscoveryError => error !== null);
-  }, [clusters, groupQueries, shouldDiscover]);
+    const groupErrors = mapQueriesToClusters(clusters, groupQueries).errors;
+    const resourceClusters = clusters.flatMap(cluster =>
+      (versionsToCheck[cluster] || []).map(() => cluster),
+    );
+    const resourceErrors = mapQueriesToClusters(
+      resourceClusters,
+      resourceQueries,
+    ).errors;
+    return [...groupErrors, ...resourceErrors];
+  }, [
+    clusters,
+    groupQueries,
+    versionsToCheck,
+    resourceQueries,
+    shouldDiscover,
+  ]);
 
   const isDiscovering =
     shouldDiscover &&
     (groupQueries.some(query => query.isLoading) ||
       resourceQueries.some(query => query.isLoading));
-  const isReady =
-    !shouldDiscover ||
-    (groupQueries.every(query => !query.isLoading && !query.error) &&
-      resourceQueries.every(query => !query.isLoading));
 
   return {
     clustersGVKs,
     isDiscovering,
     discoveryErrors,
-    isReady,
     clustersQueryEnabled,
     incompatibilities,
     clientOutdatedStates,
