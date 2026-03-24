@@ -23,7 +23,7 @@ import {
   kubernetesApiOverrides,
   aiChatApiOverrides,
 } from './apiOverrides';
-import { scaffolderPluginOverrides } from './scaffolder';
+import { scaffolderPluginOverrides } from './modules/scaffolder';
 import { appOverrides } from './appModules';
 import {
   circleCINfsPlugin,
