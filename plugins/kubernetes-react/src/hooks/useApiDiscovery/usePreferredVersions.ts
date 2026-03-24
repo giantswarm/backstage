@@ -6,7 +6,6 @@ import {
   CustomResourceMatcher,
   MultiVersionResourceMatcher,
 } from '../../lib/k8s/CustomResourceMatcher';
-import { ResolvedGVKWithCompatibility } from '../../lib/k8s/ApiDiscovery';
 import {
   ClientOutdatedState,
   IncompatibilityState,
@@ -29,7 +28,7 @@ export interface UsePreferredVersionsOptions {
 
 export interface UsePreferredVersionsResult {
   /** Map of cluster name to resolved GVK */
-  clustersGVKs: Record<string, ResolvedGVKWithCompatibility>;
+  clustersGVKs: Record<string, CustomResourceMatcher>;
   /** Whether any discovery is in progress */
   isDiscovering: boolean;
   /** Discovery errors per cluster */
@@ -131,7 +130,7 @@ export function usePreferredVersions(
 
   const { clustersGVKs, incompatibilities, clientOutdatedStates } =
     useMemo(() => {
-      const gvks: Record<string, ResolvedGVKWithCompatibility> = {};
+      const gvks: Record<string, CustomResourceMatcher> = {};
       const incompats: IncompatibilityState[] = [];
       const outdatedStates: ClientOutdatedState[] = [];
 

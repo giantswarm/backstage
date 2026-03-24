@@ -28,7 +28,6 @@ export function useResource<R extends KubeObject<any>>(
     resolvedGVK,
     isDiscovering,
     discoveryError,
-    isDiscovered,
     queryEnabled,
     incompatibility,
     clientOutdated,
@@ -96,10 +95,8 @@ export function useResource<R extends KubeObject<any>>(
     resource,
     errors,
     resolvedApiVersion: resolvedGVK.apiVersion,
-    isApiVersionDiscovered: isDiscovered,
     discoveryError,
     incompatibility,
     clientOutdated,
-    compatibility: resolvedGVK.compatibility,
   };
 }

@@ -3,11 +3,7 @@ import {
   CustomResourceMatcher,
   MultiVersionResourceMatcher,
 } from '../../lib/k8s/CustomResourceMatcher';
-import {
-  APIGroup,
-  APIResourceList,
-  ResolvedGVKWithCompatibility,
-} from '../../lib/k8s/ApiDiscovery';
+import { APIGroup, APIResourceList } from '../../lib/k8s/ApiDiscovery';
 import {
   ClientOutdatedState,
   IncompatibilityState,
@@ -134,7 +130,8 @@ interface ResolvePreferredVersionParams {
 }
 
 interface ResolvePreferredVersionResult {
-  resolvedGVK: ResolvedGVKWithCompatibility;
+  resolvedGVK: CustomResourceMatcher;
+  isDiscovered: boolean;
   queryEnabled: boolean;
   incompatibility: IncompatibilityState | undefined;
   clientOutdated: ClientOutdatedState | undefined;
@@ -159,14 +156,9 @@ export function resolvePreferredVersion(
     fallbackToStatic,
   } = params;
 
-  const baseGVK: ResolvedGVKWithCompatibility = {
-    ...gvk,
-    supportedVersions: clientVersions,
-    isDiscovered: false,
-  };
-
   const defaultResult: ResolvePreferredVersionResult = {
-    resolvedGVK: baseGVK,
+    resolvedGVK: gvk,
+    isDiscovered: false,
     queryEnabled: true,
     incompatibility: undefined,
     clientOutdated: undefined,
@@ -176,10 +168,7 @@ export function resolvePreferredVersion(
   if (explicitVersion) {
     return {
       ...defaultResult,
-      resolvedGVK: {
-        ...baseGVK,
-        apiVersion: explicitVersion,
-      },
+      resolvedGVK: { ...gvk, apiVersion: explicitVersion },
     };
   }
 
@@ -216,15 +205,8 @@ export function resolvePreferredVersion(
       }
 
       return {
-        resolvedGVK: {
-          ...baseGVK,
-          apiVersion: resolvedVersion,
-          isDiscovered: true,
-          compatibility: {
-            ...compatibility,
-            resolvedVersion,
-          },
-        },
+        resolvedGVK: { ...gvk, apiVersion: resolvedVersion },
+        isDiscovered: true,
         queryEnabled: true,
         incompatibility: undefined,
         clientOutdated,
@@ -233,10 +215,8 @@ export function resolvePreferredVersion(
 
     // Incompatible versions
     return {
-      resolvedGVK: {
-        ...baseGVK,
-        compatibility,
-      },
+      resolvedGVK: gvk,
+      isDiscovered: false,
       queryEnabled: false,
       incompatibility: {
         resourceClass: gvk.plural,

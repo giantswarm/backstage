@@ -6,7 +6,6 @@ import {
   CustomResourceMatcher,
   MultiVersionResourceMatcher,
 } from '../../lib/k8s/CustomResourceMatcher';
-import { ResolvedGVKWithCompatibility } from '../../lib/k8s/ApiDiscovery';
 import {
   ClientOutdatedState,
   IncompatibilityState,
@@ -30,7 +29,7 @@ export interface UsePreferredVersionOptions {
 
 export interface UsePreferredVersionResult {
   /** The resolved GVK with the discovered or static apiVersion */
-  resolvedGVK: ResolvedGVKWithCompatibility;
+  resolvedGVK: CustomResourceMatcher;
   /** Whether discovery is in progress */
   isDiscovering: boolean;
   /** Discovery error, if any */
@@ -159,7 +158,7 @@ export function usePreferredVersion(
     resolvedGVK: result.resolvedGVK,
     isDiscovering,
     discoveryError: discoveryQuery.error,
-    isDiscovered: result.resolvedGVK.isDiscovered ?? false,
+    isDiscovered: result.isDiscovered,
     queryEnabled: result.queryEnabled,
     incompatibility: result.incompatibility,
     clientOutdated: result.clientOutdated,
