@@ -16,11 +16,7 @@ import gsPlugin from '@giantswarm/backstage-plugin-gs';
 import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
-import {
-  catalogApiOverrides,
-  apiDocsApiOverrides,
-  kubernetesApiOverrides,
-} from './apiOverrides';
+import { catalogApiOverrides, apiDocsApiOverrides } from './apiOverrides';
 import { scaffolderPluginOverrides } from './modules/scaffolder';
 import { appOverrides } from './appModules';
 import {
@@ -31,6 +27,7 @@ import { navModule } from './modules/nav';
 import { homePluginOverrides } from './modules/home';
 import { userSettingsPluginOverrides } from './modules/userSettings';
 import { aiChatPluginOverrides } from './modules/ai-chat';
+import { kubernetesPluginOverrides } from './modules/kubernetes';
 import { catalogPageOverrides } from './routeOverrides';
 
 const app = createApp({
@@ -54,6 +51,7 @@ const app = createApp({
     techdocsPlugin,
     catalogGraphPlugin,
     kubernetesPlugin,
+    kubernetesPluginOverrides,
     apiDocsPlugin,
     githubActionsPlugin,
     // Legacy plugins converted for NFS route ref discovery:
@@ -66,7 +64,6 @@ const app = createApp({
     // API overrides for upstream NFS plugins (custom GS implementations):
     catalogApiOverrides,
     apiDocsApiOverrides,
-    kubernetesApiOverrides,
     // Page overrides for upstream NFS plugins:
     catalogPageOverrides,
   ],
