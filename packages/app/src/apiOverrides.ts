@@ -41,10 +41,6 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 import { ApiEntity } from '@backstage/catalog-model';
 import { crdApiWidget } from '@terasky/backstage-plugin-api-docs-module-crd';
-import {
-  mcpAuthProvidersApiRef,
-  MCPAuthProviders,
-} from '@giantswarm/backstage-plugin-ai-chat';
 
 export const catalogApiOverrides = createFrontendModule({
   pluginId: 'catalog',
@@ -141,24 +137,6 @@ export const kubernetesApiOverrides = createFrontendModule({
               fetchApi,
               kubernetesAuthProvidersApi,
             }),
-        }),
-    }),
-  ],
-});
-
-export const aiChatApiOverrides = createFrontendModule({
-  pluginId: 'ai-chat',
-  extensions: [
-    ApiBlueprint.make({
-      name: 'mcp-auth-providers',
-      params: defineParams =>
-        defineParams({
-          api: mcpAuthProvidersApiRef,
-          deps: { gsAuthProvidersApi: gsAuthProvidersApiRef },
-          factory: ({ gsAuthProvidersApi }) => {
-            const authProviders = gsAuthProvidersApi.getMCPAuthApis();
-            return new MCPAuthProviders(authProviders);
-          },
         }),
     }),
   ],

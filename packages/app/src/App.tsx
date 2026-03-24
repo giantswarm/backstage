@@ -20,7 +20,6 @@ import {
   catalogApiOverrides,
   apiDocsApiOverrides,
   kubernetesApiOverrides,
-  aiChatApiOverrides,
 } from './apiOverrides';
 import { scaffolderPluginOverrides } from './modules/scaffolder';
 import { appOverrides } from './appModules';
@@ -31,12 +30,14 @@ import {
 import { navModule } from './modules/nav';
 import { homePluginOverrides } from './modules/home';
 import { userSettingsPluginOverrides } from './modules/userSettings';
+import { aiChatPluginOverrides } from './modules/ai-chat';
 import { catalogPageOverrides } from './routeOverrides';
 
 const app = createApp({
   features: [
     // NFS plugins:
     aiChatPlugin,
+    aiChatPluginOverrides,
     fluxPlugin,
     fluxPluginOverrides,
     gsPlugin,
@@ -66,7 +67,6 @@ const app = createApp({
     catalogApiOverrides,
     apiDocsApiOverrides,
     kubernetesApiOverrides,
-    aiChatApiOverrides,
     // Page overrides for upstream NFS plugins:
     catalogPageOverrides,
   ],
