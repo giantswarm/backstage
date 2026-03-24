@@ -22,6 +22,8 @@ import {
 export interface UsePreferredVersionsOptions {
   /** Enable API version discovery. Defaults to true. */
   enableDiscovery?: boolean;
+  /** Explicit API version to use, bypasses discovery. */
+  explicitVersion?: string;
   /** Fall back to static version on discovery error. Defaults to true. */
   fallbackToStatic?: boolean;
 }
@@ -54,13 +56,18 @@ export function usePreferredVersions(
   gvk: CustomResourceMatcher | MultiVersionResourceMatcher,
   options: UsePreferredVersionsOptions = {},
 ): UsePreferredVersionsResult {
-  const { enableDiscovery = true, fallbackToStatic = true } = options;
+  const {
+    enableDiscovery = true,
+    explicitVersion,
+    fallbackToStatic = true,
+  } = options;
 
   const kubernetesApi = useApi(kubernetesApiRef);
   const supportedVersions = getSupportedVersions(gvk);
 
   // Skip discovery for core APIs (they use /api/v1 not /apis)
-  const shouldDiscover = enableDiscovery && !gvk.isCore;
+  // or when an explicit version is provided
+  const shouldDiscover = enableDiscovery && !gvk.isCore && !explicitVersion;
 
   // Stage 1: Query API group to get available versions
   const groupQueries = useQueries({
@@ -142,6 +149,7 @@ export function usePreferredVersions(
           clientVersions: supportedVersions,
           cluster,
           shouldDiscover,
+          explicitVersion,
           discoverySucceeded: Boolean(query.data?.versions),
           serverVersions: clusterResourceVersions[cluster],
           discoveryError: query.error,
@@ -167,11 +175,12 @@ export function usePreferredVersions(
       };
     }, [
       clusters,
-      gvk,
       groupQueries,
-      clusterResourceVersions,
-      shouldDiscover,
+      gvk,
       supportedVersions,
+      shouldDiscover,
+      explicitVersion,
+      clusterResourceVersions,
       fallbackToStatic,
     ]);
 

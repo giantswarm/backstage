@@ -25,7 +25,7 @@ export const AWSClusterLocation = () => {
     isLoading,
     errors,
     error,
-    incompatibility,
+    incompatibilities,
   } = useResource(installationName, AWSCluster, { name, namespace });
 
   let errorMessage: string | undefined;
@@ -37,8 +37,8 @@ export const AWSClusterLocation = () => {
       resourceNamespace: namespace,
     });
   }
-  if (incompatibility) {
-    errorMessage = getIncompatibilityMessage(incompatibility);
+  if (incompatibilities[0]) {
+    errorMessage = getIncompatibilityMessage(incompatibilities[0]);
   }
 
   useShowErrors(errors);

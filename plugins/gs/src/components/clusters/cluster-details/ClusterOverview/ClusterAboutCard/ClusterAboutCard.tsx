@@ -127,7 +127,7 @@ export function ClusterAboutCard() {
     isLoading: controlPlaneIsLoading,
     errors: controlPlaneErrors,
     error: controlPlaneError,
-    incompatibility: controlPlaneIncompatibility,
+    incompatibilities: controlPlaneIncompatibilities,
   } = useResource(installationName, ControlPlane, {
     name: controlPlaneName,
     namespace: controlPlaneNamespace,
@@ -142,9 +142,9 @@ export function ClusterAboutCard() {
       resourceNamespace: controlPlaneNamespace,
     });
   }
-  if (controlPlaneIncompatibility) {
+  if (controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
-      controlPlaneIncompatibility,
+      controlPlaneIncompatibilities[0],
     );
   }
 
