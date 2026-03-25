@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.116.1] - 2026-03-25
+
+### Fixed
+
+- Fix MCP tool names containing dots breaking AI SDK validation.
+
+See [./docs/releases/v0.116.1-changelog.md](./docs/releases/v0.116.1-changelog.md) for more information.
+
 ## [0.116.0] - 2026-03-25
 
 ### Added
@@ -2102,7 +2110,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.1...HEAD
+[0.116.1]: https://github.com/giantswarm/backstage/compare/v0.116.0...v0.116.1
 [0.116.0]: https://github.com/giantswarm/backstage/compare/v0.115.0...v0.116.0
 [0.115.0]: https://github.com/giantswarm/backstage/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/giantswarm/backstage/compare/v0.114.0...v0.114.1
