@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.10.1
+
+### Patch Changes
+
+- 9d3c760: Fix MCP tool names with dots breaking AI SDK. Sanitize MCP tool names to match AI SDK's required pattern by replacing invalid characters like dots with underscores.
+
 ## 0.10.0
 
 ### Minor Changes

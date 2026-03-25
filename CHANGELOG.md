@@ -9,6 +9,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Fix MCP tool names containing dots breaking AI SDK validation.
 
+See [./docs/releases/v0.116.1-changelog.md](./docs/releases/v0.116.1-changelog.md) for more information.
+
 ## [0.116.0] - 2026-03-25
 
 ### Added
