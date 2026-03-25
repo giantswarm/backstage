@@ -5,6 +5,26 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Show auto-upgrade setting on HelmRelease details page.
+- Add row highlighting for selected node pool.
+
+### Changed
+
+- Update Backstage to 1.49.2.
+- Refactor NFS migration: extract nav, user settings, scaffolder, home page, AI chat, kubernetes, api-docs, and app-level overrides into dedicated NFS modules.
+- Replace AI chat floating action button with a sidebar nav item that toggles the chat drawer.
+- Replace SelectedResourceDrawer with shared DetailsPane component from ui-react.
+- Move DetailsPane component and useDetailsPane hook from gs plugin to ui-react for reuse across plugins.
+- Use drawer mode for AI chat button in Flux resource cards.
+- Push right-anchored MUI drawers when AI chat drawer opens in persistent mode.
+
+### Fixed
+
+- Fix false "Client outdated" warning for resources in older API versions.
+- Fix EntityReadmeCard height clipping when content doesn't need expansion.
+
 ## [0.115.0] - 2026-03-23
 
 ### Added
