@@ -1,16 +1,12 @@
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
-import { Drawer, IconButton, Typography } from '@material-ui/core';
-import Close from '@material-ui/icons/Close';
+import { Box, Drawer, IconButton, Typography } from '@material-ui/core';
 import { useDetailsPane } from '../../hooks';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
+import CloseIcon from '@material-ui/icons/Close';
 
 const useDrawerStyles = makeStyles((theme: Theme) =>
   createStyles({
     paper: {
-      minWidth: '450px',
-      maxWidth: '650px',
-      width: '30%',
-      padding: theme.spacing(2.5),
       backgroundColor: theme.palette.background.default,
     },
   }),
@@ -18,6 +14,24 @@ const useDrawerStyles = makeStyles((theme: Theme) =>
 
 const useDrawerContentStyles = makeStyles((theme: Theme) =>
   createStyles({
+    root: {
+      padding: theme.spacing(3, 3, 6, 3),
+      position: 'relative',
+      width: '95vw',
+
+      [theme.breakpoints.up('md')]: {
+        width: '60vw',
+      },
+
+      [theme.breakpoints.up('lg')]: {
+        width: '45vw',
+      },
+    },
+    closeButton: {
+      position: 'absolute',
+      top: theme.spacing(1),
+      right: theme.spacing(1),
+    },
     header: {
       display: 'flex',
       flexDirection: 'row',
@@ -40,27 +54,30 @@ const DrawerContent = ({
   children,
   onClose,
 }: {
-  title: string;
+  title?: string;
   children?: React.ReactNode;
   onClose: () => void;
 }) => {
   const classes = useDrawerContentStyles();
 
   return (
-    <>
-      <div className={classes.header}>
-        <Typography className={classes.title}>{title}</Typography>
-        <IconButton
-          key="dismiss"
-          title="Close the drawer"
-          onClick={onClose}
-          color="inherit"
-        >
-          <Close className={classes.icon} />
-        </IconButton>
-      </div>
+    <Box className={classes.root}>
+      <IconButton
+        className={classes.closeButton}
+        title="Close the drawer"
+        aria-label="Close the drawer"
+        onClick={onClose}
+      >
+        <CloseIcon />
+      </IconButton>
+      {title && (
+        <div className={classes.header}>
+          <Typography className={classes.title}>{title}</Typography>
+        </div>
+      )}
+
       <div>{children}</div>
-    </>
+    </Box>
   );
 };
 
@@ -98,6 +115,7 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
       anchor="right"
       open={isOpen}
       onClose={handleClose}
+      variant="persistent"
     >
       <DrawerContent title={title ?? name} onClose={handleClose}>
         <ErrorsProvider>

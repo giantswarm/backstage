@@ -17,7 +17,7 @@ import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 
 const useStyles = makeStyles(theme => ({
   drawerPaper: {
-    backgroundColor: theme.palette.type === 'light' ? '#eee' : '#3a3a3a',
+    backgroundColor: theme.palette.background.default,
   },
   drawerContent: {
     padding: theme.spacing(3, 3, 6, 3),
