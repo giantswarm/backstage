@@ -7107,7 +7107,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-notifications-node@npm:^0.2.24":
+"@backstage/plugin-notifications-node@backstage:^::backstage=1.49.2&npm=0.2.24, @backstage/plugin-notifications-node@npm:^0.2.24":
   version: 0.2.24
   resolution: "@backstage/plugin-notifications-node@npm:0.2.24"
   dependencies:
@@ -10106,6 +10106,19 @@ __metadata:
     "@tanstack/react-query": ^5.0.0
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: "*"
+  languageName: unknown
+  linkType: soft
+
+"@giantswarm/backstage-plugin-notifications-backend-module-gs@workspace:^, @giantswarm/backstage-plugin-notifications-backend-module-gs@workspace:plugins/notifications-backend-module-gs":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-notifications-backend-module-gs@workspace:plugins/notifications-backend-module-gs"
+  dependencies:
+    "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^"
+    "@backstage/cli": "backstage:^"
+    "@backstage/plugin-notifications-node": "backstage:^"
+    "@types/semver": "npm:^7"
+    semver: "npm:^7.7.3"
   languageName: unknown
   linkType: soft
 
@@ -23554,6 +23567,7 @@ __metadata:
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.13.0"
     "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.2.0"
     "@giantswarm/backstage-plugin-gs-backend": "npm:^0.6.0"
+    "@giantswarm/backstage-plugin-notifications-backend-module-gs": "workspace:^"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.11.0"
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "npm:^0.10.0"
     "@internal/backend-common": "workspace:^"

@@ -64,6 +64,9 @@ backend.add(import('@backstage/plugin-kubernetes-backend'));
 // notifications and signals plugins
 backend.add(import('@backstage/plugin-notifications-backend'));
 backend.add(import('@backstage/plugin-signals-backend'));
+backend.add(
+  import('@giantswarm/backstage-plugin-notifications-backend-module-gs'),
+);
 
 // giantswarm plugin
 backend.add(import('@giantswarm/backstage-plugin-gs-backend'));
