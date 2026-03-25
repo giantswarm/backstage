@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-03-25
+
 ### Added
 
 - Show auto-upgrade setting on HelmRelease details page.
@@ -2100,7 +2102,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.115.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.0...HEAD
+[0.116.0]: https://github.com/giantswarm/backstage/compare/v0.115.0...v0.116.0
 [0.115.0]: https://github.com/giantswarm/backstage/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/giantswarm/backstage/compare/v0.114.0...v0.114.1
 [0.114.0]: https://github.com/giantswarm/backstage/compare/v0.113.0...v0.114.0
