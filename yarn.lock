@@ -10177,6 +10177,7 @@ __metadata:
     use-local-storage-state: "npm:^19.5.0"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
+    react-router-dom: ^6.3.0
   languageName: unknown
   linkType: soft
 
