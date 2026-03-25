@@ -12,42 +12,11 @@ import {
   ApiBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
-  configApiRef,
-  discoveryApiRef,
-  fetchApiRef,
-  identityApiRef,
-  microsoftAuthApiRef,
-  googleAuthApiRef,
-} from '@backstage/core-plugin-api';
-import { scmIntegrationsApiRef } from '@backstage/integration-react';
-import {
   catalogApiRef,
   entityPresentationApiRef,
 } from '@backstage/plugin-catalog-react';
 import { DefaultEntityPresentationApi } from '@backstage/plugin-catalog';
-import {
-  apiDocsConfigRef,
-  defaultDefinitionWidgets,
-} from '@backstage/plugin-api-docs';
-import { scaffolderApiRef } from '@backstage/plugin-scaffolder-react';
-import {
-  kubernetesApiRef,
-  KubernetesAuthProviders,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes-react';
-import {
-  createGSEntityPresentationRenderer,
-  gsAuthProvidersApiRef,
-  GSDiscoveryApiClient,
-  GSScaffolderApiClient,
-  KubernetesClient,
-} from '@giantswarm/backstage-plugin-gs';
-import { ApiEntity } from '@backstage/catalog-model';
-import { crdApiWidget } from '@terasky/backstage-plugin-api-docs-module-crd';
-import {
-  mcpAuthProvidersApiRef,
-  MCPAuthProviders,
-} from '@giantswarm/backstage-plugin-ai-chat';
+import { createGSEntityPresentationRenderer } from '@giantswarm/backstage-plugin-gs';
 
 export const catalogApiOverrides = createFrontendModule({
   pluginId: 'catalog',
@@ -63,135 +32,6 @@ export const catalogApiOverrides = createFrontendModule({
               catalogApi,
               renderer: createGSEntityPresentationRenderer(),
             }),
-        }),
-    }),
-  ],
-});
-
-export const scaffolderApiOverrides = createFrontendModule({
-  pluginId: 'scaffolder',
-  extensions: [
-    ApiBlueprint.make({
-      params: defineParams =>
-        defineParams({
-          api: scaffolderApiRef,
-          deps: {
-            discoveryApi: discoveryApiRef,
-            identityApi: identityApiRef,
-            scmIntegrationsApi: scmIntegrationsApiRef,
-            fetchApi: fetchApiRef,
-          },
-          factory: ({
-            scmIntegrationsApi,
-            discoveryApi,
-            identityApi,
-            fetchApi,
-          }) =>
-            new GSScaffolderApiClient({
-              discoveryApi,
-              identityApi,
-              scmIntegrationsApi,
-              fetchApi,
-            }),
-        }),
-    }),
-  ],
-});
-
-export const apiDocsApiOverrides = createFrontendModule({
-  pluginId: 'api-docs',
-  extensions: [
-    ApiBlueprint.make({
-      name: 'config',
-      params: defineParams =>
-        defineParams({
-          api: apiDocsConfigRef,
-          deps: {},
-          factory: () => {
-            const definitionWidgets = defaultDefinitionWidgets();
-            definitionWidgets.push(crdApiWidget);
-            return {
-              getApiDefinitionWidget: (apiEntity: ApiEntity) => {
-                return definitionWidgets.find(
-                  (d: { type: string }) => d.type === apiEntity.spec.type,
-                );
-              },
-            };
-          },
-        }),
-    }),
-  ],
-});
-
-export const kubernetesApiOverrides = createFrontendModule({
-  pluginId: 'kubernetes',
-  extensions: [
-    ApiBlueprint.make({
-      name: 'auth-providers',
-      params: defineParams =>
-        defineParams({
-          api: kubernetesAuthProvidersApiRef,
-          deps: {
-            microsoftAuthApi: microsoftAuthApiRef,
-            googleAuthApi: googleAuthApiRef,
-            gsAuthProvidersApi: gsAuthProvidersApiRef,
-          },
-          factory: ({
-            microsoftAuthApi,
-            googleAuthApi,
-            gsAuthProvidersApi,
-          }) => {
-            const oidcProviders = {
-              ...gsAuthProvidersApi.getKubernetesAuthApis(),
-            };
-            return new KubernetesAuthProviders({
-              microsoftAuthApi,
-              googleAuthApi,
-              oidcProviders,
-            });
-          },
-        }),
-    }),
-    ApiBlueprint.make({
-      params: defineParams =>
-        defineParams({
-          api: kubernetesApiRef,
-          deps: {
-            configApi: configApiRef,
-            discoveryApi: discoveryApiRef,
-            fetchApi: fetchApiRef,
-            kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
-          },
-          factory: ({
-            configApi,
-            discoveryApi,
-            fetchApi,
-            kubernetesAuthProvidersApi,
-          }) =>
-            new KubernetesClient({
-              configApi,
-              discoveryApi: discoveryApi as GSDiscoveryApiClient,
-              fetchApi,
-              kubernetesAuthProvidersApi,
-            }),
-        }),
-    }),
-  ],
-});
-
-export const aiChatApiOverrides = createFrontendModule({
-  pluginId: 'ai-chat',
-  extensions: [
-    ApiBlueprint.make({
-      name: 'mcp-auth-providers',
-      params: defineParams =>
-        defineParams({
-          api: mcpAuthProvidersApiRef,
-          deps: { gsAuthProvidersApi: gsAuthProvidersApiRef },
-          factory: ({ gsAuthProvidersApi }) => {
-            const authProviders = gsAuthProvidersApi.getMCPAuthApis();
-            return new MCPAuthProviders(authProviders);
-          },
         }),
     }),
   ],

@@ -4,30 +4,7 @@ import {
   createFrontendModule,
 } from '@backstage/frontend-plugin-api';
 import type { Entity } from '@backstage/catalog-model';
-import homePlugin from '@backstage/plugin-home/alpha';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
-import searchPlugin from '@backstage/plugin-search/alpha';
-import userSettingsPlugin from '@backstage/plugin-user-settings/alpha';
-
-// Home page — override path from /home to /
-const homePageOverride = PageBlueprint.makeWithOverrides({
-  factory(originalFactory) {
-    return originalFactory({
-      noHeader: true,
-      routeRef: homePlugin.routes.root,
-      path: '/',
-      loader: async () => {
-        const { HomePage } = await import('./components/home/HomePage');
-        return <HomePage />;
-      },
-    });
-  },
-});
-
-export const homePageOverrides = createFrontendModule({
-  pluginId: 'home',
-  extensions: [homePageOverride],
-});
 
 // Catalog index page — render GSCustomCatalogPage directly (full page component)
 const catalogIndexPageOverride = PageBlueprint.makeWithOverrides({
@@ -115,62 +92,4 @@ const catalogEntityPageOverride = PageBlueprint.makeWithOverrides({
 export const catalogPageOverrides = createFrontendModule({
   pluginId: 'catalog',
   extensions: [catalogIndexPageOverride, catalogEntityPageOverride],
-});
-
-// Search page — render with custom SearchPage component
-const searchPageOverride = PageBlueprint.makeWithOverrides({
-  factory(originalFactory) {
-    return originalFactory({
-      noHeader: true,
-      routeRef: searchPlugin.routes.root,
-      path: '/search',
-      loader: async () => {
-        const { SearchPage } = await import('./components/search/SearchPage');
-        const { SearchContextProvider } =
-          await import('@backstage/plugin-search-react');
-        return (
-          <SearchContextProvider>
-            <SearchPage />
-          </SearchContextProvider>
-        );
-      },
-    });
-  },
-});
-
-export const searchPageOverrides = createFrontendModule({
-  pluginId: 'search',
-  extensions: [searchPageOverride],
-});
-
-// User settings page — render with custom provider settings
-const userSettingsPageOverride = PageBlueprint.makeWithOverrides({
-  factory(originalFactory) {
-    return originalFactory({
-      noHeader: true,
-      routeRef: userSettingsPlugin.routes.root,
-      path: '/settings',
-      loader: async () => {
-        const { DefaultProviderSettings, UserSettingsPage } =
-          await import('@backstage/plugin-user-settings');
-        const { GSProviderSettings } =
-          await import('@giantswarm/backstage-plugin-gs');
-        return (
-          <UserSettingsPage
-            providerSettings={
-              <>
-                <DefaultProviderSettings configuredProviders={['github']} />
-                <GSProviderSettings />
-              </>
-            }
-          />
-        );
-      },
-    });
-  },
-});
-
-export const userSettingsPageOverrides = createFrontendModule({
-  pluginId: 'user-settings',
-  extensions: [userSettingsPageOverride],
 });

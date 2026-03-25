@@ -16,31 +16,26 @@ import gsPlugin from '@giantswarm/backstage-plugin-gs';
 import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
-import {
-  catalogApiOverrides,
-  scaffolderApiOverrides,
-  apiDocsApiOverrides,
-  kubernetesApiOverrides,
-  aiChatApiOverrides,
-} from './apiOverrides';
-import { scaffolderPluginOverrides } from './scaffolder';
-import { appOverrides } from './appModules';
+import { catalogApiOverrides } from './apiOverrides';
+import { scaffolderPluginOverrides } from './modules/scaffolder';
+import { appOverrides } from './modules/app';
 import {
   circleCINfsPlugin,
   githubPullRequestsNfsPlugin,
 } from './legacyPlugins';
-import { navModule } from './navModule';
-import {
-  homePageOverrides,
-  catalogPageOverrides,
-  searchPageOverrides,
-  userSettingsPageOverrides,
-} from './routeOverrides';
+import { navModule } from './modules/nav';
+import { homePluginOverrides } from './modules/home';
+import { userSettingsPluginOverrides } from './modules/userSettings';
+import { aiChatPluginOverrides } from './modules/ai-chat';
+import { kubernetesPluginOverrides } from './modules/kubernetes';
+import { apiDocsPluginOverrides } from './modules/api-docs';
+import { catalogPageOverrides } from './routeOverrides';
 
 const app = createApp({
   features: [
     // NFS plugins:
     aiChatPlugin,
+    aiChatPluginOverrides,
     fluxPlugin,
     fluxPluginOverrides,
     gsPlugin,
@@ -49,13 +44,17 @@ const app = createApp({
     signalsPlugin,
     // Upstream NFS plugins (pages provided by routeOverrides or defaults):
     homePlugin,
+    homePluginOverrides,
     catalogPlugin,
     searchPlugin,
     userSettingsPlugin,
+    userSettingsPluginOverrides,
     techdocsPlugin,
     catalogGraphPlugin,
     kubernetesPlugin,
+    kubernetesPluginOverrides,
     apiDocsPlugin,
+    apiDocsPluginOverrides,
     githubActionsPlugin,
     // Legacy plugins converted for NFS route ref discovery:
     circleCINfsPlugin,
@@ -66,15 +65,8 @@ const app = createApp({
     navModule,
     // API overrides for upstream NFS plugins (custom GS implementations):
     catalogApiOverrides,
-    scaffolderApiOverrides,
-    apiDocsApiOverrides,
-    kubernetesApiOverrides,
-    aiChatApiOverrides,
     // Page overrides for upstream NFS plugins:
-    homePageOverrides,
     catalogPageOverrides,
-    searchPageOverrides,
-    userSettingsPageOverrides,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {

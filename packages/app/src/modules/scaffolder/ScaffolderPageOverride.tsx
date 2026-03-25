@@ -1,14 +1,13 @@
 import {
   PageBlueprint,
   createExtensionInput,
-  createFrontendModule,
 } from '@backstage/frontend-plugin-api';
 import { FormFieldBlueprint } from '@backstage/plugin-scaffolder-react/alpha';
 import scaffolderPlugin, {
   formFieldsApiRef,
 } from '@backstage/plugin-scaffolder/alpha';
 
-const scaffolderPageOverride = PageBlueprint.makeWithOverrides({
+export const ScaffolderPageOverride = PageBlueprint.makeWithOverrides({
   inputs: {
     formFields: createExtensionInput([
       FormFieldBlueprint.dataRefs.formFieldLoader,
@@ -79,9 +78,4 @@ const scaffolderPageOverride = PageBlueprint.makeWithOverrides({
       },
     });
   },
-});
-
-export const scaffolderPluginOverrides = createFrontendModule({
-  pluginId: 'scaffolder',
-  extensions: [scaffolderPageOverride],
 });
