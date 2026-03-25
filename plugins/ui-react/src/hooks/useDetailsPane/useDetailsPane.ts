@@ -9,9 +9,6 @@ type DetailsPaneParams = {
   clusterName?: string;
 };
 
-export const KRATIX_RESOURCE_REQUEST_DETAILS_PANE_ID =
-  'kratixResourceRequestDetails';
-
 export function useDetailsPane(paneId: string) {
   const [searchParams, setSearchParams] = useSearchParams();
   const pane = searchParams.get('pane');

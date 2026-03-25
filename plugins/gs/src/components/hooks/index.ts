@@ -8,7 +8,6 @@ export * from './useClusterDetailsTemplateData';
 export * from './useCurrentUser';
 export * from './useDeploymentDetailsTemplateData';
 export * from './useDeploymentStatusDetails';
-export * from './useDetailsPane';
 export * from './useDisabledInstallations';
 export * from './useFriendlyItemsConfiguration';
 export * from './useGrafanaDashboardLink';

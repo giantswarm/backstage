@@ -19,7 +19,7 @@ import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
 import { stringifyEntityRef } from '@backstage/catalog-model';
-import { useDetailsPane } from '../../hooks';
+import { useDetailsPane } from '@giantswarm/backstage-plugin-ui-react';
 import { WORKLOAD_DETAILS_PANE_ID } from '../WorkloadDetailsPane';
 
 const KIND_LABELS: Record<string, string> = {

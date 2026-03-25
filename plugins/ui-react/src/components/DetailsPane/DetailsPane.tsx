@@ -1,7 +1,6 @@
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import { Box, Drawer, IconButton, Typography } from '@material-ui/core';
 import { useDetailsPane } from '../../hooks';
-import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import CloseIcon from '@material-ui/icons/Close';
 
 const useDrawerStyles = makeStyles((theme: Theme) =>
@@ -118,15 +117,13 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
       variant="persistent"
     >
       <DrawerContent title={title ?? name} onClose={handleClose}>
-        <ErrorsProvider>
-          {render({
-            kind,
-            installationName,
-            name,
-            namespace,
-            clusterName: clusterName ?? undefined,
-          })}
-        </ErrorsProvider>
+        {render({
+          kind,
+          installationName,
+          name,
+          namespace,
+          clusterName: clusterName ?? undefined,
+        })}
       </DrawerContent>
     </Drawer>
   );
