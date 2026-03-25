@@ -27,7 +27,7 @@ export const AWSAccountField = () => {
     isLoading: awsClusterIsLoading,
     errors: awsClusterErrors,
     error: awsClusterError,
-    incompatibility: awsClusterIncompatibility,
+    incompatibilities: awsClusterIncompatibilities,
   } = useResource(installationName, AWSCluster, { name, namespace });
 
   let awsClusterErrorMessage: string | undefined;
@@ -39,9 +39,9 @@ export const AWSAccountField = () => {
       resourceNamespace: namespace,
     });
   }
-  if (awsClusterIncompatibility) {
+  if (awsClusterIncompatibilities[0]) {
     awsClusterErrorMessage = getIncompatibilityMessage(
-      awsClusterIncompatibility,
+      awsClusterIncompatibilities[0],
     );
   }
 
@@ -54,7 +54,7 @@ export const AWSAccountField = () => {
     isLoading: identityIsLoading,
     errors: identityErrors,
     error: identityError,
-    incompatibility: identityIncompatibility,
+    incompatibilities: identityIncompatibilities,
   } = useResource(
     installationName,
     AWSClusterRoleIdentity,
@@ -75,8 +75,10 @@ export const AWSAccountField = () => {
       resourceName: identityRef?.name ?? '',
     });
   }
-  if (identityIncompatibility) {
-    identityErrorMessage = getIncompatibilityMessage(identityIncompatibility);
+  if (identityIncompatibilities[0]) {
+    identityErrorMessage = getIncompatibilityMessage(
+      identityIncompatibilities[0],
+    );
   }
 
   useShowErrors(identityErrors);

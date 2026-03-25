@@ -27,11 +27,9 @@ export function useResource<R extends KubeObject<any>>(
   const {
     resolvedGVK,
     isDiscovering,
-    discoveryError,
-    isDiscovered,
-    queryEnabled,
-    incompatibility,
-    clientOutdated,
+    discoveryErrors,
+    incompatibilities,
+    clientOutdatedStates,
   } = usePreferredVersion(cluster, staticGVK, {
     enableDiscovery: options.enableDiscovery,
     explicitVersion: options.apiVersion,
@@ -39,7 +37,7 @@ export function useResource<R extends KubeObject<any>>(
 
   const queryInfo = useGetResource<KubeObjectInterface>(
     cluster,
-    resolvedGVK,
+    resolvedGVK ?? staticGVK,
     options,
     {
       ...queryOptions,
@@ -47,7 +45,7 @@ export function useResource<R extends KubeObject<any>>(
         (queryOptions?.enabled ?? true) &&
         !isDiscovering &&
         Boolean(cluster) &&
-        queryEnabled,
+        Boolean(resolvedGVK),
     },
   );
 
@@ -62,8 +60,8 @@ export function useResource<R extends KubeObject<any>>(
   const errors: ErrorInfoUnion[] = useMemo(() => {
     const result: ErrorInfoUnion[] = [];
 
-    // Include incompatibility as an error
-    if (incompatibility) {
+    // Include incompatibility errors
+    for (const incompatibility of incompatibilities) {
       result.push({
         type: 'incompatibility',
         cluster,
@@ -82,12 +80,12 @@ export function useResource<R extends KubeObject<any>>(
     }
 
     return result;
-  }, [cluster, incompatibility, queryInfo.error, queryInfo.refetch]);
+  }, [cluster, incompatibilities, queryInfo.error, queryInfo.refetch]);
 
   // Report API version issues to Sentry automatically
   useReportApiVersionIssues(
-    incompatibility ? [incompatibility] : null,
-    clientOutdated ? [clientOutdated] : null,
+    incompatibilities.length > 0 ? incompatibilities : null,
+    clientOutdatedStates.length > 0 ? clientOutdatedStates : null,
   );
 
   return {
@@ -95,11 +93,9 @@ export function useResource<R extends KubeObject<any>>(
     isLoading: isRestoring || isDiscovering || queryInfo.isLoading,
     resource,
     errors,
-    resolvedApiVersion: resolvedGVK.apiVersion,
-    isApiVersionDiscovered: isDiscovered,
-    discoveryError,
-    incompatibility,
-    clientOutdated,
-    compatibility: resolvedGVK.compatibility,
+    resolvedApiVersion: resolvedGVK?.apiVersion,
+    discoveryErrors,
+    incompatibilities,
+    clientOutdatedStates,
   };
 }

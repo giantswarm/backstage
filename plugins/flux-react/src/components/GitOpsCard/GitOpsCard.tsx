@@ -36,7 +36,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
     errors: kustomizationErrors,
     isLoading: kustomizationIsLoading,
     error: kustomizationError,
-    incompatibility: kustomizationIncompatibility,
+    incompatibilities: kustomizationIncompatibilities,
   } = useResource(installationName, Kustomization, {
     name: kustomizationName!,
     namespace: kustomizationNamespace,
@@ -50,7 +50,7 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
     errors: gitRepositoryErrors,
     isLoading: gitRepositoryIsLoading,
     error: gitRepositoryError,
-    incompatibility: gitRepositoryIncompatibility,
+    incompatibilities: gitRepositoryIncompatibilities,
   } = useResource(
     installationName,
     GitRepository,
@@ -95,11 +95,11 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
       resourceNamespace: gitRepositoryNamespace,
     });
   }
-  if (kustomizationIncompatibility) {
-    errorMessage = getIncompatibilityMessage(kustomizationIncompatibility);
+  if (kustomizationIncompatibilities[0]) {
+    errorMessage = getIncompatibilityMessage(kustomizationIncompatibilities[0]);
   }
-  if (gitRepositoryIncompatibility) {
-    errorMessage = getIncompatibilityMessage(gitRepositoryIncompatibility);
+  if (gitRepositoryIncompatibilities[0]) {
+    errorMessage = getIncompatibilityMessage(gitRepositoryIncompatibilities[0]);
   }
 
   const sourceUrl = useGitSourceLink({

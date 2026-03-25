@@ -7,5 +7,4 @@ export {
   usePreferredVersions,
   type UsePreferredVersionsOptions,
   type UsePreferredVersionsResult,
-  type DiscoveryError,
 } from './usePreferredVersions';

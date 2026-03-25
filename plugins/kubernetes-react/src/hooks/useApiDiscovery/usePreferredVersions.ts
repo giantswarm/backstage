@@ -6,42 +6,35 @@ import {
   CustomResourceMatcher,
   MultiVersionResourceMatcher,
 } from '../../lib/k8s/CustomResourceMatcher';
-import { ResolvedGVKWithCompatibility } from '../../lib/k8s/ApiDiscovery';
 import {
   ClientOutdatedState,
   IncompatibilityState,
 } from '../../lib/k8s/VersionTypes';
+import { ErrorInfo, mapQueriesToClusters } from '../utils/queries';
+import { sortVersions } from '../../lib/k8s/versionUtils';
 import {
   getSupportedVersions,
   apiGroupQueryOptions,
   apiResourceQueryOptions,
-  computeVersionsToCheck,
   resolvePreferredVersion,
 } from './queryFactories';
 
 export interface UsePreferredVersionsOptions {
   /** Enable API version discovery. Defaults to true. */
   enableDiscovery?: boolean;
+  /** Explicit API version to use, bypasses discovery. */
+  explicitVersion?: string;
   /** Fall back to static version on discovery error. Defaults to true. */
   fallbackToStatic?: boolean;
 }
 
-export interface DiscoveryError {
-  cluster: string;
-  error: Error;
-}
-
 export interface UsePreferredVersionsResult {
   /** Map of cluster name to resolved GVK */
-  clustersGVKs: Record<string, ResolvedGVKWithCompatibility>;
+  clustersGVKs: Record<string, CustomResourceMatcher>;
   /** Whether any discovery is in progress */
   isDiscovering: boolean;
   /** Discovery errors per cluster */
-  discoveryErrors: DiscoveryError[];
-  /** Whether all discoveries have completed */
-  isReady: boolean;
-  /** Map of cluster name to whether query should be enabled */
-  clustersQueryEnabled: Record<string, boolean>;
+  discoveryErrors: ErrorInfo[];
   /** List of incompatibility states for clusters with version mismatches */
   incompatibilities: IncompatibilityState[];
   /** List of client outdated states for clusters where server has newer versions */
@@ -63,13 +56,18 @@ export function usePreferredVersions(
   gvk: CustomResourceMatcher | MultiVersionResourceMatcher,
   options: UsePreferredVersionsOptions = {},
 ): UsePreferredVersionsResult {
-  const { enableDiscovery = true, fallbackToStatic = true } = options;
+  const {
+    enableDiscovery = true,
+    explicitVersion,
+    fallbackToStatic = true,
+  } = options;
 
   const kubernetesApi = useApi(kubernetesApiRef);
   const supportedVersions = getSupportedVersions(gvk);
 
   // Skip discovery for core APIs (they use /api/v1 not /apis)
-  const shouldDiscover = enableDiscovery && !gvk.isCore;
+  // or when an explicit version is provided
+  const shouldDiscover = enableDiscovery && !gvk.isCore && !explicitVersion;
 
   // Stage 1: Query API group to get available versions
   const groupQueries = useQueries({
@@ -79,23 +77,23 @@ export function usePreferredVersions(
     })),
   });
 
-  // Determine which versions to check for each cluster (compatible versions sorted newest to oldest)
+  // Collect all group versions for each cluster (sorted newest-first)
+  // We query all versions in Stage 2 (not just client-compatible ones) so that
+  // serverVersions reflects the true set of versions where the resource exists,
+  // enabling correct client-outdated detection.
   const versionsToCheck = useMemo(() => {
     const result: Record<string, string[]> = {};
     clusters.forEach((cluster, index) => {
       const query = groupQueries[index];
       if (query.data?.versions) {
-        const serverVersions = query.data.versions.map(v => v.version);
-        result[cluster] = computeVersionsToCheck(
-          serverVersions,
-          supportedVersions,
-        );
+        const versions = query.data.versions.map(v => v.version);
+        result[cluster] = sortVersions(versions).reverse();
       } else {
         result[cluster] = [];
       }
     });
     return result;
-  }, [clusters, groupQueries, supportedVersions]);
+  }, [clusters, groupQueries]);
 
   // Stage 2: For each cluster, query API resources for each compatible version
   // to find which version actually has our resource
@@ -115,12 +113,12 @@ export function usePreferredVersions(
     }),
   });
 
-  // Build a map of cluster -> best version (first version that has the resource)
-  const clusterBestVersions = useMemo(() => {
-    const result: Record<string, string | undefined> = {};
+  // Build map of cluster -> all versions where resource exists
+  const clusterResourceVersions = useMemo(() => {
+    const resourceVersions: Record<string, string[]> = {};
     clusters.forEach(cluster => {
       const versions = versionsToCheck[cluster] || [];
-      // Find the first version (from newest to oldest) that has the resource
+      const available: string[] = [];
       for (const version of versions) {
         const query = resourceQueries.find(
           q =>
@@ -129,100 +127,93 @@ export function usePreferredVersions(
             q.data?.hasResource,
         );
         if (query?.data?.hasResource) {
-          result[cluster] = version;
-          break;
+          available.push(version);
         }
       }
+      resourceVersions[cluster] = available;
     });
-    return result;
+    return resourceVersions;
   }, [clusters, versionsToCheck, resourceQueries]);
 
-  const {
-    clustersGVKs,
-    clustersQueryEnabled,
-    incompatibilities,
-    clientOutdatedStates,
-  } = useMemo(() => {
-    const gvks: Record<string, ResolvedGVKWithCompatibility> = {};
-    const queryEnabled: Record<string, boolean> = {};
-    const incompats: IncompatibilityState[] = [];
-    const outdatedStates: ClientOutdatedState[] = [];
+  const { clustersGVKs, incompatibilities, clientOutdatedStates } =
+    useMemo(() => {
+      const gvks: Record<string, CustomResourceMatcher> = {};
+      const incompats: IncompatibilityState[] = [];
+      const outdatedStates: ClientOutdatedState[] = [];
 
-    clusters.forEach((cluster, index) => {
-      const query = groupQueries[index];
-      const serverVersions = query.data?.versions
-        ? query.data.versions.map(v => v.version)
-        : undefined;
+      clusters.forEach((cluster, index) => {
+        const query = groupQueries[index];
 
-      const resolved = resolvePreferredVersion({
-        gvk,
-        supportedVersions,
-        cluster,
-        shouldDiscover,
-        serverVersions,
-        serverPreferredVersion: query.data?.preferredVersion?.version,
-        bestVersion: clusterBestVersions[cluster],
-        discoveryError: query.error,
-        fallbackToStatic,
+        const resolved = resolvePreferredVersion({
+          gvk,
+          clientVersions: supportedVersions,
+          cluster,
+          shouldDiscover,
+          explicitVersion,
+          discoverySucceeded: Boolean(query.data?.versions),
+          serverVersions: clusterResourceVersions[cluster],
+          discoveryError: query.error,
+          fallbackToStatic,
+        });
+
+        // Only include compatible clusters in the GVKs map
+        if (resolved.isCompatible) {
+          gvks[cluster] = resolved.resolvedGVK;
+        }
+        if (resolved.incompatibility) {
+          incompats.push(resolved.incompatibility);
+        }
+        if (resolved.clientOutdated) {
+          outdatedStates.push(resolved.clientOutdated);
+        }
       });
 
-      gvks[cluster] = resolved.resolvedGVK;
-      queryEnabled[cluster] = resolved.queryEnabled;
-      if (resolved.incompatibility) {
-        incompats.push(resolved.incompatibility);
-      }
-      if (resolved.clientOutdated) {
-        outdatedStates.push(resolved.clientOutdated);
-      }
-    });
-
-    return {
-      clustersGVKs: gvks,
-      clustersQueryEnabled: queryEnabled,
-      incompatibilities: incompats,
-      clientOutdatedStates: outdatedStates,
-    };
-  }, [
-    clusters,
-    gvk,
-    groupQueries,
-    clusterBestVersions,
-    shouldDiscover,
-    supportedVersions,
-    fallbackToStatic,
-  ]);
+      return {
+        clustersGVKs: gvks,
+        incompatibilities: incompats,
+        clientOutdatedStates: outdatedStates,
+      };
+    }, [
+      clusters,
+      groupQueries,
+      gvk,
+      supportedVersions,
+      shouldDiscover,
+      explicitVersion,
+      clusterResourceVersions,
+      fallbackToStatic,
+    ]);
 
   const discoveryErrors = useMemo(() => {
     if (!shouldDiscover) {
       return [];
     }
-
-    return clusters
-      .map((cluster, index) => {
-        const query = groupQueries[index];
-        if (query.error) {
-          return { cluster, error: query.error };
-        }
-        return null;
-      })
-      .filter((error): error is DiscoveryError => error !== null);
-  }, [clusters, groupQueries, shouldDiscover]);
+    const groupErrors = mapQueriesToClusters(clusters, groupQueries).errors;
+    const resourceClusters = clusters.flatMap(cluster =>
+      (versionsToCheck[cluster] || []).map(() => cluster),
+    );
+    const resourceErrors = mapQueriesToClusters(
+      resourceClusters,
+      resourceQueries,
+    ).errors;
+    return [...groupErrors, ...resourceErrors];
+  }, [
+    clusters,
+    groupQueries,
+    versionsToCheck,
+    resourceQueries,
+    shouldDiscover,
+  ]);
 
   const isDiscovering =
     shouldDiscover &&
     (groupQueries.some(query => query.isLoading) ||
       resourceQueries.some(query => query.isLoading));
-  const isReady =
-    !shouldDiscover ||
-    (groupQueries.every(query => !query.isLoading && !query.error) &&
-      resourceQueries.every(query => !query.isLoading));
 
   return {
     clustersGVKs,
     isDiscovering,
     discoveryErrors,
-    isReady,
-    clustersQueryEnabled,
     incompatibilities,
     clientOutdatedStates,
   };

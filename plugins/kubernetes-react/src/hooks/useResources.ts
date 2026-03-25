@@ -5,7 +5,7 @@ import { Options, QueryOptions } from './types';
 import { MultiVersionResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { useIsRestoring } from '@tanstack/react-query';
 import { usePreferredVersions } from './useApiDiscovery';
-import { ErrorInfoUnion } from './utils/queries';
+import { ErrorInfo, ErrorInfoUnion } from './utils/queries';
 import { useReportApiVersionIssues } from './useReportApiVersionIssues';
 
 export interface UseResourcesQueryOptions<T> extends QueryOptions<T> {
@@ -31,34 +31,15 @@ export function useResources<R extends KubeObject<any>>(
     clustersGVKs,
     isDiscovering,
     discoveryErrors,
-    clustersQueryEnabled,
     incompatibilities,
     clientOutdatedStates,
   } = usePreferredVersions(selectedClusters, staticGVK, {
     enableDiscovery,
   });
 
-  // Filter out clusters that are incompatible (queryEnabled = false)
-  const compatibleClusters = useMemo(() => {
-    return selectedClusters.filter(
-      cluster => clustersQueryEnabled[cluster] !== false,
-    );
-  }, [selectedClusters, clustersQueryEnabled]);
-
-  // Filter GVKs to only include compatible clusters
-  const compatibleClustersGVKs = useMemo(() => {
-    const result: Record<string, (typeof clustersGVKs)[string]> = {};
-    for (const cluster of compatibleClusters) {
-      if (clustersGVKs[cluster]) {
-        result[cluster] = clustersGVKs[cluster];
-      }
-    }
-    return result;
-  }, [compatibleClusters, clustersGVKs]);
-
   const queriesInfo = useListResources<KubeObjectInterface>(
-    compatibleClusters,
-    compatibleClustersGVKs,
+    Object.keys(clustersGVKs),
+    clustersGVKs,
     options,
     {
       ...restQueryOptions,
@@ -73,10 +54,8 @@ export function useResources<R extends KubeObject<any>>(
   }, [queriesInfo.clustersData, ResourceClass]);
 
   const errors: ErrorInfoUnion[] = useMemo(() => {
-    // Start with regular fetch errors (filtered)
-    const fetchErrors = queriesInfo.errors.filter(
-      ({ error }) => error.name !== 'RejectedError',
-    );
+    const isNotRejected = ({ error }: ErrorInfo) =>
+      error.name !== 'RejectedError';
 
     // Add incompatibility errors
     const incompatibilityErrors: ErrorInfoUnion[] = incompatibilities.map(
@@ -87,8 +66,12 @@ export function useResources<R extends KubeObject<any>>(
       }),
     );
 
-    return [...fetchErrors, ...incompatibilityErrors];
-  }, [queriesInfo.errors, incompatibilities]);
+    return [
+      ...discoveryErrors.filter(isNotRejected),
+      ...queriesInfo.errors.filter(isNotRejected),
+      ...incompatibilityErrors,
+    ];
+  }, [queriesInfo.errors, incompatibilities, discoveryErrors]);
 
   // Report API version issues to Sentry automatically
   useReportApiVersionIssues(incompatibilities, clientOutdatedStates);
@@ -98,9 +81,5 @@ export function useResources<R extends KubeObject<any>>(
     isLoading: isRestoring || isDiscovering || queriesInfo.isLoading,
     resources,
     errors,
-    discoveryErrors,
-    incompatibilities,
-    clientOutdatedStates,
-    clustersQueryEnabled,
   };
 }
