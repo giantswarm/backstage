@@ -30,6 +30,7 @@ import { aiChatPluginOverrides } from './modules/ai-chat';
 import { kubernetesPluginOverrides } from './modules/kubernetes';
 import { apiDocsPluginOverrides } from './modules/api-docs';
 import { catalogPageOverrides } from './routeOverrides';
+import { catalogLegacyEntityExtensions } from './modules/catalog/legacyEntityExtensions';
 
 const app = createApp({
   features: [
@@ -67,6 +68,8 @@ const app = createApp({
     catalogApiOverrides,
     // Page overrides for upstream NFS plugins:
     catalogPageOverrides,
+    // Legacy entity extensions (CircleCI, GitHub PRs, Grafana):
+    catalogLegacyEntityExtensions,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
