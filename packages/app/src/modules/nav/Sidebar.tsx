@@ -17,6 +17,7 @@ import {
   UserSettingsSignInAvatar,
   Settings as SidebarSettings,
 } from '@backstage/plugin-user-settings';
+import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
 
 export const SidebarContent = NavContentBlueprint.make({
   params: {
@@ -50,6 +51,7 @@ export const SidebarContent = NavContentBlueprint.make({
             {nav.take('page:scaffolder')}
           </SidebarGroup>
           <SidebarSpace />
+          <NotificationsSidebarItem />
           <SidebarDivider />
           <SidebarGroup
             label="Settings"

@@ -8,6 +8,7 @@ import userSettingsPlugin from '@backstage/plugin-user-settings/alpha';
 import catalogGraphPlugin from '@backstage/plugin-catalog-graph/alpha';
 import kubernetesPlugin from '@backstage/plugin-kubernetes/alpha';
 import apiDocsPlugin from '@backstage/plugin-api-docs/alpha';
+import notificationsPlugin from '@backstage/plugin-notifications/alpha';
 import signalsPlugin from '@backstage/plugin-signals/alpha';
 import githubActionsPlugin from '@backstage-community/plugin-github-actions/alpha';
 import { createApp } from '@backstage/frontend-defaults';
@@ -41,6 +42,7 @@ const app = createApp({
     gsPlugin,
     scaffolderPlugin,
     scaffolderPluginOverrides,
+    notificationsPlugin,
     signalsPlugin,
     // Upstream NFS plugins (pages provided by routeOverrides or defaults):
     homePlugin,
