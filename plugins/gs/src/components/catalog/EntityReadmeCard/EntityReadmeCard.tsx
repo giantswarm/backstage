@@ -158,7 +158,10 @@ const ReadmeCardContent = () => {
     return (
       <>
         <Box className={classes.contentWrapper}>
-          <Collapse in={expanded} collapsedSize={collapsedSize}>
+          <Collapse
+            in={expanded || !needsExpansion}
+            collapsedSize={collapsedSize}
+          >
             <div ref={contentRef}>
               <MarkdownContent content={readme} />
             </div>
