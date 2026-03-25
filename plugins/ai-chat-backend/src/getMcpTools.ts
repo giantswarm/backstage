@@ -113,6 +113,17 @@ async function getResources(
   return resources;
 }
 
+/**
+ * Sanitize a tool name to match the AI SDK pattern: ^[a-zA-Z0-9_-]{1,128}$
+ */
+function sanitizeToolName(name: string): string {
+  return name
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/_$/, '')
+    .substring(0, 128);
+}
+
 function collectTools(mcpClientTools: ToolSet, installation?: string): ToolSet {
   const tools: ToolSet = {};
   Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
@@ -120,10 +131,10 @@ function collectTools(mcpClientTools: ToolSet, installation?: string): ToolSet {
 
     if (installation) {
       toolInstance.description = `${toolInstance.description} (for installation: ${installation})`;
-      const prefixedToolName = `${installation}_${toolName}`;
+      const prefixedToolName = sanitizeToolName(`${installation}_${toolName}`);
       tools[prefixedToolName] = toolInstance;
     } else {
-      tools[toolName] = toolInstance;
+      tools[sanitizeToolName(toolName)] = toolInstance;
     }
   });
   return tools;
