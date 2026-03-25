@@ -22,7 +22,13 @@ import {
 } from 'react-vtree';
 import { ResourceNode } from '../ResourceNode';
 import { ListChildComponentProps, Align } from 'react-window';
-import { SelectedResourceRef } from '../useSelectedResource';
+
+type SelectedResourceRef = {
+  cluster: string;
+  kind: string;
+  name: string;
+  namespace?: string;
+};
 
 export type NodeData = Readonly<{
   id: string;

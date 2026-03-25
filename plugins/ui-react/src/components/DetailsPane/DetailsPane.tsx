@@ -80,31 +80,50 @@ const DrawerContent = ({
   );
 };
 
-type DetailsPaneProps = {
-  paneId: string;
-  title?: string;
-  render: (props: {
-    kind: string;
-    installationName: string;
-    name: string;
-    namespace: string;
-    clusterName?: string;
-  }) => React.ReactElement | null;
+type DetailsPaneRenderProps = {
+  kind: string;
+  cluster: string;
+  clusterName?: string;
+  name: string;
+  namespace: string;
 };
 
-export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
+type DetailsPaneProps = {
+  paneId: string;
+  prefix?: string;
+  title?: string | ((props: DetailsPaneRenderProps) => string);
+  render: (props: DetailsPaneRenderProps) => React.ReactElement | null;
+};
+
+export const DetailsPane = ({
+  paneId,
+  prefix,
+  title,
+  render,
+}: DetailsPaneProps) => {
   const classes = useDrawerStyles();
 
-  const { isOpen, getParams, close } = useDetailsPane(paneId);
-  const { installationName, kind, namespace, name, clusterName } = getParams();
+  const { isOpen, getParams, close } = useDetailsPane(paneId, { prefix });
+  const { cluster, clusterName, kind, namespace, name } = getParams();
 
-  if (!installationName || !kind || !namespace || !name) {
+  if (!cluster || !kind || !namespace || !name) {
     return null;
   }
 
   const handleClose = () => {
     close();
   };
+
+  const renderProps: DetailsPaneRenderProps = {
+    kind,
+    cluster,
+    clusterName: clusterName ?? undefined,
+    name,
+    namespace,
+  };
+
+  const resolvedTitle =
+    typeof title === 'function' ? title(renderProps) : title;
 
   return (
     <Drawer
@@ -116,14 +135,8 @@ export const DetailsPane = ({ paneId, title, render }: DetailsPaneProps) => {
       onClose={handleClose}
       variant="persistent"
     >
-      <DrawerContent title={title ?? name} onClose={handleClose}>
-        {render({
-          kind,
-          installationName,
-          name,
-          namespace,
-          clusterName: clusterName ?? undefined,
-        })}
+      <DrawerContent title={resolvedTitle} onClose={handleClose}>
+        {render(renderProps)}
       </DrawerContent>
     </Drawer>
   );

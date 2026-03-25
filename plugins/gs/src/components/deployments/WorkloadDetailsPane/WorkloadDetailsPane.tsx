@@ -457,10 +457,11 @@ export const WorkloadDetailsPane = () => {
   return (
     <DetailsPane
       paneId={WORKLOAD_DETAILS_PANE_ID}
-      render={({ installationName, kind, name, namespace, clusterName }) => (
+      title={({ name }) => name}
+      render={({ cluster, clusterName, kind, name, namespace }) => (
         <ErrorsProvider>
           <WorkloadDetails
-            installationName={installationName}
+            installationName={cluster}
             kind={kind}
             name={name}
             namespace={namespace}

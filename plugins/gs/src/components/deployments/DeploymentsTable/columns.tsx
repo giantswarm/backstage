@@ -78,12 +78,12 @@ export const getInitialColumns = ({
             const location = useLocation();
             const { getRoute } = useDetailsPane(WORKLOAD_DETAILS_PANE_ID);
             const to = getRoute(location.pathname, {
-              installationName: row.installationName,
+              cluster: row.installationName,
+              clusterName: row.clusterName,
               apiVersion: row.apiVersion,
               kind: row.kind,
               namespace: row.namespace,
               name: row.name,
-              clusterName: row.clusterName,
             });
 
             return (

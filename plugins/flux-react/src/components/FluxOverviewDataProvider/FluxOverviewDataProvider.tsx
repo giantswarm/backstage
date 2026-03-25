@@ -16,10 +16,6 @@ import {
   KustomizationTreeBuilder,
   KustomizationTreeNode,
 } from '../FluxOverview/utils/KustomizationTreeBuilder/KustomizationTreeBuilder';
-import {
-  SelectedResourceRef,
-  useSelectedResource,
-} from '../FluxOverview/useSelectedResource';
 
 export type ResourceType = 'all' | 'flux';
 
@@ -39,9 +35,6 @@ export type FluxOverviewData = {
   setResourceType: (resourceType: ResourceType) => void;
   treeBuilder?: KustomizationTreeBuilder;
   tree?: KustomizationTreeNode[];
-  selectedResourceRef: SelectedResourceRef | null;
-  setSelectedResource: (resourceRef: SelectedResourceRef) => void;
-  clearSelectedResource: () => void;
   // Search state
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -77,9 +70,6 @@ export const FluxOverviewDataProvider = ({
 }: FluxOverviewDataProviderProps) => {
   const [activeCluster, setActiveCluster] = useState<string | null>(null);
   const [resourceType, setResourceType] = useState<ResourceType>('flux');
-
-  const { selectedResourceRef, setSelectedResource, clearSelectedResource } =
-    useSelectedResource();
 
   const {
     resources: {
@@ -158,9 +148,6 @@ export const FluxOverviewDataProvider = ({
       setResourceType,
       treeBuilder,
       tree,
-      selectedResourceRef,
-      setSelectedResource,
-      clearSelectedResource,
       searchQuery,
       setSearchQuery,
       searchMatches,
@@ -185,9 +172,6 @@ export const FluxOverviewDataProvider = ({
     resourceType,
     treeBuilder,
     tree,
-    selectedResourceRef,
-    setSelectedResource,
-    clearSelectedResource,
     searchQuery,
     setSearchQuery,
     searchMatches,

@@ -1,0 +1,1 @@
+export { FluxResourceDetails } from './FluxResourceDetails';
