@@ -5,6 +5,24 @@ const MIN_WIDTH = 300;
 const MAX_WIDTH_RATIO = 0.8;
 export const DEFAULT_WIDTH = 500;
 const STORAGE_KEY = 'ai-chat-drawer-width';
+const PUSH_STYLE_ID = 'ai-chat-drawer-push-style';
+
+function setDrawerPushWidth(width: number): void {
+  let style = document.getElementById(PUSH_STYLE_ID);
+  if (!style) {
+    style = document.createElement('style');
+    style.id = PUSH_STYLE_ID;
+    document.head.appendChild(style);
+  }
+  style.textContent = `
+#root { margin-right: ${width}px; }
+[class*="MuiDrawer-paperAnchorRight"] { right: ${width}px !important; }
+`;
+}
+
+function clearDrawerPush(): void {
+  document.getElementById(PUSH_STYLE_ID)?.remove();
+}
 
 function readStoredWidth(): number {
   try {
@@ -57,21 +75,16 @@ export function useDrawerResize({
     initialWidth: number;
   } | null>(null);
 
-  // Manage #root marginRight for persistent mode
+  // Manage #root marginRight and drawer push for persistent mode
   useEffect(() => {
     if (!open || variant !== 'persistent' || isMobile) {
       return undefined;
     }
 
-    const rootEl = document.getElementById('root');
-    if (!rootEl) {
-      return undefined;
-    }
-
-    rootEl.style.marginRight = `${width}px`;
+    setDrawerPushWidth(width);
 
     return () => {
-      rootEl.style.marginRight = '';
+      clearDrawerPush();
     };
   }, [open, variant, width, isMobile]);
 
@@ -88,10 +101,7 @@ export function useDrawerResize({
       drawerEl.style.width = `${newWidth}px`;
 
       if (variant === 'persistent') {
-        const rootEl = document.getElementById('root');
-        if (rootEl) {
-          rootEl.style.marginRight = `${newWidth}px`;
-        }
+        setDrawerPushWidth(newWidth);
       }
     },
     [variant],
