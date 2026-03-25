@@ -11,12 +11,14 @@ export const aiChatApiRef = createApiRef<AiChatApi>({
 export type AIChatDrawerHandler = {
   openDrawer(message?: string): void;
   closeDrawer(): void;
+  toggleDrawer(): void;
 };
 
 /** API for controlling the AI chat drawer from anywhere in the app. */
 export interface AIChatDrawerApi {
   openDrawer(message?: string): void;
   closeDrawer(): void;
+  toggleDrawer(): void;
   /** Register the drawer implementation. Returns an unregister function. */
   registerHandler(handler: AIChatDrawerHandler): () => void;
 }

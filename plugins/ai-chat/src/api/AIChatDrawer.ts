@@ -22,4 +22,8 @@ export class AIChatDrawer implements AIChatDrawerApi {
   closeDrawer(): void {
     this.handler?.closeDrawer();
   }
+
+  toggleDrawer(): void {
+    this.handler?.toggleDrawer();
+  }
 }

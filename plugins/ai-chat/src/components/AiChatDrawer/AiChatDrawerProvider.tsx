@@ -115,6 +115,9 @@ export const AiChatDrawerProvider = () => {
       closeDrawer() {
         setOpen(false);
       },
+      toggleDrawer() {
+        setOpen(prev => !prev);
+      },
     });
   }, [drawerApi]);
 

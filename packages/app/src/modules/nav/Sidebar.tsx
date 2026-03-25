@@ -6,6 +6,7 @@ import {
   SidebarSpace,
 } from '@backstage/core-components';
 import { compatWrapper } from '@backstage/core-compat-api';
+import { useApiHolder } from '@backstage/core-plugin-api';
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
@@ -17,6 +18,29 @@ import {
   UserSettingsSignInAvatar,
   Settings as SidebarSettings,
 } from '@backstage/plugin-user-settings';
+import {
+  AIChatIcon,
+  aiChatDrawerApiRef,
+} from '@giantswarm/backstage-plugin-ai-chat-react';
+
+function AiChatSidebarItem() {
+  const apiHolder = useApiHolder();
+  const drawerApi = apiHolder.get(aiChatDrawerApiRef);
+
+  if (!drawerApi) return null;
+
+  return (
+    <SidebarItem
+      icon={() => (
+        <NavItemIcon>
+          <AIChatIcon />
+        </NavItemIcon>
+      )}
+      text="AI Assistant"
+      onClick={() => drawerApi.toggleDrawer()}
+    />
+  );
+}
 
 export const SidebarContent = NavContentBlueprint.make({
   params: {
@@ -45,8 +69,8 @@ export const SidebarContent = NavContentBlueprint.make({
             {nav.take('page:gs/clusters')}
             {nav.take('page:gs/installations')}
             {nav.take('page:flux')}
-            {nav.take('page:ai-chat')}
             <SidebarDivider />
+            <AiChatSidebarItem />
             {nav.take('page:scaffolder')}
           </SidebarGroup>
           <SidebarSpace />
