@@ -23,17 +23,17 @@ import {
 export const catalogLegacyEntityExtensions = createFrontendModule({
   pluginId: 'catalog',
   extensions: [
-    convertLegacyEntityContentExtension(EntityCircleCIContent, {
-      name: 'circleci',
-      filter: entity => isCircleCIAvailable(entity),
-      path: '/circleci',
-      title: 'CircleCI',
-    }),
     convertLegacyEntityContentExtension(EntityGithubPullRequestsContent, {
       name: 'pull-requests',
       filter: 'kind:component',
       path: '/pull-requests',
       title: 'Pull Requests',
+    }),
+    convertLegacyEntityContentExtension(EntityCircleCIContent, {
+      name: 'circleci',
+      filter: entity => isCircleCIAvailable(entity),
+      path: '/circleci',
+      title: 'CircleCI',
     }),
     convertLegacyEntityCardExtension(EntityGrafanaDashboardsCard, {
       name: 'grafana-dashboards',

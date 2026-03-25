@@ -18,25 +18,34 @@ app:
     - app-root-element:ai-chat/drawer
     # Disable extensions that target inputs on pages we fully override
     # (our custom pages compose their own UI, not extension slots)
-    - home-page-widget:home/toolkit: false
-    - home-page-widget:home/starred-entities: false
-    - home-page-widget:home/random-joke: false
-    - catalog-filter:catalog/kind: false
-    - catalog-filter:catalog/type: false
-    - catalog-filter:catalog/list: false
-    - catalog-filter:catalog/mode: false
-    - catalog-filter:catalog/lifecycle: false
-    - catalog-filter:catalog/tag: false
-    - catalog-filter:catalog/processing-status: false
-    - catalog-filter:catalog/namespace: false
-    - entity-content:catalog/overview: false
+    # - home-page-widget:home/toolkit: false
+    # - home-page-widget:home/starred-entities: false
+    # - home-page-widget:home/random-joke: false
+    # - catalog-filter:catalog/kind: false
+    # - catalog-filter:catalog/type: false
+    # - catalog-filter:catalog/list: false
+    # - catalog-filter:catalog/mode: false
+    # - catalog-filter:catalog/lifecycle: false
+    # - catalog-filter:catalog/tag: false
+    # - catalog-filter:catalog/processing-status: false
+    # - catalog-filter:catalog/namespace: false
+    # - entity-content:catalog/overview: false
     - entity-content:techdocs: false
+    - entity-card:catalog/depends-on-components: false
+    - entity-card:catalog/depends-on-resources: false
+    - entity-card:catalog/has-subcomponents: false
+    - entity-card:catalog/labels: false
+    - entity-card:catalog-graph/relations: false
+    - entity-card:api-docs/provided-apis: false
+    - entity-card:api-docs/consumed-apis: false
+    - entity-card:github-actions/recent-workflow-runs: false
+
     - entity-content:kubernetes/kubernetes: false
-    - entity-content:api-docs/definition: false
+    # - entity-content:api-docs/definition: false
     - entity-content:api-docs/apis: false
     - entity-context-menu-item:catalog/unregister-entity: false
-    - entity-context-menu-item:catalog/inspect-entity: false
-    - entity-context-menu-item:catalog/copy-entity-url: false
+    # - entity-context-menu-item:catalog/inspect-entity: false
+    # - entity-context-menu-item:catalog/copy-entity-url: false
   telemetrydeck:
     appID: ''
     salt: ${TELEMETRYDECK_SALT}

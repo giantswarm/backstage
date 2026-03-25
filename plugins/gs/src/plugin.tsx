@@ -8,7 +8,6 @@ import {
   EntityCardBlueprint,
   EntityContentBlueprint,
   EntityContentLayoutBlueprint,
-  EntityHeaderBlueprint,
 } from '@backstage/plugin-catalog-react/alpha';
 import {
   FormFieldBlueprint,
@@ -263,7 +262,6 @@ const deploymentsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/deployments',
     title: 'Deployments',
-    group: 'deployment',
     routeRef: entityDeploymentsRouteRef,
     filter: entity => isEntityDeploymentsAvailable(entity),
     loader: async () => {
@@ -279,7 +277,6 @@ const versionHistoryEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/version-history',
     title: 'Version History',
-    group: 'development',
     filter: entity => isEntityHelmChartTagged(entity),
     loader: async () => {
       const { EntityVersionHistoryContent } =
@@ -314,20 +311,6 @@ const helmChartContentLayout = EntityContentLayoutBlueprint.make({
       const { HelmChartContentLayout } =
         await import('./components/catalog/HelmChartContentLayout');
       return HelmChartContentLayout;
-    },
-  },
-});
-
-// Entity header icon
-const entityHeaderIcon = EntityHeaderBlueprint.make({
-  name: 'icon',
-  params: {
-    filter: entity =>
-      Boolean(entity.metadata.annotations?.['giantswarm.io/icon-url']),
-    loader: async () => {
-      const { EntityHeaderIcon } =
-        await import('./components/catalog/EntityHeaderIcon');
-      return <EntityHeaderIcon />;
     },
   },
 });
@@ -564,16 +547,14 @@ export const gsPlugin = createFrontendPlugin({
     appDeploymentEntityCard,
     installationDetailsEntityCard,
     kratixStatusEntityCard,
-    versionHistoryEntityCard,
     readmeEntityCard,
+    versionHistoryEntityCard,
     // Entity content tabs
     deploymentsEntityContent,
     versionHistoryEntityContent,
     kratixResourcesEntityContent,
     // Entity content layout
     helmChartContentLayout,
-    // Entity header
-    entityHeaderIcon,
     // Scaffolder form fields
     chartPickerFormField,
     chartTagPickerFormField,

@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import type { EntityContentLayoutProps } from '@backstage/plugin-catalog-react/alpha';
 import { EntityChartProvider } from '../EntityChartContext';
+import { EntityHeaderIcon } from '../EntityHeaderIcon';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -72,6 +73,7 @@ export function HelmChartContentLayout(props: EntityContentLayoutProps) {
 
   return (
     <EntityChartProvider>
+      <EntityHeaderIcon />
       <div className={classes.root}>
         {infoCards.length > 0 ? (
           <div className={classes.infoArea}>
