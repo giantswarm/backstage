@@ -1,0 +1,1 @@
+export { useDetailsPane } from './useDetailsPane';

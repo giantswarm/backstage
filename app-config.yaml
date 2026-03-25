@@ -13,11 +13,9 @@ app:
     - page:flux
     - nav-item:flux
     - page:ai-chat
-    - nav-item:ai-chat
     - api:ai-chat/service
     - api:ai-chat/drawer
     - app-root-element:ai-chat/drawer
-    - app-root-element:ai-chat/fab
     # Disable extensions that target inputs on pages we fully override
     # (our custom pages compose their own UI, not extension slots)
     - home-page-widget:home/toolkit: false

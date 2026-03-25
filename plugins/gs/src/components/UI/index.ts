@@ -7,7 +7,6 @@ export { CodeBlock } from './CodeBlock';
 export { ColorWrapper } from './ColorWrapper';
 export { ContentRow } from './ContentRow';
 export { DateComponent } from './Date';
-export { DetailsPane } from './DetailsPane';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { GridItem } from './GridItem';
 export { Heading } from './Heading';

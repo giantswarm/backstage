@@ -19,7 +19,7 @@ import { renderClusterType } from '../../clusters/ClustersTable/columns';
 import { DeploymentData } from '../DeploymentsDataProvider';
 import { DeploymentStatus } from '../DeploymentStatus';
 import { stringifyEntityRef } from '@backstage/catalog-model';
-import { useDetailsPane } from '../../hooks';
+import { useDetailsPane } from '@giantswarm/backstage-plugin-ui-react';
 import { WORKLOAD_DETAILS_PANE_ID } from '../WorkloadDetailsPane';
 
 const KIND_LABELS: Record<string, string> = {
@@ -78,12 +78,12 @@ export const getInitialColumns = ({
             const location = useLocation();
             const { getRoute } = useDetailsPane(WORKLOAD_DETAILS_PANE_ID);
             const to = getRoute(location.pathname, {
-              installationName: row.installationName,
+              cluster: row.installationName,
+              clusterName: row.clusterName,
               apiVersion: row.apiVersion,
               kind: row.kind,
               namespace: row.namespace,
               name: row.name,
-              clusterName: row.clusterName,
             });
 
             return (

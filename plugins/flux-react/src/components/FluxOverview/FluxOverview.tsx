@@ -4,7 +4,13 @@ import { EmptyState, Progress } from '@backstage/core-components';
 import { ContentContainer } from './ContentContainer';
 import { OverviewTree, OverviewTreeRef } from './OverviewTree';
 import { useFluxOverviewData } from '../FluxOverviewDataProvider';
-import { SelectedResourceRef } from './useSelectedResource';
+
+type SelectedResourceRef = {
+  cluster: string;
+  kind: string;
+  name: string;
+  namespace?: string;
+};
 
 export const FluxOverview = ({
   selectedResourceRef,

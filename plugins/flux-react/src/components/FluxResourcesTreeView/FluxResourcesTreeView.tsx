@@ -1,13 +1,20 @@
-import { ReactNode, useCallback } from 'react';
+import { ReactNode, useCallback, useMemo } from 'react';
 import {
   FluxOverviewDataProvider,
   useFluxOverviewData,
 } from '../FluxOverviewDataProvider';
-import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DetailsPane,
+  FiltersLayout,
+  useDetailsPane,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { FluxOverview } from '../FluxOverview';
+import { FluxResourceDetails } from '../FluxResourceDetails';
 import { DefaultFilters } from './DefaultFilters';
-import { SelectedResourceDrawer } from '../FluxOverview/SelectedResourceDrawer';
+
+const FLUX_RESOURCE_PANE_ID = 'flux-resource';
+const FLUX_RESOURCE_PANE_PREFIX = 'sr';
 
 const Content = ({ filters }: { filters: ReactNode }) => {
   const {
@@ -20,23 +27,36 @@ const Content = ({ filters }: { filters: ReactNode }) => {
     imageRepositories,
     imageUpdateAutomations,
     isLoading,
-    treeBuilder,
-    selectedResourceRef,
-    setSelectedResource,
-    clearSelectedResource,
   } = useFluxOverviewData();
+
+  const { open, getParams } = useDetailsPane(FLUX_RESOURCE_PANE_ID, {
+    prefix: FLUX_RESOURCE_PANE_PREFIX,
+  });
 
   const onSelectResource = useCallback(
     (cluster: string, kind: string, name: string, namespace?: string) => {
-      setSelectedResource({
+      open({
         cluster,
-        kind,
+        kind: kind.toLowerCase(),
         name,
         namespace,
       });
     },
-    [setSelectedResource],
+    [open],
   );
+
+  const params = getParams();
+  const selectedResourceRef = useMemo(() => {
+    if (!params.cluster || !params.kind || !params.name) {
+      return null;
+    }
+    return {
+      cluster: params.cluster,
+      kind: params.kind,
+      name: params.name,
+      namespace: params.namespace ?? undefined,
+    };
+  }, [params.cluster, params.kind, params.name, params.namespace]);
 
   return (
     <>
@@ -50,24 +70,27 @@ const Content = ({ filters }: { filters: ReactNode }) => {
         </FiltersLayout.Content>
       </FiltersLayout>
 
-      {selectedResourceRef && (
-        <SelectedResourceDrawer
-          selectedResourceRef={selectedResourceRef}
-          kustomizations={kustomizations}
-          helmReleases={helmReleases}
-          gitRepositories={gitRepositories}
-          ociRepositories={ociRepositories}
-          helmRepositories={helmRepositories}
-          imagePolicies={imagePolicies}
-          imageRepositories={imageRepositories}
-          imageUpdateAutomations={imageUpdateAutomations}
-          isLoadingResources={isLoading}
-          treeBuilder={treeBuilder}
-          onClose={() => {
-            clearSelectedResource();
-          }}
-        />
-      )}
+      <DetailsPane
+        paneId={FLUX_RESOURCE_PANE_ID}
+        prefix={FLUX_RESOURCE_PANE_PREFIX}
+        render={({ cluster, kind, name, namespace }) => (
+          <FluxResourceDetails
+            cluster={cluster}
+            kind={kind}
+            name={name}
+            namespace={namespace}
+            kustomizations={kustomizations}
+            helmReleases={helmReleases}
+            gitRepositories={gitRepositories}
+            ociRepositories={ociRepositories}
+            helmRepositories={helmRepositories}
+            imagePolicies={imagePolicies}
+            imageRepositories={imageRepositories}
+            imageUpdateAutomations={imageUpdateAutomations}
+            isLoading={isLoading}
+          />
+        )}
+      />
     </>
   );
 };

@@ -8,12 +8,15 @@ import {
 } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
-import { JsonHighlight } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DetailsPane,
+  JsonHighlight,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ContentRow,
   ClusterLink,
   DateComponent,
-  DetailsPane,
   SimpleAccordion,
 } from '../../UI';
 import { Labels } from '../../LabelsCard/Labels';
@@ -454,14 +457,17 @@ export const WorkloadDetailsPane = () => {
   return (
     <DetailsPane
       paneId={WORKLOAD_DETAILS_PANE_ID}
-      render={({ installationName, kind, name, namespace, clusterName }) => (
-        <WorkloadDetails
-          installationName={installationName}
-          kind={kind}
-          name={name}
-          namespace={namespace}
-          clusterName={clusterName}
-        />
+      title={({ name }) => name}
+      render={({ cluster, clusterName, kind, name, namespace }) => (
+        <ErrorsProvider>
+          <WorkloadDetails
+            installationName={cluster}
+            kind={kind}
+            name={name}
+            namespace={namespace}
+            clusterName={clusterName}
+          />
+        </ErrorsProvider>
       )}
     />
   );

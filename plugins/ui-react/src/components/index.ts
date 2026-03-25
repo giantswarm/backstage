@@ -4,6 +4,7 @@ export * from './AsyncValue';
 export * from './Autocomplete';
 export * from './ContentRow';
 export * from './DateComponent';
+export * from './DetailsPane';
 export * from './ErrorStatus';
 export * from './ExternalLink';
 export * from './JsonHighlight';
