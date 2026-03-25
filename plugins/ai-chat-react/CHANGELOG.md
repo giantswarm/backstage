@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-react
 
+## 0.4.1
+
+### Patch Changes
+
+- c06f5bf: Replace AI chat floating action button with a sidebar nav item that toggles the chat drawer.
+
 ## 0.4.0
 
 ### Minor Changes

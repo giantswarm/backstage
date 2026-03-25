@@ -1,5 +1,32 @@
 # app
 
+## 0.33.0
+
+### Minor Changes
+
+- 0860ea0: Update Backstage to 1.49.2. Migrate test utilities from @backstage/test-utils to @backstage/frontend-test-utils. Add @backstage/cli-defaults. Fix zod v3/v4 resolution, AiChatFab route crash, and TypeScript issues.
+- 235dbc4: Refactor NFS migration: extract nav, user settings, scaffolder (page + API), home page, AI chat, kubernetes, api-docs, and app-level overrides into dedicated NFS modules, remove custom search page override in favor of upstream NFS page.
+
+### Patch Changes
+
+- c06f5bf: Replace AI chat floating action button with a sidebar nav item that toggles the chat drawer.
+- Updated dependencies [c06f5bf]
+- Updated dependencies [0860ea0]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [b5802af]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [584a717]
+- Updated dependencies [2fbeb40]
+- Updated dependencies [6e7c096]
+  - @giantswarm/backstage-plugin-ai-chat@0.11.1
+  - @giantswarm/backstage-plugin-gs@0.61.0
+  - @giantswarm/backstage-plugin-flux-react@0.13.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.1
+  - @giantswarm/backstage-plugin-kubernetes-react@0.14.1
+  - @giantswarm/backstage-plugin-flux@0.8.2
+
 ## 0.32.2
 
 ### Patch Changes

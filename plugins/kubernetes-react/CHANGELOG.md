@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.14.1
+
+### Patch Changes
+
+- b5802af: Fix false "Client outdated" warning for resources that only exist in older API group versions. Refactor API discovery hooks: `usePreferredVersion` now delegates to `usePreferredVersions`, version resolution uses resource-level versions only, and API discovery errors are propagated through `useResources`.
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+  - @giantswarm/backstage-plugin-ui-react@0.8.2
+
 ## 0.14.0
 
 ### Minor Changes

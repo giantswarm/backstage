@@ -5,6 +5,30 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-03-25
+
+### Added
+
+- Show auto-upgrade setting on HelmRelease details page.
+- Add row highlighting for selected node pool.
+
+### Changed
+
+- Update Backstage to 1.49.2.
+- Refactor NFS migration: extract nav, user settings, scaffolder, home page, AI chat, kubernetes, api-docs, and app-level overrides into dedicated NFS modules.
+- Replace AI chat floating action button with a sidebar nav item that toggles the chat drawer.
+- Replace SelectedResourceDrawer with shared DetailsPane component from ui-react.
+- Move DetailsPane component and useDetailsPane hook from gs plugin to ui-react for reuse across plugins.
+- Use drawer mode for AI chat button in Flux resource cards.
+- Push right-anchored MUI drawers when AI chat drawer opens in persistent mode.
+
+### Fixed
+
+- Fix false "Client outdated" warning for resources in older API versions.
+- Fix EntityReadmeCard height clipping when content doesn't need expansion.
+
+See [./docs/releases/v0.116.0-changelog.md](./docs/releases/v0.116.0-changelog.md) for more information.
+
 ## [0.115.0] - 2026-03-23
 
 ### Added
@@ -2078,7 +2102,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.115.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.0...HEAD
+[0.116.0]: https://github.com/giantswarm/backstage/compare/v0.115.0...v0.116.0
 [0.115.0]: https://github.com/giantswarm/backstage/compare/v0.114.1...v0.115.0
 [0.114.1]: https://github.com/giantswarm/backstage/compare/v0.114.0...v0.114.1
 [0.114.0]: https://github.com/giantswarm/backstage/compare/v0.113.0...v0.114.0

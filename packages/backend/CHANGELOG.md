@@ -1,5 +1,11 @@
 # backend
 
+## 0.18.0
+
+### Minor Changes
+
+- 0860ea0: Update Backstage to 1.49.2. Migrate test utilities from @backstage/test-utils to @backstage/frontend-test-utils. Add @backstage/cli-defaults. Fix zod v3/v4 resolution, AiChatFab route crash, and TypeScript issues.
+
 ## 0.17.2
 
 ### Patch Changes
