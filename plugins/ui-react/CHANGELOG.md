@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.8.2
+
+### Patch Changes
+
+- c06f5bf: Replace SelectedResourceDrawer with shared DetailsPane component from ui-react. Add prefix support and open() method to useDetailsPane hook. Rename installationName to cluster in DetailsPane params.
+- c06f5bf: Move DetailsPane component and useDetailsPane hook from gs plugin to ui-react for reuse across plugins.
+
 ## 0.8.1
 
 ### Patch Changes

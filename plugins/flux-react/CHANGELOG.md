@@ -1,5 +1,23 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.13.0
+
+### Minor Changes
+
+- 0860ea0: Update Backstage to 1.49.2. Migrate test utilities from @backstage/test-utils to @backstage/frontend-test-utils. Add @backstage/cli-defaults. Fix zod v3/v4 resolution, AiChatFab route crash, and TypeScript issues.
+
+### Patch Changes
+
+- c06f5bf: Use drawer mode for AI chat button in flux resource cards instead of page navigation.
+- c06f5bf: Replace SelectedResourceDrawer with shared DetailsPane component from ui-react. Add prefix support and open() method to useDetailsPane hook. Rename installationName to cluster in DetailsPane params.
+- Updated dependencies [c06f5bf]
+- Updated dependencies [b5802af]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.1
+  - @giantswarm/backstage-plugin-kubernetes-react@0.14.1
+  - @giantswarm/backstage-plugin-ui-react@0.8.2
+
 ## 0.12.2
 
 ### Patch Changes

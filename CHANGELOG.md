@@ -25,6 +25,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix false "Client outdated" warning for resources in older API versions.
 - Fix EntityReadmeCard height clipping when content doesn't need expansion.
 
+See [./docs/releases/v0.116.0-changelog.md](./docs/releases/v0.116.0-changelog.md) for more information.
+
 ## [0.115.0] - 2026-03-23
 
 ### Added

@@ -1,5 +1,30 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.61.0
+
+### Minor Changes
+
+- 0860ea0: Update Backstage to 1.49.2. Migrate test utilities from @backstage/test-utils to @backstage/frontend-test-utils. Add @backstage/cli-defaults. Fix zod v3/v4 resolution, AiChatFab route crash, and TypeScript issues.
+- 584a717: Show auto-upgrade setting in HelmRelease details page
+
+### Patch Changes
+
+- c06f5bf: Replace SelectedResourceDrawer with shared DetailsPane component from ui-react. Add prefix support and open() method to useDetailsPane hook. Rename installationName to cluster in DetailsPane params.
+- c06f5bf: Move DetailsPane component and useDetailsPane hook from gs plugin to ui-react for reuse across plugins.
+- 2fbeb40: Add row highlighting for selected node pool
+- 6e7c096: Fix EntityReadmeCard height clipping when content doesn't need expansion.
+- Updated dependencies [0860ea0]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [b5802af]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+  - @giantswarm/backstage-plugin-flux-react@0.13.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.1
+  - @giantswarm/backstage-plugin-kubernetes-react@0.14.1
+  - @giantswarm/backstage-plugin-ui-react@0.8.2
+  - @giantswarm/backstage-plugin-flux@0.8.2
+
 ## 0.60.0
 
 ### Minor Changes

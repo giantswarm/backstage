@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.11.1
+
+### Patch Changes
+
+- c06f5bf: Push right-anchored MUI drawers when the AI chat drawer opens in persistent mode, preventing overlap with other drawers like Flux resource details.
+- c06f5bf: Replace AI chat floating action button with a sidebar nav item that toggles the chat drawer.
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+- Updated dependencies [c06f5bf]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.1
+  - @giantswarm/backstage-plugin-ui-react@0.8.2
+
 ## 0.11.0
 
 ### Minor Changes
