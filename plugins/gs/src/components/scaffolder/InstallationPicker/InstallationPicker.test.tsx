@@ -51,9 +51,10 @@ jest.mock('../hooks/useValueFromOptions', () => ({
 function renderPicker(
   props: Partial<Parameters<typeof InstallationPicker>[0]> = {},
 ) {
-  const defaultProps: Parameters<typeof InstallationPicker>[0] = {
+  const defaultProps = {
     onChange: jest.fn(),
     onBlur: jest.fn(),
+    onFocus: jest.fn(),
     rawErrors: [],
     required: false,
     formData: undefined,
