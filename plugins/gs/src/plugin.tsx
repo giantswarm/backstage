@@ -263,7 +263,7 @@ const deploymentsEntityContent = EntityContentBlueprint.make({
     path: '/deployments',
     title: 'Deployments',
     routeRef: entityDeploymentsRouteRef,
-    filter: entity => isEntityDeploymentsAvailable(entity),
+    filter: entity => isEntityHelmChartTagged(entity),
     loader: async () => {
       const { EntityDeploymentsContent } =
         await import('./components/deployments/EntityDeploymentsContent');

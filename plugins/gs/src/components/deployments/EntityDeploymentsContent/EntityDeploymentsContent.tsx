@@ -1,12 +1,6 @@
-import {
-  Content,
-  ContentHeader,
-  SupportButton,
-} from '@backstage/core-components';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Box } from '@material-ui/core';
 import {
-  getDeploymentNamesFromEntity,
   getIngressHostFromEntity,
   getGrafanaDashboardFromEntity,
   getSourceLocationFromEntity,
@@ -20,17 +14,22 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { InstallationPicker } from './filters/InstallationPicker';
 import { QueryClientProvider } from '../../QueryClientProvider';
+import {
+  EntityChartProvider,
+  useCurrentEntityChart,
+} from '../../catalog/EntityChartContext';
 
 const DeploymentsContent = () => {
   const { entity } = useEntity();
   const sourceLocation = getSourceLocationFromEntity(entity);
   const grafanaDashboard = getGrafanaDashboardFromEntity(entity);
   const ingressHost = getIngressHostFromEntity(entity);
+  const { selectedChart } = useCurrentEntityChart();
 
   const { clusters } = useClustersInfo();
 
   return (
-    <>
+    <DeploymentsDataProvider deploymentNames={[selectedChart.name]}>
       <Box mb={clusters.length > 1 ? 2 : undefined}>
         <InstallationPicker />
       </Box>
@@ -41,28 +40,18 @@ const DeploymentsContent = () => {
         ingressHost={ingressHost}
         context="catalog-entity"
       />
-    </>
+    </DeploymentsDataProvider>
   );
 };
 
 export const EntityDeploymentsContent = () => {
-  const { entity } = useEntity();
-
-  const entityName = entity.metadata.name;
-  const deploymentNames = getDeploymentNamesFromEntity(entity) ?? [];
-
   return (
     <QueryClientProvider>
-      <Content>
-        <ContentHeader title={`Deployments of ${entityName}`}>
-          <SupportButton>{`This table shows all the clusters where ${entityName} is deployed to.`}</SupportButton>
-        </ContentHeader>
+      <EntityChartProvider>
         <ErrorsProvider>
-          <DeploymentsDataProvider deploymentNames={deploymentNames}>
-            <DeploymentsContent />
-          </DeploymentsDataProvider>
+          <DeploymentsContent />
         </ErrorsProvider>
-      </Content>
+      </EntityChartProvider>
     </QueryClientProvider>
   );
 };
