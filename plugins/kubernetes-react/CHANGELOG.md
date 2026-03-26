@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.14.2
+
+### Patch Changes
+
+- aa78ce4: Fix false API version incompatibility errors caused by transient server failures during discovery.
+- d2feef2: Fix flaky generateUID uniqueness test by increasing minimum ID length.
+
 ## 0.14.1
 
 ### Patch Changes
