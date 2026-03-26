@@ -1,6 +1,7 @@
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
 import scaffolderPlugin from '@backstage/plugin-scaffolder/alpha';
-import { orgPlugin } from '@backstage/plugin-org';
+// import { orgPlugin } from '@backstage/plugin-org';
+import orgPlugin from '@backstage/plugin-org/alpha';
 import techdocsPlugin from '@backstage/plugin-techdocs/alpha';
 import homePlugin from '@backstage/plugin-home/alpha';
 import searchPlugin from '@backstage/plugin-search/alpha';
@@ -46,11 +47,11 @@ const app = createApp({
     homePluginOverrides,
     catalogPlugin,
     catalogPluginOverrides,
+    orgPlugin,
     searchPlugin,
     userSettingsPlugin,
     userSettingsPluginOverrides,
     techdocsPlugin,
-    catalogGraphPlugin,
     kubernetesPlugin,
     kubernetesPluginOverrides,
     apiDocsPlugin,
@@ -63,6 +64,8 @@ const app = createApp({
     appOverrides,
     // Nav sidebar layout:
     navModule,
+
+    catalogGraphPlugin,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {

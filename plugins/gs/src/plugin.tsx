@@ -207,7 +207,7 @@ const appDeploymentEntityCard = EntityCardBlueprint.make({
 const installationDetailsEntityCard = EntityCardBlueprint.make({
   name: 'installation-details',
   params: {
-    type: 'info',
+    type: 'content',
     filter: entity => isEntityInstallationResource(entity),
     loader: async () => {
       const { EntityInstallationDetailsCard } =
