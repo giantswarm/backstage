@@ -5,35 +5,12 @@ export { gsPlugin } from './plugin';
 // Raw StepLayout component for scaffolder page override
 export { StepLayout } from './components/scaffolder/StepLayout/StepLayout';
 
-// Entity content as raw components (no longer routable extensions)
-export { EntityDeploymentsContent as EntityGSDeploymentsContent } from './components/deployments/EntityDeploymentsContent';
-export { EntityKratixResourcesContent as EntityGSKratixResourcesContent } from './components/catalog/EntityKratixResourcesContent';
-
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
 export { createCustomEntityPresentationRenderer as createGSEntityPresentationRenderer } from './apis/entityPresentation';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
-export { EntityAppDeploymentCard as EntityGSAppDeploymentCard } from './components/catalog/EntityAppDeploymentCard';
-export { EntityInstallationDetailsCard as EntityGSInstallationDetailsCard } from './components/catalog/EntityInstallationDetailsCard';
-export { EntityKratixResourcesCard as EntityGSKratixResourcesCard } from './components/catalog/EntityKratixResourcesCard';
-export { EntityKratixStatusCard as EntityGSKratixStatusCard } from './components/catalog/EntityKratixStatusCard';
 export { ResourcesCard as GSHomePageResources } from './components/home/ResourcesCard';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
-export {
-  getIconUrlFromEntity as getGSIconUrlFromEntity,
-  isEntityDeploymentsAvailable as isEntityGSDeploymentsAvailable,
-  isEntityLatestReleaseAvailable as isEntityGSLatestReleaseAvailable,
-  isEntityHelmChartsAvailable as isEntityGSHelmChartsAvailable,
-  isEntityInstallationResource as isEntityGSInstallationResource,
-  isEntityKratixResource as isEntityGSKratixResource,
-  isEntityHelmChartTagged as isEntityGSVersionHistoryAvailable,
-} from './components/utils/entity';
-export { EntityVersionHistoryContent as EntityGSVersionHistoryContent } from './components/catalog/EntityVersionHistoryContent';
-export { EntityVersionHistoryCard as EntityGSVersionHistoryCard } from './components/catalog/EntityVersionHistoryCard';
-export { EntityReadmeCard as EntityGSReadmeCard } from './components/catalog/EntityReadmeCard';
-export { EntityChartProvider as EntityGSChartProvider } from './components/catalog/EntityChartContext';
-export { columnFactories as GSColumnFactories } from './components/catalog/columns';
-export { EntityHeaderIcon as EntityGSHeaderIcon } from './components/catalog/EntityHeaderIcon';
 export { useDisabledInstallations } from './components/hooks/useDisabledInstallations';

@@ -35,7 +35,6 @@ import {
   rootRouteRef,
 } from './routes';
 import {
-  isEntityDeploymentsAvailable,
   isEntityHelmChartTagged,
   isEntityInstallationResource,
   isEntityKratixResource,
