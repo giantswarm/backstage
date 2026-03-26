@@ -53,6 +53,7 @@ function renderPicker(
 ) {
   const defaultProps: Parameters<typeof InstallationPicker>[0] = {
     onChange: jest.fn(),
+    onBlur: jest.fn(),
     rawErrors: [],
     required: false,
     formData: undefined,
