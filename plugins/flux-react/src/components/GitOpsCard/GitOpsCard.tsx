@@ -1,4 +1,4 @@
-import { Box, Card, CardContent, Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { useMemo } from 'react';
 import {
   getKustomizationName,
@@ -18,6 +18,7 @@ import {
   AsyncValue,
   ErrorStatus,
   ExternalLink,
+  InfoCard,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useGitSourceLink } from '../../hooks';
 import { GitOpsIcon } from '../../assets/icons';
@@ -109,34 +110,32 @@ export function GitOpsCard({ deployment, installationName }: GitOpsCardProps) {
   });
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" alignItems="center">
-          <Box display="flex" alignItems="center" marginRight={1.5}>
-            <GitOpsIcon />
-          </Box>
-          <Typography variant="inherit">Managed through GitOps</Typography>
-          <Box marginLeft={1.5} minWidth={75}>
-            <AsyncValue
-              isLoading={isLoading}
-              value={sourceUrl}
-              errorMessage={errorMessage}
-              renderError={message => (
-                <ErrorStatus errorMessage={message} notAvailable={false} />
-              )}
-            >
-              {value => (
-                <Box display="flex" alignItems="center">
-                  <Box marginLeft={-0.5} marginRight={1}>
-                    <Typography variant="inherit">·</Typography>
-                  </Box>
-                  <ExternalLink href={value}>Source</ExternalLink>
-                </Box>
-              )}
-            </AsyncValue>
-          </Box>
+    <InfoCard>
+      <Box display="flex" alignItems="center">
+        <Box display="flex" alignItems="center" marginRight={1.5}>
+          <GitOpsIcon />
         </Box>
-      </CardContent>
-    </Card>
+        <Typography variant="inherit">Managed through GitOps</Typography>
+        <Box marginLeft={1.5} minWidth={75}>
+          <AsyncValue
+            isLoading={isLoading}
+            value={sourceUrl}
+            errorMessage={errorMessage}
+            renderError={message => (
+              <ErrorStatus errorMessage={message} notAvailable={false} />
+            )}
+          >
+            {value => (
+              <Box display="flex" alignItems="center">
+                <Box marginLeft={-0.5} marginRight={1}>
+                  <Typography variant="inherit">·</Typography>
+                </Box>
+                <ExternalLink href={value}>Source</ExternalLink>
+              </Box>
+            )}
+          </AsyncValue>
+        </Box>
+      </Box>
+    </InfoCard>
   );
 }

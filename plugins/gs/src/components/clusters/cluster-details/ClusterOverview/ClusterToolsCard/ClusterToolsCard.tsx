@@ -1,4 +1,4 @@
-import { Card, CardContent } from '@material-ui/core';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { type Tool, Toolkit } from '../../../../UI';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
@@ -74,10 +74,8 @@ export function ClusterToolsCard() {
   }
 
   return (
-    <Card>
-      <CardContent>
-        <Toolkit tools={filteredTools} />
-      </CardContent>
-    </Card>
+    <InfoCard>
+      <Toolkit tools={filteredTools} />
+    </InfoCard>
   );
 }

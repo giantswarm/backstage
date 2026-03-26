@@ -1,4 +1,4 @@
-import { Card, CardContent } from '@material-ui/core';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { Toolkit, type Tool } from '../../../../UI';
@@ -41,10 +41,8 @@ export function DeploymentToolsCard() {
   }
 
   return (
-    <Card>
-      <CardContent>
-        <Toolkit tools={filteredTools} />
-      </CardContent>
-    </Card>
+    <InfoCard>
+      <Toolkit tools={filteredTools} />
+    </InfoCard>
   );
 }
