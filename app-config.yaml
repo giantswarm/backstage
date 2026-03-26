@@ -34,6 +34,13 @@ app:
     - entity-content:api-docs/apis: false
 
     - entity-context-menu-item:catalog/unregister-entity: false
+  routes:
+    bindings:
+      catalog.externalRoutes.createComponent: scaffolder.routes.root
+      catalog.externalRoutes.viewTechDoc: techdocs.routes.docRoot
+      org.externalRoutes.catalogIndex: catalog.routes.catalogIndex
+      gs.externalRoutes.fluxOverview: flux.routes.overview
+      gs.externalRoutes.fluxResources: flux.routes.root
   telemetrydeck:
     appID: ''
     salt: ${TELEMETRYDECK_SALT}

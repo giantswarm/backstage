@@ -67,19 +67,6 @@ const app = createApp({
 
     catalogGraphPlugin,
   ],
-  bindRoutes({ bind }) {
-    bind(catalogPlugin.externalRoutes, {
-      createComponent: scaffolderPlugin.routes.root,
-      viewTechDoc: techdocsPlugin.routes.docRoot,
-    });
-    bind(orgPlugin.externalRoutes, {
-      catalogIndex: catalogPlugin.routes.catalogIndex,
-    });
-    bind(gsPlugin.externalRoutes, {
-      fluxOverview: fluxPlugin.routes.overview,
-      fluxResources: fluxPlugin.routes.root,
-    });
-  },
 });
 
 export default app.createRoot();
