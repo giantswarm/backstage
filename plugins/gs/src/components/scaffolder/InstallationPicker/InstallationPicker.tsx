@@ -58,6 +58,15 @@ const InstallationPickerField = ({
       });
     }
 
+    // Sort installations in eu-north-* regions to the top, as these are
+    // the most climate-friendly (lowest carbon intensity).
+    filteredInstallations.sort((a, b) => {
+      const euNorthPrefix = 'eu-north-';
+      const aEuNorth = a.region?.startsWith(euNorthPrefix) ? 0 : 1;
+      const bEuNorth = b.region?.startsWith(euNorthPrefix) ? 0 : 1;
+      return aEuNorth - bEuNorth;
+    });
+
     filteredInstallations.forEach((installation, idx) => {
       labels[idx] = installation.name;
       if (installation.region || installation.pipeline) {
