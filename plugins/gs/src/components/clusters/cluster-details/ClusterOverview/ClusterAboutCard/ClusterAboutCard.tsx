@@ -1,14 +1,8 @@
 import { Link as RouterLink } from 'react-router-dom';
+import { Grid } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Box,
-  Card,
-  CardContent,
-  Grid,
-  Tooltip,
-  Typography,
-} from '@material-ui/core';
+import { Box, Tooltip, Typography } from '@material-ui/core';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import {
   calculateClusterType,
@@ -49,7 +43,7 @@ import {
   AzureProviderIcon,
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
-import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
+import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 interface ProviderLocationDisplayProps {
   provider: string;
@@ -159,137 +153,122 @@ export function ClusterAboutCard() {
   const k8sVersion = controlPlane ? controlPlane.getK8sVersion() : undefined;
 
   return (
-    <Card>
-      <CardContent>
-        <Grid container spacing={5}>
-          <AboutField label="Type" gridSizes={{ xs: 6, md: 4 }}>
-            <AboutFieldValue>
-              <Box display="inline-flex" alignItems="center">
-                {clusterType === ClusterTypes.Management ? (
-                  <Tooltip title="Management cluster">
-                    <Box display="flex" mr={1}>
-                      <ClusterTypeManagementIcon />
-                    </Box>
-                  </Tooltip>
-                ) : (
-                  <Tooltip title="Workload cluster">
-                    <Box display="flex" mr={1}>
-                      <ClusterTypeWorkloadIcon />
-                    </Box>
-                  </Tooltip>
-                )}
-                <span>{formatClusterType(clusterType)}</span>
-              </Box>
-            </AboutFieldValue>
-          </AboutField>
-
-          <AboutField label="Kubernetes version" gridSizes={{ xs: 6, md: 4 }}>
-            <AboutFieldValue>
-              <AsyncValue
-                isLoading={controlPlaneIsLoading}
-                value={k8sVersion}
-                errorMessage={controlPlaneErrorMessage}
-              >
-                {value => (
-                  <KubernetesVersion
-                    version={formatVersion(value)}
-                    hideIcon={false}
-                    hideLabel
-                  />
-                )}
-              </AsyncValue>
-            </AboutFieldValue>
-          </AboutField>
-
-          <AboutField label="Release" gridSizes={{ xs: 6, md: 4 }}>
-            <AboutFieldValue>
-              {releaseVersion ? (
-                formatVersion(releaseVersion)
-              ) : (
-                <NotAvailable />
-              )}
-            </AboutFieldValue>
-          </AboutField>
-
-          {!isManagementCluster(cluster) && (
-            <AboutField
-              label="Installation"
-              value={installationName}
-              gridSizes={{ xs: 6, md: 4 }}
-            >
-              <AboutFieldValue>
-                <Tooltip title="Open management cluster">
-                  <Link
-                    component={RouterLink}
-                    to={managementClusterRouteLink({
-                      installationName: installationName,
-                      namespace: Constants.MANAGEMENT_CLUSTER_NAMESPACE,
-                      name: installationName,
-                    })}
-                  >
-                    {installationName}
-                  </Link>
+    <InfoCard>
+      <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="5">
+        <AboutField label="Type">
+          <AboutFieldValue>
+            <Box display="inline-flex" alignItems="center">
+              {clusterType === ClusterTypes.Management ? (
+                <Tooltip title="Management cluster">
+                  <Box display="flex" mr={1}>
+                    <ClusterTypeManagementIcon />
+                  </Box>
                 </Tooltip>
+              ) : (
+                <Tooltip title="Workload cluster">
+                  <Box display="flex" mr={1}>
+                    <ClusterTypeWorkloadIcon />
+                  </Box>
+                </Tooltip>
+              )}
+              <span>{formatClusterType(clusterType)}</span>
+            </Box>
+          </AboutFieldValue>
+        </AboutField>
+
+        <AboutField label="Kubernetes version">
+          <AboutFieldValue>
+            <AsyncValue
+              isLoading={controlPlaneIsLoading}
+              value={k8sVersion}
+              errorMessage={controlPlaneErrorMessage}
+            >
+              {value => (
+                <KubernetesVersion
+                  version={formatVersion(value)}
+                  hideIcon={false}
+                  hideLabel
+                />
+              )}
+            </AsyncValue>
+          </AboutFieldValue>
+        </AboutField>
+
+        <AboutField label="Release">
+          <AboutFieldValue>
+            {releaseVersion ? formatVersion(releaseVersion) : <NotAvailable />}
+          </AboutFieldValue>
+        </AboutField>
+
+        {!isManagementCluster(cluster) && (
+          <AboutField label="Installation" value={installationName}>
+            <AboutFieldValue>
+              <Tooltip title="Open management cluster">
+                <Link
+                  component={RouterLink}
+                  to={managementClusterRouteLink({
+                    installationName: installationName,
+                    namespace: Constants.MANAGEMENT_CLUSTER_NAMESPACE,
+                    name: installationName,
+                  })}
+                >
+                  {installationName}
+                </Link>
+              </Tooltip>
+            </AboutFieldValue>
+          </AboutField>
+        )}
+
+        <AboutField
+          label={
+            provider === ClusterProviders.AWS ||
+            provider === ClusterProviders.Azure
+              ? 'Provider/Location'
+              : 'Provider'
+          }
+        >
+          <AboutFieldValue>
+            {provider ? (
+              <ProviderLocationDisplay provider={provider} />
+            ) : (
+              <NotAvailable />
+            )}
+          </AboutFieldValue>
+        </AboutField>
+
+        <ClusterSwitch
+          renderAWS={() => (
+            <AboutField label="AWS account">
+              <AboutFieldValue>
+                <AWSAccountField />
               </AboutFieldValue>
             </AboutField>
           )}
+          renderAzure={() => null}
+          renderVSphere={() => null}
+          renderVCD={() => null}
+        />
 
-          <AboutField
-            label={
-              provider === ClusterProviders.AWS ||
-              provider === ClusterProviders.Azure
-                ? 'Provider/Location'
-                : 'Provider'
-            }
-            gridSizes={{ xs: 6, md: 4 }}
-          >
-            <AboutFieldValue>
-              {provider ? (
-                <ProviderLocationDisplay provider={provider} />
-              ) : (
-                <NotAvailable />
-              )}
-            </AboutFieldValue>
-          </AboutField>
+        <AboutField label="Organization" value={organization} />
 
-          <ClusterSwitch
-            renderAWS={() => (
-              <AboutField label="AWS account" gridSizes={{ xs: 6, md: 4 }}>
-                <AboutFieldValue>
-                  <AWSAccountField />
-                </AboutFieldValue>
-              </AboutField>
+        <AboutField label="Service priority">
+          <AboutFieldValue>
+            {servicePriority ? (
+              formatServicePriority(servicePriority)
+            ) : (
+              <NotAvailable />
             )}
-            renderAzure={() => null}
-            renderVSphere={() => null}
-            renderVCD={() => null}
-          />
+          </AboutFieldValue>
+        </AboutField>
 
-          <AboutField
-            label="Organization"
-            value={organization}
-            gridSizes={{ xs: 6, md: 4 }}
-          />
-
-          <AboutField label="Service priority" gridSizes={{ xs: 6, md: 4 }}>
-            <AboutFieldValue>
-              {servicePriority ? (
-                formatServicePriority(servicePriority)
-              ) : (
-                <NotAvailable />
-              )}
-            </AboutFieldValue>
-          </AboutField>
-
-          <AboutField label="Created" gridSizes={{ xs: 6, md: 4 }}>
-            <AboutFieldValue>
-              <Typography variant="inherit">
-                <DateComponent value={creationTimestamp} relative />
-              </Typography>
-            </AboutFieldValue>
-          </AboutField>
-        </Grid>
-      </CardContent>
-    </Card>
+        <AboutField label="Created">
+          <AboutFieldValue>
+            <Typography variant="inherit">
+              <DateComponent value={creationTimestamp} relative />
+            </Typography>
+          </AboutFieldValue>
+        </AboutField>
+      </Grid.Root>
+    </InfoCard>
   );
 }

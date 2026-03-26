@@ -1,12 +1,7 @@
 import { useState } from 'react';
+import { Switch } from '@backstage/ui';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  Box,
-  FormControlLabel,
-  FormGroup,
-  Switch,
-  Typography,
-} from '@material-ui/core';
+import { Typography } from '@material-ui/core';
 import { Labels } from './Labels';
 import { LabelConfig } from './Labels/utils/types';
 
@@ -43,21 +38,13 @@ export const LabelsCard = ({
     <InfoCard
       title={title}
       headerActions={
-        <Box marginTop="6px">
-          <FormGroup>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={displayFriendlyItems}
-                  onChange={() => {
-                    setDisplayFriendlyItems(!displayFriendlyItems);
-                  }}
-                />
-              }
-              label={friendlyItemsControlLabel}
-            />
-          </FormGroup>
-        </Box>
+        <Switch
+          label={friendlyItemsControlLabel}
+          isSelected={displayFriendlyItems}
+          onChange={() => {
+            setDisplayFriendlyItems(!displayFriendlyItems);
+          }}
+        />
       }
     >
       {displayFriendlyItems && labelsConfig.length === 0 ? (

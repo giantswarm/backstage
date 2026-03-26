@@ -1,4 +1,5 @@
-import { Box, Grid, makeStyles, Theme, Typography } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
+import { Box, makeStyles, Theme, Typography } from '@material-ui/core';
 import { makeLabelVariants, type LabelVariant } from './utils';
 import { useLabelsWithDisplayInfo } from './useLabelsWithDisplayInfo';
 import {
@@ -114,19 +115,20 @@ export const Labels = ({
   }
 
   return (
-    <Grid container spacing={1}>
+    <Flex
+      gap="2"
+      direction={wrapItems ? 'row' : 'column'}
+      style={{ flexWrap: wrapItems ? 'wrap' : 'nowrap' }}
+    >
       {labelsWithDisplayInfo.map(label => (
-        <Grid item key={label.key} xs={wrapItems ? undefined : 12}>
-          <Label
-            labelKey={displayFriendlyItems ? label.formattedKey : label.key}
-            labelValue={
-              displayFriendlyItems ? label.formattedValue : label.value
-            }
-            labelVariant={label.variant}
-            labelKind={labelKind}
-          />
-        </Grid>
+        <Label
+          key={label.key}
+          labelKey={displayFriendlyItems ? label.formattedKey : label.key}
+          labelValue={displayFriendlyItems ? label.formattedValue : label.value}
+          labelVariant={label.variant}
+          labelKind={labelKind}
+        />
       ))}
-    </Grid>
+    </Flex>
   );
 };
