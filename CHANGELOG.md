@@ -10,6 +10,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix false API version incompatibility errors caused by transient server failures during discovery.
 - Fix flaky generateUID uniqueness test by increasing minimum ID length.
 
+See [./docs/releases/v0.116.2-changelog.md](./docs/releases/v0.116.2-changelog.md) for more information.
+
 ## [0.116.1] - 2026-03-25
 
 ### Fixed
