@@ -24,6 +24,10 @@ import { userSettingsPluginOverrides } from './modules/userSettings';
 import { aiChatPluginOverrides } from './modules/ai-chat';
 import { kubernetesPluginOverrides } from './modules/kubernetes';
 import { apiDocsPluginOverrides } from './modules/api-docs';
+import {
+  circleCINfsPlugin,
+  githubPullRequestsNfsPlugin,
+} from './legacyPlugins';
 import { catalogPluginOverrides } from './modules/catalog';
 
 const app = createApp({
@@ -52,6 +56,9 @@ const app = createApp({
     apiDocsPlugin,
     apiDocsPluginOverrides,
     githubActionsPlugin,
+    // Legacy plugins converted for NFS route ref discovery:
+    circleCINfsPlugin,
+    githubPullRequestsNfsPlugin,
     // App-level overrides (core APIs, icons, sign-in page, feature flags):
     appOverrides,
     // Nav sidebar layout:
