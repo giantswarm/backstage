@@ -1,6 +1,7 @@
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
 import scaffolderPlugin from '@backstage/plugin-scaffolder/alpha';
-import { orgPlugin } from '@backstage/plugin-org';
+// import { orgPlugin } from '@backstage/plugin-org';
+import orgPlugin from '@backstage/plugin-org/alpha';
 import techdocsPlugin from '@backstage/plugin-techdocs/alpha';
 import homePlugin from '@backstage/plugin-home/alpha';
 import searchPlugin from '@backstage/plugin-search/alpha';
@@ -16,20 +17,19 @@ import gsPlugin from '@giantswarm/backstage-plugin-gs';
 import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
-import { catalogApiOverrides } from './apiOverrides';
 import { scaffolderPluginOverrides } from './modules/scaffolder';
 import { appOverrides } from './modules/app';
-import {
-  circleCINfsPlugin,
-  githubPullRequestsNfsPlugin,
-} from './legacyPlugins';
 import { navModule } from './modules/nav';
 import { homePluginOverrides } from './modules/home';
 import { userSettingsPluginOverrides } from './modules/userSettings';
 import { aiChatPluginOverrides } from './modules/ai-chat';
 import { kubernetesPluginOverrides } from './modules/kubernetes';
 import { apiDocsPluginOverrides } from './modules/api-docs';
-import { catalogPageOverrides } from './routeOverrides';
+import {
+  circleCINfsPlugin,
+  githubPullRequestsNfsPlugin,
+} from './legacyPlugins';
+import { catalogPluginOverrides } from './modules/catalog';
 
 const app = createApp({
   features: [
@@ -46,11 +46,12 @@ const app = createApp({
     homePlugin,
     homePluginOverrides,
     catalogPlugin,
+    catalogPluginOverrides,
+    orgPlugin,
     searchPlugin,
     userSettingsPlugin,
     userSettingsPluginOverrides,
     techdocsPlugin,
-    catalogGraphPlugin,
     kubernetesPlugin,
     kubernetesPluginOverrides,
     apiDocsPlugin,
@@ -63,10 +64,8 @@ const app = createApp({
     appOverrides,
     // Nav sidebar layout:
     navModule,
-    // API overrides for upstream NFS plugins (custom GS implementations):
-    catalogApiOverrides,
-    // Page overrides for upstream NFS plugins:
-    catalogPageOverrides,
+
+    catalogGraphPlugin,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {

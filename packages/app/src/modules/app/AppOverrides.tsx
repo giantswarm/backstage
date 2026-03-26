@@ -41,7 +41,12 @@ import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter
 import { grafanaPlugin } from '@k-phoen/backstage-plugin-grafana';
 import { SentryErrorReporter } from '../../apis/errorReporter';
 import { TelemetryDeckAnalyticsApi } from '../../apis/analytics';
-import { GiantSwarmIcon, GrafanaIcon } from '../../assets/icons/CustomIcons';
+import {
+  AWSIcon,
+  AzureIcon,
+  GiantSwarmIcon,
+  GrafanaIcon,
+} from '../../assets/icons/CustomIcons';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -156,6 +161,8 @@ export const appOverrides = createFrontendModule({
         icons: {
           giantswarm: <GiantSwarmIcon />,
           grafana: <GrafanaIcon />,
+          aws: <AWSIcon />,
+          azure: <AzureIcon />,
         },
       },
     }),
