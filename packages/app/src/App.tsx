@@ -16,22 +16,15 @@ import gsPlugin from '@giantswarm/backstage-plugin-gs';
 import fluxPlugin from '@giantswarm/backstage-plugin-flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { fluxPluginOverrides } from './flux';
-import { catalogApiOverrides } from './apiOverrides';
 import { scaffolderPluginOverrides } from './modules/scaffolder';
 import { appOverrides } from './modules/app';
-import {
-  circleCINfsPlugin,
-  githubPullRequestsNfsPlugin,
-} from './legacyPlugins';
 import { navModule } from './modules/nav';
 import { homePluginOverrides } from './modules/home';
 import { userSettingsPluginOverrides } from './modules/userSettings';
 import { aiChatPluginOverrides } from './modules/ai-chat';
 import { kubernetesPluginOverrides } from './modules/kubernetes';
 import { apiDocsPluginOverrides } from './modules/api-docs';
-import { catalogPageOverrides } from './routeOverrides';
-import { catalogDependenciesExtension } from './modules/catalog/dependenciesEntityContent';
-import { catalogLegacyEntityExtensions } from './modules/catalog/legacyEntityExtensions';
+import { catalogPluginOverrides } from './modules/catalog';
 
 const app = createApp({
   features: [
@@ -48,6 +41,7 @@ const app = createApp({
     homePlugin,
     homePluginOverrides,
     catalogPlugin,
+    catalogPluginOverrides,
     searchPlugin,
     userSettingsPlugin,
     userSettingsPluginOverrides,
@@ -58,21 +52,10 @@ const app = createApp({
     apiDocsPlugin,
     apiDocsPluginOverrides,
     githubActionsPlugin,
-    // Legacy plugins converted for NFS route ref discovery:
-    circleCINfsPlugin,
-    githubPullRequestsNfsPlugin,
     // App-level overrides (core APIs, icons, sign-in page, feature flags):
     appOverrides,
     // Nav sidebar layout:
     navModule,
-    // API overrides for upstream NFS plugins (custom GS implementations):
-    catalogApiOverrides,
-    // Page overrides for upstream NFS plugins:
-    catalogPageOverrides,
-    // Legacy entity extensions (CircleCI, GitHub PRs, Grafana):
-    catalogLegacyEntityExtensions,
-    // Entity content extensions:
-    catalogDependenciesExtension,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {

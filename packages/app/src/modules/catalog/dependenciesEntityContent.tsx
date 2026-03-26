@@ -1,4 +1,3 @@
-import { createFrontendModule } from '@backstage/frontend-plugin-api';
 import { EntityContentBlueprint } from '@backstage/plugin-catalog-react/alpha';
 import Grid from '@material-ui/core/Grid';
 import Typography from '@material-ui/core/Typography';
@@ -7,7 +6,7 @@ import {
   EntityDependsOnResourcesCard,
 } from '@backstage/plugin-catalog';
 
-const dependenciesEntityContent = EntityContentBlueprint.make({
+export const DependenciesEntityContent = EntityContentBlueprint.make({
   name: 'dependencies',
   params: {
     path: '/dependencies',
@@ -34,9 +33,4 @@ const dependenciesEntityContent = EntityContentBlueprint.make({
       </Grid>
     ),
   },
-});
-
-export const catalogDependenciesExtension = createFrontendModule({
-  pluginId: 'catalog',
-  extensions: [dependenciesEntityContent],
 });

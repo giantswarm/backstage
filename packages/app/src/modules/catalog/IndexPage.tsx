@@ -1,11 +1,8 @@
-import {
-  PageBlueprint,
-  createFrontendModule,
-} from '@backstage/frontend-plugin-api';
+import { PageBlueprint } from '@backstage/frontend-plugin-api';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
 
 // Catalog index page — render GSCustomCatalogPage directly (full page component)
-const catalogIndexPageOverride = PageBlueprint.makeWithOverrides({
+export const IndexPage = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
     return originalFactory({
       noHeader: true,
@@ -18,9 +15,4 @@ const catalogIndexPageOverride = PageBlueprint.makeWithOverrides({
       },
     });
   },
-});
-
-export const catalogPageOverrides = createFrontendModule({
-  pluginId: 'catalog',
-  extensions: [catalogIndexPageOverride],
 });

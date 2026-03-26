@@ -5,7 +5,6 @@
  * These are converted from legacy components using helpers from
  * @backstage/plugin-catalog-react/alpha.
  */
-import { createFrontendModule } from '@backstage/frontend-plugin-api';
 import {
   convertLegacyEntityContentExtension,
   convertLegacyEntityCardExtension,
@@ -20,24 +19,28 @@ import {
   isDashboardSelectorAvailable,
 } from '@k-phoen/backstage-plugin-grafana';
 
-export const catalogLegacyEntityExtensions = createFrontendModule({
-  pluginId: 'catalog',
-  extensions: [
-    convertLegacyEntityContentExtension(EntityGithubPullRequestsContent, {
-      name: 'pull-requests',
-      filter: 'kind:component',
-      path: '/pull-requests',
-      title: 'Pull Requests',
-    }),
-    convertLegacyEntityContentExtension(EntityCircleCIContent, {
-      name: 'circleci',
-      filter: entity => isCircleCIAvailable(entity),
-      path: '/circleci',
-      title: 'CircleCI',
-    }),
-    convertLegacyEntityCardExtension(EntityGrafanaDashboardsCard, {
-      name: 'grafana-dashboards',
-      filter: entity => isDashboardSelectorAvailable(entity),
-    }),
-  ],
-});
+export const GitHubPullRequestsEntityContent =
+  convertLegacyEntityContentExtension(EntityGithubPullRequestsContent, {
+    name: 'pull-requests',
+    filter: 'kind:component',
+    path: '/pull-requests',
+    title: 'Pull Requests',
+  });
+
+export const CircleCIEntityContent = convertLegacyEntityContentExtension(
+  EntityCircleCIContent,
+  {
+    name: 'circleci',
+    filter: entity => isCircleCIAvailable(entity),
+    path: '/circleci',
+    title: 'CircleCI',
+  },
+);
+
+export const GrafanaDashboardsEntityCard = convertLegacyEntityCardExtension(
+  EntityGrafanaDashboardsCard,
+  {
+    name: 'grafana-dashboards',
+    filter: entity => Boolean(isDashboardSelectorAvailable(entity)),
+  },
+);
