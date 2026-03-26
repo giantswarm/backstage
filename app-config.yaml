@@ -16,16 +16,6 @@ app:
     - api:ai-chat/service
     - api:ai-chat/drawer
     - app-root-element:ai-chat/drawer
-    # Disable extensions that target inputs on pages we fully override
-    # (our custom pages compose their own UI, not extension slots)
-    # - catalog-filter:catalog/kind: false
-    # - catalog-filter:catalog/type: false
-    # - catalog-filter:catalog/list: false
-    # - catalog-filter:catalog/mode: false
-    # - catalog-filter:catalog/lifecycle: false
-    # - catalog-filter:catalog/tag: false
-    # - catalog-filter:catalog/processing-status: false
-    # - catalog-filter:catalog/namespace: false
 
     - entity-card:catalog/depends-on-components: false
     - entity-card:catalog/depends-on-resources: false
