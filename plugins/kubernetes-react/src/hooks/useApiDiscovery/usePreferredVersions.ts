@@ -210,11 +210,14 @@ export function usePreferredVersions(
     (groupQueries.some(query => query.isLoading) ||
       resourceQueries.some(query => query.isLoading));
 
+  // Don't report incompatibilities while discovery is still in progress —
+  // partial Stage 2 results can cause false positives (e.g. a transient error
+  // making it look like a version doesn't exist).
   return {
     clustersGVKs,
     isDiscovering,
     discoveryErrors,
-    incompatibilities,
-    clientOutdatedStates,
+    incompatibilities: isDiscovering ? [] : incompatibilities,
+    clientOutdatedStates: isDiscovering ? [] : clientOutdatedStates,
   };
 }
