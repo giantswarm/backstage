@@ -1,4 +1,4 @@
-import { Grid } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { Link, MarkdownContent } from '@backstage/core-components';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
@@ -21,10 +21,10 @@ export function EntityInstallationDetailsCard() {
   const { entity } = useEntity();
 
   return (
-    <>
-      <Grid item xs={12}>
-        <InfoCard title="Installation details">
-          <Grid container spacing={5}>
+    <Flex direction="column" gap="5">
+      <InfoCard title="Installation details">
+        <Flex direction="column" gap="5">
+          <Flex gap="5" style={{ flexWrap: 'wrap' }}>
             <AboutField
               label="Customer"
               value={entity.metadata.labels?.['giantswarm.io/customer']}
@@ -61,42 +61,38 @@ export function EntityInstallationDetailsCard() {
                 </Link>
               </AboutField>
             )}
-          </Grid>
-          <Grid container spacing={5}>
-            <AboutField label="Escalation matrix" gridSizes={{ xs: 12 }}>
-              <ScrollContainer>
-                {(entity.metadata.annotations?.[
-                  'giantswarm.io/escalation-matrix'
-                ] && (
-                  <pre>
-                    {
-                      entity.metadata.annotations?.[
-                        'giantswarm.io/escalation-matrix'
-                      ]
-                    }
-                  </pre>
-                )) ||
-                  notSpecified}
-              </ScrollContainer>
-            </AboutField>
-          </Grid>
+          </Flex>
+
+          <AboutField label="Escalation matrix">
+            <ScrollContainer>
+              {(entity.metadata.annotations?.[
+                'giantswarm.io/escalation-matrix'
+              ] && (
+                <pre>
+                  {
+                    entity.metadata.annotations?.[
+                      'giantswarm.io/escalation-matrix'
+                    ]
+                  }
+                </pre>
+              )) ||
+                notSpecified}
+            </ScrollContainer>
+          </AboutField>
+        </Flex>
+      </InfoCard>
+
+      {entity.metadata.annotations?.['giantswarm.io/access-docs-markdown'] && (
+        <InfoCard title="Non-standard access">
+          <MarkdownContent
+            content={
+              entity.metadata.annotations?.[
+                'giantswarm.io/access-docs-markdown'
+              ]
+            }
+          />
         </InfoCard>
-      </Grid>
-      <Grid item xs={12}>
-        {entity.metadata.annotations?.[
-          'giantswarm.io/access-docs-markdown'
-        ] && (
-          <InfoCard title="Non-standard access">
-            <MarkdownContent
-              content={
-                entity.metadata.annotations?.[
-                  'giantswarm.io/access-docs-markdown'
-                ]
-              }
-            />
-          </InfoCard>
-        )}
-      </Grid>
-    </>
+      )}
+    </Flex>
   );
 }

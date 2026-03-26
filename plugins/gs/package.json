@@ -41,6 +41,7 @@
     "@backstage/plugin-user-settings": "backstage:^",
     "@backstage/theme": "backstage:^",
     "@backstage/types": "backstage:^",
+    "@backstage/ui": "backstage:^",
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
     "@giantswarm/backstage-plugin-flux": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "^0.13.0",

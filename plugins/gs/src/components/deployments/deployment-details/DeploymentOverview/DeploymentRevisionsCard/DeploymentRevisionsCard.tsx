@@ -1,5 +1,5 @@
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { Grid } from '@material-ui/core';
+import { Grid } from '@backstage/ui';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { formatVersion } from '../../../../utils/helpers';
 import { getSourceLocationFromEntity } from '../../../../utils/entity';
@@ -20,8 +20,8 @@ export function DeploymentRevisionsCard() {
 
   return (
     <InfoCard title="Revision">
-      <Grid container spacing={5}>
-        <AboutField label="Last applied" gridSizes={{ xs: 6 }}>
+      <Grid.Root columns="2" gap="5">
+        <AboutField label="Last applied">
           <AboutFieldValue>
             <Version
               version={formatVersion(lastAppliedRevision ?? '')}
@@ -30,7 +30,7 @@ export function DeploymentRevisionsCard() {
             />
           </AboutFieldValue>
         </AboutField>
-        <AboutField label="Last attempted" gridSizes={{ xs: 6 }}>
+        <AboutField label="Last attempted">
           <AboutFieldValue>
             <Version
               version={formatVersion(lastAttemptedRevision ?? '')}
@@ -38,7 +38,7 @@ export function DeploymentRevisionsCard() {
             />
           </AboutFieldValue>
         </AboutField>
-      </Grid>
+      </Grid.Root>
     </InfoCard>
   );
 }

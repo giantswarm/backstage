@@ -10023,6 +10023,7 @@ __metadata:
     "@backstage/plugin-user-settings": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@backstage/types": "backstage:^"
+    "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "npm:^0.13.0"
