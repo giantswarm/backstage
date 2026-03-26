@@ -89,7 +89,17 @@ export function apiResourceQueryOptions(
       });
 
       if (!response.ok) {
-        return { cluster, version, hasResource: false };
+        // 404/403 mean the version doesn't exist or isn't accessible —
+        // treat as "resource not found" (not an error).
+        if (response.status === 404 || response.status === 403) {
+          return { cluster, version, hasResource: false };
+        }
+        // Other failures (5xx, timeouts) are transient — throw so React Query
+        // tracks them as errors and can retry, rather than caching a false
+        // "resource doesn't exist" result.
+        throw new Error(
+          `Failed to check API resources for ${group}/${version} on ${cluster}: ${response.statusText}`,
+        );
       }
 
       const resourceList: APIResourceList = await response.json();
@@ -98,7 +108,7 @@ export function apiResourceQueryOptions(
     },
     staleTime: CACHE_TIME,
     gcTime: CACHE_TIME,
-    retry: false as const,
+    retry: 1,
   };
 }
 

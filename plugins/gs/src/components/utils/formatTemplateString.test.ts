@@ -1,8 +1,10 @@
+import { generateUID } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { formatTemplateString } from './formatTemplateString';
-import { generateUID } from './generateUID';
 
-jest.mock('./generateUID', () => {
-  const originalModule = jest.requireActual('./generateUID');
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
+  const originalModule = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
 
   return {
     __esModule: true,

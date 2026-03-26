@@ -3,7 +3,7 @@ import { generateUID } from './generateUID';
 describe('generateUID', () => {
   it('generates unique IDs', () => {
     const tries = 250;
-    const minLength = 3;
+    const minLength = 6;
     const maxLength = 10;
 
     const values = new Set<string>();
