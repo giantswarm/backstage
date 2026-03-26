@@ -1,6 +1,6 @@
 /**
  * NFS app-level module that provides core API overrides, custom icons,
- * sign-in page, and feature flags.
+ * and sign-in page.
  *
  * In Backstage 1.48+, only modules with pluginId: 'app' can override
  * core APIs and provide app-level extensions like SignInPage and icons.
@@ -54,7 +54,6 @@ const [grafanaApiFactory] = grafanaPlugin.getApis();
 
 export const appOverrides = createFrontendModule({
   pluginId: 'app',
-  featureFlags: [{ name: 'ai-chat-verbose-debugging' }],
   extensions: [
     ApiBlueprint.make({
       name: 'error-reporter',

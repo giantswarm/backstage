@@ -86,6 +86,7 @@ const aiChatDrawerElement = AppRootElementBlueprint.make({
 
 export const aiChatPlugin = createFrontendPlugin({
   pluginId: 'ai-chat',
+  featureFlags: [{ name: 'ai-chat-verbose-debugging' }],
   extensions: [
     aiChatPage,
     aiChatNavItem,
