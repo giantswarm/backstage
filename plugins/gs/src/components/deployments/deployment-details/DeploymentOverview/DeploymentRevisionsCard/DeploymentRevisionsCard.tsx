@@ -1,4 +1,4 @@
-import { InfoCard } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { Grid } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { formatVersion } from '../../../../utils/helpers';

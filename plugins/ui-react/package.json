@@ -28,6 +28,7 @@
   "dependencies": {
     "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
+    "@backstage/ui": "backstage:^",
     "@codemirror/autocomplete": "^6.20.0",
     "@codemirror/commands": "^6.10.0",
     "@codemirror/language": "^6.11.3",

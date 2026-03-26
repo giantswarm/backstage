@@ -1,5 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
-import { InfoCard, Link } from '@backstage/core-components';
+import { Link } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { Box, Typography } from '@material-ui/core';
 import { ExternalRouteRef, useRouteRef } from '@backstage/frontend-plugin-api';
 import { DeploymentStatus } from './DeploymentStatus';
@@ -24,7 +25,7 @@ export const FluxStatusCard = ({
   return (
     <InfoCard
       title="Flux status"
-      action={
+      headerActions={
         fluxOverviewUrl ? (
           <Box mt={1} mr={1} pt={1}>
             <Link component={RouterLink} to={fluxOverviewUrl}>

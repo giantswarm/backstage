@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { InfoCard } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import {
   Box,
   FormControlLabel,
@@ -42,7 +42,7 @@ export const LabelsCard = ({
   return (
     <InfoCard
       title={title}
-      action={
+      headerActions={
         <Box marginTop="6px">
           <FormGroup>
             <FormControlLabel

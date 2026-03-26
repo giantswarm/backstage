@@ -1,6 +1,7 @@
 import { Grid } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
-import { InfoCard, Link, MarkdownContent } from '@backstage/core-components';
+import { Link, MarkdownContent } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { AboutField, ScrollContainer } from '../../UI';
 
