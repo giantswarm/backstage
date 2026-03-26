@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.116.2] - 2026-03-26
+
 ### Fixed
 
 - Fix false API version incompatibility errors caused by transient server failures during discovery.
@@ -2117,7 +2119,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.2...HEAD
+[0.116.2]: https://github.com/giantswarm/backstage/compare/v0.116.1...v0.116.2
 [0.116.1]: https://github.com/giantswarm/backstage/compare/v0.116.0...v0.116.1
 [0.116.0]: https://github.com/giantswarm/backstage/compare/v0.115.0...v0.116.0
 [0.115.0]: https://github.com/giantswarm/backstage/compare/v0.114.1...v0.115.0
