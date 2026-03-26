@@ -30,6 +30,7 @@ import { aiChatPluginOverrides } from './modules/ai-chat';
 import { kubernetesPluginOverrides } from './modules/kubernetes';
 import { apiDocsPluginOverrides } from './modules/api-docs';
 import { catalogPageOverrides } from './routeOverrides';
+import { catalogDependenciesExtension } from './modules/catalog/dependenciesEntityContent';
 import { catalogLegacyEntityExtensions } from './modules/catalog/legacyEntityExtensions';
 
 const app = createApp({
@@ -70,6 +71,8 @@ const app = createApp({
     catalogPageOverrides,
     // Legacy entity extensions (CircleCI, GitHub PRs, Grafana):
     catalogLegacyEntityExtensions,
+    // Entity content extensions:
+    catalogDependenciesExtension,
   ],
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
