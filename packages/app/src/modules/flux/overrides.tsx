@@ -1,4 +1,3 @@
-import { createFrontendModule } from '@backstage/frontend-plugin-api';
 import {
   FluxListFilterBlueprint,
   FluxTreeFilterBlueprint,
@@ -52,7 +51,4 @@ const treeClusterPickerOverride = FluxTreeFilterBlueprint.make({
   },
 });
 
-export const fluxPluginOverrides = createFrontendModule({
-  pluginId: 'flux',
-  extensions: [listClusterPickerOverride, treeClusterPickerOverride],
-});
+export { listClusterPickerOverride, treeClusterPickerOverride };
