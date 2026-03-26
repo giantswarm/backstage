@@ -7,6 +7,7 @@ export * from './DateComponent';
 export * from './DetailsPane';
 export * from './ErrorStatus';
 export * from './ExternalLink';
+export * from './InfoCard';
 export * from './JsonHighlight';
 export * from './MultiplePicker';
 export * from './MultipleSelect';

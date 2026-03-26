@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  InfoCard,
-  MarkdownContent,
-  Progress,
-} from '@backstage/core-components';
+import { MarkdownContent, Progress } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import {
   Box,
   Button,

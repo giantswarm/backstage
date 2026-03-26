@@ -20,7 +20,7 @@ import {
   ScrollContainer,
   StatusMessage,
 } from '../../../../../UI';
-import { InfoCard } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { WorkloadReplicaStatus } from '../../../../../hooks/useMimirWorkloadStatus';
 import { WorkloadStatusSummary } from '../WorkloadStatusSummary';

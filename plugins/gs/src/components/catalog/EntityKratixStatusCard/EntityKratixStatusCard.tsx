@@ -6,7 +6,8 @@ import {
 } from '@backstage/plugin-catalog-react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { InfoCard, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import useAsync from 'react-use/esm/useAsync';
 import { Link as RouterLink } from 'react-router-dom';
 import { entityKratixResourcesRouteRef } from '../../../routes';
@@ -66,7 +67,7 @@ export function EntityKratixStatusCard() {
   return (
     <InfoCard
       title="Creation progress"
-      action={
+      headerActions={
         <>
           {!targetEntity && (
             <IconButton

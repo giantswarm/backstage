@@ -8,7 +8,7 @@ import {
   StatusMessage,
 } from '../../../../../UI';
 import { ComponentProps, ComponentType } from 'react';
-import { InfoCard } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { App } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { getStatus } from '../../../../utils/getStatus';
 import { WorkloadReplicaStatus } from '../../../../../hooks/useMimirWorkloadStatus';

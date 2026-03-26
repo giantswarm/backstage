@@ -1,4 +1,5 @@
-import { InfoCard, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { Box, LinearProgress, Typography, makeStyles } from '@material-ui/core';
 import Alert from '@material-ui/lab/Alert';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';

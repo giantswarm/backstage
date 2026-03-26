@@ -1,4 +1,5 @@
-import { InfoCard, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { ClusterAccessGS } from './ClusterAccessGS';
 import { ClusterAccessCustomer } from './ClusterAccessCustomer';

@@ -1,5 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
-import { InfoCard, Link, Progress } from '@backstage/core-components';
+import { Link, Progress } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import {
   Box,
   Chip,
@@ -139,12 +140,10 @@ const VersionHistoryCardContent = () => {
   return (
     <InfoCard
       title="Version History"
-      action={
-        <Box mt={1} mr={1} pt={1}>
-          <Link component={RouterLink} to="version-history">
-            <Typography variant="body1">View all →</Typography>
-          </Link>
-        </Box>
+      headerActions={
+        <Link component={RouterLink} to="version-history">
+          <Typography variant="body1">View all →</Typography>
+        </Link>
       }
     >
       {renderContent()}
