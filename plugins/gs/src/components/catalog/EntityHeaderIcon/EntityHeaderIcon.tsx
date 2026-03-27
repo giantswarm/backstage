@@ -1,89 +1,60 @@
-import { useEffect, useState, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { useAsyncEntity } from '@backstage/plugin-catalog-react';
-import { getIconUrlFromEntity } from '../../utils/entity';
-
 const ICON_CONTAINER_ID = 'gs-entity-header-icon-container';
 
+function createIconElement(iconUrl: string): HTMLDivElement {
+  const wrapper = document.createElement('div');
+  wrapper.style.display = 'flex';
+  wrapper.style.alignItems = 'center';
+  wrapper.style.justifyContent = 'center';
+  wrapper.style.width = '64px';
+  wrapper.style.height = '64px';
+  wrapper.style.borderRadius = '6px';
+  wrapper.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+  wrapper.style.marginRight = '16px';
+  wrapper.style.flexShrink = '0';
+
+  const img = document.createElement('img');
+  img.src = iconUrl;
+  img.alt = '';
+  img.style.width = '50px';
+  img.style.height = '50px';
+  img.style.objectFit = 'contain';
+
+  wrapper.appendChild(img);
+  return wrapper;
+}
+
 /**
- * Renders a custom icon in the entity page header via a DOM portal.
- * Finds the page header element and injects the icon before its first child.
- * Mount this component anywhere inside an entity page — e.g. in a content layout.
+ * Injects (or updates) the entity icon into the page header via DOM
+ * manipulation. The icon is placed as a flex sibling before the first
+ * child of `main > header`.
  */
-export const EntityHeaderIcon = () => {
-  const { entity } = useAsyncEntity();
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
-    null,
-  );
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const iconUrl = entity ? getIconUrlFromEntity(entity) : undefined;
-
-  useEffect(() => {
-    if (!iconUrl) {
-      return undefined;
-    }
-
-    const setupContainer = () => {
-      const header = document.querySelector('main > header');
-      if (!header || !header.firstElementChild) {
-        return;
-      }
-
-      const firstChild = header.firstElementChild;
-
-      let container = document.getElementById(ICON_CONTAINER_ID);
-      if (!container) {
-        container = document.createElement('div');
-        container.id = ICON_CONTAINER_ID;
-        container.style.display = 'contents';
-        header.insertBefore(container, firstChild);
-      }
-      containerRef.current = container as HTMLDivElement;
-      setPortalContainer(container as HTMLDivElement);
-    };
-
-    setupContainer();
-    const timeoutId = setTimeout(setupContainer, 100);
-
-    return () => {
-      clearTimeout(timeoutId);
-      if (containerRef.current && containerRef.current.parentNode) {
-        containerRef.current.parentNode.removeChild(containerRef.current);
-        containerRef.current = null;
-      }
-    };
-  }, [iconUrl]);
-
-  if (!iconUrl || !portalContainer) {
-    return null;
+export function injectHeaderIcon(iconUrl: string): void {
+  const header = document.querySelector('main > header');
+  if (!header || !header.firstElementChild) {
+    return;
   }
 
-  const iconElement = (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 64,
-        height: 64,
-        borderRadius: 6,
-        backgroundColor: 'rgba(255, 255, 255, 0.5)',
-        marginRight: 16,
-        flexShrink: 0,
-      }}
-    >
-      <img
-        src={iconUrl}
-        alt=""
-        style={{
-          width: 50,
-          height: 50,
-          objectFit: 'contain',
-        }}
-      />
-    </div>
-  );
+  let container = document.getElementById(
+    ICON_CONTAINER_ID,
+  ) as HTMLDivElement | null;
 
-  return createPortal(iconElement, portalContainer);
-};
+  if (container) {
+    // Update existing icon if URL changed
+    const img = container.querySelector('img');
+    if (img && img.src !== iconUrl) {
+      img.src = iconUrl;
+    }
+    return;
+  }
+
+  container = document.createElement('div');
+  container.id = ICON_CONTAINER_ID;
+  container.style.display = 'contents';
+  container.appendChild(createIconElement(iconUrl));
+  header.insertBefore(container, header.firstElementChild);
+}
+
+/** Removes the injected header icon from the DOM. */
+export function removeHeaderIcon(): void {
+  document.getElementById(ICON_CONTAINER_ID)?.remove();
+}
