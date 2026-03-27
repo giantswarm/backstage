@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Migrate entity pages to NFS composable system with declarative route bindings.
+- Migrate card components from Material-UI to @backstage/ui Card primitives.
+- Add NFS entity extensions (content tabs, cards, content layouts) and portal-based EntityHeaderIcon.
+- Use EntityChartProvider for deployments tab to get chart name from entity context.
+- Change installation sorting in InstallationPicker to show eu-north on top.
+- Move ai-chat feature flag from app overrides module to the ai-chat plugin.
+- Clean up App.tsx: reorganize imports, move flux overrides to modules directory.
+
 ## [0.116.2] - 2026-03-26
 
 ### Fixed
