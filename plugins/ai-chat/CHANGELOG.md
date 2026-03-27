@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.11.2
+
+### Patch Changes
+
+- 90343c4: Move ai-chat-verbose-debugging feature flag from app overrides module to the ai-chat plugin.
+- Updated dependencies [9d911b1]
+  - @giantswarm/backstage-plugin-ui-react@0.8.3
+
 ## 0.11.1
 
 ### Patch Changes

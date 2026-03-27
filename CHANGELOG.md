@@ -15,6 +15,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Move ai-chat feature flag from app overrides module to the ai-chat plugin.
 - Clean up App.tsx: reorganize imports, move flux overrides to modules directory.
 
+See [./docs/releases/v0.117.0-changelog.md](./docs/releases/v0.117.0-changelog.md) for more information.
+
 ## [0.116.2] - 2026-03-26
 
 ### Fixed
