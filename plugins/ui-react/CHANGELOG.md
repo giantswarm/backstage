@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.8.3
+
+### Patch Changes
+
+- 9d911b1: Migrate card components from Material-UI to @backstage/ui Card primitives.
+
 ## 0.8.2
 
 ### Patch Changes

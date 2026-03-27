@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.61.1
+
+### Patch Changes
+
+- 9d911b1: Migrate card components from Material-UI to @backstage/ui Card primitives.
+- 31f7895: Use EntityChartProvider for deployments tab to get chart name from entity context instead of deployment names annotation.
+- 206058e: Change installation sorting in InstallationPicker to show eu-north on top
+- 31f7895: Add NFS entity extensions (content tabs, cards, content layouts) and portal-based EntityHeaderIcon for the New Frontend System.
+- Updated dependencies [9d911b1]
+  - @giantswarm/backstage-plugin-ui-react@0.8.3
+  - @giantswarm/backstage-plugin-flux-react@0.13.1
+
 ## 0.61.0
 
 ### Minor Changes

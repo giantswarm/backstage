@@ -9905,7 +9905,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-flux-react@npm:^0.13.0, @giantswarm/backstage-plugin-flux-react@workspace:^, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
+"@giantswarm/backstage-plugin-flux-react@npm:^0.13.1, @giantswarm/backstage-plugin-flux-react@workspace:^, @giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-flux-react@workspace:plugins/flux-react"
   dependencies:
@@ -10026,7 +10026,7 @@ __metadata:
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
-    "@giantswarm/backstage-plugin-flux-react": "npm:^0.13.0"
+    "@giantswarm/backstage-plugin-flux-react": "npm:^0.13.1"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.0"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"

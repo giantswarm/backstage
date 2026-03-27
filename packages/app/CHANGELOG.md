@@ -1,5 +1,25 @@
 # app
 
+## 0.34.0
+
+### Minor Changes
+
+- 90343c4: Move route bindings from App.tsx bindRoutes to declarative app-config.yaml for NFS compatibility.
+
+### Patch Changes
+
+- 90343c4: Move ai-chat-verbose-debugging feature flag from app overrides module to the ai-chat plugin.
+- 90343c4: Clean up App.tsx: reorganize imports and features by group, move flux overrides to modules directory, remove stale comment.
+- 31f7895: Migrate entity pages to NFS composable system, removing legacy EntityPage override and consolidating catalog extensions into NFS modules.
+- Updated dependencies [9d911b1]
+- Updated dependencies [90343c4]
+- Updated dependencies [31f7895]
+- Updated dependencies [206058e]
+- Updated dependencies [31f7895]
+  - @giantswarm/backstage-plugin-gs@0.61.1
+  - @giantswarm/backstage-plugin-flux-react@0.13.1
+  - @giantswarm/backstage-plugin-ai-chat@0.11.2
+
 ## 0.33.0
 
 ### Minor Changes

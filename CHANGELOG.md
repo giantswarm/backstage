@@ -5,6 +5,20 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-03-27
+
+### Changed
+
+- Migrate entity pages to NFS composable system with declarative route bindings.
+- Migrate card components from Material-UI to @backstage/ui Card primitives.
+- Add NFS entity extensions (content tabs, cards, content layouts) and portal-based EntityHeaderIcon.
+- Use EntityChartProvider for deployments tab to get chart name from entity context.
+- Change installation sorting in InstallationPicker to show eu-north on top.
+- Move ai-chat feature flag from app overrides module to the ai-chat plugin.
+- Clean up App.tsx: reorganize imports, move flux overrides to modules directory.
+
+See [./docs/releases/v0.117.0-changelog.md](./docs/releases/v0.117.0-changelog.md) for more information.
+
 ## [0.116.2] - 2026-03-26
 
 ### Fixed
@@ -2119,7 +2133,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.0...HEAD
+[0.117.0]: https://github.com/giantswarm/backstage/compare/v0.116.2...v0.117.0
 [0.116.2]: https://github.com/giantswarm/backstage/compare/v0.116.1...v0.116.2
 [0.116.1]: https://github.com/giantswarm/backstage/compare/v0.116.0...v0.116.1
 [0.116.0]: https://github.com/giantswarm/backstage/compare/v0.115.0...v0.116.0

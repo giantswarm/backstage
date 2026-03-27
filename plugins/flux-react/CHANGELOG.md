@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.13.1
+
+### Patch Changes
+
+- 9d911b1: Migrate card components from Material-UI to @backstage/ui Card primitives.
+- Updated dependencies [9d911b1]
+  - @giantswarm/backstage-plugin-ui-react@0.8.3
+
 ## 0.13.0
 
 ### Minor Changes
