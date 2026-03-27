@@ -26,11 +26,17 @@ Base domain of a Giant Swarm installation.
 
 This annotation should be set on an installation resource if the installation uses a custom certificate authority (CA) to sign TLS certificates, instead of a well-known one. The value is a URL where users can find the CA certificate to install.
 
-### giantswarm.io/deployment-names
+### giantswarm.io/helmcharts
 
-This annotation is used on component entities, to find related deployments in Kubernetes clusters.
+This annotation is used on component entities to find related deployments (App or HelmRelease resources) in Kubernetes clusters. The value is a comma-separated list of helm chart references in the format `registry/repository/chart-name`.
 
-The value is a list of names to use for looking up deployments (App or HelmRelease resources) in Kubernetes clusters. Multiple names can be specified, separated by commas.
+### giantswarm.io/helmchart-versions
+
+The helm chart version(s) of the latest release of a component entity. When the entity has multiple charts, versions are comma-separated and correspond to the charts listed in `giantswarm.io/helmcharts`.
+
+### giantswarm.io/helmchart-app-versions
+
+The application version(s) packaged in the helm chart(s) of a component entity. When the entity has multiple charts, versions are comma-separated and correspond to the charts listed in `giantswarm.io/helmcharts`.
 
 ### giantswarm.io/escalation-matrix
 

@@ -64,10 +64,10 @@ kubernetes:
 
 ### To display a list of deployments for a catalog entity:
 
-1. Annotate your component with a list of possible deployment names:
+1. Annotate your component with its helm chart references:
 
-The annotation key is `giantswarm.io/deployment-names`.
-The annotation value is a string with comma separated deployment names.
+The annotation key is `giantswarm.io/helmcharts`.
+The annotation value is a comma-separated list of helm chart references (e.g. `registry/repository/chart-name`).
 
 Example:
 
@@ -79,7 +79,7 @@ metadata:
   description: backstage.io
   annotations:
     backstage.io/source-location: url:https://github.com/giantswarm/backstage
-    giantswarm.io/deployment-names: backstage, backstage-app
+    giantswarm.io/helmcharts: gsoci.azurecr.io/charts/giantswarm/backstage
 spec:
   type: website
   lifecycle: production
