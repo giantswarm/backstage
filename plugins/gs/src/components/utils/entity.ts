@@ -74,3 +74,7 @@ export const isEntityHelmChartTagged = (entity: Entity) => {
   const tags = entity.metadata.tags ?? [];
   return tags.includes('helmchart');
 };
+
+export const isEntityWithIcon = (entity: Entity) => {
+  return Boolean(getIconUrlFromEntity(entity));
+};

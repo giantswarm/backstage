@@ -1,1 +1,1 @@
-export { EntityHeaderIcon } from './EntityHeaderIcon';
+export { injectHeaderIcon, removeHeaderIcon } from './EntityHeaderIcon';
