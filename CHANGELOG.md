@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Replace `giantswarm.io/deployment-names` annotation with `giantswarm.io/helmcharts` for mapping catalog entities to deployments.
+- Replace portal-based EntityHeaderIcon with EntityHeaderBlueprint custom header for persistent entity icons across all tabs.
+- Migrate scaffolder field schemas from deprecated `makeFieldSchemaFromZod` to `makeFieldSchema`.
+
+### Fixed
+
+- Detect "x.x.x" as auto-upgrade Any instead of None on HelmRelease/OCIRepository details page.
+
 ## [0.117.0] - 2026-03-27
 
 ### Changed
