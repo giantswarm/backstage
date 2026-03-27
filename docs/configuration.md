@@ -129,6 +129,20 @@ The following optional features are available:
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
 
+## Component dependency fetching
+
+For the Giant Swarm devportal, we can enable asynchronous fetching of dependencies between components, based on the GitHub SBOM API. This will start updating dependency info once daily.
+
+```yaml
+catalog:
+  processors:
+    sbomDependencies:
+      enabled: true
+      schedule:
+        frequency: { cron: '0 2 * * *' } # default: daily at 2 AM UTC
+        timeout: { minutes: 60 }
+```
+
 ## Friendly labels and annotations
 
 The `friendlyLabels` and `friendlyAnnotations` configuration allows you to control which Kubernetes resource labels/annotations are displayed and how they are formatted in the UI. Only items matching the configured patterns will be shown. If no configuration is provided, the following default is used for labels:

@@ -9885,6 +9885,7 @@ __metadata:
     "@backstage/backend-plugin-api": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
+    "@backstage/integration": "backstage:^"
     "@backstage/plugin-catalog-node": "backstage:^"
     "@types/js-yaml": "npm:^4"
     js-yaml: "npm:^4.1.0"
