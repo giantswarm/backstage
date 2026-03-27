@@ -1,28 +1,29 @@
-import { z } from 'zod/v3';
-import { makeFieldSchemaFromZod } from '@backstage/plugin-scaffolder';
+import { makeFieldSchema } from '@backstage/plugin-scaffolder-react';
 
-export const ClusterPickerFieldSchema = makeFieldSchemaFromZod(
-  z.object({
-    clusterName: z.string(),
-    clusterNamespace: z.string().optional(),
-    clusterOrganization: z.string().optional(),
-    isManagementCluster: z.boolean().optional(),
-  }),
-  z.object({
-    installationName: z
-      .string()
-      .optional()
-      .describe('The name of the installation to use'),
-    installationNameField: z
-      .string()
-      .optional()
-      .describe('The name of the field to use for the installation'),
-    disabledWhenField: z
-      .string()
-      .optional()
-      .describe('Field name that, when truthy, disables this picker'),
-  }),
-);
+export const ClusterPickerFieldSchema = makeFieldSchema({
+  output: z =>
+    z.object({
+      clusterName: z.string(),
+      clusterNamespace: z.string().optional(),
+      clusterOrganization: z.string().optional(),
+      isManagementCluster: z.boolean().optional(),
+    }),
+  uiOptions: z =>
+    z.object({
+      installationName: z
+        .string()
+        .optional()
+        .describe('The name of the installation to use'),
+      installationNameField: z
+        .string()
+        .optional()
+        .describe('The name of the field to use for the installation'),
+      disabledWhenField: z
+        .string()
+        .optional()
+        .describe('Field name that, when truthy, disables this picker'),
+    }),
+});
 
 export const ClusterPickerSchema = ClusterPickerFieldSchema.schema;
 
