@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-03-27
+
 ### Changed
 
 - Migrate entity pages to NFS composable system with declarative route bindings.
@@ -2131,7 +2133,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.116.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.0...HEAD
+[0.117.0]: https://github.com/giantswarm/backstage/compare/v0.116.2...v0.117.0
 [0.116.2]: https://github.com/giantswarm/backstage/compare/v0.116.1...v0.116.2
 [0.116.1]: https://github.com/giantswarm/backstage/compare/v0.116.0...v0.116.1
 [0.116.0]: https://github.com/giantswarm/backstage/compare/v0.115.0...v0.116.0
