@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
-import { getDeploymentNamesFromEntity } from '../utils/entity';
+import { getHelmChartsFromEntity } from '../utils/entity';
 import { Entity } from '@backstage/catalog-model';
 import { useQuery } from '@tanstack/react-query';
 
@@ -27,13 +27,13 @@ export function useCatalogEntitiesForDeployments() {
 
     const catalogEntitiesMap = catalogEntities.reduce(
       (acc: Record<string, Entity>, entity) => {
-        const entityDeploymentNames = getDeploymentNamesFromEntity(entity);
-        if (!entityDeploymentNames) {
+        const charts = getHelmChartsFromEntity(entity);
+        if (charts.length === 0) {
           return acc;
         }
 
-        entityDeploymentNames.forEach(deploymentName => {
-          acc[deploymentName] = entity;
+        charts.forEach(chart => {
+          acc[chart.name] = entity;
         });
 
         return acc;

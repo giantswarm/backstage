@@ -9,7 +9,7 @@ Annotations:
 - 'github.com/project-slug': Project slug of the component entity in GitHub.
 - 'github.com/team-slug': Owner team slug of the component entity in GitHub.
 - 'circleci.com/project-slug': Project slug of the component entity in CircleCI.
-- 'giantswarm.io/deployment-names': List of names to use for looking up deployments in Kubernetes clusters, comma separated.
+- 'giantswarm.io/helmcharts': Comma-separated list of helm chart references (e.g. registry/repository/chart-name) used to find related deployments in Kubernetes clusters.
 - 'giantswarm.io/latest-release-date': Date and time of the latest release (as in a new tagged release in the revision control system) of the component entity.
 - 'giantswarm.io/latest-release-tag': Version tag of the latest release (as in a revision control system) of the component entity.
 - 'giantswarm.io/escalation-matrix': Contact information and procedure for escalating incidents in an installation.

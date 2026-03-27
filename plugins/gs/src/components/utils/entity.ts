@@ -2,7 +2,6 @@ import { ANNOTATION_SOURCE_LOCATION, Entity } from '@backstage/catalog-model';
 import { formatVersion } from './helpers';
 import { parseChartRef } from './parseChartRef';
 
-export const GS_DEPLOYMENT_NAMES = 'giantswarm.io/deployment-names';
 export const GS_ICON_URL = 'giantswarm.io/icon-url';
 export const GS_INGRESS_HOST = 'giantswarm.io/ingress-host';
 export const GS_GRAFANA_DASHBOARD = 'giantswarm.io/grafana-dashboard';
@@ -11,19 +10,6 @@ export const GS_HELMCHART_VERSIONS = 'giantswarm.io/helmchart-versions';
 export const GS_HELMCHARTS = 'giantswarm.io/helmcharts';
 export const GS_LATEST_RELEASE_DATE = 'giantswarm.io/latest-release-date';
 export const GS_LATEST_RELEASE_TAG = 'giantswarm.io/latest-release-tag';
-
-export const isEntityDeploymentsAvailable = (entity: Entity) =>
-  Boolean(entity.metadata.annotations?.[GS_DEPLOYMENT_NAMES]);
-
-export const getDeploymentNamesFromEntity = (entity: Entity) => {
-  const deploymentNames = entity.metadata.annotations?.[GS_DEPLOYMENT_NAMES];
-
-  if (!deploymentNames) {
-    return undefined;
-  }
-
-  return deploymentNames.replace(/\s/g, '').split(',');
-};
 
 export const getSourceLocationFromEntity = (entity: Entity) => {
   const location = entity.metadata.annotations?.[ANNOTATION_SOURCE_LOCATION];
