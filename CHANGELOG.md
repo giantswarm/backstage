@@ -15,6 +15,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Detect "x.x.x" as auto-upgrade Any instead of None on HelmRelease/OCIRepository details page.
 
+See [./docs/releases/v0.117.1-changelog.md](./docs/releases/v0.117.1-changelog.md) for more information.
+
 ## [0.117.0] - 2026-03-27
 
 ### Changed
