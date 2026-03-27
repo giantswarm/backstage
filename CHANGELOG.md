@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.117.1] - 2026-03-27
+
 ### Changed
 
 - Replace `giantswarm.io/deployment-names` annotation with `giantswarm.io/helmcharts` for mapping catalog entities to deployments.
@@ -2145,7 +2147,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.1...HEAD
+[0.117.1]: https://github.com/giantswarm/backstage/compare/v0.117.0...v0.117.1
 [0.117.0]: https://github.com/giantswarm/backstage/compare/v0.116.2...v0.117.0
 [0.116.2]: https://github.com/giantswarm/backstage/compare/v0.116.1...v0.116.2
 [0.116.1]: https://github.com/giantswarm/backstage/compare/v0.116.0...v0.116.1
