@@ -1,9 +1,11 @@
 import { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
+import { Grid } from '@backstage/ui';
 import { stringifyEntityRef } from '@backstage/catalog-model';
-import { InfoCard, Link } from '@backstage/core-components';
+import { Link } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Grid, Tooltip, Typography } from '@material-ui/core';
+import { Tooltip, Typography } from '@material-ui/core';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import {
   AboutField,
@@ -117,26 +119,14 @@ export function DeploymentAboutCard() {
 
   return (
     <InfoCard title="About">
-      <Grid container spacing={5}>
-        <AboutField
-          label="Type"
-          value={deployment.getKind()}
-          gridSizes={{ xs: 6, md: 4 }}
-        />
+      <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="5">
+        <AboutField label="Type" value={deployment.getKind()} />
 
-        <AboutField label="Name" value={name} gridSizes={{ xs: 6, md: 4 }} />
+        <AboutField label="Name" value={name} />
 
-        <AboutField
-          label="Namespace"
-          value={namespace}
-          gridSizes={{ xs: 6, md: 4 }}
-        />
+        <AboutField label="Namespace" value={namespace} />
 
-        <AboutField
-          label="Installation"
-          value={installationName}
-          gridSizes={{ xs: 6, md: 4 }}
-        >
+        <AboutField label="Installation" value={installationName}>
           <AboutFieldValue>
             <Tooltip title="Open management cluster">
               <Link
@@ -152,14 +142,10 @@ export function DeploymentAboutCard() {
             </Tooltip>
           </AboutFieldValue>
         </AboutField>
-        <AboutField
-          label="Cluster"
-          value={clusterName}
-          gridSizes={{ xs: 6, md: 4 }}
-        >
+        <AboutField label="Cluster" value={clusterName}>
           <AboutFieldValue>{clusterEl}</AboutFieldValue>
         </AboutField>
-        <AboutField label="App" gridSizes={{ xs: 6, md: 4 }}>
+        <AboutField label="App">
           <AboutFieldValue>
             <AsyncValue
               isLoading={isLoadingCatalogEntity}
@@ -169,11 +155,7 @@ export function DeploymentAboutCard() {
           </AboutFieldValue>
         </AboutField>
 
-        <AboutField
-          label="Chart name"
-          value={chartName}
-          gridSizes={{ xs: 6, md: 4 }}
-        >
+        <AboutField label="Chart name" value={chartName}>
           <AboutFieldValue>
             <AsyncValue
               isLoading={isLoadingChartName}
@@ -183,14 +165,14 @@ export function DeploymentAboutCard() {
           </AboutFieldValue>
         </AboutField>
 
-        <AboutField label="Created" gridSizes={{ xs: 6, md: 4 }}>
+        <AboutField label="Created">
           <AboutFieldValue>
             <Typography variant="inherit">
               <DateComponent value={createdTimestamp} relative />
             </Typography>
           </AboutFieldValue>
         </AboutField>
-        <AboutField label="Updated" gridSizes={{ xs: 6, md: 4 }}>
+        <AboutField label="Updated">
           <AboutFieldValue>
             <Typography variant="inherit">
               <DateComponent value={updatedTimestamp} relative />
@@ -199,7 +181,7 @@ export function DeploymentAboutCard() {
         </AboutField>
 
         {needsOciRepository && (
-          <AboutField label="Auto-upgrade" gridSizes={{ xs: 6, md: 4 }}>
+          <AboutField label="Auto-upgrade">
             <AboutFieldValue>
               <AsyncValue
                 isLoading={isLoadingOci}
@@ -217,9 +199,8 @@ export function DeploymentAboutCard() {
         <AboutField
           label="Source"
           value={formatSource(sourceKind, sourceName)}
-          gridSizes={{ xs: 6, md: 4 }}
         />
-      </Grid>
+      </Grid.Root>
     </InfoCard>
   );
 }

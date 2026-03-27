@@ -1,5 +1,5 @@
 import { useEntity } from '@backstage/plugin-catalog-react';
-import { InfoCard } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { Button, makeStyles, Typography } from '@material-ui/core';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { QueryClientProvider } from '../../QueryClientProvider';

@@ -1,4 +1,4 @@
-import { InfoCard } from '@backstage/core-components';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { Box, Grid, Link, Typography } from '@material-ui/core';
 import { CodeBlock, Heading } from '../../../../UI';
