@@ -42,8 +42,8 @@ export function deriveAutoUpgradeMode(
   // Minor-level wildcard: 1.x, 1.*, 1.x.x, 1.*.*, 1.X, 1.X.X
   if (/^\d+\.[xX*](\.[xX*])?$/.test(s)) return 'minor-upgrades';
 
-  // Full wildcard: *, x, X
-  if (/^[xX*]$/.test(s)) return 'major-upgrades';
+  // Full wildcard: *, x, X, x.x.x, *.*.*, X.X.X (and mixed)
+  if (/^[xX*](\.[xX*]){0,2}$/.test(s)) return 'major-upgrades';
 
   return 'no-upgrades';
 }

@@ -87,6 +87,11 @@ describe('deriveAutoUpgradeMode', () => {
       expect(deriveAutoUpgradeMode({ semver: '*' })).toBe('major-upgrades');
       expect(deriveAutoUpgradeMode({ semver: 'x' })).toBe('major-upgrades');
       expect(deriveAutoUpgradeMode({ semver: 'X' })).toBe('major-upgrades');
+      expect(deriveAutoUpgradeMode({ semver: 'x.x.x' })).toBe('major-upgrades');
+      expect(deriveAutoUpgradeMode({ semver: 'X.X.X' })).toBe('major-upgrades');
+      expect(deriveAutoUpgradeMode({ semver: '*.*.*' })).toBe('major-upgrades');
+      expect(deriveAutoUpgradeMode({ semver: 'x.x' })).toBe('major-upgrades');
+      expect(deriveAutoUpgradeMode({ semver: '*.*' })).toBe('major-upgrades');
     });
   });
 
