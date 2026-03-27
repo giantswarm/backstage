@@ -40,10 +40,18 @@ function DependenciesContent() {
         </Typography>
       </Grid>
       <Grid item md={12}>
-        <EntityDependsOnComponentsCard title={`Dependencies of ${title}`} />
+        {/* TODO: remove variant prop once upstream bug is fixed:
+            EntityDataTable initializes pageSize from empty data (=1 row),
+            variant forces the legacy RelatedEntitiesCard path which works.
+            https://github.com/backstage/backstage/issues/33648 */}
+        <EntityDependsOnComponentsCard
+          {...({ variant: 'gridItem' } as any)}
+          title={`Dependencies of ${title}`}
+        />
       </Grid>
       <Grid item md={12}>
         <EntityDependencyOfComponentsCard
+          {...({ variant: 'gridItem' } as any)}
           title={`Components depending on ${title}`}
         />
       </Grid>
