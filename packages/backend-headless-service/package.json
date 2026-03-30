@@ -23,7 +23,7 @@
     "@backstage/plugin-scaffolder-backend": "backstage:^",
     "@backstage/plugin-scaffolder-backend-module-github": "backstage:^",
     "@backstage/plugin-scaffolder-backend-module-notifications": "backstage:^",
-    "@devangelista/backstage-scaffolder-kubernetes": "^0.5.0",
+    "@devangelista/backstage-scaffolder-kubernetes": "^0.6.0",
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.13.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.11.0",
     "@internal/backend-common": "workspace:^",
