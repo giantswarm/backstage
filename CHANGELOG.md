@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- Update Backstage to 1.49.3 and fix entity relation cards (Has Components, Has Resources, etc.) showing only one row.
+
 ## [0.117.1] - 2026-03-27
 
 ### Changed
