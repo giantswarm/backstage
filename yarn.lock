@@ -44,19 +44,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/gateway@npm:3.0.66":
-  version: 3.0.66
-  resolution: "@ai-sdk/gateway@npm:3.0.66"
-  dependencies:
-    "@ai-sdk/provider": "npm:3.0.8"
-    "@ai-sdk/provider-utils": "npm:4.0.19"
-    "@vercel/oidc": "npm:3.1.0"
-  peerDependencies:
-    zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/bfc61de36de750216d5f483c234b96ca3098fafdab56ac555be82bf186844bb6aebf224f31acc88501fffd89bed2277827e5a7c8445d9271350952340639746b
-  languageName: node
-  linkType: hard
-
 "@ai-sdk/gateway@npm:3.0.83":
   version: 3.0.83
   resolution: "@ai-sdk/gateway@npm:3.0.83"
@@ -21969,7 +21956,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:6.0.141, ai@npm:^6.0.138":
+"ai@npm:6.0.141, ai@npm:^6.0.138, ai@npm:^6.0.49":
   version: 6.0.141
   resolution: "ai@npm:6.0.141"
   dependencies:
@@ -21980,20 +21967,6 @@ __metadata:
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
   checksum: 10c0/396e0bfa3d8d3b6e655db063f0dcc400e7d060225496bdd2aa95119cf0b2d61303ca90a461255050445ed9d587f2a0facb38992d378966db07538ec193d3539c
-  languageName: node
-  linkType: hard
-
-"ai@npm:^6.0.49":
-  version: 6.0.116
-  resolution: "ai@npm:6.0.116"
-  dependencies:
-    "@ai-sdk/gateway": "npm:3.0.66"
-    "@ai-sdk/provider": "npm:3.0.8"
-    "@ai-sdk/provider-utils": "npm:4.0.19"
-    "@opentelemetry/api": "npm:1.9.0"
-  peerDependencies:
-    zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/6487297914defe015e391fcf67fb21ff784a4844be695df553018d69ce8a1b9ae906ae02effecb911c8f0dcfb41288a70d195149e1e5cc80e5fb73f0bb2d73a4
   languageName: node
   linkType: hard
 
