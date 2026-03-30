@@ -46,9 +46,7 @@ function DependenciesContent() {
         />
       </Grid>
       <Grid item md={12}>
-        <EntityDependsOnResourcesCard
-          title={`Resources ${title} depends on`}
-        />
+        <EntityDependsOnResourcesCard title={`Resources ${title} depends on`} />
       </Grid>
       <Grid item md={12}>
         <EntityDependencyOfComponentsCard
