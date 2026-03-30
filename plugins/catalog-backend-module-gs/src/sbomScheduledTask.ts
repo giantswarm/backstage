@@ -14,6 +14,7 @@ const GIANTSWARM_PURL_RE = /^pkg:golang\/github\.com\/giantswarm\/([^@/]+)/;
 const DEFAULT_SCHEDULE: SchedulerServiceTaskScheduleDefinition = {
   frequency: { cron: '0 2 * * *' },
   timeout: { minutes: 30 },
+  initialDelay: { minutes: 1 },
 };
 
 interface SbomApiResponse {
