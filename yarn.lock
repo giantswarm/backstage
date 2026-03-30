@@ -286,14 +286,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/react-devtools@npm:^0.2.0":
-  version: 0.2.3
-  resolution: "@assistant-ui/react-devtools@npm:0.2.3"
+"@assistant-ui/react-devtools@npm:^1.0.0":
+  version: 1.0.2
+  resolution: "@assistant-ui/react-devtools@npm:1.0.2"
   dependencies:
     zod: "npm:^4.3.6"
   peerDependencies:
-    "@assistant-ui/react": ^0.12.9
-    "@assistant-ui/tap": ^0.4.5
+    "@assistant-ui/react": ^0.12.15
+    "@assistant-ui/tap": ^0.5.2
     "@types/react": "*"
     "@types/react-dom": "*"
     react: ^18 || ^19
@@ -303,7 +303,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/cd1f439b8f9947bd81dc3107bc6fdd1357cfc878bee8477bb7ee4c5f52768aa05f755f67939e0e5a9666962c152e1a96e12924caaf5f6b9e33ae7407569ef526
+  checksum: 10c0/3ff06e0984c6ad36fb41e393416f7d5f1093f86bf0fa0880209b6b5e16e926befd4bbefdffb22ea026f6e34ed0eefa9055845020ca0937e348aa710c1753d67b
   languageName: node
   linkType: hard
 
@@ -9350,7 +9350,7 @@ __metadata:
   dependencies:
     "@assistant-ui/react": "npm:^0.12.1"
     "@assistant-ui/react-ai-sdk": "npm:^1.3.1"
-    "@assistant-ui/react-devtools": "npm:^0.2.0"
+    "@assistant-ui/react-devtools": "npm:^1.0.0"
     "@assistant-ui/react-markdown": "npm:^0.12.0"
     "@backstage/cli": "backstage:^"
     "@backstage/core-app-api": "backstage:^"
