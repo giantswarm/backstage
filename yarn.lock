@@ -82,19 +82,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/provider-utils@npm:4.0.19":
-  version: 4.0.19
-  resolution: "@ai-sdk/provider-utils@npm:4.0.19"
-  dependencies:
-    "@ai-sdk/provider": "npm:3.0.8"
-    "@standard-schema/spec": "npm:^1.1.0"
-    eventsource-parser: "npm:^3.0.6"
-  peerDependencies:
-    zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/fdfdcef09b3897769dd7e5c67c92188ee37339e1cd68974b57a0ab47efee080bc614d1df7d28f5a3183344ccb38e0380982adf2340e78a8f90e311595a3fff1f
-  languageName: node
-  linkType: hard
-
 "@ai-sdk/provider-utils@npm:4.0.21":
   version: 4.0.21
   resolution: "@ai-sdk/provider-utils@npm:4.0.21"

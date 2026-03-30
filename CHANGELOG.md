@@ -5,6 +5,12 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.117.2] - 2026-03-30
+
+### Fixed
+
+- Update Backstage to 1.49.3 and fix entity relation cards (Has Components, Has Resources, etc.) showing only one row.
+
 ## [0.117.1] - 2026-03-27
 
 ### Changed
@@ -2147,7 +2153,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.2...HEAD
+[0.117.2]: https://github.com/giantswarm/backstage/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/giantswarm/backstage/compare/v0.117.0...v0.117.1
 [0.117.0]: https://github.com/giantswarm/backstage/compare/v0.116.2...v0.117.0
 [0.116.2]: https://github.com/giantswarm/backstage/compare/v0.116.1...v0.116.2
