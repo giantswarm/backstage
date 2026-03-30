@@ -5,6 +5,20 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.118.0] - 2026-03-30
+
+### Added
+
+- Add inbound dependency table to component entity page.
+- Add Graph tab with catalog relations graph for system entities.
+
+### Fixed
+
+- Fix entity icons not rendering in catalog relations graph.
+- Update Backstage to 1.49.3 and fix entity relation cards (Has Components, Has Resources, etc.) showing only one row.
+
+See [./docs/releases/v0.118.0-changelog.md](./docs/releases/v0.118.0-changelog.md) for more information.
+
 ## [0.117.2] - 2026-03-30
 
 ### Fixed
@@ -2153,7 +2167,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.118.0...HEAD
+[0.118.0]: https://github.com/giantswarm/backstage/compare/v0.117.2...v0.118.0
 [0.117.2]: https://github.com/giantswarm/backstage/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/giantswarm/backstage/compare/v0.117.0...v0.117.1
 [0.117.0]: https://github.com/giantswarm/backstage/compare/v0.116.2...v0.117.0

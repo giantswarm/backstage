@@ -1,5 +1,18 @@
 # app
 
+## 0.35.0
+
+### Minor Changes
+
+- 9bd53c6: Add inbound dependency table to component entity page, little title improvements
+
+### Patch Changes
+
+- 8443e6c: Update Backstage to 1.49.3 and fix entity relation cards (Has Components, Has Resources, etc.) showing only one row by forcing deduplication of @backstage/plugin-catalog-react to 2.1.1, which contains the EntityDataTable pagination fix.
+- 27a2c97: Add Graph tab with catalog relations graph for system entities.
+- Updated dependencies [27a2c97]
+  - @giantswarm/backstage-plugin-gs@0.61.3
+
 ## 0.34.0
 
 ### Minor Changes
