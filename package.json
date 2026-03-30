@@ -1,6 +1,6 @@
 {
   "name": "root",
-  "version": "0.117.0",
+  "version": "0.117.1",
   "private": true,
   "engines": {
     "node": "22 || 24"
@@ -53,8 +53,6 @@
     "typescript": "~5.9.0"
   },
   "resolutions": {
-    "@backstage/core-app-api": "backstage:^",
-    "@backstage/core-plugin-api": "backstage:^",
     "@types/express": "^5",
     "@types/express-serve-static-core": "^5",
     "@types/react": "^18",
@@ -71,8 +69,7 @@
     "@lezer/common": "1.5.1",
     "@lezer/highlight": "1.2.3",
     "codemirror-json-schema": "0.8.1",
-    "@assistant-ui/tap": "0.5.3",
-    "zod": "^3.25.76 || ^4.0.0"
+    "@assistant-ui/tap": "0.5.5"
   },
   "prettier": "@backstage/cli/config/prettier",
   "lint-staged": {

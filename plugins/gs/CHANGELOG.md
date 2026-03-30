@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.61.2
+
+### Patch Changes
+
+- a79d45d: Replace `giantswarm.io/deployment-names` annotation with `giantswarm.io/helmcharts` for mapping catalog entities to deployments.
+- 75eabf3: Migrate scaffolder field schemas from deprecated `makeFieldSchemaFromZod` to `makeFieldSchema`, removing direct zod dependency and fixing TypeScript OOM without needing a zod version resolution.
+- fcac92e: Detect "x.x.x" as auto-upgrade Any instead of None on HelmRelease/OCIRepository details page
+- c146a52: Replace portal-based EntityHeaderIcon with EntityHeaderBlueprint custom header so the entity icon persists across all tabs on catalog entity pages.
+
 ## 0.61.1
 
 ### Patch Changes

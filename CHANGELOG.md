@@ -5,6 +5,26 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.117.2] - 2026-03-30
+
+### Fixed
+
+- Update Backstage to 1.49.3 and fix entity relation cards (Has Components, Has Resources, etc.) showing only one row.
+
+## [0.117.1] - 2026-03-27
+
+### Changed
+
+- Replace `giantswarm.io/deployment-names` annotation with `giantswarm.io/helmcharts` for mapping catalog entities to deployments.
+- Replace portal-based EntityHeaderIcon with EntityHeaderBlueprint custom header for persistent entity icons across all tabs.
+- Migrate scaffolder field schemas from deprecated `makeFieldSchemaFromZod` to `makeFieldSchema`.
+
+### Fixed
+
+- Detect "x.x.x" as auto-upgrade Any instead of None on HelmRelease/OCIRepository details page.
+
+See [./docs/releases/v0.117.1-changelog.md](./docs/releases/v0.117.1-changelog.md) for more information.
+
 ## [0.117.0] - 2026-03-27
 
 ### Changed
@@ -2133,7 +2153,9 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.117.2...HEAD
+[0.117.2]: https://github.com/giantswarm/backstage/compare/v0.117.1...v0.117.2
+[0.117.1]: https://github.com/giantswarm/backstage/compare/v0.117.0...v0.117.1
 [0.117.0]: https://github.com/giantswarm/backstage/compare/v0.116.2...v0.117.0
 [0.116.2]: https://github.com/giantswarm/backstage/compare/v0.116.1...v0.116.2
 [0.116.1]: https://github.com/giantswarm/backstage/compare/v0.116.0...v0.116.1

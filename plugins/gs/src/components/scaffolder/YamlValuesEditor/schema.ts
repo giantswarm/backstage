@@ -1,40 +1,40 @@
-import { z } from 'zod/v3';
-import { makeFieldSchemaFromZod } from '@backstage/plugin-scaffolder';
+import { makeFieldSchema } from '@backstage/plugin-scaffolder-react';
 
 /**
  * Schema for the YamlValuesEditor field
  */
-export const YamlValuesEditorFieldSchema = makeFieldSchemaFromZod(
-  z.string().optional().describe('YAML string'),
-  z.object({
-    chartRef: z
-      .string()
-      .optional()
-      .describe('Direct chart reference to fetch values schema for'),
-    chartRefField: z
-      .string()
-      .optional()
-      .describe(
-        'The name of the field containing the chart reference to fetch values schema for',
-      ),
-    chartTag: z
-      .string()
-      .optional()
-      .describe('The chart tag to fetch values schema for'),
-    chartTagField: z
-      .string()
-      .optional()
-      .describe(
-        'The name of the field containing the chart tag to fetch values schema for',
-      ),
-    initialValueField: z
-      .string()
-      .optional()
-      .describe(
-        'Field path to use as initial value when the editor is empty (e.g. for edit mode)',
-      ),
-  }),
-);
+export const YamlValuesEditorFieldSchema = makeFieldSchema({
+  output: z => z.string().optional().describe('YAML string'),
+  uiOptions: z =>
+    z.object({
+      chartRef: z
+        .string()
+        .optional()
+        .describe('Direct chart reference to fetch values schema for'),
+      chartRefField: z
+        .string()
+        .optional()
+        .describe(
+          'The name of the field containing the chart reference to fetch values schema for',
+        ),
+      chartTag: z
+        .string()
+        .optional()
+        .describe('The chart tag to fetch values schema for'),
+      chartTagField: z
+        .string()
+        .optional()
+        .describe(
+          'The name of the field containing the chart tag to fetch values schema for',
+        ),
+      initialValueField: z
+        .string()
+        .optional()
+        .describe(
+          'Field path to use as initial value when the editor is empty (e.g. for edit mode)',
+        ),
+    }),
+});
 
 export const YamlValuesEditorSchema = YamlValuesEditorFieldSchema.schema;
 
