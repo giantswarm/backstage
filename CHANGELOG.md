@@ -15,6 +15,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix entity icons not rendering in catalog relations graph.
 - Update Backstage to 1.49.3 and fix entity relation cards (Has Components, Has Resources, etc.) showing only one row.
 
+See [./docs/releases/v0.118.0-changelog.md](./docs/releases/v0.118.0-changelog.md) for more information.
+
 ## [0.117.2] - 2026-03-30
 
 ### Fixed

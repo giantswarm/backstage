@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.61.3
+
+### Patch Changes
+
+- 27a2c97: Fix entity icons not rendering in catalog relations graph by using SvgIcon with SVG image element instead of HTML img tag.
+
 ## 0.61.2
 
 ### Patch Changes
