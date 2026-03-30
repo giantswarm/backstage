@@ -313,7 +313,10 @@ export const Thread = ({ className }: { className?: string }) => {
 
   return (
     <ThreadPrimitive.Root className={className ?? classes.root}>
-      <ThreadPrimitive.Viewport className={classes.messagesContainer}>
+      <ThreadPrimitive.Viewport
+        className={classes.messagesContainer}
+        scrollToBottomOnRunStart={false}
+      >
         <ThreadPrimitive.Empty>
           <ThreadWelcome />
         </ThreadPrimitive.Empty>
