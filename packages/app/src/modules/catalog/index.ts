@@ -1,6 +1,7 @@
 import { createFrontendModule } from '@backstage/frontend-plugin-api';
 import { IndexPage } from './IndexPage';
 import { DependenciesEntityContent } from './DependenciesEntityContent';
+import { GraphEntityContent } from './GraphEntityContent';
 import {
   CircleCIEntityContent,
   GitHubPullRequestsEntityContent,
@@ -16,6 +17,7 @@ export const catalogPluginOverrides = createFrontendModule({
     GitHubPullRequestsEntityContent,
     CircleCIEntityContent,
     DependenciesEntityContent,
+    GraphEntityContent,
     GrafanaDashboardsEntityCard,
   ],
 });
