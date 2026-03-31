@@ -193,7 +193,13 @@ export const DeploymentsDataProvider = ({
     // Merge Mimir workloads: enrich CRD entries with metrics, keep unmatched as standalone
     const mimirData = filteredMimirWorkloads.map(workloadToDeploymentData);
 
-    return mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
+    const merged = mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
+
+    if (clusterName) {
+      return merged.filter(d => d.clusterName === clusterName);
+    }
+
+    return merged;
   }, [
     isLoading,
     appResources,
