@@ -1,20 +1,13 @@
 import {
   coreServices,
   createBackendModule,
-  readSchedulerServiceTaskScheduleDefinitionFromConfig,
-  resolvePackagePath,
 } from '@backstage/backend-plugin-api';
 import {
   catalogProcessingExtensionPoint,
   catalogServiceRef,
 } from '@backstage/plugin-catalog-node';
-import {
-  DefaultGithubCredentialsProvider,
-  ScmIntegrations,
-} from '@backstage/integration';
-import { GiantSwarmLocationProcessor } from './processor';
+import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
-import { createSbomRefreshTask } from './sbomScheduledTask';
 
 export const catalogModuleGS = createBackendModule({
   pluginId: 'catalog',
@@ -46,44 +39,18 @@ export const catalogModuleGS = createBackendModule({
         const sbomEnabled = config.getOptionalBoolean(
           'catalog.processors.sbomDependencies.enabled',
         );
-        if (!sbomEnabled) {
-          return;
+        if (sbomEnabled) {
+          catalog.addProcessor(
+            await SbomDependencyProcessor.create({
+              config,
+              database,
+              logger,
+              catalogApi,
+              scheduler,
+              auth,
+            }),
+          );
         }
-
-        const integrations = ScmIntegrations.fromConfig(config);
-        const credentialsProvider =
-          DefaultGithubCredentialsProvider.fromIntegrations(integrations);
-
-        const db = await database.getClient();
-
-        if (!database.migrations?.skip) {
-          await db.migrate.latest({
-            directory: resolvePackagePath(
-              '@giantswarm/backstage-plugin-catalog-backend-module-gs',
-              'migrations',
-            ),
-            tableName: 'knex_migrations_catalog_module_gs',
-          });
-        }
-
-        catalog.addProcessor(new SbomDependencyProcessor(db, logger));
-
-        const scheduleConfig = config.getOptionalConfig(
-          'catalog.processors.sbomDependencies.schedule',
-        );
-        const schedule = scheduleConfig
-          ? readSchedulerServiceTaskScheduleDefinitionFromConfig(scheduleConfig)
-          : undefined;
-
-        await createSbomRefreshTask({
-          credentialsProvider,
-          catalogApi,
-          auth,
-          db,
-          logger,
-          scheduler,
-          schedule,
-        });
       },
     });
   },

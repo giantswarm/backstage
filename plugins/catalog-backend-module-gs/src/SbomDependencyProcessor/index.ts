@@ -1,0 +1,1 @@
+export { SbomDependencyProcessor } from './SbomDependencyProcessor';

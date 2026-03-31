@@ -1,0 +1,1 @@
+export { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';

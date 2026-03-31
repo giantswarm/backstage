@@ -76,6 +76,7 @@ export async function refreshSbomDependencies(options: {
 
   let processed = 0;
   let failed = 0;
+  const updatedEntityRefs: string[] = [];
 
   // Stream entities in batches and process each immediately to minimize memory usage
   for await (const batch of catalogApi.streamEntities(
@@ -83,6 +84,7 @@ export async function refreshSbomDependencies(options: {
       filter: { kind: 'Component' },
       fields: [
         'metadata.name',
+        'metadata.namespace',
         `metadata.annotations.${GITHUB_PROJECT_SLUG_ANNOTATION}`,
       ],
     },
@@ -123,6 +125,10 @@ export async function refreshSbomDependencies(options: {
           }
         });
 
+        const namespace = entity.metadata.namespace ?? 'default';
+        updatedEntityRefs.push(
+          `component:${namespace}/${entity.metadata.name}`,
+        );
         processed++;
       } catch (error) {
         logger.warn(`SBOM refresh: failed to process ${slug}: ${error}`);
@@ -134,6 +140,15 @@ export async function refreshSbomDependencies(options: {
   logger.info(
     `SBOM refresh complete: ${processed} processed, ${failed} failed`,
   );
+
+  // Trigger catalog re-processing so preProcessEntity picks up the new data
+  for (const ref of updatedEntityRefs) {
+    try {
+      await catalogApi.refreshEntity(ref, { credentials });
+    } catch (error) {
+      logger.warn(`SBOM refresh: failed to refresh entity ${ref}: ${error}`);
+    }
+  }
 }
 
 const MAX_RETRIES = 3;
