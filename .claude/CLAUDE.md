@@ -25,13 +25,15 @@ yarn start app
 
 ### Testing
 
-Use the test-runner subagent for testing.
+Run tests directly with the Bash tool — do not use the test-runner subagent.
+
+Use the `--coverage` flag to prevent the Bash tool from auto-backgrounding the command:
 
 ```bash
-# Run tests
-yarn test
+# Run tests for a specific plugin (preferred)
+yarn test --coverage plugins/my-plugin --forceExit
 
-# Run tests with coverage
+# Run all tests with coverage
 yarn test:all
 
 # Run Playwright E2E tests
