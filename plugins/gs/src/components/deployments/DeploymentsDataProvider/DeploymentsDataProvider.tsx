@@ -68,18 +68,24 @@ export function useDeploymentsData(): DeploymentsData {
 
 type DeploymentsDataProviderProps = {
   deploymentNames?: string[];
+  initialInstallations?: string[];
+  clusterName?: string;
   children: ReactNode;
 };
 
 export const DeploymentsDataProvider = ({
   deploymentNames,
+  initialInstallations,
+  clusterName,
   children,
 }: DeploymentsDataProviderProps) => {
-  const [activeInstallations, setActiveInstallations] = useState<string[]>([]);
+  const [activeInstallations, setActiveInstallations] = useState<string[]>(
+    initialInstallations ?? [],
+  );
 
   const { filters, queryParameters, updateFilters } =
     useFilters<DefaultDeploymentFilters>({
-      persistToURL: deploymentNames ? false : true,
+      persistToURL: deploymentNames || clusterName ? false : true,
     });
 
   const { catalogEntitiesMap } = useCatalogEntitiesForDeployments();
@@ -176,12 +182,19 @@ export const DeploymentsDataProvider = ({
     // Merge Mimir workloads: enrich CRD entries with metrics, keep unmatched as standalone
     const mimirData = filteredMimirWorkloads.map(workloadToDeploymentData);
 
-    return mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
+    const merged = mergeWorkloads(k8sData, mimirData, catalogEntitiesMap);
+
+    if (clusterName) {
+      return merged.filter(d => d.clusterName === clusterName);
+    }
+
+    return merged;
   }, [
     isLoading,
     appResources,
     helmReleaseResources,
     deploymentNames,
+    clusterName,
     ociRepositoryResources,
     catalogEntitiesMap,
     mimirWorkloads,
