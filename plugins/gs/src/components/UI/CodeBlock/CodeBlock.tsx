@@ -1,4 +1,4 @@
-import { CodeSnippet, CopyTextButton } from '@backstage/core-components';
+import { CopyTextButton } from '@backstage/core-components';
 import { Box, makeStyles } from '@material-ui/core';
 
 const useStyles = makeStyles(theme => ({
@@ -6,25 +6,26 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     alignItems: 'flex-start',
     width: '100%',
-
-    '& pre': {
-      margin: 0,
-    },
   },
-  codeSnippetContainer: {
-    position: 'relative',
+  codeBlock: {
     flex: 1,
-    minHeight: '50px',
+    minWidth: 0,
+    margin: 0,
+    padding: theme.spacing(1),
+    backgroundColor: theme.palette.type === 'dark' ? '#444' : '#f5f5f5',
+    color: theme.palette.type === 'dark' ? '#ddd' : '#333',
+    borderRadius: 4,
+    fontFamily: '"Roboto Mono", monospace',
+    fontSize: '0.85em',
+    lineHeight: 1.6,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
   },
   copyButtonContainer: {
     marginLeft: theme.spacing(1),
     marginTop: '-8px',
     marginRight: '-12px',
     marginBottom: '-12px',
-  },
-  codeSnippetWrapper: {
-    position: 'absolute',
-    width: '100%',
   },
 }));
 
@@ -33,16 +34,12 @@ type CodeBlockProps = {
   language: string;
 };
 
-export const CodeBlock = ({ text, language }: CodeBlockProps) => {
+export const CodeBlock = ({ text, language: _language }: CodeBlockProps) => {
   const classes = useStyles();
 
   return (
     <Box className={classes.flexContainer}>
-      <Box className={classes.codeSnippetContainer}>
-        <Box className={classes.codeSnippetWrapper}>
-          <CodeSnippet text={text} language={language} />
-        </Box>
-      </Box>
+      <pre className={classes.codeBlock}>{text}</pre>
       <Box className={classes.copyButtonContainer}>
         <CopyTextButton text={text} />
       </Box>
