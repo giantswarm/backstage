@@ -16,8 +16,12 @@ import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import classNames from 'classnames';
 
-const useStyles = makeStyles((theme: Theme) =>
+export const useMarkdownStyles = makeStyles((theme: Theme) =>
   createStyles({
+    '@keyframes fadeInUp': {
+      from: { opacity: 0, transform: 'translateY(8px)' },
+      to: { opacity: 1, transform: 'translateY(0)' },
+    },
     codeBlock: {
       backgroundColor: theme.palette.type === 'dark' ? '#1e1e1e' : '#f5f5f5',
       padding: theme.spacing(2),
@@ -48,6 +52,7 @@ const useStyles = makeStyles((theme: Theme) =>
     },
     table: {
       margin: theme.spacing(2, 0),
+      animation: '$fadeInUp 0.3s ease-out',
     },
     tableCell: {
       borderBottom: `1px solid ${theme.palette.divider}`,
@@ -103,7 +108,9 @@ const useStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
+export const createMarkdownComponents = (
+  classes: ReturnType<typeof useMarkdownStyles>,
+) =>
   memoizeMarkdownComponents({
     h1: ({ children }) => (
       <Typography
@@ -236,7 +243,7 @@ const createMarkdownComponents = (classes: ReturnType<typeof useStyles>) =>
   });
 
 const MarkdownTextImpl = () => {
-  const classes = useStyles();
+  const classes = useMarkdownStyles();
   const components = createMarkdownComponents(classes);
 
   return (

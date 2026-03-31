@@ -27,6 +27,7 @@ import {
   Reasoning,
   ReasoningGroup,
   MarkdownText,
+  StreamingMarkdownText,
   ToolFallback,
   ToolGroup,
   ContextUsageDisplay,
@@ -180,7 +181,7 @@ const AssistantMessage = () => {
       <div className={classes.assistantMessage}>
         <MessagePrimitive.Parts
           components={{
-            Text: MarkdownText,
+            Text: StreamingMarkdownText,
             ...(verboseDebugging
               ? {
                   Reasoning: Reasoning,
