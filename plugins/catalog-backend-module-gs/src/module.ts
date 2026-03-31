@@ -17,9 +17,11 @@ import {
   ScmIntegrations,
 } from '@backstage/integration';
 import type { Knex } from 'knex';
-import { GiantSwarmLocationProcessor } from './processor';
-import { SbomDependencyProcessor } from './SbomDependencyProcessor';
-import { createSbomRefreshTask } from './sbomScheduledTask';
+import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
+import {
+  SbomDependencyProcessor,
+  createSbomRefreshTask,
+} from './SbomDependencyProcessor';
 
 const migrationsDir = resolvePackagePath(
   '@giantswarm/backstage-plugin-catalog-backend-module-gs',

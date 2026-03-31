@@ -1,4 +1,4 @@
-import { GiantSwarmLocationProcessor } from './processor';
+import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
 
 const yaml = require('js-yaml');
 
