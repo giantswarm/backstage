@@ -15,6 +15,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Don't scroll to bottom when a new AI run starts if the user has scrolled up to read previous content.
 
+See [./docs/releases/v0.119.0-changelog.md](./docs/releases/v0.119.0-changelog.md) for more information.
+
 ## [0.118.0] - 2026-03-30
 
 ### Added
