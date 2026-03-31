@@ -26,6 +26,11 @@ interface TokenResponse {
   access_token: string;
 }
 
+export interface RegistryCredentials {
+  username: string;
+  password: string;
+}
+
 /**
  * HTTP client for container registries with automatic authentication handling.
  *
@@ -40,6 +45,7 @@ export class RegistryAuthClient {
   constructor(
     private readonly logger: LoggerService,
     private readonly requestTimeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
+    private readonly credentials: Map<string, RegistryCredentials> = new Map(),
   ) {}
 
   /**
@@ -56,14 +62,14 @@ export class RegistryAuthClient {
       headers: { Accept: acceptHeader },
     });
 
-    // If we get a 401, try to get an anonymous token and retry
+    // If we get a 401, try to get a token and retry
     if (response.status === 401) {
       const wwwAuthenticate = response.headers.get('www-authenticate');
       if (wwwAuthenticate) {
         this.logger.debug(
-          'Registry requires authentication, attempting to get anonymous token',
+          'Registry requires authentication, attempting to acquire token',
         );
-        const token = await this.getAnonymousToken(wwwAuthenticate);
+        const token = await this.getToken(wwwAuthenticate);
 
         if (token) {
           response = await this.fetchWithTimeout(url, {
@@ -188,16 +194,14 @@ export class RegistryAuthClient {
   }
 
   /**
-   * Gets an anonymous access token from the registry's OAuth2 endpoint.
-   * This is required for registries like Azure Container Registry that
-   * require authentication even for public repositories.
+   * Gets an access token from the registry's OAuth2 endpoint.
+   * Uses configured credentials (Basic Auth) if available for the registry,
+   * otherwise falls back to anonymous token acquisition.
    *
    * Tokens are cached to avoid unnecessary requests.
    * Throws AuthenticationError if token acquisition fails.
    */
-  private async getAnonymousToken(
-    wwwAuthenticate: string,
-  ): Promise<string | null> {
+  private async getToken(wwwAuthenticate: string): Promise<string | null> {
     const challenge = this.parseWwwAuthenticate(wwwAuthenticate);
 
     if (!challenge) {
@@ -219,13 +223,26 @@ export class RegistryAuthClient {
     tokenUrl.searchParams.set('service', challenge.service);
     tokenUrl.searchParams.set('scope', challenge.scope);
 
-    this.logger.debug(
-      `Requesting anonymous token from: ${tokenUrl.toString()}`,
-    );
+    // Build request headers - add Basic Auth if credentials exist for this registry
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    const registryCredentials = this.credentials.get(challenge.service);
+    if (registryCredentials) {
+      const basicAuth = Buffer.from(
+        `${registryCredentials.username}:${registryCredentials.password}`,
+      ).toString('base64');
+      headers.Authorization = `Basic ${basicAuth}`;
+      this.logger.debug(
+        `Using configured credentials for registry: ${challenge.service}`,
+      );
+    } else {
+      this.logger.debug(
+        `Requesting anonymous token from: ${tokenUrl.toString()}`,
+      );
+    }
 
     try {
       const tokenResponse = await this.fetchWithTimeout(tokenUrl.toString(), {
-        headers: { Accept: 'application/json' },
+        headers,
       });
 
       if (!tokenResponse.ok) {
