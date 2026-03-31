@@ -5,6 +5,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add custom processor for dependency relationships between components.
+- Add streaming text-reveal animation for AI chat assistant messages.
+- Improve cluster access component by showing kubectl-gs login command.
+
+### Fixed
+
+- Don't scroll to bottom when a new AI run starts if the user has scrolled up to read previous content.
+
 ## [0.118.0] - 2026-03-30
 
 ### Added
