@@ -2,6 +2,16 @@ import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 
 export const useStyles = makeStyles((theme: Theme) =>
   createStyles({
+    '@keyframes fadeInUp': {
+      from: {
+        opacity: 0,
+        transform: 'translateY(8px)',
+      },
+      to: {
+        opacity: 1,
+        transform: 'translateY(0)',
+      },
+    },
     root: {
       display: 'flex',
       flexDirection: 'column',
@@ -80,6 +90,7 @@ export const useStyles = makeStyles((theme: Theme) =>
       textAlign: 'center',
     },
     userMessage: {
+      animation: '$fadeInUp 0.3s ease-out',
       justifySelf: 'flex-end',
       maxWidth: 'calc(100% - 65px)',
       backgroundColor: theme.palette.background.default,
