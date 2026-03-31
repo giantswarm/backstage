@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-03-31
+
 ### Added
 
 - Add custom processor for dependency relationships between components.
@@ -2179,7 +2181,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.118.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.119.0...HEAD
+[0.119.0]: https://github.com/giantswarm/backstage/compare/v0.118.0...v0.119.0
 [0.118.0]: https://github.com/giantswarm/backstage/compare/v0.117.2...v0.118.0
 [0.117.2]: https://github.com/giantswarm/backstage/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/giantswarm/backstage/compare/v0.117.0...v0.117.1
