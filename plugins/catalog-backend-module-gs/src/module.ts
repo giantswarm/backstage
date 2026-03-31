@@ -4,6 +4,10 @@ import {
   readSchedulerServiceTaskScheduleDefinitionFromConfig,
   resolvePackagePath,
 } from '@backstage/backend-plugin-api';
+import type {
+  DatabaseService,
+  LoggerService,
+} from '@backstage/backend-plugin-api';
 import {
   catalogProcessingExtensionPoint,
   catalogServiceRef,
@@ -12,9 +16,32 @@ import {
   DefaultGithubCredentialsProvider,
   ScmIntegrations,
 } from '@backstage/integration';
+import type { Knex } from 'knex';
 import { GiantSwarmLocationProcessor } from './processor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
 import { createSbomRefreshTask } from './sbomScheduledTask';
+
+const migrationsDir = resolvePackagePath(
+  '@giantswarm/backstage-plugin-catalog-backend-module-gs',
+  'migrations',
+);
+
+async function initializeSbomPersistence(options: {
+  database: DatabaseService;
+  logger: LoggerService;
+}): Promise<{ db: Knex; processor: SbomDependencyProcessor }> {
+  const { database, logger } = options;
+  const db = await database.getClient();
+
+  if (!database.migrations?.skip) {
+    await db.migrate.latest({
+      directory: migrationsDir,
+      tableName: 'knex_migrations_catalog_module_gs',
+    });
+  }
+
+  return { db, processor: new SbomDependencyProcessor(db, logger) };
+}
 
 export const catalogModuleGS = createBackendModule({
   pluginId: 'catalog',
@@ -50,23 +77,15 @@ export const catalogModuleGS = createBackendModule({
           return;
         }
 
+        const { db, processor } = await initializeSbomPersistence({
+          database,
+          logger,
+        });
+        catalog.addProcessor(processor);
+
         const integrations = ScmIntegrations.fromConfig(config);
         const credentialsProvider =
           DefaultGithubCredentialsProvider.fromIntegrations(integrations);
-
-        const db = await database.getClient();
-
-        if (!database.migrations?.skip) {
-          await db.migrate.latest({
-            directory: resolvePackagePath(
-              '@giantswarm/backstage-plugin-catalog-backend-module-gs',
-              'migrations',
-            ),
-            tableName: 'knex_migrations_catalog_module_gs',
-          });
-        }
-
-        catalog.addProcessor(new SbomDependencyProcessor(db, logger));
 
         const scheduleConfig = config.getOptionalConfig(
           'catalog.processors.sbomDependencies.schedule',
