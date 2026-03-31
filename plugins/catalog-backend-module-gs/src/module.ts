@@ -1,49 +1,13 @@
 import {
   coreServices,
   createBackendModule,
-  readSchedulerServiceTaskScheduleDefinitionFromConfig,
-  resolvePackagePath,
-} from '@backstage/backend-plugin-api';
-import type {
-  DatabaseService,
-  LoggerService,
 } from '@backstage/backend-plugin-api';
 import {
   catalogProcessingExtensionPoint,
   catalogServiceRef,
 } from '@backstage/plugin-catalog-node';
-import {
-  DefaultGithubCredentialsProvider,
-  ScmIntegrations,
-} from '@backstage/integration';
-import type { Knex } from 'knex';
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
-import {
-  SbomDependencyProcessor,
-  createSbomRefreshTask,
-} from './SbomDependencyProcessor';
-
-const migrationsDir = resolvePackagePath(
-  '@giantswarm/backstage-plugin-catalog-backend-module-gs',
-  'migrations',
-);
-
-async function initializeSbomPersistence(options: {
-  database: DatabaseService;
-  logger: LoggerService;
-}): Promise<{ db: Knex; processor: SbomDependencyProcessor }> {
-  const { database, logger } = options;
-  const db = await database.getClient();
-
-  if (!database.migrations?.skip) {
-    await db.migrate.latest({
-      directory: migrationsDir,
-      tableName: 'knex_migrations_catalog_module_gs',
-    });
-  }
-
-  return { db, processor: new SbomDependencyProcessor(db, logger) };
-}
+import { SbomDependencyProcessor } from './SbomDependencyProcessor';
 
 export const catalogModuleGS = createBackendModule({
   pluginId: 'catalog',
@@ -75,36 +39,18 @@ export const catalogModuleGS = createBackendModule({
         const sbomEnabled = config.getOptionalBoolean(
           'catalog.processors.sbomDependencies.enabled',
         );
-        if (!sbomEnabled) {
-          return;
+        if (sbomEnabled) {
+          catalog.addProcessor(
+            await SbomDependencyProcessor.create({
+              config,
+              database,
+              logger,
+              catalogApi,
+              scheduler,
+              auth,
+            }),
+          );
         }
-
-        const { db, processor } = await initializeSbomPersistence({
-          database,
-          logger,
-        });
-        catalog.addProcessor(processor);
-
-        const integrations = ScmIntegrations.fromConfig(config);
-        const credentialsProvider =
-          DefaultGithubCredentialsProvider.fromIntegrations(integrations);
-
-        const scheduleConfig = config.getOptionalConfig(
-          'catalog.processors.sbomDependencies.schedule',
-        );
-        const schedule = scheduleConfig
-          ? readSchedulerServiceTaskScheduleDefinitionFromConfig(scheduleConfig)
-          : undefined;
-
-        await createSbomRefreshTask({
-          credentialsProvider,
-          catalogApi,
-          auth,
-          db,
-          logger,
-          scheduler,
-          schedule,
-        });
       },
     });
   },
