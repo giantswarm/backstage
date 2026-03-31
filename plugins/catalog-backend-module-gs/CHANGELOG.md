@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-catalog-backend-module-gs
 
+## 0.3.0
+
+### Minor Changes
+
+- 49642b6: Add custom processor for dependency relationships between components
+
 ## 0.2.1
 
 ### Patch Changes

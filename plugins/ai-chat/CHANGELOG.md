@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.11.3
+
+### Patch Changes
+
+- e7f7b27: Don't scroll to bottom when a new AI run starts if the user has scrolled up to read previous content.
+- e7f7b27: Add streaming text-reveal animation for assistant messages with skip rules for tables and links, and fadeInUp animations for user messages.
+
 ## 0.11.2
 
 ### Patch Changes

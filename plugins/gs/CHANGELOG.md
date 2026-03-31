@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.62.0
+
+### Minor Changes
+
+- c331208: Improve cluster access component by showing kubectl-gs login command
+
 ## 0.61.3
 
 ### Patch Changes
