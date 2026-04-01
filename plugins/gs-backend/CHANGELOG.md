@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.7.0
+
+### Minor Changes
+
+- 7b162b5: Add support for authenticated access to private OCI container registries
+
 ## 0.6.0
 
 ### Minor Changes
