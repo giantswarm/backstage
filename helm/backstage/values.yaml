@@ -318,7 +318,7 @@ route:
 # @schema additionalProperties:{"type":"object","properties":{"username":{"type":"string"},"password":{"type":"string"}},"required":["username","password"]}
 # -- Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig
 ociRegistryCredentials: {}
-#  example:
+#  exampleRegistry:
 #    username: "user"
 #    password: "pass"
 
