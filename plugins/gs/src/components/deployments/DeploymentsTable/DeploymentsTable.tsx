@@ -11,6 +11,7 @@ import { WorkloadDetailsPane } from '../WorkloadDetailsPane';
 
 export const DEPLOYMENTS_TABLE_ID = 'deployments';
 export const ENTITY_DEPLOYMENTS_TABLE_ID = 'entity-deployments';
+export const CLUSTER_APPS_TABLE_ID = 'cluster-apps';
 
 type Props = {
   columns: TableColumn<DeploymentData>[];
@@ -66,7 +67,7 @@ type DeploymentsTableProps = {
   sourceLocation?: string;
   grafanaDashboard?: string;
   ingressHost?: string;
-  context?: 'catalog-entity' | 'deployments-page';
+  context?: 'catalog-entity' | 'deployments-page' | 'cluster-apps';
 };
 
 export const DeploymentsTable = ({
@@ -82,11 +83,14 @@ export const DeploymentsTable = ({
     retry,
   } = useDeploymentsData();
 
-  const { visibleColumns, saveVisibleColumns } = useTableColumns(
-    context === 'deployments-page'
-      ? DEPLOYMENTS_TABLE_ID
-      : ENTITY_DEPLOYMENTS_TABLE_ID,
-  );
+  const tableIdMap = {
+    'deployments-page': DEPLOYMENTS_TABLE_ID,
+    'cluster-apps': CLUSTER_APPS_TABLE_ID,
+    'catalog-entity': ENTITY_DEPLOYMENTS_TABLE_ID,
+  } as const;
+  const tableId = tableIdMap[context];
+
+  const { visibleColumns, saveVisibleColumns } = useTableColumns(tableId);
 
   const [columns, setColumns] = useState(
     getInitialColumns({

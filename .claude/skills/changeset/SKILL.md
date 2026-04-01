@@ -1,6 +1,7 @@
 ---
 name: changeset
 description: Create a changeset file for versioning packages. Use when the user wants to document changes for release, create a changelog entry, or bump package versions.
+user-invocable: true
 allowed-tools: Read, Write, Glob, Grep, AskUserQuestion
 ---
 
@@ -32,25 +33,15 @@ Use AskUserQuestion tool to ask:
 
 ### Step 3: Generate Unique Filename
 
-Generate human-readable ID: `{adjective}-{noun}-{verb}`
-
-**Word lists:**
-
-Adjectives: ancient, bright, calm, deep, eager, fair, gentle, happy, icy, jolly, kind, light, mild, noble, odd, plain, quick, rare, soft, tall, unique, vast, warm, young, zesty, bold, clean, dark, empty, fresh, grand, humble, ideal, keen, loud, merry, neat, open, proud, quiet, rich, sharp, sweet, tidy, vivid, wise, witty, brave, clever
-
-Nouns: apple, beach, cloud, eagle, flame, grape, heart, island, jewel, kite, lemon, maple, night, ocean, pearl, river, stone, tiger, violet, water, bamboo, canyon, desert, ember, forest, garden, harbor, jungle, kingdom, lagoon, meadow, nebula, oasis, planet, rainbow, sunset, thunder, valley, willow, bridge, castle, dolphin, falcon, glacier, horizon, lantern, mirror, orchard, phoenix
-
-Verbs: bloom, climb, dance, explore, float, glide, hover, ignite, jump, kindle, launch, melt, nestle, orbit, ripple, shine, travel, unfold, venture, wander, adapt, blend, create, drift, emerge, flow, grow, heal, inspire, journey, learn, mingle, observe, persist, reflect, soar, thrive, twist, unite, whisper
-
-Pick one word randomly from each list. Check if `.changeset/{id}.md` exists; if so, regenerate.
+Generate a unique file name for the changeset by running the script `.claude/skills/changeset/generate-file-name.sh`.
 
 ### Step 4: Write Changeset File
 
-Create `.changeset/{id}.md`:
+Create the file with the name obtained in step 3 with the following content:
 
-```
+```markdown
 ---
-"package-name": patch
+'package-name': patch
 ---
 
 Summary description here.

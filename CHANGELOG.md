@@ -5,6 +5,20 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-03-31
+
+### Added
+
+- Add custom processor for dependency relationships between components.
+- Add streaming text-reveal animation for AI chat assistant messages.
+- Improve cluster access component by showing kubectl-gs login command.
+
+### Fixed
+
+- Don't scroll to bottom when a new AI run starts if the user has scrolled up to read previous content.
+
+See [./docs/releases/v0.119.0-changelog.md](./docs/releases/v0.119.0-changelog.md) for more information.
+
 ## [0.118.0] - 2026-03-30
 
 ### Added
@@ -2167,7 +2181,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.118.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.119.0...HEAD
+[0.119.0]: https://github.com/giantswarm/backstage/compare/v0.118.0...v0.119.0
 [0.118.0]: https://github.com/giantswarm/backstage/compare/v0.117.2...v0.118.0
 [0.117.2]: https://github.com/giantswarm/backstage/compare/v0.117.1...v0.117.2
 [0.117.1]: https://github.com/giantswarm/backstage/compare/v0.117.0...v0.117.1

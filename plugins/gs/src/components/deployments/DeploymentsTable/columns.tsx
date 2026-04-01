@@ -60,7 +60,7 @@ export const getInitialColumns = ({
   sourceLocation,
 }: {
   visibleColumns: string[];
-  context?: 'catalog-entity' | 'deployments-page';
+  context?: 'catalog-entity' | 'deployments-page' | 'cluster-apps';
   baseRouteRef: RouteRef;
   grafanaDashboard?: string;
   ingressHost?: string;
@@ -123,7 +123,6 @@ export const getInitialColumns = ({
     {
       title: 'App',
       field: DeploymentColumns.app,
-      hidden: context === 'catalog-entity',
       render: row => {
         return row.entity ? (
           <EntityRefLink entityRef={row.entity} />
@@ -313,7 +312,21 @@ export const getInitialColumns = ({
     });
   }
 
-  return columns.map(column => ({
+  const excludedFieldsByContext: Record<string, string[]> = {
+    'cluster-apps': [
+      DeploymentColumns.installationName,
+      DeploymentColumns.clusterName,
+      DeploymentColumns.clusterType,
+    ],
+    'catalog-entity': [DeploymentColumns.app],
+  };
+
+  const excludedFields = excludedFieldsByContext[context] ?? [];
+  const filteredColumns = excludedFields.length
+    ? columns.filter(column => !excludedFields.includes(column.field as string))
+    : columns;
+
+  return filteredColumns.map(column => ({
     ...column,
     hidden: isTableColumnHidden(column.field, {
       defaultValue: Boolean(column.hidden),
