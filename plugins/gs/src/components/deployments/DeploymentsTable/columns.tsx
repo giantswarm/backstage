@@ -123,7 +123,6 @@ export const getInitialColumns = ({
     {
       title: 'App',
       field: DeploymentColumns.app,
-      hidden: context === 'catalog-entity',
       render: row => {
         return row.entity ? (
           <EntityRefLink entityRef={row.entity} />
@@ -313,18 +312,19 @@ export const getInitialColumns = ({
     });
   }
 
-  const clusterAppsExcludedFields: string[] = [
-    DeploymentColumns.installationName,
-    DeploymentColumns.clusterName,
-    DeploymentColumns.clusterType,
-  ];
+  const excludedFieldsByContext: Record<string, string[]> = {
+    'cluster-apps': [
+      DeploymentColumns.installationName,
+      DeploymentColumns.clusterName,
+      DeploymentColumns.clusterType,
+    ],
+    'catalog-entity': [DeploymentColumns.app],
+  };
 
-  const filteredColumns =
-    context === 'cluster-apps'
-      ? columns.filter(
-          column => !clusterAppsExcludedFields.includes(column.field as string),
-        )
-      : columns;
+  const excludedFields = excludedFieldsByContext[context] ?? [];
+  const filteredColumns = excludedFields.length
+    ? columns.filter(column => !excludedFields.includes(column.field as string))
+    : columns;
 
   return filteredColumns.map(column => ({
     ...column,
