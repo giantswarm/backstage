@@ -35,6 +35,9 @@ function generatePKCE(): PKCEParams {
 export const oauth2Authenticator = createOAuthAuthenticator({
   defaultProfileTransform:
     PassportOAuthAuthenticatorHelper.defaultProfileTransform,
+  scopes: {
+    persist: true,
+  },
   initialize({ callbackUrl, config }) {
     const clientId = config.getString('clientId');
     const clientSecret = config.getOptionalString('clientSecret');
