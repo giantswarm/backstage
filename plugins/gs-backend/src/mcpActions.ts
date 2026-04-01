@@ -87,11 +87,17 @@ export function registerMcpActions(
       actionLogger.info(`Fetching ${content} from ${targetUrl}`);
       const headers: Record<string, string> = {};
       if (targetUrl.includes('raw.githubusercontent.com')) {
-        const { token } = await githubCredentialsProvider.getCredentials({
-          url: targetUrl,
-        });
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
+        try {
+          const { token } = await githubCredentialsProvider.getCredentials({
+            url: targetUrl,
+          });
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+        } catch (e) {
+          actionLogger.warn(
+            `Failed to get GitHub credentials, proceeding without auth: ${e}`,
+          );
         }
       }
       const response = await fetch(targetUrl, { headers });

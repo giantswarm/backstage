@@ -278,4 +278,52 @@ describe('registerMcpActions', () => {
       headers: {},
     });
   });
+
+  it('falls back to unauthenticated fetch when credentials provider fails', async () => {
+    const schemaUrl =
+      'https://raw.githubusercontent.com/giantswarm/my-app/refs/tags/v1.0.0/helm/my-app/values.schema.json';
+    const schemaContent = '{}';
+
+    containerRegistry.getTagManifest.mockResolvedValue({
+      schemaVersion: 2,
+      mediaType: 'application/vnd.oci.image.manifest.v1+json',
+      config: { mediaType: '', size: 0, digest: '' },
+      layers: [],
+      annotations: {
+        [VALUES_SCHEMA_ANNOTATION]: schemaUrl,
+      },
+    });
+
+    githubCredentialsProvider.getCredentials.mockRejectedValue(
+      new Error('No GitHub integration configured'),
+    );
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: async () => schemaContent,
+    });
+
+    const result = await registeredAction.action({
+      input: {
+        registry: 'gsoci.azurecr.io',
+        repository: 'charts/giantswarm/my-app',
+        tag: '1.0.0',
+        content: 'schema',
+      },
+      logger,
+      credentials: {} as any,
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to get GitHub credentials'),
+    );
+    expect(mockFetch).toHaveBeenCalledWith(schemaUrl, { headers: {} });
+    expect(result).toEqual({
+      output: {
+        url: schemaUrl,
+        content: schemaContent,
+        contentType: 'schema',
+      },
+    });
+  });
 });
