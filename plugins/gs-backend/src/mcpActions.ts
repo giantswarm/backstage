@@ -1,6 +1,7 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
 import { NotFoundError } from '@backstage/errors';
+import { GithubCredentialsProvider } from '@backstage/integration';
 import fetch from 'node-fetch';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 
@@ -11,6 +12,7 @@ const DEPRECATED_VALUES_SCHEMA_ANNOTATION =
 export function registerMcpActions(
   actionsRegistry: ActionsRegistryService,
   containerRegistry: typeof containerRegistryServiceRef.T,
+  githubCredentialsProvider: GithubCredentialsProvider,
   logger: LoggerService,
 ) {
   actionsRegistry.register({
@@ -83,7 +85,29 @@ export function registerMcpActions(
           : schemaUrl;
 
       actionLogger.info(`Fetching ${content} from ${targetUrl}`);
-      const response = await fetch(targetUrl);
+      const headers: Record<string, string> = {};
+      if (targetUrl.includes('raw.githubusercontent.com')) {
+        try {
+          // Convert raw.githubusercontent.com URL to github.com so the
+          // credentials provider can match it against the configured integration.
+          // e.g. https://raw.githubusercontent.com/org/repo/... → https://github.com/org/repo
+          const repoUrl = targetUrl.replace(
+            /^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\/.*/,
+            'https://github.com/$1',
+          );
+          const { token } = await githubCredentialsProvider.getCredentials({
+            url: repoUrl,
+          });
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+        } catch (e) {
+          actionLogger.warn(
+            `Failed to get GitHub credentials, proceeding without auth: ${e}`,
+          );
+        }
+      }
+      const response = await fetch(targetUrl, { headers });
       if (!response.ok) {
         throw new Error(
           `Failed to fetch ${content} from ${targetUrl}: HTTP ${response.status} ${response.statusText}`,

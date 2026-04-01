@@ -9478,6 +9478,7 @@ __metadata:
     "@backstage/catalog-client": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/errors": "backstage:^"
+    "@backstage/integration": "backstage:^"
     "@backstage/plugin-catalog-node": "backstage:^"
     "@backstage/types": "backstage:^"
     "@types/express": "npm:^4.17.6"
