@@ -341,6 +341,26 @@
             "description": "Node selector labels to constrain pod scheduling to specific nodes",
             "additionalProperties": true
         },
+        "ociRegistryCredentials": {
+            "type": "object",
+            "description": "Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars",
+            "additionalProperties": {
+                "type": "object",
+                "required": [
+                    "username",
+                    "password"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                    "password": {
+                        "type": "string"
+                    },
+                    "username": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "openai": {
             "type": "object",
             "description": "OpenAI provider settings",

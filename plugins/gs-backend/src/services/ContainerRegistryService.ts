@@ -3,6 +3,7 @@ import {
   createServiceFactory,
   createServiceRef,
   LoggerService,
+  RootConfigService,
 } from '@backstage/backend-plugin-api';
 import { Expand } from '@backstage/types';
 import { AcrRegistryClient } from './AcrRegistryClient';
@@ -12,7 +13,7 @@ import {
   OciRegistryClient,
   TagManifestResult,
 } from './OciRegistryClient';
-import { RegistryAuthClient } from './RegistryAuthClient';
+import { RegistryAuthClient, RegistryCredentials } from './RegistryAuthClient';
 import { findLatestStableVersion, normalizeRegistry } from './registryUtils';
 
 export interface TagInfo {
@@ -38,14 +39,43 @@ export class ContainerRegistryService {
   private readonly ociClient: OciRegistryClient;
   private readonly acrClient: AcrRegistryClient;
 
-  static create(options: { logger: LoggerService }) {
-    return new ContainerRegistryService(options.logger);
+  static create(options: { config: RootConfigService; logger: LoggerService }) {
+    return new ContainerRegistryService(options.config, options.logger);
   }
 
-  private constructor(logger: LoggerService) {
-    const authClient = new RegistryAuthClient(logger);
+  private constructor(config: RootConfigService, logger: LoggerService) {
+    const credentials = ContainerRegistryService.readCredentials(
+      config,
+      logger,
+    );
+    const authClient = new RegistryAuthClient(logger, undefined, credentials);
     this.ociClient = new OciRegistryClient(logger, authClient);
     this.acrClient = new AcrRegistryClient(logger, authClient);
+  }
+
+  private static readCredentials(
+    config: RootConfigService,
+    logger: LoggerService,
+  ): Map<string, RegistryCredentials> {
+    const credentials = new Map<string, RegistryCredentials>();
+
+    const registries = config.getOptionalConfigArray(
+      'gs.containerRegistry.registries',
+    );
+
+    if (!registries) {
+      return credentials;
+    }
+
+    for (const registry of registries) {
+      const host = registry.getString('host');
+      const username = registry.getString('username');
+      const password = registry.getString('password');
+      credentials.set(host, { username, password });
+      logger.info(`Configured credentials for container registry: ${host}`);
+    }
+
+    return credentials;
   }
 
   /**
@@ -123,6 +153,7 @@ export const containerRegistryServiceRef = createServiceRef<
     createServiceFactory({
       service,
       deps: {
+        config: coreServices.rootConfig,
         logger: coreServices.logger,
       },
       async factory(deps) {
