@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.63.0
+
+### Minor Changes
+
+- 46094be: Add Deployments tab to cluster details page showing apps deployed in that cluster
+
+### Patch Changes
+
+- 13bfeaf: Remove redundant App column from entity deployments table
+
 ## 0.62.0
 
 ### Minor Changes

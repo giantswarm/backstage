@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Remove redundant App column from entity deployments table.
 
+See [./docs/releases/v0.119.0-changelog.md](./docs/releases/v0.119.0-changelog.md) for more information.
+
 ## [0.119.0] - 2026-03-31
 
 ### Added

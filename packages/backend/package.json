@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "main": "dist/index.cjs.js",
   "types": "src/index.ts",
   "private": true,
@@ -50,7 +50,7 @@
     "@giantswarm/backstage-plugin-ai-chat-backend": "^0.10.0",
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.13.0",
     "@giantswarm/backstage-plugin-catalog-backend-module-gs": "^0.3.0",
-    "@giantswarm/backstage-plugin-gs-backend": "^0.6.0",
+    "@giantswarm/backstage-plugin-gs-backend": "^0.7.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.11.0",
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "^0.10.0",
     "@internal/backend-common": "workspace:^",
