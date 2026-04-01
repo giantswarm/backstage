@@ -1,5 +1,7 @@
+import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { gitHubApiRef } from '../../apis/github';
 import { useHelmChartTagManifest } from './useHelmChartTagManifest';
 
 const README_ANNOTATION = 'io.giantswarm.application.readme';
@@ -8,6 +10,7 @@ export function useHelmChartReadme(
   chartRef: string | undefined,
   chartTag: string | undefined,
 ) {
+  const gitHubApi = useApi(gitHubApiRef);
   const {
     tagManifest,
     error: tagManifestError,
@@ -28,14 +31,7 @@ export function useHelmChartReadme(
       }
 
       try {
-        const response = await fetch(readmeUrl);
-        if (!response.ok) {
-          // eslint-disable-next-line no-console
-          console.warn(`Failed to load readme from ${readmeUrl}`);
-          return null;
-        }
-
-        return response.text();
+        return await gitHubApi.fetchRawContent(readmeUrl);
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn(`Error loading readme from ${readmeUrl}:`, err);

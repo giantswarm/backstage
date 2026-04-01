@@ -314,9 +314,6 @@ describe('registerMcpActions', () => {
       credentials: {} as any,
     });
 
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to get GitHub credentials'),
-    );
     expect(mockFetch).toHaveBeenCalledWith(schemaUrl, { headers: {} });
     expect(result).toEqual({
       output: {

@@ -51,6 +51,7 @@ import {
   ContainerRegistryClient,
   containerRegistryApiRef,
 } from './apis/containerRegistry';
+import { GitHubClient, gitHubApiRef } from './apis/github';
 import { MimirClient, mimirApiRef } from './apis/mimir';
 
 // Pages
@@ -173,6 +174,20 @@ const containerRegistryApi = ApiBlueprint.make({
       },
       factory: ({ discoveryApi, fetchApi }) =>
         new ContainerRegistryClient({ discoveryApi, fetchApi }),
+    }),
+});
+
+const gitHubApi = ApiBlueprint.make({
+  name: 'github',
+  params: defineParams =>
+    defineParams({
+      api: gitHubApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+      },
+      factory: ({ discoveryApi, fetchApi }) =>
+        new GitHubClient({ discoveryApi, fetchApi }),
     }),
 });
 
@@ -556,6 +571,7 @@ export const gsPlugin = createFrontendPlugin({
     gsAuthProvidersApi,
     gsAuthApi,
     containerRegistryApi,
+    gitHubApi,
     mimirApi,
     // Entity cards
     appDeploymentEntityCard,
