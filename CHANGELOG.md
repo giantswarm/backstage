@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add Deployments tab to cluster details page showing apps deployed in that cluster.
+- Add support for authenticated access to private OCI container registries.
+
+### Fixed
+
+- Remove redundant App column from entity deployments table.
+
 ## [0.119.0] - 2026-03-31
 
 ### Added
