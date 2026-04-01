@@ -100,7 +100,7 @@ describe('registerMcpActions', () => {
       headers: { Authorization: 'Bearer ghp_test-token' },
     });
     expect(githubCredentialsProvider.getCredentials).toHaveBeenCalledWith({
-      url: schemaUrl,
+      url: 'https://github.com/giantswarm/my-app',
     });
     expect(result).toEqual({
       output: {

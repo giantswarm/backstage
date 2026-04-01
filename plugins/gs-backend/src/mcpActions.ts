@@ -88,8 +88,15 @@ export function registerMcpActions(
       const headers: Record<string, string> = {};
       if (targetUrl.includes('raw.githubusercontent.com')) {
         try {
+          // Convert raw.githubusercontent.com URL to github.com so the
+          // credentials provider can match it against the configured integration.
+          // e.g. https://raw.githubusercontent.com/org/repo/... → https://github.com/org/repo
+          const repoUrl = targetUrl.replace(
+            /^https:\/\/raw\.githubusercontent\.com\/([^/]+\/[^/]+)\/.*/,
+            'https://github.com/$1',
+          );
           const { token } = await githubCredentialsProvider.getCredentials({
-            url: targetUrl,
+            url: repoUrl,
           });
           if (token) {
             headers.Authorization = `Bearer ${token}`;
