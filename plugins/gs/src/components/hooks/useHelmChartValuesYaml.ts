@@ -2,6 +2,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { gitHubApiRef } from '../../apis/github';
+import { fetchContent } from './utils/fetchContent';
 import { useHelmChartTagManifest } from './useHelmChartTagManifest';
 
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
@@ -39,7 +40,7 @@ export function useHelmChartValuesYaml(
       }
 
       try {
-        return await gitHubApi.fetchRawContent(valuesYamlUrl);
+        return await fetchContent(valuesYamlUrl, gitHubApi);
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn(`Error loading values.yaml from ${valuesYamlUrl}:`, err);

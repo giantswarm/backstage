@@ -2,6 +2,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { gitHubApiRef } from '../../apis/github';
+import { fetchContent } from './utils/fetchContent';
 import { useHelmChartTagManifest } from './useHelmChartTagManifest';
 
 const README_ANNOTATION = 'io.giantswarm.application.readme';
@@ -31,7 +32,7 @@ export function useHelmChartReadme(
       }
 
       try {
-        return await gitHubApi.fetchRawContent(readmeUrl);
+        return await fetchContent(readmeUrl, gitHubApi);
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn(`Error loading readme from ${readmeUrl}:`, err);

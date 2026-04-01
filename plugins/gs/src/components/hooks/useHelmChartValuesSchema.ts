@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import $RefParser from '@apidevtools/json-schema-ref-parser';
 import { gitHubApiRef } from '../../apis/github';
+import { fetchContent } from './utils/fetchContent';
 import { useHelmChartTagManifest } from './useHelmChartTagManifest';
 
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
@@ -36,7 +37,7 @@ export function useHelmChartValuesSchema(
       }
 
       try {
-        const content = await gitHubApi.fetchRawContent(schemaUrl);
+        const content = await fetchContent(schemaUrl, gitHubApi);
         if (!content) {
           return null;
         }
