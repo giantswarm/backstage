@@ -78,6 +78,10 @@ spec:
             - secretRef:
                 name: {{ .Values.name }}-dex-auth-credentials-secret
             {{- end }}
+            {{- if .Values.containerRegistryCredentials }}
+            - secretRef:
+                name: {{ .Values.name }}-container-registry-credentials-secret
+            {{- end }}
             {{- range .Values.backstage.extraEnvVarsCM }}
             - configMapRef:
                 name: {{ . }}

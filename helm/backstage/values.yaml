@@ -315,6 +315,13 @@ route:
     # -- Authorization rules for request-level access control
     authorization: {}
 
+# @schema additionalProperties:{"type":"object","properties":{"username":{"type":"string"},"password":{"type":"string"}},"required":["username","password"]}
+# -- Private OCI container registry credentials, keyed by registry name. Each entry generates CONTAINER_REGISTRY_<NAME>_USERNAME and CONTAINER_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig
+containerRegistryCredentials: {}
+#  example:
+#    username: "user"
+#    password: "pass"
+
 # @schema item:object;itemProperties:{"keyId":{"type":"string"},"publicKey":{"type":"string"},"privateKey":{"type":"string"}}
 # -- Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/
 pluginKeys: []
