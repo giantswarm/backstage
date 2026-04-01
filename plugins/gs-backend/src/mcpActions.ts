@@ -2,6 +2,7 @@ import { LoggerService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
 import { NotFoundError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
+import fetch from 'node-fetch';
 import { fetchGitHubRawContent } from './githubRawContent';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 
@@ -85,10 +86,9 @@ export function registerMcpActions(
           : schemaUrl;
 
       actionLogger.info(`Fetching ${content} from ${targetUrl}`);
-      const response = await fetchGitHubRawContent(
-        targetUrl,
-        githubCredentialsProvider,
-      );
+      const response = targetUrl.includes('raw.githubusercontent.com')
+        ? await fetchGitHubRawContent(targetUrl, githubCredentialsProvider)
+        : await fetch(targetUrl);
       if (!response.ok) {
         throw new Error(
           `Failed to fetch ${content} from ${targetUrl}: HTTP ${response.status} ${response.statusText}`,

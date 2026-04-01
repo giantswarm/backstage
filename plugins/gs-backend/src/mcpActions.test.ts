@@ -274,9 +274,7 @@ describe('registerMcpActions', () => {
     ).rejects.toThrow('Failed to fetch schema from');
 
     expect(githubCredentialsProvider.getCredentials).not.toHaveBeenCalled();
-    expect(mockFetch).toHaveBeenCalledWith('https://example.com/schema.json', {
-      headers: {},
-    });
+    expect(mockFetch).toHaveBeenCalledWith('https://example.com/schema.json');
   });
 
   it('falls back to unauthenticated fetch when credentials provider fails', async () => {
