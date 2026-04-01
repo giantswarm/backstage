@@ -31,6 +31,7 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { findHelmChartName } from '../utils/findHelmChartName';
+import { findTargetClusterName } from '../utils/findTargetCluster';
 import { findResourceByRef } from '../../utils/findResourceByRef';
 
 export type DefaultDeploymentFilters = {
@@ -68,18 +69,24 @@ export function useDeploymentsData(): DeploymentsData {
 
 type DeploymentsDataProviderProps = {
   deploymentNames?: string[];
+  initialInstallations?: string[];
+  clusterName?: string;
   children: ReactNode;
 };
 
 export const DeploymentsDataProvider = ({
   deploymentNames,
+  initialInstallations,
+  clusterName,
   children,
 }: DeploymentsDataProviderProps) => {
-  const [activeInstallations, setActiveInstallations] = useState<string[]>([]);
+  const [activeInstallations, setActiveInstallations] = useState<string[]>(
+    initialInstallations ?? [],
+  );
 
   const { filters, queryParameters, updateFilters } =
     useFilters<DefaultDeploymentFilters>({
-      persistToURL: deploymentNames ? false : true,
+      persistToURL: deploymentNames || clusterName ? false : true,
     });
 
   const { catalogEntitiesMap } = useCatalogEntitiesForDeployments();
@@ -150,6 +157,14 @@ export const DeploymentsDataProvider = ({
     const k8sData = resources.reduce<DeploymentData[]>((acc, resource) => {
       const ociRepository = findOciRepository(resource);
 
+      // If clusterName filter is active, check if resource targets this cluster
+      if (clusterName) {
+        const targetCluster = findTargetClusterName(resource);
+        if (targetCluster !== clusterName) {
+          return acc;
+        }
+      }
+
       // If deploymentNames filter is active, check if resource matches
       if (deploymentNames) {
         const chartName = findHelmChartName(resource, ociRepository);
@@ -168,10 +183,12 @@ export const DeploymentsDataProvider = ({
       return acc;
     }, []);
 
-    // Filter Mimir workloads by deploymentNames (same as k8s resources above)
-    const filteredMimirWorkloads = deploymentNames
-      ? mimirWorkloads.filter(w => deploymentNames.includes(w.name))
-      : mimirWorkloads;
+    // Filter Mimir workloads by clusterName and deploymentNames (same as k8s resources above)
+    const filteredMimirWorkloads = mimirWorkloads.filter(
+      w =>
+        (!deploymentNames || deploymentNames.includes(w.name)) &&
+        (!clusterName || w.clusterName === clusterName),
+    );
 
     // Merge Mimir workloads: enrich CRD entries with metrics, keep unmatched as standalone
     const mimirData = filteredMimirWorkloads.map(workloadToDeploymentData);
@@ -182,6 +199,7 @@ export const DeploymentsDataProvider = ({
     appResources,
     helmReleaseResources,
     deploymentNames,
+    clusterName,
     ociRepositoryResources,
     catalogEntitiesMap,
     mimirWorkloads,

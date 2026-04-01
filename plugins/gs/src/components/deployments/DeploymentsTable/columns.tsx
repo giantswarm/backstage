@@ -60,7 +60,7 @@ export const getInitialColumns = ({
   sourceLocation,
 }: {
   visibleColumns: string[];
-  context?: 'catalog-entity' | 'deployments-page';
+  context?: 'catalog-entity' | 'deployments-page' | 'cluster-apps';
   baseRouteRef: RouteRef;
   grafanaDashboard?: string;
   ingressHost?: string;
@@ -313,7 +313,20 @@ export const getInitialColumns = ({
     });
   }
 
-  return columns.map(column => ({
+  const clusterAppsExcludedFields: string[] = [
+    DeploymentColumns.installationName,
+    DeploymentColumns.clusterName,
+    DeploymentColumns.clusterType,
+  ];
+
+  const filteredColumns =
+    context === 'cluster-apps'
+      ? columns.filter(
+          column => !clusterAppsExcludedFields.includes(column.field as string),
+        )
+      : columns;
+
+  return filteredColumns.map(column => ({
     ...column,
     hidden: isTableColumnHidden(column.field, {
       defaultValue: Boolean(column.hidden),
