@@ -78,9 +78,9 @@ spec:
             - secretRef:
                 name: {{ .Values.name }}-dex-auth-credentials-secret
             {{- end }}
-            {{- if .Values.containerRegistryCredentials }}
+            {{- if .Values.ociRegistryCredentials }}
             - secretRef:
-                name: {{ .Values.name }}-container-registry-credentials-secret
+                name: {{ .Values.name }}-oci-registry-credentials-secret
             {{- end }}
             {{- range .Values.backstage.extraEnvVarsCM }}
             - configMapRef:
