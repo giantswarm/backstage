@@ -28,6 +28,7 @@
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/catalog-client": "backstage:^",
     "@backstage/errors": "backstage:^",
+    "@backstage/integration": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
     "@backstage/types": "backstage:^",
     "express": "^4.17.1",

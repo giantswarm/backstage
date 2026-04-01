@@ -3,6 +3,10 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
+import {
+  DefaultGithubCredentialsProvider,
+  ScmIntegrations,
+} from '@backstage/integration';
 import { registerMcpActions } from './mcpActions';
 import { createRouter } from './router';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
@@ -20,6 +24,7 @@ export const gsPlugin = createBackendPlugin({
       deps: {
         httpRouter: coreServices.httpRouter,
         logger: coreServices.logger,
+        config: coreServices.rootConfig,
         containerRegistry: containerRegistryServiceRef,
         mimir: mimirServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
@@ -27,6 +32,7 @@ export const gsPlugin = createBackendPlugin({
       async init({
         httpRouter,
         logger,
+        config,
         containerRegistry,
         mimir,
         actionsRegistry,
@@ -38,7 +44,16 @@ export const gsPlugin = createBackendPlugin({
           }),
         );
 
-        registerMcpActions(actionsRegistry, containerRegistry, logger);
+        const integrations = ScmIntegrations.fromConfig(config);
+        const githubCredentialsProvider =
+          DefaultGithubCredentialsProvider.fromIntegrations(integrations);
+
+        registerMcpActions(
+          actionsRegistry,
+          containerRegistry,
+          githubCredentialsProvider,
+          logger,
+        );
       },
     });
   },

@@ -1,6 +1,7 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
 import { NotFoundError } from '@backstage/errors';
+import { GithubCredentialsProvider } from '@backstage/integration';
 import fetch from 'node-fetch';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 
@@ -11,6 +12,7 @@ const DEPRECATED_VALUES_SCHEMA_ANNOTATION =
 export function registerMcpActions(
   actionsRegistry: ActionsRegistryService,
   containerRegistry: typeof containerRegistryServiceRef.T,
+  githubCredentialsProvider: GithubCredentialsProvider,
   logger: LoggerService,
 ) {
   actionsRegistry.register({
@@ -83,7 +85,16 @@ export function registerMcpActions(
           : schemaUrl;
 
       actionLogger.info(`Fetching ${content} from ${targetUrl}`);
-      const response = await fetch(targetUrl);
+      const headers: Record<string, string> = {};
+      if (targetUrl.includes('raw.githubusercontent.com')) {
+        const { token } = await githubCredentialsProvider.getCredentials({
+          url: targetUrl,
+        });
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+      const response = await fetch(targetUrl, { headers });
       if (!response.ok) {
         throw new Error(
           `Failed to fetch ${content} from ${targetUrl}: HTTP ${response.status} ${response.statusText}`,

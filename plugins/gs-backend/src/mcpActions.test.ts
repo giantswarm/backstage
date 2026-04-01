@@ -1,6 +1,7 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
 import { NotFoundError } from '@backstage/errors';
+import { GithubCredentialsProvider } from '@backstage/integration';
 import { registerMcpActions } from './mcpActions';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 
@@ -20,6 +21,7 @@ describe('registerMcpActions', () => {
   let containerRegistry: jest.Mocked<
     Pick<typeof containerRegistryServiceRef.T, 'getTagManifest'>
   >;
+  let githubCredentialsProvider: jest.Mocked<GithubCredentialsProvider>;
   let logger: jest.Mocked<LoggerService>;
   let registeredAction: Parameters<ActionsRegistryService['register']>[0];
 
@@ -29,6 +31,9 @@ describe('registerMcpActions', () => {
     };
     containerRegistry = {
       getTagManifest: jest.fn(),
+    };
+    githubCredentialsProvider = {
+      getCredentials: jest.fn().mockResolvedValue({ token: 'ghp_test-token' }),
     };
     logger = {
       info: jest.fn(),
@@ -41,6 +46,7 @@ describe('registerMcpActions', () => {
     registerMcpActions(
       actionsRegistry,
       containerRegistry as unknown as typeof containerRegistryServiceRef.T,
+      githubCredentialsProvider,
       logger,
     );
 
@@ -90,7 +96,12 @@ describe('registerMcpActions', () => {
       'charts/giantswarm/my-app',
       '1.0.0',
     );
-    expect(mockFetch).toHaveBeenCalledWith(schemaUrl);
+    expect(mockFetch).toHaveBeenCalledWith(schemaUrl, {
+      headers: { Authorization: 'Bearer ghp_test-token' },
+    });
+    expect(githubCredentialsProvider.getCredentials).toHaveBeenCalledWith({
+      url: schemaUrl,
+    });
     expect(result).toEqual({
       output: {
         url: schemaUrl,
@@ -133,7 +144,9 @@ describe('registerMcpActions', () => {
       credentials: {} as any,
     });
 
-    expect(mockFetch).toHaveBeenCalledWith(valuesUrl);
+    expect(mockFetch).toHaveBeenCalledWith(valuesUrl, {
+      headers: { Authorization: 'Bearer ghp_test-token' },
+    });
     expect(result).toEqual({
       output: {
         url: valuesUrl,
@@ -173,7 +186,9 @@ describe('registerMcpActions', () => {
       credentials: {} as any,
     });
 
-    expect(mockFetch).toHaveBeenCalledWith(schemaUrl);
+    expect(mockFetch).toHaveBeenCalledWith(schemaUrl, {
+      headers: { Authorization: 'Bearer ghp_test-token' },
+    });
     expect(result).toEqual({
       output: {
         url: schemaUrl,
@@ -257,5 +272,10 @@ describe('registerMcpActions', () => {
         credentials: {} as any,
       }),
     ).rejects.toThrow('Failed to fetch schema from');
+
+    expect(githubCredentialsProvider.getCredentials).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledWith('https://example.com/schema.json', {
+      headers: {},
+    });
   });
 });
