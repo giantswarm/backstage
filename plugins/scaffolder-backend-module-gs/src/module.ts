@@ -14,6 +14,14 @@ export const scaffolderModuleGS = createBackendModule({
       async init({ templatingExtensionPoint }) {
         templatingExtensionPoint.addTemplateFilters({
           parseClusterRef: (ref: JsonValue) => parseClusterRef(ref as string),
+          fromJson: (value: JsonValue) => {
+            if (typeof value !== 'string') return value;
+            try {
+              return JSON.parse(value);
+            } catch {
+              return {};
+            }
+          },
         });
       },
     });

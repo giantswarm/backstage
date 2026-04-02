@@ -7,6 +7,17 @@ import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 const REDACTED_PLACEHOLDER = '***REDACTED***';
 
+/**
+ * Extract array index from an RJSF idSchema.$id string.
+ * For example, "root_valueSources_2_values" → "2".
+ * Returns undefined when the field is not inside an array.
+ */
+function extractArrayIndex(idSchemaId: string | undefined): string | undefined {
+  if (!idSchemaId) return undefined;
+  const match = idSchemaId.match(/_(\d+)_[^_]+$/);
+  return match?.[1];
+}
+
 export const SecretYamlValuesEditor = ({
   onChange,
   formData,
@@ -18,6 +29,7 @@ export const SecretYamlValuesEditor = ({
   },
   uiSchema,
   rawErrors,
+  idSchema,
 }: SecretYamlValuesEditorProps): JSX.Element => {
   const {
     secretsKey,
@@ -53,6 +65,12 @@ export const SecretYamlValuesEditor = ({
 
   const { setSecrets, secrets } = useTemplateSecrets();
 
+  // Detect whether this instance is inside an array item.
+  // When in array mode, secret values are aggregated as a JSON map
+  // under the shared secretsKey (e.g. { "0": "yaml...", "2": "yaml..." }).
+  const arrayIndex = extractArrayIndex(idSchema?.$id);
+  const isArrayMode = arrayIndex !== undefined;
+
   // Track the actual YAML content as state so the editor re-renders when
   // the value is populated asynchronously (e.g. by DeploymentPicker).
   // A ref is kept in sync to avoid stale closures in handleChange.
@@ -69,14 +87,26 @@ export const SecretYamlValuesEditor = ({
   useEffect(() => {
     if (hasAppliedInitialValue.current || !secretsKey) return;
 
-    const secretValue = secrets[secretsKey] as string | undefined;
+    let secretValue: string | undefined;
+    if (isArrayMode) {
+      // In array mode, parse the JSON map and look up our index
+      try {
+        const map = JSON.parse((secrets[secretsKey] as string) || '{}');
+        secretValue = map[arrayIndex];
+      } catch {
+        secretValue = undefined;
+      }
+    } else {
+      secretValue = secrets[secretsKey] as string | undefined;
+    }
+
     if (secretValue && !displayValueRef.current) {
       hasAppliedInitialValue.current = true;
       displayValueRef.current = secretValue;
       setDisplayValue(secretValue);
       onChange(REDACTED_PLACEHOLDER);
     }
-  }, [secrets, secretsKey, onChange]);
+  }, [secrets, secretsKey, isArrayMode, arrayIndex, onChange]);
 
   const handleChange = useCallback(
     (value?: string) => {
@@ -85,14 +115,30 @@ export const SecretYamlValuesEditor = ({
       setDisplayValue(yamlContent);
 
       if (secretsKey) {
-        setSecrets({ [secretsKey]: yamlContent });
+        if (isArrayMode) {
+          // Aggregate: read existing map, update our index, write back
+          let map: Record<string, string> = {};
+          try {
+            map = JSON.parse((secrets[secretsKey] as string) || '{}');
+          } catch {
+            // ignore parse errors
+          }
+          if (yamlContent) {
+            map[arrayIndex] = yamlContent;
+          } else {
+            delete map[arrayIndex];
+          }
+          setSecrets({ [secretsKey]: JSON.stringify(map) });
+        } else {
+          setSecrets({ [secretsKey]: yamlContent });
+        }
       }
 
       // Store redacted placeholder in formData so the actual value
       // is never persisted in the scaffolder task parameters
       onChange(yamlContent ? REDACTED_PLACEHOLDER : undefined);
     },
-    [secretsKey, setSecrets, onChange],
+    [secretsKey, isArrayMode, arrayIndex, secrets, setSecrets, onChange],
   );
 
   return (
