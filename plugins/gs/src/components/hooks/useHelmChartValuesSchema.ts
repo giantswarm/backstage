@@ -47,6 +47,15 @@ export function useHelmChartValuesSchema(
         try {
           return await $RefParser.dereference(schemaUrl, rawSchema, {
             dereference: { circular: 'ignore' },
+            resolve: {
+              http: {
+                canRead: /^https?:\/\//,
+                read: async (file: { url: string }) => {
+                  const result = await fetchContent(file.url, gitHubApi);
+                  return result ?? '';
+                },
+              },
+            },
           });
         } catch (refErr) {
           // If external $ref resolution fails (e.g. CORS), return the raw schema
