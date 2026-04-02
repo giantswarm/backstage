@@ -1,16 +1,20 @@
 import { InputError } from '@backstage/errors';
+import { GithubCredentialsProvider } from '@backstage/integration';
 import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
+import { fetchGitHubRawContent } from './githubRawContent';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 import { mimirServiceRef } from './services/MimirService';
 
 export async function createRouter({
   containerRegistry,
   mimir,
+  githubCredentialsProvider,
 }: {
   containerRegistry: typeof containerRegistryServiceRef.T;
   mimir: typeof mimirServiceRef.T;
+  githubCredentialsProvider: GithubCredentialsProvider;
 }): Promise<express.Router> {
   const router = Router();
   router.use(express.json());
@@ -103,6 +107,51 @@ export async function createRouter({
     const { query, installationName } = parsed.data;
 
     res.json(await mimir.query({ query, installationName, oidcToken }));
+  });
+
+  /**
+   * GET /github/raw-content
+   *
+   * Proxies a fetch to a raw.githubusercontent.com URL, adding GitHub
+   * authentication for private repository access.
+   *
+   * Query parameters:
+   * - url: The raw.githubusercontent.com URL to fetch
+   *
+   * Returns:
+   * - The raw content as text
+   */
+  router.get('/github/raw-content', async (req, res) => {
+    const schema = z.object({
+      url: z
+        .string()
+        .url()
+        .refine(u => u.startsWith('https://raw.githubusercontent.com/'), {
+          message: 'Only raw.githubusercontent.com URLs are allowed',
+        }),
+    });
+    const parsed = schema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new InputError(parsed.error.toString());
+    }
+
+    const { url } = parsed.data;
+
+    const response = await fetchGitHubRawContent(
+      url,
+      githubCredentialsProvider,
+    );
+    if (!response.ok) {
+      res.status(response.status).json({
+        error: { message: `Failed to fetch content: HTTP ${response.status}` },
+      });
+      return;
+    }
+
+    const contentType = response.headers.get('content-type') ?? 'text/plain';
+    res.setHeader('Content-Type', contentType);
+    const body = await response.text();
+    res.send(body);
   });
 
   return router;

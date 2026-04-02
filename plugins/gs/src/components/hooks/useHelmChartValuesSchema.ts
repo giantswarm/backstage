@@ -1,6 +1,9 @@
+import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import $RefParser from '@apidevtools/json-schema-ref-parser';
+import { gitHubApiRef } from '../../apis/github';
+import { fetchContent } from './utils/fetchContent';
 import { useHelmChartTagManifest } from './useHelmChartTagManifest';
 
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
@@ -11,6 +14,7 @@ export function useHelmChartValuesSchema(
   chartRef: string | undefined,
   chartTag: string | undefined,
 ) {
+  const gitHubApi = useApi(gitHubApiRef);
   const {
     tagManifest,
     error: tagManifestError,
@@ -33,18 +37,25 @@ export function useHelmChartValuesSchema(
       }
 
       try {
-        const response = await fetch(schemaUrl);
-        if (!response.ok) {
-          // eslint-disable-next-line no-console
-          console.warn(`Failed to load schema from ${schemaUrl}`);
+        const content = await fetchContent(schemaUrl, gitHubApi);
+        if (!content) {
           return null;
         }
 
-        const rawSchema = await response.json();
+        const rawSchema = JSON.parse(content);
 
         try {
           return await $RefParser.dereference(schemaUrl, rawSchema, {
             dereference: { circular: 'ignore' },
+            resolve: {
+              http: {
+                canRead: /^https?:\/\//,
+                read: async (file: { url: string }) => {
+                  const result = await fetchContent(file.url, gitHubApi);
+                  return result ?? '';
+                },
+              },
+            },
           });
         } catch (refErr) {
           // If external $ref resolution fails (e.g. CORS), return the raw schema

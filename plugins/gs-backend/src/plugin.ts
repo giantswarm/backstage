@@ -37,16 +37,17 @@ export const gsPlugin = createBackendPlugin({
         mimir,
         actionsRegistry,
       }) {
+        const integrations = ScmIntegrations.fromConfig(config);
+        const githubCredentialsProvider =
+          DefaultGithubCredentialsProvider.fromIntegrations(integrations);
+
         httpRouter.use(
           await createRouter({
             containerRegistry,
             mimir,
+            githubCredentialsProvider,
           }),
         );
-
-        const integrations = ScmIntegrations.fromConfig(config);
-        const githubCredentialsProvider =
-          DefaultGithubCredentialsProvider.fromIntegrations(integrations);
 
         registerMcpActions(
           actionsRegistry,

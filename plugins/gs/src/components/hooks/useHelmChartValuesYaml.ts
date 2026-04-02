@@ -1,5 +1,8 @@
+import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { gitHubApiRef } from '../../apis/github';
+import { fetchContent } from './utils/fetchContent';
 import { useHelmChartTagManifest } from './useHelmChartTagManifest';
 
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
@@ -10,6 +13,7 @@ export function useHelmChartValuesYaml(
   chartRef: string | undefined,
   chartTag: string | undefined,
 ) {
+  const gitHubApi = useApi(gitHubApiRef);
   const {
     tagManifest,
     error: tagManifestError,
@@ -36,14 +40,7 @@ export function useHelmChartValuesYaml(
       }
 
       try {
-        const response = await fetch(valuesYamlUrl);
-        if (!response.ok) {
-          // eslint-disable-next-line no-console
-          console.warn(`Failed to load values.yaml from ${valuesYamlUrl}`);
-          return null;
-        }
-
-        return response.text();
+        return await fetchContent(valuesYamlUrl, gitHubApi);
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn(`Error loading values.yaml from ${valuesYamlUrl}:`, err);
