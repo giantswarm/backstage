@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add authenticated GitHub content fetching for private repository Helm chart README, values schema, and values YAML.
+
+### Fixed
+
+- Fix AI chat `get-helm-chart-values` tool failing with 500 for private OCI registries.
+- Fix repeated OAuth2 token refresh on every request after token expiry.
+
 ## [0.119.0] - 2026-04-01
 
 ### Added
