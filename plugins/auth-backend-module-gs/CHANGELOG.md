@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.13.1
+
+### Patch Changes
+
+- 7fbbfff: Enable OAuth2 scope persistence to fix repeated token refresh on every request after token expiry.
+
 ## 0.13.0
 
 ### Minor Changes

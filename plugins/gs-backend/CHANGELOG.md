@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.8.0
+
+### Minor Changes
+
+- fca7f1a: Add authenticated GitHub content fetching for private repositories. Helm chart README, values schema, and values YAML are now fetched through a backend endpoint that adds GitHub credentials, instead of direct unauthenticated browser fetches.
+
+### Patch Changes
+
+- 6e25580: Fix AI chat `get-helm-chart-values` tool failing with 500 for private OCI registries by authenticating GitHub URL fetches using Backstage's GitHub integration credentials.
+
 ## 0.7.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.64.0
+
+### Minor Changes
+
+- fca7f1a: Add authenticated GitHub content fetching for private repositories. Helm chart README, values schema, and values YAML are now fetched through a backend endpoint that adds GitHub credentials, instead of direct unauthenticated browser fetches.
+
 ## 0.63.0
 
 ### Minor Changes
