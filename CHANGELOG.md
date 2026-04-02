@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.120.0] - 2026-04-02
+
 ### Added
 
 - Add authenticated GitHub content fetching for private repository Helm chart README, values schema, and values YAML.
@@ -2205,7 +2207,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.119.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.120.0...HEAD
+[0.120.0]: https://github.com/giantswarm/backstage/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/giantswarm/backstage/compare/v0.119.0...v0.119.0
 [0.119.0]: https://github.com/giantswarm/backstage/compare/v0.118.0...v0.119.0
 [0.118.0]: https://github.com/giantswarm/backstage/compare/v0.117.2...v0.118.0
