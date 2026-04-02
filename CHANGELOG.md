@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix AI chat `get-helm-chart-values` tool failing with 500 for private OCI registries.
 - Fix repeated OAuth2 token refresh on every request after token expiry.
 
+See [./docs/releases/v0.120.0-changelog.md](./docs/releases/v0.120.0-changelog.md) for more information.
+
 ## [0.119.0] - 2026-04-01
 
 ### Added
