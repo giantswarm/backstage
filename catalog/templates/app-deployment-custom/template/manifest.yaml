@@ -58,11 +58,11 @@ spec:
     {% for src in values.valueSources %}
     {% if src.kind === 'ConfigMap' and src.configValues %}
     - kind: ConfigMap
-      name: ${{ values.name }}-${{ src.name }}
+      name: ${{ src.name }}
       valuesKey: ${{ src.valuesKey }}
     {% elif src.kind === 'Secret' and secretMap[loop.index0 + ''] %}
     - kind: Secret
-      name: ${{ values.name }}-${{ src.name }}
+      name: ${{ src.name }}
       valuesKey: ${{ src.valuesKey }}
     {% endif %}
     {% endfor %}
@@ -79,7 +79,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ${{ values.name }}-${{ src.name }}
+  name: ${{ src.name }}
   namespace: ${{ values.namespace }}
 data:
   ${{ src.valuesKey }}: |-
@@ -89,7 +89,7 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ${{ values.name }}-${{ src.name }}
+  name: ${{ src.name }}
   namespace: ${{ values.namespace }}
 stringData:
   ${{ src.valuesKey }}: |-

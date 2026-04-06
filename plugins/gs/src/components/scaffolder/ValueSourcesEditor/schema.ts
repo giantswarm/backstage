@@ -32,6 +32,12 @@ export const ValueSourcesEditorFieldSchema = makeFieldSchema({
         .string()
         .optional()
         .describe('Field path containing the chart tag'),
+      initialNamePrefixTemplate: z
+        .string()
+        .optional()
+        .describe(
+          'Template string for name prefix (e.g. "${{chartName(chartRef)}}"). Combined with default suffixes like "-user-values", "-user-secrets".',
+        ),
     }),
 });
 

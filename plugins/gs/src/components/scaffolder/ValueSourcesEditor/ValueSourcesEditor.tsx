@@ -23,10 +23,23 @@ import type {
   ValueSourcesEditorValue,
 } from './schema';
 import { YamlEditorFormField } from '../../UI';
-import { useHelmChartValuesSchema } from '../../hooks';
+import { useHelmChartValuesSchema, useTemplateString } from '../../hooks';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
 const REDACTED_PLACEHOLDER = '***REDACTED***';
+
+const DEFAULT_SUFFIXES: Record<'ConfigMap' | 'Secret', string> = {
+  ConfigMap: 'user-values',
+  Secret: 'user-secrets',
+};
+
+function defaultName(
+  prefix: string | undefined,
+  kind: 'ConfigMap' | 'Secret',
+): string {
+  const suffix = DEFAULT_SUFFIXES[kind];
+  return prefix ? `${prefix}-${suffix}` : suffix;
+}
 
 type ValueSourceItem = NonNullable<ValueSourcesEditorValue>[number];
 
@@ -39,18 +52,19 @@ type InternalItem = {
 
 function toInternalItems(
   formData: ValueSourcesEditorValue | undefined,
+  namePrefix?: string,
 ): InternalItem[] {
   if (!formData || !Array.isArray(formData) || formData.length === 0) {
     return [
       {
         kind: 'ConfigMap',
-        name: 'user-values',
+        name: defaultName(namePrefix, 'ConfigMap'),
         valuesKey: 'values',
         displayValues: '',
       },
       {
         kind: 'Secret',
-        name: 'user-secrets',
+        name: defaultName(namePrefix, 'Secret'),
         valuesKey: 'values',
         displayValues: '',
       },
@@ -92,6 +106,7 @@ export const ValueSourcesEditor = ({
     chartRefField: chartRefFieldOption,
     chartTag: chartTagOption,
     chartTagField: chartTagFieldOption,
+    initialNamePrefixTemplate,
   } = uiSchema?.['ui:options'] ?? {};
 
   const chartRef = useValueFromOptions(
@@ -113,6 +128,15 @@ export const ValueSourcesEditor = ({
 
   const { setSecrets, secrets } = useTemplateSecrets();
 
+  const allFormData = useMemo(
+    () => (formContext.formData as Record<string, any>) ?? {},
+    [formContext.formData],
+  );
+  const resolvedNamePrefix = useTemplateString(
+    initialNamePrefixTemplate ?? '',
+    allFormData,
+  );
+
   // Internal state: items with their actual display values
   const [items, setItems] = useState<InternalItem[]>(() => {
     const initial = toInternalItems(formData);
@@ -132,6 +156,8 @@ export const ValueSourcesEditor = ({
     }
     return initial;
   });
+
+  const hasAppliedNameTemplate = useRef(false);
 
   // Ref to avoid stale closures
   const itemsRef = useRef(items);
@@ -161,18 +187,42 @@ export const ValueSourcesEditor = ({
     [onChange, syncSecrets],
   );
 
+  // Apply resolved prefix to default items once the template resolves
+  if (
+    !hasAppliedNameTemplate.current &&
+    resolvedNamePrefix &&
+    itemsRef.current.some(
+      item =>
+        item.name === DEFAULT_SUFFIXES.ConfigMap ||
+        item.name === DEFAULT_SUFFIXES.Secret,
+    )
+  ) {
+    hasAppliedNameTemplate.current = true;
+    const updated = itemsRef.current.map(item => {
+      if (
+        item.name === DEFAULT_SUFFIXES.ConfigMap ||
+        item.name === DEFAULT_SUFFIXES.Secret
+      ) {
+        return { ...item, name: defaultName(resolvedNamePrefix, item.kind) };
+      }
+      return item;
+    });
+    emitChange(updated);
+  }
+
   const handleAddItem = useCallback(() => {
+    const kind = 'ConfigMap' as const;
     const updated = [
       ...itemsRef.current,
       {
-        kind: 'ConfigMap' as const,
-        name: '',
+        kind,
+        name: defaultName(resolvedNamePrefix ?? undefined, kind),
         valuesKey: 'values',
         displayValues: '',
       },
     ];
     emitChange(updated);
-  }, [emitChange]);
+  }, [emitChange, resolvedNamePrefix]);
 
   const handleRemoveItem = useCallback(
     (index: number) => {
@@ -250,7 +300,7 @@ export const ValueSourcesEditor = ({
               </Grid>
               <Grid item xs={4}>
                 <TextField
-                  label="Name suffix"
+                  label="Name"
                   value={item.name}
                   onChange={e =>
                     handleFieldChange(index, 'name', e.target.value)

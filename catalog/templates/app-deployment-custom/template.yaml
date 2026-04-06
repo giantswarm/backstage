@@ -9,7 +9,7 @@ spec:
   type: resource
   parameters:
     - title: Configuration
-      description: Here you can edit the application's configuration. Add ConfigMap or Secret value sources. Order determines merge priority (last wins).
+      description: Here you can edit the application's configuration.
       ui:ObjectFieldTemplate: GSStepLayout
       ui:options:
         configurationDocs:
@@ -18,12 +18,14 @@ spec:
       properties:
         valueSources:
           title: Value sources
+          description: Add ConfigMap or Secret value sources. Order determines merge priority (last wins).
           type: array
           ui:field: GSValueSourcesEditor
           ui:options:
             secretsKey: SECRET_VALUES_MAP
             chartRef: gsoci.azurecr.io/charts/giantswarm/hello-world
             chartTag: 3.0.2
+            initialNamePrefixTemplate: test-name
   steps:
     - id: fetchTemplate
       name: Template manifests
