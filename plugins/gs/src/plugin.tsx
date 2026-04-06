@@ -554,6 +554,7 @@ const valueSourcesEditorFormField = FormFieldBlueprint.make({
           name: 'GSValueSourcesEditor',
           component: m.ValueSourcesEditor,
           schema: m.ValueSourcesEditorFieldSchema,
+          validation: m.valueSourcesEditorValidation,
         }),
       ),
   },

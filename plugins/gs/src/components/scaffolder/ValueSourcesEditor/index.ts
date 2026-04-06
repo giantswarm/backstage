@@ -7,3 +7,4 @@ export type {
   ValueSourcesEditorProps,
   ValueSourcesEditorValue,
 } from './schema';
+export { valueSourcesEditorValidation } from './validation';

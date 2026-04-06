@@ -261,6 +261,33 @@ export const ValueSourcesEditor = ({
     [emitChange],
   );
 
+  const nameErrors = useMemo(() => {
+    const errors: (string | undefined)[] = items.map(() => undefined);
+    const nameIndices = new Map<string, number[]>();
+
+    items.forEach((item, i) => {
+      if (!item.displayValues) return;
+      const name = item.name.trim();
+      if (!name) {
+        errors[i] = 'Name is required when values are provided';
+        return;
+      }
+      const indices = nameIndices.get(name) ?? [];
+      indices.push(i);
+      nameIndices.set(name, indices);
+    });
+
+    for (const indices of nameIndices.values()) {
+      if (indices.length > 1) {
+        for (const i of indices) {
+          errors[i] = 'Name must be unique across value sources';
+        }
+      }
+    }
+
+    return errors;
+  }, [items]);
+
   const handleYamlChange = useCallback(
     (index: number, value: string) => {
       const updated = [...itemsRef.current];
@@ -281,7 +308,7 @@ export const ValueSourcesEditor = ({
             variant="outlined"
             style={{ padding: 16, marginBottom: 12 }}
           >
-            <Grid container spacing={2} alignItems="center">
+            <Grid container spacing={2} alignItems="flex-start">
               <Grid item xs={3}>
                 <FormControl fullWidth size="small">
                   <Select
@@ -306,6 +333,8 @@ export const ValueSourcesEditor = ({
                   variant="outlined"
                   size="small"
                   fullWidth
+                  error={Boolean(nameErrors[index])}
+                  helperText={nameErrors[index]}
                 />
               </Grid>
               <Grid item xs={3}>
