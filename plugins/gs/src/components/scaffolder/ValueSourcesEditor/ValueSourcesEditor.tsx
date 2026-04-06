@@ -74,7 +74,7 @@ function toInternalItems(
     kind: item.kind,
     name: item.name,
     valuesKey: item.valuesKey ?? 'values',
-    displayValues: item.kind === 'ConfigMap' ? (item.configValues ?? '') : '', // Secret display values are loaded from secrets context
+    displayValues: item.kind === 'ConfigMap' ? (item.values ?? '') : '', // Secret display values are loaded from secrets context
   }));
 }
 
@@ -83,12 +83,10 @@ function toFormData(items: InternalItem[]): ValueSourceItem[] {
     kind: item.kind,
     name: item.name,
     valuesKey: item.valuesKey,
-    configValues:
-      item.kind === 'ConfigMap' ? item.displayValues || undefined : undefined,
-    secretValues:
+    values:
       item.kind === 'Secret' && item.displayValues
         ? REDACTED_PLACEHOLDER
-        : undefined,
+        : item.displayValues || undefined,
   }));
 }
 

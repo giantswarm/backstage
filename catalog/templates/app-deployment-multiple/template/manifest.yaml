@@ -49,14 +49,14 @@ spec:
   {% set secretMap = values.secretValuesMap | fromJson %}
   {% set hasAnySource = false %}
   {% for src in values.valueSources %}
-    {% if (src.kind === 'ConfigMap' and src.configValues) or (src.kind === 'Secret' and secretMap[loop.index0 + '']) %}
+    {% if (src.kind === 'ConfigMap' and src.values) or (src.kind === 'Secret' and secretMap[loop.index0 + '']) %}
       {% set hasAnySource = true %}
     {% endif %}
   {% endfor %}
   {% if hasAnySource %}
   valuesFrom:
     {% for src in values.valueSources %}
-    {% if src.kind === 'ConfigMap' and src.configValues %}
+    {% if src.kind === 'ConfigMap' and src.values %}
     - kind: ConfigMap
       name: ${{ values.name }}-${{ src.name }}
       valuesKey: ${{ src.valuesKey }}
@@ -74,7 +74,7 @@ spec:
 
 {% set secretMap = values.secretValuesMap | fromJson %}
 {% for src in values.valueSources %}
-{% if src.kind === 'ConfigMap' and src.configValues %}
+{% if src.kind === 'ConfigMap' and src.values %}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -83,7 +83,7 @@ metadata:
   namespace: ${{ values.namespace }}
 data:
   ${{ src.valuesKey }}: |-
-    ${{ src.configValues | indent(4) }}
+    ${{ src.values | indent(4) }}
 {% elif src.kind === 'Secret' and secretMap[loop.index0 + ''] %}
 ---
 apiVersion: v1

@@ -24,11 +24,11 @@ spec:
             - kind: ConfigMap
               name: user-values
               valuesKey: values
-              configValues: ''
+              values: ''
             - kind: Secret
               name: user-secrets
               valuesKey: values
-              secretValues: ''
+              values: ''
           items:
             type: object
             required:
@@ -61,7 +61,7 @@ spec:
                         - kind
                     then:
                       properties:
-                        configValues:
+                        values:
                           title: Values (YAML)
                           type: string
                           ui:field: GSYamlValuesEditor
@@ -76,7 +76,7 @@ spec:
                         - kind
                     then:
                       properties:
-                        secretValues:
+                        values:
                           title: Values (YAML, stored securely)
                           type: string
                           ui:field: GSSecretYamlValuesEditor

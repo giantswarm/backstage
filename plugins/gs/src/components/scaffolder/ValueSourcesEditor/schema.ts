@@ -7,8 +7,7 @@ export const ValueSourcesEditorFieldSchema = makeFieldSchema({
         kind: z.enum(['ConfigMap', 'Secret']),
         name: z.string(),
         valuesKey: z.string().default('values'),
-        configValues: z.string().optional(),
-        secretValues: z.string().optional(),
+        values: z.string().optional(),
       }),
     ),
   uiOptions: z =>
