@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   Grid,
   IconButton,
@@ -81,6 +82,7 @@ export const ValueSourcesEditor = ({
   onChange,
   formData,
   formContext,
+  schema: { title = 'Value sources', description },
   uiSchema,
   rawErrors,
 }: ValueSourcesEditorProps): JSX.Element => {
@@ -222,7 +224,8 @@ export const ValueSourcesEditor = ({
 
   return (
     <FormControl fullWidth error={rawErrors.length > 0}>
-      <FormLabel>Value sources</FormLabel>
+      <FormLabel>{title}</FormLabel>
+      {description && <FormHelperText>{description}</FormHelperText>}
       <Box mt={1}>
         {items.map((item, index) => (
           <Paper
