@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Box, FormHelperText, FormLabel, Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import WarningIcon from '@material-ui/icons/Warning';
 import * as yaml from 'js-yaml';
-import Ajv from 'ajv/dist/2020';
-import addFormats from 'ajv-formats';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import type { YamlValuesValidationProps } from './schema';
-import { useHelmChartValuesSchema } from '../../hooks';
+import { useHelmChartValuesSchema, useHelmValuesValidation } from '../../hooks';
 import { get } from 'lodash';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import classNames from 'classnames';
+import { helmMerge } from '../utils/helmMerge';
 
 const useStyles = makeStyles(theme => ({
   container: {
@@ -39,40 +38,6 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
   },
 }));
-/**
- * Deep merge objects using Helm-style merging logic
- */
-function helmMerge(target: any, source: any): any {
-  if (source === null || source === undefined) {
-    return target;
-  }
-  if (target === null || target === undefined) {
-    return source;
-  }
-
-  if (typeof source !== 'object' || Array.isArray(source)) {
-    return source;
-  }
-
-  const result = { ...target };
-  for (const key in source) {
-    if (Object.prototype.hasOwnProperty.call(source, key)) {
-      if (
-        typeof source[key] === 'object' &&
-        source[key] !== null &&
-        !Array.isArray(source[key]) &&
-        typeof result[key] === 'object' &&
-        result[key] !== null &&
-        !Array.isArray(result[key])
-      ) {
-        result[key] = helmMerge(result[key], source[key]);
-      } else {
-        result[key] = source[key];
-      }
-    }
-  }
-  return result;
-}
 
 type YamlValuesValidationResultProps = {
   valuesFields?: string[];
@@ -208,56 +173,10 @@ export const YamlValuesValidation = ({
     return allValues;
   }, [formContext.formData, valuesFields, secretValuesKeys, secrets]);
 
-  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
-
-  useEffect(() => {
-    const warnings: string[] = [];
-
-    if (!values || Object.keys(values).length === 0) {
-      setValidationWarnings([]);
-      return;
-    }
-
-    if (jsonSchema) {
-      try {
-        const ajv = new Ajv({ allErrors: true, strict: false });
-        addFormats(ajv);
-        // Register OpenAPI-specific formats that aren't in the JSON Schema spec
-        // so Ajv doesn't warn about them.
-        ajv.addFormat('int32', true);
-        ajv.addFormat('int64', true);
-        ajv.addFormat('float', true);
-        ajv.addFormat('double', true);
-        ajv.addFormat('byte', true);
-        ajv.addFormat('binary', true);
-        ajv.addFormat('password', true);
-        const validate = ajv.compile(jsonSchema);
-        const valid = validate(values);
-
-        if (!valid && validate.errors) {
-          validate.errors.forEach(error => {
-            const path = error.instancePath || '/';
-            const message = error.message || 'Validation error';
-            warnings.push(`${path}: ${message}`);
-          });
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (message.includes("can't resolve reference")) {
-          // Schema contains unresolved external $ref — skip validation
-          // eslint-disable-next-line no-console
-          console.warn(
-            'Schema validation skipped due to unresolved $ref:',
-            message,
-          );
-        } else {
-          warnings.push(`Validation error: ${message}`);
-        }
-      }
-    }
-
-    setValidationWarnings(warnings);
-  }, [values, jsonSchema]);
+  const { warnings: validationWarnings } = useHelmValuesValidation(
+    values,
+    jsonSchema,
+  );
 
   return (
     <Box>
