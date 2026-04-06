@@ -44,7 +44,7 @@ export const YamlEditorFormField = ({
     >
       {label && <FormLabel>{label}</FormLabel>}
 
-      <Box mt={1}>
+      <Box mt={1} data-config-docs-anchor>
         <YamlEditor
           initialValue={value}
           schema={schema}

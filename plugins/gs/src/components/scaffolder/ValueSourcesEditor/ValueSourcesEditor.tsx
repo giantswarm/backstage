@@ -358,6 +358,7 @@ export const ValueSourcesEditor = ({
             key={index}
             variant="outlined"
             style={{ padding: 16, marginBottom: 12 }}
+            data-config-docs-anchor
           >
             <Grid container spacing={2} alignItems="flex-start">
               <Grid item xs={3}>

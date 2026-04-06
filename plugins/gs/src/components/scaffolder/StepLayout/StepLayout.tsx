@@ -21,6 +21,7 @@ import {
   ConfigurationDocsOptions,
 } from './ConfigurationDocs';
 import { ReactNode, useState } from 'react';
+import { useAlignWithAnchor } from './useAlignWithAnchor';
 
 const useStyles = makeStyles(theme => ({
   drawerContent: {
@@ -68,6 +69,11 @@ const ExtraContent = (props: { children: ReactNode }) => {
   const theme = useTheme();
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
 
+  const { ref: alignRef, paddingTop } = useAlignWithAnchor(
+    '[data-config-docs-anchor]',
+    !isScreenSmallerThanBreakpoint,
+  );
+
   return isScreenSmallerThanBreakpoint ? (
     <>
       <Grid item xs={12}>
@@ -103,7 +109,15 @@ const ExtraContent = (props: { children: ReactNode }) => {
       </Drawer>
     </>
   ) : (
-    <Grid item lg={6}>
+    <Grid
+      item
+      lg={6}
+      ref={alignRef}
+      style={{
+        paddingTop: paddingTop ? paddingTop : 0,
+        visibility: paddingTop ? 'visible' : 'hidden',
+      }}
+    >
       {props.children}
     </Grid>
   );
