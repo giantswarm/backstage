@@ -404,7 +404,7 @@ export const ValueSourcesEditor = ({
                 />
               </Grid>
               <Grid item xs={2}>
-                <Box display="flex" justifyContent="flex-end">
+                <Box display="flex" justifyContent="flex-end" pt="7px" pb="7px">
                   <IconButton
                     size="small"
                     onClick={() => handleMoveItem(index, -1)}
