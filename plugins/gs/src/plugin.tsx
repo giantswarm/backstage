@@ -545,6 +545,20 @@ const secretYamlValuesEditorFormField = FormFieldBlueprint.make({
   },
 });
 
+const valueSourcesEditorFormField = FormFieldBlueprint.make({
+  name: 'value-sources-editor',
+  params: {
+    field: () =>
+      import('./components/scaffolder/ValueSourcesEditor').then(m =>
+        createFormField({
+          name: 'GSValueSourcesEditor',
+          component: m.ValueSourcesEditor,
+          schema: m.ValueSourcesEditorFieldSchema,
+        }),
+      ),
+  },
+});
+
 const yamlValuesValidationFormField = FormFieldBlueprint.make({
   name: 'yaml-values-validation',
   params: {
@@ -603,6 +617,7 @@ export const gsPlugin = createFrontendPlugin({
     yamlValuesEditorFormField,
     secretYamlValuesEditorFormField,
     yamlValuesValidationFormField,
+    valueSourcesEditorFormField,
   ],
   routes: {
     root: rootRouteRef,

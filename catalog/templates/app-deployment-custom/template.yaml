@@ -1,0 +1,64 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: app-deployment-custom
+  title: App Deployment (Custom Editor)
+  description: Deploy an app to a cluster with multiple value sources using a custom editor.
+spec:
+  owner: group:team-honeybadger
+  type: resource
+  parameters:
+    - title: Configuration
+      description: Here you can edit the application's configuration. Add ConfigMap or Secret value sources. Order determines merge priority (last wins).
+      ui:ObjectFieldTemplate: GSStepLayout
+      ui:options:
+        configurationDocs:
+          chartRef: gsoci.azurecr.io/charts/giantswarm/hello-world
+          chartTag: 3.0.2
+      properties:
+        valueSources:
+          title: Value sources
+          type: array
+          ui:field: GSValueSourcesEditor
+          ui:options:
+            secretsKey: SECRET_VALUES_MAP
+            chartRef: gsoci.azurecr.io/charts/giantswarm/hello-world
+            chartTag: 3.0.2
+  steps:
+    - id: fetchTemplate
+      name: Template manifests
+      action: fetch:template
+      input:
+        url: ./template
+        values:
+          name: test-name
+          namespace: test-namespace
+          clusterName: test-cluster
+          isManagementCluster: true
+          targetNamespace: test-namespace
+          chartRef: gsoci.azurecr.io/charts/giantswarm/hello-world
+          chartTag: 3.0.2
+          automaticUpgrades: patch
+          valueSources: ${{ parameters.valueSources }}
+          secretValuesMap: ${{ secrets.SECRET_VALUES_MAP }}
+    - id: cleanup
+      name: Clean up
+      action: roadiehq:utils:fs:replace
+      input:
+        files:
+          - file: manifest.yaml
+            find: \n\s*\n
+            replaceWith: "\n"
+            matchRegex: true
+    - id: parseFile
+      name: Print manifests
+      action: roadiehq:utils:fs:parse
+      input:
+        path: manifest.yaml
+  output:
+    text:
+      - title: Manifests
+        content: |
+          ```yaml
+          ${{ steps.parseFile.output.content }}
+          ```
