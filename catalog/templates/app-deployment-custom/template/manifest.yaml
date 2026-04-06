@@ -46,6 +46,16 @@ spec:
   {% endif %}
   releaseName: ${{ values.name }}
   targetNamespace: ${{ values.targetNamespace }}
+  {% if values.valuesMode === 'inline' %}
+  {% if values.inlineValues %}
+  valuesFrom: null
+  values:
+    ${{ values.inlineValues | indent(4) }}
+  {% else %}
+  valuesFrom: null
+  values: null
+  {% endif %}
+  {% else %}
   {% set secretMap = values.secretValuesMap | fromJson %}
   {% set hasAnySource = false %}
   {% for src in values.valueSources %}
@@ -71,7 +81,9 @@ spec:
   valuesFrom: null
   values: null
   {% endif %}
+  {% endif %}
 
+{% if values.valuesMode !== 'inline' %}
 {% set secretMap = values.secretValuesMap | fromJson %}
 {% for src in values.valueSources %}
 {% if src.kind === 'ConfigMap' and src.values %}
@@ -96,3 +108,4 @@ stringData:
     ${{ secretMap[loop.index0 + ''] | indent(4) }}
 {% endif %}
 {% endfor %}
+{% endif %}
