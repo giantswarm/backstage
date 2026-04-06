@@ -18,6 +18,7 @@ type YamlEditorFormFieldProps = {
   value: string;
   onChange?: (value: string) => void;
   height?: number;
+  maxHeight?: number;
   schema?: JSONSchema7;
 };
 
@@ -29,6 +30,8 @@ export const YamlEditorFormField = ({
   helperText,
   value,
   onChange,
+  height,
+  maxHeight,
   schema,
 }: YamlEditorFormFieldProps) => {
   const theme = useTheme();
@@ -46,6 +49,8 @@ export const YamlEditorFormField = ({
           initialValue={value}
           schema={schema}
           onChange={onChange}
+          height={height !== undefined ? `${height}px` : undefined}
+          maxHeight={maxHeight !== undefined ? `${maxHeight}px` : undefined}
           theme={theme.palette.type}
           error={error}
         />

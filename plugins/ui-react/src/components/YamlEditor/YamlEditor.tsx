@@ -61,6 +61,7 @@ type YamlEditorProps = {
   schema?: any;
   onChange?: (value: string) => void;
   height?: string;
+  maxHeight?: string;
   theme?: 'light' | 'dark';
   error?: boolean;
   readOnly?: boolean;
@@ -70,7 +71,8 @@ export const YamlEditor = ({
   initialValue = '',
   schema = null,
   onChange = () => {},
-  height = 'auto',
+  height,
+  maxHeight = 'auto',
   theme = 'light',
   error = false,
   readOnly = false,
@@ -177,9 +179,10 @@ export const YamlEditor = ({
         classes.editorWrapper,
         error && classes.editorWrapperError,
       )}
+      style={height ? { minHeight: height } : undefined}
       onClick={() => viewRef.current?.focus()}
     >
-      <div ref={editorRef} style={{ maxHeight: height, overflow: 'auto' }} />
+      <div ref={editorRef} style={{ maxHeight, overflow: 'auto' }} />
     </div>
   );
 };

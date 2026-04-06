@@ -37,6 +37,8 @@ export const SecretYamlValuesEditor = ({
     chartRefField: chartRefFieldOption,
     chartTag: chartTagOption,
     chartTagField: chartTagFieldOption,
+    height: heightOption,
+    maxHeight: maxHeightOption,
   } = uiSchema?.['ui:options'] ?? {};
 
   const chartRef = useValueFromOptions(
@@ -148,6 +150,8 @@ export const SecretYamlValuesEditor = ({
       required={required}
       value={displayValue}
       onChange={handleChange}
+      height={heightOption}
+      maxHeight={maxHeightOption}
       schema={processedJsonSchema}
       error={rawErrors.length > 0}
     />

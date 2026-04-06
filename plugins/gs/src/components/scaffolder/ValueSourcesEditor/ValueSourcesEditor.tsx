@@ -456,7 +456,6 @@ export const ValueSourcesEditor = ({
         </Button>
 
         {jsonSchema &&
-          Object.keys(mergedValues).length > 0 &&
           (schemaWarnings.length > 0 ? (
             <Box mt={2}>
               <Box display="flex" alignItems="center">
