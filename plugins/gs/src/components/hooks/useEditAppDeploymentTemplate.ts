@@ -1,11 +1,12 @@
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { appDeploymentTemplateRouteRef } from '../../routes';
+import { GS_APP_DEPLOYMENT_ACTION } from '../utils/entity';
 import { useCatalogEntityByLabel } from './useCatalogEntityByLabel';
 
 export function useEditAppDeploymentTemplate() {
   const { entity: templateEntity } = useCatalogEntityByLabel({
     kind: 'Template',
-    'metadata.labels.giantswarm.io/app-deployment-action': 'edit',
+    [`metadata.labels.${GS_APP_DEPLOYMENT_ACTION}`]: 'edit',
   });
 
   const templateRoute = useRouteRef(appDeploymentTemplateRouteRef);

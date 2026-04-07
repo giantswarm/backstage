@@ -70,6 +70,10 @@ This annotation is needed to enable several features linked to the GitHub reposi
 
 ## Labels
 
+### giantswarm.io/app-deployment-action
+
+Used on Template entities to identify scaffolder templates for app deployment actions. The portal discovers these templates by label instead of by name, so template names and namespaces can vary across environments. Supported values are `create` (for creating new app deployments) and `edit` (for editing existing ones).
+
 ### giantswarm.io/customer
 
 Name of the Giant Swarm customer an entity is associated with. This is only supposed to be used in Giant Swarm's internal developer portal.

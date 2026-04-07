@@ -1,6 +1,6 @@
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { Button, makeStyles, Typography } from '@material-ui/core';
+import { Button, makeStyles } from '@material-ui/core';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { useCurrentEntityChart } from '../EntityChartContext';
@@ -33,23 +33,21 @@ const CardContent = () => {
 
   const href = getTemplateUrl(formData);
 
+  if (!available) {
+    return null;
+  }
+
   return (
     <InfoCard title="Deploy application">
-      {!available ? (
-        <Typography variant="body2" color="textSecondary">
-          App Deployment template not found
-        </Typography>
-      ) : (
-        <Button
-          variant="contained"
-          disabled={!available}
-          className={classes.button}
-          color="primary"
-          href={href}
-        >
-          Deploy application
-        </Button>
-      )}
+      <Button
+        variant="contained"
+        disabled={!available}
+        className={classes.button}
+        color="primary"
+        href={href}
+      >
+        Deploy application
+      </Button>
     </InfoCard>
   );
 };
