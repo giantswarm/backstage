@@ -37,6 +37,12 @@ export const ValueSourcesEditorFieldSchema = makeFieldSchema({
         .describe(
           'Template string for name prefix (e.g. "${{chartName(chartRef)}}"). Combined with default suffixes like "-user-values", "-user-secrets".',
         ),
+      initialValueSourcesField: z
+        .string()
+        .optional()
+        .describe(
+          'Field path containing initial value sources array (e.g. "_deployment.currentValueSources") for pre-populating the editor in edit mode.',
+        ),
     }),
 });
 

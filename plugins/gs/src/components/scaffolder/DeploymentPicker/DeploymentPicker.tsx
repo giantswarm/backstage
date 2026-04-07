@@ -2,14 +2,22 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Typography } from '@material-ui/core';
 import { WarningPanel } from '@backstage/core-components';
 import {
-  ConfigMap,
   HelmRelease,
-  Secret,
   useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useApi } from '@backstage/core-plugin-api';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { useQueries } from '@tanstack/react-query';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import { DeploymentPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
+
+interface ValuesFromEntry {
+  kind: string;
+  name: string;
+  valuesKey?: string;
+  targetPath?: string;
+}
 
 /**
  * Scaffolder field extension that fetches deployment data from Kubernetes.
@@ -18,11 +26,14 @@ import { useValueFromOptions } from '../hooks/useValueFromOptions';
  * and deployment names. When used with `ui:widget: hidden`, renders nothing.
  *
  * Fetches the HelmRelease first, then inspects its `valuesFrom` to determine
- * which ConfigMap/Secret to fetch. Blocks editing when:
- * - Multiple ConfigMaps or Secrets are referenced
- * - Inline `spec.values` are set
+ * which ConfigMaps/Secrets to fetch. Supports both single and multiple value
+ * sources.
  *
- * Outputs an object with currentValues.
+ * Outputs an object with:
+ * - currentValues: string (for inline mode or single-source backward compat)
+ * - currentValueSources: array of value source objects (for valuesFrom mode)
+ * - currentValuesMode: 'inline' | 'valuesFrom'
+ *
  * Secret values are stored in the scaffolder secrets context under the key
  * specified by the `secretValuesKey` ui:option.
  */
@@ -71,6 +82,7 @@ export const DeploymentPicker = ({
   );
 
   const { setSecrets } = useTemplateSecrets();
+  const kubernetesApi = useApi(kubernetesApiRef);
 
   const cluster = installationName ?? '';
   const namespace = deploymentNamespace ?? clusterNamespace ?? '';
@@ -88,117 +100,182 @@ export const DeploymentPicker = ({
     { enabled, ...noCacheOptions },
   );
 
-  // Analyze valuesFrom to determine what to fetch and whether editing is allowed
-  const valuesFromAnalysis = useMemo(() => {
-    const warnings: string[] = [];
+  // Determine the configuration mode and extract valuesFrom entries
+  const { valuesMode, valuesFrom, warnings } = useMemo(() => {
+    const w: string[] = [];
 
     if (!helmRelease) {
       return {
-        canEdit: false,
-        warnings,
-        configMapName: undefined,
-        secretName: undefined,
-        configMapValuesKey: 'values.yaml',
-        secretValuesKey: 'values.yaml',
+        valuesMode: undefined,
+        valuesFrom: [] as ValuesFromEntry[],
+        warnings: w,
       };
     }
 
-    const valuesFrom = helmRelease.getValuesFrom() ?? [];
-    const configMaps = valuesFrom.filter(v => v.kind === 'ConfigMap');
-    const secrets = valuesFrom.filter(v => v.kind === 'Secret');
+    const hasInline = helmRelease.hasInlineValues();
+    const entries: ValuesFromEntry[] = helmRelease.getValuesFrom() ?? [];
 
-    if (configMaps.length > 1) {
-      warnings.push(
-        `HelmRelease references ${configMaps.length} ConfigMaps in valuesFrom. Only single ConfigMap editing is supported.`,
-      );
-    }
-    if (secrets.length > 1) {
-      warnings.push(
-        `HelmRelease references ${secrets.length} Secrets in valuesFrom. Only single Secret editing is supported.`,
-      );
-    }
-    if (helmRelease.hasInlineValues()) {
-      warnings.push(
-        'HelmRelease has inline spec.values set. Editing valuesFrom resources could cause conflicts.',
+    if (hasInline && entries.length > 0) {
+      w.push(
+        'HelmRelease has both inline spec.values and valuesFrom references. Only valuesFrom sources will be loaded for editing.',
       );
     }
 
-    const canEdit = warnings.length === 0;
+    const mode = hasInline && entries.length === 0 ? 'inline' : 'valuesFrom';
 
     return {
-      canEdit,
-      warnings,
-      configMapName: configMaps.length === 1 ? configMaps[0].name : undefined,
-      secretName: secrets.length === 1 ? secrets[0].name : undefined,
-      configMapValuesKey: configMaps[0]?.valuesKey ?? 'values.yaml',
-      secretValuesKey: secrets[0]?.valuesKey ?? 'values.yaml',
+      valuesMode: mode as 'inline' | 'valuesFrom',
+      valuesFrom: entries,
+      warnings: w,
     };
   }, [helmRelease]);
 
-  const {
-    canEdit,
-    warnings,
-    configMapName,
-    secretName,
-    configMapValuesKey,
-    secretValuesKey: secretDataKey,
-  } = valuesFromAnalysis;
+  // For inline mode, extract the values from spec.values
+  const inlineValues = useMemo(() => {
+    if (valuesMode !== 'inline' || !helmRelease) return '';
+    const values = helmRelease.getValues();
+    if (!values || Object.keys(values).length === 0) return '';
+    // Convert the object back to YAML-like string
+    // spec.values is stored as an object, so we need to serialize it
+    try {
+      // Use JSON for now; the YAML editor will handle it
+      return Object.entries(values)
+        .map(
+          ([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`,
+        )
+        .join('\n');
+    } catch {
+      return '';
+    }
+  }, [valuesMode, helmRelease]);
 
-  const { resource: configMap } = useResource(
-    cluster,
-    ConfigMap,
-    { name: configMapName ?? '', namespace },
-    {
-      enabled: enabled && canEdit && Boolean(configMapName),
-      ...noCacheOptions,
-    },
-  );
+  // Fetch all valuesFrom resources (ConfigMaps and Secrets) in parallel
+  const resourceQueries = useQueries({
+    queries: valuesFrom.map((entry, index) => {
+      const resourceKind = entry.kind === 'Secret' ? 'secrets' : 'configmaps';
+      const path = `/api/v1/namespaces/${namespace}/${resourceKind}/${entry.name}`;
 
-  const { resource: secret } = useResource(
-    cluster,
-    Secret,
-    { name: secretName ?? '', namespace },
-    { enabled: enabled && canEdit && Boolean(secretName), ...noCacheOptions },
-  );
+      return {
+        queryKey: [
+          'deployment-picker',
+          cluster,
+          'get',
+          resourceKind,
+          namespace,
+          entry.name,
+          index,
+        ],
+        queryFn: async () => {
+          const response = await kubernetesApi.proxy({
+            clusterName: cluster,
+            path,
+          });
 
-  // Extract raw values using the valuesKey from the HelmRelease's valuesFrom entry
-  const currentValues = configMap?.getData()?.[configMapValuesKey] ?? '';
-  const encodedSecretValues = secret?.getData()?.[secretDataKey] ?? '';
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch ${entry.kind} ${entry.name}: ${response.statusText}`,
+            );
+          }
+
+          return response.json();
+        },
+        enabled:
+          enabled && valuesMode === 'valuesFrom' && valuesFrom.length > 0,
+        staleTime: 0,
+        gcTime: 0,
+      };
+    }),
+  });
+
+  // Build currentValueSources from fetched resources
+  const { currentValueSources, secretValuesMap } = useMemo(() => {
+    if (valuesMode !== 'valuesFrom' || valuesFrom.length === 0) {
+      return { currentValueSources: undefined, secretValuesMap: undefined };
+    }
+
+    const sources: Array<{
+      kind: 'ConfigMap' | 'Secret';
+      name: string;
+      valuesKey: string;
+      values?: string;
+    }> = [];
+    const secretMap: Record<string, string> = {};
+
+    valuesFrom.forEach((entry, index) => {
+      const query = resourceQueries[index];
+      const valuesKey = entry.valuesKey ?? 'values';
+      const kind = entry.kind as 'ConfigMap' | 'Secret';
+
+      if (!query?.data) {
+        sources.push({ kind, name: entry.name, valuesKey });
+        return;
+      }
+
+      const resourceData = query.data as Record<string, any>;
+
+      if (kind === 'ConfigMap') {
+        const value = resourceData.data?.[valuesKey] ?? '';
+        sources.push({ kind, name: entry.name, valuesKey, values: value });
+      } else {
+        // Secret: data is base64-encoded, stringData is plain text
+        const encodedValue = resourceData.data?.[valuesKey] ?? '';
+        const decodedValue = encodedValue ? decodeBase64(encodedValue) : '';
+        // ConfigMap-like values go in formData, Secret values go in secrets context
+        sources.push({ kind, name: entry.name, valuesKey });
+        if (decodedValue) {
+          secretMap[String(index)] = decodedValue;
+        }
+      }
+    });
+
+    return {
+      currentValueSources: sources,
+      secretValuesMap:
+        Object.keys(secretMap).length > 0 ? secretMap : undefined,
+    };
+  }, [valuesMode, valuesFrom, resourceQueries]);
 
   // Track what we last emitted to avoid redundant onChange calls
   const lastEmittedRef = useRef<string>('');
 
-  // Update formData when configMap/secret data changes
+  // Update formData when data changes
   useEffect(() => {
-    if (!enabled || !canEdit) return;
+    if (!enabled || !valuesMode) return;
 
-    const result = {
-      currentValues: currentValues || undefined,
+    const result: Record<string, any> = {
+      currentValuesMode: valuesMode,
     };
+
+    if (valuesMode === 'inline') {
+      result.currentValues = inlineValues || undefined;
+    } else if (currentValueSources) {
+      result.currentValueSources = currentValueSources;
+      // Also provide currentValues for backward compatibility (first ConfigMap value)
+      const firstConfigMap = currentValueSources.find(
+        s => s.kind === 'ConfigMap' && s.values,
+      );
+      result.currentValues = firstConfigMap?.values ?? undefined;
+    }
 
     const serialized = JSON.stringify(result);
     if (serialized !== lastEmittedRef.current) {
       lastEmittedRef.current = serialized;
       onChange(result);
     }
-  }, [enabled, canEdit, currentValues, onChange]);
+  }, [enabled, valuesMode, inlineValues, currentValueSources, onChange]);
 
-  // Store secret values in the scaffolder secrets context (never in formData).
-  // Re-runs whenever the raw encoded value changes (cache → fresh data).
+  // Store secret values in the scaffolder secrets context
   const lastStoredSecretRef = useRef<string>('');
 
   useEffect(() => {
-    if (!canEdit || !secretValuesKey || !encodedSecretValues) return;
+    if (!secretValuesKey || !secretValuesMap) return;
 
-    // Only update if the encoded value actually changed
-    if (encodedSecretValues === lastStoredSecretRef.current) return;
+    const serialized = JSON.stringify(secretValuesMap);
+    if (serialized === lastStoredSecretRef.current) return;
 
-    const decoded = decodeBase64(encodedSecretValues);
-    if (decoded) {
-      lastStoredSecretRef.current = encodedSecretValues;
-      setSecrets({ [secretValuesKey]: decoded });
-    }
-  }, [canEdit, encodedSecretValues, secretValuesKey, setSecrets]);
+    lastStoredSecretRef.current = serialized;
+    setSecrets({ [secretValuesKey]: serialized });
+  }, [secretValuesMap, secretValuesKey, setSecrets]);
 
   const showSummary =
     Boolean(installationName) || Boolean(clusterName) || Boolean(name);
@@ -227,10 +304,7 @@ export const DeploymentPicker = ({
         cluster.
       </Typography>
       {warnings.length > 0 && (
-        <WarningPanel
-          title="Deployment editing is not available"
-          message="The following issues prevent editing this deployment's values:"
-        >
+        <WarningPanel title="Note" message="The following may affect editing:">
           <ul>
             {warnings.map(warning => (
               <li key={warning}>{warning}</li>

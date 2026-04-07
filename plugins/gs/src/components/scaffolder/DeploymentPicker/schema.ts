@@ -5,6 +5,17 @@ export const DeploymentPickerFieldSchema = makeFieldSchema({
     z
       .object({
         currentValues: z.string().optional(),
+        currentValueSources: z
+          .array(
+            z.object({
+              kind: z.enum(['ConfigMap', 'Secret']),
+              name: z.string(),
+              valuesKey: z.string(),
+              values: z.string().optional(),
+            }),
+          )
+          .optional(),
+        currentValuesMode: z.enum(['inline', 'valuesFrom']).optional(),
       })
       .optional(),
   uiOptions: z =>

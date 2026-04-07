@@ -135,6 +135,7 @@ export const ValueSourcesEditor = ({
     chartTag: chartTagOption,
     chartTagField: chartTagFieldOption,
     initialNamePrefixTemplate,
+    initialValueSourcesField,
   } = uiSchema?.['ui:options'] ?? {};
 
   const chartRef = useValueFromOptions(
@@ -165,9 +166,22 @@ export const ValueSourcesEditor = ({
     allFormData,
   );
 
+  const initialValueSources = useValueFromOptions<ValueSourcesEditorValue>(
+    formContext,
+    undefined,
+    initialValueSourcesField,
+  );
+
   // Internal state: items with their actual display values
   const [items, setItems] = useState<InternalItem[]>(() => {
-    const initial = toInternalItems(formData);
+    // Prefer initial value sources from another field (edit mode)
+    const source =
+      initialValueSources &&
+      Array.isArray(initialValueSources) &&
+      initialValueSources.length > 0
+        ? initialValueSources
+        : formData;
+    const initial = toInternalItems(source);
     // Restore secret display values from secrets context
     if (secretsKey) {
       try {
@@ -184,6 +198,35 @@ export const ValueSourcesEditor = ({
     }
     return initial;
   });
+
+  // Re-initialize when initial value sources arrive (async from DeploymentPicker)
+  const hasAppliedInitialSources = useRef(false);
+  if (
+    !hasAppliedInitialSources.current &&
+    initialValueSources &&
+    Array.isArray(initialValueSources) &&
+    initialValueSources.length > 0
+  ) {
+    hasAppliedInitialSources.current = true;
+    const initial = toInternalItems(initialValueSources);
+    // Restore secret display values from secrets context
+    if (secretsKey) {
+      try {
+        const map = JSON.parse((secrets[secretsKey] as string) || '{}');
+        const withSecrets = initial.map((item, i) => {
+          if (item.kind === 'Secret' && map[String(i)]) {
+            return { ...item, displayValues: map[String(i)] };
+          }
+          return item;
+        });
+        setItems(withSecrets);
+      } catch {
+        setItems(initial);
+      }
+    } else {
+      setItems(initial);
+    }
+  }
 
   const hasAppliedNameTemplate = useRef(false);
 
