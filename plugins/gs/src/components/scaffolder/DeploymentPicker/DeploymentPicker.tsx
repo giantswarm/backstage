@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import * as yaml from 'js-yaml';
 import { Typography } from '@material-ui/core';
 import { WarningPanel } from '@backstage/core-components';
 import {
@@ -135,15 +136,8 @@ export const DeploymentPicker = ({
     if (valuesMode !== 'inline' || !helmRelease) return '';
     const values = helmRelease.getValues();
     if (!values || Object.keys(values).length === 0) return '';
-    // Convert the object back to YAML-like string
-    // spec.values is stored as an object, so we need to serialize it
     try {
-      // Use JSON for now; the YAML editor will handle it
-      return Object.entries(values)
-        .map(
-          ([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`,
-        )
-        .join('\n');
+      return yaml.dump(values, { lineWidth: -1 }).trimEnd();
     } catch {
       return '';
     }
