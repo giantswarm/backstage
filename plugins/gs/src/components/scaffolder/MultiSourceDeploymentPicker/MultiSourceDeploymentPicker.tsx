@@ -217,7 +217,7 @@ export const MultiSourceDeploymentPicker = ({
         // ConfigMap-like values go in formData, Secret values go in secrets context
         sources.push({ kind, name: entry.name, valuesKey });
         if (decodedValue) {
-          secretMap[String(index)] = decodedValue;
+          secretMap[entry.name] = decodedValue;
         }
       }
     });

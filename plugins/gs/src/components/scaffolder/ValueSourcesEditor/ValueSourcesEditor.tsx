@@ -186,9 +186,9 @@ export const ValueSourcesEditor = ({
     if (secretsKey) {
       try {
         const map = JSON.parse((secrets[secretsKey] as string) || '{}');
-        return initial.map((item, i) => {
-          if (item.kind === 'Secret' && map[String(i)]) {
-            return { ...item, displayValues: map[String(i)] };
+        return initial.map(item => {
+          if (item.kind === 'Secret' && map[item.name]) {
+            return { ...item, displayValues: map[item.name] };
           }
           return item;
         });
@@ -213,9 +213,9 @@ export const ValueSourcesEditor = ({
     if (secretsKey) {
       try {
         const map = JSON.parse((secrets[secretsKey] as string) || '{}');
-        const withSecrets = initial.map((item, i) => {
-          if (item.kind === 'Secret' && map[String(i)]) {
-            return { ...item, displayValues: map[String(i)] };
+        const withSecrets = initial.map(item => {
+          if (item.kind === 'Secret' && map[item.name]) {
+            return { ...item, displayValues: map[item.name] };
           }
           return item;
         });
@@ -239,9 +239,9 @@ export const ValueSourcesEditor = ({
     (updatedItems: InternalItem[]) => {
       if (!secretsKey) return;
       const map: Record<string, string> = {};
-      updatedItems.forEach((item, i) => {
+      updatedItems.forEach(item => {
         if (item.kind === 'Secret' && item.displayValues) {
-          map[String(i)] = item.displayValues;
+          map[item.name] = item.displayValues;
         }
       });
       setSecrets({ [secretsKey]: JSON.stringify(map) });
