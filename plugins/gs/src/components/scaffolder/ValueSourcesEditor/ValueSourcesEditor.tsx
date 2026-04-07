@@ -36,6 +36,7 @@ import {
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { passwordManagerIgnoreProps } from '@giantswarm/backstage-plugin-ui-react';
 import { helmMerge } from '../utils/helmMerge';
+import { Flex } from '@backstage/ui';
 
 const REDACTED_PLACEHOLDER = '***REDACTED***';
 
@@ -351,107 +352,120 @@ export const ValueSourcesEditor = ({
   return (
     <FormControl fullWidth error={rawErrors.length > 0}>
       <FormLabel>{title}</FormLabel>
-      {description && <FormHelperText>{description}</FormHelperText>}
       <Box mt={1}>
-        {items.map((item, index) => (
-          <Paper
-            key={index}
-            variant="outlined"
-            style={{ padding: 16, marginBottom: 12 }}
-            data-config-docs-anchor
-          >
-            <Grid container spacing={2} alignItems="flex-start">
-              <Grid item xs={3}>
-                <FormControl fullWidth size="small">
-                  <Select
-                    value={item.kind}
+        <Flex direction="column" gap="3">
+          {items.map((item, index) => (
+            <Paper
+              key={index}
+              variant="outlined"
+              style={{ padding: 16 }}
+              data-config-docs-anchor
+            >
+              <Grid container spacing={2} alignItems="flex-start">
+                <Grid item xs={3}>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={item.kind}
+                      onChange={e =>
+                        handleFieldChange(
+                          index,
+                          'kind',
+                          e.target.value as string,
+                        )
+                      }
+                      variant="outlined"
+                    >
+                      <MenuItem value="ConfigMap">ConfigMap</MenuItem>
+                      <MenuItem value="Secret">Secret</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    label="Name"
+                    value={item.name}
                     onChange={e =>
-                      handleFieldChange(index, 'kind', e.target.value as string)
+                      handleFieldChange(index, 'name', e.target.value)
                     }
                     variant="outlined"
-                  >
-                    <MenuItem value="ConfigMap">ConfigMap</MenuItem>
-                    <MenuItem value="Secret">Secret</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={4}>
-                <TextField
-                  label="Name"
-                  value={item.name}
-                  onChange={e =>
-                    handleFieldChange(index, 'name', e.target.value)
-                  }
-                  variant="outlined"
-                  size="small"
-                  fullWidth
-                  error={Boolean(nameErrors[index])}
-                  helperText={nameErrors[index]}
-                  inputProps={passwordManagerIgnoreProps}
-                />
-              </Grid>
-              <Grid item xs={3}>
-                <TextField
-                  label="Data key"
-                  value={item.valuesKey}
-                  onChange={e =>
-                    handleFieldChange(index, 'valuesKey', e.target.value)
-                  }
-                  variant="outlined"
-                  size="small"
-                  fullWidth
-                  inputProps={passwordManagerIgnoreProps}
-                />
-              </Grid>
-              <Grid item xs={2}>
-                <Box display="flex" justifyContent="flex-end" pt="7px" pb="7px">
-                  <IconButton
                     size="small"
-                    onClick={() => handleMoveItem(index, -1)}
-                    disabled={index === 0}
-                    title="Move up"
-                  >
-                    <ArrowUpwardIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
+                    fullWidth
+                    error={Boolean(nameErrors[index])}
+                    helperText={nameErrors[index]}
+                    inputProps={passwordManagerIgnoreProps}
+                  />
+                </Grid>
+                <Grid item xs={3}>
+                  <TextField
+                    label="Data key"
+                    value={item.valuesKey}
+                    onChange={e =>
+                      handleFieldChange(index, 'valuesKey', e.target.value)
+                    }
+                    variant="outlined"
                     size="small"
-                    onClick={() => handleMoveItem(index, 1)}
-                    disabled={index === items.length - 1}
-                    title="Move down"
+                    fullWidth
+                    inputProps={passwordManagerIgnoreProps}
+                  />
+                </Grid>
+                <Grid item xs={2}>
+                  <Box
+                    display="flex"
+                    justifyContent="flex-end"
+                    pt="7px"
+                    pb="7px"
                   >
-                    <ArrowDownwardIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleRemoveItem(index)}
-                    title="Remove"
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleMoveItem(index, -1)}
+                      disabled={index === 0}
+                      title="Move up"
+                    >
+                      <ArrowUpwardIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleMoveItem(index, 1)}
+                      disabled={index === items.length - 1}
+                      title="Move down"
+                    >
+                      <ArrowDownwardIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleRemoveItem(index)}
+                      title="Remove"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </Grid>
               </Grid>
-            </Grid>
 
-            <Box mt={2}>
-              <Typography variant="caption" color="textSecondary">
-                {item.kind === 'Secret'
-                  ? 'Values (YAML, stored securely)'
-                  : 'Values (YAML)'}
-              </Typography>
-              <YamlEditorFormField
-                value={item.displayValues}
-                onChange={value => handleYamlChange(index, value ?? '')}
-                schema={processedJsonSchema}
-              />
-            </Box>
-          </Paper>
-        ))}
+              <Box mt={2}>
+                <Typography variant="caption" color="textSecondary">
+                  {item.kind === 'Secret'
+                    ? 'Values (YAML, stored securely)'
+                    : 'Values (YAML)'}
+                </Typography>
+                <YamlEditorFormField
+                  value={item.displayValues}
+                  onChange={value => handleYamlChange(index, value ?? '')}
+                  schema={processedJsonSchema}
+                />
+              </Box>
+            </Paper>
+          ))}
+        </Flex>
+
+        {description && <FormHelperText>{description}</FormHelperText>}
 
         <Button
           variant="outlined"
           startIcon={<AddIcon />}
           onClick={handleAddItem}
           size="small"
+          style={{ marginTop: 12 }}
         >
           Add value source
         </Button>

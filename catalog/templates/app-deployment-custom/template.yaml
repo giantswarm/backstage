@@ -63,7 +63,7 @@ spec:
                     ui:options:
                       chartRef: gsoci.azurecr.io/charts/giantswarm/hello-world
                       chartTag: 3.0.2
-                      height: 300
+                      height: 570
                   schemaValidation:
                     type: boolean
                     ui:field: GSYamlValuesValidation
