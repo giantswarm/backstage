@@ -1,10 +1,20 @@
 import { makeFieldSchema } from '@backstage/plugin-scaffolder-react';
 
-export const DeploymentPickerFieldSchema = makeFieldSchema({
+export const MultiSourceDeploymentPickerFieldSchema = makeFieldSchema({
   output: z =>
     z
       .object({
         currentValues: z.string().optional(),
+        currentValueSources: z
+          .array(
+            z.object({
+              kind: z.enum(['ConfigMap', 'Secret']),
+              name: z.string(),
+              valuesKey: z.string(),
+              values: z.string().optional(),
+            }),
+          )
+          .optional(),
       })
       .optional(),
   uiOptions: z =>
@@ -38,8 +48,11 @@ export const DeploymentPickerFieldSchema = makeFieldSchema({
     }),
 });
 
-export const DeploymentPickerSchema = DeploymentPickerFieldSchema.schema;
+export const MultiSourceDeploymentPickerSchema =
+  MultiSourceDeploymentPickerFieldSchema.schema;
 
-export type DeploymentPickerProps = typeof DeploymentPickerFieldSchema.type;
+export type MultiSourceDeploymentPickerProps =
+  typeof MultiSourceDeploymentPickerFieldSchema.type;
 
-export type DeploymentPickerValue = typeof DeploymentPickerFieldSchema.TOutput;
+export type MultiSourceDeploymentPickerValue =
+  typeof MultiSourceDeploymentPickerFieldSchema.TOutput;

@@ -515,6 +515,20 @@ const deploymentPickerFormField = FormFieldBlueprint.make({
   },
 });
 
+const multiSourceDeploymentPickerFormField = FormFieldBlueprint.make({
+  name: 'multi-source-deployment-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/MultiSourceDeploymentPicker').then(m =>
+        createFormField({
+          name: 'GSMultiSourceDeploymentPicker',
+          component: m.MultiSourceDeploymentPicker,
+          schema: m.MultiSourceDeploymentPickerFieldSchema,
+        }),
+      ),
+  },
+});
+
 const yamlValuesEditorFormField = FormFieldBlueprint.make({
   name: 'yaml-values-editor',
   params: {
@@ -615,6 +629,7 @@ export const gsPlugin = createFrontendPlugin({
     templateStringInputFormField,
     entityPickerFormField,
     deploymentPickerFormField,
+    multiSourceDeploymentPickerFormField,
     yamlValuesEditorFormField,
     secretYamlValuesEditorFormField,
     yamlValuesValidationFormField,
