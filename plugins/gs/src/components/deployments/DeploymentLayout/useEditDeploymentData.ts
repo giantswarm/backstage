@@ -74,15 +74,22 @@ export function useEditDeploymentData(
     const ociRef = ociRepository?.getReference();
     const ociUrl = ociRepository?.getURL();
 
+    const hasInline = deployment.hasInlineValues();
+    const valuesFromEntries = deployment.getValuesFrom() ?? [];
+    const valuesMode =
+      hasInline && valuesFromEntries.length === 0 ? 'inline' : 'valuesFrom';
+
     return {
       entityRef,
       chartRef: deriveChartRef(ociUrl),
       chartTag: deriveChartTag(ociRef),
       automaticUpgrades: deriveAutoUpgradeMode(ociRef),
+      valuesMode,
       isLoading: isLoadingEntity || (needsOciRepository ? isLoadingOci : false),
     };
   }, [
     catalogEntity,
+    deployment,
     ociRepository,
     isLoadingEntity,
     isLoadingOci,

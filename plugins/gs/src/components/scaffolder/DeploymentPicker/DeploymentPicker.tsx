@@ -242,19 +242,12 @@ export const DeploymentPicker = ({
   useEffect(() => {
     if (!enabled || !valuesMode) return;
 
-    const result: Record<string, any> = {
-      currentValuesMode: valuesMode,
-    };
+    const result: Record<string, any> = {};
 
     if (valuesMode === 'inline') {
       result.currentValues = inlineValues || undefined;
     } else if (currentValueSources) {
       result.currentValueSources = currentValueSources;
-      // Also provide currentValues for backward compatibility (first ConfigMap value)
-      const firstConfigMap = currentValueSources.find(
-        s => s.kind === 'ConfigMap' && s.values,
-      );
-      result.currentValues = firstConfigMap?.values ?? undefined;
     }
 
     const serialized = JSON.stringify(result);

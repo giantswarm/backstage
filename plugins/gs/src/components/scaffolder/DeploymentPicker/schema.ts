@@ -15,7 +15,6 @@ export const DeploymentPickerFieldSchema = makeFieldSchema({
             }),
           )
           .optional(),
-        currentValuesMode: z.enum(['inline', 'valuesFrom']).optional(),
       })
       .optional(),
   uiOptions: z =>

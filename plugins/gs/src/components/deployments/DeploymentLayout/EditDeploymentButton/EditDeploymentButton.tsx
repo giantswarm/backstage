@@ -27,10 +27,16 @@ export function EditDeploymentButton({
   const { available, getTemplateUrl } = useEditAppDeploymentTemplate();
 
   // Only fetch edit data when the template is available
-  const { entityRef, chartRef, chartTag, automaticUpgrades, isLoading } =
-    useEditDeploymentData(deployment, installationName, {
-      enabled: available,
-    });
+  const {
+    entityRef,
+    chartRef,
+    chartTag,
+    automaticUpgrades,
+    valuesMode,
+    isLoading,
+  } = useEditDeploymentData(deployment, installationName, {
+    enabled: available,
+  });
 
   const deploymentNamespace = deployment.getNamespace() ?? '';
 
@@ -64,6 +70,7 @@ export function EditDeploymentButton({
       chartRef: chartRef ?? '',
       chartTag: chartTag ?? '',
       automaticUpgrades: automaticUpgrades ?? 'no-upgrades',
+      valuesMode: valuesMode ?? 'valuesFrom',
       installation: { installationName },
       cluster: {
         clusterName,
@@ -80,6 +87,7 @@ export function EditDeploymentButton({
     chartRef,
     chartTag,
     automaticUpgrades,
+    valuesMode,
     installationName,
     clusterName,
     deployment,
