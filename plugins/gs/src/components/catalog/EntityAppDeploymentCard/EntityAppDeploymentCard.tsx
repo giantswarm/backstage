@@ -4,7 +4,7 @@ import { Button, makeStyles, Typography } from '@material-ui/core';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { useCurrentEntityChart } from '../EntityChartContext';
-import { useAppDeploymentTemplate } from '../../hooks';
+import { useCreateAppDeploymentTemplate } from '../../hooks';
 
 const useStyles = makeStyles(() => ({
   button: {
@@ -20,7 +20,7 @@ const CardContent = () => {
   const { entity } = useEntity();
   const { charts, selectedChart } = useCurrentEntityChart();
 
-  const { available, getTemplateUrl } = useAppDeploymentTemplate();
+  const { available, getTemplateUrl } = useCreateAppDeploymentTemplate();
 
   const formData: Record<string, string> = {
     entityRef: stringifyEntityRef(entity),
