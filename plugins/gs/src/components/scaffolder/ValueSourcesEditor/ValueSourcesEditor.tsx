@@ -1,5 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import useDebounce from 'react-use/esm/useDebounce';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -477,13 +476,9 @@ export const ValueSourcesEditor = ({
     return errors;
   }, [items]);
 
-  // Debounce expensive YAML parsing + merge so it doesn't run on every keystroke
-  const [debouncedItems, setDebouncedItems] = useState(items);
-  useDebounce(() => setDebouncedItems(items), 300, [items]);
-
   const mergedValues = useMemo(() => {
     let result = {};
-    for (const item of debouncedItems) {
+    for (const item of items) {
       if (item.displayValues) {
         try {
           const parsed = yaml.load(item.displayValues);
@@ -496,18 +491,43 @@ export const ValueSourcesEditor = ({
       }
     }
     return result;
-  }, [debouncedItems]);
+  }, [items]);
 
   const { warnings: schemaWarnings } = useHelmValuesValidation(
     mergedValues,
     jsonSchema,
   );
 
+  // Debounce YAML changes: update ref immediately so other operations see
+  // latest values, but defer the expensive React state update + parent
+  // notification. CodeMirror manages its own document so the editor stays
+  // responsive without React re-renders on every keystroke.
+  const yamlFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Flush pending YAML changes on unmount
+  useEffect(
+    () => () => {
+      if (yamlFlushTimerRef.current !== null) {
+        clearTimeout(yamlFlushTimerRef.current);
+        emitChange(itemsRef.current);
+      }
+    },
+    [emitChange],
+  );
+
   const handleYamlChange = useCallback(
     (index: number, value: string) => {
       const updated = [...itemsRef.current];
       updated[index] = { ...updated[index], displayValues: value };
-      emitChange(updated);
+      itemsRef.current = updated;
+
+      if (yamlFlushTimerRef.current !== null) {
+        clearTimeout(yamlFlushTimerRef.current);
+      }
+      yamlFlushTimerRef.current = setTimeout(() => {
+        yamlFlushTimerRef.current = null;
+        emitChange(itemsRef.current);
+      }, 200);
     },
     [emitChange],
   );
