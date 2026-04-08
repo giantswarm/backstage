@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import useDebounce from 'react-use/esm/useDebounce';
 import {
   Box,
   Button,
@@ -118,6 +119,121 @@ function toFormData(items: InternalItem[]): ValueSourceItem[] {
         : item.displayValues || undefined,
   }));
 }
+
+type ValueSourceItemRowProps = {
+  item: InternalItem;
+  index: number;
+  nameError: string | undefined;
+  isFirst: boolean;
+  isLast: boolean;
+  schema: Record<string, any>;
+  onFieldChange: (
+    index: number,
+    field: keyof InternalItem,
+    value: string,
+  ) => void;
+  onYamlChange: (index: number, value: string) => void;
+  onMoveItem: (index: number, direction: -1 | 1) => void;
+  onRemoveItem: (index: number) => void;
+};
+
+const ValueSourceItemRow = memo(
+  ({
+    item,
+    index,
+    nameError,
+    isFirst,
+    isLast,
+    schema,
+    onFieldChange,
+    onYamlChange,
+    onMoveItem,
+    onRemoveItem,
+  }: ValueSourceItemRowProps) => (
+    <Paper variant="outlined" style={{ padding: 16 }} data-config-docs-anchor>
+      <Grid container spacing={2} alignItems="flex-start">
+        <Grid item xs={3}>
+          <FormControl fullWidth size="small">
+            <Select
+              value={item.kind}
+              onChange={e =>
+                onFieldChange(index, 'kind', e.target.value as string)
+              }
+              variant="outlined"
+            >
+              <MenuItem value="ConfigMap">ConfigMap</MenuItem>
+              <MenuItem value="Secret">Secret</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={4}>
+          <TextField
+            label="Name"
+            value={item.name}
+            onChange={e => onFieldChange(index, 'name', e.target.value)}
+            variant="outlined"
+            size="small"
+            fullWidth
+            error={Boolean(nameError)}
+            helperText={nameError}
+            inputProps={passwordManagerIgnoreProps}
+          />
+        </Grid>
+        <Grid item xs={3}>
+          <TextField
+            label="Data key"
+            value={item.valuesKey}
+            onChange={e => onFieldChange(index, 'valuesKey', e.target.value)}
+            variant="outlined"
+            size="small"
+            fullWidth
+            inputProps={passwordManagerIgnoreProps}
+          />
+        </Grid>
+        <Grid item xs={2}>
+          <Box display="flex" justifyContent="flex-end" pt="7px" pb="7px">
+            <IconButton
+              size="small"
+              onClick={() => onMoveItem(index, -1)}
+              disabled={isFirst}
+              title="Move up"
+            >
+              <ArrowUpwardIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => onMoveItem(index, 1)}
+              disabled={isLast}
+              title="Move down"
+            >
+              <ArrowDownwardIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={() => onRemoveItem(index)}
+              title="Remove"
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Grid>
+      </Grid>
+
+      <Box mt={2}>
+        <Typography variant="caption" color="textSecondary">
+          {item.kind === 'Secret'
+            ? 'Values (YAML, stored securely)'
+            : 'Values (YAML)'}
+        </Typography>
+        <YamlEditorFormField
+          value={item.displayValues}
+          onChange={value => onYamlChange(index, value ?? '')}
+          schema={schema}
+        />
+      </Box>
+    </Paper>
+  ),
+);
 
 export const ValueSourcesEditor = ({
   onChange,
@@ -361,9 +477,13 @@ export const ValueSourcesEditor = ({
     return errors;
   }, [items]);
 
+  // Debounce expensive YAML parsing + merge so it doesn't run on every keystroke
+  const [debouncedItems, setDebouncedItems] = useState(items);
+  useDebounce(() => setDebouncedItems(items), 300, [items]);
+
   const mergedValues = useMemo(() => {
     let result = {};
-    for (const item of items) {
+    for (const item of debouncedItems) {
       if (item.displayValues) {
         try {
           const parsed = yaml.load(item.displayValues);
@@ -376,7 +496,7 @@ export const ValueSourcesEditor = ({
       }
     }
     return result;
-  }, [items]);
+  }, [debouncedItems]);
 
   const { warnings: schemaWarnings } = useHelmValuesValidation(
     mergedValues,
@@ -398,106 +518,19 @@ export const ValueSourcesEditor = ({
       <Box mt={1}>
         <Flex direction="column" gap="3">
           {items.map((item, index) => (
-            <Paper
+            <ValueSourceItemRow
               key={index}
-              variant="outlined"
-              style={{ padding: 16 }}
-              data-config-docs-anchor
-            >
-              <Grid container spacing={2} alignItems="flex-start">
-                <Grid item xs={3}>
-                  <FormControl fullWidth size="small">
-                    <Select
-                      value={item.kind}
-                      onChange={e =>
-                        handleFieldChange(
-                          index,
-                          'kind',
-                          e.target.value as string,
-                        )
-                      }
-                      variant="outlined"
-                    >
-                      <MenuItem value="ConfigMap">ConfigMap</MenuItem>
-                      <MenuItem value="Secret">Secret</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={4}>
-                  <TextField
-                    label="Name"
-                    value={item.name}
-                    onChange={e =>
-                      handleFieldChange(index, 'name', e.target.value)
-                    }
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    error={Boolean(nameErrors[index])}
-                    helperText={nameErrors[index]}
-                    inputProps={passwordManagerIgnoreProps}
-                  />
-                </Grid>
-                <Grid item xs={3}>
-                  <TextField
-                    label="Data key"
-                    value={item.valuesKey}
-                    onChange={e =>
-                      handleFieldChange(index, 'valuesKey', e.target.value)
-                    }
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    inputProps={passwordManagerIgnoreProps}
-                  />
-                </Grid>
-                <Grid item xs={2}>
-                  <Box
-                    display="flex"
-                    justifyContent="flex-end"
-                    pt="7px"
-                    pb="7px"
-                  >
-                    <IconButton
-                      size="small"
-                      onClick={() => handleMoveItem(index, -1)}
-                      disabled={index === 0}
-                      title="Move up"
-                    >
-                      <ArrowUpwardIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleMoveItem(index, 1)}
-                      disabled={index === items.length - 1}
-                      title="Move down"
-                    >
-                      <ArrowDownwardIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleRemoveItem(index)}
-                      title="Remove"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                </Grid>
-              </Grid>
-
-              <Box mt={2}>
-                <Typography variant="caption" color="textSecondary">
-                  {item.kind === 'Secret'
-                    ? 'Values (YAML, stored securely)'
-                    : 'Values (YAML)'}
-                </Typography>
-                <YamlEditorFormField
-                  value={item.displayValues}
-                  onChange={value => handleYamlChange(index, value ?? '')}
-                  schema={processedJsonSchema}
-                />
-              </Box>
-            </Paper>
+              item={item}
+              index={index}
+              nameError={nameErrors[index]}
+              isFirst={index === 0}
+              isLast={index === items.length - 1}
+              schema={processedJsonSchema}
+              onFieldChange={handleFieldChange}
+              onYamlChange={handleYamlChange}
+              onMoveItem={handleMoveItem}
+              onRemoveItem={handleRemoveItem}
+            />
           ))}
         </Flex>
 

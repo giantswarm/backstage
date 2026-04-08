@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   Box,
   FormControl,
@@ -22,40 +23,42 @@ type YamlEditorFormFieldProps = {
   schema?: JSONSchema7;
 };
 
-export const YamlEditorFormField = ({
-  label,
-  required,
-  disabled,
-  error,
-  helperText,
-  value,
-  onChange,
-  height,
-  maxHeight,
-  schema,
-}: YamlEditorFormFieldProps) => {
-  const theme = useTheme();
-  return (
-    <FormControl
-      fullWidth
-      required={required}
-      disabled={disabled}
-      error={error}
-    >
-      {label && <FormLabel>{label}</FormLabel>}
+export const YamlEditorFormField = memo(
+  ({
+    label,
+    required,
+    disabled,
+    error,
+    helperText,
+    value,
+    onChange,
+    height,
+    maxHeight,
+    schema,
+  }: YamlEditorFormFieldProps) => {
+    const theme = useTheme();
+    return (
+      <FormControl
+        fullWidth
+        required={required}
+        disabled={disabled}
+        error={error}
+      >
+        {label && <FormLabel>{label}</FormLabel>}
 
-      <Box mt={1} data-config-docs-anchor>
-        <YamlEditor
-          initialValue={value}
-          schema={schema}
-          onChange={onChange}
-          height={height !== undefined ? `${height}px` : undefined}
-          maxHeight={maxHeight !== undefined ? `${maxHeight}px` : undefined}
-          theme={theme.palette.type}
-          error={error}
-        />
-      </Box>
-      {helperText && <FormHelperText>{helperText}</FormHelperText>}
-    </FormControl>
-  );
-};
+        <Box mt={1} data-config-docs-anchor>
+          <YamlEditor
+            initialValue={value}
+            schema={schema}
+            onChange={onChange}
+            height={height !== undefined ? `${height}px` : undefined}
+            maxHeight={maxHeight !== undefined ? `${maxHeight}px` : undefined}
+            theme={theme.palette.type}
+            error={error}
+          />
+        </Box>
+        {helperText && <FormHelperText>{helperText}</FormHelperText>}
+      </FormControl>
+    );
+  },
+);
