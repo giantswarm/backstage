@@ -32,17 +32,20 @@ const useStyles = makeStyles(theme => ({
 type CodeBlockProps = {
   text: string;
   language: string;
+  copyEnabled?: boolean;
 };
 
-export const CodeBlock = ({ text, language: _language }: CodeBlockProps) => {
+export const CodeBlock = ({ text, copyEnabled = true }: CodeBlockProps) => {
   const classes = useStyles();
 
   return (
     <Box className={classes.flexContainer}>
       <pre className={classes.codeBlock}>{text}</pre>
-      <Box className={classes.copyButtonContainer}>
-        <CopyTextButton text={text} />
-      </Box>
+      {copyEnabled && (
+        <Box className={classes.copyButtonContainer}>
+          <CopyTextButton text={text} />
+        </Box>
+      )}
     </Box>
   );
 };

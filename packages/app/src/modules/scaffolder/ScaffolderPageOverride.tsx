@@ -26,7 +26,8 @@ export const ScaffolderPageOverride = PageBlueprint.makeWithOverrides({
         const { ScaffolderPage } = await import('@backstage/plugin-scaffolder');
         const { ScaffolderLayouts, createScaffolderLayout } =
           await import('@backstage/plugin-scaffolder-react');
-        const { StepLayout } = await import('@giantswarm/backstage-plugin-gs');
+        const { StepLayout, ReviewStep } =
+          await import('@giantswarm/backstage-plugin-gs');
 
         // Load form fields from both sources (matching upstream pattern):
         // 1. formFieldsApi collects fields wired to it (e.g. from other plugins)
@@ -59,6 +60,7 @@ export const ScaffolderPageOverride = PageBlueprint.makeWithOverrides({
             formFields?: unknown[];
             headerOptions?: Record<string, string>;
             templateFilter?: (entity: any) => boolean;
+            components?: Record<string, unknown>;
             children?: React.ReactNode;
           }>;
 
@@ -66,6 +68,7 @@ export const ScaffolderPageOverride = PageBlueprint.makeWithOverrides({
           <ScaffolderRouter
             formFields={formFields}
             headerOptions={headerOptions}
+            components={{ ReviewStepComponent: ReviewStep }}
             templateFilter={entity =>
               !entity.metadata?.tags?.includes('hidden')
             }
