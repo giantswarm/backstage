@@ -12,7 +12,6 @@ import {
   findTargetClusterNamespace,
   findTargetClusterType,
 } from '../../utils/findTargetCluster';
-import { findTargetNamespace } from '../../utils/findTargetNamespace';
 
 const useStyles = makeStyles(() => ({
   button: {
@@ -58,17 +57,14 @@ export function EditDeploymentButton({
   const clusterName = findTargetClusterName(deployment);
   const clusterNamespace = findTargetClusterNamespace(deployment);
   const clusterType = findTargetClusterType(deployment);
-  const targetNamespace = findTargetNamespace(deployment);
-
   const missingFields = useMemo(() => {
     if (isLoading) return [];
     const missing: string[] = [];
     if (!chartRef) missing.push('chart reference');
     if (!chartTag) missing.push('chart version');
     if (!clusterName) missing.push('cluster name');
-    if (!targetNamespace) missing.push('target namespace');
     return missing;
-  }, [isLoading, chartRef, chartTag, clusterName, targetNamespace]);
+  }, [isLoading, chartRef, chartTag, clusterName]);
 
   const isDisabled =
     isLoading ||
@@ -104,7 +100,6 @@ export function EditDeploymentButton({
       },
       name,
       namespace,
-      targetNamespace,
     });
   }, [
     isDisabled,
@@ -120,7 +115,6 @@ export function EditDeploymentButton({
     clusterType,
     name,
     namespace,
-    targetNamespace,
   ]);
 
   if (!available) {
