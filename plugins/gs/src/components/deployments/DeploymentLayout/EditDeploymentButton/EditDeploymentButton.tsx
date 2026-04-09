@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEditAppDeploymentTemplate } from '../../../hooks';
 import { useEditDeploymentData } from '../useEditDeploymentData';
+import { useDeploymentEditCompatibility } from './useDeploymentEditCompatibility';
 import { Box, makeStyles, Tooltip } from '@material-ui/core';
 import {
   findTargetClusterName,
@@ -44,6 +45,14 @@ export function EditDeploymentButton({
     enabled: available,
   });
 
+  const {
+    incompatibleReasons,
+    isCompatible,
+    isLoading: isLoadingCompatibility,
+  } = useDeploymentEditCompatibility(deployment, installationName, {
+    enabled: available,
+  });
+
   const name = deployment.getName();
   const namespace = deployment.getNamespace();
   const clusterName = findTargetClusterName(deployment);
@@ -57,14 +66,21 @@ export function EditDeploymentButton({
     if (!chartRef) missing.push('chart reference');
     if (!chartTag) missing.push('chart version');
     if (!clusterName) missing.push('cluster name');
+    if (!targetNamespace) missing.push('target namespace');
     return missing;
-  }, [isLoading, chartRef, chartTag, clusterName]);
+  }, [isLoading, chartRef, chartTag, clusterName, targetNamespace]);
 
-  const isDisabled = isLoading || missingFields.length > 0;
+  const isDisabled =
+    isLoading ||
+    isLoadingCompatibility ||
+    missingFields.length > 0 ||
+    !isCompatible;
 
   let tooltipTitle: string;
-  if (isLoading) {
+  if (isLoading || isLoadingCompatibility) {
     tooltipTitle = 'Loading deployment data…';
+  } else if (!isCompatible) {
+    tooltipTitle = `Cannot edit: ${incompatibleReasons.join('; ')}`;
   } else if (missingFields.length > 0) {
     tooltipTitle = `Cannot edit: missing ${missingFields.join(', ')}`;
   } else {
