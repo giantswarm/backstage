@@ -10,7 +10,6 @@ import { Box, makeStyles, Tooltip } from '@material-ui/core';
 import {
   findTargetClusterName,
   findTargetClusterNamespace,
-  findTargetClusterType,
 } from '../../utils/findTargetCluster';
 
 const useStyles = makeStyles(() => ({
@@ -33,16 +32,10 @@ export function EditDeploymentButton({
   const { available, getTemplateUrl } = useEditAppDeploymentTemplate();
 
   // Only fetch edit data when the template is available
-  const {
-    entityRef,
-    chartRef,
-    chartTag,
-    automaticUpgrades,
-    valuesMode,
-    isLoading,
-  } = useEditDeploymentData(deployment, installationName, {
-    enabled: available,
-  });
+  const { chartRef, chartTag, automaticUpgrades, valuesMode, isLoading } =
+    useEditDeploymentData(deployment, installationName, {
+      enabled: available,
+    });
 
   const {
     incompatibleReasons,
@@ -56,7 +49,6 @@ export function EditDeploymentButton({
   const namespace = deployment.getNamespace();
   const clusterName = findTargetClusterName(deployment);
   const clusterNamespace = findTargetClusterNamespace(deployment);
-  const clusterType = findTargetClusterType(deployment);
   const missingFields = useMemo(() => {
     if (isLoading) return [];
     const missing: string[] = [];
@@ -87,7 +79,6 @@ export function EditDeploymentButton({
     if (isDisabled) return undefined;
 
     return getTemplateUrl({
-      entityRef: entityRef ?? '',
       chartRef: chartRef ?? '',
       chartTag: chartTag ?? '',
       automaticUpgrades: automaticUpgrades ?? 'no-upgrades',
@@ -96,7 +87,6 @@ export function EditDeploymentButton({
       cluster: {
         clusterName,
         clusterNamespace,
-        isManagementCluster: clusterType === 'management',
       },
       name,
       namespace,
@@ -104,7 +94,6 @@ export function EditDeploymentButton({
   }, [
     isDisabled,
     getTemplateUrl,
-    entityRef,
     chartRef,
     chartTag,
     automaticUpgrades,
@@ -112,7 +101,6 @@ export function EditDeploymentButton({
     installationName,
     clusterName,
     clusterNamespace,
-    clusterType,
     name,
     namespace,
   ]);

@@ -4,8 +4,6 @@ import {
   OCIRepository,
   useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { stringifyEntityRef } from '@backstage/catalog-model';
-import { useCatalogEntityForDeployment } from '../../hooks/useCatalogEntityForDeployment';
 import { deriveAutoUpgradeMode } from '../utils/getAutoUpgradeSettings';
 
 /**
@@ -45,9 +43,6 @@ export function useEditDeploymentData(
 ) {
   const enabled = options.enabled ?? true;
 
-  const { catalogEntity, isLoading: isLoadingEntity } =
-    useCatalogEntityForDeployment(deployment);
-
   const chartRef = deployment.getChartRef();
 
   const ociRepositoryName = chartRef?.name ?? '';
@@ -67,10 +62,6 @@ export function useEditDeploymentData(
   );
 
   return useMemo(() => {
-    const entityRef = catalogEntity
-      ? stringifyEntityRef(catalogEntity)
-      : undefined;
-
     const ociRef = ociRepository?.getReference();
     const ociUrl = ociRepository?.getURL();
 
@@ -80,19 +71,11 @@ export function useEditDeploymentData(
       hasInline && valuesFromEntries.length === 0 ? 'inline' : 'valuesFrom';
 
     return {
-      entityRef,
       chartRef: deriveChartRef(ociUrl),
       chartTag: deriveChartTag(ociRef),
       automaticUpgrades: deriveAutoUpgradeMode(ociRef),
       valuesMode,
-      isLoading: isLoadingEntity || (needsOciRepository ? isLoadingOci : false),
+      isLoading: needsOciRepository ? isLoadingOci : false,
     };
-  }, [
-    catalogEntity,
-    deployment,
-    ociRepository,
-    isLoadingEntity,
-    isLoadingOci,
-    needsOciRepository,
-  ]);
+  }, [deployment, ociRepository, isLoadingOci, needsOciRepository]);
 }
