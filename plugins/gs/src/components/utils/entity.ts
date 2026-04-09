@@ -11,6 +11,8 @@ export const GS_HELMCHARTS = 'giantswarm.io/helmcharts';
 export const GS_LATEST_RELEASE_DATE = 'giantswarm.io/latest-release-date';
 export const GS_LATEST_RELEASE_TAG = 'giantswarm.io/latest-release-tag';
 
+export const GS_APP_DEPLOYMENT_ACTION = 'giantswarm.io/app-deployment-action';
+
 export const getSourceLocationFromEntity = (entity: Entity) => {
   const location = entity.metadata.annotations?.[ANNOTATION_SOURCE_LOCATION];
 

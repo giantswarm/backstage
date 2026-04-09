@@ -3,7 +3,7 @@ import EditIcon from '@material-ui/icons/Edit';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useEditDeploymentTemplate } from '../../../hooks';
+import { useEditAppDeploymentTemplate } from '../../../hooks';
 import { useEditDeploymentData } from '../useEditDeploymentData';
 import { Box, makeStyles, Tooltip } from '@material-ui/core';
 
@@ -24,7 +24,7 @@ export function EditDeploymentButton({
 }) {
   const classes = useStyles();
 
-  const { available, getTemplateUrl } = useEditDeploymentTemplate();
+  const { available, getTemplateUrl } = useEditAppDeploymentTemplate();
 
   // Only fetch edit data when the template is available
   const { entityRef, chartRef, chartTag, automaticUpgrades, isLoading } =

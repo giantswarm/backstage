@@ -1,22 +1,14 @@
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { appDeploymentTemplateRouteRef } from '../../routes';
-import { useCatalogEntityByRef } from './useCatalogEntityByRef';
+import { GS_APP_DEPLOYMENT_ACTION } from '../utils/entity';
+import { useCatalogEntityByLabel } from './useCatalogEntityByLabel';
 
-const TEMPLATE_NAME = 'edit-app-deployment';
-
-export function useEditDeploymentTemplate() {
-  const { entity: templateEntityGS } = useCatalogEntityByRef({
-    kind: 'template',
-    name: TEMPLATE_NAME,
-    namespace: 'giantswarm',
-  });
-  const { entity: templateEntityDefault } = useCatalogEntityByRef({
-    kind: 'template',
-    name: TEMPLATE_NAME,
-    namespace: 'default',
+export function useCreateAppDeploymentTemplate() {
+  const { entity: templateEntity } = useCatalogEntityByLabel({
+    kind: 'Template',
+    [`metadata.labels.${GS_APP_DEPLOYMENT_ACTION}`]: 'create',
   });
 
-  const templateEntity = templateEntityGS || templateEntityDefault;
   const templateRoute = useRouteRef(appDeploymentTemplateRouteRef);
   const available = Boolean(templateEntity && templateRoute);
 
@@ -26,7 +18,7 @@ export function useEditDeploymentTemplate() {
     if (!templateEntity || !templateRoute) return undefined;
 
     const href = templateRoute({
-      templateName: TEMPLATE_NAME,
+      templateName: templateEntity.metadata.name,
       namespace: templateEntity.metadata.namespace ?? 'default',
     });
 
