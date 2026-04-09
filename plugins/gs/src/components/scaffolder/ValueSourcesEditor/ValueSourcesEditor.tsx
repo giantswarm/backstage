@@ -562,6 +562,10 @@ export const ValueSourcesEditor = ({
       const updated = [...itemsRef.current];
       updated[index] = { ...updated[index], displayValues: value };
       itemsRef.current = updated;
+      // Update local state so nameErrors/mergedValues recompute correctly
+      // and itemsRef doesn't get overwritten with stale state on re-render.
+      // This is cheap — YamlEditorFormField is memo'd and uncontrolled.
+      setItems(updated);
       deferNotifyParent();
     },
     [deferNotifyParent],
