@@ -9279,14 +9279,14 @@ __metadata:
   linkType: hard
 
 "@fsegurai/codemirror-theme-vscode-dark@npm:^6.2.2":
-  version: 6.2.4
-  resolution: "@fsegurai/codemirror-theme-vscode-dark@npm:6.2.4"
+  version: 6.2.6
+  resolution: "@fsegurai/codemirror-theme-vscode-dark@npm:6.2.6"
   peerDependencies:
     "@codemirror/language": ^6.0.0
     "@codemirror/state": ^6.0.0
     "@codemirror/view": ^6.0.0
     "@lezer/highlight": ^1.0.0
-  checksum: 10c0/3bb5546ae22c36a265c08eba490b4b2f77fe6fe001230d7425e63b18ef18b40f0a976122063465e6e985ae6228d4aebef881488d30b9263067b42066055c94c7
+  checksum: 10c0/8a81646af37e239944902ae9644f4a3a1c54667cb5576a5549e493407f9dee2b87a9ecb477b9add2dc6d292dd1db584da65c0b8478f0c815cd3bef072c17441e
   languageName: node
   linkType: hard
 
