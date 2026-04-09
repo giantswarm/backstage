@@ -343,13 +343,21 @@ export const ValueSourcesEditor = ({
     [secretsKey, setSecrets],
   );
 
-  const emitChange = useCallback(
+  // Notify parent form of changes (expensive — triggers full form re-render)
+  const notifyParent = useCallback(
     (updatedItems: InternalItem[]) => {
-      setItems(updatedItems);
       syncSecrets(updatedItems);
       onChange(toFormData(updatedItems));
     },
     [onChange, syncSecrets],
+  );
+
+  const emitChange = useCallback(
+    (updatedItems: InternalItem[]) => {
+      setItems(updatedItems);
+      notifyParent(updatedItems);
+    },
+    [notifyParent],
   );
 
   // Re-initialize when initial value sources arrive (async from DeploymentPicker)
@@ -443,26 +451,6 @@ export const ValueSourcesEditor = ({
     [emitChange],
   );
 
-  const handleFieldChange = useCallback(
-    (index: number, field: keyof InternalItem, value: string) => {
-      const updated = [...itemsRef.current];
-      const item = { ...updated[index] };
-
-      if (field === 'kind') {
-        const newKind = value as 'ConfigMap' | 'Secret';
-        // When switching kind, clear values to avoid cross-contamination
-        item.kind = newKind;
-        item.displayValues = '';
-      } else {
-        (item as any)[field] = value;
-      }
-
-      updated[index] = item;
-      emitChange(updated);
-    },
-    [emitChange],
-  );
-
   const nameErrors = useMemo(() => {
     const errors: (string | undefined)[] = items.map(() => undefined);
     const nameIndices = new Map<string, number[]>();
@@ -512,21 +500,61 @@ export const ValueSourcesEditor = ({
     jsonSchema,
   );
 
-  // Debounce YAML changes: update ref immediately so other operations see
-  // latest values, but defer the expensive React state update + parent
-  // notification. CodeMirror manages its own document so the editor stays
-  // responsive without React re-renders on every keystroke.
-  const yamlFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce parent notification: update local state immediately for
+  // responsive UI, but defer the expensive parent form onChange + secrets
+  // sync. CodeMirror manages its own document so YAML only needs the
+  // deferred notification.
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Flush pending YAML changes on unmount
+  // Flush pending parent notification on unmount
   useEffect(
     () => () => {
-      if (yamlFlushTimerRef.current !== null) {
-        clearTimeout(yamlFlushTimerRef.current);
-        emitChange(itemsRef.current);
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current);
+        notifyParent(itemsRef.current);
       }
     },
-    [emitChange],
+    [notifyParent],
+  );
+
+  const deferNotifyParent = useCallback(() => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+    }
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null;
+      notifyParent(itemsRef.current);
+    }, 200);
+  }, [notifyParent]);
+
+  const handleFieldChange = useCallback(
+    (index: number, field: keyof InternalItem, value: string) => {
+      const updated = [...itemsRef.current];
+      const item = { ...updated[index] };
+
+      if (field === 'kind') {
+        const newKind = value as 'ConfigMap' | 'Secret';
+        // When switching kind, clear values to avoid cross-contamination
+        item.kind = newKind;
+        item.displayValues = '';
+      } else {
+        (item as any)[field] = value;
+      }
+
+      updated[index] = item;
+      itemsRef.current = updated;
+      // Update local state immediately so the input re-renders with the new value
+      setItems(updated);
+
+      if (field === 'kind') {
+        // Kind changes are infrequent and affect UI structure — notify parent immediately
+        notifyParent(updated);
+      } else {
+        // Text fields (name, valuesKey) — debounce parent notification
+        deferNotifyParent();
+      }
+    },
+    [notifyParent, deferNotifyParent],
   );
 
   const handleYamlChange = useCallback(
@@ -534,16 +562,9 @@ export const ValueSourcesEditor = ({
       const updated = [...itemsRef.current];
       updated[index] = { ...updated[index], displayValues: value };
       itemsRef.current = updated;
-
-      if (yamlFlushTimerRef.current !== null) {
-        clearTimeout(yamlFlushTimerRef.current);
-      }
-      yamlFlushTimerRef.current = setTimeout(() => {
-        yamlFlushTimerRef.current = null;
-        emitChange(itemsRef.current);
-      }, 200);
+      deferNotifyParent();
     },
-    [emitChange],
+    [deferNotifyParent],
   );
 
   return (
