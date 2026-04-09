@@ -524,6 +524,7 @@ const multiSourceDeploymentPickerFormField = FormFieldBlueprint.make({
           name: 'GSMultiSourceDeploymentPicker',
           component: m.MultiSourceDeploymentPicker,
           schema: m.MultiSourceDeploymentPickerFieldSchema,
+          validation: m.multiSourceDeploymentPickerValidation,
         }),
       ),
   },

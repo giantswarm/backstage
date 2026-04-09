@@ -3,3 +3,4 @@ export {
   MultiSourceDeploymentPickerSchema,
   MultiSourceDeploymentPickerFieldSchema,
 } from './schema';
+export { multiSourceDeploymentPickerValidation } from './validation';

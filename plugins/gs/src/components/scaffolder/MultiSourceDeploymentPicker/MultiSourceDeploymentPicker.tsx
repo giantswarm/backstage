@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as yaml from 'js-yaml';
-import { Typography } from '@material-ui/core';
+import { CircularProgress, Typography } from '@material-ui/core';
 import { WarningPanel } from '@backstage/core-components';
 import {
   HelmRelease,
@@ -87,7 +87,7 @@ export const MultiSourceDeploymentPicker = ({
   const noCacheOptions = { staleTime: 0, gcTime: 0 };
 
   // Fetch HelmRelease first to inspect valuesFrom
-  const { resource: helmRelease } = useResource(
+  const { resource: helmRelease, isLoading: helmReleaseLoading } = useResource(
     cluster,
     HelmRelease,
     { name, namespace },
@@ -174,6 +174,10 @@ export const MultiSourceDeploymentPicker = ({
     }),
   });
 
+  const resourceQueriesLoading =
+    valuesMode === 'valuesFrom' && resourceQueries.some(q => q.isLoading);
+  const isLoading = enabled && (helmReleaseLoading || resourceQueriesLoading);
+
   // Build currentValueSources from fetched resources
   const { currentValueSources, secretValuesMap } = useMemo(() => {
     if (valuesMode !== 'valuesFrom' || valuesFrom.length === 0) {
@@ -225,6 +229,16 @@ export const MultiSourceDeploymentPicker = ({
   // Track what we last emitted to avoid redundant onChange calls
   const lastEmittedRef = useRef<string>('');
 
+  // Reset value while loading so validation blocks step navigation
+  const prevEnabledRef = useRef(false);
+  useEffect(() => {
+    if (enabled && !prevEnabledRef.current) {
+      lastEmittedRef.current = '';
+      onChange(undefined);
+    }
+    prevEnabledRef.current = enabled;
+  }, [enabled, onChange]);
+
   // Update formData when data changes
   useEffect(() => {
     if (!enabled || !valuesMode) return;
@@ -265,6 +279,15 @@ export const MultiSourceDeploymentPicker = ({
       <WarningPanel title="No deployment selected">
         Please select an installation, cluster, and deployment to continue.
       </WarningPanel>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <Typography variant="body2">
+        <CircularProgress size={16} style={{ marginRight: 8 }} />
+        Loading deployment configuration...
+      </Typography>
     );
   }
 
