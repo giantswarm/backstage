@@ -15,6 +15,16 @@ const useStyles = makeStyles(theme => ({
   backButton: {
     marginRight: theme.spacing(1),
   },
+  codeContainer: {
+    maxHeight: 200,
+    maxWidth: 600,
+    width: '100%',
+    overflow: 'auto',
+    backgroundColor: theme.palette.background.default,
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 4,
+    padding: theme.spacing(0.5, 1),
+  },
 }));
 
 type StepSchema = ReviewStepProps['steps'][number];
@@ -92,6 +102,7 @@ function shouldHideField(
 function transformFormData(
   formData: JsonObject,
   schemas: StepSchema[],
+  codeContainerClass?: string,
 ): Record<string, any> {
   const result: Record<string, any> = {};
 
@@ -127,11 +138,14 @@ function transformFormData(
       )
     ) {
       result[key] = [
-        <CodeBlock
-          language="yaml"
-          text={value as string}
-          copyEnabled={false}
-        />,
+        <div className={codeContainerClass}>
+          <CodeBlock
+            language="yaml"
+            text={value as string}
+            copyEnabled={false}
+            transparent
+          />
+        </div>,
       ];
       continue;
     }
@@ -149,7 +163,14 @@ function transformFormData(
         `Name: ${s.name}`,
         s.valuesKey ? `Values key: ${s.valuesKey}` : 'values',
         'Values:',
-        <CodeBlock language="yaml" text={s.values} copyEnabled={false} />,
+        <div className={codeContainerClass}>
+          <CodeBlock
+            language="yaml"
+            text={s.values}
+            copyEnabled={false}
+            transparent
+          />
+        </div>,
       ]);
 
       continue;
@@ -165,7 +186,11 @@ export function ReviewStep(props: ReviewStepProps) {
   const classes = useStyles();
   const { disableButtons, formData, handleBack, handleCreate, steps } = props;
 
-  const transformedData = transformFormData(formData, steps);
+  const transformedData = transformFormData(
+    formData,
+    steps,
+    classes.codeContainer,
+  );
 
   return (
     <>

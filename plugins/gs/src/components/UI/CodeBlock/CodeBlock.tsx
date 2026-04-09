@@ -33,14 +33,24 @@ type CodeBlockProps = {
   text: string;
   language: string;
   copyEnabled?: boolean;
+  transparent?: boolean;
 };
 
-export const CodeBlock = ({ text, copyEnabled = true }: CodeBlockProps) => {
+export const CodeBlock = ({
+  text,
+  copyEnabled = true,
+  transparent = false,
+}: CodeBlockProps) => {
   const classes = useStyles();
 
   return (
     <Box className={classes.flexContainer}>
-      <pre className={classes.codeBlock}>{text}</pre>
+      <pre
+        className={classes.codeBlock}
+        style={transparent ? { backgroundColor: 'transparent' } : undefined}
+      >
+        {text}
+      </pre>
       {copyEnabled && (
         <Box className={classes.copyButtonContainer}>
           <CopyTextButton text={text} />
