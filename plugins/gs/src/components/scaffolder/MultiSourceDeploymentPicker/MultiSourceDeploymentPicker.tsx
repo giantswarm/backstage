@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as yaml from 'js-yaml';
-import { CircularProgress, Typography } from '@material-ui/core';
+import { Box, CircularProgress, Typography } from '@material-ui/core';
+import WarningIcon from '@material-ui/icons/Warning';
 import { WarningPanel } from '@backstage/core-components';
 import {
   HelmRelease,
@@ -10,6 +11,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
+import { isManagedByFlux } from '@giantswarm/backstage-plugin-flux-react';
 import { MultiSourceDeploymentPickerProps } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 
@@ -271,6 +273,8 @@ export const MultiSourceDeploymentPicker = ({
     setSecrets({ [secretValuesKey]: serialized });
   }, [secretValuesMap, secretValuesKey, setSecrets]);
 
+  const isGitOpsManaged = helmRelease ? isManagedByFlux(helmRelease) : false;
+
   const showSummary =
     Boolean(installationName) || Boolean(clusterName) || Boolean(name);
 
@@ -306,6 +310,17 @@ export const MultiSourceDeploymentPicker = ({
         </strong>{' '}
         cluster.
       </Typography>
+      {isGitOpsManaged && (
+        <Box display="flex" alignItems="center" style={{ marginTop: 8 }}>
+          <WarningIcon
+            style={{ marginRight: 8, fontSize: 20, color: '#ff9800' }}
+          />
+          <Typography variant="body2" style={{ color: '#ff9800' }}>
+            This deployment is managed through GitOps. Changes applied here may
+            be overridden during the next Flux reconciliation cycle.
+          </Typography>
+        </Box>
+      )}
       {warnings.length > 0 && (
         <WarningPanel title="Note" message="The following may affect editing:">
           <ul>
