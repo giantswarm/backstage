@@ -305,7 +305,9 @@ export const MultiSourceDeploymentPicker = ({
         deployment on{' '}
         <strong>
           <code>
-            {installationName}/{clusterName}
+            {installationName === clusterName
+              ? clusterName
+              : `${installationName}/${clusterName}`}
           </code>
         </strong>{' '}
         cluster.
