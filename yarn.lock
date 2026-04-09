@@ -9291,14 +9291,14 @@ __metadata:
   linkType: hard
 
 "@fsegurai/codemirror-theme-vscode-light@npm:^6.2.2":
-  version: 6.2.4
-  resolution: "@fsegurai/codemirror-theme-vscode-light@npm:6.2.4"
+  version: 6.2.6
+  resolution: "@fsegurai/codemirror-theme-vscode-light@npm:6.2.6"
   peerDependencies:
     "@codemirror/language": ^6.0.0
     "@codemirror/state": ^6.0.0
     "@codemirror/view": ^6.0.0
     "@lezer/highlight": ^1.0.0
-  checksum: 10c0/c64a9a587013a7fb7e7308eff146220347a013ded32cac25b72a8e1bf73d2ad4cac3d1caa877a19d9ab4ef442e32b651af4d5d784d55903857112e0def48905d
+  checksum: 10c0/bacb8201f5956d7f7d38ccc9bd3e47c84b7af2449797632affb72028a73e386f8861920369524800c63ce33d3e3ef445cfe4574427ce91010b3d095763d01423
   languageName: node
   linkType: hard
 
