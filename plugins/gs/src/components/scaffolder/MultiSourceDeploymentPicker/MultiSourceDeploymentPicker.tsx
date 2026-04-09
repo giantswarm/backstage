@@ -46,7 +46,6 @@ export const MultiSourceDeploymentPicker = ({
   const {
     installationNameField,
     clusterNameField,
-    clusterNamespaceField,
     deploymentNameField,
     deploymentNamespaceField,
     secretValuesKey,
@@ -62,12 +61,6 @@ export const MultiSourceDeploymentPicker = ({
     formContext,
     undefined,
     clusterNameField,
-  );
-
-  const clusterNamespace = useValueFromOptions<string>(
-    formContext,
-    undefined,
-    clusterNamespaceField,
   );
 
   const deploymentName = useValueFromOptions<string>(
@@ -86,8 +79,8 @@ export const MultiSourceDeploymentPicker = ({
   const kubernetesApi = useApi(kubernetesApiRef);
 
   const cluster = installationName ?? '';
-  const namespace = deploymentNamespace ?? clusterNamespace ?? '';
   const name = deploymentName ?? '';
+  const namespace = deploymentNamespace ?? '';
 
   const enabled = Boolean(cluster) && Boolean(namespace) && Boolean(name);
 

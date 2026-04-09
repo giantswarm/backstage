@@ -6,6 +6,12 @@ import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEditAppDeploymentTemplate } from '../../../hooks';
 import { useEditDeploymentData } from '../useEditDeploymentData';
 import { Box, makeStyles, Tooltip } from '@material-ui/core';
+import {
+  findTargetClusterName,
+  findTargetClusterNamespace,
+  findTargetClusterType,
+} from '../../utils/findTargetCluster';
+import { findTargetNamespace } from '../../utils/findTargetNamespace';
 
 const useStyles = makeStyles(() => ({
   button: {
@@ -38,9 +44,12 @@ export function EditDeploymentButton({
     enabled: available,
   });
 
-  const deploymentNamespace = deployment.getNamespace() ?? '';
-
-  const clusterName = deployment.findLabel('giantswarm.io/cluster') ?? '';
+  const name = deployment.getName();
+  const namespace = deployment.getNamespace();
+  const clusterName = findTargetClusterName(deployment);
+  const clusterNamespace = findTargetClusterNamespace(deployment);
+  const clusterType = findTargetClusterType(deployment);
+  const targetNamespace = findTargetNamespace(deployment);
 
   const missingFields = useMemo(() => {
     if (isLoading) return [];
@@ -70,15 +79,16 @@ export function EditDeploymentButton({
       chartRef: chartRef ?? '',
       chartTag: chartTag ?? '',
       automaticUpgrades: automaticUpgrades ?? 'no-upgrades',
-      valuesMode: valuesMode ?? 'valuesFrom',
+      valuesMode,
       installation: { installationName },
       cluster: {
         clusterName,
-        clusterNamespace: deploymentNamespace,
-        isManagementCluster: !deployment.getKubeConfig(),
+        clusterNamespace,
+        isManagementCluster: clusterType === 'management',
       },
-      name: deployment.getName(),
-      targetNamespace: deployment.getTargetNamespace() ?? '',
+      name,
+      namespace,
+      targetNamespace,
     });
   }, [
     isDisabled,
@@ -90,8 +100,11 @@ export function EditDeploymentButton({
     valuesMode,
     installationName,
     clusterName,
-    deployment,
-    deploymentNamespace,
+    clusterNamespace,
+    clusterType,
+    name,
+    namespace,
+    targetNamespace,
   ]);
 
   if (!available) {
