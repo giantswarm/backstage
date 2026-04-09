@@ -289,13 +289,18 @@ export const ValueSourcesEditor = ({
 
   // Internal state: items with their actual display values
   const [items, setItems] = useState<InternalItem[]>(() => {
-    // Prefer initial value sources from another field (edit mode)
-    const source =
+    // Prefer formData when it has content (preserved across step navigation),
+    // then fall back to initialValueSources (edit mode first load)
+    const hasFormData =
+      formData && Array.isArray(formData) && formData.length > 0;
+    const hasInitial =
       initialValueSources &&
       Array.isArray(initialValueSources) &&
-      initialValueSources.length > 0
-        ? initialValueSources
-        : formData;
+      initialValueSources.length > 0;
+    let source = formData;
+    if (hasInitial && !hasFormData) {
+      source = initialValueSources;
+    }
     const initial = toInternalItems(source);
     // Restore secret display values from secrets context
     if (secretsKey) {
@@ -316,32 +321,6 @@ export const ValueSourcesEditor = ({
 
   // Re-initialize when initial value sources arrive (async from DeploymentPicker)
   const hasAppliedInitialSources = useRef(false);
-  if (
-    !hasAppliedInitialSources.current &&
-    initialValueSources &&
-    Array.isArray(initialValueSources) &&
-    initialValueSources.length > 0
-  ) {
-    hasAppliedInitialSources.current = true;
-    const initial = toInternalItems(initialValueSources);
-    // Restore secret display values from secrets context
-    if (secretsKey) {
-      try {
-        const map = JSON.parse((secrets[secretsKey] as string) || '{}');
-        const withSecrets = initial.map(item => {
-          if (item.kind === 'Secret' && map[item.name]) {
-            return { ...item, displayValues: map[item.name] };
-          }
-          return item;
-        });
-        setItems(withSecrets);
-      } catch {
-        setItems(initial);
-      }
-    } else {
-      setItems(initial);
-    }
-  }
 
   const hasAppliedNameTemplate = useRef(false);
 
@@ -372,6 +351,41 @@ export const ValueSourcesEditor = ({
     },
     [onChange, syncSecrets],
   );
+
+  // Re-initialize when initial value sources arrive (async from DeploymentPicker)
+  // Skip if formData already has content (user edited and navigated back)
+  useEffect(() => {
+    if (
+      hasAppliedInitialSources.current ||
+      !initialValueSources ||
+      !Array.isArray(initialValueSources) ||
+      initialValueSources.length === 0
+    ) {
+      return;
+    }
+    if (formData && Array.isArray(formData) && formData.length > 0) {
+      hasAppliedInitialSources.current = true;
+      return;
+    }
+    hasAppliedInitialSources.current = true;
+    const initial = toInternalItems(initialValueSources);
+    if (secretsKey) {
+      try {
+        const map = JSON.parse((secrets[secretsKey] as string) || '{}');
+        const withSecrets = initial.map(item => {
+          if (item.kind === 'Secret' && map[item.name]) {
+            return { ...item, displayValues: map[item.name] };
+          }
+          return item;
+        });
+        emitChange(withSecrets);
+      } catch {
+        emitChange(initial);
+      }
+    } else {
+      emitChange(initial);
+    }
+  }, [initialValueSources, formData, secretsKey, secrets, emitChange]);
 
   // Apply resolved prefix to default items once the template resolves
   if (
