@@ -118,19 +118,11 @@ export const SecretYamlValuesEditor = ({
 
       if (secretsKey) {
         if (isArrayMode) {
-          // Aggregate: read existing map, update our index, write back
-          let map: Record<string, string> = {};
-          try {
-            map = JSON.parse((secrets[secretsKey] as string) || '{}');
-          } catch {
-            // ignore parse errors
-          }
-          if (yamlContent) {
-            map[arrayIndex] = yamlContent;
-          } else {
-            delete map[arrayIndex];
-          }
-          setSecrets({ [secretsKey]: JSON.stringify(map) });
+          // Write to a per-index key to avoid read-modify-write race conditions
+          // when multiple array instances share the same secretsKey.
+          // An aggregation effect below combines per-index keys into the final map.
+          const indexKey = `${secretsKey}__${arrayIndex}`;
+          setSecrets({ [indexKey]: yamlContent });
         } else {
           setSecrets({ [secretsKey]: yamlContent });
         }
@@ -140,8 +132,28 @@ export const SecretYamlValuesEditor = ({
       // is never persisted in the scaffolder task parameters
       onChange(yamlContent ? REDACTED_PLACEHOLDER : undefined);
     },
-    [secretsKey, isArrayMode, arrayIndex, secrets, setSecrets, onChange],
+    [secretsKey, isArrayMode, arrayIndex, setSecrets, onChange],
   );
+
+  // In array mode, aggregate per-index keys into the shared secretsKey map.
+  // This runs after React batches all individual setSecrets calls, so it reads
+  // consistent state and avoids the race condition of read-modify-write.
+  useEffect(() => {
+    if (!isArrayMode || !secretsKey) return;
+
+    const prefix = `${secretsKey}__`;
+    const map: Record<string, string> = {};
+    for (const [key, val] of Object.entries(secrets)) {
+      if (key.startsWith(prefix) && val) {
+        const idx = key.slice(prefix.length);
+        map[idx] = val as string;
+      }
+    }
+    const aggregated = JSON.stringify(map);
+    if (secrets[secretsKey] !== aggregated) {
+      setSecrets({ [secretsKey]: aggregated });
+    }
+  }, [isArrayMode, secretsKey, secrets, setSecrets]);
 
   return (
     <YamlEditorFormField
