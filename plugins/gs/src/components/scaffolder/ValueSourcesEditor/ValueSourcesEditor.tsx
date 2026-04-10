@@ -135,6 +135,8 @@ type ValueSourceItemRowProps = {
   isFirst: boolean;
   isLast: boolean;
   schema: Record<string, any>;
+  height?: number;
+  maxHeight?: number;
   onFieldChange: (
     index: number,
     field: keyof InternalItem,
@@ -153,6 +155,8 @@ const ValueSourceItemRow = memo(
     isFirst,
     isLast,
     schema,
+    height,
+    maxHeight,
     onFieldChange,
     onYamlChange,
     onMoveItem,
@@ -237,6 +241,8 @@ const ValueSourceItemRow = memo(
           value={item.displayValues}
           onChange={value => onYamlChange(index, value ?? '')}
           schema={schema}
+          height={height}
+          maxHeight={maxHeight}
         />
       </Box>
     </Paper>
@@ -260,6 +266,8 @@ export const ValueSourcesEditor = ({
     chartTagField: chartTagFieldOption,
     initialNamePrefixTemplate,
     initialValueSourcesField,
+    height,
+    maxHeight,
   } = uiSchema?.['ui:options'] ?? {};
 
   const chartRef = useValueFromOptions(
@@ -595,6 +603,8 @@ export const ValueSourcesEditor = ({
               isFirst={index === 0}
               isLast={index === items.length - 1}
               schema={processedJsonSchema}
+              height={height}
+              maxHeight={maxHeight}
               onFieldChange={handleFieldChange}
               onYamlChange={handleYamlChange}
               onMoveItem={handleMoveItem}

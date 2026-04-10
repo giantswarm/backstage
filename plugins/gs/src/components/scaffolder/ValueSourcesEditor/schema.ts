@@ -43,6 +43,8 @@ export const ValueSourcesEditorFieldSchema = makeFieldSchema({
         .describe(
           'Field path containing initial value sources array (e.g. "_deployment.currentValueSources") for pre-populating the editor in edit mode.',
         ),
+      height: z.number().optional().describe('Editor height in pixels'),
+      maxHeight: z.number().optional().describe('Editor max height in pixels'),
     }),
 });
 
