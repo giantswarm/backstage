@@ -1,0 +1,29 @@
+diff --git a/node_modules/codemirror-json-schema/dist/features/completion.js b/node_modules/codemirror-json-schema/dist/features/completion.js
+index f10aafb..e42bd10 100644
+--- a/node_modules/codemirror-json-schema/dist/features/completion.js
++++ b/node_modules/codemirror-json-schema/dist/features/completion.js
+@@ -176,6 +176,24 @@ export class JSONCompletion {
+                 // prefix = res.valuePrefix;
+                 // debug.log("xxx", "using valueNode prefix", prefix);
+             }
++            // YAML block-style fallback: when typing the first property name in a
++            // block mapping (e.g. "ingress:\n  enabl"), the parser sees the text as
++            // a Literal value rather than a Key, because there is no colon yet and
++            // no sibling pairs to establish a BlockMapping context. If no value
++            // completions were found and the schema expects an object at this
++            // position, offer property name completions instead.
++            if (this.mode === MODES.YAML && collector.completions.size === 0) {
++                const posNode = getNodeAtPosition(ctx.state, ctx.pos);
++                if (isPrimitiveValueNode(posNode, this.mode)) {
++                    const pairNode = posNode.parent;
++                    if (pairNode && resolveTokenName(pairNode.name, this.mode) === TOKENS.PROPERTY) {
++                        const objectNode = pairNode.parent;
++                        if (objectNode && [TOKENS.OBJECT, TOKENS.JSON_TEXT].includes(resolveTokenName(objectNode.name, this.mode))) {
++                            this.getPropertyCompletions(rootSchema, ctx, objectNode, collector, true, rawWord);
++                        }
++                    }
++                }
++            }
+         }
+         // handle filtering
+         result.options = Array.from(collector.completions.values()).filter((v) => stripSurroundingQuotes(v.label).startsWith(prefix));
