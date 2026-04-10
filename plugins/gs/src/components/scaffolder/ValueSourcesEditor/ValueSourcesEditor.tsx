@@ -72,7 +72,13 @@ function defaultName(
 
 type ValueSourceItem = NonNullable<ValueSourcesEditorValue>[number];
 
+let nextItemId = 0;
+function generateItemId(): string {
+  return `vs-${++nextItemId}`;
+}
+
 type InternalItem = {
+  id: string;
   kind: 'ConfigMap' | 'Secret';
   name: string;
   valuesKey: string;
@@ -86,12 +92,14 @@ function toInternalItems(
   if (!formData || !Array.isArray(formData) || formData.length === 0) {
     return [
       {
+        id: generateItemId(),
         kind: 'ConfigMap',
         name: defaultName(namePrefix, 'ConfigMap'),
         valuesKey: 'values',
         displayValues: '',
       },
       {
+        id: generateItemId(),
         kind: 'Secret',
         name: defaultName(namePrefix, 'Secret'),
         valuesKey: 'values',
@@ -100,6 +108,7 @@ function toInternalItems(
     ];
   }
   return formData.map(item => ({
+    id: generateItemId(),
     kind: item.kind,
     name: item.name,
     valuesKey: item.valuesKey ?? 'values',
@@ -423,6 +432,7 @@ export const ValueSourcesEditor = ({
     const updated = [
       ...itemsRef.current,
       {
+        id: generateItemId(),
         kind,
         name: defaultName(resolvedNamePrefix ?? undefined, kind),
         valuesKey: 'values',
@@ -578,7 +588,7 @@ export const ValueSourcesEditor = ({
         <Flex direction="column" gap="3">
           {items.map((item, index) => (
             <ValueSourceItemRow
-              key={index}
+              key={item.id}
               item={item}
               index={index}
               nameError={nameErrors[index]}
