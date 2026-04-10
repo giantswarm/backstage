@@ -1,9 +1,13 @@
 import { useElementFilter } from '@backstage/core-plugin-api';
 import Typography from '@material-ui/core/Typography';
 import { makeStyles } from '@material-ui/core/styles';
+import classNames from 'classnames';
 import { ReactNode } from 'react';
 
 const useStyles = makeStyles(theme => ({
+  root: {
+    minWidth: 0,
+  },
   value: {
     fontWeight: 'bold',
     overflow: 'hidden',
@@ -45,7 +49,7 @@ export function AboutField(props: AboutFieldProps) {
     );
 
   return (
-    <div className={className}>
+    <div className={classNames(classes.root, className)}>
       <Typography variant="h2" className={classes.label}>
         {label}
       </Typography>

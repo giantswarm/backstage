@@ -208,6 +208,7 @@ export const Version = ({
                 ? getCommitURL(sourceLocation, commitHash)
                 : getReleaseNotesURL(sourceLocation, versionLabel)
             }
+            display={truncate ? 'flex' : 'inline-flex'}
           >
             {versionComponent}
           </ExternalLink>
