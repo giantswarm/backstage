@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as yaml from 'js-yaml';
 import { Box, CircularProgress, Typography } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core/styles';
 import WarningIcon from '@material-ui/icons/Warning';
+
+const useStyles = makeStyles(theme => ({
+  gitOpsWarning: {
+    color: theme.palette.warning.main,
+  },
+}));
 import { WarningPanel } from '@backstage/core-components';
 import {
   HelmRelease,
@@ -45,6 +52,7 @@ export const MultiSourceDeploymentPicker = ({
   formContext,
   uiSchema,
 }: MultiSourceDeploymentPickerProps) => {
+  const classes = useStyles();
   const {
     installationNameField,
     clusterNameField,
@@ -315,9 +323,10 @@ export const MultiSourceDeploymentPicker = ({
       {isGitOpsManaged && (
         <Box display="flex" alignItems="center" style={{ marginTop: 8 }}>
           <WarningIcon
-            style={{ marginRight: 8, fontSize: 20, color: '#ff9800' }}
+            className={classes.gitOpsWarning}
+            style={{ marginRight: 8, fontSize: 20 }}
           />
-          <Typography variant="body2" style={{ color: '#ff9800' }}>
+          <Typography variant="body2" className={classes.gitOpsWarning}>
             This deployment is managed through GitOps. Changes applied here may
             be overridden during the next Flux reconciliation cycle.
           </Typography>
