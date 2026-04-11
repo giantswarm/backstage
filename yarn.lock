@@ -20,14 +20,14 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/anthropic@npm:^3.0.23":
-  version: 3.0.68
-  resolution: "@ai-sdk/anthropic@npm:3.0.68"
+  version: 3.0.69
+  resolution: "@ai-sdk/anthropic@npm:3.0.69"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.8"
     "@ai-sdk/provider-utils": "npm:4.0.23"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/c6ed0b0b6527ab111bf02fc71baf285aeac29b76f9995b95c99919f605425ae42bcabdc4fb9a7cde240c142efe601246a43eb153fae00a729cfb3dd4de5cc418
+  checksum: 10c0/dac50b88c6772fdbb02b3504de11d121410b379a6314a026360e4efabb9c7d39f512a5f86cce09f24ee2ed2806807f59704ffea703a67cd82c69ac4c87c2b62b
   languageName: node
   linkType: hard
 
@@ -71,15 +71,15 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/mcp@npm:^1.0.13":
-  version: 1.0.35
-  resolution: "@ai-sdk/mcp@npm:1.0.35"
+  version: 1.0.36
+  resolution: "@ai-sdk/mcp@npm:1.0.36"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.8"
     "@ai-sdk/provider-utils": "npm:4.0.23"
     pkce-challenge: "npm:^5.0.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/6235a7046ba8de4167f21dcc93381e9d8dba8cc1b98283387ec43a26de36e28cc8311603db57d16dd803b652c73059361efe366387ce7605ef52e4a30c4a44d4
+  checksum: 10c0/fd53f55b68f788af4b3227df39a8b88d5e4cf624cd94c017bb9fe6a467efb17456be73e597a885287d837a93bb66a9d7404a09ac10e142b4a0a205fde06d3e22
   languageName: node
   linkType: hard
 
