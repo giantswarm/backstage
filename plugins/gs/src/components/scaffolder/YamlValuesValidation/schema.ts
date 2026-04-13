@@ -27,7 +27,7 @@ export const YamlValuesValidationFieldSchema = makeFieldSchema({
       valuesFields: z
         .array(z.string())
         .describe(
-          'The list of fields with values to validate against the schema',
+          'The list of fields with values to validate against the schema. Supports both plain YAML string fields (e.g. GSYamlValuesEditor) and ValueSourcesEditor array fields (e.g. GSValueSourcesEditor).',
         ),
       secretValuesKeys: z
         .array(z.string())

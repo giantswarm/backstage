@@ -13,49 +13,22 @@ import {
   TextField,
   Typography,
 } from '@material-ui/core';
-import { makeStyles } from '@material-ui/core/styles';
 import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import ArrowDownwardIcon from '@material-ui/icons/ArrowDownward';
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
-import WarningIcon from '@material-ui/icons/Warning';
-import * as yaml from 'js-yaml';
-import classNames from 'classnames';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import type {
   ValueSourcesEditorProps,
   ValueSourcesEditorValue,
 } from './schema';
 import { YamlEditorFormField } from '../../UI';
-import {
-  useHelmChartValuesSchema,
-  useHelmValuesValidation,
-  useTemplateString,
-} from '../../hooks';
+import { useHelmChartValuesSchema, useTemplateString } from '../../hooks';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { passwordManagerIgnoreProps } from '@giantswarm/backstage-plugin-ui-react';
-import { helmMerge } from '../utils/helmMerge';
 import { Flex } from '@backstage/ui';
 
 const REDACTED_PLACEHOLDER = '***REDACTED***';
-
-const useStyles = makeStyles(theme => ({
-  icon: {
-    marginRight: theme.spacing(1),
-    fontSize: '20px',
-  },
-  iconWarning: {
-    color: theme.palette.warning.main,
-  },
-  iconSuccess: {
-    color: theme.palette.success.main,
-  },
-  warningText: {
-    color: theme.palette.warning.main,
-    marginTop: theme.spacing(1),
-  },
-}));
 
 const DEFAULT_SUFFIXES: Record<'ConfigMap' | 'Secret', string> = {
   ConfigMap: 'user-values',
@@ -164,7 +137,8 @@ const ValueSourceItemRow = memo(
     onMoveItem,
     onRemoveItem,
   }: ValueSourceItemRowProps) => (
-    <Paper variant="outlined" style={{ padding: 16 }} data-config-docs-anchor>
+    // <Paper variant="outlined" style={{ padding: 16 }} data-config-docs-anchor>
+    <Box>
       <Grid container spacing={2} alignItems="flex-start">
         <Grid item xs={3}>
           <FormControl fullWidth size="small">
@@ -249,7 +223,7 @@ const ValueSourceItemRow = memo(
           maxHeight={maxHeight}
         />
       </Box>
-    </Paper>
+    </Box>
   ),
 );
 
@@ -261,7 +235,6 @@ export const ValueSourcesEditor = ({
   uiSchema,
   rawErrors,
 }: ValueSourcesEditorProps): JSX.Element => {
-  const classes = useStyles();
   const {
     secretsKey,
     chartRef: chartRefOption,
@@ -511,28 +484,6 @@ export const ValueSourcesEditor = ({
     return errors;
   }, [items]);
 
-  const mergedValues = useMemo(() => {
-    let result = {};
-    for (const item of items) {
-      if (item.displayValues) {
-        try {
-          const parsed = yaml.load(item.displayValues);
-          if (parsed && typeof parsed === 'object') {
-            result = helmMerge(result, parsed);
-          }
-        } catch {
-          // YAML parse error — skip this item, the YAML editor already shows inline errors
-        }
-      }
-    }
-    return result;
-  }, [items]);
-
-  const { warnings: schemaWarnings } = useHelmValuesValidation(
-    mergedValues,
-    jsonSchema,
-  );
-
   // Debounce parent notification: update local state immediately for
   // responsive UI, but defer the expensive parent form onChange + secrets
   // sync. CodeMirror manages its own document so YAML only needs the
@@ -640,36 +591,6 @@ export const ValueSourcesEditor = ({
         >
           Add value source
         </Button>
-
-        {jsonSchema &&
-          (schemaWarnings.length > 0 ? (
-            <Box mt={2}>
-              <Box display="flex" alignItems="center">
-                <WarningIcon
-                  className={classNames(classes.icon, classes.iconWarning)}
-                />
-                <Typography variant="body2">
-                  Merged configuration is not valid, according to the chart's
-                  values schema
-                </Typography>
-              </Box>
-              {schemaWarnings.map((warning, index) => (
-                <FormHelperText key={index} className={classes.warningText}>
-                  <code>{warning}</code>
-                </FormHelperText>
-              ))}
-            </Box>
-          ) : (
-            <Box mt={2} display="flex" alignItems="center">
-              <CheckCircleIcon
-                className={classNames(classes.icon, classes.iconSuccess)}
-              />
-              <Typography variant="body2">
-                Merged configuration is valid, according to the chart's values
-                schema
-              </Typography>
-            </Box>
-          ))}
       </Box>
     </FormControl>
   );
