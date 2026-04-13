@@ -58,9 +58,7 @@ function getIncompatibleReasons(
 
   // 7. valuesFrom entries must use the default 'values' key
   const valuesFrom = deployment.getValuesFrom() ?? [];
-  const nonDefaultKeys = valuesFrom.filter(
-    v => v.valuesKey && v.valuesKey !== 'values',
-  );
+  const nonDefaultKeys = valuesFrom.filter(v => v.valuesKey !== 'values');
   if (nonDefaultKeys.length > 0) {
     reasons.push(
       "uses non-standard valuesKey in valuesFrom (only 'values' is supported)",
