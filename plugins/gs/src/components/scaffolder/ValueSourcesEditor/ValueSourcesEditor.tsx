@@ -48,12 +48,18 @@ const DEFAULT_SUFFIXES: Record<'ConfigMap' | 'Secret', string> = {
   Secret: 'user-secrets',
 };
 
-function defaultName(
+function nextDefaultName(
+  existingItems: InternalItem[],
   prefix: string | undefined,
   kind: 'ConfigMap' | 'Secret',
 ): string {
   const suffix = DEFAULT_SUFFIXES[kind];
-  return prefix ? `${prefix}-${suffix}` : suffix;
+  const base = prefix ? `${prefix}-${suffix}` : suffix;
+  const existing = new Set(existingItems.map(item => item.name));
+  if (!existing.has(base)) return base;
+  let i = 1;
+  while (existing.has(`${base}-${i}`)) i++;
+  return `${base}-${i}`;
 }
 
 type ValueSourceItem = NonNullable<ValueSourcesEditorValue>[number];
@@ -72,23 +78,9 @@ type InternalItem = {
 
 function toInternalItems(
   formData: ValueSourcesEditorValue | undefined,
-  namePrefix?: string,
 ): InternalItem[] {
   if (!formData || !Array.isArray(formData) || formData.length === 0) {
-    return [
-      {
-        id: generateItemId(),
-        kind: 'ConfigMap',
-        name: defaultName(namePrefix, 'ConfigMap'),
-        displayValues: '',
-      },
-      {
-        id: generateItemId(),
-        kind: 'Secret',
-        name: defaultName(namePrefix, 'Secret'),
-        displayValues: '',
-      },
-    ];
+    return [];
   }
   return formData.map(item => ({
     id: generateItemId(),
@@ -373,15 +365,20 @@ export const ValueSourcesEditor = ({
     )
   ) {
     hasAppliedNameTemplate.current = true;
-    const updated = itemsRef.current.map(item => {
+    const updated: InternalItem[] = [];
+    for (const item of itemsRef.current) {
       if (
         item.name === DEFAULT_SUFFIXES.ConfigMap ||
         item.name === DEFAULT_SUFFIXES.Secret
       ) {
-        return { ...item, name: defaultName(resolvedNamePrefix, item.kind) };
+        updated.push({
+          ...item,
+          name: nextDefaultName(updated, resolvedNamePrefix, item.kind),
+        });
+      } else {
+        updated.push(item);
       }
-      return item;
-    });
+    }
     emitChange(updated);
   }
 
@@ -392,7 +389,11 @@ export const ValueSourcesEditor = ({
         {
           id: generateItemId(),
           kind,
-          name: defaultName(resolvedNamePrefix ?? undefined, kind),
+          name: nextDefaultName(
+            itemsRef.current,
+            resolvedNamePrefix ?? undefined,
+            kind,
+          ),
           displayValues: '',
         },
       ];
