@@ -58,7 +58,7 @@ export const YamlEditorFormField = memo(
           </FormLabel>
         )}
 
-        <Box mt={1} data-config-docs-anchor>
+        <Box mt={1}>
           <YamlEditor
             initialValue={value}
             schema={schema}
