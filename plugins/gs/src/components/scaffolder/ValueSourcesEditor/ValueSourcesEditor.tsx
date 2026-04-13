@@ -15,7 +15,7 @@ import {
 } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import AddIcon from '@material-ui/icons/Add';
-import DeleteIcon from '@material-ui/icons/Delete';
+import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import ArrowDownwardIcon from '@material-ui/icons/ArrowDownward';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
@@ -137,6 +137,7 @@ type ValueSourceItemRowProps = {
   schema: Record<string, any>;
   height?: number;
   maxHeight?: number;
+  showDataKey?: boolean;
   onFieldChange: (
     index: number,
     field: keyof InternalItem,
@@ -157,6 +158,7 @@ const ValueSourceItemRow = memo(
     schema,
     height,
     maxHeight,
+    showDataKey,
     onFieldChange,
     onYamlChange,
     onMoveItem,
@@ -178,7 +180,7 @@ const ValueSourceItemRow = memo(
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={4}>
+        <Grid item xs={showDataKey ? 4 : 7}>
           <TextField
             label="Name"
             value={item.name}
@@ -191,17 +193,19 @@ const ValueSourceItemRow = memo(
             inputProps={passwordManagerIgnoreProps}
           />
         </Grid>
-        <Grid item xs={3}>
-          <TextField
-            label="Data key"
-            value={item.valuesKey}
-            onChange={e => onFieldChange(index, 'valuesKey', e.target.value)}
-            variant="outlined"
-            size="small"
-            fullWidth
-            inputProps={passwordManagerIgnoreProps}
-          />
-        </Grid>
+        {showDataKey && (
+          <Grid item xs={3}>
+            <TextField
+              label="Data key"
+              value={item.valuesKey}
+              onChange={e => onFieldChange(index, 'valuesKey', e.target.value)}
+              variant="outlined"
+              size="small"
+              fullWidth
+              inputProps={passwordManagerIgnoreProps}
+            />
+          </Grid>
+        )}
         <Grid item xs={2}>
           <Box display="flex" justifyContent="flex-end" pt="7px" pb="7px">
             <IconButton
@@ -225,7 +229,7 @@ const ValueSourceItemRow = memo(
               onClick={() => onRemoveItem(index)}
               title="Remove"
             >
-              <DeleteIcon fontSize="small" />
+              <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           </Box>
         </Grid>
@@ -268,6 +272,7 @@ export const ValueSourcesEditor = ({
     initialValueSourcesField,
     height,
     maxHeight,
+    showDataKey,
   } = uiSchema?.['ui:options'] ?? {};
 
   const chartRef = useValueFromOptions(
@@ -452,6 +457,16 @@ export const ValueSourcesEditor = ({
 
   const handleRemoveItem = useCallback(
     (index: number) => {
+      const item = itemsRef.current[index];
+      if (
+        item.displayValues &&
+        // eslint-disable-next-line no-alert
+        !window.confirm(
+          'This value source has content. Are you sure you want to remove it?',
+        )
+      ) {
+        return;
+      }
       const updated = itemsRef.current.filter((_, i) => i !== index);
       emitChange(updated);
     },
@@ -605,6 +620,7 @@ export const ValueSourcesEditor = ({
               schema={processedJsonSchema}
               height={height}
               maxHeight={maxHeight}
+              showDataKey={showDataKey}
               onFieldChange={handleFieldChange}
               onYamlChange={handleYamlChange}
               onMoveItem={handleMoveItem}

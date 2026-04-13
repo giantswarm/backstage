@@ -45,6 +45,12 @@ export const ValueSourcesEditorFieldSchema = makeFieldSchema({
         ),
       height: z.number().optional().describe('Editor height in pixels'),
       maxHeight: z.number().optional().describe('Editor max height in pixels'),
+      showDataKey: z
+        .boolean()
+        .optional()
+        .describe(
+          'Show the data key input field for each value source. Defaults to false.',
+        ),
     }),
 });
 
