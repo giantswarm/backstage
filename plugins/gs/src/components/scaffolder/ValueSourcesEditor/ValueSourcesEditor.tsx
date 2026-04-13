@@ -4,8 +4,8 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
-  useState,
 } from 'react';
 import {
   Box,
@@ -101,6 +101,112 @@ function toFormData(items: InternalItem[]): ValueSourceItem[] {
   }));
 }
 
+function restoreSecretDisplayValues(
+  items: InternalItem[],
+  secrets: Record<string, string>,
+  secretsKey: string | undefined,
+): InternalItem[] {
+  if (!secretsKey) return items;
+  try {
+    const map: Record<string, string> = JSON.parse(
+      (secrets[secretsKey] as string) || '{}',
+    );
+    return items.map(item =>
+      item.kind === 'Secret' && map[item.name]
+        ? { ...item, displayValues: map[item.name] }
+        : item,
+    );
+  } catch {
+    return items;
+  }
+}
+
+// --- Reducer ---
+
+type ItemsAction =
+  | { type: 'INITIALIZE'; items: InternalItem[] }
+  | {
+      type: 'ADD';
+      kind: 'ConfigMap' | 'Secret';
+      namePrefix: string | undefined;
+    }
+  | { type: 'REMOVE'; index: number }
+  | { type: 'MOVE'; index: number; direction: -1 | 1 }
+  | {
+      type: 'UPDATE_FIELD';
+      index: number;
+      field: keyof InternalItem;
+      value: string;
+    }
+  | { type: 'UPDATE_YAML'; index: number; value: string }
+  | { type: 'APPLY_NAME_PREFIX'; prefix: string };
+
+function itemsReducer(
+  state: InternalItem[],
+  action: ItemsAction,
+): InternalItem[] {
+  switch (action.type) {
+    case 'INITIALIZE':
+      return action.items;
+    case 'ADD':
+      return [
+        ...state,
+        {
+          id: generateItemId(),
+          kind: action.kind,
+          name: nextDefaultName(state, action.namePrefix, action.kind),
+          displayValues: '',
+        },
+      ];
+    case 'REMOVE':
+      return state.filter((_, i) => i !== action.index);
+    case 'MOVE': {
+      const target = action.index + action.direction;
+      if (target < 0 || target >= state.length) return state;
+      const next = [...state];
+      [next[action.index], next[target]] = [next[target], next[action.index]];
+      return next;
+    }
+    case 'UPDATE_FIELD': {
+      const next = [...state];
+      next[action.index] = {
+        ...next[action.index],
+        [action.field]: action.value,
+      };
+      return next;
+    }
+    case 'UPDATE_YAML': {
+      const next = [...state];
+      next[action.index] = {
+        ...next[action.index],
+        displayValues: action.value,
+      };
+      return next;
+    }
+    case 'APPLY_NAME_PREFIX': {
+      const result: InternalItem[] = [];
+      for (const item of state) {
+        if (
+          item.name === DEFAULT_SUFFIXES.ConfigMap ||
+          item.name === DEFAULT_SUFFIXES.Secret
+        ) {
+          result.push({
+            ...item,
+            name: nextDefaultName(result, action.prefix, item.kind),
+          });
+        } else {
+          result.push(item);
+        }
+      }
+      return result;
+    }
+    default:
+      return state;
+  }
+}
+
+// --- Row component ---
+
 type ValueSourceItemRowProps = {
   item: InternalItem;
   index: number;
@@ -117,7 +223,7 @@ type ValueSourceItemRowProps = {
   ) => void;
   onYamlChange: (index: number, value: string) => void;
   onMoveItem: (index: number, direction: -1 | 1) => void;
-  onRemoveItem: (index: number) => void;
+  onRemoveItem: (index: number, hasContent: boolean) => void;
 };
 
 const ValueSourceItemRow = memo(
@@ -170,7 +276,7 @@ const ValueSourceItemRow = memo(
             </IconButton>
             <IconButton
               size="small"
-              onClick={() => onRemoveItem(index)}
+              onClick={() => onRemoveItem(index, Boolean(item.displayValues))}
               title="Remove"
             >
               <DeleteOutlineIcon fontSize="small" />
@@ -189,6 +295,8 @@ const ValueSourceItemRow = memo(
     </Box>
   ),
 );
+
+// --- Main component ---
 
 export const ValueSourcesEditor = ({
   onChange,
@@ -246,50 +354,24 @@ export const ValueSourcesEditor = ({
     initialValueSourcesField,
   );
 
-  // Internal state: items with their actual display values
-  const [items, setItems] = useState<InternalItem[]>(() => {
-    // Prefer formData when it has content (preserved across step navigation),
-    // then fall back to initialValueSources (edit mode first load)
+  // --- State (useReducer eliminates itemsRef and stale closure issues) ---
+  const [items, dispatch] = useReducer(itemsReducer, undefined, () => {
     const hasFormData =
       formData && Array.isArray(formData) && formData.length > 0;
     const hasInitial =
       initialValueSources &&
       Array.isArray(initialValueSources) &&
       initialValueSources.length > 0;
-    let source = formData;
-    if (hasInitial && !hasFormData) {
-      source = initialValueSources;
-    }
+    const source = hasInitial && !hasFormData ? initialValueSources : formData;
     const initial = toInternalItems(source);
-    // Restore secret display values from secrets context
-    if (secretsKey) {
-      try {
-        const map = JSON.parse((secrets[secretsKey] as string) || '{}');
-        return initial.map(item => {
-          if (item.kind === 'Secret' && map[item.name]) {
-            return { ...item, displayValues: map[item.name] };
-          }
-          return item;
-        });
-      } catch {
-        // ignore
-      }
-    }
-    return initial;
+    return restoreSecretDisplayValues(
+      initial,
+      secrets as Record<string, string>,
+      secretsKey,
+    );
   });
 
-  // Re-initialize when initial value sources arrive (async from DeploymentPicker)
-  const hasAppliedInitialSources = useRef(false);
-
-  const hasAppliedNameTemplate = useRef(false);
-
-  // Refs to avoid stale closures in deferred calls
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
-  const notifyParentRef = useRef<(items: InternalItem[]) => void>(null!);
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Sync secrets context whenever items change
+  // --- Helpers ---
   const syncSecrets = useCallback(
     (updatedItems: InternalItem[]) => {
       if (!secretsKey) return;
@@ -304,30 +386,15 @@ export const ValueSourcesEditor = ({
     [secretsKey, setSecrets],
   );
 
-  // Notify parent form of changes (expensive — triggers full form re-render)
-  const notifyParent = useCallback(
-    (updatedItems: InternalItem[]) => {
-      syncSecrets(updatedItems);
-      onChange(toFormData(updatedItems));
-    },
-    [onChange, syncSecrets],
-  );
+  // --- Initialization: propagate initial value sources to formData ---
+  // onChange must be deferred via setTimeout(0) — RJSF overwrites synchronous
+  // onChange calls for array-typed fields during its own initialization phase.
+  // (String-typed fields like YamlValuesEditor don't have this issue.)
+  const hasAppliedInitialSources = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  notifyParentRef.current = notifyParent;
-
-  const emitChange = useCallback(
-    (updatedItems: InternalItem[]) => {
-      setItems(updatedItems);
-      notifyParent(updatedItems);
-    },
-    [notifyParent],
-  );
-
-  // Apply initial value sources from another field (e.g. DeploymentPicker).
-  // Items are pre-loaded in useState (visible immediately). This effect
-  // propagates them to formData. The onChange call MUST be deferred via
-  // setTimeout — RJSF overwrites onChange calls made synchronously during
-  // render or the effect phase.
   useEffect(() => {
     if (
       hasAppliedInitialSources.current ||
@@ -343,115 +410,131 @@ export const ValueSourcesEditor = ({
     }
     hasAppliedInitialSources.current = true;
 
-    // Async case: initialValueSources arrived after mount, items not yet set
-    if (itemsRef.current.length === 0) {
-      const initial = toInternalItems(initialValueSources);
-      let resolved = initial;
-      if (secretsKey) {
-        try {
-          const map = JSON.parse((secrets[secretsKey] as string) || '{}');
-          resolved = initial.map(item => {
-            if (item.kind === 'Secret' && map[item.name]) {
-              return { ...item, displayValues: map[item.name] };
-            }
-            return item;
-          });
-        } catch {
-          // keep initial
-        }
-      }
-      setItems(resolved);
-      itemsRef.current = resolved;
-      syncSecrets(resolved);
+    let resolvedItems: InternalItem[];
+    if (items.length === 0) {
+      // Async case: initialValueSources arrived after mount, items not yet set
+      resolvedItems = restoreSecretDisplayValues(
+        toInternalItems(initialValueSources),
+        secrets as Record<string, string>,
+        secretsKey,
+      );
+      dispatch({ type: 'INITIALIZE', items: resolvedItems });
+    } else {
+      // Sync case: items already loaded in useReducer init
+      resolvedItems = items;
     }
 
-    // Defer formData propagation — uses ref to get the latest notifyParent
-    // (avoids stale onChange closure from the render that triggered the effect)
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current);
-    }
-    flushTimerRef.current = setTimeout(() => {
-      flushTimerRef.current = null;
-      notifyParentRef.current(itemsRef.current);
+    syncSecrets(resolvedItems);
+    // Defer onChange — uses ref to always get the latest onChange callback
+    if (initTimerRef.current !== null) clearTimeout(initTimerRef.current);
+    const fd = toFormData(resolvedItems);
+    initTimerRef.current = setTimeout(() => {
+      initTimerRef.current = null;
+      onChangeRef.current(fd);
     }, 0);
-  }, [initialValueSources, formData, secretsKey, secrets, syncSecrets]);
+  }, [initialValueSources, formData, items, secretsKey, secrets, syncSecrets]);
 
-  // Apply resolved prefix to default items once the template resolves
-  if (
-    !hasAppliedNameTemplate.current &&
-    resolvedNamePrefix &&
-    itemsRef.current.some(
+  // --- Name template resolution ---
+  const hasAppliedNameTemplate = useRef(false);
+
+  useEffect(() => {
+    if (hasAppliedNameTemplate.current || !resolvedNamePrefix) return;
+    const needsPrefix = items.some(
       item =>
         item.name === DEFAULT_SUFFIXES.ConfigMap ||
         item.name === DEFAULT_SUFFIXES.Secret,
-    )
-  ) {
+    );
+    if (!needsPrefix) return;
     hasAppliedNameTemplate.current = true;
-    const updated: InternalItem[] = [];
-    for (const item of itemsRef.current) {
-      if (
-        item.name === DEFAULT_SUFFIXES.ConfigMap ||
-        item.name === DEFAULT_SUFFIXES.Secret
-      ) {
-        updated.push({
-          ...item,
-          name: nextDefaultName(updated, resolvedNamePrefix, item.kind),
-        });
-      } else {
-        updated.push(item);
-      }
-    }
-    emitChange(updated);
-  }
+    dispatch({ type: 'APPLY_NAME_PREFIX', prefix: resolvedNamePrefix });
+  }, [resolvedNamePrefix, items]);
 
+  // --- User-driven change notification ---
+  // pendingModeRef tracks whether a dispatch needs immediate or debounced
+  // parent notification. Set before dispatch, read in the effect.
+  const pendingModeRef = useRef<'none' | 'immediate' | 'debounced'>('none');
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (pendingModeRef.current === 'none') return;
+    const mode = pendingModeRef.current;
+    pendingModeRef.current = 'none';
+
+    syncSecrets(items);
+    const fd = toFormData(items);
+
+    if (mode === 'debounced') {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null;
+        onChange(fd);
+      }, 200);
+    } else {
+      onChange(fd);
+    }
+  }, [items, syncSecrets, onChange]);
+
+  // Flush pending timers on unmount
+  useEffect(
+    () => () => {
+      if (initTimerRef.current !== null) {
+        clearTimeout(initTimerRef.current);
+        onChangeRef.current(toFormData(items));
+      }
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+        onChange(toFormData(items));
+      }
+    },
+    [onChange, items],
+  );
+
+  // --- Event handlers ---
   const handleAddItem = useCallback(
     (kind: 'ConfigMap' | 'Secret') => {
-      const updated = [
-        ...itemsRef.current,
-        {
-          id: generateItemId(),
-          kind,
-          name: nextDefaultName(
-            itemsRef.current,
-            resolvedNamePrefix ?? undefined,
-            kind,
-          ),
-          displayValues: '',
-        },
-      ];
-      emitChange(updated);
+      pendingModeRef.current = 'immediate';
+      dispatch({
+        type: 'ADD',
+        kind,
+        namePrefix: resolvedNamePrefix ?? undefined,
+      });
     },
-    [emitChange, resolvedNamePrefix],
+    [resolvedNamePrefix],
   );
 
-  const handleRemoveItem = useCallback(
-    (index: number) => {
-      const item = itemsRef.current[index];
-      if (
-        item.displayValues &&
-        // eslint-disable-next-line no-alert
-        !window.confirm(
-          'This value source has content. Are you sure you want to remove it?',
-        )
-      ) {
-        return;
-      }
-      const updated = itemsRef.current.filter((_, i) => i !== index);
-      emitChange(updated);
+  const handleRemoveItem = useCallback((index: number, hasContent: boolean) => {
+    if (
+      hasContent &&
+      // eslint-disable-next-line no-alert
+      !window.confirm(
+        'This value source has content. Are you sure you want to remove it?',
+      )
+    ) {
+      return;
+    }
+    pendingModeRef.current = 'immediate';
+    dispatch({ type: 'REMOVE', index });
+  }, []);
+
+  const handleMoveItem = useCallback((index: number, direction: -1 | 1) => {
+    pendingModeRef.current = 'immediate';
+    dispatch({ type: 'MOVE', index, direction });
+  }, []);
+
+  const handleFieldChange = useCallback(
+    (index: number, field: keyof InternalItem, value: string) => {
+      pendingModeRef.current = 'debounced';
+      dispatch({ type: 'UPDATE_FIELD', index, field, value });
     },
-    [emitChange],
+    [],
   );
 
-  const handleMoveItem = useCallback(
-    (index: number, direction: -1 | 1) => {
-      const updated = [...itemsRef.current];
-      const target = index + direction;
-      if (target < 0 || target >= updated.length) return;
-      [updated[index], updated[target]] = [updated[target], updated[index]];
-      emitChange(updated);
-    },
-    [emitChange],
-  );
+  const handleYamlChange = useCallback((index: number, value: string) => {
+    pendingModeRef.current = 'debounced';
+    dispatch({ type: 'UPDATE_YAML', index, value });
+  }, []);
 
   const nameErrors = useMemo(() => {
     const errors: (string | undefined)[] = items.map(() => undefined);
@@ -480,59 +563,7 @@ export const ValueSourcesEditor = ({
     return errors;
   }, [items]);
 
-  // Debounce parent notification: update local state immediately for
-  // responsive UI, but defer the expensive parent form onChange + secrets
-  // sync. CodeMirror manages its own document so YAML only needs the
-  // deferred notification.
-
-  // Flush pending parent notification on unmount
-  useEffect(
-    () => () => {
-      if (flushTimerRef.current !== null) {
-        clearTimeout(flushTimerRef.current);
-        notifyParent(itemsRef.current);
-      }
-    },
-    [notifyParent],
-  );
-
-  const deferNotifyParent = useCallback(() => {
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current);
-    }
-    flushTimerRef.current = setTimeout(() => {
-      flushTimerRef.current = null;
-      notifyParent(itemsRef.current);
-    }, 200);
-  }, [notifyParent]);
-
-  const handleFieldChange = useCallback(
-    (index: number, field: keyof InternalItem, value: string) => {
-      const updated = [...itemsRef.current];
-      updated[index] = { ...updated[index], [field]: value };
-      itemsRef.current = updated;
-      // Update local state immediately so the input re-renders with the new value
-      setItems(updated);
-      // Debounce parent notification for text field changes
-      deferNotifyParent();
-    },
-    [deferNotifyParent],
-  );
-
-  const handleYamlChange = useCallback(
-    (index: number, value: string) => {
-      const updated = [...itemsRef.current];
-      updated[index] = { ...updated[index], displayValues: value };
-      itemsRef.current = updated;
-      // Update local state so nameErrors/mergedValues recompute correctly
-      // and itemsRef doesn't get overwritten with stale state on re-render.
-      // This is cheap — YamlEditorFormField is memo'd and uncontrolled.
-      setItems(updated);
-      deferNotifyParent();
-    },
-    [deferNotifyParent],
-  );
-
+  // --- Render ---
   return (
     <FormControl fullWidth error={rawErrors.length > 0}>
       <FormLabel>
