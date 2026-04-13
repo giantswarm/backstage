@@ -1,17 +1,27 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Box,
   Button,
+  Divider,
   FormControl,
-  FormHelperText,
   FormLabel,
   Grid,
   IconButton,
+  makeStyles,
   TextField,
-  Typography,
+  Tooltip,
 } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
+import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import ArrowDownwardIcon from '@material-ui/icons/ArrowDownward';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
@@ -24,6 +34,12 @@ import { useHelmChartValuesSchema, useTemplateString } from '../../hooks';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { passwordManagerIgnoreProps } from '@giantswarm/backstage-plugin-ui-react';
 import { Flex } from '@backstage/ui';
+
+const useStyles = makeStyles(() => ({
+  button: {
+    textTransform: 'none',
+  },
+}));
 
 const REDACTED_PLACEHOLDER = '***REDACTED***';
 
@@ -171,20 +187,13 @@ const ValueSourceItemRow = memo(
         </Grid>
       </Grid>
 
-      <Box mt={2}>
-        <Typography variant="caption" color="textSecondary">
-          {item.kind === 'Secret'
-            ? 'Values (YAML, stored securely)'
-            : 'Values (YAML)'}
-        </Typography>
-        <YamlEditorFormField
-          value={item.displayValues}
-          onChange={value => onYamlChange(index, value ?? '')}
-          schema={schema}
-          height={height}
-          maxHeight={maxHeight}
-        />
-      </Box>
+      <YamlEditorFormField
+        value={item.displayValues}
+        onChange={value => onYamlChange(index, value ?? '')}
+        schema={schema}
+        height={height}
+        maxHeight={maxHeight}
+      />
     </Box>
   ),
 );
@@ -197,6 +206,8 @@ export const ValueSourcesEditor = ({
   uiSchema,
   rawErrors,
 }: ValueSourcesEditorProps): JSX.Element => {
+  const classes = useStyles();
+
   const {
     secretsKey,
     chartRef: chartRefOption,
@@ -502,33 +513,43 @@ export const ValueSourcesEditor = ({
 
   return (
     <FormControl fullWidth error={rawErrors.length > 0}>
-      <FormLabel>{title}</FormLabel>
-      <Box mt={1}>
-        <Flex direction="column" gap="3">
+      <FormLabel>
+        <Box display="flex" alignItems="center" style={{ gap: 4 }}>
+          {title}
+          {description && (
+            <Tooltip title={description} arrow>
+              <InfoOutlinedIcon fontSize="inherit" />
+            </Tooltip>
+          )}
+        </Box>
+      </FormLabel>
+      <Box mt={3}>
+        <Flex direction="column" gap="5">
           {items.map((item, index) => (
-            <ValueSourceItemRow
-              key={item.id}
-              item={item}
-              index={index}
-              nameError={nameErrors[index]}
-              isFirst={index === 0}
-              isLast={index === items.length - 1}
-              schema={processedJsonSchema}
-              height={height}
-              maxHeight={maxHeight}
-              onFieldChange={handleFieldChange}
-              onYamlChange={handleYamlChange}
-              onMoveItem={handleMoveItem}
-              onRemoveItem={handleRemoveItem}
-            />
+            <Fragment key={item.id}>
+              {index > 0 && <Divider />}
+              <ValueSourceItemRow
+                item={item}
+                index={index}
+                nameError={nameErrors[index]}
+                isFirst={index === 0}
+                isLast={index === items.length - 1}
+                schema={processedJsonSchema}
+                height={height}
+                maxHeight={maxHeight}
+                onFieldChange={handleFieldChange}
+                onYamlChange={handleYamlChange}
+                onMoveItem={handleMoveItem}
+                onRemoveItem={handleRemoveItem}
+              />
+            </Fragment>
           ))}
         </Flex>
 
-        {description && <FormHelperText>{description}</FormHelperText>}
-
-        <Flex gap="2" style={{ marginTop: 12 }}>
+        <Flex gap="2" mt={items.length > 0 ? '4' : '0'}>
           <Button
             variant="outlined"
+            className={classes.button}
             startIcon={<AddIcon />}
             onClick={() => handleAddItem('ConfigMap')}
             size="small"
@@ -537,6 +558,7 @@ export const ValueSourcesEditor = ({
           </Button>
           <Button
             variant="outlined"
+            className={classes.button}
             startIcon={<AddIcon />}
             onClick={() => handleAddItem('Secret')}
             size="small"

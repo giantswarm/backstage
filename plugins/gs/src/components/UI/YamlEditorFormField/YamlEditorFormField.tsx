@@ -2,10 +2,11 @@ import { memo } from 'react';
 import {
   Box,
   FormControl,
-  FormHelperText,
   FormLabel,
+  Tooltip,
   useTheme,
 } from '@material-ui/core';
+import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { YamlEditor } from '@giantswarm/backstage-plugin-ui-react';
 import { JSONSchema7 } from 'json-schema';
 
@@ -44,7 +45,18 @@ export const YamlEditorFormField = memo(
         disabled={disabled}
         error={error}
       >
-        {label && <FormLabel>{label}</FormLabel>}
+        {label && (
+          <FormLabel>
+            <Box display="flex" alignItems="center" style={{ gap: 4 }}>
+              {label}
+              {helperText && (
+                <Tooltip title={helperText} arrow>
+                  <InfoOutlinedIcon fontSize="inherit" />
+                </Tooltip>
+              )}
+            </Box>
+          </FormLabel>
+        )}
 
         <Box mt={1} data-config-docs-anchor>
           <YamlEditor
@@ -57,7 +69,6 @@ export const YamlEditorFormField = memo(
             error={error}
           />
         </Box>
-        {helperText && <FormHelperText>{helperText}</FormHelperText>}
       </FormControl>
     );
   },
