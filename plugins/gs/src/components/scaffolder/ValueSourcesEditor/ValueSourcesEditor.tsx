@@ -283,9 +283,11 @@ export const ValueSourcesEditor = ({
 
   const hasAppliedNameTemplate = useRef(false);
 
-  // Ref to avoid stale closures
+  // Refs to avoid stale closures in deferred calls
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const notifyParentRef = useRef<(items: InternalItem[]) => void>(null!);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync secrets context whenever items change
   const syncSecrets = useCallback(
@@ -311,6 +313,8 @@ export const ValueSourcesEditor = ({
     [onChange, syncSecrets],
   );
 
+  notifyParentRef.current = notifyParent;
+
   const emitChange = useCallback(
     (updatedItems: InternalItem[]) => {
       setItems(updatedItems);
@@ -319,8 +323,11 @@ export const ValueSourcesEditor = ({
     [notifyParent],
   );
 
-  // Re-initialize when initial value sources arrive (async from DeploymentPicker)
-  // Skip if formData already has content (user edited and navigated back)
+  // Apply initial value sources from another field (e.g. DeploymentPicker).
+  // Items are pre-loaded in useState (visible immediately). This effect
+  // propagates them to formData. The onChange call MUST be deferred via
+  // setTimeout — RJSF overwrites onChange calls made synchronously during
+  // render or the effect phase.
   useEffect(() => {
     if (
       hasAppliedInitialSources.current ||
@@ -335,24 +342,39 @@ export const ValueSourcesEditor = ({
       return;
     }
     hasAppliedInitialSources.current = true;
-    const initial = toInternalItems(initialValueSources);
-    if (secretsKey) {
-      try {
-        const map = JSON.parse((secrets[secretsKey] as string) || '{}');
-        const withSecrets = initial.map(item => {
-          if (item.kind === 'Secret' && map[item.name]) {
-            return { ...item, displayValues: map[item.name] };
-          }
-          return item;
-        });
-        emitChange(withSecrets);
-      } catch {
-        emitChange(initial);
+
+    // Async case: initialValueSources arrived after mount, items not yet set
+    if (itemsRef.current.length === 0) {
+      const initial = toInternalItems(initialValueSources);
+      let resolved = initial;
+      if (secretsKey) {
+        try {
+          const map = JSON.parse((secrets[secretsKey] as string) || '{}');
+          resolved = initial.map(item => {
+            if (item.kind === 'Secret' && map[item.name]) {
+              return { ...item, displayValues: map[item.name] };
+            }
+            return item;
+          });
+        } catch {
+          // keep initial
+        }
       }
-    } else {
-      emitChange(initial);
+      setItems(resolved);
+      itemsRef.current = resolved;
+      syncSecrets(resolved);
     }
-  }, [initialValueSources, formData, secretsKey, secrets, emitChange]);
+
+    // Defer formData propagation — uses ref to get the latest notifyParent
+    // (avoids stale onChange closure from the render that triggered the effect)
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current);
+    }
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null;
+      notifyParentRef.current(itemsRef.current);
+    }, 0);
+  }, [initialValueSources, formData, secretsKey, secrets, syncSecrets]);
 
   // Apply resolved prefix to default items once the template resolves
   if (
@@ -462,7 +484,6 @@ export const ValueSourcesEditor = ({
   // responsive UI, but defer the expensive parent form onChange + secrets
   // sync. CodeMirror manages its own document so YAML only needs the
   // deferred notification.
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Flush pending parent notification on unmount
   useEffect(
