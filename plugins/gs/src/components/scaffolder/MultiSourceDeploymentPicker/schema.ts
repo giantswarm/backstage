@@ -10,7 +10,6 @@ export const MultiSourceDeploymentPickerFieldSchema = makeFieldSchema({
             z.object({
               kind: z.enum(['ConfigMap', 'Secret']),
               name: z.string(),
-              valuesKey: z.string(),
               values: z.string().optional(),
             }),
           )

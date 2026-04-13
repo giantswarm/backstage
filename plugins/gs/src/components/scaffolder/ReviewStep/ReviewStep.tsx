@@ -154,14 +154,12 @@ function transformFormData(
       const sources = value as unknown as {
         kind: string;
         name: string;
-        valuesKey?: string;
         values: string;
       }[];
 
       result[key] = sources.map(s => [
         `Kind: ${s.kind}`,
         `Name: ${s.name}`,
-        s.valuesKey ? `Values key: ${s.valuesKey}` : 'values',
         'Values:',
         <div className={codeContainerClass}>
           <CodeBlock

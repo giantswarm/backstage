@@ -7,9 +7,6 @@ import {
   FormLabel,
   Grid,
   IconButton,
-  MenuItem,
-  Paper,
-  Select,
   TextField,
   Typography,
 } from '@material-ui/core';
@@ -54,7 +51,6 @@ type InternalItem = {
   id: string;
   kind: 'ConfigMap' | 'Secret';
   name: string;
-  valuesKey: string;
   displayValues: string;
 };
 
@@ -68,14 +64,12 @@ function toInternalItems(
         id: generateItemId(),
         kind: 'ConfigMap',
         name: defaultName(namePrefix, 'ConfigMap'),
-        valuesKey: 'values',
         displayValues: '',
       },
       {
         id: generateItemId(),
         kind: 'Secret',
         name: defaultName(namePrefix, 'Secret'),
-        valuesKey: 'values',
         displayValues: '',
       },
     ];
@@ -84,7 +78,6 @@ function toInternalItems(
     id: generateItemId(),
     kind: item.kind,
     name: item.name,
-    valuesKey: item.valuesKey ?? 'values',
     displayValues: item.kind === 'ConfigMap' ? (item.values ?? '') : '', // Secret display values are loaded from secrets context
   }));
 }
@@ -93,7 +86,6 @@ function toFormData(items: InternalItem[]): ValueSourceItem[] {
   return items.map(item => ({
     kind: item.kind,
     name: item.name,
-    valuesKey: item.valuesKey,
     values:
       item.kind === 'Secret' && item.displayValues
         ? REDACTED_PLACEHOLDER
@@ -110,7 +102,6 @@ type ValueSourceItemRowProps = {
   schema: Record<string, any>;
   height?: number;
   maxHeight?: number;
-  showDataKey?: boolean;
   onFieldChange: (
     index: number,
     field: keyof InternalItem,
@@ -131,32 +122,16 @@ const ValueSourceItemRow = memo(
     schema,
     height,
     maxHeight,
-    showDataKey,
     onFieldChange,
     onYamlChange,
     onMoveItem,
     onRemoveItem,
   }: ValueSourceItemRowProps) => (
-    // <Paper variant="outlined" style={{ padding: 16 }} data-config-docs-anchor>
     <Box>
       <Grid container spacing={2} alignItems="flex-start">
-        <Grid item xs={3}>
-          <FormControl fullWidth size="small">
-            <Select
-              value={item.kind}
-              onChange={e =>
-                onFieldChange(index, 'kind', e.target.value as string)
-              }
-              variant="outlined"
-            >
-              <MenuItem value="ConfigMap">ConfigMap</MenuItem>
-              <MenuItem value="Secret">Secret</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={showDataKey ? 4 : 7}>
+        <Grid item xs={10}>
           <TextField
-            label="Name"
+            label={item.kind === 'Secret' ? 'Secret name' : 'ConfigMap name'}
             value={item.name}
             onChange={e => onFieldChange(index, 'name', e.target.value)}
             variant="outlined"
@@ -167,19 +142,6 @@ const ValueSourceItemRow = memo(
             inputProps={passwordManagerIgnoreProps}
           />
         </Grid>
-        {showDataKey && (
-          <Grid item xs={3}>
-            <TextField
-              label="Data key"
-              value={item.valuesKey}
-              onChange={e => onFieldChange(index, 'valuesKey', e.target.value)}
-              variant="outlined"
-              size="small"
-              fullWidth
-              inputProps={passwordManagerIgnoreProps}
-            />
-          </Grid>
-        )}
         <Grid item xs={2}>
           <Box display="flex" justifyContent="flex-end" pt="7px" pb="7px">
             <IconButton
@@ -245,7 +207,6 @@ export const ValueSourcesEditor = ({
     initialValueSourcesField,
     height,
     maxHeight,
-    showDataKey,
   } = uiSchema?.['ui:options'] ?? {};
 
   const chartRef = useValueFromOptions(
@@ -413,20 +374,21 @@ export const ValueSourcesEditor = ({
     emitChange(updated);
   }
 
-  const handleAddItem = useCallback(() => {
-    const kind = 'ConfigMap' as const;
-    const updated = [
-      ...itemsRef.current,
-      {
-        id: generateItemId(),
-        kind,
-        name: defaultName(resolvedNamePrefix ?? undefined, kind),
-        valuesKey: 'values',
-        displayValues: '',
-      },
-    ];
-    emitChange(updated);
-  }, [emitChange, resolvedNamePrefix]);
+  const handleAddItem = useCallback(
+    (kind: 'ConfigMap' | 'Secret') => {
+      const updated = [
+        ...itemsRef.current,
+        {
+          id: generateItemId(),
+          kind,
+          name: defaultName(resolvedNamePrefix ?? undefined, kind),
+          displayValues: '',
+        },
+      ];
+      emitChange(updated);
+    },
+    [emitChange, resolvedNamePrefix],
+  );
 
   const handleRemoveItem = useCallback(
     (index: number) => {
@@ -514,31 +476,14 @@ export const ValueSourcesEditor = ({
   const handleFieldChange = useCallback(
     (index: number, field: keyof InternalItem, value: string) => {
       const updated = [...itemsRef.current];
-      const item = { ...updated[index] };
-
-      if (field === 'kind') {
-        const newKind = value as 'ConfigMap' | 'Secret';
-        // When switching kind, clear values to avoid cross-contamination
-        item.kind = newKind;
-        item.displayValues = '';
-      } else {
-        (item as any)[field] = value;
-      }
-
-      updated[index] = item;
+      updated[index] = { ...updated[index], [field]: value };
       itemsRef.current = updated;
       // Update local state immediately so the input re-renders with the new value
       setItems(updated);
-
-      if (field === 'kind') {
-        // Kind changes are infrequent and affect UI structure — notify parent immediately
-        notifyParent(updated);
-      } else {
-        // Text fields (name, valuesKey) — debounce parent notification
-        deferNotifyParent();
-      }
+      // Debounce parent notification for text field changes
+      deferNotifyParent();
     },
-    [notifyParent, deferNotifyParent],
+    [deferNotifyParent],
   );
 
   const handleYamlChange = useCallback(
@@ -571,7 +516,6 @@ export const ValueSourcesEditor = ({
               schema={processedJsonSchema}
               height={height}
               maxHeight={maxHeight}
-              showDataKey={showDataKey}
               onFieldChange={handleFieldChange}
               onYamlChange={handleYamlChange}
               onMoveItem={handleMoveItem}
@@ -582,15 +526,24 @@ export const ValueSourcesEditor = ({
 
         {description && <FormHelperText>{description}</FormHelperText>}
 
-        <Button
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={handleAddItem}
-          size="small"
-          style={{ marginTop: 12 }}
-        >
-          Add value source
-        </Button>
+        <Flex gap="2" style={{ marginTop: 12 }}>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => handleAddItem('ConfigMap')}
+            size="small"
+          >
+            Add ConfigMap
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => handleAddItem('Secret')}
+            size="small"
+          >
+            Add Secret
+          </Button>
+        </Flex>
       </Box>
     </FormControl>
   );

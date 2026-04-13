@@ -98,8 +98,6 @@ export const DeploymentPicker = ({
         warnings,
         configMapName: undefined,
         secretName: undefined,
-        configMapValuesKey: 'values.yaml',
-        secretValuesKey: 'values.yaml',
       };
     }
 
@@ -130,19 +128,10 @@ export const DeploymentPicker = ({
       warnings,
       configMapName: configMaps.length === 1 ? configMaps[0].name : undefined,
       secretName: secrets.length === 1 ? secrets[0].name : undefined,
-      configMapValuesKey: configMaps[0]?.valuesKey ?? 'values.yaml',
-      secretValuesKey: secrets[0]?.valuesKey ?? 'values.yaml',
     };
   }, [helmRelease]);
 
-  const {
-    canEdit,
-    warnings,
-    configMapName,
-    secretName,
-    configMapValuesKey,
-    secretValuesKey: secretDataKey,
-  } = valuesFromAnalysis;
+  const { canEdit, warnings, configMapName, secretName } = valuesFromAnalysis;
 
   const { resource: configMap } = useResource(
     cluster,
@@ -161,9 +150,8 @@ export const DeploymentPicker = ({
     { enabled: enabled && canEdit && Boolean(secretName), ...noCacheOptions },
   );
 
-  // Extract raw values using the valuesKey from the HelmRelease's valuesFrom entry
-  const currentValues = configMap?.getData()?.[configMapValuesKey] ?? '';
-  const encodedSecretValues = secret?.getData()?.[secretDataKey] ?? '';
+  const currentValues = configMap?.getData()?.values ?? '';
+  const encodedSecretValues = secret?.getData()?.values ?? '';
 
   // Track what we last emitted to avoid redundant onChange calls
   const lastEmittedRef = useRef<string>('');

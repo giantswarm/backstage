@@ -25,7 +25,6 @@ import { useValueFromOptions } from '../hooks/useValueFromOptions';
 interface ValuesFromEntry {
   kind: string;
   name: string;
-  valuesKey?: string;
   targetPath?: string;
 }
 
@@ -197,32 +196,30 @@ export const MultiSourceDeploymentPicker = ({
     const sources: Array<{
       kind: 'ConfigMap' | 'Secret';
       name: string;
-      valuesKey: string;
       values?: string;
     }> = [];
     const secretMap: Record<string, string> = {};
 
     valuesFrom.forEach((entry, index) => {
       const query = resourceQueries[index];
-      const valuesKey = entry.valuesKey ?? 'values';
       const kind = entry.kind as 'ConfigMap' | 'Secret';
 
       if (!query?.data) {
-        sources.push({ kind, name: entry.name, valuesKey });
+        sources.push({ kind, name: entry.name });
         return;
       }
 
       const resourceData = query.data as Record<string, any>;
 
       if (kind === 'ConfigMap') {
-        const value = resourceData.data?.[valuesKey] ?? '';
-        sources.push({ kind, name: entry.name, valuesKey, values: value });
+        const value = resourceData.data?.values ?? '';
+        sources.push({ kind, name: entry.name, values: value });
       } else {
         // Secret: data is base64-encoded, stringData is plain text
-        const encodedValue = resourceData.data?.[valuesKey] ?? '';
+        const encodedValue = resourceData.data?.values ?? '';
         const decodedValue = encodedValue ? decodeBase64(encodedValue) : '';
         // ConfigMap-like values go in formData, Secret values go in secrets context
-        sources.push({ kind, name: entry.name, valuesKey });
+        sources.push({ kind, name: entry.name });
         if (decodedValue) {
           secretMap[entry.name] = decodedValue;
         }

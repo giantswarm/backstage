@@ -156,7 +156,7 @@ export const YamlValuesValidation = ({
         const fieldValue = get(allFormData, field);
 
         if (Array.isArray(fieldValue)) {
-          // ValueSourcesEditor format: array of { kind, name, valuesKey, values }
+          // ValueSourcesEditor format: array of { kind, name, values }
           for (const item of fieldValue) {
             let yamlString: string | undefined;
 
