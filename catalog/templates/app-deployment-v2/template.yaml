@@ -159,64 +159,6 @@ spec:
               - values
             secretValuesKeys:
               - SECRET_VALUES_MAP
-        # valuesMode:
-        #   title: Configuration mode
-        #   type: string
-        #   enum:
-        #     - valuesFrom
-        #     - inline
-        #   default: valuesFrom
-        #   ui:enumNames:
-        #     - Value source references (ConfigMap/Secret)
-        #     - Inline values
-        #   ui:widget: radio
-      # dependencies:
-      #   valuesMode:
-      #     allOf:
-      #       - if:
-      #           properties:
-      #             valuesMode:
-      #               const: valuesFrom
-      #           required:
-      #             - valuesMode
-      #         then:
-      #           properties:
-      #             valueSources:
-      #               title: Value sources
-      #               description: Add ConfigMap or Secret value sources. Order determines merge priority (last wins).
-      #               type: array
-      #               ui:field: GSValueSourcesEditor
-      #               ui:options:
-      #                 secretsKey: SECRET_VALUES_MAP
-      #                 chartRefField: chartRef
-      #                 chartTagField: chartTag
-      #                 initialNamePrefixTemplate: '${{clusterNamePrefix(cluster)}}${{chartName(chartRef)}}'
-      #                 maxHeight: 600
-      #       - if:
-      #           properties:
-      #             valuesMode:
-      #               const: inline
-      #           required:
-      #             - valuesMode
-      #         then:
-      #           properties:
-      #             values:
-      #               title: Values
-      #               type: string
-      #               ui:field: GSYamlValuesEditor
-      #               ui:options:
-      #                 chartRefField: chartRef
-      #                 chartTagField: chartTag
-      #                 height: 570
-      #                 maxHeight: 600
-      #             schemaValidation:
-      #               type: boolean
-      #               ui:field: GSYamlValuesValidation
-      #               ui:options:
-      #                 chartRefField: chartRef
-      #                 chartTagField: chartTag
-      #                 valuesFields:
-      #                   - values
     - title: Output options
       ui:ObjectFieldTemplate: GSStepLayout
       ui:options:
@@ -270,7 +212,6 @@ spec:
           chartRef: ${{ parameters.chartRef }}
           chartTag: ${{ parameters.chartTag }}
           automaticUpgrades: ${{ parameters.automaticUpgrades }}
-          valuesMode: ${{ parameters.valuesMode }}
           valueSources: ${{ parameters.valueSources }}
           secretValuesMap: ${{ secrets.SECRET_VALUES_MAP }}
           inlineValues: ${{ parameters.values }}

@@ -157,6 +157,10 @@ function transformFormData(
         values: string;
       }[];
 
+      if (sources.length === 0) {
+        continue;
+      }
+
       result[key] = sources.map(s => [
         `Kind: ${s.kind}`,
         `Name: ${s.name}`,

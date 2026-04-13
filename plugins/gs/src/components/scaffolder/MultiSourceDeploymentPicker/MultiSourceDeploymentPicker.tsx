@@ -34,14 +34,15 @@ interface ValuesFromEntry {
  * When visible, renders a read-only summary showing installation, cluster,
  * and deployment names. When used with `ui:widget: hidden`, renders nothing.
  *
- * Fetches the HelmRelease first, then inspects its `valuesFrom` to determine
- * which ConfigMaps/Secrets to fetch. Supports both single and multiple value
- * sources.
+ * Fetches the HelmRelease first, then inspects its values configuration.
+ * Supports inline values, valuesFrom references, or both simultaneously.
  *
  * Outputs an object with:
- * - currentValues: string (for inline mode or single-source backward compat)
- * - currentValueSources: array of value source objects (for valuesFrom mode)
- * - currentValuesMode: 'inline' | 'valuesFrom'
+ * - currentValues: string (YAML string of inline spec.values, if present)
+ * - currentValueSources: array of value source objects (from spec.valuesFrom, if present)
+ *
+ * Both fields can be present at the same time when the HelmRelease has both
+ * inline values and valuesFrom references.
  *
  * Secret values are stored in the scaffolder secrets context under the key
  * specified by the `secretValuesKey` ui:option.
@@ -103,39 +104,15 @@ export const MultiSourceDeploymentPicker = ({
     { enabled, ...noCacheOptions },
   );
 
-  // Determine the configuration mode and extract valuesFrom entries
-  const { valuesMode, valuesFrom, warnings } = useMemo(() => {
-    const w: string[] = [];
-
-    if (!helmRelease) {
-      return {
-        valuesMode: undefined,
-        valuesFrom: [] as ValuesFromEntry[],
-        warnings: w,
-      };
-    }
-
-    const hasInline = helmRelease.hasInlineValues();
-    const entries: ValuesFromEntry[] = helmRelease.getValuesFrom() ?? [];
-
-    if (hasInline && entries.length > 0) {
-      w.push(
-        'HelmRelease has both inline spec.values and valuesFrom references. Only valuesFrom sources will be loaded for editing.',
-      );
-    }
-
-    const mode = hasInline && entries.length === 0 ? 'inline' : 'valuesFrom';
-
-    return {
-      valuesMode: mode as 'inline' | 'valuesFrom',
-      valuesFrom: entries,
-      warnings: w,
-    };
+  // Extract valuesFrom entries from the HelmRelease
+  const valuesFrom = useMemo<ValuesFromEntry[]>(() => {
+    if (!helmRelease) return [];
+    return helmRelease.getValuesFrom() ?? [];
   }, [helmRelease]);
 
-  // For inline mode, extract the values from spec.values
+  // Extract inline values from spec.values (if any)
   const inlineValues = useMemo(() => {
-    if (valuesMode !== 'inline' || !helmRelease) return '';
+    if (!helmRelease) return '';
     const values = helmRelease.getValues();
     if (!values || Object.keys(values).length === 0) return '';
     try {
@@ -143,7 +120,7 @@ export const MultiSourceDeploymentPicker = ({
     } catch {
       return '';
     }
-  }, [valuesMode, helmRelease]);
+  }, [helmRelease]);
 
   // Fetch all valuesFrom resources (ConfigMaps and Secrets) in parallel
   const resourceQueries = useQueries({
@@ -175,8 +152,7 @@ export const MultiSourceDeploymentPicker = ({
 
           return response.json();
         },
-        enabled:
-          enabled && valuesMode === 'valuesFrom' && valuesFrom.length > 0,
+        enabled: enabled && valuesFrom.length > 0,
         staleTime: 0,
         gcTime: 0,
       };
@@ -184,12 +160,12 @@ export const MultiSourceDeploymentPicker = ({
   });
 
   const resourceQueriesLoading =
-    valuesMode === 'valuesFrom' && resourceQueries.some(q => q.isLoading);
+    resourceQueries.length > 0 && resourceQueries.some(q => q.isLoading);
   const isLoading = enabled && (helmReleaseLoading || resourceQueriesLoading);
 
   // Build currentValueSources from fetched resources
   const { currentValueSources, secretValuesMap } = useMemo(() => {
-    if (valuesMode !== 'valuesFrom' || valuesFrom.length === 0) {
+    if (valuesFrom.length === 0) {
       return { currentValueSources: undefined, secretValuesMap: undefined };
     }
 
@@ -231,7 +207,7 @@ export const MultiSourceDeploymentPicker = ({
       secretValuesMap:
         Object.keys(secretMap).length > 0 ? secretMap : undefined,
     };
-  }, [valuesMode, valuesFrom, resourceQueries]);
+  }, [valuesFrom, resourceQueries]);
 
   // Track what we last emitted to avoid redundant onChange calls
   const lastEmittedRef = useRef<string>('');
@@ -248,13 +224,14 @@ export const MultiSourceDeploymentPicker = ({
 
   // Update formData when data changes
   useEffect(() => {
-    if (!enabled || !valuesMode) return;
+    if (!enabled || !helmRelease) return;
 
     const result: Record<string, any> = {};
 
-    if (valuesMode === 'inline') {
-      result.currentValues = inlineValues || undefined;
-    } else if (currentValueSources) {
+    if (inlineValues) {
+      result.currentValues = inlineValues;
+    }
+    if (currentValueSources) {
       result.currentValueSources = currentValueSources;
     }
 
@@ -263,7 +240,7 @@ export const MultiSourceDeploymentPicker = ({
       lastEmittedRef.current = serialized;
       onChange(result);
     }
-  }, [enabled, valuesMode, inlineValues, currentValueSources, onChange]);
+  }, [enabled, helmRelease, inlineValues, currentValueSources, onChange]);
 
   // Store secret values in the scaffolder secrets context
   const lastStoredSecretRef = useRef<string>('');
@@ -328,15 +305,6 @@ export const MultiSourceDeploymentPicker = ({
             be overridden during the next Flux reconciliation cycle.
           </Typography>
         </Box>
-      )}
-      {warnings.length > 0 && (
-        <WarningPanel title="Note" message="The following may affect editing:">
-          <ul>
-            {warnings.map(warning => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        </WarningPanel>
       )}
     </>
   );
