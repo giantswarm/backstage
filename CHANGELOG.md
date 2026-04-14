@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.121.0] - 2026-04-14
+
 ### Added
 
 - Add custom review step for scaffolder templates.
@@ -2228,7 +2230,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.120.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.121.0...HEAD
+[0.121.0]: https://github.com/giantswarm/backstage/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/giantswarm/backstage/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/giantswarm/backstage/compare/v0.119.0...v0.119.0
 [0.119.0]: https://github.com/giantswarm/backstage/compare/v0.118.0...v0.119.0
