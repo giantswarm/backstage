@@ -5,6 +5,25 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add custom review step for scaffolder templates.
+- Add multi-source value editing for app deployment scaffolder templates.
+- Add `isValidDNSSubdomainName` utility for validating Kubernetes resource names.
+- Add `passwordManagerIgnoreProps` utility and `height`/`maxHeight` options to `YamlEditor`.
+- Add `fromJson` Nunjucks template filter for deserializing JSON strings in scaffolder templates.
+
+### Changed
+
+- Discover app deployment templates by label instead of hardcoded name.
+- Disable Edit Deployment button when deployment structure is incompatible with the edit template.
+- Warn when an app deployment is managed through GitOps.
+
+### Fixed
+
+- Fix version truncation not working on deployment details page.
+- Fix YAML block-style autocompletion in CodeMirror editors.
+
 ## [0.120.0] - 2026-04-02
 
 ### Added
