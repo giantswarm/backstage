@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.8.4
+
+### Patch Changes
+
+- b928d80: Add `passwordManagerIgnoreProps` utility for suppressing password manager autofill on form fields. Add `height` and `maxHeight` options to the `YamlEditor` component.
+- 8a1fbdc: Fix version truncation not working on deployment details page.
+
 ## 0.8.3
 
 ### Patch Changes

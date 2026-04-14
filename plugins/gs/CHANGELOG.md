@@ -1,5 +1,31 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.65.0
+
+### Minor Changes
+
+- b928d80: Add custom review step for scaffolder templates.
+- b928d80: Add multi-source value editing for app deployment scaffolder templates:
+  - New `GSValueSourcesEditor` field extension: edit multiple `valuesFrom` sources (ConfigMaps/Secrets) with per-source YAML editors, name validation, drag-to-reorder, and merged Helm schema validation
+  - New `MultiSourceDeploymentPicker` variant: populates editors from existing HelmRelease `valuesFrom` entries in edit mode
+  - Warn when an app deployment is managed through GitOps (read-only notice)
+  - Pass `valuesMode` via URL formData so edit templates can distinguish single- vs multi-source flows
+
+### Patch Changes
+
+- 34f5797: Discover app deployment templates by label instead of hardcoded name.
+- b928d80: Add `height` and `maxHeight` ui:options to `GSValueSourcesEditor` scaffolder field extension.
+- 8a1fbdc: Fix version truncation not working on deployment details page.
+- b928d80: Disable Edit Deployment button when deployment structure is incompatible with the edit template (e.g., non-OCIRepository source, mismatched names/namespaces, digest pinning).
+- b928d80: Fix YAML block-style autocompletion in CodeMirror editors (patch for codemirror-json-schema).
+- Updated dependencies [b928d80]
+- Updated dependencies [b928d80]
+- Updated dependencies [8a1fbdc]
+  - @giantswarm/backstage-plugin-ui-react@0.8.4
+  - @giantswarm/backstage-plugin-kubernetes-react@0.15.0
+  - @giantswarm/backstage-plugin-flux@0.8.3
+  - @giantswarm/backstage-plugin-flux-react@0.13.2
+
 ## 0.64.0
 
 ### Minor Changes
