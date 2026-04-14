@@ -1,5 +1,26 @@
 # app
 
+## 0.36.0
+
+### Minor Changes
+
+- b928d80: Add custom review step for scaffolder templates.
+
+### Patch Changes
+
+- Updated dependencies [b928d80]
+- Updated dependencies [b928d80]
+- Updated dependencies [b928d80]
+- Updated dependencies [34f5797]
+- Updated dependencies [b928d80]
+- Updated dependencies [8a1fbdc]
+- Updated dependencies [b928d80]
+- Updated dependencies [b928d80]
+  - @giantswarm/backstage-plugin-gs@0.65.0
+  - @giantswarm/backstage-plugin-kubernetes-react@0.15.0
+  - @giantswarm/backstage-plugin-flux@0.8.3
+  - @giantswarm/backstage-plugin-flux-react@0.13.2
+
 ## 0.35.3
 
 ### Patch Changes

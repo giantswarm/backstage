@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-scaffolder-backend-module-gs
 
+## 0.12.0
+
+### Minor Changes
+
+- b928d80: Add `fromJson` Nunjucks template filter for deserializing JSON strings in scaffolder templates.
+
 ## 0.11.0
 
 ### Minor Changes

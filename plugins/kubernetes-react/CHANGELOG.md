@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 0.15.0
+
+### Minor Changes
+
+- b928d80: Add `isValidDNSSubdomainName` utility for validating Kubernetes resource names against RFC 1123 DNS subdomain rules.
+
+### Patch Changes
+
+- Updated dependencies [b928d80]
+- Updated dependencies [8a1fbdc]
+  - @giantswarm/backstage-plugin-ui-react@0.8.4
+
 ## 0.14.2
 
 ### Patch Changes

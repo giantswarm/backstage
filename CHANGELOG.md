@@ -24,6 +24,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix version truncation not working on deployment details page.
 - Fix YAML block-style autocompletion in CodeMirror editors.
 
+See [./docs/releases/v0.121.0-changelog.md](./docs/releases/v0.121.0-changelog.md) for more information.
+
 ## [0.120.0] - 2026-04-02
 
 ### Added

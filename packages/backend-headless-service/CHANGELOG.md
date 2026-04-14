@@ -1,5 +1,12 @@
 # backend-headless-service
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [b928d80]
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.12.0
+
 ## 0.6.0
 
 ### Minor Changes
