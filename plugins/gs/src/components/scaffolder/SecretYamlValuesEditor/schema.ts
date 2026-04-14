@@ -30,6 +30,8 @@ export const SecretYamlValuesEditorFieldSchema = makeFieldSchema({
         .describe(
           'The name of the field containing the chart tag to fetch values schema for',
         ),
+      height: z.number().optional().describe('Editor height in pixels'),
+      maxHeight: z.number().optional().describe('Editor max height in pixels'),
     }),
 });
 

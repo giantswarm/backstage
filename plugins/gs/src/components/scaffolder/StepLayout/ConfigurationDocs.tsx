@@ -13,10 +13,6 @@ const useStyles = makeStyles(theme => ({
   root: {
     flexGrow: 1,
     height: '100%',
-
-    [`${theme.breakpoints.up('lg')}`]: {
-      paddingTop: '24px',
-    },
   },
   tabsContainer: {
     height: '100%',

@@ -5,7 +5,12 @@ import { Link } from 'react-router-dom';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEditAppDeploymentTemplate } from '../../../hooks';
 import { useEditDeploymentData } from '../useEditDeploymentData';
+import { useDeploymentEditCompatibility } from './useDeploymentEditCompatibility';
 import { Box, makeStyles, Tooltip } from '@material-ui/core';
+import {
+  findTargetClusterName,
+  findTargetClusterNamespace,
+} from '../../utils/findTargetCluster';
 
 const useStyles = makeStyles(() => ({
   button: {
@@ -27,15 +32,23 @@ export function EditDeploymentButton({
   const { available, getTemplateUrl } = useEditAppDeploymentTemplate();
 
   // Only fetch edit data when the template is available
-  const { entityRef, chartRef, chartTag, automaticUpgrades, isLoading } =
+  const { chartRef, chartTag, automaticUpgrades, isLoading } =
     useEditDeploymentData(deployment, installationName, {
       enabled: available,
     });
 
-  const deploymentNamespace = deployment.getNamespace() ?? '';
+  const {
+    incompatibleReasons,
+    isCompatible,
+    isLoading: isLoadingCompatibility,
+  } = useDeploymentEditCompatibility(deployment, installationName, {
+    enabled: available,
+  });
 
-  const clusterName = deployment.findLabel('giantswarm.io/cluster') ?? '';
-
+  const name = deployment.getName();
+  const namespace = deployment.getNamespace();
+  const clusterName = findTargetClusterName(deployment);
+  const clusterNamespace = findTargetClusterNamespace(deployment);
   const missingFields = useMemo(() => {
     if (isLoading) return [];
     const missing: string[] = [];
@@ -45,11 +58,17 @@ export function EditDeploymentButton({
     return missing;
   }, [isLoading, chartRef, chartTag, clusterName]);
 
-  const isDisabled = isLoading || missingFields.length > 0;
+  const isDisabled =
+    isLoading ||
+    isLoadingCompatibility ||
+    missingFields.length > 0 ||
+    !isCompatible;
 
   let tooltipTitle: string;
-  if (isLoading) {
+  if (isLoading || isLoadingCompatibility) {
     tooltipTitle = 'Loading deployment data…';
+  } else if (!isCompatible) {
+    tooltipTitle = `Cannot edit: ${incompatibleReasons.join('; ')}`;
   } else if (missingFields.length > 0) {
     tooltipTitle = `Cannot edit: missing ${missingFields.join(', ')}`;
   } else {
@@ -60,30 +79,28 @@ export function EditDeploymentButton({
     if (isDisabled) return undefined;
 
     return getTemplateUrl({
-      entityRef: entityRef ?? '',
       chartRef: chartRef ?? '',
       chartTag: chartTag ?? '',
       automaticUpgrades: automaticUpgrades ?? 'no-upgrades',
       installation: { installationName },
       cluster: {
         clusterName,
-        clusterNamespace: deploymentNamespace,
-        isManagementCluster: !deployment.getKubeConfig(),
+        clusterNamespace,
       },
-      name: deployment.getName(),
-      targetNamespace: deployment.getTargetNamespace() ?? '',
+      name,
+      namespace,
     });
   }, [
     isDisabled,
     getTemplateUrl,
-    entityRef,
     chartRef,
     chartTag,
     automaticUpgrades,
     installationName,
     clusterName,
-    deployment,
-    deploymentNamespace,
+    clusterNamespace,
+    name,
+    namespace,
   ]);
 
   if (!available) {

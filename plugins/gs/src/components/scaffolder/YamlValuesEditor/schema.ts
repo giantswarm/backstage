@@ -33,6 +33,8 @@ export const YamlValuesEditorFieldSchema = makeFieldSchema({
         .describe(
           'Field path to use as initial value when the editor is empty (e.g. for edit mode)',
         ),
+      height: z.number().optional().describe('Editor height in pixels'),
+      maxHeight: z.number().optional().describe('Editor max height in pixels'),
     }),
 });
 

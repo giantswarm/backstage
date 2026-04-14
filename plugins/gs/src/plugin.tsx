@@ -515,6 +515,21 @@ const deploymentPickerFormField = FormFieldBlueprint.make({
   },
 });
 
+const multiSourceDeploymentPickerFormField = FormFieldBlueprint.make({
+  name: 'multi-source-deployment-picker',
+  params: {
+    field: () =>
+      import('./components/scaffolder/MultiSourceDeploymentPicker').then(m =>
+        createFormField({
+          name: 'GSMultiSourceDeploymentPicker',
+          component: m.MultiSourceDeploymentPicker,
+          schema: m.MultiSourceDeploymentPickerFieldSchema,
+          validation: m.multiSourceDeploymentPickerValidation,
+        }),
+      ),
+  },
+});
+
 const yamlValuesEditorFormField = FormFieldBlueprint.make({
   name: 'yaml-values-editor',
   params: {
@@ -540,6 +555,21 @@ const secretYamlValuesEditorFormField = FormFieldBlueprint.make({
           component: m.SecretYamlValuesEditor,
           schema: m.SecretYamlValuesEditorFieldSchema,
           validation: m.secretYamlValuesEditorValidation,
+        }),
+      ),
+  },
+});
+
+const valueSourcesEditorFormField = FormFieldBlueprint.make({
+  name: 'value-sources-editor',
+  params: {
+    field: () =>
+      import('./components/scaffolder/ValueSourcesEditor').then(m =>
+        createFormField({
+          name: 'GSValueSourcesEditor',
+          component: m.ValueSourcesEditor,
+          schema: m.ValueSourcesEditorFieldSchema,
+          validation: m.valueSourcesEditorValidation,
         }),
       ),
   },
@@ -600,9 +630,11 @@ export const gsPlugin = createFrontendPlugin({
     templateStringInputFormField,
     entityPickerFormField,
     deploymentPickerFormField,
+    multiSourceDeploymentPickerFormField,
     yamlValuesEditorFormField,
     secretYamlValuesEditorFormField,
     yamlValuesValidationFormField,
+    valueSourcesEditorFormField,
   ],
   routes: {
     root: rootRouteRef,

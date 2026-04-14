@@ -32,17 +32,30 @@ const useStyles = makeStyles(theme => ({
 type CodeBlockProps = {
   text: string;
   language: string;
+  copyEnabled?: boolean;
+  transparent?: boolean;
 };
 
-export const CodeBlock = ({ text, language: _language }: CodeBlockProps) => {
+export const CodeBlock = ({
+  text,
+  copyEnabled = true,
+  transparent = false,
+}: CodeBlockProps) => {
   const classes = useStyles();
 
   return (
     <Box className={classes.flexContainer}>
-      <pre className={classes.codeBlock}>{text}</pre>
-      <Box className={classes.copyButtonContainer}>
-        <CopyTextButton text={text} />
-      </Box>
+      <pre
+        className={classes.codeBlock}
+        style={transparent ? { backgroundColor: 'transparent' } : undefined}
+      >
+        {text}
+      </pre>
+      {copyEnabled && (
+        <Box className={classes.copyButtonContainer}>
+          <CopyTextButton text={text} />
+        </Box>
+      )}
     </Box>
   );
 };

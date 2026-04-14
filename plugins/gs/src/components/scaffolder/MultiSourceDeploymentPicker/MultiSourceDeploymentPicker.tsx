@@ -1,0 +1,319 @@
+import { useEffect, useMemo, useRef } from 'react';
+import * as yaml from 'js-yaml';
+import { Box, CircularProgress, Typography } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core/styles';
+import WarningIcon from '@material-ui/icons/Warning';
+
+const useStyles = makeStyles(theme => ({
+  gitOpsWarning: {
+    color: theme.palette.warning.main,
+  },
+}));
+import { WarningPanel } from '@backstage/core-components';
+import {
+  HelmRelease,
+  useResource,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useApi } from '@backstage/core-plugin-api';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { useQueries } from '@tanstack/react-query';
+import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
+import { isManagedByFlux } from '@giantswarm/backstage-plugin-flux-react';
+import { MultiSourceDeploymentPickerProps } from './schema';
+import { useValueFromOptions } from '../hooks/useValueFromOptions';
+
+interface ValuesFromEntry {
+  kind: string;
+  name: string;
+  targetPath?: string;
+}
+
+/**
+ * Scaffolder field extension that fetches deployment data from Kubernetes.
+ *
+ * When visible, renders a read-only summary showing installation, cluster,
+ * and deployment names. When used with `ui:widget: hidden`, renders nothing.
+ *
+ * Fetches the HelmRelease first, then inspects its values configuration.
+ * Supports inline values, valuesFrom references, or both simultaneously.
+ *
+ * Outputs an object with:
+ * - currentValues: string (YAML string of inline spec.values, if present)
+ * - currentValueSources: array of value source objects (from spec.valuesFrom, if present)
+ *
+ * Both fields can be present at the same time when the HelmRelease has both
+ * inline values and valuesFrom references.
+ *
+ * Secret values are stored in the scaffolder secrets context under the key
+ * specified by the `secretValuesKey` ui:option.
+ */
+export const MultiSourceDeploymentPicker = ({
+  onChange,
+  formContext,
+  uiSchema,
+}: MultiSourceDeploymentPickerProps) => {
+  const classes = useStyles();
+  const {
+    installationNameField,
+    clusterNameField,
+    deploymentNameField,
+    deploymentNamespaceField,
+    secretValuesKey,
+  } = uiSchema?.['ui:options'] ?? {};
+
+  const installationName = useValueFromOptions<string>(
+    formContext,
+    undefined,
+    installationNameField,
+  );
+
+  const clusterName = useValueFromOptions<string>(
+    formContext,
+    undefined,
+    clusterNameField,
+  );
+
+  const deploymentName = useValueFromOptions<string>(
+    formContext,
+    undefined,
+    deploymentNameField,
+  );
+
+  const deploymentNamespace = useValueFromOptions<string>(
+    formContext,
+    undefined,
+    deploymentNamespaceField,
+  );
+
+  const { setSecrets } = useTemplateSecrets();
+  const kubernetesApi = useApi(kubernetesApiRef);
+
+  const cluster = installationName ?? '';
+  const name = deploymentName ?? '';
+  const namespace = deploymentNamespace ?? '';
+
+  const enabled = Boolean(cluster) && Boolean(namespace) && Boolean(name);
+
+  const noCacheOptions = { staleTime: 0, gcTime: 0 };
+
+  // Fetch HelmRelease first to inspect valuesFrom
+  const { resource: helmRelease, isLoading: helmReleaseLoading } = useResource(
+    cluster,
+    HelmRelease,
+    { name, namespace },
+    { enabled, ...noCacheOptions },
+  );
+
+  // Extract valuesFrom entries from the HelmRelease
+  const valuesFrom = useMemo<ValuesFromEntry[]>(() => {
+    if (!helmRelease) return [];
+    return helmRelease.getValuesFrom() ?? [];
+  }, [helmRelease]);
+
+  // Extract inline values from spec.values (if any)
+  const inlineValues = useMemo(() => {
+    if (!helmRelease) return '';
+    const values = helmRelease.getValues();
+    if (!values || Object.keys(values).length === 0) return '';
+    try {
+      return yaml.dump(values, { lineWidth: -1 }).trimEnd();
+    } catch {
+      return '';
+    }
+  }, [helmRelease]);
+
+  // Fetch all valuesFrom resources (ConfigMaps and Secrets) in parallel
+  const resourceQueries = useQueries({
+    queries: valuesFrom.map((entry, index) => {
+      const resourceKind = entry.kind === 'Secret' ? 'secrets' : 'configmaps';
+      const path = `/api/v1/namespaces/${namespace}/${resourceKind}/${entry.name}`;
+
+      return {
+        queryKey: [
+          'deployment-picker',
+          cluster,
+          'get',
+          resourceKind,
+          namespace,
+          entry.name,
+          index,
+        ],
+        queryFn: async () => {
+          const response = await kubernetesApi.proxy({
+            clusterName: cluster,
+            path,
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch ${entry.kind} ${entry.name}: ${response.statusText}`,
+            );
+          }
+
+          return response.json();
+        },
+        enabled: enabled && valuesFrom.length > 0,
+        staleTime: 0,
+        gcTime: 0,
+      };
+    }),
+  });
+
+  const resourceQueriesLoading =
+    resourceQueries.length > 0 && resourceQueries.some(q => q.isLoading);
+  const isLoading = enabled && (helmReleaseLoading || resourceQueriesLoading);
+
+  // Build currentValueSources from fetched resources
+  const { currentValueSources, secretValuesMap } = useMemo(() => {
+    if (valuesFrom.length === 0) {
+      return { currentValueSources: undefined, secretValuesMap: undefined };
+    }
+
+    const sources: Array<{
+      kind: 'ConfigMap' | 'Secret';
+      name: string;
+      values?: string;
+    }> = [];
+    const secretMap: Record<string, string> = {};
+
+    valuesFrom.forEach((entry, index) => {
+      const query = resourceQueries[index];
+      const kind = entry.kind as 'ConfigMap' | 'Secret';
+
+      if (!query?.data) {
+        sources.push({ kind, name: entry.name });
+        return;
+      }
+
+      const resourceData = query.data as Record<string, any>;
+
+      if (kind === 'ConfigMap') {
+        const value = resourceData.data?.values ?? '';
+        sources.push({ kind, name: entry.name, values: value });
+      } else {
+        // Secret: data is base64-encoded, stringData is plain text
+        const encodedValue = resourceData.data?.values ?? '';
+        const decodedValue = encodedValue ? decodeBase64(encodedValue) : '';
+        // ConfigMap-like values go in formData, Secret values go in secrets context
+        sources.push({ kind, name: entry.name });
+        if (decodedValue) {
+          secretMap[entry.name] = decodedValue;
+        }
+      }
+    });
+
+    return {
+      currentValueSources: sources,
+      secretValuesMap:
+        Object.keys(secretMap).length > 0 ? secretMap : undefined,
+    };
+  }, [valuesFrom, resourceQueries]);
+
+  // Track what we last emitted to avoid redundant onChange calls
+  const lastEmittedRef = useRef<string>('');
+
+  // Reset value while loading so validation blocks step navigation
+  const prevEnabledRef = useRef(false);
+  useEffect(() => {
+    if (enabled && !prevEnabledRef.current) {
+      lastEmittedRef.current = '';
+      onChange(undefined);
+    }
+    prevEnabledRef.current = enabled;
+  }, [enabled, onChange]);
+
+  // Update formData when data changes
+  useEffect(() => {
+    if (!enabled || !helmRelease) return;
+
+    const result: Record<string, any> = {};
+
+    if (inlineValues) {
+      result.currentValues = inlineValues;
+    }
+    if (currentValueSources) {
+      result.currentValueSources = currentValueSources;
+    }
+
+    const serialized = JSON.stringify(result);
+    if (serialized !== lastEmittedRef.current) {
+      lastEmittedRef.current = serialized;
+      onChange(result);
+    }
+  }, [enabled, helmRelease, inlineValues, currentValueSources, onChange]);
+
+  // Store secret values in the scaffolder secrets context
+  const lastStoredSecretRef = useRef<string>('');
+
+  useEffect(() => {
+    if (!secretValuesKey || !secretValuesMap) return;
+
+    const serialized = JSON.stringify(secretValuesMap);
+    if (serialized === lastStoredSecretRef.current) return;
+
+    lastStoredSecretRef.current = serialized;
+    setSecrets({ [secretValuesKey]: serialized });
+  }, [secretValuesMap, secretValuesKey, setSecrets]);
+
+  const isGitOpsManaged = helmRelease ? isManagedByFlux(helmRelease) : false;
+
+  const showSummary =
+    Boolean(installationName) || Boolean(clusterName) || Boolean(name);
+
+  if (!showSummary) {
+    return (
+      <WarningPanel title="No deployment selected">
+        Please select an installation, cluster, and deployment to continue.
+      </WarningPanel>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <Typography variant="body2">
+        <CircularProgress size={16} style={{ marginRight: 8 }} />
+        Loading deployment configuration...
+      </Typography>
+    );
+  }
+
+  return (
+    <>
+      <Typography variant="body2">
+        You are editing the configuration for the{' '}
+        <strong>
+          <code>{name}</code>
+        </strong>{' '}
+        deployment on{' '}
+        <strong>
+          <code>
+            {installationName === clusterName
+              ? clusterName
+              : `${installationName}/${clusterName}`}
+          </code>
+        </strong>{' '}
+        cluster.
+      </Typography>
+      {isGitOpsManaged && (
+        <Box display="flex" alignItems="center" style={{ marginTop: 8 }}>
+          <WarningIcon
+            className={classes.gitOpsWarning}
+            style={{ marginRight: 8, fontSize: 20 }}
+          />
+          <Typography variant="body2" className={classes.gitOpsWarning}>
+            This deployment is managed through GitOps. Changes applied here may
+            be overridden during the next Flux reconciliation cycle.
+          </Typography>
+        </Box>
+      )}
+    </>
+  );
+};
+
+function decodeBase64(value: string): string {
+  try {
+    return atob(value);
+  } catch {
+    return value;
+  }
+}
