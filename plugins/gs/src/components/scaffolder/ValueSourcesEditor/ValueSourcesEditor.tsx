@@ -33,6 +33,7 @@ import { YamlEditorFormField } from '../../UI';
 import { useHelmChartValuesSchema, useTemplateString } from '../../hooks';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { passwordManagerIgnoreProps } from '@giantswarm/backstage-plugin-ui-react';
+import { isValidDNSSubdomainName } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Flex } from '@backstage/ui';
 
 const useStyles = makeStyles(() => ({
@@ -538,7 +539,7 @@ export const ValueSourcesEditor = ({
 
   const nameErrors = useMemo(() => {
     const errors: (string | undefined)[] = items.map(() => undefined);
-    const nameIndices = new Map<string, number[]>();
+    const kindNameIndices = new Map<string, Map<string, number[]>>();
 
     items.forEach((item, i) => {
       if (!item.displayValues) return;
@@ -547,15 +548,25 @@ export const ValueSourcesEditor = ({
         errors[i] = 'Name is required when values are provided';
         return;
       }
-      const indices = nameIndices.get(name) ?? [];
+      if (!isValidDNSSubdomainName(name)) {
+        errors[i] =
+          "Must be lowercase, alphanumeric, '-' or '.', max 253 chars";
+        return;
+      }
+      const byName =
+        kindNameIndices.get(item.kind) ?? new Map<string, number[]>();
+      const indices = byName.get(name) ?? [];
       indices.push(i);
-      nameIndices.set(name, indices);
+      byName.set(name, indices);
+      kindNameIndices.set(item.kind, byName);
     });
 
-    for (const indices of nameIndices.values()) {
-      if (indices.length > 1) {
-        for (const i of indices) {
-          errors[i] = 'Name must be unique across value sources';
+    for (const [kind, byName] of kindNameIndices) {
+      for (const [, indices] of byName) {
+        if (indices.length > 1) {
+          for (const i of indices) {
+            errors[i] = `${kind} name must be unique`;
+          }
         }
       }
     }

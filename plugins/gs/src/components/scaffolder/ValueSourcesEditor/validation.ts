@@ -1,4 +1,5 @@
 import type { FieldValidation } from '@rjsf/utils';
+import { isValidDNSSubdomainName } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ValueSourcesEditorValue } from './schema';
 
 type ValueSourceItem = NonNullable<ValueSourcesEditorValue>[number];
@@ -17,26 +18,40 @@ export const valueSourcesEditorValidation = (
 
   for (let i = 0; i < itemsWithValues.length; i++) {
     const item = itemsWithValues[i];
-    if (!item.name || item.name.trim() === '') {
+    const name = item.name?.trim() ?? '';
+
+    if (!name) {
       validation.addError(
         `Item ${i + 1}: name is required when values are provided`,
       );
-    }
-  }
-
-  const nameCount = new Map<string, number>();
-  for (const item of itemsWithValues) {
-    if (item.name && item.name.trim() !== '') {
-      const key = item.name.trim();
-      nameCount.set(key, (nameCount.get(key) ?? 0) + 1);
-    }
-  }
-
-  for (const [name, count] of nameCount) {
-    if (count > 1) {
+    } else if (!isValidDNSSubdomainName(name)) {
       validation.addError(
-        `Duplicate name "${name}" — each value source must have a unique name`,
+        `Item ${i + 1}: name "${name}" is not a valid Kubernetes resource name (must be lowercase, alphanumeric, '-' or '.', max 253 chars)`,
       );
+    }
+  }
+
+  const kindGroups = new Map<string, string[]>();
+  for (const item of itemsWithValues) {
+    const name = item.name?.trim() ?? '';
+    if (name) {
+      const names = kindGroups.get(item.kind) ?? [];
+      names.push(name);
+      kindGroups.set(item.kind, names);
+    }
+  }
+
+  for (const [kind, names] of kindGroups) {
+    const nameCount = new Map<string, number>();
+    for (const name of names) {
+      nameCount.set(name, (nameCount.get(name) ?? 0) + 1);
+    }
+    for (const [name, count] of nameCount) {
+      if (count > 1) {
+        validation.addError(
+          `Duplicate ${kind} name "${name}" — each ${kind} must have a unique name`,
+        );
+      }
     }
   }
 };
