@@ -137,15 +137,21 @@ function transformFormData(
         definition['ui:field'],
       )
     ) {
+      if (!value) {
+        continue;
+      }
+
       result[key] = [
-        <div className={codeContainerClass}>
-          <CodeBlock
-            language="yaml"
-            text={value as string}
-            copyEnabled={false}
-            transparent
-          />
-        </div>,
+        [
+          <div className={codeContainerClass}>
+            <CodeBlock
+              language="yaml"
+              text={value as string}
+              copyEnabled={false}
+              transparent
+            />
+          </div>,
+        ],
       ];
       continue;
     }
