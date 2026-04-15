@@ -26,6 +26,9 @@ backend.add(import('@giantswarm/backstage-plugin-techdocs-backend-module-gs'));
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
+if (process.env.ENABLE_GUEST_AUTH) {
+  backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
+}
 backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
 backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-gs'));
 
