@@ -172,23 +172,31 @@ export const appOverrides = createFrontendModule({
     SignInPageBlueprint.make({
       params: {
         loader: async () => {
-          const { SignInPage } = await import('@backstage/core-components');
-          const DexSignInPage = (props: {
+          const { SignInPage, ProxiedSignInPage } =
+            await import('@backstage/core-components');
+          const CustomSignInPage = (props: {
             onSignInSuccess: (identityApi: any) => void;
           }) => {
             const configApi = useApi(configApiRef);
-            const providers = [];
             if (configApi.has('gs.authProvider')) {
-              providers.push({
-                id: 'dex-auth-provider',
-                title: 'Dex',
-                message: 'Sign in using Dex',
-                apiRef: gsAuthApiRef,
-              });
+              return (
+                <SignInPage
+                  {...props}
+                  auto
+                  providers={[
+                    {
+                      id: 'dex-auth-provider',
+                      title: 'Dex',
+                      message: 'Sign in using Dex',
+                      apiRef: gsAuthApiRef,
+                    },
+                  ]}
+                />
+              );
             }
-            return <SignInPage {...props} auto providers={providers} />;
+            return <ProxiedSignInPage {...props} provider="guest" />;
           };
-          return DexSignInPage;
+          return CustomSignInPage;
         },
       },
     }),
