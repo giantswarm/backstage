@@ -1,8 +1,15 @@
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
-import { rootLogger } from '@internal/backend-common';
+import {
+  customHttpAuthServiceFactory,
+  rootLogger,
+} from '@internal/backend-common';
 
 const backend = createBackend();
+
+// Override default httpAuth to read tokens from X-Backstage-Token header,
+// avoiding conflicts with ingress-level Basic auth on the Authorization header.
+backend.add(customHttpAuthServiceFactory);
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
