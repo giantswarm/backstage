@@ -18,8 +18,9 @@ import {
 const aiChatPage = PageBlueprint.make({
   disabled: true,
   params: {
-    noHeader: true,
+    title: 'AI Assistant',
     path: '/ai-chat',
+    icon: <AIChatIcon fontSize="inherit" />,
     loader: () => import('./components/AiChat').then(m => <m.AiChatPage />),
     routeRef: rootRouteRef,
   },

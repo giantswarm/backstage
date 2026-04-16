@@ -1,10 +1,20 @@
 import { AssistantRuntimeProvider, useAssistantApi } from '@assistant-ui/react';
 import { DevToolsModal } from '@assistant-ui/react-devtools';
-import { Content, Header, Page } from '@backstage/core-components';
+import { Content } from '@backstage/core-components';
 import { Thread } from './Thread';
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useChatSetup } from '../../hooks/useChatSetup';
+import { makeStyles } from '@material-ui/core';
+
+const useStyles = makeStyles(theme => ({
+  root: {
+    height: 'calc(100dvh - 52px)',
+    [theme.breakpoints.down('xs')]: {
+      height: 'calc(100dvh - 52px - 56px)',
+    },
+  },
+}));
 
 interface InitialMessageHandlerProps {
   isReady: boolean;
@@ -36,21 +46,16 @@ const InitialMessageHandler = ({ isReady }: InitialMessageHandlerProps) => {
 };
 
 export const AiChatPage = () => {
+  const classes = useStyles();
   const { runtime, isReady } = useChatSetup();
 
   return (
-    <Page themeId="service">
-      <Header
-        title="AI Assistant"
-        subtitle="Your agentic interface to the Giant Swarm platform and developer portal"
-      />
-      <Content>
-        <AssistantRuntimeProvider runtime={runtime}>
-          <InitialMessageHandler isReady={isReady} />
-          <DevToolsModal />
-          <Thread />
-        </AssistantRuntimeProvider>
-      </Content>
-    </Page>
+    <Content className={classes.root}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <InitialMessageHandler isReady={isReady} />
+        <DevToolsModal />
+        <Thread />
+      </AssistantRuntimeProvider>
+    </Content>
   );
 };
