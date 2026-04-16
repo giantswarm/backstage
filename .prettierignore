@@ -6,3 +6,4 @@ helm/backstage/values.schema.json
 .vscode
 .github
 .yarn
+.pre-commit-config.yaml

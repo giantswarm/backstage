@@ -1,4 +1,23 @@
+# DO NOT EDIT. Generated with:
+#
+#    devctl gen precommit
+#
+minimum_pre_commit_version: '2.17'
 repos:
+  # base hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: ".*testdata/.*"
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+        exclude: ".*testdata/.*"
+
+  # Helm chart hooks for backstage
   - repo: https://github.com/losisin/helm-values-schema-json
     rev: v2.3.1
     hooks:
@@ -6,13 +25,22 @@ repos:
         args:
           - --config
           - helm/backstage/.schema.yaml
-
   - repo: https://github.com/giantswarm/schemalint
     rev: v2.6.1
     hooks:
       - id: schemalint-normalize
         args:
           - helm/backstage/values.schema.json
+          - -o
+          - helm/backstage/values.schema.json
+          - --force
       - id: schemalint-verify
         args:
           - helm/backstage/values.schema.json
+  - repo: https://github.com/norwoodj/helm-docs
+    rev: "v1.14.2"
+    hooks:
+      - id: helm-docs
+        args:
+          - --chart-search-root=helm
+          - --sort-values-order=file
