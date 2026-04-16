@@ -111,6 +111,10 @@ export const appOverrides = createFrontendModule({
                   config: configApi,
                   urlPrefixAllowlist:
                     GSDiscoveryApiClient.getUrlPrefixAllowlist(configApi),
+                  header: {
+                    name: 'X-Backstage-Token',
+                    value: (token: string) => `Bearer ${token}`,
+                  },
                 }),
               ],
             }),
