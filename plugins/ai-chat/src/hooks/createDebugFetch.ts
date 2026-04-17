@@ -54,7 +54,12 @@ export function createDebugFetch(): typeof globalThis.fetch {
     try {
       const debugMeta = response.headers.get('X-AI-Chat-Debug-Meta');
       if (debugMeta) {
-        const meta = JSON.parse(debugMeta);
+        // Decode base64 + utf-8 (needed for non-ASCII characters in the
+        // system prompt or tool descriptions).
+        const decoded = new TextDecoder('utf-8').decode(
+          Uint8Array.from(atob(debugMeta), c => c.charCodeAt(0)),
+        );
+        const meta = JSON.parse(decoded);
         console.groupCollapsed(
           '%c[AI Chat Debug]%c Backend metadata',
           'color:#7c3aed;font-weight:bold',

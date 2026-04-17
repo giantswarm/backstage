@@ -333,7 +333,12 @@ export async function createRouter(
           messageCount: sanitizedMessages.length,
           hadUnsupportedContent,
         };
-        res.setHeader('X-AI-Chat-Debug-Meta', JSON.stringify(debugMeta));
+        // Base64-encode so non-ASCII characters in the system prompt or
+        // tool descriptions don't violate HTTP header byte restrictions.
+        res.setHeader(
+          'X-AI-Chat-Debug-Meta',
+          Buffer.from(JSON.stringify(debugMeta), 'utf-8').toString('base64'),
+        );
       }
 
       result.pipeUIMessageStreamToResponse(res);
