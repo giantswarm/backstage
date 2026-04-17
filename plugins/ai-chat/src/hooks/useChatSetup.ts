@@ -66,9 +66,12 @@ export function useChatSetup() {
   const featureFlagsApi = useApi(featureFlagsApiRef);
   const conversationIdRef = useRef<string | null>(null);
 
-  const verboseDebugging = featureFlagsApi.isActive(
-    'ai-chat-verbose-debugging',
-  );
+  // Verbose debugging is only enabled in non-production builds to avoid
+  // leaking backend internals (system prompt, tool schemas) to end users
+  // who toggle the feature flag in production.
+  const verboseDebugging =
+    process.env.NODE_ENV !== 'production' &&
+    featureFlagsApi.isActive('ai-chat-verbose-debugging');
   const debugFetch = useMemo(
     () => (verboseDebugging ? createDebugFetch() : undefined),
     [verboseDebugging],

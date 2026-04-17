@@ -196,7 +196,12 @@ export async function createRouter(
       effectiveSystemPrompt += failureNote;
     }
 
-    const isDebugRequest = req.headers['x-ai-chat-debug'] === 'true';
+    // Debug metadata is gated on non-production builds in addition to the
+    // request header, so toggling the feature flag in production can never
+    // leak backend internals (system prompt, tool schemas) to the browser.
+    const isDebugRequest =
+      process.env.NODE_ENV !== 'production' &&
+      req.headers['x-ai-chat-debug'] === 'true';
 
     try {
       // Select the appropriate provider based on model type
@@ -297,24 +302,25 @@ export async function createRouter(
 
       // When the frontend debug flag is active, attach metadata about what
       // the backend sends to the LLM so it can be logged in the browser console.
+      // Gated to non-production above, so header size is not a concern here.
       if (isDebugRequest) {
-        const toolNames = Object.keys(allTools);
         let providerName = 'openai';
         if (isAnthropicModel) providerName = 'anthropic';
         else if (isAzureConfigured) providerName = 'azure';
 
+        const toolEntries = Object.entries(allTools).map(([name, t]) => ({
+          name,
+          description: (t as { description?: string }).description,
+        }));
+
         const debugMeta = {
           model: modelName,
           provider: providerName,
-          systemPromptLength: effectiveSystemPrompt.length,
-          systemPromptPreview: effectiveSystemPrompt.substring(0, 500),
-          tools:
-            toolNames.length > 50
-              ? [
-                  ...toolNames.slice(0, 50),
-                  `...and ${toolNames.length - 50} more`,
-                ]
-              : toolNames,
+          // Full system prompt the backend prepends to the user messages.
+          systemPrompt: effectiveSystemPrompt,
+          // Tools with descriptions (input schemas omitted to keep the
+          // header under browser/Node limits for large tool catalogs).
+          tools: toolEntries,
           mcpServers: {
             connected: connectedServers,
             failed: failedServers.map(s => s.name),
@@ -322,6 +328,8 @@ export async function createRouter(
           providerOptions: isAnthropicModel
             ? { thinking: { type: 'enabled', budgetTokens: 10000 } }
             : undefined,
+          // Message transformations applied server-side (useful to spot
+          // when the frontend's messages differ from what the LLM sees).
           messageCount: sanitizedMessages.length,
           hadUnsupportedContent,
         };

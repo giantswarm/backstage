@@ -62,12 +62,11 @@ export function createDebugFetch(): typeof globalThis.fetch {
         );
         console.log('Model:', meta.model);
         console.log('Provider:', meta.provider);
-        console.log(
-          `System prompt: ${meta.systemPromptLength} chars`,
-          meta.systemPromptPreview
-            ? `\n${meta.systemPromptPreview}${meta.systemPromptLength > 500 ? '...' : ''}`
-            : '',
-        );
+        if (typeof meta.systemPrompt === 'string') {
+          console.log(
+            `System prompt (${meta.systemPrompt.length} chars):\n${meta.systemPrompt}`,
+          );
+        }
         console.log(`Tools (${meta.tools?.length ?? 0}):`, meta.tools);
         console.log('MCP servers:', meta.mcpServers);
         if (meta.providerOptions) {
