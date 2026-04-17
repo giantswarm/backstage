@@ -196,6 +196,8 @@ export async function createRouter(
       effectiveSystemPrompt += failureNote;
     }
 
+    const isDebugRequest = req.headers['x-ai-chat-debug'] === 'true';
+
     try {
       // Select the appropriate provider based on model type
       // When Azure is configured, non-Anthropic models route through Azure
@@ -239,6 +241,17 @@ export async function createRouter(
         messageCount: deduplicatedMessages.length,
       });
 
+      // Build the combined tool set
+      const allTools = {
+        ...frontendTools(tools),
+        ...mcpTools,
+        ...mcpResourceTools,
+        listSkills,
+        getSkill,
+        ...userTools,
+        ...contextUsageTools,
+      };
+
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
@@ -246,18 +259,7 @@ export async function createRouter(
           : sanitizedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
-        tools: {
-          ...frontendTools(tools),
-          ...mcpTools,
-          ...mcpResourceTools,
-          // Skill tools
-          listSkills,
-          getSkill,
-          // User tools (request-scoped)
-          ...userTools,
-          // Context usage tool
-          ...contextUsageTools,
-        } as ToolSet,
+        tools: allTools as ToolSet,
         providerOptions: isAnthropicModel
           ? {
               anthropic: {
@@ -292,6 +294,39 @@ export async function createRouter(
       res.setHeader('Transfer-Encoding', 'chunked');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+
+      // When the frontend debug flag is active, attach metadata about what
+      // the backend sends to the LLM so it can be logged in the browser console.
+      if (isDebugRequest) {
+        const toolNames = Object.keys(allTools);
+        let providerName = 'openai';
+        if (isAnthropicModel) providerName = 'anthropic';
+        else if (isAzureConfigured) providerName = 'azure';
+
+        const debugMeta = {
+          model: modelName,
+          provider: providerName,
+          systemPromptLength: effectiveSystemPrompt.length,
+          systemPromptPreview: effectiveSystemPrompt.substring(0, 500),
+          tools:
+            toolNames.length > 50
+              ? [
+                  ...toolNames.slice(0, 50),
+                  `...and ${toolNames.length - 50} more`,
+                ]
+              : toolNames,
+          mcpServers: {
+            connected: connectedServers,
+            failed: failedServers.map(s => s.name),
+          },
+          providerOptions: isAnthropicModel
+            ? { thinking: { type: 'enabled', budgetTokens: 10000 } }
+            : undefined,
+          messageCount: sanitizedMessages.length,
+          hadUnsupportedContent,
+        };
+        res.setHeader('X-AI-Chat-Debug-Meta', JSON.stringify(debugMeta));
+      }
 
       result.pipeUIMessageStreamToResponse(res);
     } catch (error) {
