@@ -339,6 +339,10 @@ export async function createRouter(
           'X-AI-Chat-Debug-Meta',
           Buffer.from(JSON.stringify(debugMeta), 'utf-8').toString('base64'),
         );
+        // Browsers hide non-standard response headers from JavaScript on
+        // cross-origin requests unless explicitly exposed. Frontend on
+        // :3000, backend on :7007 makes every request cross-origin.
+        res.setHeader('Access-Control-Expose-Headers', 'X-AI-Chat-Debug-Meta');
       }
 
       result.pipeUIMessageStreamToResponse(res);
