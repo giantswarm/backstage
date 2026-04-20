@@ -8522,15 +8522,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codemirror/view@npm:6.41.0":
-  version: 6.41.0
-  resolution: "@codemirror/view@npm:6.41.0"
+"@codemirror/view@npm:6.41.1":
+  version: 6.41.1
+  resolution: "@codemirror/view@npm:6.41.1"
   dependencies:
     "@codemirror/state": "npm:^6.6.0"
     crelt: "npm:^1.0.6"
     style-mod: "npm:^4.1.0"
     w3c-keyname: "npm:^2.2.4"
-  checksum: 10c0/7d7a5e184496d0c54083ec12bb080900064f0965b83b4db9f27890721c863e18c82e33573529799128f452c3e5c7c27af11e108c552574597ecca7eb27499a0c
+  checksum: 10c0/09fe1c114a1a35e6bfa8bd001904ff8ce5ba36f916b6517d82f48beaad05aa614a1d96b2dfe6639ce64229f9201759903836da813689a4a8439d381383f115dd
   languageName: node
   linkType: hard
 
@@ -38279,11 +38279,11 @@ __metadata:
   linkType: hard
 
 "qs@npm:^6.10.1, qs@npm:^6.11.0, qs@npm:^6.11.2, qs@npm:^6.12.3, qs@npm:^6.14.0, qs@npm:^6.9.4":
-  version: 6.15.0
-  resolution: "qs@npm:6.15.0"
+  version: 6.15.1
+  resolution: "qs@npm:6.15.1"
   dependencies:
     side-channel: "npm:^1.1.0"
-  checksum: 10c0/ff341078a78a991d8a48b4524d52949211447b4b1ad907f489cac0770cbc346a28e47304455c0320e5fb000f8762d64b03331e3b71865f663bf351bcba8cdb4b
+  checksum: 10c0/19ee504f0ebff72598503e38cd6d9bd7b52a8ab62ae18b1e6bee3d4db58469bd65871ef1893a881bafb0f80ef2f9ab586e1f255cf25cc8d816c0f5a704721d97
   languageName: node
   linkType: hard
 
