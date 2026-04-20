@@ -1,0 +1,15 @@
+diff --git a/node_modules/react-vtree/package.json b/node_modules/react-vtree/package.json
+index 0000000..0000001 100644
+--- a/node_modules/react-vtree/package.json
++++ b/node_modules/react-vtree/package.json
+@@ -30,7 +30,9 @@
+   "exports": {
+     ".": {
+       "types": "./dist/index.d.ts",
+-      "import": "./dist/index.js"
++      "import": "./dist/index.js",
++      "require": "./dist/index.js",
++      "default": "./dist/index.js"
+     },
+     "./package.json": "./package.json"
+   },
