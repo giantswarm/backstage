@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMediaQuery, useTheme } from '@material-ui/core';
 
-const MIN_WIDTH = 300;
+const MIN_WIDTH = 400;
 const MAX_WIDTH_RATIO = 0.8;
 export const DEFAULT_WIDTH = 500;
 const STORAGE_KEY = 'ai-chat-drawer-width';

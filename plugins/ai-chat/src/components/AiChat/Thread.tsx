@@ -252,46 +252,48 @@ const Composer = () => {
 
   return (
     <div className={classes.composerContainer}>
-      <ComposerPrimitive.Root className={classes.composerForm}>
-        <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
-          <TextField
-            variant="outlined"
-            // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus
-            size="small"
-            fullWidth
-            multiline
-            maxRows={4}
-            placeholder="Ask a question..."
-            className={classes.composerInput}
-          />
-        </ComposerPrimitive.Input>
+      <div className={classes.composerContainerInner}>
+        <ComposerPrimitive.Root className={classes.composerForm}>
+          <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
+            <TextField
+              variant="outlined"
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              size="small"
+              fullWidth
+              multiline
+              maxRows={4}
+              placeholder="Ask a question..."
+              className={classes.composerInput}
+            />
+          </ComposerPrimitive.Input>
 
-        <ThreadPrimitive.If running={false}>
-          <ComposerPrimitive.Send asChild>
-            <Button
-              variant="contained"
-              color="primary"
-              className={classes.sendButton}
-              aria-label="Send message"
-            >
-              <SendIcon />
-            </Button>
-          </ComposerPrimitive.Send>
-        </ThreadPrimitive.If>
+          <ThreadPrimitive.If running={false}>
+            <ComposerPrimitive.Send asChild>
+              <Button
+                variant="contained"
+                color="primary"
+                className={classes.sendButton}
+                aria-label="Send message"
+              >
+                <SendIcon />
+              </Button>
+            </ComposerPrimitive.Send>
+          </ThreadPrimitive.If>
 
-        <ThreadPrimitive.If running>
-          <ComposerPrimitive.Cancel asChild>
-            <Button
-              variant="contained"
-              className={classes.stopButton}
-              aria-label="Stop generating"
-            >
-              <StopIcon />
-            </Button>
-          </ComposerPrimitive.Cancel>
-        </ThreadPrimitive.If>
-      </ComposerPrimitive.Root>
+          <ThreadPrimitive.If running>
+            <ComposerPrimitive.Cancel asChild>
+              <Button
+                variant="contained"
+                className={classes.stopButton}
+                aria-label="Stop generating"
+              >
+                <StopIcon />
+              </Button>
+            </ComposerPrimitive.Cancel>
+          </ThreadPrimitive.If>
+        </ComposerPrimitive.Root>
+      </div>
     </div>
   );
 };

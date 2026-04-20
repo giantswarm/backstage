@@ -14,8 +14,10 @@ export const useStyles = makeStyles((theme: Theme) =>
     },
     root: {
       display: 'flex',
+      flexGrow: 1,
       flexDirection: 'column',
       height: '100%',
+      width: '100%',
       maxWidth: '800px',
       minHeight: '500px',
       backgroundColor: theme.palette.background.paper,
@@ -103,7 +105,15 @@ export const useStyles = makeStyles((theme: Theme) =>
     },
     assistantMessage: {},
     composerContainer: {
+      // position: 'sticky',
+      // bottom: 0,
+      // zIndex: 1,
+      // padding: theme.spacing(3, 0),
+      // backgroundColor: theme.palette.background.default,
+    },
+    composerContainerInner: {
       borderTop: `1px solid ${theme.palette.divider}`,
+      // borderRadius: theme.shape.borderRadius,
       padding: theme.spacing(2),
       backgroundColor: theme.palette.background.paper,
     },

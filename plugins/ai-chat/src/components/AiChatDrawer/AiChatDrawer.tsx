@@ -1,8 +1,10 @@
-import { Button, IconButton, Tooltip, makeStyles } from '@material-ui/core';
-import CloseIcon from '@material-ui/icons/Close';
+import { makeStyles } from '@material-ui/core';
+import { Button, ButtonIcon, PluginHeader } from '@backstage/ui';
+import { RiCloseLine } from '@remixicon/react';
 
 import { Thread } from '../AiChat/Thread';
 import { DEFAULT_WIDTH, useDrawerResize } from './useDrawerResize';
+import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat-react';
 
 const useStyles = makeStyles(theme => ({
   drawer: {
@@ -56,19 +58,11 @@ const useStyles = makeStyles(theme => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
     flexShrink: 0,
   },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
   threadRoot: {
     display: 'flex',
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
-  },
-  newThreadButton: {
-    textTransform: 'none',
   },
 }));
 
@@ -122,24 +116,22 @@ export const AiChatDrawer = ({
           className={`${classes.resizeHandle}${isDragging ? ` ${classes.resizeHandleDragging}` : ''}`}
           {...resizeHandleProps}
         />
-        <div className={classes.header}>
-          <div className={classes.headerLeft}>
-            <Tooltip title="Clear conversation">
-              <Button
-                className={classes.newThreadButton}
-                size="small"
-                onClick={onNewConversation}
-              >
+        <PluginHeader
+          title="AI Assistant"
+          icon={<AIChatIcon fontSize="inherit" />}
+          customActions={
+            <>
+              <Button variant="tertiary" onClick={onNewConversation}>
                 Clear conversation
               </Button>
-            </Tooltip>
-          </div>
-          <Tooltip title="Close">
-            <IconButton size="small" onClick={onClose}>
-              <CloseIcon />
-            </IconButton>
-          </Tooltip>
-        </div>
+              <ButtonIcon
+                variant="tertiary"
+                icon={<RiCloseLine />}
+                onClick={onClose}
+              />
+            </>
+          }
+        />
         <Thread className={classes.threadRoot} />
       </div>
     </>
