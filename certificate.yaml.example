@@ -1,9 +1,10 @@
+# Example file showing the expected structure of a TLS certificate value.
+# The PEM markers are deliberately omitted from this placeholder so that
+# pre-commit's `detect-private-key` hook does not flag this file.
 certificate:
   key: |
-    -----BEGIN PRIVATE KEY-----
-    # Private key data
-    -----END PRIVATE KEY-----
+    <PEM-encoded private key here>
+    # ... (replace with the contents of your unencrypted PEM key file)
   cert: |
-    -----BEGIN CERTIFICATE-----
-    # Certificate data
-    -----END CERTIFICATE-----
+    <PEM-encoded certificate chain here>
+    # ... (replace with the contents of your fullchain.pem file)
