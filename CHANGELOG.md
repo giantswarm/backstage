@@ -5,6 +5,30 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.122.0] - 2026-04-20
+
+### Added
+
+- Add optional guest auth provider, enabled via `ENABLE_GUEST_AUTH` environment variable.
+- Add optional `aiChat.systemPrompt` config to override the built-in AI chat system prompt.
+- Add optional `aiChat.openai.api` config to target OpenAI-compatible servers via chat completions API.
+
+### Changed
+
+- Update Backstage to 1.50.2.
+- Migrate scaffolder pages to NFS SubPageBlueprint layout.
+- Make sidebar nav items configurable via NFS extensions.
+- Use custom `X-Backstage-Token` header for identity tokens to avoid conflicts with ingress-level Basic auth.
+- Use `ProxiedSignInPage` with guest provider as fallback when Dex auth is not configured.
+- Allow hiding the Backstage Identity card on the settings general page via extension config.
+
+### Fixed
+
+- Fix AI chat producing empty replies when the model uses a tool by increasing the default step limit.
+- Strip stale tool results from AI chat conversation history to reduce token usage.
+
+See [./docs/releases/v0.122.0-changelog.md](./docs/releases/v0.122.0-changelog.md) for more information.
+
 ## [0.121.0] - 2026-04-14
 
 ### Added
@@ -2230,7 +2254,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.121.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.0...HEAD
+[0.122.0]: https://github.com/giantswarm/backstage/compare/v0.121.0...v0.122.0
 [0.121.0]: https://github.com/giantswarm/backstage/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/giantswarm/backstage/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/giantswarm/backstage/compare/v0.119.0...v0.119.0

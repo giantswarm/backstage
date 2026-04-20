@@ -1,5 +1,22 @@
 # backend
 
+## 0.19.0
+
+### Minor Changes
+
+- 52049ca: Update Backstage to 1.50.2.
+- 89aa3f2: Add optional guest auth provider, enabled via `ENABLE_GUEST_AUTH` environment variable.
+- 89aa3f2: Use custom X-Backstage-Token header for Backstage identity tokens to avoid conflicts with ingress-level Basic auth on the Authorization header.
+
+### Patch Changes
+
+- Updated dependencies [95e2814]
+- Updated dependencies [143bd4b]
+- Updated dependencies [89aa3f2]
+- Updated dependencies [6e73b60]
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.10.2
+  - @internal/backend-common@0.5.0
+
 ## 0.18.4
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # backend-headless-service
 
+## 0.7.0
+
+### Minor Changes
+
+- 89aa3f2: Use custom X-Backstage-Token header for Backstage identity tokens to avoid conflicts with ingress-level Basic auth on the Authorization header.
+
+### Patch Changes
+
+- Updated dependencies [89aa3f2]
+  - @internal/backend-common@0.5.0
+
 ## 0.6.1
 
 ### Patch Changes
