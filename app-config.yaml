@@ -34,6 +34,13 @@ app:
     - entity-content:api-docs/apis: false
 
     - entity-context-menu-item:catalog/unregister-entity: false
+
+    - page:scaffolder:
+        config:
+          title: Create things
+    - sub-page:scaffolder/actions: false
+    - sub-page:scaffolder/editor: false
+    - sub-page:scaffolder/templating-extensions: false
   routes:
     bindings:
       catalog.createComponent: scaffolder.root
@@ -96,6 +103,13 @@ backend:
     #   user: ${POSTGRES_USER}
     #   password: ${POSTGRES_PASSWORD}
 
+  # see https://backstage.io/docs/ai/mcp-actions#actions-configuration for more details
+  actions:
+    pluginSources:
+      - auth
+      - catalog
+      - scaffolder
+
   cache:
     store: memory
   # workingDirectory: /tmp # Use this to configure a working directory for the scaffolder, defaults to the OS temp-dir
@@ -109,6 +123,11 @@ integrations:
 
 permission:
   enabled: true
+
+# see https://backstage.io/docs/ai/mcp-actions for more details
+mcpActions:
+  name: 'My Company Backstage' # defaults to "backstage"
+  description: 'Tools for managing your software catalog, creating new services from templates, and exploring your developer portal' # optional
 
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.
@@ -139,12 +158,26 @@ kubernetes:
 auth:
   # see https://backstage.io/docs/auth/ to learn about auth providers
   environment: development
-  providers:
-    # GitHub OAuth example
-    # github:
-    #   development:
-    #     clientId: ${GITHUB_OAUTH_CLIENT_ID}
-    #     clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+  # GitHub OAuth example
+  # providers:
+  #   github:
+  #     development:
+  #       clientId: ${GITHUB_OAUTH_CLIENT_ID}
+  #       clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+  providers: {}
+
+  # see https://backstage.io/docs/ai/mcp-actions#client-id-metadata-documents
+  # to learn more about client id metadata documents
+  experimentalClientIdMetadataDocuments:
+    enabled: false
+    # Optional: restrict which `client_id` URLs are allowed (defaults to ['*'])
+    # allowedClientIdPatterns:
+    #   - 'https://example.com/*'
+    #   - 'https://*.trusted-domain.com/*'
+    # Optional: restrict which redirect URIs are allowed (defaults to ['*'])
+    # allowedRedirectUriPatterns:
+    #   - 'http://localhost:*'
+    #   - 'https://*.example.com/*'
 
 scaffolder:
   # see https://backstage.io/docs/features/software-templates/configuration for software template options

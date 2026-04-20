@@ -36,7 +36,10 @@ import {
   extractMcpAuthTokens,
   deduplicateToolCallIds,
   sanitizeMessages,
+  stripStaleLargeToolResults,
 } from './utils';
+
+const STALE_TOOL_RESULT_STRIP_LIST = ['list_tools', 'list_core_tools'];
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -257,6 +260,21 @@ export async function createRouter(
         chatLogger.info('Removed unsupported file/image content from messages');
       }
 
+      // Replace bulky tool-results from prior turns (e.g. `list_tools` from
+      // muster MCP servers, which can weigh ~20K tokens) with a short
+      // placeholder so they are not resent on every turn. The most recent
+      // result for each listed tool is kept intact.
+      const { messages: prunedMessages, stats: stripStats } =
+        stripStaleLargeToolResults(sanitizedMessages, {
+          toolNames: STALE_TOOL_RESULT_STRIP_LIST,
+        });
+      if (stripStats.strippedCount > 0) {
+        chatLogger.info('Stripped stale tool results from history', {
+          strippedCount: stripStats.strippedCount,
+          approxBytesSaved: stripStats.approxBytesSaved,
+        });
+      }
+
       // For Anthropic models, prepend system message with cache control
       // to enable prompt caching for the system prompt.
       // See: https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#cache-control
@@ -288,8 +306,8 @@ export async function createRouter(
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
-          ? [systemMessage, ...sanitizedMessages]
-          : sanitizedMessages,
+          ? [systemMessage, ...prunedMessages]
+          : prunedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         stopWhen: stepCountIs(maxSteps),
