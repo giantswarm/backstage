@@ -158,12 +158,13 @@ kubernetes:
 auth:
   # see https://backstage.io/docs/auth/ to learn about auth providers
   environment: development
-  providers:
-    # GitHub OAuth example
-    # github:
-    #   development:
-    #     clientId: ${GITHUB_OAUTH_CLIENT_ID}
-    #     clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+  # GitHub OAuth example
+  # providers:
+  #   github:
+  #     development:
+  #       clientId: ${GITHUB_OAUTH_CLIENT_ID}
+  #       clientSecret: ${GITHUB_OAUTH_CLIENT_SECRET}
+  providers: {}
 
   # see https://backstage.io/docs/ai/mcp-actions#client-id-metadata-documents
   # to learn more about client id metadata documents

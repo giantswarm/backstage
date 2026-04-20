@@ -140,7 +140,7 @@ export function useChatSetup() {
     const mcpHeaders = await getMCPAuthHeaders();
 
     return {
-      Authorization: `Bearer ${token}`,
+      'X-Backstage-Token': `Bearer ${token}`,
       'X-Conversation-Id': conversationIdRef.current,
       ...(verboseDebugging && { 'X-AI-Chat-Debug': 'true' }),
       ...mcpHeaders,

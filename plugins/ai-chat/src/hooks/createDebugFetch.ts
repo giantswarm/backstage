@@ -18,7 +18,8 @@ export function createDebugFetch(): typeof globalThis.fetch {
         const safeHeaders = headers
           ? Object.fromEntries(
               Object.entries(headers).map(([k, v]) =>
-                k.toLowerCase() === 'authorization'
+                k.toLowerCase() === 'authorization' ||
+                k.toLowerCase() === 'x-backstage-token'
                   ? [k, '[REDACTED]']
                   : [k, v],
               ),

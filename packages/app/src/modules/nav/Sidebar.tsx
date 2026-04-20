@@ -7,6 +7,7 @@ import {
 } from '@backstage/core-components';
 import { compatWrapper } from '@backstage/core-compat-api';
 import { useApiHolder } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
@@ -22,30 +23,44 @@ import {
 import {
   AIChatIcon,
   aiChatDrawerApiRef,
+  rootRouteRef as aiChatRouteRef,
 } from '@giantswarm/backstage-plugin-ai-chat-react';
 
 function AiChatSidebarItem() {
   const apiHolder = useApiHolder();
   const drawerApi = apiHolder.get(aiChatDrawerApiRef);
+  const aiChatLink = useRouteRef(aiChatRouteRef);
 
-  if (!drawerApi) return null;
-
-  return (
-    <SidebarItem
-      icon={() => (
-        <NavItemIcon>
-          <AIChatIcon />
-        </NavItemIcon>
-      )}
-      text="AI Assistant"
-      onClick={() => drawerApi.toggleDrawer()}
-    />
+  const icon = () => (
+    <NavItemIcon>
+      <AIChatIcon />
+    </NavItemIcon>
   );
+
+  if (drawerApi) {
+    return (
+      <SidebarItem
+        icon={icon}
+        text="AI Assistant"
+        onClick={() => drawerApi.toggleDrawer()}
+      />
+    );
+  }
+
+  if (aiChatLink) {
+    return <SidebarItem icon={icon} to={aiChatLink()} text="AI Assistant" />;
+  }
+
+  return null;
 }
 
 export const SidebarContent = NavContentBlueprint.make({
   params: {
     component: ({ navItems }) => {
+      const searchItem = navItems.take('page:search');
+      const catalogItem = navItems.take('page:catalog');
+      const scaffolderItem = navItems.take('page:scaffolder');
+      const aiChatItem = navItems.take('page:ai-chat');
       const nav = navItems.withComponent(item => (
         <SidebarItem
           icon={() => <NavItemIcon>{item.icon}</NavItemIcon>}
@@ -54,29 +69,53 @@ export const SidebarContent = NavContentBlueprint.make({
         />
       ));
 
+      const group1 = [
+        nav.take('page:home'),
+        catalogItem && (
+          <SidebarItem
+            key="catalog"
+            icon={FolderIcon}
+            to="catalog"
+            text="Catalog"
+          />
+        ),
+        nav.take('page:techdocs'),
+      ].filter(Boolean);
+
+      const group2 = [
+        nav.take('page:gs/deployments'),
+        nav.take('page:gs/clusters'),
+        nav.take('page:gs/installations'),
+        nav.take('page:flux'),
+      ].filter(Boolean);
+
+      const group3 = [
+        aiChatItem && <AiChatSidebarItem key="ai-chat" />,
+        scaffolderItem && (
+          <SidebarItem
+            icon={CreateComponentIcon}
+            to="create"
+            text="Create..."
+          />
+        ),
+      ].filter(Boolean);
+
+      const menuGroups = [group1, group2, group3].filter(g => g.length > 0);
+
       return compatWrapper(
         <Sidebar>
           <SidebarLogo />
-          <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
-            <SidebarSearchModal />
-          </SidebarGroup>
-          <SidebarDivider />
+
+          {searchItem && (
+            <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
+              <SidebarSearchModal />
+            </SidebarGroup>
+          )}
           <SidebarGroup label="Menu" icon={<MenuIcon />}>
-            {nav.take('page:home')}
-            <SidebarItem icon={FolderIcon} to="catalog" text="Catalog" />
-            {nav.take('page:techdocs')}
-            <SidebarDivider />
-            {nav.take('page:gs/deployments')}
-            {nav.take('page:gs/clusters')}
-            {nav.take('page:gs/installations')}
-            {nav.take('page:flux')}
-            <SidebarDivider />
-            <AiChatSidebarItem />
-            <SidebarItem
-              icon={CreateComponentIcon}
-              to="create"
-              text="Create..."
-            />
+            {menuGroups.flatMap((group, i) => [
+              <SidebarDivider key={`divider-${i}`} />,
+              ...group,
+            ])}
           </SidebarGroup>
           <SidebarSpace />
           <SidebarDivider />
