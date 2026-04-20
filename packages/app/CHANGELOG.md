@@ -1,5 +1,19 @@
 # app
 
+## 0.37.0
+
+### Minor Changes
+
+- 52049ca: Update Backstage to 1.50.2.
+- 52049ca: Migrate scaffolder pages to NFS SubPageBlueprint layout.
+- 89aa3f2: Use custom X-Backstage-Token header for Backstage identity tokens to avoid conflicts with ingress-level Basic auth on the Authorization header.
+
+### Patch Changes
+
+- 89aa3f2: Allow hiding the Backstage Identity card on the settings general page via extension config.
+- 89aa3f2: Use `ProxiedSignInPage` with guest provider as fallback when Dex auth is not configured.
+- 89aa3f2: Make sidebar nav items configurable via NFS extensions. Search, catalog, AI chat, and scaffolder sidebar items now respect their extension enabled state. Dividers between groups are only rendered when the group has visible items.
+
 ## 0.36.0
 
 ### Minor Changes

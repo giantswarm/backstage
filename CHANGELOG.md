@@ -25,6 +25,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix AI chat producing empty replies when the model uses a tool by increasing the default step limit.
 - Strip stale tool results from AI chat conversation history to reduce token usage.
 
+See [./docs/releases/v0.122.0-changelog.md](./docs/releases/v0.122.0-changelog.md) for more information.
+
 ## [0.121.0] - 2026-04-14
 
 ### Added
