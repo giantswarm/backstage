@@ -69,6 +69,15 @@ export async function createRouter(
   const router = Router();
   router.use(express.json({ limit: '2mb' }));
 
+  // Resolve base system prompt: config override wins over the bundled file.
+  const configuredSystemPrompt = config
+    .getOptionalString('aiChat.systemPrompt')
+    ?.trim();
+  const baseSystemPrompt = configuredSystemPrompt || defaultSystemPrompt;
+  if (configuredSystemPrompt) {
+    logger.info('Using system prompt override from config');
+  }
+
   // Get model configuration
   const modelName = config.getOptionalString('aiChat.model') ?? 'gpt-4o-mini';
 
@@ -190,7 +199,7 @@ export async function createRouter(
     const mcpResourceTools = createResourceTools(mcpResources);
 
     // Build effective system prompt, including MCP-specific sections as needed
-    let effectiveSystemPrompt = defaultSystemPrompt;
+    let effectiveSystemPrompt = baseSystemPrompt;
     if (connectedServers.includes('muster')) {
       effectiveSystemPrompt += `\n\n${musterSystemPrompt}`;
     }
@@ -198,6 +207,13 @@ export async function createRouter(
       const failureNote = `\n\n---\n**Note:** The following MCP tool server(s) are currently unavailable: ${failedServers.map(s => s.name).join(', ')}. Some tools may not be available. If the user asks about functionality that requires these servers, let them know there's a connectivity issue.`;
       effectiveSystemPrompt += failureNote;
     }
+
+    // Debug metadata is gated on non-production builds in addition to the
+    // request header, so toggling the feature flag in production can never
+    // leak backend internals (system prompt, tool schemas) to the browser.
+    const isDebugRequest =
+      process.env.NODE_ENV !== 'production' &&
+      req.headers['x-ai-chat-debug'] === 'true';
 
     try {
       // Select the appropriate provider based on model type
@@ -257,6 +273,17 @@ export async function createRouter(
         messageCount: deduplicatedMessages.length,
       });
 
+      // Build the combined tool set
+      const allTools = {
+        ...frontendTools(tools),
+        ...mcpTools,
+        ...mcpResourceTools,
+        listSkills,
+        getSkill,
+        ...userTools,
+        ...contextUsageTools,
+      };
+
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
@@ -264,18 +291,7 @@ export async function createRouter(
           : prunedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
-        tools: {
-          ...frontendTools(tools),
-          ...mcpTools,
-          ...mcpResourceTools,
-          // Skill tools
-          listSkills,
-          getSkill,
-          // User tools (request-scoped)
-          ...userTools,
-          // Context usage tool
-          ...contextUsageTools,
-        } as ToolSet,
+        tools: allTools as ToolSet,
         providerOptions: isAnthropicModel
           ? {
               anthropic: {
@@ -310,6 +326,51 @@ export async function createRouter(
       res.setHeader('Transfer-Encoding', 'chunked');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+
+      // When the frontend debug flag is active, attach metadata about what
+      // the backend sends to the LLM so it can be logged in the browser console.
+      // Gated to non-production above, so header size is not a concern here.
+      if (isDebugRequest) {
+        let providerName = 'openai';
+        if (isAnthropicModel) providerName = 'anthropic';
+        else if (isAzureConfigured) providerName = 'azure';
+
+        const toolEntries = Object.entries(allTools).map(([name, t]) => ({
+          name,
+          description: (t as { description?: string }).description,
+        }));
+
+        const debugMeta = {
+          model: modelName,
+          provider: providerName,
+          // Full system prompt the backend prepends to the user messages.
+          systemPrompt: effectiveSystemPrompt,
+          // Tools with descriptions (input schemas omitted to keep the
+          // header under browser/Node limits for large tool catalogs).
+          tools: toolEntries,
+          mcpServers: {
+            connected: connectedServers,
+            failed: failedServers.map(s => s.name),
+          },
+          providerOptions: isAnthropicModel
+            ? { thinking: { type: 'enabled', budgetTokens: 10000 } }
+            : undefined,
+          // Message transformations applied server-side (useful to spot
+          // when the frontend's messages differ from what the LLM sees).
+          messageCount: sanitizedMessages.length,
+          hadUnsupportedContent,
+        };
+        // Base64-encode so non-ASCII characters in the system prompt or
+        // tool descriptions don't violate HTTP header byte restrictions.
+        res.setHeader(
+          'X-AI-Chat-Debug-Meta',
+          Buffer.from(JSON.stringify(debugMeta), 'utf-8').toString('base64'),
+        );
+        // Browsers hide non-standard response headers from JavaScript on
+        // cross-origin requests unless explicitly exposed. Frontend on
+        // :3000, backend on :7007 makes every request cross-origin.
+        res.setHeader('Access-Control-Expose-Headers', 'X-AI-Chat-Debug-Meta');
+      }
 
       result.pipeUIMessageStreamToResponse(res);
     } catch (error) {

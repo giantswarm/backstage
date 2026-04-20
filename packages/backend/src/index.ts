@@ -1,8 +1,15 @@
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
-import { rootLogger } from '@internal/backend-common';
+import {
+  customHttpAuthServiceFactory,
+  rootLogger,
+} from '@internal/backend-common';
 
 const backend = createBackend();
+
+// Override default httpAuth to read tokens from X-Backstage-Token header,
+// avoiding conflicts with ingress-level Basic auth on the Authorization header.
+backend.add(customHttpAuthServiceFactory);
 
 backend.add(import('@backstage/plugin-app-backend'));
 backend.add(import('@backstage/plugin-proxy-backend'));
@@ -26,6 +33,9 @@ backend.add(import('@giantswarm/backstage-plugin-techdocs-backend-module-gs'));
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
+if (process.env.ENABLE_GUEST_AUTH) {
+  backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
+}
 backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
 backend.add(import('@giantswarm/backstage-plugin-auth-backend-module-gs'));
 

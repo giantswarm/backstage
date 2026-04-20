@@ -18,6 +18,7 @@ import {
 } from 'ai';
 import useAsync from 'react-use/esm/useAsync';
 import { mcpAuthProvidersApiRef } from '../api';
+import { createDebugFetch } from './createDebugFetch';
 
 /**
  * Tools whose results are rendered as self-contained UI cards.
@@ -64,6 +65,17 @@ export function useChatSetup() {
   const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
   const featureFlagsApi = useApi(featureFlagsApiRef);
   const conversationIdRef = useRef<string | null>(null);
+
+  // Verbose debugging is only enabled in non-production builds to avoid
+  // leaking backend internals (system prompt, tool schemas) to end users
+  // who toggle the feature flag in production.
+  const verboseDebugging =
+    process.env.NODE_ENV !== 'production' &&
+    featureFlagsApi.isActive('ai-chat-verbose-debugging');
+  const debugFetch = useMemo(
+    () => (verboseDebugging ? createDebugFetch() : undefined),
+    [verboseDebugging],
+  );
 
   const { value: apiUrl } = useAsync(async () => {
     const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
@@ -128,17 +140,19 @@ export function useChatSetup() {
     const mcpHeaders = await getMCPAuthHeaders();
 
     return {
-      Authorization: `Bearer ${token}`,
+      'X-Backstage-Token': `Bearer ${token}`,
       'X-Conversation-Id': conversationIdRef.current,
+      ...(verboseDebugging && { 'X-AI-Chat-Debug': 'true' }),
       ...mcpHeaders,
     };
-  }, [identityApi, getMCPAuthHeaders, featureFlagsApi]);
+  }, [identityApi, getMCPAuthHeaders, featureFlagsApi, verboseDebugging]);
 
   const runtime = useChatRuntime({
     sendAutomaticallyWhen: shouldSendAutomatically,
     transport: new AssistantChatTransport({
       api: apiUrl,
       headers: getHeaders,
+      fetch: debugFetch,
     }),
   });
 
