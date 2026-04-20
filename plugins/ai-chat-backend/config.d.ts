@@ -53,6 +53,14 @@ export interface Config {
     /** Model to use for AI chat (default: gpt-4o-mini) */
     model?: string;
 
+    /**
+     * Optional: override the built-in system prompt. If set and non-empty,
+     * replaces the bundled systemPrompt.md. MCP-specific additions (e.g.
+     * muster prompt, failed-server notes) are still appended.
+     * @visibility backend
+     */
+    systemPrompt?: string;
+
     /** Optional: MCP servers configuration */
     mcp?: Array<{
       /** Name of the MCP server */

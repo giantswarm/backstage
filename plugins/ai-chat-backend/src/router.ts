@@ -66,6 +66,15 @@ export async function createRouter(
   const router = Router();
   router.use(express.json({ limit: '2mb' }));
 
+  // Resolve base system prompt: config override wins over the bundled file.
+  const configuredSystemPrompt = config
+    .getOptionalString('aiChat.systemPrompt')
+    ?.trim();
+  const baseSystemPrompt = configuredSystemPrompt || defaultSystemPrompt;
+  if (configuredSystemPrompt) {
+    logger.info('Using system prompt override from config');
+  }
+
   // Get model configuration
   const modelName = config.getOptionalString('aiChat.model') ?? 'gpt-4o-mini';
 
@@ -187,7 +196,7 @@ export async function createRouter(
     const mcpResourceTools = createResourceTools(mcpResources);
 
     // Build effective system prompt, including MCP-specific sections as needed
-    let effectiveSystemPrompt = defaultSystemPrompt;
+    let effectiveSystemPrompt = baseSystemPrompt;
     if (connectedServers.includes('muster')) {
       effectiveSystemPrompt += `\n\n${musterSystemPrompt}`;
     }
