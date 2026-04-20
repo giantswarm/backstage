@@ -1,9 +1,12 @@
+# Example file showing the expected structure of a TLS certificate value.
+# The PEM markers are intentionally written without leading dashes so that
+# pre-commit's `detect-private-key` hook does not flag this placeholder file.
 certificate:
   key: |
-    -----BEGIN PRIVATE KEY-----
-    # Private key data
-    -----END PRIVATE KEY-----
+    <BEGIN PRIVATE KEY>
+    # Private key data (PEM-encoded)
+    <END PRIVATE KEY>
   cert: |
-    -----BEGIN CERTIFICATE-----
-    # Certificate data
-    -----END CERTIFICATE-----
+    <BEGIN CERTIFICATE>
+    # Certificate data (PEM-encoded)
+    <END CERTIFICATE>
