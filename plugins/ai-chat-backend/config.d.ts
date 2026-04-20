@@ -25,6 +25,19 @@ export interface Config {
        * @visibility backend
        */
       baseUrl?: string;
+      /**
+       * Which OpenAI-compatible endpoint to talk to:
+       *   - "responses" (default): the OpenAI Responses API
+       *     (`/v1/responses`). Recommended for real OpenAI.
+       *   - "chat": the OpenAI Chat Completions API
+       *     (`/v1/chat/completions`). Use this for vLLM and other
+       *     OpenAI-compatible servers that don't yet implement the
+       *     Responses API correctly (notably vLLM <= 0.x crashes with
+       *     `KeyError: 'role'` when the SDK posts `function_call_output`
+       *     items back to `/v1/responses`).
+       * @visibility backend
+       */
+      api?: 'responses' | 'chat';
     };
 
     azure?: {

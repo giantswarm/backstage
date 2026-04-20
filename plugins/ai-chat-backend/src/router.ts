@@ -89,6 +89,15 @@ export async function createRouter(
   // Get OpenAI configuration
   const openaiApiKey = config.getOptionalString('aiChat.openai.apiKey');
   const openaiBaseUrl = config.getOptionalString('aiChat.openai.baseUrl');
+  // Selects which OpenAI-compatible endpoint we POST to. `responses`
+  // (the SDK default) talks to `/v1/responses`; `chat` talks to
+  // `/v1/chat/completions`. The latter is required for OpenAI-compatible
+  // servers (notably vLLM) that crash on Responses-API tool replies
+  // with `KeyError: 'role'`.
+  const openaiApi =
+    config.getOptionalString('aiChat.openai.api') === 'chat'
+      ? 'chat'
+      : 'responses';
 
   // Get Anthropic configuration
   const anthropicApiKey = config.getOptionalString('aiChat.anthropic.apiKey');
@@ -225,7 +234,9 @@ export async function createRouter(
       // When Azure is configured, non-Anthropic models route through Azure
       const openaiCompatibleModel = isAzureConfigured
         ? azure.chat(modelName)
-        : openai(modelName);
+        : openaiApi === 'chat'
+          ? openai.chat(modelName)
+          : openai(modelName);
       const selectedModel = isAnthropicModel
         ? anthropic(modelName)
         : openaiCompatibleModel;

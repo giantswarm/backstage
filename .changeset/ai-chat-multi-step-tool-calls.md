@@ -13,3 +13,10 @@ disappears.
 
 Set `stopWhen: stepCountIs(20)` so the agent loop runs to completion, and
 expose the cap as a new optional `aiChat.maxSteps` config (default `20`).
+
+Also add an optional `aiChat.openai.api` config (`"responses"` (default) or
+`"chat"`) so OpenAI-compatible servers that haven't implemented the Responses
+API can still be targeted via `/v1/chat/completions`. This is required for
+vLLM, where posting `function_call_output` items back to `/v1/responses`
+crashes the API server with `KeyError: 'role'` and the AI SDK then surfaces
+`"Failed after 3 attempts. Last error: 'role'"` to the chat client.
