@@ -2898,13 +2898,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@babel/runtime@npm:^7.11.0":
-  version: 7.28.2
-  resolution: "@babel/runtime@npm:7.28.2"
-  checksum: 10c0/c20afe253629d53a405a610b12a62ac74d341a2c1e0fb202bbef0c118f6b5c84f94bf16039f58fd0483dd256901259930a43976845bdeb180cab1f882c21b6e0
-  languageName: node
-  linkType: hard
-
 "@babel/runtime@npm:^7.17.8, @babel/runtime@npm:^7.20.13, @babel/runtime@npm:^7.26.0":
   version: 7.28.4
   resolution: "@babel/runtime@npm:7.28.4"
@@ -39003,10 +38996,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-merge-refs@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "react-merge-refs@npm:1.1.0"
-  checksum: 10c0/afb937156d834a058e5021535a63fd8a35984365c38b613478c31186da920b3b469e38b0b161a2075fbf5db7118fb8e96bb8a52a563f271d8f8f166fe8ffe2a4
+"react-merge-refs@npm:3.0.2":
+  version: 3.0.2
+  resolution: "react-merge-refs@npm:3.0.2"
+  peerDependencies:
+    react: ">=16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0"
+  peerDependenciesMeta:
+    react:
+      optional: true
+  checksum: 10c0/520911aa7269cd2feab7dde8189d0b6a640765c1ee279b1712891ad871c2e90284578e23cdef32ba07f6e44df206ba12e998fd1634dc37358d1563d49f50eb93
   languageName: node
   linkType: hard
 
@@ -39361,16 +39359,15 @@ __metadata:
   linkType: hard
 
 "react-vtree@npm:^3.0.0-beta.0":
-  version: 3.0.0-beta.3
-  resolution: "react-vtree@npm:3.0.0-beta.3"
+  version: 3.0.0
+  resolution: "react-vtree@npm:3.0.0"
   dependencies:
-    "@babel/runtime": "npm:^7.11.0"
-    react-merge-refs: "npm:^1.1.0"
+    react-merge-refs: "npm:3.0.2"
   peerDependencies:
-    react: ">= 16.8"
-    react-dom: ">= 16.8"
+    react: ">=18"
+    react-dom: ">=18"
     react-window: ">= 1.8.5"
-  checksum: 10c0/e06c618eb6dcf2af417ce34ba5a21a17141507d5e8b6ecaef1cad00270635ce3ae9ddc8ca0f1fff48418513f7b29606921494770ee936831c96592dd1ee60334
+  checksum: 10c0/ca49d8fa49710960607924358322b11c06a52344490c4cb6dd809dbaa963812cc13f772549bb78a18ad6a978bc1ef98990da770a8f2ca9322b07b321a8d8ce12
   languageName: node
   linkType: hard
 
