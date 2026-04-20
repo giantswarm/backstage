@@ -34,6 +34,13 @@ app:
     - entity-content:api-docs/apis: false
 
     - entity-context-menu-item:catalog/unregister-entity: false
+
+    - page:scaffolder:
+        config:
+          title: Create things
+    - sub-page:scaffolder/actions: false
+    - sub-page:scaffolder/editor: false
+    - sub-page:scaffolder/templating-extensions: false
   routes:
     bindings:
       catalog.createComponent: scaffolder.root

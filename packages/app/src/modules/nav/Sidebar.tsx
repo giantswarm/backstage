@@ -10,6 +10,7 @@ import { useApiHolder } from '@backstage/core-plugin-api';
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
+import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import FolderIcon from '@material-ui/icons/Folder';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
@@ -71,7 +72,11 @@ export const SidebarContent = NavContentBlueprint.make({
             {nav.take('page:flux')}
             <SidebarDivider />
             <AiChatSidebarItem />
-            {nav.take('page:scaffolder')}
+            <SidebarItem
+              icon={CreateComponentIcon}
+              to="create"
+              text="Create..."
+            />
           </SidebarGroup>
           <SidebarSpace />
           <SidebarDivider />
