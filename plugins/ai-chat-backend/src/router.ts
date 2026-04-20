@@ -235,11 +235,14 @@ export async function createRouter(
     try {
       // Select the appropriate provider based on model type
       // When Azure is configured, non-Anthropic models route through Azure
-      const openaiCompatibleModel = isAzureConfigured
-        ? azure.chat(modelName)
-        : openaiApi === 'chat'
-          ? openai.chat(modelName)
-          : openai(modelName);
+      let openaiCompatibleModel;
+      if (isAzureConfigured) {
+        openaiCompatibleModel = azure.chat(modelName);
+      } else if (openaiApi === 'chat') {
+        openaiCompatibleModel = openai.chat(modelName);
+      } else {
+        openaiCompatibleModel = openai(modelName);
+      }
       const selectedModel = isAnthropicModel
         ? anthropic(modelName)
         : openaiCompatibleModel;
