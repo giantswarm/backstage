@@ -61,6 +61,13 @@ export interface Config {
      */
     systemPrompt?: string;
 
+    /**
+     * Maximum number of agent steps (model invocations) per chat turn.
+     * Each tool call consumes one step, so this also bounds tool-call depth.
+     * Defaults to 20.
+     */
+    maxSteps?: number;
+
     /** Optional: MCP servers configuration */
     mcp?: Array<{
       /** Name of the MCP server */

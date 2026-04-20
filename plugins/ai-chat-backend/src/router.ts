@@ -11,6 +11,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
 import {
   convertToModelMessages,
+  stepCountIs,
   streamText,
   ToolSet,
   UIMessage,
@@ -77,6 +78,13 @@ export async function createRouter(
 
   // Get model configuration
   const modelName = config.getOptionalString('aiChat.model') ?? 'gpt-4o-mini';
+
+  // Maximum number of agent steps (model invocations) per chat turn.
+  // Each tool call consumes one step, so this also bounds tool-call depth.
+  // Required since `ai` v6, where `streamText` defaults to `stepCountIs(1)`
+  // and would otherwise terminate the assistant turn immediately after the
+  // first tool call, before the model ever sees the tool result.
+  const maxSteps = config.getOptionalNumber('aiChat.maxSteps') ?? 20;
 
   // Get OpenAI configuration
   const openaiApiKey = config.getOptionalString('aiChat.openai.apiKey');
@@ -273,6 +281,7 @@ export async function createRouter(
           : sanitizedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
+        stopWhen: stepCountIs(maxSteps),
         tools: allTools as ToolSet,
         providerOptions: isAnthropicModel
           ? {
