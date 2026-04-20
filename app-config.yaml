@@ -189,6 +189,15 @@ aiChat:
   # Model to use (default: gpt-4o-mini)
   model: gpt-4o-mini
 
+  # Optional: override the built-in system prompt. MCP-specific additions
+  # (e.g. muster prompt, failed-server notes) are still appended.
+  # Inline:
+  #   systemPrompt: |
+  #     You are a helpful assistant...
+  # Or load from a file:
+  #   systemPrompt:
+  #     $file: ./my-system-prompt.md
+
   # Optional: MCP servers configuration
   # mcp:
   #   - name: backstage-actions
