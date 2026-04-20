@@ -3,6 +3,7 @@ import {
   PageBlueprint,
   NavItemBlueprint,
   ApiBlueprint,
+  ExtensionDefinition,
 } from '@backstage/frontend-plugin-api';
 import {
   EntityCardBlueprint,
@@ -635,7 +636,7 @@ export const gsPlugin = createFrontendPlugin({
     secretYamlValuesEditorFormField,
     yamlValuesValidationFormField,
     valueSourcesEditorFormField,
-  ],
+  ] as ExtensionDefinition[],
   routes: {
     root: rootRouteRef,
     clustersPage: clustersRouteRef,
