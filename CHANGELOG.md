@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.122.3] - 2026-04-21
+
+### Changed
+
+- Stream reasoning tokens live in the AI chat and redesign the Reasoning block: auto-opens while the model is reasoning, "Thinking Xs…" / "Thought for Ys" trigger, char-by-char text reveal with auto-scroll, borderless quote-style visual aligned with modern chat UIs.
+
+See [./docs/releases/v0.122.3-changelog.md](./docs/releases/v0.122.3-changelog.md) for more information.
+
 ## [0.122.2] - 2026-04-21
 
 ### Changed
