@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add configurable welcome screen title, subtitle, and suggestions for the AI chat.
+
+### Changed
+
+- Redesign AI chat layout with PluginHeader, sticky composer, scroll-on-send behavior, and polished UI styling.
+
 ## [0.122.0] - 2026-04-20
 
 ### Added
