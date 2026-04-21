@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.122.1] - 2026-04-21
+
 ### Added
 
 - Add configurable welcome screen title, subtitle, and suggestions for the AI chat.
@@ -2264,7 +2266,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.1...HEAD
+[0.122.1]: https://github.com/giantswarm/backstage/compare/v0.122.0...v0.122.1
 [0.122.0]: https://github.com/giantswarm/backstage/compare/v0.121.0...v0.122.0
 [0.121.0]: https://github.com/giantswarm/backstage/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/giantswarm/backstage/compare/v0.119.0...v0.120.0
