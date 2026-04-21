@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -6,6 +6,8 @@ import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
   useAssistantApi,
+  useThreadViewportStore,
+  useAuiEvent,
 } from '@assistant-ui/react';
 import { useApi, featureFlagsApiRef } from '@backstage/core-plugin-api';
 import IconButton from '@material-ui/core/IconButton';
@@ -322,6 +324,28 @@ const LoadingIndicator = () => {
   );
 };
 
+const useScrollToBottomOnSend = (usePageScroll: boolean) => {
+  const threadViewportStore = useThreadViewportStore();
+  useAuiEvent(
+    'composer.send',
+    useCallback(() => {
+      // Delay to allow the user message and "Thinking..." indicator to render
+      setTimeout(() => {
+        if (usePageScroll) {
+          document.documentElement.scrollTo({
+            top: document.documentElement.scrollHeight,
+            behavior: 'instant',
+          });
+        } else {
+          threadViewportStore
+            .getState()
+            .scrollToBottom({ behavior: 'instant' });
+        }
+      }, 100);
+    }, [usePageScroll, threadViewportStore]),
+  );
+};
+
 export const Thread = ({
   className,
   isSticky = true,
@@ -330,11 +354,13 @@ export const Thread = ({
   isSticky?: boolean;
 }) => {
   const classes = useStyles();
+  useScrollToBottomOnSend(isSticky);
 
   return (
     <ThreadPrimitive.Root className={className ?? classes.root}>
       <ThreadPrimitive.Viewport
         className={classes.messagesContainer}
+        autoScroll={false}
         scrollToBottomOnRunStart={false}
       >
         <ThreadPrimitive.Empty>
