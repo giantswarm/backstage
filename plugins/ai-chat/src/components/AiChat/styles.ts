@@ -105,6 +105,9 @@ export const useStyles = makeStyles((theme: Theme) =>
     composerContainerSticky: {
       position: 'sticky',
       bottom: 0,
+      [theme.breakpoints.down('xs')]: {
+        bottom: '56px',
+      },
       zIndex: 1,
       paddingBottom: theme.spacing(3),
       backgroundColor: 'var(--bui-bg-app)',
