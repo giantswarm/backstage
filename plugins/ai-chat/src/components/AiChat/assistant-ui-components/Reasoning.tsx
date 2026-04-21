@@ -1,73 +1,90 @@
-import { memo, useRef, useState } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import Collapse from '@material-ui/core/Collapse';
-import AutorenewIcon from '@material-ui/icons/Autorenew';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import {
   useAssistantState,
+  useMessagePartReasoning,
   type ReasoningMessagePartComponent,
   type ReasoningGroupComponent,
 } from '@assistant-ui/react';
-import { MarkdownText } from './MarkdownText';
 
-const ANIMATION_DURATION = 200;
+const ANIMATION_DURATION = 220;
+
+// How long the reasoning block stays open after the model has finished
+// streaming this reasoning step before it auto-collapses to the
+// "Thought for Xs" pill. Long enough to read the final lines, short enough
+// to feel snappy.
+const AUTO_COLLAPSE_DELAY_MS = 800;
+
+// Characters revealed per animation frame while reasoning text is streaming.
+// Mirrors StreamingMarkdownText so reasoning visibly types out token-by-token
+// even when the SDK delivers several deltas in one React render.
+const CHARS_PER_FRAME = 5;
+
+// Animate reasoning that was emitted within this window to handle the case
+// where SSE chunks arrive batched (one TCP read -> one React commit).
+const NEW_MESSAGE_THRESHOLD_MS = 10_000;
 
 const useReasoningStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
-      marginBottom: theme.spacing(2),
       width: '100%',
-    },
-    rootOutline: {
-      borderRadius: 'var(--bui-radius-3)',
-      border: `1px solid ${theme.palette.divider}`,
-      paddingTop: theme.spacing(1.5),
-      paddingBottom: theme.spacing(1.5),
-    },
-    rootMuted: {
-      borderRadius: theme.spacing(1),
-      border: `1px solid ${theme.palette.divider}`,
-      backgroundColor: 'var(--bui-bg-neutral-2)',
-      paddingTop: theme.spacing(1.5),
-      paddingBottom: theme.spacing(1.5),
+      marginTop: theme.spacing(0.5),
+      marginBottom: theme.spacing(1.5),
     },
     trigger: {
-      display: 'flex',
-      maxWidth: '75%',
+      display: 'inline-flex',
       alignItems: 'center',
-      gap: theme.spacing(1),
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(2),
-      color: theme.palette.text.secondary,
-      fontSize: '0.875rem',
-      transition: theme.transitions.create('color'),
-      cursor: 'pointer',
+      gap: theme.spacing(0.75),
+      padding: 0,
+      margin: 0,
       border: 'none',
       background: 'none',
       font: 'inherit',
-      outline: 'inherit',
+      color: theme.palette.text.secondary,
+      fontSize: '0.8125rem',
+      lineHeight: 1.4,
+      cursor: 'pointer',
+      outline: 'none',
+      transition: theme.transitions.create('color'),
       '&:hover': {
         color: theme.palette.text.primary,
       },
+      '&:focus-visible': {
+        color: theme.palette.text.primary,
+        textDecoration: 'underline',
+      },
     },
-    triggerIcon: {
-      width: 16,
-      height: 16,
-      flexShrink: 0,
+    triggerActive: {
+      color: theme.palette.text.primary,
     },
-    triggerLabelWrapper: {
+    triggerLabel: {
       position: 'relative',
       display: 'inline-block',
-      lineHeight: 1,
+      lineHeight: 1.4,
     },
     triggerShimmer: {
       pointerEvents: 'none',
       position: 'absolute',
       inset: 0,
-      animation: `$shimmer 2s linear infinite`,
-      background:
-        'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%)',
+      backgroundImage:
+        theme.palette.type === 'dark'
+          ? 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)'
+          : 'linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.45) 50%, transparent 100%)',
       backgroundSize: '200% 100%',
+      backgroundClip: 'text',
+      WebkitBackgroundClip: 'text',
+      color: 'transparent',
+      WebkitTextFillColor: 'transparent',
+      animation: `$shimmer 2.2s linear infinite`,
     },
     '@keyframes shimmer': {
       '0%': {
@@ -78,11 +95,11 @@ const useReasoningStyles = makeStyles((theme: Theme) =>
       },
     },
     triggerChevron: {
-      marginTop: 2,
-      width: 16,
-      height: 16,
+      width: 14,
+      height: 14,
       flexShrink: 0,
       transition: `transform ${ANIMATION_DURATION}ms ease-out`,
+      opacity: 0.6,
     },
     triggerChevronClosed: {
       transform: 'rotate(-90deg)',
@@ -91,224 +108,128 @@ const useReasoningStyles = makeStyles((theme: Theme) =>
       transform: 'rotate(0deg)',
     },
     content: {
-      position: 'relative',
-      overflow: 'hidden',
-      color: theme.palette.text.secondary,
-      fontSize: '0.875rem',
-      outline: 'none',
+      paddingTop: theme.spacing(0.75),
     },
     text: {
-      position: 'relative',
-      zIndex: 0,
-      maxHeight: 256,
+      borderLeft: `2px solid ${theme.palette.divider}`,
+      paddingLeft: theme.spacing(1.5),
+      paddingTop: theme.spacing(0.25),
+      paddingBottom: theme.spacing(0.25),
+      maxHeight: 240,
       overflowY: 'auto',
-      paddingTop: theme.spacing(1),
-      paddingBottom: theme.spacing(1),
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(2),
-      lineHeight: 1.6,
+      color: theme.palette.text.secondary,
+      fontStyle: 'italic',
+      fontSize: '0.8125rem',
+      lineHeight: 1.55,
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
+      scrollbarWidth: 'thin',
+      '&::-webkit-scrollbar': {
+        width: 4,
+      },
+      '&::-webkit-scrollbar-thumb': {
+        backgroundColor: theme.palette.divider,
+        borderRadius: 2,
+      },
     },
-    fade: {
-      pointerEvents: 'none',
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 10,
-      height: 32,
-      background:
-        theme.palette.type === 'dark'
-          ? 'linear-gradient(to top, rgba(18, 18, 18, 1), transparent)'
-          : 'linear-gradient(to top, rgba(255, 255, 255, 1), transparent)',
-    },
-    fadeMuted: {
-      background:
-        theme.palette.type === 'dark'
-          ? 'linear-gradient(to top, rgba(255, 255, 255, 0.05), transparent)'
-          : 'linear-gradient(to top, rgba(0, 0, 0, 0.03), transparent)',
+    textActive: {
+      borderLeftColor: theme.palette.primary.main,
     },
   }),
 );
 
-export type ReasoningRootProps = {
-  className?: string;
-  variant?: 'default' | 'outline' | 'muted';
-  open?: boolean;
-  defaultOpen?: boolean;
-  children?: React.ReactNode;
-};
-
-function ReasoningRoot({
-  className,
-  variant = 'default',
-  open,
-  defaultOpen = false,
-  children,
-}: ReasoningRootProps) {
+/**
+ * Per-part reasoning renderer. Reads the reasoning part text via
+ * `useMessagePartReasoning` (only valid inside a reasoning message-part
+ * subtree, which is what assistant-ui sets up for us when this is mounted as
+ * the `Reasoning` slot in `MessagePrimitive.Parts`). Reveals characters at a
+ * steady pace so reasoning visibly types out even when SSE chunks arrive
+ * batched, and auto-scrolls the container to keep the latest tokens in view.
+ */
+const ReasoningImpl: ReasoningMessagePartComponent = () => {
   const classes = useReasoningStyles();
-  const collapsibleRef = useRef<HTMLDivElement>(null);
+  const { text: targetText, status } = useMessagePartReasoning();
 
-  const isOpen = open ?? defaultOpen;
-
-  const rootClasses = [
-    classes.root,
-    variant === 'outline' && classes.rootOutline,
-    variant === 'muted' && classes.rootMuted,
-    className,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  return (
-    <div
-      ref={collapsibleRef}
-      data-slot="reasoning-root"
-      data-variant={variant}
-      data-state={isOpen ? 'open' : 'closed'}
-      className={rootClasses}
-      style={
-        {
-          '--animation-duration': `${ANIMATION_DURATION}ms`,
-        } as React.CSSProperties
-      }
-    >
-      {children}
-    </div>
+  const isStreaming = status.type === 'running';
+  const createdAt = useAssistantState(
+    ({ message }) => message.createdAt as Date | undefined,
   );
-}
+  const isNewMessage =
+    Date.now() - (createdAt?.getTime?.() ?? 0) < NEW_MESSAGE_THRESHOLD_MS;
+  const shouldAnimate = isStreaming || isNewMessage;
 
-function ReasoningFade({
-  className,
-  variant,
-  ...props
-}: React.ComponentProps<'div'> & {
-  variant?: 'default' | 'outline' | 'muted';
-}) {
-  const classes = useReasoningStyles();
+  const revealedRef = useRef(shouldAnimate ? 0 : targetText.length);
+  const [displayedText, setDisplayedText] = useState(() =>
+    shouldAnimate ? '' : targetText,
+  );
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      revealedRef.current = targetText.length;
+      setDisplayedText(targetText);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled || revealedRef.current >= targetText.length) return;
+      const newLen = Math.min(
+        revealedRef.current + CHARS_PER_FRAME,
+        targetText.length,
+      );
+      revealedRef.current = newLen;
+      setDisplayedText(targetText.slice(0, newLen));
+      if (newLen < targetText.length) {
+        requestAnimationFrame(tick);
+      }
+    };
+    requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldAnimate, targetText]);
+
+  // Keep the latest tokens in view while streaming. Once the stream ends and
+  // the container is scrolled by the user, leave it alone.
+  useLayoutEffect(() => {
+    if (!isStreaming) return;
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [displayedText, isStreaming]);
 
   return (
     <div
-      data-slot="reasoning-fade"
-      className={[
-        classes.fade,
-        variant === 'muted' && classes.fadeMuted,
-        className,
-      ]
+      ref={containerRef}
+      data-slot="reasoning-text"
+      className={[classes.text, isStreaming ? classes.textActive : '']
         .filter(Boolean)
         .join(' ')}
-      {...props}
-    />
-  );
-}
-
-function ReasoningTrigger({
-  active,
-  duration,
-  className,
-  onClick,
-  isOpen,
-  ...props
-}: {
-  active?: boolean;
-  duration?: number;
-  className?: string;
-  onClick?: () => void;
-  isOpen?: boolean;
-}) {
-  const classes = useReasoningStyles();
-  const durationText = duration ? ` (${duration}s)` : '';
-
-  return (
-    <button
-      type="button"
-      data-slot="reasoning-trigger"
-      data-state={isOpen ? 'open' : 'closed'}
-      className={[classes.trigger, className].filter(Boolean).join(' ')}
-      onClick={onClick}
-      {...props}
+      aria-busy={isStreaming}
     >
-      <AutorenewIcon
-        data-slot="reasoning-trigger-icon"
-        className={classes.triggerIcon}
-      />
-      <span
-        data-slot="reasoning-trigger-label"
-        className={classes.triggerLabelWrapper}
-      >
-        <span>Reasoning{durationText}</span>
-        {active ? (
-          <span
-            aria-hidden
-            data-slot="reasoning-trigger-shimmer"
-            className={classes.triggerShimmer}
-          >
-            Reasoning{durationText}
-          </span>
-        ) : null}
-      </span>
-      <ExpandMoreIcon
-        data-slot="reasoning-trigger-chevron"
-        className={[
-          classes.triggerChevron,
-          isOpen ? classes.triggerChevronOpen : classes.triggerChevronClosed,
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      />
-    </button>
+      {displayedText}
+    </div>
   );
-}
+};
 
-function ReasoningContent({
-  className,
-  children,
-  isOpen,
-  variant,
-  ...props
-}: {
-  className?: string;
-  children?: React.ReactNode;
-  isOpen?: boolean;
-  variant?: 'default' | 'outline' | 'muted';
-} & Omit<React.HTMLAttributes<HTMLDivElement>, 'children' | 'className'>) {
-  const classes = useReasoningStyles();
-
-  return (
-    <Collapse
-      in={isOpen}
-      timeout={ANIMATION_DURATION}
-      className={[classes.content, className].filter(Boolean).join(' ')}
-    >
-      <div
-        data-slot="reasoning-content"
-        data-state={isOpen ? 'open' : 'closed'}
-        {...props}
-      >
-        {children}
-      </div>
-    </Collapse>
-  );
-}
-
-function ReasoningText({ className, ...props }: React.ComponentProps<'div'>) {
-  const classes = useReasoningStyles();
-
-  return (
-    <div
-      data-slot="reasoning-text"
-      className={[classes.text, className].filter(Boolean).join(' ')}
-      {...props}
-    />
-  );
-}
-
-const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
-
+/**
+ * Wraps the per-part reasoning renderers in a collapsible block with a
+ * "Thinking 5s..." -> "Thought for 12s" trigger. Auto-opens while the model
+ * is reasoning and auto-closes shortly after it moves on, while still letting
+ * the user override either way with a click.
+ */
 const ReasoningGroupImpl: ReasoningGroupComponent = ({
-  children,
   startIndex,
   endIndex,
+  children,
+}: {
+  startIndex: number;
+  endIndex: number;
+  children?: ReactNode;
 }) => {
+  const classes = useReasoningStyles();
+
   const isReasoningStreaming = useAssistantState(({ message }) => {
     if (message.status?.type !== 'running') return false;
     const lastIndex = message.content.length - 1;
@@ -318,46 +239,136 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({
     return lastIndex >= startIndex && lastIndex <= endIndex;
   });
 
-  const [isOpen, setIsOpen] = useState(false);
+  // Track elapsed reasoning time so we can show a live "Thinking 5s..."
+  // counter while streaming and a final "Thought for 12s" once the model
+  // moves on to a tool call or the answer.
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [finalDuration, setFinalDuration] = useState<number | null>(null);
 
-  const variant = 'muted';
+  useEffect(() => {
+    if (isReasoningStreaming) {
+      if (startedAtRef.current === null) {
+        startedAtRef.current = Date.now();
+        setElapsedSeconds(0);
+        setFinalDuration(null);
+      }
+      const interval = window.setInterval(() => {
+        if (startedAtRef.current !== null) {
+          setElapsedSeconds(
+            Math.floor((Date.now() - startedAtRef.current) / 1000),
+          );
+        }
+      }, 250);
+      return () => window.clearInterval(interval);
+    }
+
+    if (startedAtRef.current !== null) {
+      setFinalDuration(
+        Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
+      );
+      startedAtRef.current = null;
+    }
+    return undefined;
+  }, [isReasoningStreaming]);
+
+  // Auto-open while streaming, auto-close shortly after the model moves on.
+  // Historical messages (loaded after page reload, etc.) start collapsed so
+  // the user isn't blasted with old reasoning when they reopen the chat.
+  // A manual click overrides either side and sticks for this group instance.
+  const [userOverride, setUserOverride] = useState<boolean | null>(null);
+  const wasEverStreamingRef = useRef(isReasoningStreaming);
+  const [isOpen, setIsOpen] = useState(isReasoningStreaming);
+
+  useEffect(() => {
+    if (userOverride !== null) {
+      setIsOpen(userOverride);
+      return undefined;
+    }
+    if (isReasoningStreaming) {
+      wasEverStreamingRef.current = true;
+      setIsOpen(true);
+      return undefined;
+    }
+    // Only auto-collapse if we actually saw the stream start in this session;
+    // otherwise this is a historical message and the block is already closed.
+    if (!wasEverStreamingRef.current) return undefined;
+    const timer = window.setTimeout(
+      () => setIsOpen(false),
+      AUTO_COLLAPSE_DELAY_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [isReasoningStreaming, userOverride]);
+
+  const triggerLabel = (() => {
+    if (isReasoningStreaming) {
+      return elapsedSeconds > 0
+        ? `Thinking ${elapsedSeconds}s\u2026`
+        : 'Thinking\u2026';
+    }
+    if (finalDuration && finalDuration > 0) {
+      return `Thought for ${finalDuration}s`;
+    }
+    return 'Reasoning';
+  })();
+
+  const handleToggle = () => {
+    setUserOverride(prev => {
+      const current = prev !== null ? prev : isOpen;
+      return !current;
+    });
+  };
 
   return (
-    <ReasoningRoot variant={variant} open={isOpen}>
-      <ReasoningTrigger
-        active={isReasoningStreaming}
-        onClick={() => setIsOpen(!isOpen)}
-        isOpen={isOpen}
-      />
-      <ReasoningContent
-        aria-busy={isReasoningStreaming}
-        isOpen={isOpen}
-        variant={variant}
+    <div
+      data-slot="reasoning-root"
+      data-state={isOpen ? 'open' : 'closed'}
+      className={classes.root}
+    >
+      <button
+        type="button"
+        data-slot="reasoning-trigger"
+        data-state={isOpen ? 'open' : 'closed'}
+        onClick={handleToggle}
+        className={[
+          classes.trigger,
+          isReasoningStreaming ? classes.triggerActive : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        aria-expanded={isOpen}
       >
-        <ReasoningText>{children}</ReasoningText>
-      </ReasoningContent>
-    </ReasoningRoot>
+        <span className={classes.triggerLabel}>
+          <span>{triggerLabel}</span>
+          {isReasoningStreaming ? (
+            <span aria-hidden className={classes.triggerShimmer}>
+              {triggerLabel}
+            </span>
+          ) : null}
+        </span>
+        <ExpandMoreIcon
+          className={[
+            classes.triggerChevron,
+            isOpen ? classes.triggerChevronOpen : classes.triggerChevronClosed,
+          ].join(' ')}
+        />
+      </button>
+
+      <Collapse in={isOpen} timeout={ANIMATION_DURATION}>
+        <div className={classes.content} data-slot="reasoning-content">
+          {children}
+        </div>
+      </Collapse>
+    </div>
   );
 };
 
-const Reasoning = memo(
-  ReasoningImpl,
-) as unknown as ReasoningMessagePartComponent & {
-  Root: typeof ReasoningRoot;
-  Trigger: typeof ReasoningTrigger;
-  Content: typeof ReasoningContent;
-  Text: typeof ReasoningText;
-  Fade: typeof ReasoningFade;
-};
-
+const Reasoning = memo(ReasoningImpl) as ReasoningMessagePartComponent;
 Reasoning.displayName = 'Reasoning';
-Reasoning.Root = ReasoningRoot;
-Reasoning.Trigger = ReasoningTrigger;
-Reasoning.Content = ReasoningContent;
-Reasoning.Text = ReasoningText;
-Reasoning.Fade = ReasoningFade;
 
-const ReasoningGroup = memo(ReasoningGroupImpl);
-ReasoningGroup.displayName = 'ReasoningGroup';
+const ReasoningGroup = memo(
+  ReasoningGroupImpl,
+) as unknown as ReasoningGroupComponent;
+(ReasoningGroup as { displayName?: string }).displayName = 'ReasoningGroup';
 
 export { Reasoning, ReasoningGroup };
