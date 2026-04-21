@@ -200,10 +200,14 @@ const AssistantMessage = () => {
         <MessagePrimitive.Parts
           components={{
             Text: StreamingMarkdownText,
+            // Reasoning is always rendered when the model emits it (e.g.
+            // Anthropic extended thinking, vLLM `--reasoning-parser`).
+            // Without this slot the reasoning phase appears as silence to
+            // the user even when the SDK is streaming reasoning chunks.
+            Reasoning: Reasoning,
+            ReasoningGroup: ReasoningGroup,
             ...(verboseDebugging
               ? {
-                  Reasoning: Reasoning,
-                  ReasoningGroup: ReasoningGroup,
                   ToolGroup: ToolGroup,
                   tools: {
                     by_name: {

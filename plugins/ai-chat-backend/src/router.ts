@@ -7,6 +7,7 @@ import {
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
 import {
@@ -146,6 +147,20 @@ export async function createRouter(
     baseURL: openaiBaseUrl,
   });
 
+  // OpenAI-compatible provider for `aiChat.openai.api: chat` (vLLM and similar
+  // OpenAI-compatible servers). Unlike `@ai-sdk/openai`'s chat path, this
+  // provider handles the `delta.reasoning` / `delta.reasoning_content` SSE
+  // fields that vLLM emits when `--reasoning-parser` is configured (e.g.
+  // `nemotron_v3` for Nemotron-Super), and forwards them as proper
+  // `reasoning-start` / `reasoning-delta` / `reasoning-end` LanguageModelV3
+  // stream parts. Without this, the reasoning phase appears as silence to
+  // the chat UI and only the post-think answer text streams through.
+  const openaiCompatible = createOpenAICompatible({
+    name: 'openai-compatible',
+    baseURL: openaiBaseUrl ?? '',
+    apiKey: openaiApiKey,
+  });
+
   const anthropic = createAnthropic({
     apiKey: anthropicApiKey,
     baseURL: anthropicBaseUrl,
@@ -239,7 +254,9 @@ export async function createRouter(
       if (isAzureConfigured) {
         openaiCompatibleModel = azure.chat(modelName);
       } else if (openaiApi === 'chat') {
-        openaiCompatibleModel = openai.chat(modelName);
+        // Use @ai-sdk/openai-compatible for vLLM-style chat-completions servers
+        // so reasoning chunks are surfaced (see provider construction above).
+        openaiCompatibleModel = openaiCompatible.chatModel(modelName);
       } else {
         openaiCompatibleModel = openai(modelName);
       }
@@ -357,6 +374,7 @@ export async function createRouter(
         let providerName = 'openai';
         if (isAnthropicModel) providerName = 'anthropic';
         else if (isAzureConfigured) providerName = 'azure';
+        else if (openaiApi === 'chat') providerName = 'openai-compatible';
 
         const toolEntries = Object.entries(allTools).map(([name, t]) => ({
           name,
