@@ -6,6 +6,7 @@ import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
   useAssistantApi,
+  useAssistantState,
   useThreadViewportStore,
   useAuiEvent,
 } from '@assistant-ui/react';
@@ -332,6 +333,21 @@ const Composer = ({ isSticky = true }: { isSticky?: boolean }) => {
 
 const LoadingIndicator = () => {
   const classes = useStyles();
+
+  // Only show the global "Thinking..." spinner while we're waiting for the
+  // assistant to produce its first content. Once any reasoning or text part
+  // is streaming, the per-message Reasoning trigger ("Thinking 3s...") and
+  // the streaming text itself act as the live progress indicator, and a
+  // second spinner below the message would be visual noise.
+  const showSpinner = useAssistantState(({ thread }) => {
+    const messages = thread?.messages;
+    if (!messages || messages.length === 0) return true;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return true;
+    return !last.content || last.content.length === 0;
+  });
+
+  if (!showSpinner) return null;
 
   return (
     <ThreadPrimitive.If running>
