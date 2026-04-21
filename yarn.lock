@@ -11115,6 +11115,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@hyperjump/json-schema-formats@npm:^1.0.1":
+  version: 1.0.1
+  resolution: "@hyperjump/json-schema-formats@npm:1.0.1"
+  dependencies:
+    "@hyperjump/uri": "npm:^1.3.2"
+    idn-hostname: "npm:^15.1.2"
+  checksum: 10c0/9f19b3e41fb715f6090a897f674d721283e1b38669b3f7e07bd9918e16eb506df97cd29722f99b3d376ecc35f3da4a340d2e47032bae63c3577086333b1479be
+  languageName: node
+  linkType: hard
+
+"@hyperjump/uri@npm:^1.3.2":
+  version: 1.3.3
+  resolution: "@hyperjump/uri@npm:1.3.3"
+  checksum: 10c0/984c7ffc35fa89ae96a2704de188ef470ddc5a9dccf86bddc1dcf7198b795ff63b60bf904b7b5c039837bcb55d01fc75199f9d507ffbcf38b1e49e375b3033e1
+  languageName: node
+  linkType: hard
+
 "@inquirer/confirm@npm:^5.0.0":
   version: 5.1.0
   resolution: "@inquirer/confirm@npm:5.1.0"
@@ -17961,7 +17978,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sagold/json-query@npm:^6.1.3, @sagold/json-query@npm:^6.2.0":
+"@sagold/json-query@npm:^6.1.3":
   version: 6.2.0
   resolution: "@sagold/json-query@npm:6.2.0"
   dependencies:
@@ -31616,6 +31633,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"idn-hostname@npm:^15.1.2":
+  version: 15.1.8
+  resolution: "idn-hostname@npm:15.1.8"
+  dependencies:
+    punycode: "npm:^2.3.1"
+  checksum: 10c0/4195d03406d7b538e3c950b0991d6193c9da980519b29d663c19ed83a57b4485915c09d14a91c62dabbe13a9459c7070b93da5b90fafab7c49f0ee0ef573b8e2
+  languageName: node
+  linkType: hard
+
 "ieee754@npm:^1.1.13, ieee754@npm:^1.1.4, ieee754@npm:^1.2.1":
   version: 1.2.1
   resolution: "ieee754@npm:1.2.1"
@@ -33554,19 +33580,16 @@ __metadata:
   linkType: hard
 
 "json-schema-library@npm:^11.1.0":
-  version: 11.1.0
-  resolution: "json-schema-library@npm:11.1.0"
+  version: 11.4.0
+  resolution: "json-schema-library@npm:11.4.0"
   dependencies:
+    "@hyperjump/json-schema-formats": "npm:^1.0.1"
     "@sagold/json-pointer": "npm:^7.2.1"
-    "@sagold/json-query": "npm:^6.2.0"
-    deepmerge: "npm:^4.3.1"
     fast-copy: "npm:^4.0.2"
     fast-deep-equal: "npm:^3.1.3"
-    lodash: "npm:^4.17.23"
-    smtp-address-parser: "npm:^1.1.0"
     uri-js: "npm:^4.4.1"
     valid-url: "npm:^1.0.9"
-  checksum: 10c0/7d2db2e466cb0b3f23e6fd34a6e9accf48bf521c20da6daa9460289264d602fc65c528a8cc57776007f41f969bdf6022b963162e462ccf09e61c030ae642a46d
+  checksum: 10c0/dba49115d896903c7dcc66e7ca5eb266ccf7f068a4734a6d0f55b9e9002e1639e33191773ced9d1bdfd42544ab96c577838ab13309788f9dd403c79634328853
   languageName: node
   linkType: hard
 
@@ -34532,13 +34555,6 @@ __metadata:
   version: 4.17.23
   resolution: "lodash@npm:4.17.23"
   checksum: 10c0/1264a90469f5bb95d4739c43eb6277d15b6d9e186df4ac68c3620443160fc669e2f14c11e7d8b2ccf078b81d06147c01a8ccced9aab9f9f63d50dcf8cace6bf6
-  languageName: node
-  linkType: hard
-
-"lodash@npm:^4.17.23":
-  version: 4.18.1
-  resolution: "lodash@npm:4.18.1"
-  checksum: 10c0/757228fc68805c59789e82185135cf85f05d0b2d3d54631d680ca79ec21944ec8314d4533639a14b8bcfbd97a517e78960933041a5af17ecb693ec6eecb99a27
   languageName: node
   linkType: hard
 
@@ -42722,7 +42738,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"smtp-address-parser@npm:^1.0.3, smtp-address-parser@npm:^1.1.0":
+"smtp-address-parser@npm:^1.0.3":
   version: 1.1.0
   resolution: "smtp-address-parser@npm:1.1.0"
   dependencies:
