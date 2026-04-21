@@ -1,8 +1,14 @@
-import { Button, IconButton, Tooltip, makeStyles } from '@material-ui/core';
-import CloseIcon from '@material-ui/icons/Close';
+import { makeStyles } from '@material-ui/core';
+import { Button, ButtonIcon, PluginHeader } from '@backstage/ui';
+import { RiCloseLine } from '@remixicon/react';
 
 import { Thread } from '../AiChat/Thread';
 import { DEFAULT_WIDTH, useDrawerResize } from './useDrawerResize';
+import {
+  AIChatIcon,
+  rootRouteRef,
+} from '@giantswarm/backstage-plugin-ai-chat-react';
+import { routeResolutionApiRef, useApi } from '@backstage/frontend-plugin-api';
 
 const useStyles = makeStyles(theme => ({
   drawer: {
@@ -13,7 +19,7 @@ const useStyles = makeStyles(theme => ({
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: theme.palette.background.paper,
+    backgroundColor: 'var(--bui-bg-app)',
     borderLeft: `1px solid ${theme.palette.divider}`,
     zIndex: theme.zIndex.appBar,
     [theme.breakpoints.down('xs')]: {
@@ -56,19 +62,13 @@ const useStyles = makeStyles(theme => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
     flexShrink: 0,
   },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
   threadRoot: {
     display: 'flex',
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
-  },
-  newThreadButton: {
-    textTransform: 'none',
+    backgroundColor:
+      theme.palette.type === 'light' ? 'var(--bui-bg-neutral-1)' : undefined,
   },
 }));
 
@@ -88,6 +88,8 @@ export const AiChatDrawer = ({
   variant,
 }: AiChatDrawerProps) => {
   const classes = useStyles();
+  const routeResolutionApi = useApi(routeResolutionApiRef);
+  const chatPath = routeResolutionApi.resolve(rootRouteRef)?.();
   const { width, drawerRef, resizeHandleProps, isDragging } = useDrawerResize({
     variant,
     open,
@@ -122,25 +124,24 @@ export const AiChatDrawer = ({
           className={`${classes.resizeHandle}${isDragging ? ` ${classes.resizeHandleDragging}` : ''}`}
           {...resizeHandleProps}
         />
-        <div className={classes.header}>
-          <div className={classes.headerLeft}>
-            <Tooltip title="Clear conversation">
-              <Button
-                className={classes.newThreadButton}
-                size="small"
-                onClick={onNewConversation}
-              >
+        <PluginHeader
+          title="AI Assistant"
+          titleLink={chatPath}
+          icon={<AIChatIcon fontSize="inherit" />}
+          customActions={
+            <>
+              <Button variant="tertiary" onClick={onNewConversation}>
                 Clear conversation
               </Button>
-            </Tooltip>
-          </div>
-          <Tooltip title="Close">
-            <IconButton size="small" onClick={onClose}>
-              <CloseIcon />
-            </IconButton>
-          </Tooltip>
-        </div>
-        <Thread className={classes.threadRoot} />
+              <ButtonIcon
+                variant="tertiary"
+                icon={<RiCloseLine />}
+                onClick={onClose}
+              />
+            </>
+          }
+        />
+        <Thread className={classes.threadRoot} isSticky={false} />
       </div>
     </>
   );

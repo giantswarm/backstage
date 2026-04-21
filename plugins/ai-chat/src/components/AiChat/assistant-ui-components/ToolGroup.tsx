@@ -26,15 +26,15 @@ const useStyles = makeStyles(theme =>
       width: '100%',
     },
     rootOutline: {
-      borderRadius: theme.spacing(1),
+      borderRadius: 'var(--bui-radius-3)',
       border: `1px solid ${theme.palette.divider}`,
       paddingTop: theme.spacing(3),
       paddingBottom: theme.spacing(3),
     },
     rootMuted: {
-      borderRadius: theme.spacing(1),
+      borderRadius: 'var(--bui-radius-3)',
       border: `1px solid ${theme.palette.divider}`,
-      backgroundColor: theme.palette.action.hover,
+      backgroundColor: 'var(--bui-bg-neutral-2)',
       paddingTop: theme.spacing(3),
       paddingBottom: theme.spacing(3),
     },

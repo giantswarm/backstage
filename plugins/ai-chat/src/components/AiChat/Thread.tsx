@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -6,6 +6,8 @@ import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
   useAssistantApi,
+  useThreadViewportStore,
+  useAuiEvent,
 } from '@assistant-ui/react';
 import {
   useApi,
@@ -36,6 +38,7 @@ import {
   ToolGroup,
   ContextUsageDisplay,
 } from './assistant-ui-components';
+import classNames from 'classnames';
 
 const DEFAULT_WELCOME_TITLE = 'How can I help you today?';
 const DEFAULT_WELCOME_SUBTITLE =
@@ -262,51 +265,63 @@ const EditComposer = () => {
   );
 };
 
-const Composer = () => {
+const Composer = ({ isSticky = true }: { isSticky?: boolean }) => {
   const classes = useStyles();
 
   return (
-    <div className={classes.composerContainer}>
-      <ComposerPrimitive.Root className={classes.composerForm}>
-        <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
-          <TextField
-            variant="outlined"
-            // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus
-            size="small"
-            fullWidth
-            multiline
-            maxRows={4}
-            placeholder="Ask a question..."
-            className={classes.composerInput}
-          />
-        </ComposerPrimitive.Input>
+    <div
+      className={classNames(
+        classes.composerContainer,
+        isSticky && classes.composerContainerSticky,
+      )}
+    >
+      <div
+        className={classNames(
+          classes.composerContainerInner,
+          isSticky && classes.composerContainerInnerSticky,
+        )}
+      >
+        <ComposerPrimitive.Root className={classes.composerForm}>
+          <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
+            <TextField
+              variant="outlined"
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              size="small"
+              fullWidth
+              multiline
+              maxRows={4}
+              placeholder="Ask a question..."
+              className={classes.composerInput}
+            />
+          </ComposerPrimitive.Input>
 
-        <ThreadPrimitive.If running={false}>
-          <ComposerPrimitive.Send asChild>
-            <Button
-              variant="contained"
-              color="primary"
-              className={classes.sendButton}
-              aria-label="Send message"
-            >
-              <SendIcon />
-            </Button>
-          </ComposerPrimitive.Send>
-        </ThreadPrimitive.If>
+          <ThreadPrimitive.If running={false}>
+            <ComposerPrimitive.Send asChild>
+              <Button
+                variant="contained"
+                color="primary"
+                className={classes.sendButton}
+                aria-label="Send message"
+              >
+                <SendIcon />
+              </Button>
+            </ComposerPrimitive.Send>
+          </ThreadPrimitive.If>
 
-        <ThreadPrimitive.If running>
-          <ComposerPrimitive.Cancel asChild>
-            <Button
-              variant="contained"
-              className={classes.stopButton}
-              aria-label="Stop generating"
-            >
-              <StopIcon />
-            </Button>
-          </ComposerPrimitive.Cancel>
-        </ThreadPrimitive.If>
-      </ComposerPrimitive.Root>
+          <ThreadPrimitive.If running>
+            <ComposerPrimitive.Cancel asChild>
+              <Button
+                variant="contained"
+                className={classes.stopButton}
+                aria-label="Stop generating"
+              >
+                <StopIcon />
+              </Button>
+            </ComposerPrimitive.Cancel>
+          </ThreadPrimitive.If>
+        </ComposerPrimitive.Root>
+      </div>
     </div>
   );
 };
@@ -324,13 +339,43 @@ const LoadingIndicator = () => {
   );
 };
 
-export const Thread = ({ className }: { className?: string }) => {
+const useScrollToBottomOnSend = (usePageScroll: boolean) => {
+  const threadViewportStore = useThreadViewportStore();
+  useAuiEvent(
+    'composer.send',
+    useCallback(() => {
+      // Delay to allow the user message and "Thinking..." indicator to render
+      setTimeout(() => {
+        if (usePageScroll) {
+          document.documentElement.scrollTo({
+            top: document.documentElement.scrollHeight,
+            behavior: 'instant',
+          });
+        } else {
+          threadViewportStore
+            .getState()
+            .scrollToBottom({ behavior: 'instant' });
+        }
+      }, 100);
+    }, [usePageScroll, threadViewportStore]),
+  );
+};
+
+export const Thread = ({
+  className,
+  isSticky = true,
+}: {
+  className?: string;
+  isSticky?: boolean;
+}) => {
   const classes = useStyles();
+  useScrollToBottomOnSend(isSticky);
 
   return (
     <ThreadPrimitive.Root className={className ?? classes.root}>
       <ThreadPrimitive.Viewport
         className={classes.messagesContainer}
+        autoScroll={false}
         scrollToBottomOnRunStart={false}
       >
         <ThreadPrimitive.Empty>
@@ -348,7 +393,7 @@ export const Thread = ({ className }: { className?: string }) => {
         <LoadingIndicator />
       </ThreadPrimitive.Viewport>
 
-      <Composer />
+      <Composer isSticky={isSticky} />
     </ThreadPrimitive.Root>
   );
 };

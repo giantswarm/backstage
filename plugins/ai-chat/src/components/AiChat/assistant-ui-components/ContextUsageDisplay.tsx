@@ -7,9 +7,9 @@ import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
 const useStyles = makeStyles(theme => ({
   root: {
     width: '100%',
-    borderRadius: theme.spacing(1),
+    borderRadius: 'var(--bui-radius-3)',
     border: `1px solid ${theme.palette.divider}`,
-    backgroundColor: theme.palette.background.default,
+    backgroundColor: 'var(--bui-bg-neutral-2)',
     padding: theme.spacing(2),
   },
   header: {

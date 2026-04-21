@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react';
 import {
   createFrontendPlugin,
   PageBlueprint,
-  NavItemBlueprint,
   ApiBlueprint,
   AppRootElementBlueprint,
 } from '@backstage/frontend-plugin-api';
@@ -18,18 +17,11 @@ import {
 const aiChatPage = PageBlueprint.make({
   disabled: true,
   params: {
-    noHeader: true,
-    path: '/ai-chat',
-    loader: () => import('./components/AiChat').then(m => <m.AiChatPage />),
-    routeRef: rootRouteRef,
-  },
-});
-
-const aiChatNavItem = NavItemBlueprint.make({
-  disabled: true,
-  params: {
     title: 'AI Assistant',
-    icon: AIChatIcon,
+    path: '/ai-chat',
+    icon: <AIChatIcon fontSize="inherit" />,
+    noHeader: true,
+    loader: () => import('./components/AiChat').then(m => <m.AiChatPage />),
     routeRef: rootRouteRef,
   },
 });
@@ -89,7 +81,6 @@ export const aiChatPlugin = createFrontendPlugin({
   featureFlags: [{ name: 'ai-chat-verbose-debugging' }],
   extensions: [
     aiChatPage,
-    aiChatNavItem,
     aiChatServiceApi,
     mcpAuthProvidersApi,
     aiChatDrawerApi,
