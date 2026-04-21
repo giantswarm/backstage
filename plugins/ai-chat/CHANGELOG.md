@@ -1,5 +1,14 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.11.4
+
+### Patch Changes
+
+- 66c54f9: Add optional `aiChat.welcome.{title,subtitle,suggestions}` config to customize the AI chat welcome screen. Falls back to the built-in defaults when not set.
+- 0af418e: Redesign AI chat layout with PluginHeader, sticky composer, scroll-on-send behavior, and polished UI styling. Decouple sidebar item from page extension toggle and add title link to drawer header.
+- Updated dependencies [0af418e]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.2
+
 ## 0.11.3
 
 ### Patch Changes
