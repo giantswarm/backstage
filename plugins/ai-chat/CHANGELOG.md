@@ -1,5 +1,33 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.11.5
+
+### Patch Changes
+
+- 9c6edac: Stream reasoning tokens from OpenAI-compatible models (vLLM) to the chat UI.
+
+  When `aiChat.openai.api: chat` is configured (the vLLM/llama.cpp/SGLang
+  path), the backend now talks to the model via `@ai-sdk/openai-compatible`
+  instead of `@ai-sdk/openai`'s chat-completions client. The
+  openai-compatible provider understands the `delta.reasoning` and
+  `delta.reasoning_content` SSE fields that these servers emit when a
+  reasoning parser is enabled (e.g. vLLM's
+  `--reasoning-parser nemotron_v3` for Nemotron-Super), and forwards them
+  as proper LanguageModelV3 reasoning stream parts. The OpenAI Responses
+  path (`aiChat.openai.api: responses`, the default for real OpenAI),
+  Azure, and Anthropic flows are unchanged.
+
+  Also unconditionally renders the `Reasoning` and `ReasoningGroup`
+  assistant-ui slots in `Thread.tsx` (previously gated behind the
+  `ai-chat-verbose-debugging` feature flag). Without the slots, the
+  streamed reasoning was silently dropped on the frontend even when the
+  backend emitted it -- the chat just showed the "Thinking..." spinner
+  for the full reasoning phase and then a sudden burst of answer text.
+
+  Visible effect: with a reasoning-capable model the user now sees a
+  collapsible "Reasoning" block that streams in token-by-token starting
+  within ~500ms of pressing send, followed by the final answer.
+
 ## 0.11.4
 
 ### Patch Changes

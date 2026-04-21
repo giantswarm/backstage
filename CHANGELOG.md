@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.122.2] - 2026-04-21
+
+### Changed
+
+- Stream reasoning tokens from OpenAI-compatible models (vLLM) to the AI chat UI by switching the `aiChat.openai.api: chat` path to `@ai-sdk/openai-compatible` and unconditionally rendering the `Reasoning`/`ReasoningGroup` slots in `Thread.tsx`.
+
+See [./docs/releases/v0.122.2-changelog.md](./docs/releases/v0.122.2-changelog.md) for more information.
+
 ## [0.122.1] - 2026-04-21
 
 ### Added
@@ -2266,7 +2274,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.2...HEAD
+[0.122.2]: https://github.com/giantswarm/backstage/compare/v0.122.1...v0.122.2
 [0.122.1]: https://github.com/giantswarm/backstage/compare/v0.122.0...v0.122.1
 [0.122.0]: https://github.com/giantswarm/backstage/compare/v0.121.0...v0.122.0
 [0.121.0]: https://github.com/giantswarm/backstage/compare/v0.120.0...v0.121.0
