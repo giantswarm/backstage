@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.122.2] - 2026-04-21
 
+### Changed
+
+- Stream reasoning tokens from OpenAI-compatible models (vLLM) to the AI chat UI by switching the `aiChat.openai.api: chat` path to `@ai-sdk/openai-compatible` and unconditionally rendering the `Reasoning`/`ReasoningGroup` slots in `Thread.tsx`.
+
 See [./docs/releases/v0.122.2-changelog.md](./docs/releases/v0.122.2-changelog.md) for more information.
 
 ## [0.122.1] - 2026-04-21
