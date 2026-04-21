@@ -64,7 +64,7 @@
     "@roadiehq/backstage-plugin-github-pull-requests": "^3.0.0",
     "@sentry/react": "^10.0.0",
     "@telemetrydeck/sdk": "^2.0.4",
-    "@terasky/backstage-plugin-api-docs-module-crd": "^0.2.0",
+    "@terasky/backstage-plugin-api-docs-module-crd": "^0.5.0",
     "crypto-js": "^4.2.0",
     "history": "^5.0.0",
     "react": "^18.0.2",
