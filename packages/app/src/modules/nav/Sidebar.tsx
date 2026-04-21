@@ -60,7 +60,6 @@ export const SidebarContent = NavContentBlueprint.make({
       const searchItem = navItems.take('page:search');
       const catalogItem = navItems.take('page:catalog');
       const scaffolderItem = navItems.take('page:scaffolder');
-      const aiChatItem = navItems.take('page:ai-chat');
       const nav = navItems.withComponent(item => (
         <SidebarItem
           icon={() => <NavItemIcon>{item.icon}</NavItemIcon>}
@@ -90,7 +89,7 @@ export const SidebarContent = NavContentBlueprint.make({
       ].filter(Boolean);
 
       const group3 = [
-        aiChatItem && <AiChatSidebarItem key="ai-chat" />,
+        <AiChatSidebarItem key="ai-chat" />,
         scaffolderItem && (
           <SidebarItem
             icon={CreateComponentIcon}

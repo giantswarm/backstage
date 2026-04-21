@@ -13,7 +13,6 @@ app:
     - page:flux
     - nav-item:flux
     - page:ai-chat
-    - nav-item:ai-chat
     - api:ai-chat/service
     - api:ai-chat/drawer
     - app-root-element:ai-chat/drawer
