@@ -4,7 +4,11 @@ import { RiCloseLine } from '@remixicon/react';
 
 import { Thread } from '../AiChat/Thread';
 import { DEFAULT_WIDTH, useDrawerResize } from './useDrawerResize';
-import { AIChatIcon } from '@giantswarm/backstage-plugin-ai-chat-react';
+import {
+  AIChatIcon,
+  rootRouteRef,
+} from '@giantswarm/backstage-plugin-ai-chat-react';
+import { routeResolutionApiRef, useApi } from '@backstage/frontend-plugin-api';
 
 const useStyles = makeStyles(theme => ({
   drawer: {
@@ -83,6 +87,8 @@ export const AiChatDrawer = ({
   variant,
 }: AiChatDrawerProps) => {
   const classes = useStyles();
+  const routeResolutionApi = useApi(routeResolutionApiRef);
+  const chatPath = routeResolutionApi.resolve(rootRouteRef)?.();
   const { width, drawerRef, resizeHandleProps, isDragging } = useDrawerResize({
     variant,
     open,
@@ -119,6 +125,7 @@ export const AiChatDrawer = ({
         />
         <PluginHeader
           title="AI Assistant"
+          titleLink={chatPath}
           icon={<AIChatIcon fontSize="inherit" />}
           customActions={
             <>

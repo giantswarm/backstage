@@ -9,7 +9,8 @@ import {
   Typography,
   makeStyles,
 } from '@material-ui/core';
-import { useApiHolder, useRouteRef } from '@backstage/core-plugin-api';
+import { useApiHolder } from '@backstage/core-plugin-api';
+import { routeResolutionApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
 import { AIChatIcon } from '../../assets/icons';
 import { aiChatApiRef, aiChatDrawerApiRef } from '../../api';
@@ -63,7 +64,8 @@ const AIChatButtonInner = ({
   troubleshoot,
   openMode,
 }: AIChatButtonInnerProps) => {
-  const chatPath = useRouteRef(rootRouteRef);
+  const routeResolutionApi = useApi(routeResolutionApiRef);
+  const chatPath = routeResolutionApi.resolve(rootRouteRef);
   const classes = useStyles();
   const navigate = useNavigate();
   const apiHolder = useApiHolder();
@@ -73,7 +75,7 @@ const AIChatButtonInner = ({
     const drawerApi = apiHolder.get(aiChatDrawerApiRef);
     if (openMode !== 'navigate' && drawerApi) {
       drawerApi.openDrawer(message);
-    } else {
+    } else if (chatPath) {
       const params = new URLSearchParams({ message });
       navigate(`${chatPath()}?${params.toString()}`);
     }
