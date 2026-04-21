@@ -32,6 +32,7 @@ import {
   ToolGroup,
   ContextUsageDisplay,
 } from './assistant-ui-components';
+import classNames from 'classnames';
 
 const EXAMPLE_QUESTIONS = [
   'What applications are available for deployment?',
@@ -247,12 +248,22 @@ const EditComposer = () => {
   );
 };
 
-const Composer = () => {
+const Composer = ({ isSticky = true }: { isSticky?: boolean }) => {
   const classes = useStyles();
 
   return (
-    <div className={classes.composerContainer}>
-      <div className={classes.composerContainerInner}>
+    <div
+      className={classNames(
+        classes.composerContainer,
+        isSticky && classes.composerContainerSticky,
+      )}
+    >
+      <div
+        className={classNames(
+          classes.composerContainerInner,
+          isSticky && classes.composerContainerInnerSticky,
+        )}
+      >
         <ComposerPrimitive.Root className={classes.composerForm}>
           <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
             <TextField
@@ -311,7 +322,13 @@ const LoadingIndicator = () => {
   );
 };
 
-export const Thread = ({ className }: { className?: string }) => {
+export const Thread = ({
+  className,
+  isSticky = true,
+}: {
+  className?: string;
+  isSticky?: boolean;
+}) => {
   const classes = useStyles();
 
   return (
@@ -335,7 +352,7 @@ export const Thread = ({ className }: { className?: string }) => {
         <LoadingIndicator />
       </ThreadPrimitive.Viewport>
 
-      <Composer />
+      <Composer isSticky={isSticky} />
     </ThreadPrimitive.Root>
   );
 };

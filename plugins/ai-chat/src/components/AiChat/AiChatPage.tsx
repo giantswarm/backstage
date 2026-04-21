@@ -17,6 +17,7 @@ const useStyles = makeStyles(theme => ({
     [theme.breakpoints.down('xs')]: {
       minHeight: 'calc(100dvh - 52px - 56px)',
     },
+    paddingBottom: 0,
   },
 }));
 

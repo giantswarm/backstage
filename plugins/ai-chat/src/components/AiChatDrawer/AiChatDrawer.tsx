@@ -15,7 +15,7 @@ const useStyles = makeStyles(theme => ({
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: theme.palette.background.paper,
+    backgroundColor: 'var(--bui-bg-app)',
     borderLeft: `1px solid ${theme.palette.divider}`,
     zIndex: theme.zIndex.appBar,
     [theme.breakpoints.down('xs')]: {
@@ -63,6 +63,7 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
+    backgroundColor: 'var(--bui-bg-neutral-1)',
   },
 }));
 
@@ -132,7 +133,7 @@ export const AiChatDrawer = ({
             </>
           }
         />
-        <Thread className={classes.threadRoot} />
+        <Thread className={classes.threadRoot} isSticky={false} />
       </div>
     </>
   );

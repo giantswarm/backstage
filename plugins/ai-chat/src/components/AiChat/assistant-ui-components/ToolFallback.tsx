@@ -16,11 +16,11 @@ const ANIMATION_DURATION = 200;
 const useStyles = makeStyles(theme => ({
   root: {
     width: '100%',
-    borderRadius: theme.spacing(1),
+    borderRadius: 'var(--bui-radius-3)',
     border: `1px solid ${theme.palette.divider}`,
     paddingTop: theme.spacing(1.5),
     paddingBottom: theme.spacing(1.5),
-    backgroundColor: theme.palette.background.default,
+    backgroundColor: 'var(--bui-bg-neutral-2)',
   },
   rootCancelled: {
     borderColor: theme.palette.action.disabled,
