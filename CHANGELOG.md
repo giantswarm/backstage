@@ -13,6 +13,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Redesign AI chat layout with PluginHeader, sticky composer, scroll-on-send behavior, and polished UI styling.
 
+See [./docs/releases/v0.122.1-changelog.md](./docs/releases/v0.122.1-changelog.md) for more information.
+
 ## [0.122.0] - 2026-04-20
 
 ### Added
