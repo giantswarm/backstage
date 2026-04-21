@@ -20,8 +20,7 @@ export const useStyles = makeStyles((theme: Theme) =>
       width: '100%',
       maxWidth: '800px',
       minHeight: '500px',
-      backgroundColor: 'var(--bui-bg-neutral-1)',
-      borderRadius: 'var(--bui-radius-3)',
+      margin: '0 auto',
     },
     messagesContainer: {
       flex: 1,
@@ -113,10 +112,11 @@ export const useStyles = makeStyles((theme: Theme) =>
     composerContainerInner: {
       borderTop: '1px solid var(--bui-border-1)',
       padding: theme.spacing(2),
-      backgroundColor: theme.palette.background.paper,
+      backgroundColor: 'var(--bui-bg-neutral-1)',
     },
     composerContainerInnerSticky: {
-      borderRadius: '0 0 var(--bui-radius-3) var(--bui-radius-3)',
+      border: '1px solid var(--bui-border-1)',
+      borderRadius: 'var(--bui-radius-3)',
     },
     composerForm: {
       display: 'flex',

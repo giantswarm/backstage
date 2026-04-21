@@ -67,7 +67,8 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
-    backgroundColor: 'var(--bui-bg-neutral-1)',
+    backgroundColor:
+      theme.palette.type === 'light' ? 'var(--bui-bg-neutral-1)' : undefined,
   },
 }));
 
