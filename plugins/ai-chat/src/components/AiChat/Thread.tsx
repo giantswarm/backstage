@@ -7,7 +7,11 @@ import {
   BranchPickerPrimitive,
   useAssistantApi,
 } from '@assistant-ui/react';
-import { useApi, featureFlagsApiRef } from '@backstage/core-plugin-api';
+import {
+  useApi,
+  configApiRef,
+  featureFlagsApiRef,
+} from '@backstage/core-plugin-api';
 import IconButton from '@material-ui/core/IconButton';
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
@@ -33,7 +37,10 @@ import {
   ContextUsageDisplay,
 } from './assistant-ui-components';
 
-const EXAMPLE_QUESTIONS = [
+const DEFAULT_WELCOME_TITLE = 'How can I help you today?';
+const DEFAULT_WELCOME_SUBTITLE =
+  'Not sure what to do here? Try one of these questions.';
+const DEFAULT_WELCOME_SUGGESTIONS = [
   'What applications are available for deployment?',
   'Are there any clusters unhealthy right now?',
   'Who are my team mates?',
@@ -46,11 +53,23 @@ const EXAMPLE_QUESTIONS = [
 const ThreadWelcome = () => {
   const classes = useStyles();
   const api = useAssistantApi();
+  const configApi = useApi(configApiRef);
+
+  const title =
+    configApi.getOptionalString('aiChat.welcome.title') ??
+    DEFAULT_WELCOME_TITLE;
+  const subtitle =
+    configApi.getOptionalString('aiChat.welcome.subtitle') ??
+    DEFAULT_WELCOME_SUBTITLE;
 
   const selectedQuestions = useMemo(() => {
-    const shuffled = [...EXAMPLE_QUESTIONS].sort(() => Math.random() - 0.5);
+    const configured = configApi.getOptionalStringArray(
+      'aiChat.welcome.suggestions',
+    );
+    const pool = configured ?? DEFAULT_WELCOME_SUGGESTIONS;
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 3);
-  }, []);
+  }, [configApi]);
 
   const handleSuggestionClick = (question: string) => {
     api
@@ -60,12 +79,8 @@ const ThreadWelcome = () => {
 
   return (
     <div className={classes.welcomeContainer}>
-      <Typography className={classes.welcomeTitle}>
-        How can I help you today?
-      </Typography>
-      <Typography className={classes.welcomeSubtitle}>
-        Not sure what to do here? Try one of these questions.
-      </Typography>
+      <Typography className={classes.welcomeTitle}>{title}</Typography>
+      <Typography className={classes.welcomeSubtitle}>{subtitle}</Typography>
       <div className={classes.suggestionsContainer}>
         {selectedQuestions.map(question => (
           <ButtonBase

@@ -232,6 +232,17 @@ aiChat:
   #   systemPrompt:
   #     $file: ./my-system-prompt.md
 
+  # Optional: customize the welcome screen shown before the first message.
+  # Any key omitted falls back to the built-in default. Up to 3 suggestions
+  # are picked at random per mount. An empty `suggestions` array hides the
+  # suggestion cards entirely.
+  # welcome:
+  #   title: 'How can I help you today?'
+  #   subtitle: 'Not sure what to do here? Try one of these questions.'
+  #   suggestions:
+  #     - 'What applications are available for deployment?'
+  #     - 'Who are my team mates?'
+
   # Optional: MCP servers configuration
   # mcp:
   #   - name: backstage-actions
