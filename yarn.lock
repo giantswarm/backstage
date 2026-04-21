@@ -5686,6 +5686,30 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage/frontend-plugin-api@npm:^0.12.1":
+  version: 0.12.1
+  resolution: "@backstage/frontend-plugin-api@npm:0.12.1"
+  dependencies:
+    "@backstage/core-components": "npm:^0.18.2"
+    "@backstage/core-plugin-api": "npm:^1.11.1"
+    "@backstage/types": "npm:^1.2.2"
+    "@backstage/version-bridge": "npm:^1.0.11"
+    "@material-ui/core": "npm:^4.12.4"
+    lodash: "npm:^4.17.21"
+    zod: "npm:^3.22.4"
+    zod-to-json-schema: "npm:^3.21.4"
+  peerDependencies:
+    "@types/react": ^17.0.0 || ^18.0.0
+    react: ^17.0.0 || ^18.0.0
+    react-dom: ^17.0.0 || ^18.0.0
+    react-router-dom: ^6.3.0
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+  checksum: 10c0/e0dbd14a641668e69ec1f6fc466c26bac1b98516cd4f156a0e88677a2af1e2d5e4d810c99de3d79a21d05c771c889f87069d8a132c183a4dd61097a5b6cc59e8
+  languageName: node
+  linkType: hard
+
 "@backstage/frontend-plugin-api@npm:^0.13.3, @backstage/frontend-plugin-api@npm:^0.13.4":
   version: 0.13.4
   resolution: "@backstage/frontend-plugin-api@npm:0.13.4"
@@ -17476,12 +17500,13 @@ __metadata:
   linkType: hard
 
 "@roadiehq/backstage-plugin-github-pull-requests@npm:^3.0.0":
-  version: 3.6.2
-  resolution: "@roadiehq/backstage-plugin-github-pull-requests@npm:3.6.2"
+  version: 3.7.0
+  resolution: "@roadiehq/backstage-plugin-github-pull-requests@npm:3.7.0"
   dependencies:
     "@backstage/catalog-model": "npm:^1.7.5"
     "@backstage/core-components": "npm:^0.18.2"
     "@backstage/core-plugin-api": "npm:^1.11.1"
+    "@backstage/frontend-plugin-api": "npm:^0.12.1"
     "@backstage/integration": "npm:^1.18.1"
     "@backstage/integration-react": "npm:^1.2.11"
     "@backstage/plugin-catalog-react": "npm:^1.21.2"
@@ -17500,7 +17525,7 @@ __metadata:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router: 6.0.0-beta.0 || ^6.3.0
-  checksum: 10c0/507b4dd62ce9a11ec6e0dce97726046a31e603dd8f1fb6c90ffafd4541b1673fdfd6039a927153c8cfaed0eaaafbc3eef9e2702ed71b790a7f153a33873c0cf9
+  checksum: 10c0/b8148f595e9ded15110d599ad6b9893ca61694ac95f5f6ad7626e422b59ca753080f582b42fda0415906f3550d88b692c7bbc70c38e65429034792a987bde4f7
   languageName: node
   linkType: hard
 
