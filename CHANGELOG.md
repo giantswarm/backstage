@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.122.3] - 2026-04-21
 
+### Changed
+
+- Stream reasoning tokens live in the AI chat and redesign the Reasoning block: auto-opens while the model is reasoning, "Thinking Xs…" / "Thought for Ys" trigger, char-by-char text reveal with auto-scroll, borderless quote-style visual aligned with modern chat UIs.
+
 See [./docs/releases/v0.122.3-changelog.md](./docs/releases/v0.122.3-changelog.md) for more information.
 
 ## [0.122.2] - 2026-04-21
@@ -2278,8 +2282,7 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.3...HEAD
-[0.122.3]: https://github.com/giantswarm/backstage/compare/v0.122.2...v0.122.3
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.2...HEAD
 [0.122.2]: https://github.com/giantswarm/backstage/compare/v0.122.1...v0.122.2
 [0.122.1]: https://github.com/giantswarm/backstage/compare/v0.122.0...v0.122.1
 [0.122.0]: https://github.com/giantswarm/backstage/compare/v0.121.0...v0.122.0
