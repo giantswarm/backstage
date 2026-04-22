@@ -85,3 +85,10 @@ route:
         clientSecret:
           name: backstage-oidc-secret
       redirectURL: https://backstage.example.com/oauth2/callback
+  backendTrafficPolicy:
+    enabled: true
+    spec:
+      timeout:
+        http:
+          requestTimeout: '10m'
+          connectionIdleTimeout: '20m'
