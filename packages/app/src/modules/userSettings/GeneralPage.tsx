@@ -1,5 +1,6 @@
 import { lazy } from 'react';
 import { SubPageBlueprint } from '@backstage/frontend-plugin-api';
+import { z } from 'zod';
 
 const LazyGeneralSettings = lazy(async () => {
   const [
@@ -39,10 +40,8 @@ const LazyGeneralSettings = lazy(async () => {
 
 export const GeneralPage = SubPageBlueprint.makeWithOverrides({
   name: 'general',
-  config: {
-    schema: {
-      showIdentityCard: z => z.boolean().default(true),
-    },
+  configSchema: {
+    showIdentityCard: z.boolean().default(true),
   },
   factory(originalFactory, { config }) {
     const showIdentityCard = config.showIdentityCard;
