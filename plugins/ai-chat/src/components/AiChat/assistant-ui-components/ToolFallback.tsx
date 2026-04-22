@@ -330,6 +330,44 @@ function ToolFallbackArgs({
   );
 }
 
+/**
+ * Recursively walk a value and inline any string that is itself valid JSON
+ * (or JSON wrapped in a markdown code fence). This keeps the wrapper structure
+ * (e.g. `content`, `isError`) visible while expanding inner text payloads
+ * into formatted objects instead of escaped strings.
+ */
+function inlineJsonStrings(value: unknown): unknown {
+  if (typeof value === 'string') {
+    let text = value;
+    // Strip markdown code fence wrapper if present
+    const fenceMatch = text.match(/^```\w*\n([\s\S]*?)\n```$/);
+    if (fenceMatch) {
+      text = fenceMatch[1];
+    }
+    try {
+      const parsed = JSON.parse(text);
+      // Only inline objects/arrays — primitive JSON values are fine as strings
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    } catch {
+      /* not JSON, keep as string */
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(inlineJsonStrings);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = inlineJsonStrings(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function ToolFallbackResult({
   result,
   className,
@@ -340,8 +378,9 @@ function ToolFallbackResult({
   const classes = useStyles();
   if (result === undefined) return null;
 
+  const expanded = inlineJsonStrings(result);
   const text =
-    typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    typeof expanded === 'string' ? expanded : JSON.stringify(expanded, null, 2);
 
   return (
     <div
