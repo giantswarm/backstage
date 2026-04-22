@@ -460,10 +460,6 @@
                     },
                     "additionalProperties": false
                 },
-                "enabled": {
-                    "description": "Enable the Gateway API HTTPRoute resource",
-                    "type": "boolean"
-                },
                 "filters": {
                     "description": "Request/Response filters applied to the route",
                     "type": "array"
