@@ -13,14 +13,43 @@ import { JsonHighlight } from '@giantswarm/backstage-plugin-ui-react';
 
 const ANIMATION_DURATION = 200;
 
+const SUMMARY_KEYS = [
+  'path',
+  'file_path',
+  'file',
+  'command',
+  'query',
+  'pattern',
+  'glob_pattern',
+  'search_term',
+  'url',
+  'description',
+  'prompt',
+  'name',
+  'skill',
+  'topic',
+  'kind',
+];
+
+function toolCallSummary(argsText: string): string | null {
+  try {
+    const args = JSON.parse(argsText);
+    for (const key of SUMMARY_KEYS) {
+      const val = args[key];
+      if (typeof val === 'string' && val.trim()) {
+        const text = val.trim();
+        return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+      }
+    }
+  } catch {
+    /* ignore parse errors */
+  }
+  return null;
+}
+
 const useStyles = makeStyles(theme => ({
   root: {
     width: '100%',
-    borderRadius: 'var(--bui-radius-3)',
-    border: `1px solid ${theme.palette.divider}`,
-    paddingTop: theme.spacing(1.5),
-    paddingBottom: theme.spacing(1.5),
-    backgroundColor: 'var(--bui-bg-neutral-2)',
   },
   rootCancelled: {
     borderColor: theme.palette.action.disabled,
@@ -28,46 +57,53 @@ const useStyles = makeStyles(theme => ({
   },
   trigger: {
     display: 'flex',
-    width: '100%',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(2),
-    fontSize: theme.typography.body2.fontSize,
+    gap: theme.spacing(0.75),
+    alignItems: 'flex-start',
+    fontSize: '0.8125rem',
+    lineHeight: 1.4,
     cursor: 'pointer',
     transition: theme.transitions.create('color'),
     color: theme.palette.text.primary,
     border: 'none',
     background: 'none',
+    padding: 0,
     textAlign: 'left',
     '&:hover': {
       color: theme.palette.text.secondary,
     },
   },
-  icon: {
-    fontSize: 16,
-    flexShrink: 0,
+  statusBadge: {
+    width: '14px',
+    height: '14px',
+    marginRight: '4px',
+    display: 'inline-block',
+    verticalAlign: 'text-bottom',
+    transform: 'scaleX(-1)',
   },
-  iconCancelled: {
-    color: theme.palette.text.disabled,
-  },
-  iconRunning: {
+  statusBadgeRunning: {
     animation: '$spin 1s linear infinite',
   },
   '@keyframes spin': {
-    from: { transform: 'rotate(0deg)' },
-    to: { transform: 'rotate(360deg)' },
+    from: { transform: 'scaleX(-1) rotate(0deg)' },
+    to: { transform: 'scaleX(-1) rotate(-360deg)' },
   },
-  labelWrapper: {
+  triggerLabel: {
     position: 'relative',
     display: 'inline-block',
     flexGrow: 1,
     textAlign: 'left',
-    lineHeight: 1,
+    fontWeight: 500,
+    lineHeight: 1.4,
+    minWidth: 0,
   },
   labelCancelled: {
     color: theme.palette.text.disabled,
     textDecoration: 'line-through',
+  },
+  summary: {
+    color: theme.palette.text.secondary,
+    fontWeight: 400,
+    marginLeft: theme.spacing(1),
   },
   shimmer: {
     pointerEvents: 'none',
@@ -78,12 +114,14 @@ const useStyles = makeStyles(theme => ({
     },
   },
   chevron: {
-    fontSize: 16,
+    width: 14,
+    height: 14,
     flexShrink: 0,
     transition: theme.transitions.create('transform', {
       duration: ANIMATION_DURATION,
       easing: theme.transitions.easing.easeOut,
     }),
+    marginTop: '2.5px',
   },
   chevronOpen: {
     transform: 'rotate(0deg)',
@@ -94,21 +132,23 @@ const useStyles = makeStyles(theme => ({
   content: {
     position: 'relative',
     overflow: 'hidden',
-    fontSize: theme.typography.body2.fontSize,
+    fontSize: '0.8125rem',
+    borderRadius: 'var(--bui-radius-2)',
+    border: `1px solid ${theme.palette.divider}`,
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    backgroundColor: 'var(--bui-bg-neutral-2)',
+    marginTop: theme.spacing(1),
   },
   contentInner: {
-    marginTop: theme.spacing(1.5),
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
-    borderTop: `1px solid ${theme.palette.divider}`,
-    paddingTop: theme.spacing(1),
   },
   args: {
     paddingTop: 0,
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(2),
-    paddingBottom: theme.spacing(1),
+    paddingLeft: theme.spacing(1.5),
+    paddingRight: theme.spacing(1.5),
   },
   codeBlock: {
     margin: 0,
@@ -119,27 +159,35 @@ const useStyles = makeStyles(theme => ({
   result: {
     borderTop: `1px dashed ${theme.palette.divider}`,
     paddingTop: theme.spacing(1),
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(3),
-    paddingBottom: theme.spacing(1),
+    paddingLeft: theme.spacing(1.5),
+    paddingRight: theme.spacing(1.5),
     '&:first-child': {
       borderTop: 'none',
+      paddingTop: 0,
     },
   },
   resultHeader: {
-    fontWeight: 600,
-    marginTop: theme.spacing(1),
+    marginTop: 0,
+    marginBottom: theme.spacing(1),
   },
   error: {
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(2),
+    borderTop: `1px dashed ${theme.palette.divider}`,
+    paddingTop: theme.spacing(1),
+    paddingLeft: theme.spacing(1.5),
+    paddingRight: theme.spacing(1.5),
+    color: theme.palette.error.main,
+    '&:first-child': {
+      borderTop: 'none',
+      paddingTop: 0,
+    },
   },
   errorHeader: {
     fontWeight: 600,
-    color: theme.palette.text.disabled,
+    marginTop: 0,
+    marginBottom: theme.spacing(1),
   },
   errorReason: {
-    color: theme.palette.text.disabled,
+    margin: 0,
   },
   argsCancelled: {
     opacity: 0.6,
@@ -177,12 +225,14 @@ const statusIconMap: Record<ToolStatus, React.ElementType> = {
 
 function ToolFallbackTrigger({
   toolName,
+  argsText,
   status,
   className,
   isOpen,
   onClick,
 }: {
   toolName: string;
+  argsText?: string;
   status?: ToolCallMessagePartStatus;
   className?: string;
   isOpen: boolean;
@@ -193,9 +243,10 @@ function ToolFallbackTrigger({
   const isRunning = statusType === 'running';
   const isCancelled =
     status?.type === 'incomplete' && status.reason === 'cancelled';
+  const showStatusBadge = statusType !== 'complete';
 
-  const Icon = statusIconMap[statusType];
-  const label = isCancelled ? 'Cancelled tool' : 'Used tool';
+  const StatusIcon = statusIconMap[statusType];
+  const summary = argsText && !isOpen ? toolCallSummary(argsText) : null;
 
   return (
     <button
@@ -204,37 +255,27 @@ function ToolFallbackTrigger({
       onClick={onClick}
       type="button"
     >
-      <Icon
-        data-slot="tool-fallback-trigger-icon"
-        className={`${classes.icon} ${isCancelled ? classes.iconCancelled : ''} ${
-          isRunning ? classes.iconRunning : ''
-        }`}
-      />
-      <span
-        data-slot="tool-fallback-trigger-label"
-        className={`${classes.labelWrapper} ${
-          isCancelled ? classes.labelCancelled : ''
-        }`}
-      >
-        <span>
-          {label}: <b>{toolName}</b>
-        </span>
-        {isRunning && (
-          <span
-            aria-hidden
-            data-slot="tool-fallback-trigger-shimmer"
-            className={classes.shimmer}
-          >
-            {label}: <b>{toolName}</b>
-          </span>
-        )}
-      </span>
       <ExpandMoreIcon
         data-slot="tool-fallback-trigger-chevron"
         className={`${classes.chevron} ${
           isOpen ? classes.chevronOpen : classes.chevronClosed
         }`}
       />
+
+      <span
+        data-slot="tool-fallback-trigger-label"
+        className={`${classes.triggerLabel} ${
+          isCancelled ? classes.labelCancelled : ''
+        }`}
+      >
+        {showStatusBadge && (
+          <StatusIcon
+            className={`${classes.statusBadge} ${isRunning ? classes.statusBadgeRunning : ''}`}
+          />
+        )}
+        <span>{toolName}</span>
+        {summary && <span className={classes.summary}>{summary}</span>}
+      </span>
     </button>
   );
 }
@@ -254,9 +295,11 @@ function ToolFallbackContent({
       in={isOpen}
       timeout={ANIMATION_DURATION}
       data-slot="tool-fallback-content"
-      className={`${classes.content} ${className || ''}`}
+      className={className}
     >
-      <div className={classes.contentInner}>{children}</div>
+      <div className={classes.content}>
+        <div className={classes.contentInner}>{children}</div>
+      </div>
     </Collapse>
   );
 }
@@ -367,16 +410,17 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
     <ToolFallbackRoot className={isCancelled ? classes.rootCancelled : ''}>
       <ToolFallbackTrigger
         toolName={toolName}
+        argsText={argsText}
         status={status}
         isOpen={isOpen}
         onClick={handleToggle}
       />
       <ToolFallbackContent isOpen={isOpen}>
-        <ToolFallbackError status={status} />
         <ToolFallbackArgs
           argsText={argsText}
           className={isCancelled ? classes.argsCancelled : ''}
         />
+        <ToolFallbackError status={status} />
         {!isCancelled && <ToolFallbackResult result={result} />}
       </ToolFallbackContent>
     </ToolFallbackRoot>

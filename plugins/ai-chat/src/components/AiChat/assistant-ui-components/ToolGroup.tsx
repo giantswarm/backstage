@@ -8,17 +8,21 @@ import {
   type FC,
   type PropsWithChildren,
 } from 'react';
-import {
-  Collapse,
-  makeStyles,
-  createStyles,
-  CircularProgress,
-} from '@material-ui/core';
+import { Collapse, makeStyles, createStyles } from '@material-ui/core';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import { useScrollLock } from '@assistant-ui/react';
+import LoopIcon from '@material-ui/icons/Loop';
+import { useScrollLock, useAuiState } from '@assistant-ui/react';
 import classNames from 'classnames';
 
 const ANIMATION_DURATION = 200;
+
+function formatToolSummary(names: string[]): string {
+  const counts = new Map<string, number>();
+  for (const t of names) counts.set(t, (counts.get(t) ?? 0) + 1);
+  return [...counts.entries()]
+    .map(([name, n]) => (n > 1 ? `${name} x${n}` : name))
+    .join(', ');
+}
 
 const useStyles = makeStyles(theme =>
   createStyles({
@@ -40,8 +44,10 @@ const useStyles = makeStyles(theme =>
     },
     trigger: {
       display: 'flex',
-      alignItems: 'center',
-      fontSize: theme.typography.body2.fontSize,
+      gap: theme.spacing(0.75),
+      alignItems: 'flex-start',
+      fontSize: '0.8125rem',
+      lineHeight: 1.4,
       color: theme.palette.text.primary,
       cursor: 'pointer',
       border: 'none',
@@ -50,9 +56,6 @@ const useStyles = makeStyles(theme =>
       transition: theme.transitions.create('color'),
       '&:hover': {
         color: theme.palette.text.secondary,
-      },
-      '& > *:not(:last-child)': {
-        marginRight: theme.spacing(1),
       },
     },
     triggerOutline: {
@@ -68,14 +71,14 @@ const useStyles = makeStyles(theme =>
     loader: {
       flexShrink: 0,
     },
-    labelWrapper: {
+    triggerLabel: {
       position: 'relative',
       display: 'inline-block',
       textAlign: 'left',
-      fontWeight: theme.typography.fontWeightMedium as number,
-      lineHeight: 1,
+      fontWeight: 500,
+      lineHeight: 1.4,
     },
-    labelWrapperGrow: {
+    triggerLabelGrow: {
       flexGrow: 1,
     },
     shimmer: {
@@ -90,10 +93,12 @@ const useStyles = makeStyles(theme =>
       },
     },
     chevron: {
-      fontSize: 16,
+      width: 14,
+      height: 14,
       flexShrink: 0,
       transition: `transform ${ANIMATION_DURATION}ms ease-out`,
       transform: 'rotate(0deg)',
+      marginTop: '2.5px',
     },
     chevronClosed: {
       transform: 'rotate(-90deg)',
@@ -105,11 +110,12 @@ const useStyles = makeStyles(theme =>
       outline: 'none',
     },
     contentInner: {
-      marginTop: theme.spacing(2),
+      marginTop: theme.spacing(1),
+      paddingLeft: theme.spacing(2),
       display: 'flex',
       flexDirection: 'column',
       '& > *:not(:last-child)': {
-        marginBottom: theme.spacing(2),
+        marginBottom: theme.spacing(1),
       },
     },
     contentInnerOutline: {
@@ -125,6 +131,21 @@ const useStyles = makeStyles(theme =>
       paddingLeft: theme.spacing(4),
       paddingRight: theme.spacing(4),
       paddingTop: theme.spacing(3),
+    },
+    statusBadge: {
+      width: '14px',
+      height: '14px',
+      marginRight: '4px',
+      display: 'inline-block',
+      verticalAlign: 'text-bottom',
+      transform: 'scaleX(-1)',
+    },
+    statusBadgeRunning: {
+      animation: '$spin 1s linear infinite',
+    },
+    '@keyframes spin': {
+      from: { transform: 'scaleX(-1) rotate(0deg)' },
+      to: { transform: 'scaleX(-1) rotate(-360deg)' },
     },
   }),
 );
@@ -197,6 +218,7 @@ function ToolGroupRoot({
 type ToolGroupTriggerProps = {
   count: number;
   active?: boolean;
+  breakdown?: string;
   className?: string;
   onClick?: () => void;
 };
@@ -204,6 +226,7 @@ type ToolGroupTriggerProps = {
 function ToolGroupTrigger({
   count,
   active = false,
+  breakdown,
   className,
   onClick,
 }: ToolGroupTriggerProps) {
@@ -214,7 +237,9 @@ function ToolGroupTrigger({
   const { isOpen, handleOpenChange, variant } = context;
   const classes = useStyles();
 
-  const label = `${count} tool ${count === 1 ? 'call' : 'calls'}`;
+  const label = breakdown
+    ? `${count} tool ${count === 1 ? 'call' : 'calls'} (${breakdown})`
+    : `${count} tool ${count === 1 ? 'call' : 'calls'}`;
 
   const handleClick = () => {
     handleOpenChange(!isOpen);
@@ -235,37 +260,29 @@ function ToolGroupTrigger({
         className,
       )}
     >
-      {active && (
-        <CircularProgress
-          data-slot="tool-group-trigger-loader"
-          size={16}
-          className={classes.loader}
-        />
-      )}
-      <span
-        data-slot="tool-group-trigger-label"
-        className={classNames(classes.labelWrapper, {
-          [classes.labelWrapperGrow]:
-            variant === 'outline' || variant === 'muted',
-        })}
-      >
-        <span>{label}</span>
-        {active && (
-          <span
-            aria-hidden
-            data-slot="tool-group-trigger-shimmer"
-            className={classes.shimmer}
-          >
-            {label}
-          </span>
-        )}
-      </span>
       <ExpandMoreIcon
         data-slot="tool-group-trigger-chevron"
         className={classNames(classes.chevron, {
           [classes.chevronClosed]: !isOpen,
         })}
       />
+      <span
+        data-slot="tool-group-trigger-label"
+        className={classNames(classes.triggerLabel, {
+          [classes.triggerLabelGrow]:
+            variant === 'outline' || variant === 'muted',
+        })}
+      >
+        {active && (
+          <LoopIcon
+            className={classNames(
+              classes.statusBadge,
+              classes.statusBadgeRunning,
+            )}
+          />
+        )}
+        <span>{label}</span>
+      </span>
     </button>
   );
 }
@@ -315,9 +332,30 @@ const ToolGroupImpl: FC<
 > = ({ children, startIndex, endIndex }) => {
   const toolCount = endIndex - startIndex + 1;
 
+  const breakdown = useAuiState(s => {
+    const names = s.message.parts
+      .slice(startIndex, endIndex + 1)
+      .filter(
+        (p): p is typeof p & { type: 'tool-call'; toolName: string } =>
+          p.type === 'tool-call',
+      )
+      .map(p => p.toolName);
+    return names.length > 0 ? formatToolSummary(names) : undefined;
+  });
+
+  const isActive = useAuiState(s =>
+    s.message.parts
+      .slice(startIndex, endIndex + 1)
+      .some(p => p.status?.type === 'running'),
+  );
+
   return (
     <ToolGroupRoot>
-      <ToolGroupTrigger count={toolCount} />
+      <ToolGroupTrigger
+        count={toolCount}
+        active={isActive}
+        breakdown={breakdown}
+      />
       <ToolGroupContent>{children}</ToolGroupContent>
     </ToolGroupRoot>
   );

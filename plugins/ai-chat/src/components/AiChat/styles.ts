@@ -152,7 +152,8 @@ export const useStyles = makeStyles((theme: Theme) =>
     messageActionsContainer: {
       display: 'flex',
       gap: theme.spacing(1),
-      paddingTop: theme.spacing(0.5),
+      paddingTop: theme.spacing(1.5),
+      minHeight: '32px',
     },
     branchPicker: {
       display: 'inline-flex',
@@ -201,7 +202,7 @@ export const useStyles = makeStyles((theme: Theme) =>
       color: theme.palette.error.contrastText,
       padding: theme.spacing(1.5, 2),
       borderRadius: 'var(--bui-radius-3)',
-      marginTop: theme.spacing(1),
+      marginTop: theme.spacing(2),
     },
   }),
 );
