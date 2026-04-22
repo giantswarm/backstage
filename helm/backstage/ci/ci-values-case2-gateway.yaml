@@ -90,5 +90,5 @@ route:
     spec:
       timeout:
         http:
-          requestTimeout: "10m"
-          connectionIdleTimeout: "20m"
+          requestTimeout: '10m'
+          connectionIdleTimeout: '20m'
