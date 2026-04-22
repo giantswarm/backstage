@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=values.schema.json
 
 # @schema type:string
-# -- Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.)
+# -- Name used for all Kubernetes resources (Deployment, Service, etc.)
 name: backstage
 
 # -- Backstage service discovery settings
@@ -27,7 +27,7 @@ image:
   repository: giantswarm/backstage
 
 # @schema type:integer;minimum:1;maximum:65535
-# -- Container port for the Backstage backend, also used for the Service and Ingress backend
+# -- Container port for the Backstage backend, also used for the Service and route backend
 port: 7007
 
 # -- Container image registry settings
@@ -232,29 +232,8 @@ backstage:
   # -- Additional volumes for the Backstage pod
   extraVolumes: []
 
-# -- Traditional Ingress configuration
-ingress:
-  # @schema type:boolean
-  # -- Enable the Kubernetes Ingress resource for external HTTP access
-  enabled: true
-  # @schema type:string
-  # -- Ingress class name
-  className: nginx
-  # @schema additionalProperties:{"type":"string"}
-  # -- Annotations applied to the Ingress resource
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-giantswarm
-    kubernetes.io/tls-acme: 'true'
-    nginx.ingress.kubernetes.io/force-ssl-redirect: 'true'
-  # @schema item:string
-  # -- Hostnames for the Ingress rules and TLS configuration
-  hostnames: ['default-hostname']
-
 # -- Gateway API route configuration
 route:
-  # @schema type:boolean
-  # -- Enable the Gateway API HTTPRoute resource
-  enabled: false
   # @schema enum:[HTTPRoute, GRPCRoute, TCPRoute, TLSRoute, UDPRoute]
   # -- Route resource kind
   kind: HTTPRoute

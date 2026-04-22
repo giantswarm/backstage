@@ -55,13 +55,8 @@ resources:
 database:
   engine: sqlite
 
-# Disable traditional Ingress
-ingress:
-  enabled: false
-
-# Enable Gateway API HTTPRoute
+# Gateway API HTTPRoute configuration
 route:
-  enabled: true
   kind: HTTPRoute
   hostnames:
     - backstage.example.com
