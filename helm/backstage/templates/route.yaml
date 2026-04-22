@@ -86,3 +86,30 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 {{- end }}
+{{- if and $route.backendTrafficPolicy $route.backendTrafficPolicy.enabled }}
+{{- $btp := $route.backendTrafficPolicy }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $route.name | default .Values.name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: {{ .Values.name }}
+    {{- include "labels.backstage" $ | nindent 4 }}
+    {{- with $btp.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $btp.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: {{ $route.kind | default "HTTPRoute" }}
+      name: {{ $route.name | default .Values.name }}
+  {{- with $btp.spec }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+{{- end }}

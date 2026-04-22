@@ -2,8 +2,10 @@ dist
 dist-types
 coverage
 helm/*/templates
+helm/backstage/README.md
 helm/backstage/values.schema.json
 .vscode
 .github
 .yarn
 .pre-commit-config.yaml
+.claude

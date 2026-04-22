@@ -430,6 +430,40 @@
                         "type": "string"
                     }
                 },
+                "backendTrafficPolicy": {
+                    "description": "Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1)",
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "description": "Annotations applied to the BackendTrafficPolicy resource",
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                        "enabled": {
+                            "description": "Enable the BackendTrafficPolicy resource",
+                            "type": "boolean"
+                        },
+                        "labels": {
+                            "description": "Labels applied to the BackendTrafficPolicy resource",
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        },
+                        "spec": {
+                            "description": "BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically",
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "enabled": {
+                    "description": "Enable the Gateway API HTTPRoute resource",
+                    "type": "boolean"
+                },
                 "filters": {
                     "description": "Request/Response filters applied to the route",
                     "type": "array"

@@ -293,6 +293,20 @@ route:
     # @schema type:object;additionalProperties:true
     # -- Authorization rules for request-level access control
     authorization: {}
+  # -- Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1)
+  backendTrafficPolicy:
+    # @schema type:boolean
+    # -- Enable the BackendTrafficPolicy resource
+    enabled: false
+    # @schema additionalProperties:{"type":"string"}
+    # -- Labels applied to the BackendTrafficPolicy resource
+    labels: {}
+    # @schema additionalProperties:{"type":"string"}
+    # -- Annotations applied to the BackendTrafficPolicy resource
+    annotations: {}
+    # @schema type:object;additionalProperties:true
+    # -- BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically
+    spec: {}
 
 # @schema additionalProperties:{"type":"object","properties":{"username":{"type":"string"},"password":{"type":"string"}},"required":["username","password"]}
 # -- Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig
