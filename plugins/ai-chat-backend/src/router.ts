@@ -39,6 +39,8 @@ import {
   sanitizeMessages,
   stripStaleLargeToolResults,
 } from './utils';
+import { ConversationStore } from './services/ConversationStore';
+import { createConversationRoutes } from './routes/conversationRoutes';
 
 const STALE_TOOL_RESULT_STRIP_LIST = ['list_tools', 'list_core_tools'];
 
@@ -59,12 +61,13 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   userInfo: UserInfoService;
+  conversationStore: ConversationStore;
 }
 
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { httpAuth, logger, config, userInfo } = options;
+  const { httpAuth, logger, config, userInfo, conversationStore } = options;
 
   const mcpClientCache = new McpClientCache(logger);
 
@@ -429,12 +432,48 @@ export async function createRouter(
         return ret;
       } as typeof originalWrite;
 
-      result.pipeUIMessageStreamToResponse(res);
+      result.pipeUIMessageStreamToResponse(res, {
+        originalMessages: messages as UIMessage[],
+        onFinish({ messages: allMessages }) {
+          // Fire-and-forget: persist conversation after stream completes
+          conversationStore
+            .saveConversation(userRef, allMessages, conversationId)
+            .then(saved => {
+              chatLogger.debug(
+                `Saved conversation ${saved.id} (${allMessages.length} messages)`,
+              );
+
+              // Generate title for new conversations
+              if (!conversationId) {
+                generateTitle(
+                  saved.id,
+                  userRef,
+                  allMessages,
+                  conversationStore,
+                  chatLogger,
+                );
+              }
+            })
+            .catch(saveErr => {
+              chatLogger.error(`Failed to save conversation: ${saveErr}`);
+            });
+        },
+      });
     } catch (error) {
       chatLogger.error('Error in chat endpoint', error as Error);
       throw error;
     }
   });
+
+  // Conversation history CRUD routes
+  router.use(
+    '/conversations',
+    createConversationRoutes({
+      store: conversationStore,
+      httpAuth,
+      logger,
+    }),
+  );
 
   // Health check endpoint
   router.get('/health', (_, res) => {
@@ -459,4 +498,51 @@ export async function createRouter(
   });
 
   return router;
+}
+
+/**
+ * Fire-and-forget title generation for new conversations.
+ * Uses the same LLM provider to generate a concise title.
+ */
+function generateTitle(
+  conversationId: string,
+  userId: string,
+  messages: UIMessage[],
+  store: ConversationStore,
+  chatLogger: LoggerService,
+) {
+  setImmediate(async () => {
+    try {
+      const userMessages = messages
+        .filter(m => m.role === 'user')
+        .slice(0, 3)
+        .map(m =>
+          m.parts
+            .filter(p => p.type === 'text')
+            .map(p => p.text)
+            .join(' '),
+        )
+        .join('\n');
+
+      if (!userMessages.trim()) {
+        await store.updateTitle(userId, conversationId, 'Chat Session');
+        return;
+      }
+
+      // Use a simple truncation-based title as fallback
+      const fallbackTitle =
+        userMessages.length <= 50
+          ? userMessages
+          : `${userMessages.slice(0, 47)}...`;
+
+      await store.updateTitle(userId, conversationId, fallbackTitle);
+      chatLogger.debug(
+        `Set title for conversation ${conversationId}: "${fallbackTitle}"`,
+      );
+    } catch (error) {
+      chatLogger.warn(
+        `Failed to generate title for ${conversationId}: ${error}`,
+      );
+    }
+  });
 }

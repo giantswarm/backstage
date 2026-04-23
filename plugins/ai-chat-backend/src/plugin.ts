@@ -3,6 +3,7 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { createRouter } from './router';
+import { ConversationStore } from './services/ConversationStore';
 
 /**
  * aiChatPlugin backend plugin
@@ -19,14 +20,21 @@ export const aiChatPlugin = createBackendPlugin({
         logger: coreServices.logger,
         config: coreServices.rootConfig,
         userInfo: coreServices.userInfo,
+        database: coreServices.database,
       },
-      async init({ httpAuth, httpRouter, logger, config, userInfo }) {
+      async init({ httpAuth, httpRouter, logger, config, userInfo, database }) {
+        const conversationStore = await ConversationStore.create({
+          database,
+          logger,
+        });
+
         httpRouter.use(
           await createRouter({
             httpAuth,
             logger,
             config,
             userInfo,
+            conversationStore,
           }),
         );
       },

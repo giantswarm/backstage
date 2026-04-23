@@ -1,0 +1,264 @@
+import { randomUUID } from 'crypto';
+import { Knex } from 'knex';
+import {
+  DatabaseService,
+  LoggerService,
+  resolvePackagePath,
+} from '@backstage/backend-plugin-api';
+import { UIMessage } from 'ai';
+
+const TABLE_NAME = 'ai_chat_conversations';
+const DEFAULT_DISPLAY_LIMIT = 50;
+const MAX_DISPLAY_LIMIT = 100;
+
+const migrationsDir = resolvePackagePath(
+  '@giantswarm/backstage-plugin-ai-chat-backend',
+  'migrations',
+);
+
+export interface ConversationRecord {
+  id: string;
+  userId: string;
+  messages: UIMessage[];
+  title?: string;
+  isStarred: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ConversationRow {
+  id: string;
+  user_id: string;
+  messages: string;
+  title: string | null;
+  is_starred: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ConversationStoreOptions {
+  database: DatabaseService;
+  logger: LoggerService;
+}
+
+export class ConversationStore {
+  static async create(
+    options: ConversationStoreOptions,
+  ): Promise<ConversationStore> {
+    const { database, logger } = options;
+    const client = await database.getClient();
+
+    await client.migrate.latest({
+      directory: migrationsDir,
+    });
+
+    logger.info('AI Chat database migrations completed');
+
+    return new ConversationStore(client, logger);
+  }
+
+  private constructor(
+    private readonly db: Knex,
+    private readonly logger: LoggerService,
+  ) {}
+
+  async saveConversation(
+    userId: string,
+    messages: UIMessage[],
+    conversationId?: string,
+  ): Promise<ConversationRecord> {
+    const id = conversationId || randomUUID();
+    const now = new Date();
+
+    try {
+      if (conversationId) {
+        const existing = await this.db(TABLE_NAME)
+          .where({ id: conversationId, user_id: userId })
+          .first();
+
+        if (existing) {
+          await this.db(TABLE_NAME)
+            .where({ id: conversationId, user_id: userId })
+            .update({
+              messages: JSON.stringify(messages),
+              updated_at: now,
+            });
+
+          return {
+            id,
+            userId,
+            messages,
+            title: existing.title || undefined,
+            isStarred: existing.is_starred || false,
+            createdAt: new Date(existing.created_at),
+            updatedAt: now,
+          };
+        }
+      }
+
+      await this.db(TABLE_NAME).insert({
+        id,
+        user_id: userId,
+        messages: JSON.stringify(messages),
+        title: null,
+        is_starred: false,
+        created_at: now,
+        updated_at: now,
+      });
+
+      return {
+        id,
+        userId,
+        messages,
+        title: undefined,
+        isStarred: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to save conversation: ${error}`);
+      throw error;
+    }
+  }
+
+  async getConversations(
+    userId: string,
+    limit?: number,
+  ): Promise<Omit<ConversationRecord, 'messages'>[]> {
+    try {
+      const displayLimit = Math.min(
+        limit || DEFAULT_DISPLAY_LIMIT,
+        MAX_DISPLAY_LIMIT,
+      );
+
+      const rows = await this.db(TABLE_NAME)
+        .select(
+          'id',
+          'user_id',
+          'title',
+          'is_starred',
+          'created_at',
+          'updated_at',
+        )
+        .where({ user_id: userId })
+        .orderBy('updated_at', 'desc')
+        .limit(displayLimit);
+
+      return rows.map(row => this.rowToListRecord(row));
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve conversations for user ${userId}: ${error}`,
+      );
+      throw error;
+    }
+  }
+
+  async getConversationById(
+    userId: string,
+    id: string,
+  ): Promise<ConversationRecord | null> {
+    try {
+      const row = await this.db(TABLE_NAME)
+        .where({ id, user_id: userId })
+        .first();
+
+      if (!row) {
+        return null;
+      }
+
+      return this.rowToRecord(row);
+    } catch (error) {
+      this.logger.error(
+        `Failed to retrieve conversation ${id} for user ${userId}: ${error}`,
+      );
+      throw error;
+    }
+  }
+
+  async deleteConversation(userId: string, id: string): Promise<boolean> {
+    try {
+      const deleted = await this.db(TABLE_NAME)
+        .where({ id, user_id: userId })
+        .delete();
+      return deleted > 0;
+    } catch (error) {
+      this.logger.error(`Failed to delete conversation ${id}: ${error}`);
+      throw error;
+    }
+  }
+
+  async toggleStarred(userId: string, id: string): Promise<boolean | null> {
+    try {
+      const existing = await this.db(TABLE_NAME)
+        .where({ id, user_id: userId })
+        .first();
+
+      if (!existing) {
+        return null;
+      }
+
+      const newStarredStatus = !existing.is_starred;
+
+      await this.db(TABLE_NAME).where({ id, user_id: userId }).update({
+        is_starred: newStarredStatus,
+        updated_at: new Date(),
+      });
+
+      return newStarredStatus;
+    } catch (error) {
+      this.logger.error(
+        `Failed to toggle starred for conversation ${id}: ${error}`,
+      );
+      throw error;
+    }
+  }
+
+  async updateTitle(userId: string, id: string, title: string): Promise<void> {
+    try {
+      await this.db(TABLE_NAME).where({ id, user_id: userId }).update({
+        title,
+        updated_at: new Date(),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to update title for conversation ${id}: ${error}`,
+      );
+      throw error;
+    }
+  }
+
+  private rowToRecord(row: ConversationRow): ConversationRecord {
+    let messages: UIMessage[] = [];
+
+    try {
+      messages = JSON.parse(row.messages);
+    } catch (error) {
+      this.logger.error(
+        `Corrupted messages JSON for conversation ${row.id}, returning empty array`,
+      );
+    }
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      messages,
+      title: row.title || undefined,
+      isStarred: row.is_starred || false,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  private rowToListRecord(
+    row: Omit<ConversationRow, 'messages'>,
+  ): Omit<ConversationRecord, 'messages'> {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      title: row.title || undefined,
+      isStarred: row.is_starred || false,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+}

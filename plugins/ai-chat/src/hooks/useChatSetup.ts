@@ -58,13 +58,20 @@ function shouldSendAutomatically({
   return true;
 }
 
-export function useChatSetup() {
+export interface UseChatSetupOptions {
+  initialMessages?: UIMessage[];
+  conversationId?: string;
+}
+
+export function useChatSetup(options?: UseChatSetupOptions) {
   const identityApi = useApi(identityApiRef);
   const discoveryApi = useApi(discoveryApiRef);
   const configApi = useApi(configApiRef);
   const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
   const featureFlagsApi = useApi(featureFlagsApiRef);
-  const conversationIdRef = useRef<string | null>(null);
+  const conversationIdRef = useRef<string | null>(
+    options?.conversationId ?? null,
+  );
 
   // Verbose debugging is only enabled in non-production builds to avoid
   // leaking backend internals (system prompt, tool schemas) to end users
@@ -148,6 +155,7 @@ export function useChatSetup() {
   }, [identityApi, getMCPAuthHeaders, featureFlagsApi, verboseDebugging]);
 
   const runtime = useChatRuntime({
+    messages: options?.initialMessages,
     sendAutomaticallyWhen: shouldSendAutomatically,
     transport: new AssistantChatTransport({
       api: apiUrl,
