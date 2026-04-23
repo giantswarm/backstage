@@ -51,6 +51,11 @@ export const gsPlugin = createBackendPlugin({
           }),
         );
 
+        httpRouter.addAuthPolicy({
+          path: '/branding',
+          allow: 'unauthenticated',
+        });
+
         registerMcpActions(
           actionsRegistry,
           containerRegistry,
