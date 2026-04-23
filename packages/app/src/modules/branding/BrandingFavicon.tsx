@@ -7,7 +7,10 @@ import { useBranding } from './useBranding';
 const FAVICON_ASSETS: { filename: string; selectors: string[] }[] = [
   {
     filename: 'favicon.ico',
-    selectors: ['link[rel="icon"][href$="favicon.ico"]', 'link[rel="shortcut icon"]'],
+    selectors: [
+      'link[rel="icon"][href$="favicon.ico"]',
+      'link[rel="shortcut icon"]',
+    ],
   },
   {
     filename: 'favicon-16x16.png',
