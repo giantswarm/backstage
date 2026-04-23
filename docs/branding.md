@@ -1,20 +1,23 @@
 # Custom Branding
 
-The Dev Portal supports overriding the default sidebar logos and browser tab favicon with custom assets, without committing them to the source repository or loading them from external URLs.
+The Dev Portal supports overriding the default sidebar logos, home page logo, and browser tab favicon with custom assets, without committing them to the source repository or loading them from external URLs.
 
 Assets are placed into a directory on the backend's filesystem and served by the `gs-backend` plugin. On the frontend, components check which assets are available and swap in the custom versions, falling back to the built-in defaults when none are provided.
 
 ## Supported assets
 
-| Filename | Purpose |
-|---|---|
-| `logo-full.svg` or `logo-full.png` | Wide logo shown in the expanded sidebar |
-| `logo-icon.svg` or `logo-icon.png` | Narrow icon shown in the collapsed sidebar |
-| `favicon.ico` | Browser tab icon |
-| `favicon-16x16.png` | 16×16 icon variant |
-| `favicon-32x32.png` | 32×32 icon variant |
-| `apple-touch-icon.png` | iOS home screen icon |
-| `safari-pinned-tab.svg` | Safari pinned tab mask icon |
+| Filename                                       | Purpose                                                                          |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| `logo-full.svg` or `logo-full.png`             | Wide logo shown in the expanded sidebar                                          |
+| `logo-icon.svg` or `logo-icon.png`             | Narrow icon shown in the collapsed sidebar                                       |
+| `home-logo.svg` or `home-logo.png`             | Large logo shown at the top of the home page                                     |
+| `home-logo-light.svg` or `home-logo-light.png` | Home page logo used when the light theme is active (falls back to `home-logo.*`) |
+| `home-logo-dark.svg` or `home-logo-dark.png`   | Home page logo used when the dark theme is active (falls back to `home-logo.*`)  |
+| `favicon.ico`                                  | Browser tab icon                                                                 |
+| `favicon-16x16.png`                            | 16×16 icon variant                                                               |
+| `favicon-32x32.png`                            | 32×32 icon variant                                                               |
+| `apple-touch-icon.png`                         | iOS home screen icon                                                             |
+| `safari-pinned-tab.svg`                        | Safari pinned tab mask icon                                                      |
 
 All assets are optional. Only assets that are present in the directory will override their defaults.
 
@@ -131,24 +134,24 @@ base64 -w0 favicon-32x32.png
 
 ## Configuration reference
 
-| Key | Default | Description |
-|---|---|---|
+| Key                      | Default                | Description                                                 |
+| ------------------------ | ---------------------- | ----------------------------------------------------------- |
 | `gs.branding.assetsPath` | `/app/branding-assets` | Filesystem path where the backend looks for branding assets |
 
 ### Helm values
 
-| Key | Default | Description |
-|---|---|---|
-| `branding.enabled` | `false` | Enable the branding volume mount and config |
-| `branding.assetsPath` | `/app/branding-assets` | Path inside the container where assets are mounted |
-| `branding.volume` | `{}` | Kubernetes volume source (e.g. `configMap`, `emptyDir`, `persistentVolumeClaim`) |
-| `branding.initContainers` | `[]` | Init containers to run before the main container (e.g. to copy assets from an OCI image) |
+| Key                       | Default                | Description                                                                              |
+| ------------------------- | ---------------------- | ---------------------------------------------------------------------------------------- |
+| `branding.enabled`        | `false`                | Enable the branding volume mount and config                                              |
+| `branding.assetsPath`     | `/app/branding-assets` | Path inside the container where assets are mounted                                       |
+| `branding.volume`         | `{}`                   | Kubernetes volume source (e.g. `configMap`, `emptyDir`, `persistentVolumeClaim`)         |
+| `branding.initContainers` | `[]`                   | Init containers to run before the main container (e.g. to copy assets from an OCI image) |
 
 ## How it works
 
 1. On startup, the `gs-backend` plugin scans the configured `assetsPath` directory and registers a `/branding/manifest` endpoint that lists the available files, plus an `express.static` handler that serves them. If the directory does not exist, the manifest returns an empty list and no errors are logged.
 
-2. On the frontend, the `useBranding()` hook fetches the manifest once and caches it. The `LogoFull` and `LogoIcon` components check whether a matching asset exists and render an `<img>` tag pointing at the backend URL, or fall back to the built-in inline SVG.
+2. On the frontend, the `useBranding()` hook fetches the manifest once and caches it. The `LogoFull`, `LogoIcon`, and `HomeLogo` components check whether a matching asset exists and render an `<img>` tag pointing at the backend URL, or fall back to the built-in inline SVG.
 
 3. The `BrandingFavicon` component (mounted at the app root) updates the `<link>` tags in `<head>` to point at any available favicon assets, leaving unmatched tags unchanged.
 
