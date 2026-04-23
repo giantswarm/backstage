@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.123.0] - 2026-04-23
+
 ### Added
 
 - Add BackendTrafficPolicy template to the helm chart, to be able to customize HTTP connection settings.
@@ -2298,7 +2300,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.123.0...HEAD
+[0.123.0]: https://github.com/giantswarm/backstage/compare/v0.122.2...v0.123.0
 [0.122.2]: https://github.com/giantswarm/backstage/compare/v0.122.1...v0.122.2
 [0.122.1]: https://github.com/giantswarm/backstage/compare/v0.122.0...v0.122.1
 [0.122.0]: https://github.com/giantswarm/backstage/compare/v0.121.0...v0.122.0
