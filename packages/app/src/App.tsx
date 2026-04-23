@@ -30,6 +30,7 @@ import apiDocsPlugin from '@backstage/plugin-api-docs/alpha';
 import { apiDocsPluginOverrides } from './modules/api-docs';
 import githubActionsPlugin from '@backstage-community/plugin-github-actions/alpha';
 import signalsPlugin from '@backstage/plugin-signals/alpha';
+import mcpChatPlugin from '@backstage-community/plugin-mcp-chat/alpha';
 
 // Legacy plugins (compat-converted for NFS route ref discovery):
 import {
@@ -70,6 +71,7 @@ const app = createApp({
     apiDocsPluginOverrides,
     githubActionsPlugin,
     signalsPlugin,
+    mcpChatPlugin,
 
     // Legacy plugins (compat-converted for NFS route ref discovery):
     circleCINfsPlugin,

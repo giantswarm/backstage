@@ -89,4 +89,7 @@ backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 backend.add(import('@terasky/backstage-plugin-catalog-mcp-backend'));
 
+// mcp chat plugin
+backend.add(import('@backstage-community/plugin-mcp-chat-backend'));
+
 backend.start();
