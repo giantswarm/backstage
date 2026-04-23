@@ -37,8 +37,7 @@ const useReasoningStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
       width: '100%',
-      marginTop: theme.spacing(0.5),
-      marginBottom: theme.spacing(1.5),
+      margin: theme.spacing(1, 0),
     },
     trigger: {
       display: 'inline-flex',
