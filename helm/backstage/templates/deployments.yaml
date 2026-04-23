@@ -40,6 +40,10 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      {{- if and .Values.branding.enabled .Values.branding.initContainers }}
+      initContainers:
+        {{- toYaml .Values.branding.initContainers | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Values.image.name }}
           image: "{{ .Values.registry.domain }}/{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
@@ -63,6 +67,10 @@ spec:
             - "--config"
             - "{{ .filename }}"
           {{- end }}
+          {{- end }}
+          {{- if .Values.branding.enabled }}
+            - "--config"
+            - "app-config-branding.yaml"
           {{- end }}
           resources:
             requests:
@@ -140,6 +148,14 @@ spec:
             {{- if .Values.backstage.extraVolumeMounts }}
               {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraVolumeMounts "context" $ ) | nindent 12 }}
             {{- end }}
+            {{- if .Values.branding.enabled }}
+            - name: branding-assets
+              mountPath: {{ .Values.branding.assetsPath | quote }}
+              readOnly: true
+            - name: branding-config
+              mountPath: "/app/app-config-branding.yaml"
+              subPath: app-config-branding.yaml
+            {{- end }}
             {{- if .Values.sharedConfig }}
             - name: backstage-shared-config
               mountPath: "/app/shared-config.yaml"
@@ -197,6 +213,13 @@ spec:
         {{- end }}
         {{- if .Values.backstage.extraVolumes }}
           {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraVolumes "context" $ ) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.branding.enabled }}
+        - name: branding-assets
+          {{- toYaml .Values.branding.volume | nindent 10 }}
+        - name: branding-config
+          configMap:
+            name: {{ .Values.name }}-branding-config
         {{- end }}
         {{- if .Values.sharedConfig }}
         - name: backstage-shared-config

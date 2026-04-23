@@ -1,23 +1,70 @@
 import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
+import {
+  LoggerService,
+  RootConfigService,
+} from '@backstage/backend-plugin-api';
 import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
+import { existsSync, readdirSync } from 'fs';
+import { resolve } from 'path';
 import { fetchGitHubRawContent } from './githubRawContent';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 import { mimirServiceRef } from './services/MimirService';
 
 export async function createRouter({
+  config,
+  logger,
   containerRegistry,
   mimir,
   githubCredentialsProvider,
 }: {
+  config: RootConfigService;
+  logger: LoggerService;
   containerRegistry: typeof containerRegistryServiceRef.T;
   mimir: typeof mimirServiceRef.T;
   githubCredentialsProvider: GithubCredentialsProvider;
 }): Promise<express.Router> {
   const router = Router();
   router.use(express.json());
+
+  // --- Branding asset routes ---
+  const assetsPath =
+    config.getOptionalString('gs.branding.assetsPath') ??
+    '/app/branding-assets';
+  const resolvedAssetsPath = resolve(assetsPath);
+
+  if (existsSync(resolvedAssetsPath)) {
+    const files = readdirSync(resolvedAssetsPath);
+    const assets: Record<string, boolean> = {};
+    for (const file of files) {
+      assets[file] = true;
+    }
+
+    router.get('/branding/manifest', (_req, res) => {
+      res.json({ assets });
+    });
+
+    router.use(
+      '/branding',
+      express.static(resolvedAssetsPath, {
+        maxAge: '1d',
+      }),
+    );
+
+    logger.info(
+      `Serving ${files.length} branding asset(s) from ${resolvedAssetsPath}`,
+    );
+  } else {
+    router.get('/branding/manifest', (_req, res) => {
+      res.json({ assets: {} });
+    });
+
+    logger.info(
+      `Branding assets directory not found at ${resolvedAssetsPath}, serving defaults`,
+    );
+  }
 
   /**
    * GET /container-registry/tags

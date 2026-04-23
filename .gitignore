@@ -77,3 +77,6 @@ charts/*/charts/
 .claude/user-team-info.json
 .claude/tasks/
 CLAUDE.local.md
+
+# Ignore branding customization assets
+/branding-assets

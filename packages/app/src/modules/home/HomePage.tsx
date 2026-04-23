@@ -1,15 +1,14 @@
 import { Content, Page } from '@backstage/core-components';
 import {
-  HomePageCompanyLogo,
   HomePageRecentlyVisited,
   HomePageStarredEntities,
   HomePageTopVisited,
-  TemplateBackstageLogo,
 } from '@backstage/plugin-home';
 import { HomePageSearchBar } from '@backstage/plugin-search';
 import { SearchContextProvider } from '@backstage/plugin-search-react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { GSHomePageResources } from '@giantswarm/backstage-plugin-gs';
+import { HomeLogo } from './HomeLogo';
 
 const useStyles = makeStyles(theme => ({
   searchBarInput: {
@@ -24,39 +23,15 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const useLogoStyles = makeStyles(theme => ({
-  container: {
-    margin: theme.spacing(5, 0),
-  },
-  svg: {
-    width: 'auto',
-    height: 100,
-  },
-  path: {
-    fill: '#7df3e1',
-  },
-}));
-
 export const HomePage = () => {
   const classes = useStyles();
-  const { svg, path, container } = useLogoStyles();
 
   return (
     <SearchContextProvider>
       <Page themeId="home">
         <Content>
           <Grid container justifyContent="center" spacing={6}>
-            <HomePageCompanyLogo
-              className={container}
-              logo={
-                <TemplateBackstageLogo
-                  classes={{
-                    svg,
-                    path,
-                  }}
-                />
-              }
-            />
+            <HomeLogo />
             <Grid container item xs={12} justifyContent="center">
               <HomePageSearchBar
                 InputProps={{

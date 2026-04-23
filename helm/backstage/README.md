@@ -1,6 +1,6 @@
 # backstage
 
-![Version: 0.122.3](https://img.shields.io/badge/Version-0.122.3-informational?style=flat-square) ![AppVersion: 0.122.3](https://img.shields.io/badge/AppVersion-0.122.3-informational?style=flat-square)
+![Version: 0.123.0](https://img.shields.io/badge/Version-0.123.0-informational?style=flat-square) ![AppVersion: 0.123.0](https://img.shields.io/badge/AppVersion-0.123.0-informational?style=flat-square)
 
 Backstage app provided by Giant Swarm
 
@@ -78,6 +78,11 @@ Backstage app provided by Giant Swarm
 | database.postgresql.clusterNameSuffix | string | `"cnpg"` | Suffix appended to the chart name to form the CNPG cluster resource name |
 | database.postgresql.storageSize | string | `"5Gi"` | Persistent volume size for the PostgreSQL CNPG cluster |
 | database.postgresql.image | string | `"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716"` | PostgreSQL container image for the CNPG cluster (registry.domain is prepended) |
+| branding | object | `{"assetsPath":"/app/branding-assets","enabled":false,"initContainers":[],"volume":{}}` | Custom branding/UI asset settings (logos served by the gs-backend plugin) |
+| branding.enabled | bool | `false` | Enable serving custom branding assets (logos) from a mounted volume |
+| branding.assetsPath | string | `"/app/branding-assets"` | Filesystem path inside the container where branding assets are mounted |
+| branding.volume | object | `{}` | Volume source for the branding assets (e.g. configMap, persistentVolumeClaim, emptyDir) |
+| branding.initContainers | list | `[]` | Init containers that populate the branding assets volume before the main container starts |
 | backstage | object | `{"appConfig":{},"args":[],"command":["node","packages/backend"],"extraAppConfig":[],"extraEnvVars":[],"extraEnvVarsCM":[],"extraEnvVarsSecrets":[],"extraVolumeMounts":[],"extraVolumes":[]}` | Backstage application parameters |
 | backstage.command | list | `["node","packages/backend"]` | Container command to start the Backstage backend |
 | backstage.args | list | `[]` | Additional command arguments passed to the Backstage container |

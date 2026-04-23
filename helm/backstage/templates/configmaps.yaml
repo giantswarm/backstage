@@ -25,3 +25,20 @@ metadata:
 data:
   shared-config.yaml: {{- .Values.sharedConfig | toYaml | indent 2 }}
 {{- end }}
+
+{{- if .Values.branding.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.name }}-branding-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.name }}
+    {{- include "labels.backstage" $ | nindent 4 }}
+data:
+  app-config-branding.yaml: |
+    gs:
+      branding:
+        assetsPath: {{ .Values.branding.assetsPath | quote }}
+{{- end }}

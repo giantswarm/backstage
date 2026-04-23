@@ -1,5 +1,13 @@
 export interface Config {
   gs?: {
+    branding?: {
+      /**
+       * Filesystem path where custom branding assets (logos, backgrounds) are stored.
+       * Assets in this directory are served at /api/gs/branding/<filename>.
+       * @visibility backend
+       */
+      assetsPath?: string;
+    };
     containerRegistry?: {
       registries?: {
         /**
