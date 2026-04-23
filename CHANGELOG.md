@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix helm chart to allow for branding configmap.
+
 ## [0.124.0] - 2026-04-23
 
 ### Added

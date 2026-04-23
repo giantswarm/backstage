@@ -204,13 +204,11 @@ branding:
   # -- Filesystem path inside the container where branding assets are mounted
   assetsPath: /app/branding-assets
 
-  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Volume
-  # -- Volume source for the branding assets (e.g. configMap, persistentVolumeClaim, emptyDir)
-  volume: {}
-
-  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Container
-  # -- Init containers that populate the branding assets volume before the main container starts
-  initContainers: []
+  # -- Volume source for the branding assets. Currently only the `configMap` source is supported; the volume `name` is supplied by the chart.
+  volume:
+    # @schema $ref:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.ConfigMapVolumeSource;additionalProperties:true
+    # -- ConfigMap volume source. At minimum, set `.name` to the name of the ConfigMap holding the assets
+    configMap: {}
 
 # -- Backstage application parameters
 backstage:
