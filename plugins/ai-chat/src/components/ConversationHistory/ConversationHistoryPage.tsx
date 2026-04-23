@@ -1,28 +1,31 @@
 import { Content } from '@backstage/core-components';
 import {
-  List,
-  ListRow,
+  ButtonIcon,
+  Cell,
+  CellText,
+  ColumnConfig,
+  Menu,
   MenuItem,
+  MenuTrigger,
   SearchAutocomplete,
   SearchAutocompleteItem,
+  Table,
   Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   RiDeleteBinLine,
+  RiMoreLine,
   RiStarFill,
   RiStarLine,
-  RiChat1Line,
 } from '@remixicon/react';
+import { useState } from 'react';
 import { useConversations } from '../../hooks/useConversations';
 import type { ConversationApi, ConversationListItem } from '../../api';
+import type { Selection } from 'react-aria-components';
 
 const useStyles = makeStyles(theme => ({
-  root: {
-    maxWidth: 800,
-    margin: '0 auto',
-    paddingTop: theme.spacing(2),
-  },
+  root: {},
   searchContainer: {
     marginBottom: theme.spacing(2),
   },
@@ -65,6 +68,7 @@ export const ConversationHistoryPage = ({
   onSelectConversation,
 }: ConversationHistoryPageProps) => {
   const classes = useStyles();
+  const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
   const {
     starredConversations,
     recentConversations,
@@ -75,47 +79,79 @@ export const ConversationHistoryPage = ({
     toggleStar,
   } = useConversations(conversationApi);
 
-  const renderConversationList = (items: ConversationListItem[]) => (
-    <List
-      items={items}
-      selectionMode="none"
-      renderEmptyState={() => (
+  const columnConfig: ColumnConfig<ConversationListItem>[] = [
+    {
+      id: 'title',
+      label: 'Title',
+      isRowHeader: true,
+      cell: item => (
+        <CellText
+          title={item.title || 'Untitled conversation'}
+          description={formatRelativeDate(item.updatedAt)}
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      label: '',
+      width: 48,
+      cell: item => (
+        <Cell>
+          <MenuTrigger>
+            <ButtonIcon
+              icon={<RiMoreLine />}
+              aria-label="Actions"
+              variant="tertiary"
+              size="small"
+            />
+            <Menu>
+              <MenuItem
+                onAction={() => toggleStar(item.id)}
+                iconStart={
+                  item.isStarred ? (
+                    <RiStarLine size={16} />
+                  ) : (
+                    <RiStarFill size={16} />
+                  )
+                }
+              >
+                {item.isStarred ? 'Unstar' : 'Star'}
+              </MenuItem>
+              <MenuItem
+                onAction={() => deleteConversation(item.id)}
+                iconStart={<RiDeleteBinLine size={16} />}
+                color="danger"
+              >
+                Delete
+              </MenuItem>
+            </Menu>
+          </MenuTrigger>
+        </Cell>
+      ),
+    },
+  ];
+
+  const renderConversationTable = (items: ConversationListItem[]) => (
+    <Table
+      columnConfig={columnConfig}
+      data={items}
+      loading={loading}
+      pagination={{ type: 'none' }}
+      selection={{
+        mode: 'multiple',
+        behavior: 'toggle',
+        selected: selectedKeys,
+        onSelectionChange: setSelectedKeys,
+      }}
+      rowConfig={{
+        onClick: item => onSelectConversation(item.id),
+      }}
+      emptyState={
         <div className={classes.emptyState}>
           <Text variant="body-small">No conversations found</Text>
         </div>
-      )}
-    >
-      {items.map(conv => (
-        <ListRow
-          key={conv.id}
-          id={conv.id}
-          textValue={conv.title || 'Untitled conversation'}
-          icon={<RiChat1Line size={20} />}
-          description={formatRelativeDate(conv.updatedAt)}
-          onAction={() => onSelectConversation(conv.id)}
-          menuItems={
-            <>
-              <MenuItem onAction={() => toggleStar(conv.id)}>
-                {conv.isStarred ? (
-                  <>
-                    <RiStarLine size={16} /> Unstar
-                  </>
-                ) : (
-                  <>
-                    <RiStarFill size={16} /> Star
-                  </>
-                )}
-              </MenuItem>
-              <MenuItem onAction={() => deleteConversation(conv.id)}>
-                <RiDeleteBinLine size={16} /> Delete
-              </MenuItem>
-            </>
-          }
-        >
-          {conv.title || 'Untitled conversation'}
-        </ListRow>
-      ))}
-    </List>
+      }
+    />
   );
 
   const allConversations = [...starredConversations, ...recentConversations];
@@ -151,18 +187,12 @@ export const ConversationHistoryPage = ({
           </SearchAutocomplete>
         </div>
 
-        {loading && (
-          <div className={classes.emptyState}>
-            <Text variant="body-small">Loading conversations...</Text>
-          </div>
-        )}
-
         {!loading && starredConversations.length > 0 && (
           <div className={classes.section}>
             <Text variant="body-small" className={classes.sectionHeader}>
               Starred
             </Text>
-            {renderConversationList(starredConversations)}
+            {renderConversationTable(starredConversations)}
           </div>
         )}
 
@@ -173,7 +203,7 @@ export const ConversationHistoryPage = ({
                 Recent
               </Text>
             )}
-            {renderConversationList(recentConversations)}
+            {renderConversationTable(recentConversations)}
           </div>
         )}
       </div>
