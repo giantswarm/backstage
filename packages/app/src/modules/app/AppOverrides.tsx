@@ -8,6 +8,7 @@
 import {
   createFrontendModule,
   ApiBlueprint,
+  AppRootElementBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
   IconBundleBlueprint,
@@ -47,6 +48,7 @@ import {
   GiantSwarmIcon,
   GrafanaIcon,
 } from '../../assets/icons/CustomIcons';
+import { BrandingFavicon } from '../branding';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -167,6 +169,12 @@ export const appOverrides = createFrontendModule({
           aws: <AWSIcon />,
           azure: <AzureIcon />,
         },
+      },
+    }),
+    AppRootElementBlueprint.make({
+      name: 'branding-favicon',
+      params: {
+        element: <BrandingFavicon />,
       },
     }),
     ApiBlueprint.make({
