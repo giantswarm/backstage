@@ -26,11 +26,7 @@ export const LogoIcon = () => {
 
   if (customAsset) {
     return (
-      <img
-        className={classes.img}
-        src={getAssetUrl(customAsset)}
-        alt="Logo"
-      />
+      <img className={classes.img} src={getAssetUrl(customAsset)} alt="Logo" />
     );
   }
 

@@ -29,16 +29,14 @@ export function useBranding() {
     if (cachedResult) {
       setResult(cachedResult);
       setIsLoading(false);
-      return;
+      return undefined;
     }
 
     if (!cachedPromise) {
       cachedPromise = (async (): Promise<ManifestResult> => {
         const baseUrl = await discoveryApi.getBaseUrl('gs');
         try {
-          const response = await fetchApi.fetch(
-            `${baseUrl}/branding/manifest`,
-          );
+          const response = await fetchApi.fetch(`${baseUrl}/branding/manifest`);
           if (response.ok) {
             const data = await response.json();
             return { assets: data.assets ?? {}, baseUrl };
