@@ -5,9 +5,23 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.123.0] - 2026-04-23
+
 ### Added
 
 - Add BackendTrafficPolicy template to the helm chart, to be able to customize HTTP connection settings.
+
+### Changed
+
+- Redesign tool call and tool group UI in AI chat with compact inline layout, argument summary previews, and inline status icons.
+
+### Fixed
+
+- Fix deprecation warning for the user settings General page by migrating to the new `configSchema` option.
+- Fix missing key prop warning on the scaffolder sidebar item.
+- Flush SSE chunks through compression middleware so streamed AI responses reach the client in real time.
+
+See [./docs/releases/v0.123.0-changelog.md](./docs/releases/v0.123.0-changelog.md) for more information.
 
 ## [0.122.3] - 2026-04-21
 
@@ -2286,7 +2300,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.123.0...HEAD
+[0.123.0]: https://github.com/giantswarm/backstage/compare/v0.122.2...v0.123.0
 [0.122.2]: https://github.com/giantswarm/backstage/compare/v0.122.1...v0.122.2
 [0.122.1]: https://github.com/giantswarm/backstage/compare/v0.122.0...v0.122.1
 [0.122.0]: https://github.com/giantswarm/backstage/compare/v0.121.0...v0.122.0

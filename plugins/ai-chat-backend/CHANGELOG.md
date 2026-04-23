@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.11.1
+
+### Patch Changes
+
+- d8d8e7b: Flush SSE chunks through compression middleware so streamed AI responses
+  reach the client in real time instead of arriving as a single batch.
+
 ## 0.11.0
 
 ### Minor Changes

@@ -1,5 +1,21 @@
 # app
 
+## 0.37.1
+
+### Patch Changes
+
+- f843e9e: Fix deprecation warning for the user settings General sub-page by migrating
+  from the deprecated `config.schema` option to the new top-level `configSchema`
+  option using a Standard Schema value from `zod` v4. Adds `zod@^4.3.6` as a
+  direct dependency of `packages/app` so the schema resolves against a Zod
+  build that includes JSON Schema conversion (the `zod/v4` subpath of Zod v3
+  does not).
+- 5fc31b3: Fix React "Each child in a list should have a unique key prop" warning
+  emitted on the root page by adding a `key` to the scaffolder "Create..."
+  `SidebarItem` in the main sidebar.
+- Updated dependencies [d8d8e7b]
+  - @giantswarm/backstage-plugin-ai-chat@0.12.0
+
 ## 0.37.0
 
 ### Minor Changes

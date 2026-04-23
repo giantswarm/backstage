@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.12.0
+
+### Minor Changes
+
+- d8d8e7b: Redesign tool call and tool group UI with compact inline layout, argument summary previews, inline status icons, and tool name breakdown in grouped headers.
+
 ## 0.11.6
 
 ### Patch Changes
