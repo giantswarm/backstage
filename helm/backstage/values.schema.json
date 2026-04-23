@@ -125,6 +125,36 @@
             },
             "additionalProperties": false
         },
+        "branding": {
+            "description": "Custom branding/UI asset settings (logos served by the gs-backend plugin)",
+            "type": "object",
+            "properties": {
+                "assetsPath": {
+                    "description": "Filesystem path inside the container where branding assets are mounted",
+                    "type": "string"
+                },
+                "enabled": {
+                    "description": "Enable serving custom branding assets (logos) from a mounted volume",
+                    "type": "boolean"
+                },
+                "initContainers": {
+                    "description": "Init containers that populate the branding assets volume before the main container starts",
+                    "type": "array",
+                    "items": {
+                        "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
+                "volume": {
+                    "description": "Volume source for the branding assets (e.g. configMap, persistentVolumeClaim, emptyDir)",
+                    "type": "object",
+                    "items": {
+                        "$ref": "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Volume"
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
         "circleci": {
             "description": "CircleCI integration settings",
             "type": "object",
