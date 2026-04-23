@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add custom branding asset support with logo overrides, allowing UI logo customization via mounted volumes without code changes.
+
 ## [0.123.0] - 2026-04-23
 
 ### Added
