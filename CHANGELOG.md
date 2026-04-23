@@ -19,6 +19,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Fix missing key prop warning on the scaffolder sidebar item.
 - Flush SSE chunks through compression middleware so streamed AI responses reach the client in real time.
 
+See [./docs/releases/v0.123.0-changelog.md](./docs/releases/v0.123.0-changelog.md) for more information.
+
 ## [0.122.3] - 2026-04-21
 
 ### Changed
