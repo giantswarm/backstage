@@ -146,6 +146,7 @@ const useStyles = makeStyles(theme =>
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(1),
+      margin: theme.spacing(1, 0),
     },
   }),
 );
