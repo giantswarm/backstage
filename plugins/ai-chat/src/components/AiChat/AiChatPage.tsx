@@ -27,9 +27,9 @@ const useStyles = makeStyles(theme => ({
   root: {
     display: 'flex',
     flexDirection: 'column',
-    minHeight: 'calc(100dvh - 52px)',
+    minHeight: 'calc(100dvh - 89px)',
     [theme.breakpoints.down('xs')]: {
-      minHeight: 'calc(100dvh - 52px - 56px)',
+      minHeight: 'calc(100dvh - 89px - 56px)',
     },
     paddingBottom: 0,
   },
