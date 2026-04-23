@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.124.0] - 2026-04-23
+
+### Added
+
+- Add custom branding asset support with logo overrides, allowing UI logo customization via mounted volumes without code changes.
+
+See [./docs/releases/v0.124.0-changelog.md](./docs/releases/v0.124.0-changelog.md) for more information.
+
 ## [0.123.0] - 2026-04-23
 
 ### Added
@@ -2300,7 +2308,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.123.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.0...HEAD
+[0.124.0]: https://github.com/giantswarm/backstage/compare/v0.123.0...v0.124.0
 [0.123.0]: https://github.com/giantswarm/backstage/compare/v0.122.2...v0.123.0
 [0.122.2]: https://github.com/giantswarm/backstage/compare/v0.122.1...v0.122.2
 [0.122.1]: https://github.com/giantswarm/backstage/compare/v0.122.0...v0.122.1

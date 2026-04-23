@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.9.0
+
+### Minor Changes
+
+- 0f6cd54: Add custom branding asset support with logo overrides, allowing organizations to customize UI logos via mounted volumes without code changes.
+
 ## 0.8.0
 
 ### Minor Changes
