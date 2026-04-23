@@ -1,7 +1,12 @@
 import { makeStyles } from '@material-ui/core';
+import { useBranding } from '../branding';
 
 const useStyles = makeStyles({
   svg: {
+    width: 'auto',
+    height: 30,
+  },
+  img: {
     width: 'auto',
     height: 30,
   },
@@ -12,6 +17,22 @@ const useStyles = makeStyles({
 
 export const LogoFull = () => {
   const classes = useStyles();
+  const { hasAsset, getAssetUrl } = useBranding();
+
+  const customAsset =
+    (hasAsset('logo-full.svg') && 'logo-full.svg') ||
+    (hasAsset('logo-full.png') && 'logo-full.png') ||
+    undefined;
+
+  if (customAsset) {
+    return (
+      <img
+        className={classes.img}
+        src={getAssetUrl(customAsset)}
+        alt="Logo"
+      />
+    );
+  }
 
   return (
     <svg
