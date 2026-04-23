@@ -64,11 +64,22 @@ describe('gs-backend router branding routes', () => {
     writeFileSync(join(assetsDir, 'logo-full.svg'), svg);
 
     const app = await buildApp(assetsDir);
-    const res = await request(app).get('/branding/logo-full.svg');
+    // superagent has no default parser for image/svg+xml, so buffer manually.
+    const res = await request(app)
+      .get('/branding/logo-full.svg')
+      .buffer(true)
+      .parse((response, cb) => {
+        let data = '';
+        response.setEncoding('utf8');
+        response.on('data', chunk => {
+          data += chunk;
+        });
+        response.on('end', () => cb(null, data));
+      });
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/svg/);
-    expect(res.text).toBe(svg);
+    expect(res.body).toBe(svg);
   });
 
   it('returns an empty manifest when the configured directory does not exist', async () => {
