@@ -112,11 +112,6 @@ const useStyles = makeStyles(theme =>
     contentInner: {
       marginTop: theme.spacing(1),
       paddingLeft: theme.spacing(2),
-      display: 'flex',
-      flexDirection: 'column',
-      '& > *:not(:last-child)': {
-        marginBottom: theme.spacing(1),
-      },
     },
     contentInnerOutline: {
       marginTop: theme.spacing(3),
@@ -146,6 +141,11 @@ const useStyles = makeStyles(theme =>
     '@keyframes spin': {
       from: { transform: 'scaleX(-1) rotate(0deg)' },
       to: { transform: 'scaleX(-1) rotate(-360deg)' },
+    },
+    tools: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(1),
     },
   }),
 );
@@ -312,7 +312,7 @@ function ToolGroupContent({ className, children }: ToolGroupContentProps) {
             [classes.contentInnerMuted]: variant === 'muted',
           })}
         >
-          {children}
+          <div className={classes.tools}>{children}</div>
         </div>
       </div>
     </Collapse>
@@ -327,12 +327,16 @@ type ToolGroupComponent = FC<
   Content: typeof ToolGroupContent;
 };
 
+const MIN_GROUP_SIZE = 3;
+
 const ToolGroupImpl: FC<
   PropsWithChildren<{ startIndex: number; endIndex: number }>
 > = ({ children, startIndex, endIndex }) => {
+  const classes = useStyles();
   const toolCount = endIndex - startIndex + 1;
 
   const breakdown = useAuiState(s => {
+    if (toolCount < MIN_GROUP_SIZE) return undefined;
     const names = s.message.parts
       .slice(startIndex, endIndex + 1)
       .filter(
@@ -343,11 +347,16 @@ const ToolGroupImpl: FC<
     return names.length > 0 ? formatToolSummary(names) : undefined;
   });
 
-  const isActive = useAuiState(s =>
-    s.message.parts
+  const isActive = useAuiState(s => {
+    if (toolCount < MIN_GROUP_SIZE) return false;
+    return s.message.parts
       .slice(startIndex, endIndex + 1)
-      .some(p => p.status?.type === 'running'),
-  );
+      .some(p => p.status?.type === 'running');
+  });
+
+  if (toolCount < MIN_GROUP_SIZE) {
+    return <div className={classes.tools}>{children}</div>;
+  }
 
   return (
     <ToolGroupRoot>
