@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { createMarkdownComponents, useMarkdownStyles } from './MarkdownText';
 
 // Characters revealed per animation frame (~300 chars/sec at 60fps).
-const CHARS_PER_FRAME = 5;
+const CHARS_PER_FRAME = 10;
 
 // How recently a message must have been created (ms) to receive animation.
 // Handles the case where all SSE chunks arrive in one TCP read and are batched
