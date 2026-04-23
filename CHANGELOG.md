@@ -9,6 +9,16 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Add BackendTrafficPolicy template to the helm chart, to be able to customize HTTP connection settings.
 
+### Changed
+
+- Redesign tool call and tool group UI in AI chat with compact inline layout, argument summary previews, and inline status icons.
+
+### Fixed
+
+- Fix deprecation warning for the user settings General page by migrating to the new `configSchema` option.
+- Fix missing key prop warning on the scaffolder sidebar item.
+- Flush SSE chunks through compression middleware so streamed AI responses reach the client in real time.
+
 ## [0.122.3] - 2026-04-21
 
 ### Changed
