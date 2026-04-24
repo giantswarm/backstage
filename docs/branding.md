@@ -90,27 +90,7 @@ branding:
 
 > **Note:** ConfigMaps are limited to 1 MB total. For binary images (PNG, ICO) this can be tight because they must be base64-encoded under `binaryData`, which adds ~33% overhead.
 
-### Option B: Init container with OCI image (for larger or binary assets)
-
-Build a small container image containing your assets and use an init container to copy them into a shared volume:
-
-```yaml
-branding:
-  enabled: true
-  volume:
-    emptyDir: {}
-  initContainers:
-    - name: fetch-branding
-      image: gsoci.azurecr.io/giantswarm/my-branding-assets:latest
-      command: ['cp', '-r', '/assets/.', '/branding/']
-      volumeMounts:
-        - name: branding-assets
-          mountPath: /branding
-```
-
-This approach has no size limits and stores binary files natively.
-
-### Option C: ConfigMap with binary data
+### Option B: ConfigMap with binary data
 
 For a small number of PNGs alongside SVGs, you can mix `data` and `binaryData` in a single ConfigMap:
 
@@ -140,12 +120,11 @@ base64 -w0 favicon-32x32.png
 
 ### Helm values
 
-| Key                       | Default                | Description                                                                              |
-| ------------------------- | ---------------------- | ---------------------------------------------------------------------------------------- |
-| `branding.enabled`        | `false`                | Enable the branding volume mount and config                                              |
-| `branding.assetsPath`     | `/app/branding-assets` | Path inside the container where assets are mounted                                       |
-| `branding.volume`         | `{}`                   | Kubernetes volume source (e.g. `configMap`, `emptyDir`, `persistentVolumeClaim`)         |
-| `branding.initContainers` | `[]`                   | Init containers to run before the main container (e.g. to copy assets from an OCI image) |
+| Key                         | Default                | Description                                                                                                          |
+| --------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `branding.enabled`          | `false`                | Enable the branding volume mount and config                                                                          |
+| `branding.assetsPath`       | `/app/branding-assets` | Path inside the container where assets are mounted                                                                   |
+| `branding.volume.configMap` | `{}`                   | ConfigMap volume source (see `io.k8s.api.core.v1.ConfigMapVolumeSource`); currently the only supported volume source |
 
 ## How it works
 

@@ -40,10 +40,6 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      {{- if and .Values.branding.enabled .Values.branding.initContainers }}
-      initContainers:
-        {{- toYaml .Values.branding.initContainers | nindent 8 }}
-      {{- end }}
       containers:
         - name: {{ .Values.image.name }}
           image: "{{ .Values.registry.domain }}/{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
