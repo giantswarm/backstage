@@ -1,6 +1,6 @@
 # backstage
 
-![Version: 0.124.0](https://img.shields.io/badge/Version-0.124.0-informational?style=flat-square) ![AppVersion: 0.124.0](https://img.shields.io/badge/AppVersion-0.124.0-informational?style=flat-square)
+![Version: 0.124.1](https://img.shields.io/badge/Version-0.124.1-informational?style=flat-square) ![AppVersion: 0.124.1](https://img.shields.io/badge/AppVersion-0.124.1-informational?style=flat-square)
 
 Backstage app provided by Giant Swarm
 
