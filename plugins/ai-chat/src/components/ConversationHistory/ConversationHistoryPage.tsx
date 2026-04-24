@@ -86,7 +86,7 @@ export const ConversationHistoryPage = ({
       isRowHeader: true,
       cell: item => (
         <CellText
-          title={item.title || 'Untitled conversation'}
+          title={item.title || item.preview || 'Untitled conversation'}
           description={formatRelativeDate(item.updatedAt)}
         />
       ),
@@ -178,10 +178,12 @@ export const ConversationHistoryPage = ({
                 <SearchAutocompleteItem
                   key={conv.id}
                   id={conv.id}
-                  textValue={conv.title || 'Untitled conversation'}
+                  textValue={
+                    conv.title || conv.preview || 'Untitled conversation'
+                  }
                   onAction={() => onSelectConversation(conv.id)}
                 >
-                  {conv.title || 'Untitled conversation'}
+                  {conv.title || conv.preview || 'Untitled conversation'}
                 </SearchAutocompleteItem>
               ))}
           </SearchAutocomplete>

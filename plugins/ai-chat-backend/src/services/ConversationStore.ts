@@ -21,6 +21,7 @@ export interface ConversationRecord {
   userId: string;
   messages: UIMessage[];
   title?: string;
+  preview?: string;
   isStarred: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +32,7 @@ interface ConversationRow {
   user_id: string;
   messages: string;
   title: string | null;
+  preview: string | null;
   is_starred: boolean;
   created_at: Date;
   updated_at: Date;
@@ -39,6 +41,25 @@ interface ConversationRow {
 export interface ConversationStoreOptions {
   database: DatabaseService;
   logger: LoggerService;
+}
+
+const MAX_PREVIEW_LENGTH = 200;
+
+function extractPreview(messages: UIMessage[]): string | null {
+  const firstUserMessage = messages.find(m => m.role === 'user');
+  if (!firstUserMessage) return null;
+
+  const text = firstUserMessage.parts
+    .filter(p => p.type === 'text')
+    .map(p => p.text)
+    .join(' ')
+    .trim();
+
+  if (!text) return null;
+
+  return text.length <= MAX_PREVIEW_LENGTH
+    ? text
+    : `${text.slice(0, MAX_PREVIEW_LENGTH - 3)}...`;
 }
 
 export class ConversationStore {
@@ -69,6 +90,7 @@ export class ConversationStore {
   ): Promise<ConversationRecord> {
     const id = conversationId || randomUUID();
     const now = new Date();
+    const preview = extractPreview(messages);
 
     try {
       if (conversationId) {
@@ -77,18 +99,25 @@ export class ConversationStore {
           .first();
 
         if (existing) {
+          const updateData: Record<string, unknown> = {
+            messages: JSON.stringify(messages),
+            updated_at: now,
+          };
+          // Only set preview if not already populated
+          if (!existing.preview && preview) {
+            updateData.preview = preview;
+          }
+
           await this.db(TABLE_NAME)
             .where({ id: conversationId, user_id: userId })
-            .update({
-              messages: JSON.stringify(messages),
-              updated_at: now,
-            });
+            .update(updateData);
 
           return {
             id,
             userId,
             messages,
             title: existing.title || undefined,
+            preview: existing.preview || preview || undefined,
             isStarred: existing.is_starred || false,
             createdAt: new Date(existing.created_at),
             updatedAt: now,
@@ -101,6 +130,7 @@ export class ConversationStore {
         user_id: userId,
         messages: JSON.stringify(messages),
         title: null,
+        preview,
         is_starred: false,
         created_at: now,
         updated_at: now,
@@ -111,6 +141,7 @@ export class ConversationStore {
         userId,
         messages,
         title: undefined,
+        preview: preview || undefined,
         isStarred: false,
         createdAt: now,
         updatedAt: now,
@@ -136,6 +167,7 @@ export class ConversationStore {
           'id',
           'user_id',
           'title',
+          'preview',
           'is_starred',
           'created_at',
           'updated_at',
@@ -243,6 +275,7 @@ export class ConversationStore {
       userId: row.user_id,
       messages,
       title: row.title || undefined,
+      preview: row.preview || undefined,
       isStarred: row.is_starred || false,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
@@ -256,6 +289,7 @@ export class ConversationStore {
       id: row.id,
       userId: row.user_id,
       title: row.title || undefined,
+      preview: row.preview || undefined,
       isStarred: row.is_starred || false,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),

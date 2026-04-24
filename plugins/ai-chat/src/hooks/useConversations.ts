@@ -12,7 +12,10 @@ function filterConversations(
 ): ConversationListItem[] {
   const lowerQuery = query.toLowerCase();
   return conversations.filter(conv => {
-    return conv.title?.toLowerCase().includes(lowerQuery);
+    return (
+      conv.title?.toLowerCase().includes(lowerQuery) ||
+      conv.preview?.toLowerCase().includes(lowerQuery)
+    );
   });
 }
 

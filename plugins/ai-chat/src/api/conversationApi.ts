@@ -7,6 +7,7 @@ export interface ConversationRecord {
   userId: string;
   messages: UIMessage[];
   title?: string;
+  preview?: string;
   isStarred: boolean;
   createdAt: string;
   updatedAt: string;
