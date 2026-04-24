@@ -9,6 +9,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Fix helm chart to allow for branding configmap.
 
+See [./docs/releases/v0.124.1-changelog.md](./docs/releases/v0.124.1-changelog.md) for more information.
+
 ## [0.124.0] - 2026-04-23
 
 ### Added
