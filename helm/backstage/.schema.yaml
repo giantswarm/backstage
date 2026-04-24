@@ -5,7 +5,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/57c68171868158d915a92dd45201bbeadaa17214/pkg/gen/input/precommit/internal/file/schema.yaml.template
+#    https://github.com/giantswarm/devctl/blob/19b084fc0c664489c038e97339ba05c620159c07/pkg/gen/input/precommit/internal/file/schema.yaml.template
 #
 
 values:
