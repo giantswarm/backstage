@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/19b084fc0c664489c038e97339ba05c620159c07/pkg/gen/input/workflows/internal/file/validate_changelog.yaml.template
+#    https://github.com/giantswarm/devctl/blob/87f30fd3b955a0daf6017834a776c222d93a207c/pkg/gen/input/workflows/internal/file/validate_changelog.yaml.template
 #
 name: Validate changelog
 
