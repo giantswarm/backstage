@@ -1,14 +1,26 @@
 import { makeStyles } from '@material-ui/core';
-import { Button, ButtonIcon, PluginHeader } from '@backstage/ui';
-import { RiCloseLine } from '@remixicon/react';
+import {
+  Box,
+  Button,
+  ButtonIcon,
+  PluginHeader,
+  Tab,
+  TabList,
+  Tabs,
+} from '@backstage/ui';
+import { RiAddLine, RiCloseLine } from '@remixicon/react';
 
 import { Thread } from '../AiChat/Thread';
+import { DrawerConversationHistory } from './DrawerConversationHistory';
 import { DEFAULT_WIDTH, useDrawerResize } from './useDrawerResize';
 import {
   AIChatIcon,
   rootRouteRef,
 } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { routeResolutionApiRef, useApi } from '@backstage/frontend-plugin-api';
+import type { DrawerTab } from './AiChatDrawerProvider';
+import type { ConversationApi } from '../../api';
+import type { Key } from 'react';
 
 const useStyles = makeStyles(theme => ({
   drawer: {
@@ -67,8 +79,10 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     flex: 1,
     overflow: 'hidden',
-    backgroundColor:
-      theme.palette.type === 'light' ? 'var(--bui-bg-neutral-1)' : undefined,
+  },
+  historyContent: {
+    flex: 1,
+    overflow: 'hidden',
   },
 }));
 
@@ -79,6 +93,10 @@ interface AiChatDrawerProps {
   onClose(): void;
   onNewConversation(): void;
   variant: AiChatDrawerVariant;
+  activeTab: DrawerTab;
+  onTabChange(tab: DrawerTab): void;
+  conversationApi: ConversationApi;
+  onSelectConversation(id: string): void;
 }
 
 export const AiChatDrawer = ({
@@ -86,6 +104,10 @@ export const AiChatDrawer = ({
   onClose,
   onNewConversation,
   variant,
+  activeTab,
+  onTabChange,
+  conversationApi,
+  onSelectConversation,
 }: AiChatDrawerProps) => {
   const classes = useStyles();
   const routeResolutionApi = useApi(routeResolutionApiRef);
@@ -130,8 +152,12 @@ export const AiChatDrawer = ({
           icon={<AIChatIcon fontSize="inherit" />}
           customActions={
             <>
-              <Button variant="tertiary" onClick={onNewConversation}>
-                Clear conversation
+              <Button
+                variant="tertiary"
+                iconStart={<RiAddLine />}
+                onClick={onNewConversation}
+              >
+                New chat
               </Button>
               <ButtonIcon
                 variant="tertiary"
@@ -141,7 +167,34 @@ export const AiChatDrawer = ({
             </>
           }
         />
-        <Thread className={classes.threadRoot} isSticky={false} />
+        <Box
+          bg="neutral"
+          style={{
+            paddingInline: 'var(--bui-space-3)',
+            borderBottom: '1px solid var(--bui-border-1)',
+          }}
+        >
+          <Tabs
+            selectedKey={activeTab}
+            onSelectionChange={(key: Key) => onTabChange(key as DrawerTab)}
+          >
+            <TabList>
+              <Tab id="chat">Chat</Tab>
+              <Tab id="history">History</Tab>
+            </TabList>
+          </Tabs>
+        </Box>
+        {activeTab === 'chat' && (
+          <Thread className={classes.threadRoot} isSticky={false} />
+        )}
+        {activeTab === 'history' && (
+          <div className={classes.historyContent}>
+            <DrawerConversationHistory
+              conversationApi={conversationApi}
+              onSelectConversation={onSelectConversation}
+            />
+          </div>
+        )}
       </div>
     </>
   );
