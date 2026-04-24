@@ -5,9 +5,13 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.124.1] - 2026-04-24
+
 ### Fixed
 
 - Fix helm chart to allow for branding configmap.
+
+See [./docs/releases/v0.124.1-changelog.md](./docs/releases/v0.124.1-changelog.md) for more information.
 
 ## [0.124.0] - 2026-04-23
 
@@ -2312,7 +2316,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.1...HEAD
+[0.124.1]: https://github.com/giantswarm/backstage/compare/v0.124.0...v0.124.1
 [0.124.0]: https://github.com/giantswarm/backstage/compare/v0.123.0...v0.124.0
 [0.123.0]: https://github.com/giantswarm/backstage/compare/v0.122.2...v0.123.0
 [0.122.2]: https://github.com/giantswarm/backstage/compare/v0.122.1...v0.122.2
