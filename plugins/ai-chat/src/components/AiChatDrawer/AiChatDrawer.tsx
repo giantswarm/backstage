@@ -184,9 +184,13 @@ export const AiChatDrawer = ({
             </TabList>
           </Tabs>
         </Box>
-        {activeTab === 'chat' && (
-          <Thread className={classes.threadRoot} isSticky={false} />
-        )}
+        <Thread
+          className={classes.threadRoot}
+          isSticky={false}
+          style={{
+            display: activeTab === 'chat' ? undefined : 'none',
+          }}
+        />
         {activeTab === 'history' && (
           <div className={classes.historyContent}>
             <DrawerConversationHistory

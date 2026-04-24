@@ -89,7 +89,6 @@ export const useStyles = makeStyles((theme: Theme) =>
       textAlign: 'center',
     },
     userMessage: {
-      animation: '$fadeInUp 0.3s ease-out',
       justifySelf: 'flex-end',
       maxWidth: 'calc(100% - 65px)',
       backgroundColor: 'var(--bui-bg-neutral-2)',
@@ -99,6 +98,9 @@ export const useStyles = makeStyles((theme: Theme) =>
       '& p': {
         margin: 0,
       },
+    },
+    userMessageAnimate: {
+      animation: '$fadeInUp 0.3s ease-out',
     },
     assistantMessage: {},
     composerContainer: {},
