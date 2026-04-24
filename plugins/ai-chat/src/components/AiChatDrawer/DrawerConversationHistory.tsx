@@ -6,8 +6,6 @@ import {
   Menu,
   MenuItem,
   MenuTrigger,
-  SearchAutocomplete,
-  SearchAutocompleteItem,
   Table,
   Text,
 } from '@backstage/ui';
@@ -27,10 +25,6 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     height: '100%',
     overflow: 'hidden',
-  },
-  searchContainer: {
-    padding: theme.spacing(2),
-    flexShrink: 0,
   },
   tableContainer: {
     flex: 1,
@@ -72,8 +66,6 @@ export const DrawerConversationHistory = ({
     starredConversations,
     recentConversations,
     loading,
-    searchQuery,
-    setSearchQuery,
     deleteConversation,
     toggleStar,
   } = useConversations(conversationApi);
@@ -134,36 +126,6 @@ export const DrawerConversationHistory = ({
 
   return (
     <div className={classes.root}>
-      <div className={classes.searchContainer}>
-        <SearchAutocomplete
-          aria-label="Search conversations"
-          inputValue={searchQuery}
-          onInputChange={setSearchQuery}
-          placeholder="Search conversations..."
-          size="medium"
-        >
-          {allConversations
-            .filter(
-              c =>
-                searchQuery.length >= 2 &&
-                c.title?.toLowerCase().includes(searchQuery.toLowerCase()),
-            )
-            .slice(0, 10)
-            .map(conv => (
-              <SearchAutocompleteItem
-                key={conv.id}
-                id={conv.id}
-                textValue={
-                  conv.title || conv.preview || 'Untitled conversation'
-                }
-                onAction={() => onSelectConversation(conv.id)}
-              >
-                {conv.title || conv.preview || 'Untitled conversation'}
-              </SearchAutocompleteItem>
-            ))}
-        </SearchAutocomplete>
-      </div>
-
       <div className={classes.tableContainer}>
         <Table
           columnConfig={columnConfig}

@@ -6,28 +6,12 @@ import type {
   ConversationRecord,
 } from '../api';
 
-function filterConversations(
-  conversations: ConversationListItem[],
-  query: string,
-): ConversationListItem[] {
-  const lowerQuery = query.toLowerCase();
-  return conversations.filter(conv => {
-    return (
-      conv.title?.toLowerCase().includes(lowerQuery) ||
-      conv.preview?.toLowerCase().includes(lowerQuery)
-    );
-  });
-}
-
 export interface UseConversationsReturn {
   conversations: ConversationListItem[];
   starredConversations: ConversationListItem[];
   recentConversations: ConversationListItem[];
   loading: boolean;
   error?: string;
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-  clearSearch: () => void;
   loadConversation: (id: string) => Promise<ConversationRecord>;
   refreshConversations: () => void;
   deleteConversation: (id: string) => Promise<void>;
@@ -41,7 +25,6 @@ export function useConversations(
   const [localConversations, setLocalConversations] = useState<
     ConversationListItem[]
   >([]);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const {
     value: fetchedConversations,
@@ -61,10 +44,6 @@ export function useConversations(
       setLocalConversations(fetchedConversations);
     }
   }, [fetchedConversations]);
-
-  const clearSearch = useCallback(() => {
-    setSearchQuery('');
-  }, []);
 
   const loadConversation = useCallback(
     async (id: string): Promise<ConversationRecord> => {
@@ -109,32 +88,22 @@ export function useConversations(
     [conversationApi, localConversations],
   );
 
-  const conversations = useMemo(() => {
-    if (searchQuery && searchQuery.length >= 2) {
-      return filterConversations(localConversations, searchQuery);
-    }
-    return localConversations;
-  }, [searchQuery, localConversations]);
-
   const starredConversations = useMemo(
-    () => conversations.filter(c => c.isStarred),
-    [conversations],
+    () => localConversations.filter(c => c.isStarred),
+    [localConversations],
   );
 
   const recentConversations = useMemo(
-    () => conversations.filter(c => !c.isStarred),
-    [conversations],
+    () => localConversations.filter(c => !c.isStarred),
+    [localConversations],
   );
 
   return {
-    conversations,
+    conversations: localConversations,
     starredConversations,
     recentConversations,
     loading,
     error: error?.message,
-    searchQuery,
-    setSearchQuery,
-    clearSearch,
     loadConversation,
     refreshConversations,
     deleteConversation,

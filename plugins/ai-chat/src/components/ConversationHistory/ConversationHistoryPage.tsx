@@ -7,8 +7,6 @@ import {
   Menu,
   MenuItem,
   MenuTrigger,
-  SearchAutocomplete,
-  SearchAutocompleteItem,
   Table,
   Text,
 } from '@backstage/ui';
@@ -26,9 +24,6 @@ import type { Selection } from 'react-aria-components';
 
 const useStyles = makeStyles(theme => ({
   root: {},
-  searchContainer: {
-    marginBottom: theme.spacing(2),
-  },
   section: {
     marginBottom: theme.spacing(3),
   },
@@ -73,8 +68,6 @@ export const ConversationHistoryPage = ({
     starredConversations,
     recentConversations,
     loading,
-    searchQuery,
-    setSearchQuery,
     deleteConversation,
     toggleStar,
   } = useConversations(conversationApi);
@@ -154,41 +147,9 @@ export const ConversationHistoryPage = ({
     />
   );
 
-  const allConversations = [...starredConversations, ...recentConversations];
-
   return (
     <Content>
       <div className={classes.root}>
-        <div className={classes.searchContainer}>
-          <SearchAutocomplete
-            aria-label="Search conversations"
-            inputValue={searchQuery}
-            onInputChange={setSearchQuery}
-            placeholder="Search conversations..."
-            size="medium"
-          >
-            {allConversations
-              .filter(
-                c =>
-                  searchQuery.length >= 2 &&
-                  c.title?.toLowerCase().includes(searchQuery.toLowerCase()),
-              )
-              .slice(0, 10)
-              .map(conv => (
-                <SearchAutocompleteItem
-                  key={conv.id}
-                  id={conv.id}
-                  textValue={
-                    conv.title || conv.preview || 'Untitled conversation'
-                  }
-                  onAction={() => onSelectConversation(conv.id)}
-                >
-                  {conv.title || conv.preview || 'Untitled conversation'}
-                </SearchAutocompleteItem>
-              ))}
-          </SearchAutocomplete>
-        </div>
-
         {!loading && starredConversations.length > 0 && (
           <div className={classes.section}>
             <Text variant="body-small" className={classes.sectionHeader}>
