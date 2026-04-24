@@ -16,7 +16,7 @@ import {
 import { UIMessage } from 'ai';
 import { Thread } from './Thread';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatSetup } from '../../hooks/useChatSetup';
 import { ConversationClient, ConversationApi } from '../../api';
 import { ConversationHistoryPage } from '../ConversationHistory';
@@ -64,48 +64,66 @@ const InitialMessageHandler = ({ isReady }: InitialMessageHandlerProps) => {
   return null;
 };
 
-interface AiChatRuntimeProps {
+interface PageRuntimeProps {
+  children: React.ReactNode;
   initialMessages?: UIMessage[];
   conversationId?: string;
 }
 
-const AiChatRuntime = ({
+const PageRuntime = ({
+  children,
   initialMessages,
   conversationId,
-}: AiChatRuntimeProps) => {
-  const classes = useStyles();
+}: PageRuntimeProps) => {
   const { runtime, isReady } = useChatSetup({
     initialMessages,
     conversationId,
   });
 
   return (
-    <Content className={classes.root}>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <InitialMessageHandler isReady={isReady} />
-        <DevToolsModal />
-        <Thread />
-      </AssistantRuntimeProvider>
-    </Content>
+    <AssistantRuntimeProvider runtime={runtime}>
+      <InitialMessageHandler isReady={isReady} />
+      <DevToolsModal />
+      {children}
+    </AssistantRuntimeProvider>
   );
 };
 
-interface ChatTabProps {
-  conversationApi: ConversationApi;
-  newConversationKey: number;
-}
+export const AiChatPage = () => {
+  const classes = useStyles();
+  const resolveRoot = useRouteRef(rootRouteRef);
+  const resolveHistory = useRouteRef(historyRouteRef);
+  const rootPath = resolveRoot?.() ?? '/ai-chat';
+  const historyPath = resolveHistory?.() ?? '/ai-chat/history';
 
-const ChatTab = ({ conversationApi, newConversationKey }: ChatTabProps) => {
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const conversationApi: ConversationApi = useMemo(
+    () => new ConversationClient({ discoveryApi, fetchApi }),
+    [discoveryApi, fetchApi],
+  );
+
+  // Derive active tab from URL
+  const activeTab =
+    location.pathname === historyPath ||
+    location.pathname.startsWith(`${historyPath}/`)
+      ? 'history'
+      : 'chat';
+
+  // Runtime state (lifted from former ChatTab, mirrors AiChatDrawerProvider)
   const [runtimeKey, setRuntimeKey] = useState(0);
   const [loadedConversation, setLoadedConversation] = useState<{
     id: string;
     messages: UIMessage[];
   } | null>(null);
-
-  // Load conversation from URL param
-  const conversationIdParam = searchParams.get('conversation');
   const loadedRef = useRef<string | null>(null);
+
+  // Load conversation from ?conversation=<id> query param
+  const conversationIdParam = searchParams.get('conversation');
 
   useEffect(() => {
     if (conversationIdParam && conversationIdParam !== loadedRef.current) {
@@ -115,7 +133,6 @@ const ChatTab = ({ conversationApi, newConversationKey }: ChatTabProps) => {
         .then(conv => {
           setLoadedConversation({ id: conv.id, messages: conv.messages });
           setRuntimeKey(prev => prev + 1);
-          // Clean up the URL param after loading
           setSearchParams(
             params => {
               params.delete('conversation');
@@ -125,7 +142,6 @@ const ChatTab = ({ conversationApi, newConversationKey }: ChatTabProps) => {
           );
         })
         .catch(() => {
-          // If loading fails, just start a fresh conversation
           setSearchParams(
             params => {
               params.delete('conversation');
@@ -137,70 +153,28 @@ const ChatTab = ({ conversationApi, newConversationKey }: ChatTabProps) => {
     }
   }, [conversationIdParam, conversationApi, setSearchParams]);
 
-  // Reset when parent signals a new conversation
-  useEffect(() => {
-    if (newConversationKey > 0) {
-      setLoadedConversation(null);
-      loadedRef.current = null;
-      setRuntimeKey(prev => prev + 1);
-    }
-  }, [newConversationKey]);
-
-  return (
-    <AiChatRuntime
-      key={runtimeKey}
-      initialMessages={loadedConversation?.messages}
-      conversationId={loadedConversation?.id}
-    />
-  );
-};
-
-const HistoryTab = ({
-  conversationApi,
-}: {
-  conversationApi: ConversationApi;
-}) => {
-  const resolveRoot = useRouteRef(rootRouteRef);
-  const rootPath = resolveRoot?.() ?? '/ai-chat';
-  const navigate = useNavigate();
-
-  const handleSelectConversation = useCallback(
-    (id: string) => {
-      navigate(`${rootPath}?conversation=${id}`);
-    },
-    [navigate, rootPath],
-  );
-
-  return (
-    <ConversationHistoryPage
-      conversationApi={conversationApi}
-      onSelectConversation={handleSelectConversation}
-    />
-  );
-};
-
-export const AiChatPage = () => {
-  const resolveRoot = useRouteRef(rootRouteRef);
-  const resolveHistory = useRouteRef(historyRouteRef);
-  const rootPath = resolveRoot?.() ?? '/ai-chat';
-  const historyPath = resolveHistory?.() ?? '/ai-chat/history';
-
-  const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
-
-  const conversationApi: ConversationApi = useMemo(
-    () => new ConversationClient({ discoveryApi, fetchApi }),
-    [discoveryApi, fetchApi],
-  );
-
-  const [newConversationKey, setNewConversationKey] = useState(0);
-
-  const navigate = useNavigate();
-
   const handleNewConversation = useCallback(() => {
-    setNewConversationKey(prev => prev + 1);
+    setLoadedConversation(null);
+    loadedRef.current = null;
+    setRuntimeKey(prev => prev + 1);
     navigate(rootPath);
   }, [navigate, rootPath]);
+
+  const handleSelectConversation = useCallback(
+    async (id: string) => {
+      try {
+        const conv = await conversationApi.getConversationById(id);
+        setLoadedConversation({ id: conv.id, messages: conv.messages });
+        setRuntimeKey(prev => prev + 1);
+        navigate(rootPath);
+      } catch {
+        setLoadedConversation(null);
+        setRuntimeKey(prev => prev + 1);
+        navigate(rootPath);
+      }
+    },
+    [conversationApi, navigate, rootPath],
+  );
 
   const tabs = useMemo(
     () => [
@@ -216,7 +190,11 @@ export const AiChatPage = () => {
   );
 
   return (
-    <>
+    <PageRuntime
+      key={runtimeKey}
+      initialMessages={loadedConversation?.messages}
+      conversationId={loadedConversation?.id}
+    >
       <PluginHeader
         title="AI Assistant"
         icon={<AIChatIcon fontSize="inherit" />}
@@ -231,21 +209,17 @@ export const AiChatPage = () => {
           </Button>
         }
       />
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <ChatTab
-              conversationApi={conversationApi}
-              newConversationKey={newConversationKey}
-            />
-          }
+      <div style={{ display: activeTab === 'chat' ? undefined : 'none' }}>
+        <Content className={classes.root}>
+          <Thread />
+        </Content>
+      </div>
+      <div style={{ display: activeTab === 'history' ? undefined : 'none' }}>
+        <ConversationHistoryPage
+          conversationApi={conversationApi}
+          onSelectConversation={handleSelectConversation}
         />
-        <Route
-          path="/history"
-          element={<HistoryTab conversationApi={conversationApi} />}
-        />
-      </Routes>
-    </>
+      </div>
+    </PageRuntime>
   );
 };
