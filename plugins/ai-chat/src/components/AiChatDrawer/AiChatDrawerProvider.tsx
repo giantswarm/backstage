@@ -20,6 +20,7 @@ import { UIMessage } from 'ai';
 import { useChatSetup, UseChatSetupOptions } from '../../hooks/useChatSetup';
 import { ConversationClient, ConversationApi } from '../../api';
 import { AiChatDrawer, AiChatDrawerVariant } from './AiChatDrawer';
+import { QueryClientProvider } from '../QueryClientProvider';
 
 export type DrawerTab = 'chat' | 'history';
 
@@ -186,22 +187,24 @@ export const AiChatDrawerProvider = () => {
   }, [drawerApi]);
 
   return (
-    <AiChatRuntimeProvider
-      key={runtimeKey}
-      initialMessages={loadedConversation?.messages}
-      conversationId={loadedConversation?.id}
-    >
-      <DrawerInner
-        open={open}
-        onClose={handleClose}
-        onNewConversation={handleNewConversation}
-        getAndClearPendingMessage={getAndClearPendingMessage}
-        variant={variant}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        conversationApi={conversationApi}
-        onSelectConversation={handleSelectConversation}
-      />
-    </AiChatRuntimeProvider>
+    <QueryClientProvider>
+      <AiChatRuntimeProvider
+        key={runtimeKey}
+        initialMessages={loadedConversation?.messages}
+        conversationId={loadedConversation?.id}
+      >
+        <DrawerInner
+          open={open}
+          onClose={handleClose}
+          onNewConversation={handleNewConversation}
+          getAndClearPendingMessage={getAndClearPendingMessage}
+          variant={variant}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          conversationApi={conversationApi}
+          onSelectConversation={handleSelectConversation}
+        />
+      </AiChatRuntimeProvider>
+    </QueryClientProvider>
   );
 };

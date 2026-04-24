@@ -22,6 +22,7 @@ import { ConversationClient, ConversationApi } from '../../api';
 import { ConversationHistoryPage } from '../ConversationHistory';
 import { makeStyles } from '@material-ui/core';
 import { RiAddLine } from '@remixicon/react';
+import { QueryClientProvider } from '../QueryClientProvider';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -190,36 +191,38 @@ export const AiChatPage = () => {
   );
 
   return (
-    <PageRuntime
-      key={runtimeKey}
-      initialMessages={loadedConversation?.messages}
-      conversationId={loadedConversation?.id}
-    >
-      <PluginHeader
-        title="AI Assistant"
-        icon={<AIChatIcon fontSize="inherit" />}
-        tabs={tabs}
-        customActions={
-          <Button
-            variant="tertiary"
-            iconStart={<RiAddLine />}
-            onClick={handleNewConversation}
-          >
-            New chat
-          </Button>
-        }
-      />
-      <div style={{ display: activeTab === 'chat' ? undefined : 'none' }}>
-        <Content className={classes.root}>
-          <Thread />
-        </Content>
-      </div>
-      <div style={{ display: activeTab === 'history' ? undefined : 'none' }}>
-        <ConversationHistoryPage
-          conversationApi={conversationApi}
-          onSelectConversation={handleSelectConversation}
+    <QueryClientProvider>
+      <PageRuntime
+        key={runtimeKey}
+        initialMessages={loadedConversation?.messages}
+        conversationId={loadedConversation?.id}
+      >
+        <PluginHeader
+          title="AI Assistant"
+          icon={<AIChatIcon fontSize="inherit" />}
+          tabs={tabs}
+          customActions={
+            <Button
+              variant="tertiary"
+              iconStart={<RiAddLine />}
+              onClick={handleNewConversation}
+            >
+              New chat
+            </Button>
+          }
         />
-      </div>
-    </PageRuntime>
+        <div style={{ display: activeTab === 'chat' ? undefined : 'none' }}>
+          <Content className={classes.root}>
+            <Thread />
+          </Content>
+        </div>
+        <div style={{ display: activeTab === 'history' ? undefined : 'none' }}>
+          <ConversationHistoryPage
+            conversationApi={conversationApi}
+            onSelectConversation={handleSelectConversation}
+          />
+        </div>
+      </PageRuntime>
+    </QueryClientProvider>
   );
 };

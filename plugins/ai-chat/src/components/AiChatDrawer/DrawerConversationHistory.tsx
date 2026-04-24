@@ -29,11 +29,14 @@ const useStyles = makeStyles(theme => ({
   tableContainer: {
     flex: 1,
     overflowY: 'auto',
-    padding: theme.spacing(0, 2, 2),
+    padding: theme.spacing(3),
   },
   emptyState: {
     textAlign: 'center' as const,
     padding: theme.spacing(4),
+  },
+  starIcon: {
+    color: theme.palette.warning.main,
   },
 }));
 
@@ -62,15 +65,8 @@ export const DrawerConversationHistory = ({
   onSelectConversation,
 }: DrawerConversationHistoryProps) => {
   const classes = useStyles();
-  const {
-    starredConversations,
-    recentConversations,
-    loading,
-    deleteConversation,
-    toggleStar,
-  } = useConversations(conversationApi);
-
-  const allConversations = [...starredConversations, ...recentConversations];
+  const { conversations, loading, deleteConversation, toggleStar } =
+    useConversations(conversationApi);
 
   const columnConfig: ColumnConfig<ConversationListItem>[] = [
     {
@@ -82,6 +78,18 @@ export const DrawerConversationHistory = ({
           title={item.title || item.preview || 'Untitled conversation'}
           description={formatRelativeDate(item.updatedAt)}
         />
+      ),
+    },
+    {
+      id: 'starred',
+      label: '',
+      width: 32,
+      cell: item => (
+        <Cell>
+          {item.isStarred && (
+            <RiStarFill size={16} className={classes.starIcon} />
+          )}
+        </Cell>
       ),
     },
     {
@@ -129,7 +137,7 @@ export const DrawerConversationHistory = ({
       <div className={classes.tableContainer}>
         <Table
           columnConfig={columnConfig}
-          data={allConversations}
+          data={conversations}
           loading={loading}
           pagination={{ type: 'none' }}
           rowConfig={{

@@ -16,7 +16,7 @@ import {
   getToolName,
   UIMessage,
 } from 'ai';
-import useAsync from 'react-use/esm/useAsync';
+import { useQuery } from '@tanstack/react-query';
 import { mcpAuthProvidersApiRef } from '../api';
 import { createDebugFetch } from './createDebugFetch';
 
@@ -84,10 +84,14 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     [verboseDebugging],
   );
 
-  const { value: apiUrl } = useAsync(async () => {
-    const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
-    return `${baseUrl}/chat`;
-  }, [discoveryApi]);
+  const { data: apiUrl } = useQuery({
+    queryKey: ['ai-chat', 'api-url'],
+    queryFn: async () => {
+      const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
+      return `${baseUrl}/chat`;
+    },
+    staleTime: Infinity,
+  });
 
   const mcpAuthProviders = useMemo(() => {
     const mcpServers = configApi.getOptionalConfigArray('aiChat.mcp');

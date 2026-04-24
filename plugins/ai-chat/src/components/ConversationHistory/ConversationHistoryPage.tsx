@@ -23,18 +23,12 @@ import type { ConversationApi, ConversationListItem } from '../../api';
 import type { Selection } from 'react-aria-components';
 
 const useStyles = makeStyles(theme => ({
-  root: {},
-  section: {
-    marginBottom: theme.spacing(3),
-  },
-  sectionHeader: {
-    marginBottom: theme.spacing(1),
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em',
-  },
   emptyState: {
     textAlign: 'center' as const,
     padding: theme.spacing(4),
+  },
+  starIcon: {
+    color: theme.palette.warning.main,
   },
 }));
 
@@ -64,13 +58,8 @@ export const ConversationHistoryPage = ({
 }: ConversationHistoryPageProps) => {
   const classes = useStyles();
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
-  const {
-    starredConversations,
-    recentConversations,
-    loading,
-    deleteConversation,
-    toggleStar,
-  } = useConversations(conversationApi);
+  const { conversations, loading, deleteConversation, toggleStar } =
+    useConversations(conversationApi);
 
   const columnConfig: ColumnConfig<ConversationListItem>[] = [
     {
@@ -82,6 +71,18 @@ export const ConversationHistoryPage = ({
           title={item.title || item.preview || 'Untitled conversation'}
           description={formatRelativeDate(item.updatedAt)}
         />
+      ),
+    },
+    {
+      id: 'starred',
+      label: '',
+      width: 32,
+      cell: item => (
+        <Cell>
+          {item.isStarred && (
+            <RiStarFill size={16} className={classes.starIcon} />
+          )}
+        </Cell>
       ),
     },
     {
@@ -124,52 +125,28 @@ export const ConversationHistoryPage = ({
     },
   ];
 
-  const renderConversationTable = (items: ConversationListItem[]) => (
-    <Table
-      columnConfig={columnConfig}
-      data={items}
-      loading={loading}
-      pagination={{ type: 'none' }}
-      selection={{
-        mode: 'multiple',
-        behavior: 'toggle',
-        selected: selectedKeys,
-        onSelectionChange: setSelectedKeys,
-      }}
-      rowConfig={{
-        onClick: item => onSelectConversation(item.id),
-      }}
-      emptyState={
-        <div className={classes.emptyState}>
-          <Text variant="body-small">No conversations found</Text>
-        </div>
-      }
-    />
-  );
-
   return (
     <Content>
-      <div className={classes.root}>
-        {!loading && starredConversations.length > 0 && (
-          <div className={classes.section}>
-            <Text variant="body-small" className={classes.sectionHeader}>
-              Starred
-            </Text>
-            {renderConversationTable(starredConversations)}
+      <Table
+        columnConfig={columnConfig}
+        data={conversations}
+        loading={loading}
+        pagination={{ type: 'none' }}
+        selection={{
+          mode: 'multiple',
+          behavior: 'toggle',
+          selected: selectedKeys,
+          onSelectionChange: setSelectedKeys,
+        }}
+        rowConfig={{
+          onClick: item => onSelectConversation(item.id),
+        }}
+        emptyState={
+          <div className={classes.emptyState}>
+            <Text variant="body-small">No conversations found</Text>
           </div>
-        )}
-
-        {!loading && (
-          <div className={classes.section}>
-            {starredConversations.length > 0 && (
-              <Text variant="body-small" className={classes.sectionHeader}>
-                Recent
-              </Text>
-            )}
-            {renderConversationTable(recentConversations)}
-          </div>
-        )}
-      </div>
+        }
+      />
     </Content>
   );
 };

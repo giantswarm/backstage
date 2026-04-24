@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import useAsync from 'react-use/esm/useAsync';
+import { useMemo, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   ConversationApi,
   ConversationListItem,
@@ -8,8 +8,6 @@ import type {
 
 export interface UseConversationsReturn {
   conversations: ConversationListItem[];
-  starredConversations: ConversationListItem[];
-  recentConversations: ConversationListItem[];
   loading: boolean;
   error?: string;
   loadConversation: (id: string) => Promise<ConversationRecord>;
@@ -18,32 +16,24 @@ export interface UseConversationsReturn {
   toggleStar: (id: string) => Promise<void>;
 }
 
+const CONVERSATIONS_QUERY_KEY = ['ai-chat', 'conversations'];
+
 export function useConversations(
   conversationApi: ConversationApi,
 ): UseConversationsReturn {
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [localConversations, setLocalConversations] = useState<
-    ConversationListItem[]
-  >([]);
+  const queryClient = useQueryClient();
 
   const {
-    value: fetchedConversations,
-    loading,
+    data: conversations = [],
+    isLoading,
     error,
-  } = useAsync(async () => {
-    try {
+  } = useQuery({
+    queryKey: CONVERSATIONS_QUERY_KEY,
+    queryFn: async () => {
       const response = await conversationApi.getConversations();
       return response.conversations;
-    } catch {
-      return [];
-    }
-  }, [conversationApi, refreshKey]);
-
-  useEffect(() => {
-    if (fetchedConversations) {
-      setLocalConversations(fetchedConversations);
-    }
-  }, [fetchedConversations]);
+    },
+  });
 
   const loadConversation = useCallback(
     async (id: string): Promise<ConversationRecord> => {
@@ -53,56 +43,84 @@ export function useConversations(
   );
 
   const refreshConversations = useCallback(() => {
-    setRefreshKey(prev => prev + 1);
-  }, []);
+    queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+  }, [queryClient]);
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => conversationApi.deleteConversation(id),
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+      const previous = queryClient.getQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+      );
+      queryClient.setQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+        old => old?.filter(c => c.id !== id),
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(CONVERSATIONS_QUERY_KEY, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+    },
+  });
+
+  const starMutation = useMutation({
+    mutationFn: (id: string) => conversationApi.toggleConversationStar(id),
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+      const previous = queryClient.getQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+      );
+      queryClient.setQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+        old =>
+          old?.map(c => (c.id === id ? { ...c, isStarred: !c.isStarred } : c)),
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(CONVERSATIONS_QUERY_KEY, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+    },
+  });
 
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
-      const previousConversations = localConversations;
-      setLocalConversations(prev => prev.filter(c => c.id !== id));
-
-      try {
-        await conversationApi.deleteConversation(id);
-      } catch (err) {
-        setLocalConversations(previousConversations);
-        throw err;
-      }
+      await deleteMutation.mutateAsync(id);
     },
-    [conversationApi, localConversations],
+    [deleteMutation],
   );
 
   const toggleStar = useCallback(
     async (id: string): Promise<void> => {
-      const previousConversations = localConversations;
-      setLocalConversations(prev =>
-        prev.map(c => (c.id === id ? { ...c, isStarred: !c.isStarred } : c)),
-      );
-
-      try {
-        await conversationApi.toggleConversationStar(id);
-      } catch (err) {
-        setLocalConversations(previousConversations);
-        throw err;
-      }
+      await starMutation.mutateAsync(id);
     },
-    [conversationApi, localConversations],
+    [starMutation],
   );
 
-  const starredConversations = useMemo(
-    () => localConversations.filter(c => c.isStarred),
-    [localConversations],
-  );
-
-  const recentConversations = useMemo(
-    () => localConversations.filter(c => !c.isStarred),
-    [localConversations],
+  const sortedConversations = useMemo(
+    () =>
+      [...conversations].sort((a, b) => {
+        if (a.isStarred !== b.isStarred) return a.isStarred ? -1 : 1;
+        return (
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+      }),
+    [conversations],
   );
 
   return {
-    conversations: localConversations,
-    starredConversations,
-    recentConversations,
-    loading,
+    conversations: sortedConversations,
+    loading: isLoading,
     error: error?.message,
     loadConversation,
     refreshConversations,
