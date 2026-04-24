@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/c8bc6e1798a62e553b65611e1e8fbb6d9e7d10ea/pkg/gen/input/precommit/internal/file/pre-commit-action.yaml.template
+#    https://github.com/giantswarm/devctl/blob/db6c4eacba30ff7c3b055094ff7b11d2dadc98b0/pkg/gen/input/precommit/internal/file/pre-commit-action.yaml.template
 #
 name: pre-commit
 
@@ -42,9 +42,9 @@ jobs:
           key: ${{ runner.os }}-${{ env.HELM_VALUES_SCHEMA_JSON_VERSION }}-schema
       - name: Install helm-values-schema-json
         if: steps.cache-schema.outputs.cache-hit != 'true'
-        run:
-          helm plugin install https://github.com/losisin/helm-values-schema-json --version
-          $HELM_VALUES_SCHEMA_JSON_VERSION
+        run: |
+          helm plugin install https://github.com/losisin/helm-values-schema-json \
+            --version $HELM_VALUES_SCHEMA_JSON_VERSION
       - name: Execute pre-commit hooks
         uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         env:
