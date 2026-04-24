@@ -195,9 +195,12 @@ export const AiChatPage = () => {
 
   const [newConversationKey, setNewConversationKey] = useState(0);
 
+  const navigate = useNavigate();
+
   const handleNewConversation = useCallback(() => {
     setNewConversationKey(prev => prev + 1);
-  }, []);
+    navigate(rootPath);
+  }, [navigate, rootPath]);
 
   const tabs = useMemo(
     () => [
