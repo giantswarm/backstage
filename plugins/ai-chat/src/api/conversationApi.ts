@@ -57,7 +57,16 @@ export class ConversationClient implements ConversationApi {
     if (!response.ok) {
       throw await ResponseError.fromResponse(response);
     }
-    return response.json();
+    const record: ConversationRecord = await response.json();
+    // Backfill empty message IDs from older conversations to prevent
+    // branching bugs in the message repository (empty string is falsy,
+    // causing new messages to be added as root-level nodes).
+    for (const msg of record.messages) {
+      if (!msg.id) {
+        msg.id = crypto.randomUUID();
+      }
+    }
+    return record;
   }
 
   async deleteConversation(id: string): Promise<void> {

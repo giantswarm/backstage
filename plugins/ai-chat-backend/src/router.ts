@@ -434,6 +434,7 @@ export async function createRouter(
 
       result.pipeUIMessageStreamToResponse(res, {
         originalMessages: messages as UIMessage[],
+        generateMessageId: () => crypto.randomUUID(),
         onFinish({ messages: allMessages }) {
           // Fire-and-forget: persist conversation after stream completes
           conversationStore
