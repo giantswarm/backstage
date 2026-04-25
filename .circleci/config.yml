@@ -78,7 +78,7 @@ jobs:
     executor: architect/architect
     working_directory: ~/backstage
     docker:
-      - image: cimg/node:24.14.0
+      - image: cimg/node:24.15.0
 
     steps:
       - checkout
