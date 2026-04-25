@@ -20997,51 +20997,51 @@ __metadata:
   linkType: hard
 
 "@tanstack/query-async-storage-persister@npm:^5.86.0":
-  version: 5.90.24
-  resolution: "@tanstack/query-async-storage-persister@npm:5.90.24"
+  version: 5.100.5
+  resolution: "@tanstack/query-async-storage-persister@npm:5.100.5"
   dependencies:
-    "@tanstack/query-core": "npm:5.90.20"
-    "@tanstack/query-persist-client-core": "npm:5.92.1"
-  checksum: 10c0/ad889ed257034784301d4ef2ba98091e2e61e98931ac0e5a6255e81631a1b7e12a9b9c585fae377b1988f247ffb6de235aeeb58187a2c473459bf681dc4dd433
+    "@tanstack/query-core": "npm:5.100.5"
+    "@tanstack/query-persist-client-core": "npm:5.100.5"
+  checksum: 10c0/e5f0b9d138a3f5710262af5d2d44b9c0460b2c25ed0ed0248eb5ce1dd00a952097bd1c9b3b5e7fd5579e49829442278ef4ca913bdb9abf760a047279979eef2a
   languageName: node
   linkType: hard
 
-"@tanstack/query-core@npm:5.90.20":
-  version: 5.90.20
-  resolution: "@tanstack/query-core@npm:5.90.20"
-  checksum: 10c0/70637dfcecd5ed9d810629aa27f1632af8a4bcd083e75cf29408d058c32f8234704a3231ec280e2c4016ea0485b16124fdf70ab97793b5a7b670f43f7659e9fe
+"@tanstack/query-core@npm:5.100.5":
+  version: 5.100.5
+  resolution: "@tanstack/query-core@npm:5.100.5"
+  checksum: 10c0/a3550254346da1151a311584cb8ad6f53e31495c165084feb12aedb887481cc08a675fe695ac0a5a2014507bd0be09ef07847d3f2d26c7334628271251dfdc2a
   languageName: node
   linkType: hard
 
-"@tanstack/query-persist-client-core@npm:5.92.1":
-  version: 5.92.1
-  resolution: "@tanstack/query-persist-client-core@npm:5.92.1"
+"@tanstack/query-persist-client-core@npm:5.100.5":
+  version: 5.100.5
+  resolution: "@tanstack/query-persist-client-core@npm:5.100.5"
   dependencies:
-    "@tanstack/query-core": "npm:5.90.20"
-  checksum: 10c0/6fa0be7a61beb6cb3c62246f3fbab0761b36ab2fa66a8bce6e0af0a6b8c66eb7d612c417c98c5d0487e6f6c37ef115b6e772c95072bf7b1b46d61810ee2c1485
+    "@tanstack/query-core": "npm:5.100.5"
+  checksum: 10c0/7122ed6ca6327146b1f70c56c4a3790651d4aaa7b618187faa59e4dfd46a4b44be4e41bf754d8ba6f452d07af0d7aa4521c5042ec1e00e873e420576bd7e9b05
   languageName: node
   linkType: hard
 
 "@tanstack/react-query-persist-client@npm:^5.86.0":
-  version: 5.90.24
-  resolution: "@tanstack/react-query-persist-client@npm:5.90.24"
+  version: 5.100.5
+  resolution: "@tanstack/react-query-persist-client@npm:5.100.5"
   dependencies:
-    "@tanstack/query-persist-client-core": "npm:5.92.1"
+    "@tanstack/query-persist-client-core": "npm:5.100.5"
   peerDependencies:
-    "@tanstack/react-query": ^5.90.21
+    "@tanstack/react-query": ^5.100.5
     react: ^18 || ^19
-  checksum: 10c0/0f01aca9867a8bb90ddc1912ea82451706f5394f353881e0fad7a0f3a847840f6f7784bda07d90fce98f021ce55b59e7107c278f32fff8e533ba38ef69adddb7
+  checksum: 10c0/561b4f17d2dc08edc2ce50cf3bf05bfdc80cff3e49e67957508bd7b09752287ec35f7e3ec084d068f353b28313d1b624e12da45b2cccccdb0c1397d4ddd1046d
   languageName: node
   linkType: hard
 
 "@tanstack/react-query@npm:^5.82.0":
-  version: 5.90.21
-  resolution: "@tanstack/react-query@npm:5.90.21"
+  version: 5.100.5
+  resolution: "@tanstack/react-query@npm:5.100.5"
   dependencies:
-    "@tanstack/query-core": "npm:5.90.20"
+    "@tanstack/query-core": "npm:5.100.5"
   peerDependencies:
     react: ^18 || ^19
-  checksum: 10c0/e8994c57f6ceb2c886a4d6486a8c6a3f89bc6b1220de3e732448d7fcbeb386e9358f03c73804de72004c6ac2668d0bf1b44cedbb273d3e4b33afcbaee7b7d24d
+  checksum: 10c0/f1b991a4dda6e8efe38a716920a50b2ffe4b300d4d812f0315f93d9fcfee3c1ee7f4dd37003f81243dd2e1cba3b964f6b652d56e629503afd702c62877800731
   languageName: node
   linkType: hard
 
