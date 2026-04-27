@@ -1,5 +1,14 @@
 # app
 
+## 0.38.2
+
+### Patch Changes
+
+- 525eedb: Cache-bust custom branding logo URLs by appending the asset's mtime as a `?v=` query string, so replaced logos appear immediately instead of being served stale from the browser cache.
+- Updated dependencies [693d573]
+- Updated dependencies [0c368e6]
+  - @giantswarm/backstage-plugin-ai-chat@0.12.1
+
 ## 0.38.1
 
 ### Patch Changes

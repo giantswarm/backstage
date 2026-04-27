@@ -5,6 +5,22 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.124.3] - 2026-04-27
+
+### Added
+
+- Allow overriding the AI chat context window size via `aiChat.contextWindow` in app-config.
+
+### Changed
+
+- Improve markdown table rendering in AI chat: tables are now horizontally scrollable with better cell spacing.
+
+### Fixed
+
+- Cache-bust custom branding logo URLs so replaced logos appear immediately instead of being served stale from the browser cache.
+
+See [./docs/releases/v0.124.3-changelog.md](./docs/releases/v0.124.3-changelog.md) for more information.
+
 ## [0.124.2] - 2026-04-27
 
 ### Changed
@@ -2324,7 +2340,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.3...HEAD
+[0.124.3]: https://github.com/giantswarm/backstage/compare/v0.124.2...v0.124.3
 [0.124.2]: https://github.com/giantswarm/backstage/compare/v0.124.1...v0.124.2
 [0.124.1]: https://github.com/giantswarm/backstage/compare/v0.124.0...v0.124.1
 [0.124.0]: https://github.com/giantswarm/backstage/compare/v0.123.0...v0.124.0
