@@ -1,4 +1,8 @@
-import { AssistantRuntimeProvider, useAssistantApi } from '@assistant-ui/react';
+import {
+  AssistantRuntimeProvider,
+  useAssistantApi,
+  useAssistantState,
+} from '@assistant-ui/react';
 import { DevToolsModal } from '@assistant-ui/react-devtools';
 import { Content } from '@backstage/core-components';
 import {
@@ -18,7 +22,10 @@ import { Thread } from './Thread';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatSetup } from '../../hooks/useChatSetup';
-import { ChatRuntimeContext } from '../../hooks/ChatRuntimeContext';
+import {
+  ChatRuntimeContext,
+  useChatRuntimeContext,
+} from '../../hooks/ChatRuntimeContext';
 import { useConversationListSync } from '../../hooks/useConversationListSync';
 import { ConversationClient, ConversationApi } from '../../api';
 import { ConversationHistoryPage } from '../ConversationHistory';
@@ -125,6 +132,25 @@ const ConversationListSync = ({
   return null;
 };
 
+const ActiveConversationTracker = ({
+  onActiveIdChange,
+}: {
+  onActiveIdChange: (id: string) => void;
+}) => {
+  const { getConversationId } = useChatRuntimeContext();
+  const messageCount = useAssistantState(
+    ({ thread }) => thread?.messages?.length ?? 0,
+  );
+
+  useEffect(() => {
+    if (messageCount === 0) return;
+    const id = getConversationId();
+    if (id) onActiveIdChange(id);
+  }, [messageCount, getConversationId, onActiveIdChange]);
+
+  return null;
+};
+
 export const AiChatPage = () => {
   const classes = useStyles();
   const resolveRoot = useRouteRef(rootRouteRef);
@@ -156,7 +182,12 @@ export const AiChatPage = () => {
     id: string;
     messages: UIMessage[];
   } | null>(null);
+  const [newConversationId, setNewConversationId] = useState<
+    string | undefined
+  >();
   const loadedRef = useRef<string | null>(null);
+
+  const activeConversationId = loadedConversation?.id ?? newConversationId;
 
   // Load conversation from ?conversation=<id> query param
   const conversationIdParam = searchParams.get('conversation');
@@ -191,6 +222,7 @@ export const AiChatPage = () => {
 
   const handleNewConversation = useCallback(() => {
     setLoadedConversation(null);
+    setNewConversationId(undefined);
     loadedRef.current = null;
     setRuntimeKey(prev => prev + 1);
     navigate(rootPath);
@@ -201,10 +233,12 @@ export const AiChatPage = () => {
       try {
         const conv = await conversationApi.getConversationById(id);
         setLoadedConversation({ id: conv.id, messages: conv.messages });
+        setNewConversationId(undefined);
         setRuntimeKey(prev => prev + 1);
         navigate(rootPath);
       } catch {
         setLoadedConversation(null);
+        setNewConversationId(undefined);
         setRuntimeKey(prev => prev + 1);
         navigate(rootPath);
       }
@@ -233,6 +267,7 @@ export const AiChatPage = () => {
         conversationId={loadedConversation?.id}
       >
         <ConversationListSync conversationApi={conversationApi} />
+        <ActiveConversationTracker onActiveIdChange={setNewConversationId} />
         <PluginHeader
           title="AI Assistant"
           icon={<AIChatIcon fontSize="inherit" />}
@@ -255,7 +290,7 @@ export const AiChatPage = () => {
             <div className={classes.sidebar}>
               <RecentConversations
                 conversationApi={conversationApi}
-                selectedId={loadedConversation?.id}
+                selectedId={activeConversationId}
                 onSelectConversation={handleSelectConversation}
               />
             </div>
