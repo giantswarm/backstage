@@ -3,6 +3,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import Typography from '@material-ui/core/Typography';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
+import { useApi, configApiRef } from '@backstage/core-plugin-api';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -82,6 +83,7 @@ function formatCost(cost: number): string {
 const CONTEXT_WINDOWS: Record<string, number> = {
   'claude-sonnet-4-6': 1_000_000,
   'claude-opus-4-6': 1_000_000,
+  'claude-opus-4-7': 1_000_000,
   'claude-sonnet-4-5': 200_000,
   'claude-sonnet-4': 200_000,
   'claude-opus-4': 200_000,
@@ -161,6 +163,9 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
   UsageResult
 > = ({ result }) => {
   const classes = useStyles();
+  const configApi = useApi(configApiRef);
+  const configuredContextWindow =
+    configApi.getOptionalNumber('aiChat.contextWindow') ?? null;
 
   if (!result || !result.available) {
     return (
@@ -172,9 +177,9 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
     );
   }
 
-  const contextWindow = result.modelName
-    ? getContextWindow(result.modelName)
-    : null;
+  const contextWindow =
+    configuredContextWindow ??
+    (result.modelName ? getContextWindow(result.modelName) : null);
   const usagePercent =
     contextWindow && result.inputTokens
       ? Math.min((result.inputTokens / contextWindow) * 100, 100)
