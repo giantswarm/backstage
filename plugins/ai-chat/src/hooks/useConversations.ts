@@ -14,6 +14,7 @@ export interface UseConversationsReturn {
   refreshConversations: () => void;
   deleteConversation: (id: string) => Promise<void>;
   toggleStar: (id: string) => Promise<void>;
+  addOptimisticConversation: (item: ConversationListItem) => void;
 }
 
 const CONVERSATIONS_QUERY_KEY = ['ai-chat', 'conversations'];
@@ -107,6 +108,19 @@ export function useConversations(
     [starMutation],
   );
 
+  const addOptimisticConversation = useCallback(
+    (item: ConversationListItem) => {
+      queryClient.setQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+        old => {
+          if (old?.some(c => c.id === item.id)) return old;
+          return [item, ...(old ?? [])];
+        },
+      );
+    },
+    [queryClient],
+  );
+
   const sortedConversations = useMemo(
     () =>
       [...conversations].sort((a, b) => {
@@ -126,5 +140,6 @@ export function useConversations(
     refreshConversations,
     deleteConversation,
     toggleStar,
+    addOptimisticConversation,
   };
 }

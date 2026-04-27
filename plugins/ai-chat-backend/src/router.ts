@@ -443,17 +443,6 @@ export async function createRouter(
               chatLogger.debug(
                 `Saved conversation ${saved.id} (${allMessages.length} messages)`,
               );
-
-              // Generate title for new conversations
-              if (!conversationId) {
-                generateTitle(
-                  saved.id,
-                  userRef,
-                  allMessages,
-                  conversationStore,
-                  chatLogger,
-                );
-              }
             })
             .catch(saveErr => {
               chatLogger.error(`Failed to save conversation: ${saveErr}`);
@@ -499,51 +488,4 @@ export async function createRouter(
   });
 
   return router;
-}
-
-/**
- * Fire-and-forget title generation for new conversations.
- * Uses the same LLM provider to generate a concise title.
- */
-function generateTitle(
-  conversationId: string,
-  userId: string,
-  messages: UIMessage[],
-  store: ConversationStore,
-  chatLogger: LoggerService,
-) {
-  setImmediate(async () => {
-    try {
-      const userMessages = messages
-        .filter(m => m.role === 'user')
-        .slice(0, 3)
-        .map(m =>
-          m.parts
-            .filter(p => p.type === 'text')
-            .map(p => p.text)
-            .join(' '),
-        )
-        .join('\n');
-
-      if (!userMessages.trim()) {
-        await store.updateTitle(userId, conversationId, 'Chat Session');
-        return;
-      }
-
-      // Use a simple truncation-based title as fallback
-      const fallbackTitle =
-        userMessages.length <= 50
-          ? userMessages
-          : `${userMessages.slice(0, 47)}...`;
-
-      await store.updateTitle(userId, conversationId, fallbackTitle);
-      chatLogger.debug(
-        `Set title for conversation ${conversationId}: "${fallbackTitle}"`,
-      );
-    } catch (error) {
-      chatLogger.warn(
-        `Failed to generate title for ${conversationId}: ${error}`,
-      );
-    }
-  });
 }

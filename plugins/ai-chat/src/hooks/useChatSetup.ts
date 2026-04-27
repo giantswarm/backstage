@@ -72,6 +72,8 @@ export function useChatSetup(options?: UseChatSetupOptions) {
   const conversationIdRef = useRef<string | null>(
     options?.conversationId ?? null,
   );
+  const isNewConversation = !options?.conversationId;
+  const getConversationId = useCallback(() => conversationIdRef.current, []);
 
   // Verbose debugging is only enabled in non-production builds to avoid
   // leaking backend internals (system prompt, tool schemas) to end users
@@ -168,5 +170,10 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     }),
   });
 
-  return { runtime, isReady: Boolean(apiUrl) };
+  return {
+    runtime,
+    isReady: Boolean(apiUrl),
+    getConversationId,
+    isNewConversation,
+  };
 }
