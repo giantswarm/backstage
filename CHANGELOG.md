@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Allow overriding the AI chat context window size via `aiChat.contextWindow` in app-config.
+
+### Changed
+
+- Improve markdown table rendering in AI chat: tables are now horizontally scrollable with better cell spacing.
+
+### Fixed
+
+- Cache-bust custom branding logo URLs so replaced logos appear immediately instead of being served stale from the browser cache.
+
 ## [0.124.2] - 2026-04-27
 
 ### Changed
