@@ -30,5 +30,13 @@ export interface Config {
        */
       authProvider?: string;
     }>;
+
+    /**
+     * Optional: override the context window size (in tokens) used to render
+     * the context usage bar. When set, this value is used regardless of the
+     * model name. When unset, a built-in lookup by model name prefix is used.
+     * @visibility frontend
+     */
+    contextWindow?: number;
   };
 }
