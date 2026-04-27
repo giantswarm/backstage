@@ -2,7 +2,7 @@
 
 The Dev Portal supports overriding the default sidebar logos, home page logo, and browser tab favicon with custom assets, without committing them to the source repository or loading them from external URLs.
 
-Assets are placed into a directory on the backend's filesystem and served by the `gs-backend` plugin. On the frontend, components check which assets are available and swap in the custom versions, falling back to the built-in defaults when none are provided.
+Assets are placed into a directory on the backend's filesystem and served by the built-in `branding` backend plugin (defined in `packages/backend/src/branding/`). On the frontend, components check which assets are available and swap in the custom versions, falling back to the built-in defaults when none are provided.
 
 ## Supported assets
 
@@ -41,7 +41,7 @@ All assets are optional. Only assets that are present in the directory will over
 3. Add the path to `app-config.local.yaml`:
 
    ```yaml
-   gs:
+   app:
      branding:
        assetsPath: ./branding-assets
    ```
@@ -114,9 +114,9 @@ base64 -w0 favicon-32x32.png
 
 ## Configuration reference
 
-| Key                      | Default                | Description                                                 |
-| ------------------------ | ---------------------- | ----------------------------------------------------------- |
-| `gs.branding.assetsPath` | `/app/branding-assets` | Filesystem path where the backend looks for branding assets |
+| Key                       | Default                | Description                                                 |
+| ------------------------- | ---------------------- | ----------------------------------------------------------- |
+| `app.branding.assetsPath` | `/app/branding-assets` | Filesystem path where the backend looks for branding assets |
 
 ### Helm values
 
@@ -128,13 +128,13 @@ base64 -w0 favicon-32x32.png
 
 ## How it works
 
-1. On startup, the `gs-backend` plugin scans the configured `assetsPath` directory and registers a `/branding/manifest` endpoint that lists the available files, plus an `express.static` handler that serves them. If the directory does not exist, the manifest returns an empty list and no errors are logged.
+1. On startup, the `branding` backend plugin scans the configured `assetsPath` directory and registers a `/api/branding/manifest` endpoint that lists the available files, plus an `express.static` handler that serves them at `/api/branding/<filename>`. If the directory does not exist, the manifest returns an empty list and no errors are logged.
 
 2. On the frontend, the `useBranding()` hook fetches the manifest once and caches it. The `LogoFull`, `LogoIcon`, and `HomeLogo` components check whether a matching asset exists and render an `<img>` tag pointing at the backend URL, or fall back to the built-in inline SVG.
 
 3. The `BrandingFavicon` component (mounted at the app root) updates the `<link>` tags in `<head>` to point at any available favicon assets, leaving unmatched tags unchanged.
 
-4. The `/branding/*` routes are served without authentication so that `<img>` and `<link>` tags (which cannot include auth headers) work correctly.
+4. The `/api/branding/*` routes are served without authentication so that `<img>` and `<link>` tags (which cannot include auth headers) work correctly.
 
 ## Design notes
 

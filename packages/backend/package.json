@@ -18,6 +18,7 @@
   "dependencies": {
     "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "^0.6.0",
     "@backstage/backend-defaults": "backstage:^",
+    "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/plugin-app-backend": "backstage:^",
     "@backstage/plugin-auth-backend": "backstage:^",
     "@backstage/plugin-auth-backend-module-github-provider": "backstage:^",
@@ -66,7 +67,10 @@
     "pg": "^8.10.0"
   },
   "devDependencies": {
-    "@backstage/cli": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^",
+    "@backstage/cli": "backstage:^",
+    "@types/supertest": "^2.0.12",
+    "supertest": "^6.2.4"
   },
   "files": [
     "dist"

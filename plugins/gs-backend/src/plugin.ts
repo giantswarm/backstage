@@ -43,18 +43,11 @@ export const gsPlugin = createBackendPlugin({
 
         httpRouter.use(
           await createRouter({
-            config,
-            logger,
             containerRegistry,
             mimir,
             githubCredentialsProvider,
           }),
         );
-
-        httpRouter.addAuthPolicy({
-          path: '/branding',
-          allow: 'unauthenticated',
-        });
 
         registerMcpActions(
           actionsRegistry,
