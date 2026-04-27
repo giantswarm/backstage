@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Decouple custom branding from the gs-backend plugin so branding assets are served by a dedicated backend plugin and work without `gs:` config.
+
 ## [0.124.1] - 2026-04-24
 
 ### Fixed
