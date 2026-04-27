@@ -18,6 +18,8 @@ import { Thread } from './Thread';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatSetup } from '../../hooks/useChatSetup';
+import { ChatRuntimeContext } from '../../hooks/ChatRuntimeContext';
+import { useConversationListSync } from '../../hooks/useConversationListSync';
 import { ConversationClient, ConversationApi } from '../../api';
 import { ConversationHistoryPage } from '../ConversationHistory';
 import { RecentConversations } from '../RecentConversations';
@@ -92,18 +94,35 @@ const PageRuntime = ({
   initialMessages,
   conversationId,
 }: PageRuntimeProps) => {
-  const { runtime, isReady } = useChatSetup({
-    initialMessages,
-    conversationId,
-  });
+  const { runtime, isReady, getConversationId, isNewConversation } =
+    useChatSetup({
+      initialMessages,
+      conversationId,
+    });
+
+  const contextValue = useMemo(
+    () => ({ isReady, getConversationId, isNewConversation }),
+    [isReady, getConversationId, isNewConversation],
+  );
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <InitialMessageHandler isReady={isReady} />
-      <DevToolsModal />
-      {children}
+      <ChatRuntimeContext.Provider value={contextValue}>
+        <InitialMessageHandler isReady={isReady} />
+        <DevToolsModal />
+        {children}
+      </ChatRuntimeContext.Provider>
     </AssistantRuntimeProvider>
   );
+};
+
+const ConversationListSync = ({
+  conversationApi,
+}: {
+  conversationApi: ConversationApi;
+}) => {
+  useConversationListSync(conversationApi);
+  return null;
 };
 
 export const AiChatPage = () => {
@@ -213,6 +232,7 @@ export const AiChatPage = () => {
         initialMessages={loadedConversation?.messages}
         conversationId={loadedConversation?.id}
       >
+        <ConversationListSync conversationApi={conversationApi} />
         <PluginHeader
           title="AI Assistant"
           icon={<AIChatIcon fontSize="inherit" />}

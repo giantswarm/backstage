@@ -73,6 +73,10 @@ export const RecentConversations = ({
     }
   };
 
+  if (loading || conversations.length === 0) {
+    return null;
+  }
+
   return (
     <div className={classes.root}>
       <Text variant="body-medium" color="secondary" className={classes.title}>
