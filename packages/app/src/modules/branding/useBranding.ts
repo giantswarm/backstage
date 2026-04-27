@@ -15,9 +15,9 @@ let cachedPromise: Promise<ManifestResult> | null = null;
 let cachedResult: ManifestResult | null = null;
 
 /**
- * Hook that provides access to custom branding assets served by the gs-backend
- * plugin. Returns helpers to check for and resolve asset URLs, with graceful
- * fallback when no custom assets are configured.
+ * Hook that provides access to custom branding assets served by the branding
+ * backend plugin. Returns helpers to check for and resolve asset URLs, with
+ * graceful fallback when no custom assets are configured.
  */
 export function useBranding() {
   const discoveryApi = useApi(discoveryApiRef);
@@ -34,9 +34,9 @@ export function useBranding() {
 
     if (!cachedPromise) {
       cachedPromise = (async (): Promise<ManifestResult> => {
-        const baseUrl = await discoveryApi.getBaseUrl('gs');
+        const baseUrl = await discoveryApi.getBaseUrl('branding');
         try {
-          const response = await fetchApi.fetch(`${baseUrl}/branding/manifest`);
+          const response = await fetchApi.fetch(`${baseUrl}/manifest`);
           if (response.ok) {
             const data = await response.json();
             return { assets: data.assets ?? {}, baseUrl };
@@ -70,7 +70,7 @@ export function useBranding() {
   const getAssetUrl = useCallback(
     (filename: string) => {
       if (!result?.baseUrl || !result.assets[filename]) return undefined;
-      return `${result.baseUrl}/branding/${filename}`;
+      return `${result.baseUrl}/${filename}`;
     },
     [result],
   );

@@ -124,7 +124,7 @@
             "additionalProperties": false
         },
         "branding": {
-            "description": "Custom branding/UI asset settings (logos served by the gs-backend plugin)",
+            "description": "Custom branding/UI asset settings (logos and favicons served by the branding backend plugin)",
             "type": "object",
             "properties": {
                 "assetsPath": {
