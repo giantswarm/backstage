@@ -8,7 +8,7 @@ const useStyles = makeStyles({
   },
   img: {
     width: 'auto',
-    height: 28,
+    height: 30,
   },
   path: {
     fill: '#7df3e1',

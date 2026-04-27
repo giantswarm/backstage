@@ -6,7 +6,7 @@ import {
 } from '@backstage/core-plugin-api';
 
 interface ManifestResult {
-  assets: Record<string, boolean>;
+  assets: Record<string, number>;
   baseUrl: string;
 }
 
@@ -63,14 +63,15 @@ export function useBranding() {
   }, [discoveryApi, fetchApi]);
 
   const hasAsset = useCallback(
-    (filename: string) => Boolean(result?.assets[filename]),
+    (filename: string) => result?.assets[filename] !== undefined,
     [result],
   );
 
   const getAssetUrl = useCallback(
     (filename: string) => {
-      if (!result?.baseUrl || !result.assets[filename]) return undefined;
-      return `${result.baseUrl}/${filename}`;
+      const version = result?.assets[filename];
+      if (!result?.baseUrl || version === undefined) return undefined;
+      return `${result.baseUrl}/${filename}?v=${version}`;
     },
     [result],
   );

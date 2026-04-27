@@ -4,8 +4,8 @@ import {
 } from '@backstage/backend-plugin-api';
 import express from 'express';
 import Router from 'express-promise-router';
-import { existsSync, readdirSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, readdirSync, statSync } from 'fs';
+import { join, resolve } from 'path';
 
 export async function createRouter({
   config,
@@ -23,9 +23,9 @@ export async function createRouter({
 
   if (existsSync(resolvedAssetsPath)) {
     const files = readdirSync(resolvedAssetsPath);
-    const assets: Record<string, boolean> = {};
+    const assets: Record<string, number> = {};
     for (const file of files) {
-      assets[file] = true;
+      assets[file] = statSync(join(resolvedAssetsPath, file)).mtimeMs;
     }
 
     router.get('/manifest', (_req, res) => {
