@@ -46,9 +46,11 @@ const useStyles = makeStyles(theme => ({
 
   thread: {
     flex: 1,
+    minWidth: 0,
   },
 
   sidebar: {
+    flexShrink: 0,
     width: 250,
 
     [theme.breakpoints.down('md')]: {
