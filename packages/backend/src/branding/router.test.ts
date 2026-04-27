@@ -43,8 +43,8 @@ describe('branding router', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       assets: {
-        'logo-full.svg': true,
-        'logo-icon.png': true,
+        'logo-full.svg': expect.any(Number),
+        'logo-icon.png': expect.any(Number),
       },
     });
   });
