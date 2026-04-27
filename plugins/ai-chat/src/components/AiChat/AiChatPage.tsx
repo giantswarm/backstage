@@ -20,6 +20,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatSetup } from '../../hooks/useChatSetup';
 import { ConversationClient, ConversationApi } from '../../api';
 import { ConversationHistoryPage } from '../ConversationHistory';
+import { RecentConversations } from '../RecentConversations';
 import { makeStyles } from '@material-ui/core';
 import { RiAddLine } from '@remixicon/react';
 import { QueryClientProvider } from '../QueryClientProvider';
@@ -27,12 +28,27 @@ import { QueryClientProvider } from '../QueryClientProvider';
 const useStyles = makeStyles(theme => ({
   root: {
     display: 'flex',
-    flexDirection: 'column',
     minHeight: 'calc(100dvh - 89px)',
     [theme.breakpoints.down('xs')]: {
       minHeight: 'calc(100dvh - 89px - 56px)',
     },
     paddingBottom: 0,
+  },
+
+  thread: {
+    flex: 1,
+  },
+
+  sidebar: {
+    width: 250,
+
+    [theme.breakpoints.down('md')]: {
+      width: 200,
+    },
+
+    [theme.breakpoints.down('sm')]: {
+      display: 'none',
+    },
   },
 }));
 
@@ -213,7 +229,16 @@ export const AiChatPage = () => {
         />
         <div style={{ display: activeTab === 'chat' ? undefined : 'none' }}>
           <Content className={classes.root}>
-            <Thread />
+            <div className={classes.thread}>
+              <Thread />
+            </div>
+            <div className={classes.sidebar}>
+              <RecentConversations
+                conversationApi={conversationApi}
+                selectedId={loadedConversation?.id}
+                onSelectConversation={handleSelectConversation}
+              />
+            </div>
           </Content>
         </div>
         <div style={{ display: activeTab === 'history' ? undefined : 'none' }}>
