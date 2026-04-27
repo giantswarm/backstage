@@ -17,6 +17,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Cache-bust custom branding logo URLs so replaced logos appear immediately instead of being served stale from the browser cache.
 
+See [./docs/releases/v0.124.3-changelog.md](./docs/releases/v0.124.3-changelog.md) for more information.
+
 ## [0.124.2] - 2026-04-27
 
 ### Changed
