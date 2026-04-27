@@ -21,7 +21,11 @@ export const LogoIcon = () => {
   const imgHeight =
     configApi.getOptionalNumber('app.branding.logo.height') ?? 30;
   const classes = useStyles({ imgHeight });
-  const { hasAsset, getAssetUrl } = useBranding();
+  const { hasAsset, getAssetUrl, isLoading } = useBranding();
+
+  if (isLoading) {
+    return null;
+  }
 
   const customAsset =
     (hasAsset('logo-icon.svg') && 'logo-icon.svg') ||
