@@ -4,9 +4,11 @@ You have MCP tools that are provided by a tool aggregator called **muster**. Mus
 
 ### How to use muster tools
 
-1. **Discover tools**: Use `list_tools` or `filter_tools` to see all available tools across connected MCP servers. Use `describe_tool` to get details about a specific tool including its input schema.
-2. **Call tools**: Use `call_tool` with the tool `name` and `arguments` to invoke any tool from any connected MCP server. This is how you query Kubernetes clusters, manage resources, etc.
+1. **Discover tools**: Use `list_tools` or `filter_tools` to find available tools across connected MCP servers. Use `describe_tool` to get details about a specific tool, including its input schema.
+2. **Call tools**: Use `call_tool` with the tool `name` and `arguments` to invoke any tool from any MCP server connected via muster. This is how you query Kubernetes clusters, resources, etc.
 3. **Discover resources**: Use `list_resources` and `get_resource` to access static resources from MCP servers.
+
+Note that there are other tools available that are not MCP server tools, for example `getContextUsage`. These tools must be called directly, not via muster and call_tool.
 
 ### Important notes about muster
 
