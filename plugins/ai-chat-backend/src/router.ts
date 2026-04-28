@@ -208,6 +208,21 @@ export async function createRouter(
 
     const { messages, tools } = parsed.data;
 
+    // Persist the conversation up-front (with just the user's message) so it
+    // shows up in history immediately and survives stream interruptions. The
+    // `onFinish` handler below updates the same row with the assistant reply.
+    let persistedConversationId = conversationId;
+    try {
+      const saved = await conversationStore.saveConversation(
+        userRef,
+        messages as UIMessage[],
+        conversationId,
+      );
+      persistedConversationId = saved.id;
+    } catch (saveErr) {
+      chatLogger.error(`Failed initial conversation save: ${saveErr}`);
+    }
+
     const authTokens = extractMcpAuthTokens(req.headers);
 
     const {
@@ -436,9 +451,10 @@ export async function createRouter(
         originalMessages: messages as UIMessage[],
         generateMessageId: () => crypto.randomUUID(),
         onFinish({ messages: allMessages }) {
-          // Fire-and-forget: persist conversation after stream completes
+          // Fire-and-forget: update the conversation row created up-front
+          // with the full message history including the assistant reply.
           conversationStore
-            .saveConversation(userRef, allMessages, conversationId)
+            .saveConversation(userRef, allMessages, persistedConversationId)
             .then(saved => {
               chatLogger.debug(
                 `Saved conversation ${saved.id} (${allMessages.length} messages)`,
