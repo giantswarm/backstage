@@ -13,6 +13,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Avoid flashing the default logo while the branding manifest is loading.
 
+See [./docs/releases/v0.124.4-changelog.md](./docs/releases/v0.124.4-changelog.md) for more information.
+
 ## [0.124.3] - 2026-04-27
 
 ### Added
