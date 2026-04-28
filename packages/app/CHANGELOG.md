@@ -1,5 +1,20 @@
 # app
 
+## 0.38.2
+
+### Patch Changes
+
+- 525eedb: Cache-bust custom branding logo URLs by appending the asset's mtime as a `?v=` query string, so replaced logos appear immediately instead of being served stale from the browser cache.
+- Updated dependencies [693d573]
+- Updated dependencies [0c368e6]
+  - @giantswarm/backstage-plugin-ai-chat@0.12.1
+
+## 0.38.1
+
+### Patch Changes
+
+- a240221: Decouple custom branding from the gs-backend plugin. Branding asset serving moves to a dedicated `branding` backend plugin colocated in `packages/backend/src/branding/`, registered unconditionally so it works in deployments without a `gs:` config block. The frontend hook now resolves assets via the `branding` discovery prefix at `/api/branding/*`.
+
 ## 0.38.0
 
 ### Minor Changes

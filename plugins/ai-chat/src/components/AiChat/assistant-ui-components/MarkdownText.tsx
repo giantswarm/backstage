@@ -50,12 +50,19 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
       fontStyle: 'italic',
       color: theme.palette.text.secondary,
     },
-    table: {
+    tableContainer: {
       margin: theme.spacing(2, 0),
+      overflowX: 'auto',
+      position: 'relative',
+    },
+    table: {
       animation: '$fadeInUp 0.3s ease-out',
     },
     tableCell: {
       borderBottom: `1px solid ${theme.palette.divider}`,
+      lineHeight: 1.6,
+      wordBreak: 'initial',
+      padding: theme.spacing(1, 1),
     },
     list: {
       marginLeft: theme.spacing(1),
@@ -217,9 +224,9 @@ export const createMarkdownComponents = (
     li: ({ children }) => <li>{children}</li>,
     hr: () => <hr className={classes.hr} />,
     table: ({ children }) => (
-      <Table size="small" className={classes.table}>
-        {children}
-      </Table>
+      <div className={classes.tableContainer}>
+        <Table className={classes.table}>{children}</Table>
+      </div>
     ),
     thead: ({ children }) => <TableHead>{children}</TableHead>,
     tbody: ({ children }) => <TableBody>{children}</TableBody>,

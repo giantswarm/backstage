@@ -1,4 +1,5 @@
 import { makeStyles } from '@material-ui/core';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { useBranding } from '../branding';
 
 const useStyles = makeStyles({
@@ -8,7 +9,7 @@ const useStyles = makeStyles({
   },
   img: {
     width: 'auto',
-    height: 30,
+    height: ({ imgHeight }: { imgHeight: number }) => imgHeight,
   },
   path: {
     fill: '#7df3e1',
@@ -16,7 +17,10 @@ const useStyles = makeStyles({
 });
 
 export const LogoFull = () => {
-  const classes = useStyles();
+  const configApi = useApi(configApiRef);
+  const imgHeight =
+    configApi.getOptionalNumber('app.branding.logo.height') ?? 30;
+  const classes = useStyles({ imgHeight });
   const { hasAsset, getAssetUrl } = useBranding();
 
   const customAsset =
