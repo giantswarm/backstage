@@ -28,6 +28,7 @@ import { frontendTools } from './frontendTools';
 import {
   listSkills,
   getSkill,
+  date,
   createUserTools,
   createResourceTools,
   createContextUsageTool,
@@ -325,6 +326,7 @@ export async function createRouter(
         ...mcpResourceTools,
         listSkills,
         getSkill,
+        date,
         ...userTools,
         ...contextUsageTools,
       };
