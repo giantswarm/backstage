@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   useApi,
   identityApiRef,
@@ -69,11 +69,27 @@ export function useChatSetup(options?: UseChatSetupOptions) {
   const configApi = useApi(configApiRef);
   const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
   const featureFlagsApi = useApi(featureFlagsApiRef);
-  const conversationIdRef = useRef<string | null>(
-    options?.conversationId ?? null,
+  // Generate the conversation id eagerly so getConversationId() never returns
+  // null while the first user message is in flight. This lets the optimistic
+  // history-list insert (useConversationListSync) fire on the first message,
+  // not after the first assistant token arrives.
+  const conversationIdRef = useRef<string>(
+    options?.conversationId ?? crypto.randomUUID(),
   );
   const isNewConversation = !options?.conversationId;
   const getConversationId = useCallback(() => conversationIdRef.current, []);
+
+  useEffect(() => {
+    if (
+      isNewConversation &&
+      featureFlagsApi.isActive('ai-chat-verbose-debugging')
+    ) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `New AI Assistant conversation started with ID ${conversationIdRef.current}`,
+      );
+    }
+  }, [isNewConversation, featureFlagsApi]);
 
   // Verbose debugging is only enabled in non-production builds to avoid
   // leaking backend internals (system prompt, tool schemas) to end users
@@ -139,16 +155,6 @@ export function useChatSetup(options?: UseChatSetupOptions) {
   }, [mcpAuthProviders, mcpAuthProvidersApi]);
 
   const getHeaders = useCallback(async () => {
-    if (!conversationIdRef.current) {
-      conversationIdRef.current = crypto.randomUUID();
-      if (featureFlagsApi.isActive('ai-chat-verbose-debugging')) {
-        // eslint-disable-next-line no-console
-        console.log(
-          `New AI Assistant conversation started with ID ${conversationIdRef.current}`,
-        );
-      }
-    }
-
     const { token } = await identityApi.getCredentials();
     const mcpHeaders = await getMCPAuthHeaders();
 
@@ -158,7 +164,7 @@ export function useChatSetup(options?: UseChatSetupOptions) {
       ...(verboseDebugging && { 'X-AI-Chat-Debug': 'true' }),
       ...mcpHeaders,
     };
-  }, [identityApi, getMCPAuthHeaders, featureFlagsApi, verboseDebugging]);
+  }, [identityApi, getMCPAuthHeaders, verboseDebugging]);
 
   const runtime = useChatRuntime({
     messages: options?.initialMessages,
