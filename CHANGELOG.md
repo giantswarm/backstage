@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.125.0] - 2026-04-28
+
 ### Added
 
 - Persist AI chat conversations and add a conversation history page with rename, delete, batch delete, and pagination, plus a history view in the chat drawer.
@@ -2370,7 +2372,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.4...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.125.0...HEAD
+[0.125.0]: https://github.com/giantswarm/backstage/compare/v0.124.4...v0.125.0
 [0.124.4]: https://github.com/giantswarm/backstage/compare/v0.124.3...v0.124.4
 [0.124.3]: https://github.com/giantswarm/backstage/compare/v0.124.2...v0.124.3
 [0.124.2]: https://github.com/giantswarm/backstage/compare/v0.124.1...v0.124.2
