@@ -11,6 +11,7 @@ import {
   MenuTrigger,
   Table,
   Text,
+  useTable,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
@@ -86,6 +87,11 @@ export const ConversationHistoryPage = ({
     toggleStar,
     renameConversation,
   } = useConversations(conversationApi);
+
+  const { tableProps } = useTable<ConversationListItem>({
+    mode: 'complete',
+    data: conversations,
+  });
 
   const selectedIds: string[] =
     selectedKeys === 'all'
@@ -181,10 +187,9 @@ export const ConversationHistoryPage = ({
         </Button>
       </div>
       <Table
+        {...tableProps}
         columnConfig={columnConfig}
-        data={conversations}
-        loading={loading}
-        pagination={{ type: 'none' }}
+        loading={loading || tableProps.loading}
         selection={{
           mode: 'multiple',
           behavior: 'toggle',
