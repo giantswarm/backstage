@@ -6,7 +6,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import { AssistantRuntimeProvider, useAssistantApi } from '@assistant-ui/react';
+import {
+  AssistantRuntimeProvider,
+  useAssistantApi,
+  useAssistantState,
+} from '@assistant-ui/react';
 import {
   useApi,
   discoveryApiRef,
@@ -74,6 +78,8 @@ const DrawerInner = ({
   activeTab,
   onTabChange,
   conversationApi,
+  activeConversationId,
+  onActiveIdChange,
   onSelectConversation,
 }: {
   open: boolean;
@@ -84,10 +90,15 @@ const DrawerInner = ({
   activeTab: DrawerTab;
   onTabChange(tab: DrawerTab): void;
   conversationApi: ConversationApi;
+  activeConversationId?: string;
+  onActiveIdChange(id: string): void;
   onSelectConversation(id: string): void;
 }) => {
   const assistantApi = useAssistantApi();
-  const { isReady } = useChatRuntimeContext();
+  const { isReady, getConversationId } = useChatRuntimeContext();
+  const messageCount = useAssistantState(
+    ({ thread }) => thread?.messages?.length ?? 0,
+  );
 
   useConversationListSync(conversationApi);
 
@@ -106,6 +117,12 @@ const DrawerInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
+  useEffect(() => {
+    if (messageCount === 0) return;
+    const id = getConversationId();
+    if (id) onActiveIdChange(id);
+  }, [messageCount, getConversationId, onActiveIdChange]);
+
   return (
     <AiChatDrawer
       open={open}
@@ -115,6 +132,7 @@ const DrawerInner = ({
       activeTab={activeTab}
       onTabChange={onTabChange}
       conversationApi={conversationApi}
+      activeConversationId={activeConversationId}
       onSelectConversation={onSelectConversation}
     />
   );
@@ -131,7 +149,13 @@ export const AiChatDrawerProvider = () => {
     id: string;
     messages: UIMessage[];
   } | null>(null);
+  const [newConversationId, setNewConversationId] = useState<
+    string | undefined
+  >();
   const pendingMessageRef = useRef<string | null>(null);
+
+  const activeConversationId = loadedConversation?.id ?? newConversationId;
+
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
   const variant = isSmallScreen ? 'overlay' : 'persistent';
@@ -147,6 +171,7 @@ export const AiChatDrawerProvider = () => {
 
   const handleNewConversation = useCallback(() => {
     setLoadedConversation(null);
+    setNewConversationId(undefined);
     setRuntimeKey(prev => prev + 1);
     setActiveTab('chat');
   }, []);
@@ -156,11 +181,13 @@ export const AiChatDrawerProvider = () => {
       try {
         const conv = await conversationApi.getConversationById(id);
         setLoadedConversation({ id: conv.id, messages: conv.messages });
+        setNewConversationId(undefined);
         setRuntimeKey(prev => prev + 1);
         setActiveTab('chat');
       } catch {
         // If loading fails, start a fresh conversation
         setLoadedConversation(null);
+        setNewConversationId(undefined);
         setRuntimeKey(prev => prev + 1);
         setActiveTab('chat');
       }
@@ -210,6 +237,8 @@ export const AiChatDrawerProvider = () => {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           conversationApi={conversationApi}
+          activeConversationId={activeConversationId}
+          onActiveIdChange={setNewConversationId}
           onSelectConversation={handleSelectConversation}
         />
       </AiChatRuntimeProvider>

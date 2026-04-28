@@ -302,6 +302,7 @@ export const AiChatPage = () => {
         <div style={{ display: activeTab === 'history' ? undefined : 'none' }}>
           <ConversationHistoryPage
             conversationApi={conversationApi}
+            activeId={activeConversationId}
             onSelectConversation={handleSelectConversation}
           />
         </div>

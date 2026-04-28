@@ -96,6 +96,7 @@ interface AiChatDrawerProps {
   activeTab: DrawerTab;
   onTabChange(tab: DrawerTab): void;
   conversationApi: ConversationApi;
+  activeConversationId?: string;
   onSelectConversation(id: string): void;
 }
 
@@ -107,6 +108,7 @@ export const AiChatDrawer = ({
   activeTab,
   onTabChange,
   conversationApi,
+  activeConversationId,
   onSelectConversation,
 }: AiChatDrawerProps) => {
   const classes = useStyles();
@@ -195,6 +197,7 @@ export const AiChatDrawer = ({
           <div className={classes.historyContent}>
             <DrawerConversationHistory
               conversationApi={conversationApi}
+              activeId={activeConversationId}
               onSelectConversation={onSelectConversation}
             />
           </div>

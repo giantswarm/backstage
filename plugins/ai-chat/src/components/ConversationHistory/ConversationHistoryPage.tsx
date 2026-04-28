@@ -30,6 +30,9 @@ const useStyles = makeStyles(theme => ({
   starIcon: {
     color: theme.palette.warning.main,
   },
+  activeTitle: {
+    fontWeight: 'bold',
+  },
 }));
 
 function formatRelativeDate(dateStr: string): string {
@@ -49,11 +52,13 @@ function formatRelativeDate(dateStr: string): string {
 
 interface ConversationHistoryPageProps {
   conversationApi: ConversationApi;
+  activeId?: string;
   onSelectConversation: (id: string) => void;
 }
 
 export const ConversationHistoryPage = ({
   conversationApi,
+  activeId,
   onSelectConversation,
 }: ConversationHistoryPageProps) => {
   const classes = useStyles();
@@ -68,6 +73,7 @@ export const ConversationHistoryPage = ({
       isRowHeader: true,
       cell: item => (
         <CellText
+          className={item.id === activeId ? classes.activeTitle : undefined}
           title={item.title || item.preview || 'Untitled conversation'}
           description={formatRelativeDate(item.updatedAt)}
         />

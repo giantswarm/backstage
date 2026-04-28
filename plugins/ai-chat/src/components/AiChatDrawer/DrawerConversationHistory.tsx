@@ -38,6 +38,9 @@ const useStyles = makeStyles(theme => ({
   starIcon: {
     color: theme.palette.warning.main,
   },
+  activeTitle: {
+    fontWeight: 'bold',
+  },
 }));
 
 function formatRelativeDate(dateStr: string): string {
@@ -57,11 +60,13 @@ function formatRelativeDate(dateStr: string): string {
 
 interface DrawerConversationHistoryProps {
   conversationApi: ConversationApi;
+  activeId?: string;
   onSelectConversation: (id: string) => void;
 }
 
 export const DrawerConversationHistory = ({
   conversationApi,
+  activeId,
   onSelectConversation,
 }: DrawerConversationHistoryProps) => {
   const classes = useStyles();
@@ -75,6 +80,7 @@ export const DrawerConversationHistory = ({
       isRowHeader: true,
       cell: item => (
         <CellText
+          className={item.id === activeId ? classes.activeTitle : undefined}
           title={item.title || item.preview || 'Untitled conversation'}
           description={formatRelativeDate(item.updatedAt)}
         />
