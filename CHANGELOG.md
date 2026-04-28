@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Make sidebar logo image height configurable via `app.branding.logo.height`.
+
+### Fixed
+
+- Avoid flashing the default logo while the branding manifest is loading.
+
 ## [0.124.3] - 2026-04-27
 
 ### Added
