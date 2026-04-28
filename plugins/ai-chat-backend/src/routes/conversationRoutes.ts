@@ -177,7 +177,10 @@ export function createConversationRoutes(
     const userId = credentials.principal.userEntityRef;
 
     try {
-      await store.updateTitle(userId, id, title.trim());
+      const updated = await store.updateTitle(userId, id, title.trim());
+      if (!updated) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
       return res.json({ title: title.trim() });
     } catch (error) {
       logger.error(`Failed to update title for conversation ${id}: ${error}`);

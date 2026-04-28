@@ -260,12 +260,19 @@ export class ConversationStore {
     }
   }
 
-  async updateTitle(userId: string, id: string, title: string): Promise<void> {
+  async updateTitle(
+    userId: string,
+    id: string,
+    title: string,
+  ): Promise<boolean> {
     try {
-      await this.db(TABLE_NAME).where({ id, user_id: userId }).update({
-        title,
-        updated_at: new Date(),
-      });
+      const updated = await this.db(TABLE_NAME)
+        .where({ id, user_id: userId })
+        .update({
+          title,
+          updated_at: new Date(),
+        });
+      return updated > 0;
     } catch (error) {
       this.logger.error(
         `Failed to update title for conversation ${id}: ${error}`,
