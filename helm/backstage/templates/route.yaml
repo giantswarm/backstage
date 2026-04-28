@@ -1,6 +1,4 @@
-{{- if .Values.route.enabled -}}
 {{- $route := .Values.route }}
----
 apiVersion: gateway.networking.k8s.io/v1
 kind: {{ $route.kind | default "HTTPRoute" }}
 metadata:
@@ -114,5 +112,4 @@ spec:
   {{- with $btp.spec }}
   {{- toYaml . | nindent 2 }}
   {{- end }}
-{{- end }}
 {{- end }}

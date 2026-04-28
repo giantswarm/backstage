@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Removed
+
+- Remove the Ingress template from the helm chart. Gateway API (HTTPRoute) is now the only way to expose the service, and the `route.enabled` toggle has been removed along with the `ingress` values block.
+
 ## [0.124.4] - 2026-04-28
 
 ### Added

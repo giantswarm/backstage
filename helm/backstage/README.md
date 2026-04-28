@@ -14,7 +14,7 @@ Backstage app provided by Giant Swarm
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| name | string | `"backstage"` | Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.) |
+| name | string | `"backstage"` | Name used for all Kubernetes resources (Deployment, Service, etc.) |
 | backstageDiscovery | object | `{"kubernetesId":"backstage"}` | Backstage service discovery settings |
 | backstageDiscovery.kubernetesId | string | `"backstage"` | Value to set for the backstage.io/kubernetes-id label on all resources, used for entity discovery in Backstage |
 | userID | int | `1000` | User ID for the pod security context (runAsUser) |
@@ -22,7 +22,7 @@ Backstage app provided by Giant Swarm
 | image | object | `{"name":"backstage","repository":"giantswarm/backstage"}` | Container image settings |
 | image.name | string | `"backstage"` | Container name in the pod spec |
 | image.repository | string | `"giantswarm/backstage"` | Image repository path (prepended with registry.domain to form the full image reference) |
-| port | int | `7007` | Container port for the Backstage backend, also used for the Service and Ingress backend |
+| port | int | `7007` | Container port for the Backstage backend, also used for the Service and route backend |
 | registry | object | `{"domain":"gsoci.azurecr.io"}` | Container image registry settings |
 | registry.domain | string | `"gsoci.azurecr.io"` | Container image registry domain prepended to image.repository |
 | resources | object | `{"limits":{"cpu":"500m","memory":"600Mi"},"requests":{"cpu":"20m","memory":"250Mi"},"verticalPodAutoscaler":{"enabled":true}}` | Resource requests, limits, and autoscaler settings for the Backstage container |
@@ -91,13 +91,7 @@ Backstage app provided by Giant Swarm
 | backstage.extraEnvVarsSecrets | list | `[]` | Names of existing Secrets to mount as envFrom sources in the Backstage container |
 | backstage.extraVolumeMounts | list | `[]` | Additional volume mounts for the Backstage container |
 | backstage.extraVolumes | list | `[]` | Additional volumes for the Backstage pod |
-| ingress | object | `{"annotations":{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true"},"className":"nginx","enabled":true,"hostnames":["default-hostname"]}` | Traditional Ingress configuration |
-| ingress.enabled | bool | `true` | Enable the Kubernetes Ingress resource for external HTTP access |
-| ingress.className | string | `"nginx"` | Ingress class name |
-| ingress.annotations | object | `{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true"}` | Annotations applied to the Ingress resource |
-| ingress.hostnames | list | `["default-hostname"]` | Hostnames for the Ingress rules and TLS configuration |
-| route | object | `{"additionalRules":[],"annotations":{},"backendTrafficPolicy":{"annotations":{},"enabled":false,"labels":{},"spec":{}},"enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"name":"","parentRefs":[],"securityPolicy":{"annotations":{},"authorization":{},"basicAuth":{},"cors":{},"enabled":false,"extAuth":{},"jwt":{},"labels":{},"oidc":{}}}` | Gateway API route configuration |
-| route.enabled | bool | `false` | Enable the Gateway API HTTPRoute resource |
+| route | object | `{"additionalRules":[],"annotations":{},"backendTrafficPolicy":{"annotations":{},"enabled":false,"labels":{},"spec":{}},"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"name":"","parentRefs":[],"securityPolicy":{"annotations":{},"authorization":{},"basicAuth":{},"cors":{},"enabled":false,"extAuth":{},"jwt":{},"labels":{},"oidc":{}}}` | Gateway API route configuration |
 | route.kind | string | `"HTTPRoute"` | Route resource kind |
 | route.name | string | `""` | Route name (defaults to .Values.name) |
 | route.annotations | object | `{}` | Annotations applied to the route resource |

@@ -317,48 +317,8 @@
             },
             "additionalProperties": false
         },
-        "ingress": {
-            "description": "Traditional Ingress configuration",
-            "type": "object",
-            "properties": {
-                "annotations": {
-                    "description": "Annotations applied to the Ingress resource",
-                    "type": "object",
-                    "properties": {
-                        "cert-manager.io/cluster-issuer": {
-                            "type": "string"
-                        },
-                        "kubernetes.io/tls-acme": {
-                            "type": "string"
-                        },
-                        "nginx.ingress.kubernetes.io/force-ssl-redirect": {
-                            "type": "string"
-                        }
-                    },
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "className": {
-                    "description": "Ingress class name",
-                    "type": "string"
-                },
-                "enabled": {
-                    "description": "Enable the Kubernetes Ingress resource for external HTTP access",
-                    "type": "boolean"
-                },
-                "hostnames": {
-                    "description": "Hostnames for the Ingress rules and TLS configuration",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            },
-            "additionalProperties": false
-        },
         "name": {
-            "description": "Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.)",
+            "description": "Name used for all Kubernetes resources (Deployment, Service, etc.)",
             "type": "string"
         },
         "nodeSelector": {
@@ -417,7 +377,7 @@
             }
         },
         "port": {
-            "description": "Container port for the Backstage backend, also used for the Service and Ingress backend",
+            "description": "Container port for the Backstage backend, also used for the Service and route backend",
             "type": "integer",
             "maximum": 65535,
             "minimum": 1
@@ -525,10 +485,6 @@
                         }
                     },
                     "additionalProperties": false
-                },
-                "enabled": {
-                    "description": "Enable the Gateway API HTTPRoute resource",
-                    "type": "boolean"
                 },
                 "filters": {
                     "description": "Request/Response filters applied to the route",
