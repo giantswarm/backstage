@@ -1,16 +1,11 @@
 import { useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type {
-  ConversationApi,
-  ConversationListItem,
-  ConversationRecord,
-} from '../api';
+import type { ConversationApi, ConversationListItem } from '../api';
 
 export interface UseConversationsReturn {
   conversations: ConversationListItem[];
   loading: boolean;
   error?: string;
-  loadConversation: (id: string) => Promise<ConversationRecord>;
   refreshConversations: () => void;
   deleteConversation: (id: string) => Promise<void>;
   deleteConversations: (ids: string[]) => Promise<void>;
@@ -37,13 +32,6 @@ export function useConversations(
       return response.conversations;
     },
   });
-
-  const loadConversation = useCallback(
-    async (id: string): Promise<ConversationRecord> => {
-      return conversationApi.getConversationById(id);
-    },
-    [conversationApi],
-  );
 
   const refreshConversations = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
@@ -198,7 +186,6 @@ export function useConversations(
     conversations: sortedConversations,
     loading: isLoading,
     error: error?.message,
-    loadConversation,
     refreshConversations,
     deleteConversation,
     deleteConversations,
