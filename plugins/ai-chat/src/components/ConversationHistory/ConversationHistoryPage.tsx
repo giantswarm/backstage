@@ -19,6 +19,7 @@ import {
 } from '@remixicon/react';
 import { useState } from 'react';
 import { useConversations } from '../../hooks/useConversations';
+import { DeleteConversationDialog } from '../DeleteConversationDialog';
 import type { ConversationApi, ConversationListItem } from '../../api';
 import type { Selection } from 'react-aria-components';
 
@@ -29,6 +30,12 @@ const useStyles = makeStyles(theme => ({
   },
   starIcon: {
     color: theme.palette.warning.main,
+  },
+  actionsContainer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    height: '100%',
   },
   activeTitle: {
     '& p[data-weight="regular"]': {
@@ -65,6 +72,8 @@ export const ConversationHistoryPage = ({
 }: ConversationHistoryPageProps) => {
   const classes = useStyles();
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
+  const [pendingDelete, setPendingDelete] =
+    useState<ConversationListItem | null>(null);
   const { conversations, loading, deleteConversation, toggleStar } =
     useConversations(conversationApi);
 
@@ -99,35 +108,37 @@ export const ConversationHistoryPage = ({
       width: 48,
       cell: item => (
         <Cell>
-          <MenuTrigger>
-            <ButtonIcon
-              icon={<RiMoreLine />}
-              aria-label="Actions"
-              variant="tertiary"
-              size="small"
-            />
-            <Menu>
-              <MenuItem
-                onAction={() => toggleStar(item.id)}
-                iconStart={
-                  item.isStarred ? (
-                    <RiStarLine size={16} />
-                  ) : (
-                    <RiStarFill size={16} />
-                  )
-                }
-              >
-                {item.isStarred ? 'Unstar' : 'Star'}
-              </MenuItem>
-              <MenuItem
-                onAction={() => deleteConversation(item.id)}
-                iconStart={<RiDeleteBinLine size={16} />}
-                color="danger"
-              >
-                Delete
-              </MenuItem>
-            </Menu>
-          </MenuTrigger>
+          <div className={classes.actionsContainer}>
+            <MenuTrigger>
+              <ButtonIcon
+                icon={<RiMoreLine />}
+                aria-label="Actions"
+                variant="tertiary"
+                size="small"
+              />
+              <Menu>
+                <MenuItem
+                  onAction={() => toggleStar(item.id)}
+                  iconStart={
+                    item.isStarred ? (
+                      <RiStarLine size={16} />
+                    ) : (
+                      <RiStarFill size={16} />
+                    )
+                  }
+                >
+                  {item.isStarred ? 'Unstar' : 'Star'}
+                </MenuItem>
+                <MenuItem
+                  onAction={() => setPendingDelete(item)}
+                  iconStart={<RiDeleteBinLine size={16} />}
+                  color="danger"
+                >
+                  Delete
+                </MenuItem>
+              </Menu>
+            </MenuTrigger>
+          </div>
         </Cell>
       ),
     },
@@ -154,6 +165,14 @@ export const ConversationHistoryPage = ({
             <Text variant="body-small">No conversations found</Text>
           </div>
         }
+      />
+      <DeleteConversationDialog
+        conversation={pendingDelete}
+        onConfirm={() => {
+          if (pendingDelete) deleteConversation(pendingDelete.id);
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
       />
     </Content>
   );
