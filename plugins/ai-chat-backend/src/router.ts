@@ -40,6 +40,7 @@ import {
   sanitizeMessages,
   stripStaleLargeToolResults,
   pruneOldToolResults,
+  stripPastReasoning,
 } from './utils';
 import { ConversationStore } from './services/ConversationStore';
 import { createConversationRoutes } from './routes/conversationRoutes';
@@ -356,6 +357,19 @@ export async function createRouter(
         });
       }
 
+      // Strip reasoning content parts from assistant messages older than the
+      // last two user turns. Anthropic guidance: thinking blocks from
+      // completed turns don't need to round-trip; only the in-progress
+      // tool_use turn must preserve its thinking block.
+      const { messages: dereasonedMessages, stats: reasoningStats } =
+        stripPastReasoning(prunedMessages);
+      if (reasoningStats.strippedCount > 0) {
+        chatLogger.debug('Stripped past reasoning from history', {
+          strippedCount: reasoningStats.strippedCount,
+          approxTokensSaved: reasoningStats.approxTokensSaved,
+        });
+      }
+
       // For Anthropic models, prepend system message with cache control
       // to enable prompt caching for the system prompt.
       // See: https://ai-sdk.dev/providers/ai-sdk-providers/anthropic#cache-control
@@ -388,8 +402,8 @@ export async function createRouter(
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
-          ? [systemMessage, ...prunedMessages]
-          : prunedMessages,
+          ? [systemMessage, ...dereasonedMessages]
+          : dereasonedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         stopWhen: stepCountIs(maxSteps),
