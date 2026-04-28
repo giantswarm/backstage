@@ -50,6 +50,7 @@ const useStyles = makeStyles(theme => ({
   },
 
   sidebar: {
+    display: 'none',
     flexShrink: 0,
     width: 250,
 
