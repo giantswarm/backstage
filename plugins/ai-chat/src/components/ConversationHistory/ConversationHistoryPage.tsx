@@ -15,6 +15,7 @@ import {
 import { makeStyles } from '@material-ui/core';
 import {
   RiDeleteBinLine,
+  RiEditLine,
   RiMoreLine,
   RiStarFill,
   RiStarLine,
@@ -25,6 +26,7 @@ import {
   DeleteConversationDialog,
   DeleteConversationsDialog,
 } from '../DeleteConversationDialog';
+import { RenameConversationDialog } from '../RenameConversationDialog';
 import type { ConversationApi, ConversationListItem } from '../../api';
 import { formatRelativeDate, getConversationTitle } from '../../utils';
 import type { Selection } from 'react-aria-components';
@@ -71,6 +73,8 @@ export const ConversationHistoryPage = ({
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
   const [pendingDelete, setPendingDelete] =
     useState<ConversationListItem | null>(null);
+  const [pendingRename, setPendingRename] =
+    useState<ConversationListItem | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState<string[] | null>(
     null,
   );
@@ -80,6 +84,7 @@ export const ConversationHistoryPage = ({
     deleteConversation,
     deleteConversations,
     toggleStar,
+    renameConversation,
   } = useConversations(conversationApi);
 
   const selectedIds: string[] =
@@ -139,6 +144,12 @@ export const ConversationHistoryPage = ({
                 >
                   {item.isStarred ? 'Unstar' : 'Star'}
                 </MenuItem>
+                <MenuItem
+                  onAction={() => setPendingRename(item)}
+                  iconStart={<RiEditLine size={16} />}
+                >
+                  Rename
+                </MenuItem>
                 <MenuSeparator />
                 <MenuItem
                   onAction={() => setPendingDelete(item)}
@@ -195,6 +206,14 @@ export const ConversationHistoryPage = ({
           setPendingDelete(null);
         }}
         onCancel={() => setPendingDelete(null)}
+      />
+      <RenameConversationDialog
+        conversation={pendingRename}
+        onConfirm={title => {
+          if (pendingRename) renameConversation(pendingRename.id, title);
+          setPendingRename(null);
+        }}
+        onCancel={() => setPendingRename(null)}
       />
       <DeleteConversationsDialog
         count={pendingBulkDelete?.length ?? null}

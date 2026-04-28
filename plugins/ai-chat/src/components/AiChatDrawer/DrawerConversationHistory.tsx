@@ -13,6 +13,7 @@ import {
 import { makeStyles } from '@material-ui/core';
 import {
   RiDeleteBinLine,
+  RiEditLine,
   RiMoreLine,
   RiStarFill,
   RiStarLine,
@@ -20,6 +21,7 @@ import {
 import { useState } from 'react';
 import { useConversations } from '../../hooks/useConversations';
 import { DeleteConversationDialog } from '../DeleteConversationDialog';
+import { RenameConversationDialog } from '../RenameConversationDialog';
 import type { ConversationApi, ConversationListItem } from '../../api';
 import { formatRelativeDate, getConversationTitle } from '../../utils';
 
@@ -67,9 +69,16 @@ export const DrawerConversationHistory = ({
   onSelectConversation,
 }: DrawerConversationHistoryProps) => {
   const classes = useStyles();
-  const { conversations, loading, deleteConversation, toggleStar } =
-    useConversations(conversationApi);
+  const {
+    conversations,
+    loading,
+    deleteConversation,
+    toggleStar,
+    renameConversation,
+  } = useConversations(conversationApi);
   const [pendingDelete, setPendingDelete] =
+    useState<ConversationListItem | null>(null);
+  const [pendingRename, setPendingRename] =
     useState<ConversationListItem | null>(null);
 
   const columnConfig: ColumnConfig<ConversationListItem>[] = [
@@ -124,6 +133,12 @@ export const DrawerConversationHistory = ({
                 >
                   {item.isStarred ? 'Unstar' : 'Star'}
                 </MenuItem>
+                <MenuItem
+                  onAction={() => setPendingRename(item)}
+                  iconStart={<RiEditLine size={16} />}
+                >
+                  Rename
+                </MenuItem>
                 <MenuSeparator />
                 <MenuItem
                   onAction={() => setPendingDelete(item)}
@@ -165,6 +180,14 @@ export const DrawerConversationHistory = ({
           setPendingDelete(null);
         }}
         onCancel={() => setPendingDelete(null)}
+      />
+      <RenameConversationDialog
+        conversation={pendingRename}
+        onConfirm={title => {
+          if (pendingRename) renameConversation(pendingRename.id, title);
+          setPendingRename(null);
+        }}
+        onCancel={() => setPendingRename(null)}
       />
     </div>
   );

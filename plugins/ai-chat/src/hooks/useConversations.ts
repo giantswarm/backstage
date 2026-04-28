@@ -15,6 +15,7 @@ export interface UseConversationsReturn {
   deleteConversation: (id: string) => Promise<void>;
   deleteConversations: (ids: string[]) => Promise<void>;
   toggleStar: (id: string) => Promise<void>;
+  renameConversation: (id: string, title: string) => Promise<void>;
   addOptimisticConversation: (item: ConversationListItem) => void;
 }
 
@@ -119,6 +120,30 @@ export function useConversations(
     },
   });
 
+  const renameMutation = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      conversationApi.updateConversationTitle(id, title),
+    onMutate: async ({ id, title }) => {
+      await queryClient.cancelQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+      const previous = queryClient.getQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+      );
+      queryClient.setQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+        old => old?.map(c => (c.id === id ? { ...c, title } : c)),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(CONVERSATIONS_QUERY_KEY, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+    },
+  });
+
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
       await deleteMutation.mutateAsync(id);
@@ -138,6 +163,13 @@ export function useConversations(
       await starMutation.mutateAsync(id);
     },
     [starMutation],
+  );
+
+  const renameConversation = useCallback(
+    async (id: string, title: string): Promise<void> => {
+      await renameMutation.mutateAsync({ id, title });
+    },
+    [renameMutation],
   );
 
   const addOptimisticConversation = useCallback(
@@ -171,6 +203,7 @@ export function useConversations(
     deleteConversation,
     deleteConversations,
     toggleStar,
+    renameConversation,
     addOptimisticConversation,
   };
 }
