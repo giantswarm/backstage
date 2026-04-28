@@ -1,29 +1,33 @@
-import { useState, useEffect, useRef, MutableRefObject } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
+// Callback ref + state so the effect re-runs when the element actually mounts.
+// A plain useRef + useEffect([]) would silently no-op when the consumer
+// conditionally renders the ref'd element on a later render.
 export function useContainerDimensions(): [
-  MutableRefObject<null>,
+  (node: Element | null) => void,
   { width: number; height: number },
 ] {
-  const containerRef = useRef(null);
+  const [node, setNode] = useState<Element | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
-  useEffect(() => {
-    const observeTarget = containerRef.current;
+  const containerRef = useCallback((element: Element | null) => {
+    setNode(element);
+  }, []);
 
-    if (!observeTarget) return;
+  useEffect(() => {
+    if (!node) return undefined;
 
     const resizeObserver = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
       setDimensions({ width, height });
     });
 
-    resizeObserver.observe(observeTarget);
+    resizeObserver.observe(node);
 
-    // eslint-disable-next-line consistent-return
     return () => {
-      resizeObserver.unobserve(observeTarget);
+      resizeObserver.unobserve(node);
     };
-  }, []);
+  }, [node]);
 
   return [containerRef, dimensions];
 }
