@@ -7,6 +7,15 @@ export interface Config {
        * @visibility backend
        */
       assetsPath?: string;
+
+      logo?: {
+        /**
+         * Height (in pixels) for the sidebar logo image. Applied only when a
+         * custom branding logo asset is rendered.
+         * @visibility frontend
+         */
+        height?: number;
+      };
     };
 
     /**
