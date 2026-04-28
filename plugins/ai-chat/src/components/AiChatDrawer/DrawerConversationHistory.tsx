@@ -5,6 +5,7 @@ import {
   ColumnConfig,
   Menu,
   MenuItem,
+  MenuSeparator,
   MenuTrigger,
   Table,
   Text,
@@ -36,7 +37,7 @@ const useStyles = makeStyles(theme => ({
   },
   emptyState: {
     textAlign: 'center' as const,
-    padding: theme.spacing(4),
+    padding: theme.spacing(2),
   },
   starIcon: {
     color: theme.palette.warning.main,
@@ -123,6 +124,7 @@ export const DrawerConversationHistory = ({
                 >
                   {item.isStarred ? 'Unstar' : 'Star'}
                 </MenuItem>
+                <MenuSeparator />
                 <MenuItem
                   onAction={() => setPendingDelete(item)}
                   iconStart={<RiDeleteBinLine size={16} />}
@@ -151,7 +153,7 @@ export const DrawerConversationHistory = ({
           }}
           emptyState={
             <div className={classes.emptyState}>
-              <Text variant="body-small">No conversations found</Text>
+              <Text variant="body-medium">No conversations found</Text>
             </div>
           }
         />

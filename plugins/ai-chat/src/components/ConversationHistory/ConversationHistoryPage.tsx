@@ -1,11 +1,13 @@
 import { Content } from '@backstage/core-components';
 import {
+  Button,
   ButtonIcon,
   Cell,
   CellText,
   ColumnConfig,
   Menu,
   MenuItem,
+  MenuSeparator,
   MenuTrigger,
   Table,
   Text,
@@ -19,7 +21,10 @@ import {
 } from '@remixicon/react';
 import { useState } from 'react';
 import { useConversations } from '../../hooks/useConversations';
-import { DeleteConversationDialog } from '../DeleteConversationDialog';
+import {
+  DeleteConversationDialog,
+  DeleteConversationsDialog,
+} from '../DeleteConversationDialog';
 import type { ConversationApi, ConversationListItem } from '../../api';
 import { formatRelativeDate, getConversationTitle } from '../../utils';
 import type { Selection } from 'react-aria-components';
@@ -27,7 +32,7 @@ import type { Selection } from 'react-aria-components';
 const useStyles = makeStyles(theme => ({
   emptyState: {
     textAlign: 'center' as const,
-    padding: theme.spacing(4),
+    padding: theme.spacing(2),
   },
   starIcon: {
     color: theme.palette.warning.main,
@@ -42,6 +47,12 @@ const useStyles = makeStyles(theme => ({
     '& p[data-weight="regular"]': {
       fontWeight: 'var(--bui-font-weight-bold)',
     },
+  },
+  selectionToolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(2),
+    marginBottom: theme.spacing(2),
   },
 }));
 
@@ -60,8 +71,21 @@ export const ConversationHistoryPage = ({
   const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set());
   const [pendingDelete, setPendingDelete] =
     useState<ConversationListItem | null>(null);
-  const { conversations, loading, deleteConversation, toggleStar } =
-    useConversations(conversationApi);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState<string[] | null>(
+    null,
+  );
+  const {
+    conversations,
+    loading,
+    deleteConversation,
+    deleteConversations,
+    toggleStar,
+  } = useConversations(conversationApi);
+
+  const selectedIds: string[] =
+    selectedKeys === 'all'
+      ? conversations.map(c => c.id)
+      : Array.from(selectedKeys, String);
 
   const columnConfig: ColumnConfig<ConversationListItem>[] = [
     {
@@ -115,6 +139,7 @@ export const ConversationHistoryPage = ({
                 >
                   {item.isStarred ? 'Unstar' : 'Star'}
                 </MenuItem>
+                <MenuSeparator />
                 <MenuItem
                   onAction={() => setPendingDelete(item)}
                   iconStart={<RiDeleteBinLine size={16} />}
@@ -132,6 +157,17 @@ export const ConversationHistoryPage = ({
 
   return (
     <Content>
+      <div className={classes.selectionToolbar}>
+        <Button
+          variant="tertiary"
+          size="small"
+          iconStart={<RiDeleteBinLine size={16} />}
+          onClick={() => setPendingBulkDelete(selectedIds)}
+          isDisabled={selectedIds.length === 0}
+        >
+          {selectedIds.length > 0 ? 'Delete selected' : 'Delete'}
+        </Button>
+      </div>
       <Table
         columnConfig={columnConfig}
         data={conversations}
@@ -148,7 +184,7 @@ export const ConversationHistoryPage = ({
         }}
         emptyState={
           <div className={classes.emptyState}>
-            <Text variant="body-small">No conversations found</Text>
+            <Text variant="body-medium">No conversations found</Text>
           </div>
         }
       />
@@ -159,6 +195,17 @@ export const ConversationHistoryPage = ({
           setPendingDelete(null);
         }}
         onCancel={() => setPendingDelete(null)}
+      />
+      <DeleteConversationsDialog
+        count={pendingBulkDelete?.length ?? null}
+        onConfirm={() => {
+          if (pendingBulkDelete) {
+            deleteConversations(pendingBulkDelete);
+            setSelectedKeys(new Set());
+          }
+          setPendingBulkDelete(null);
+        }}
+        onCancel={() => setPendingBulkDelete(null)}
       />
     </Content>
   );

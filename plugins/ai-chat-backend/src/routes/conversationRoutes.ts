@@ -81,6 +81,34 @@ export function createConversationRoutes(
     }
   });
 
+  router.post('/batch-delete', async (req, res) => {
+    const { ids } = req.body ?? {};
+    if (!Array.isArray(ids)) {
+      return res.status(400).json({ error: 'ids must be an array' });
+    }
+    if (ids.length < 1 || ids.length > MAX_CONVERSATION_LIMIT) {
+      return res.status(400).json({
+        error: `ids must contain between 1 and ${MAX_CONVERSATION_LIMIT} items`,
+      });
+    }
+    if (!ids.every(id => typeof id === 'string' && isValidUuid(id))) {
+      return res.status(400).json({ error: 'Invalid id format' });
+    }
+
+    const credentials = await httpAuth.credentials(req, {
+      allow: ['user'],
+    });
+    const userId = credentials.principal.userEntityRef;
+
+    try {
+      const deleted = await store.deleteConversations(userId, ids);
+      return res.json({ deleted });
+    } catch (error) {
+      logger.error(`Failed to batch delete conversations: ${error}`);
+      return res.status(500).json({ error: 'Failed to delete conversations' });
+    }
+  });
+
   router.delete('/:id', async (req, res) => {
     const { id } = req.params;
     if (!isValidUuid(id)) {

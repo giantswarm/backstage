@@ -13,6 +13,7 @@ export interface UseConversationsReturn {
   loadConversation: (id: string) => Promise<ConversationRecord>;
   refreshConversations: () => void;
   deleteConversation: (id: string) => Promise<void>;
+  deleteConversations: (ids: string[]) => Promise<void>;
   toggleStar: (id: string) => Promise<void>;
   addOptimisticConversation: (item: ConversationListItem) => void;
 }
@@ -70,6 +71,30 @@ export function useConversations(
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => conversationApi.deleteConversations(ids),
+    onMutate: async (ids: string[]) => {
+      await queryClient.cancelQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+      const previous = queryClient.getQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+      );
+      const idSet = new Set(ids);
+      queryClient.setQueryData<ConversationListItem[]>(
+        CONVERSATIONS_QUERY_KEY,
+        old => old?.filter(c => !idSet.has(c.id)),
+      );
+      return { previous };
+    },
+    onError: (_err, _ids, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(CONVERSATIONS_QUERY_KEY, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_QUERY_KEY });
+    },
+  });
+
   const starMutation = useMutation({
     mutationFn: (id: string) => conversationApi.toggleConversationStar(id),
     onMutate: async (id: string) => {
@@ -99,6 +124,13 @@ export function useConversations(
       await deleteMutation.mutateAsync(id);
     },
     [deleteMutation],
+  );
+
+  const deleteConversations = useCallback(
+    async (ids: string[]): Promise<void> => {
+      await bulkDeleteMutation.mutateAsync(ids);
+    },
+    [bulkDeleteMutation],
   );
 
   const toggleStar = useCallback(
@@ -137,6 +169,7 @@ export function useConversations(
     loadConversation,
     refreshConversations,
     deleteConversation,
+    deleteConversations,
     toggleStar,
     addOptimisticConversation,
   };

@@ -24,6 +24,7 @@ export interface ConversationApi {
   getConversations(): Promise<ConversationsResponse>;
   getConversationById(id: string): Promise<ConversationRecord>;
   deleteConversation(id: string): Promise<void>;
+  deleteConversations(ids: string[]): Promise<{ deleted: number }>;
   toggleConversationStar(id: string): Promise<{ isStarred: boolean }>;
   updateConversationTitle(
     id: string,
@@ -78,6 +79,22 @@ export class ConversationClient implements ConversationApi {
     if (!response.ok) {
       throw await ResponseError.fromResponse(response);
     }
+  }
+
+  async deleteConversations(ids: string[]): Promise<{ deleted: number }> {
+    const baseUrl = await this.discoveryApi.getBaseUrl('ai-chat');
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/conversations/batch-delete`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      },
+    );
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response);
+    }
+    return response.json();
   }
 
   async toggleConversationStar(id: string): Promise<{ isStarred: boolean }> {

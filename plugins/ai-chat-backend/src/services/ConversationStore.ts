@@ -219,6 +219,21 @@ export class ConversationStore {
     }
   }
 
+  async deleteConversations(userId: string, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    try {
+      return await this.db(TABLE_NAME)
+        .where('user_id', userId)
+        .whereIn('id', ids)
+        .delete();
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete ${ids.length} conversations: ${error}`,
+      );
+      throw error;
+    }
+  }
+
   async toggleStarred(userId: string, id: string): Promise<boolean | null> {
     try {
       const existing = await this.db(TABLE_NAME)
