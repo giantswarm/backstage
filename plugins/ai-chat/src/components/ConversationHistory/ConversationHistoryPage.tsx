@@ -141,6 +141,7 @@ export const ConversationHistoryPage = ({
                       <RiStarFill size={16} />
                     )
                   }
+                  style={{ display: 'none' }}
                 >
                   {item.isStarred ? 'Unstar' : 'Star'}
                 </MenuItem>
