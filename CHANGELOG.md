@@ -5,6 +5,22 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Persist AI chat conversations and add a conversation history page with rename, delete, batch delete, and pagination, plus a history view in the chat drawer.
+- Add a `getDate` tool to the AI chat agent for retrieving the current date and time.
+- Prune older tool outputs in AI chat once cumulative tool I/O exceeds a configurable budget (`aiChat.pruning.reservedTokens`, `aiChat.pruning.minimumSavingsTokens`).
+
+### Changed
+
+- Report AI chat context size, output tokens, and cost by requesting token usage from OpenAI-compatible streaming responses (vLLM/KServe).
+- Clarify tool use in the muster system prompt to avoid calling internal tools via muster's `call_tool`.
+
+### Fixed
+
+- Re-observe the element when the ref target changes in `useContainerDimensions`.
+- Reject empty titles in `PATCH /conversations/:id/title` with HTTP 400.
+
 ## [0.124.4] - 2026-04-28
 
 ### Added
