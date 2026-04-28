@@ -90,7 +90,6 @@ export const SidebarContent = NavContentBlueprint.make({
 
       const group3 = [
         <AiChatSidebarItem key="ai-chat" />,
-        nav.take('page:mcp-chat'),
         scaffolderItem && (
           <SidebarItem
             key="create"

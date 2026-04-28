@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "^0.6.0",
-    "@backstage-community/plugin-mcp-chat-backend": "^0.8.0",
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/plugin-app-backend": "backstage:^",
