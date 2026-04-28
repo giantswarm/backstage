@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.8.5
+
+### Patch Changes
+
+- 3953b15: Re-observe element when ref target changes in `useContainerDimensions`.
+
 ## 0.8.4
 
 ### Patch Changes

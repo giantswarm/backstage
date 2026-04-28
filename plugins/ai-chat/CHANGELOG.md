@@ -1,5 +1,20 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.13.0
+
+### Minor Changes
+
+- 3953b15: Add conversation history page with table listing conversations (delete, rename, batch delete), tabs on the AI chat page, and a conversation history view in the drawer with active-conversation highlight. Includes a shared QueryClient between page and drawer, a conversation API client with React Query hooks, and dialogs for delete, batch delete, and rename.
+
+### Patch Changes
+
+- 3953b15: Generate the conversation id eagerly so the new conversation appears in the history list immediately on the first user message, instead of after the first assistant token arrives.
+- 3953b15: Paginate the conversation history table on the AI chat history page.
+- Updated dependencies [3953b15]
+- Updated dependencies [3953b15]
+  - @giantswarm/backstage-plugin-ui-react@0.8.5
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.3
+
 ## 0.12.1
 
 ### Patch Changes
