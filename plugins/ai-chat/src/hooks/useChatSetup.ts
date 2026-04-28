@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   useApi,
   identityApiRef,
@@ -16,7 +16,7 @@ import {
   getToolName,
   UIMessage,
 } from 'ai';
-import useAsync from 'react-use/esm/useAsync';
+import { useQuery } from '@tanstack/react-query';
 import { mcpAuthProvidersApiRef } from '../api';
 import { createDebugFetch } from './createDebugFetch';
 
@@ -58,13 +58,38 @@ function shouldSendAutomatically({
   return true;
 }
 
-export function useChatSetup() {
+export interface UseChatSetupOptions {
+  initialMessages?: UIMessage[];
+  conversationId?: string;
+}
+
+export function useChatSetup(options?: UseChatSetupOptions) {
   const identityApi = useApi(identityApiRef);
   const discoveryApi = useApi(discoveryApiRef);
   const configApi = useApi(configApiRef);
   const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
   const featureFlagsApi = useApi(featureFlagsApiRef);
-  const conversationIdRef = useRef<string | null>(null);
+  // Generate the conversation id eagerly so getConversationId() never returns
+  // null while the first user message is in flight. This lets the optimistic
+  // history-list insert (useConversationListSync) fire on the first message,
+  // not after the first assistant token arrives.
+  const conversationIdRef = useRef<string>(
+    options?.conversationId ?? crypto.randomUUID(),
+  );
+  const isNewConversation = !options?.conversationId;
+  const getConversationId = useCallback(() => conversationIdRef.current, []);
+
+  useEffect(() => {
+    if (
+      isNewConversation &&
+      featureFlagsApi.isActive('ai-chat-verbose-debugging')
+    ) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `New AI Assistant conversation started with ID ${conversationIdRef.current}`,
+      );
+    }
+  }, [isNewConversation, featureFlagsApi]);
 
   // Verbose debugging is only enabled in non-production builds to avoid
   // leaking backend internals (system prompt, tool schemas) to end users
@@ -77,10 +102,14 @@ export function useChatSetup() {
     [verboseDebugging],
   );
 
-  const { value: apiUrl } = useAsync(async () => {
-    const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
-    return `${baseUrl}/chat`;
-  }, [discoveryApi]);
+  const { data: apiUrl } = useQuery({
+    queryKey: ['ai-chat', 'api-url'],
+    queryFn: async () => {
+      const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
+      return `${baseUrl}/chat`;
+    },
+    staleTime: Infinity,
+  });
 
   const mcpAuthProviders = useMemo(() => {
     const mcpServers = configApi.getOptionalConfigArray('aiChat.mcp');
@@ -126,16 +155,6 @@ export function useChatSetup() {
   }, [mcpAuthProviders, mcpAuthProvidersApi]);
 
   const getHeaders = useCallback(async () => {
-    if (!conversationIdRef.current) {
-      conversationIdRef.current = crypto.randomUUID();
-      if (featureFlagsApi.isActive('ai-chat-verbose-debugging')) {
-        // eslint-disable-next-line no-console
-        console.log(
-          `New AI Assistant conversation started with ID ${conversationIdRef.current}`,
-        );
-      }
-    }
-
     const { token } = await identityApi.getCredentials();
     const mcpHeaders = await getMCPAuthHeaders();
 
@@ -145,9 +164,10 @@ export function useChatSetup() {
       ...(verboseDebugging && { 'X-AI-Chat-Debug': 'true' }),
       ...mcpHeaders,
     };
-  }, [identityApi, getMCPAuthHeaders, featureFlagsApi, verboseDebugging]);
+  }, [identityApi, getMCPAuthHeaders, verboseDebugging]);
 
   const runtime = useChatRuntime({
+    messages: options?.initialMessages,
     sendAutomaticallyWhen: shouldSendAutomatically,
     transport: new AssistantChatTransport({
       api: apiUrl,
@@ -156,5 +176,10 @@ export function useChatSetup() {
     }),
   });
 
-  return { runtime, isReady: Boolean(apiUrl) };
+  return {
+    runtime,
+    isReady: Boolean(apiUrl),
+    getConversationId,
+    isNewConversation,
+  };
 }

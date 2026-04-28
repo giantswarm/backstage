@@ -1,20 +1,35 @@
 import {
   ReactNode,
-  createContext,
   useCallback,
-  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
-import { AssistantRuntimeProvider, useAssistantApi } from '@assistant-ui/react';
-import { useApi } from '@backstage/core-plugin-api';
+import {
+  AssistantRuntimeProvider,
+  useAssistantApi,
+  useAssistantState,
+} from '@assistant-ui/react';
+import {
+  useApi,
+  discoveryApiRef,
+  fetchApiRef,
+} from '@backstage/core-plugin-api';
 import { useMediaQuery, useTheme } from '@material-ui/core';
 import { aiChatDrawerApiRef } from '@giantswarm/backstage-plugin-ai-chat-react';
-import { useChatSetup } from '../../hooks/useChatSetup';
+import { UIMessage } from 'ai';
+import { useChatSetup, UseChatSetupOptions } from '../../hooks/useChatSetup';
+import {
+  ChatRuntimeContext,
+  useChatRuntimeContext,
+} from '../../hooks/ChatRuntimeContext';
+import { useConversationListSync } from '../../hooks/useConversationListSync';
+import { ConversationClient, ConversationApi } from '../../api';
 import { AiChatDrawer, AiChatDrawerVariant } from './AiChatDrawer';
+import { QueryClientProvider } from '../QueryClientProvider';
 
-const RuntimeReadyContext = createContext(false);
+export type DrawerTab = 'chat' | 'history';
 
 /**
  * Owns the chat runtime. Keyed externally so that remounting creates a
@@ -23,13 +38,29 @@ const RuntimeReadyContext = createContext(false);
  * Exposes isReady via context so DrawerInner can defer the initial append
  * until the API URL has been resolved.
  */
-const AiChatRuntimeProvider = ({ children }: { children: ReactNode }) => {
-  const { runtime, isReady } = useChatSetup();
+const AiChatRuntimeProvider = ({
+  children,
+  initialMessages,
+  conversationId,
+}: {
+  children: ReactNode;
+  initialMessages?: UseChatSetupOptions['initialMessages'];
+  conversationId?: string;
+}) => {
+  const { runtime, isReady, getConversationId, isNewConversation } =
+    useChatSetup({
+      initialMessages,
+      conversationId,
+    });
+  const value = useMemo(
+    () => ({ isReady, getConversationId, isNewConversation }),
+    [isReady, getConversationId, isNewConversation],
+  );
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <RuntimeReadyContext.Provider value={isReady}>
+      <ChatRuntimeContext.Provider value={value}>
         {children}
-      </RuntimeReadyContext.Provider>
+      </ChatRuntimeContext.Provider>
     </AssistantRuntimeProvider>
   );
 };
@@ -44,15 +75,32 @@ const DrawerInner = ({
   onNewConversation,
   getAndClearPendingMessage,
   variant,
+  activeTab,
+  onTabChange,
+  conversationApi,
+  activeConversationId,
+  onActiveIdChange,
+  onSelectConversation,
 }: {
   open: boolean;
   onClose(): void;
   onNewConversation(): void;
   getAndClearPendingMessage(): string | null;
   variant: AiChatDrawerVariant;
+  activeTab: DrawerTab;
+  onTabChange(tab: DrawerTab): void;
+  conversationApi: ConversationApi;
+  activeConversationId?: string;
+  onActiveIdChange(id: string): void;
+  onSelectConversation(id: string): void;
 }) => {
   const assistantApi = useAssistantApi();
-  const isReady = useContext(RuntimeReadyContext);
+  const { isReady, getConversationId } = useChatRuntimeContext();
+  const messageCount = useAssistantState(
+    ({ thread }) => thread?.messages?.length ?? 0,
+  );
+
+  useConversationListSync(conversationApi);
 
   // Append the pending message once the runtime is ready (apiUrl resolved).
   // Using [isReady] as the dep so this re-runs when the URL becomes available,
@@ -69,32 +117,83 @@ const DrawerInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
+  useEffect(() => {
+    if (messageCount === 0) return;
+    const id = getConversationId();
+    if (id) onActiveIdChange(id);
+  }, [messageCount, getConversationId, onActiveIdChange]);
+
   return (
     <AiChatDrawer
       open={open}
       onClose={onClose}
       onNewConversation={onNewConversation}
       variant={variant}
+      activeTab={activeTab}
+      onTabChange={onTabChange}
+      conversationApi={conversationApi}
+      activeConversationId={activeConversationId}
+      onSelectConversation={onSelectConversation}
     />
   );
 };
 
 export const AiChatDrawerProvider = () => {
   const drawerApi = useApi(aiChatDrawerApiRef);
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
   const [open, setOpen] = useState(false);
   const [runtimeKey, setRuntimeKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<DrawerTab>('chat');
+  const [loadedConversation, setLoadedConversation] = useState<{
+    id: string;
+    messages: UIMessage[];
+  } | null>(null);
+  const [newConversationId, setNewConversationId] = useState<
+    string | undefined
+  >();
   const pendingMessageRef = useRef<string | null>(null);
+
+  const activeConversationId = loadedConversation?.id ?? newConversationId;
+
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
   const variant = isSmallScreen ? 'overlay' : 'persistent';
+
+  const conversationApi: ConversationApi = useMemo(
+    () => new ConversationClient({ discoveryApi, fetchApi }),
+    [discoveryApi, fetchApi],
+  );
 
   const handleClose = useCallback(() => {
     setOpen(false);
   }, []);
 
   const handleNewConversation = useCallback(() => {
+    setLoadedConversation(null);
+    setNewConversationId(undefined);
     setRuntimeKey(prev => prev + 1);
+    setActiveTab('chat');
   }, []);
+
+  const handleSelectConversation = useCallback(
+    async (id: string) => {
+      try {
+        const conv = await conversationApi.getConversationById(id);
+        setLoadedConversation({ id: conv.id, messages: conv.messages });
+        setNewConversationId(undefined);
+        setRuntimeKey(prev => prev + 1);
+        setActiveTab('chat');
+      } catch {
+        // If loading fails, start a fresh conversation
+        setLoadedConversation(null);
+        setNewConversationId(undefined);
+        setRuntimeKey(prev => prev + 1);
+        setActiveTab('chat');
+      }
+    },
+    [conversationApi],
+  );
 
   const getAndClearPendingMessage = useCallback(() => {
     const msg = pendingMessageRef.current;
@@ -107,6 +206,7 @@ export const AiChatDrawerProvider = () => {
     return drawerApi.registerHandler({
       openDrawer(message?: string) {
         setOpen(true);
+        setActiveTab('chat');
         if (message) {
           pendingMessageRef.current = message;
           setRuntimeKey(prev => prev + 1);
@@ -122,14 +222,26 @@ export const AiChatDrawerProvider = () => {
   }, [drawerApi]);
 
   return (
-    <AiChatRuntimeProvider key={runtimeKey}>
-      <DrawerInner
-        open={open}
-        onClose={handleClose}
-        onNewConversation={handleNewConversation}
-        getAndClearPendingMessage={getAndClearPendingMessage}
-        variant={variant}
-      />
-    </AiChatRuntimeProvider>
+    <QueryClientProvider>
+      <AiChatRuntimeProvider
+        key={runtimeKey}
+        initialMessages={loadedConversation?.messages}
+        conversationId={loadedConversation?.id}
+      >
+        <DrawerInner
+          open={open}
+          onClose={handleClose}
+          onNewConversation={handleNewConversation}
+          getAndClearPendingMessage={getAndClearPendingMessage}
+          variant={variant}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          conversationApi={conversationApi}
+          activeConversationId={activeConversationId}
+          onActiveIdChange={setNewConversationId}
+          onSelectConversation={handleSelectConversation}
+        />
+      </AiChatRuntimeProvider>
+    </QueryClientProvider>
   );
 };

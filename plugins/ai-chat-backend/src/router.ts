@@ -40,6 +40,8 @@ import {
   sanitizeMessages,
   stripStaleLargeToolResults,
 } from './utils';
+import { ConversationStore } from './services/ConversationStore';
+import { createConversationRoutes } from './routes/conversationRoutes';
 
 const STALE_TOOL_RESULT_STRIP_LIST = ['list_tools', 'list_core_tools'];
 
@@ -60,12 +62,13 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   userInfo: UserInfoService;
+  conversationStore: ConversationStore;
 }
 
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { httpAuth, logger, config, userInfo } = options;
+  const { httpAuth, logger, config, userInfo, conversationStore } = options;
 
   const mcpClientCache = new McpClientCache(logger);
 
@@ -211,6 +214,21 @@ export async function createRouter(
     }
 
     const { messages, tools } = parsed.data;
+
+    // Persist the conversation up-front (with just the user's message) so it
+    // shows up in history immediately and survives stream interruptions. The
+    // `onFinish` handler below updates the same row with the assistant reply.
+    let persistedConversationId = conversationId;
+    try {
+      const saved = await conversationStore.saveConversation(
+        userRef,
+        messages as UIMessage[],
+        conversationId,
+      );
+      persistedConversationId = saved.id;
+    } catch (saveErr) {
+      chatLogger.error(`Failed initial conversation save: ${saveErr}`);
+    }
 
     const authTokens = extractMcpAuthTokens(req.headers);
 
@@ -437,12 +455,39 @@ export async function createRouter(
         return ret;
       } as typeof originalWrite;
 
-      result.pipeUIMessageStreamToResponse(res);
+      result.pipeUIMessageStreamToResponse(res, {
+        originalMessages: messages as UIMessage[],
+        generateMessageId: () => crypto.randomUUID(),
+        onFinish({ messages: allMessages }) {
+          // Fire-and-forget: update the conversation row created up-front
+          // with the full message history including the assistant reply.
+          conversationStore
+            .saveConversation(userRef, allMessages, persistedConversationId)
+            .then(saved => {
+              chatLogger.debug(
+                `Saved conversation ${saved.id} (${allMessages.length} messages)`,
+              );
+            })
+            .catch(saveErr => {
+              chatLogger.error(`Failed to save conversation: ${saveErr}`);
+            });
+        },
+      });
     } catch (error) {
       chatLogger.error('Error in chat endpoint', error as Error);
       throw error;
     }
   });
+
+  // Conversation history CRUD routes
+  router.use(
+    '/conversations',
+    createConversationRoutes({
+      store: conversationStore,
+      httpAuth,
+      logger,
+    }),
+  );
 
   // Health check endpoint
   router.get('/health', (_, res) => {
