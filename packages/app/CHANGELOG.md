@@ -1,5 +1,12 @@
 # app
 
+## 0.38.3
+
+### Patch Changes
+
+- 3473759: Avoid flashing the default logo while the branding manifest is loading.
+- b47de86: Make sidebar logo image height configurable via `app.branding.logo.height`.
+
 ## 0.38.2
 
 ### Patch Changes
