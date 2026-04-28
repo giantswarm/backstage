@@ -123,12 +123,10 @@ export function useConversations(
 
   const sortedConversations = useMemo(
     () =>
-      [...conversations].sort((a, b) => {
-        if (a.isStarred !== b.isStarred) return a.isStarred ? -1 : 1;
-        return (
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        );
-      }),
+      [...conversations].sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
     [conversations],
   );
 
