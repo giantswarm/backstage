@@ -32,6 +32,9 @@ const useStyles = makeStyles(theme => ({
     display: 'inline-block',
     marginTop: theme.spacing(1),
     padding: theme.spacing(0, 1),
+    '& a': {
+      color: theme.palette.text.primary,
+    },
   },
   listContainer: {
     flex: 1,
