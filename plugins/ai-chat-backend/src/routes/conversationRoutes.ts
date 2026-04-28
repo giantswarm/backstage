@@ -44,10 +44,7 @@ export function createConversationRoutes(
     try {
       const conversations = await store.getConversations(userId, limit);
       return res.json({ conversations, count: conversations.length });
-    } catch (error: any) {
-      if (error?.message?.includes('no such table')) {
-        return res.json({ conversations: [], count: 0 });
-      }
+    } catch (error) {
       logger.error(`Failed to retrieve conversations: ${error}`);
       return res
         .status(500)
@@ -72,10 +69,7 @@ export function createConversationRoutes(
         return res.status(404).json({ error: 'Conversation not found' });
       }
       return res.json(conversation);
-    } catch (error: any) {
-      if (error?.message?.includes('no such table')) {
-        return res.status(404).json({ error: 'Conversation not found' });
-      }
+    } catch (error) {
       logger.error(`Failed to retrieve conversation ${id}: ${error}`);
       return res.status(500).json({ error: 'Failed to retrieve conversation' });
     }
