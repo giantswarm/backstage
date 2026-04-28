@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.124.4] - 2026-04-28
+
+### Added
+
+- Make sidebar logo image height configurable via `app.branding.logo.height`.
+
+### Fixed
+
+- Avoid flashing the default logo while the branding manifest is loading.
+
+See [./docs/releases/v0.124.4-changelog.md](./docs/releases/v0.124.4-changelog.md) for more information.
+
 ## [0.124.3] - 2026-04-27
 
 ### Added
@@ -2340,7 +2352,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.3...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.4...HEAD
+[0.124.4]: https://github.com/giantswarm/backstage/compare/v0.124.3...v0.124.4
 [0.124.3]: https://github.com/giantswarm/backstage/compare/v0.124.2...v0.124.3
 [0.124.2]: https://github.com/giantswarm/backstage/compare/v0.124.1...v0.124.2
 [0.124.1]: https://github.com/giantswarm/backstage/compare/v0.124.0...v0.124.1

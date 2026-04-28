@@ -28,6 +28,7 @@ import { frontendTools } from './frontendTools';
 import {
   listSkills,
   getSkill,
+  getDate,
   createUserTools,
   createResourceTools,
   createContextUsageTool,
@@ -162,6 +163,12 @@ export async function createRouter(
     name: 'openai-compatible',
     baseURL: openaiBaseUrl ?? '',
     apiKey: openaiApiKey,
+    // Ask vLLM/KServe (and other OpenAI-compatible chat-completions
+    // servers) to include token usage in streaming responses by adding
+    // `stream_options: { include_usage: true }` to the request body.
+    // Without this, vLLM emits no usage chunk and `getContextUsage` has
+    // no data to show.
+    includeUsage: true,
   });
 
   const anthropic = createAnthropic({
@@ -337,6 +344,7 @@ export async function createRouter(
         ...mcpResourceTools,
         listSkills,
         getSkill,
+        getDate,
         ...userTools,
         ...contextUsageTools,
       };
