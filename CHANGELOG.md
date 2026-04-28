@@ -21,6 +21,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Re-observe the element when the ref target changes in `useContainerDimensions`.
 - Reject empty titles in `PATCH /conversations/:id/title` with HTTP 400.
 
+See [./docs/releases/v0.125.0-changelog.md](./docs/releases/v0.125.0-changelog.md) for more information.
+
 ## [0.124.4] - 2026-04-28
 
 ### Added

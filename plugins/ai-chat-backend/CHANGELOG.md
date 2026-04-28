@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.12.0
+
+### Minor Changes
+
+- c44ac72: Add a `getDate` tool to the AI agent that returns the current date and time as an ISO 8601 string with seconds and UTC timezone offset.
+- 69ab321: Replace older tool outputs in the AI chat with `[Old tool result content cleared]` once cumulative tool I/O past the most recent two user turns exceeds a budget. Mirrors OpenCode's continuous prune. Tunable via `aiChat.pruning.reservedTokens` (default 20000) and `aiChat.pruning.minimumSavingsTokens` (default 10000); `getSkill` results stay verbatim.
+- 3953b15: Persist conversations to the database. Adds Knex migrations for the conversations table and a message preview column, a `ConversationStore` service, and conversation routes (CRUD + list).
+
+### Patch Changes
+
+- 0311382: Request token usage from OpenAI-compatible streaming responses (vLLM/KServe) so `getContextUsage` can report context size, output tokens, and cost. Sends `stream_options: { include_usage: true }` on the chat-completions path.
+- 3953b15: Reject empty title in `PATCH /conversations/:id/title` with HTTP 400.
+- 42fc0ea: Clarify tool use in muster system prompt part, to avoid calling internal tools via muster's call_tool tool
+
 ## 0.11.1
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # app
 
+## 0.38.4
+
+### Patch Changes
+
+- Updated dependencies [3953b15]
+- Updated dependencies [3953b15]
+- Updated dependencies [3953b15]
+- Updated dependencies [3953b15]
+  - @giantswarm/backstage-plugin-ai-chat@0.13.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.4.3
+
 ## 0.38.3
 
 ### Patch Changes

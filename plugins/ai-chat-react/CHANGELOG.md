@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-react
 
+## 0.4.3
+
+### Patch Changes
+
+- 3953b15: Add conversation history route.
+
 ## 0.4.2
 
 ### Patch Changes
