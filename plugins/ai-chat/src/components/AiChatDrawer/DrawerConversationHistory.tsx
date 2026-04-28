@@ -39,7 +39,9 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.warning.main,
   },
   activeTitle: {
-    fontWeight: 'bold',
+    '& p[data-weight="regular"]': {
+      fontWeight: 'var(--bui-font-weight-bold)',
+    },
   },
 }));
 
