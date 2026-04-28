@@ -194,7 +194,7 @@ database:
     # -- PostgreSQL container image for the CNPG cluster (registry.domain is prepended)
     image: giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716
 
-# -- Custom branding/UI asset settings (logos served by the gs-backend plugin)
+# -- Custom branding/UI asset settings (logos and favicons served by the branding backend plugin)
 branding:
   # @schema type:boolean
   # -- Enable serving custom branding assets (logos) from a mounted volume

@@ -38,7 +38,7 @@ metadata:
     {{- include "labels.backstage" $ | nindent 4 }}
 data:
   app-config-branding.yaml: |
-    gs:
+    app:
       branding:
         assetsPath: {{ .Values.branding.assetsPath | quote }}
 {{- end }}

@@ -1,35 +1,25 @@
 import { mockServices } from '@backstage/backend-test-utils';
+import express from 'express';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import request from 'supertest';
-import express from 'express';
 import { createRouter } from './router';
-
-// Stubs for dependencies that the branding routes do not exercise.
-const noopGithubCredentialsProvider = {
-  getCredentials: jest.fn(),
-} as any;
-const noopContainerRegistry = {} as any;
-const noopMimir = {} as any;
 
 async function buildApp(assetsPath: string | undefined) {
   const config = mockServices.rootConfig({
-    data: assetsPath ? { gs: { branding: { assetsPath } } } : {},
+    data: assetsPath ? { app: { branding: { assetsPath } } } : {},
   });
   const router = await createRouter({
     config,
     logger: mockServices.logger.mock(),
-    containerRegistry: noopContainerRegistry,
-    mimir: noopMimir,
-    githubCredentialsProvider: noopGithubCredentialsProvider,
   });
   const app = express();
   app.use(router);
   return app;
 }
 
-describe('gs-backend router branding routes', () => {
+describe('branding router', () => {
   let assetsDir: string;
 
   beforeEach(() => {
@@ -48,13 +38,13 @@ describe('gs-backend router branding routes', () => {
     writeFileSync(join(assetsDir, 'logo-icon.png'), 'binary-data');
 
     const app = await buildApp(assetsDir);
-    const res = await request(app).get('/branding/manifest');
+    const res = await request(app).get('/manifest');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       assets: {
-        'logo-full.svg': true,
-        'logo-icon.png': true,
+        'logo-full.svg': expect.any(Number),
+        'logo-icon.png': expect.any(Number),
       },
     });
   });
@@ -66,7 +56,7 @@ describe('gs-backend router branding routes', () => {
     const app = await buildApp(assetsDir);
     // superagent has no default parser for image/svg+xml, so buffer manually.
     const res = await request(app)
-      .get('/branding/logo-full.svg')
+      .get('/logo-full.svg')
       .buffer(true)
       .parse((response, cb) => {
         let data = '';
@@ -86,7 +76,7 @@ describe('gs-backend router branding routes', () => {
     const missing = join(assetsDir, 'does-not-exist');
     const app = await buildApp(missing);
 
-    const res = await request(app).get('/branding/manifest');
+    const res = await request(app).get('/manifest');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ assets: {} });
@@ -96,7 +86,7 @@ describe('gs-backend router branding routes', () => {
     const missing = join(assetsDir, 'does-not-exist');
     const app = await buildApp(missing);
 
-    const res = await request(app).get('/branding/logo-full.svg');
+    const res = await request(app).get('/logo-full.svg');
 
     expect(res.status).toBe(404);
   });
