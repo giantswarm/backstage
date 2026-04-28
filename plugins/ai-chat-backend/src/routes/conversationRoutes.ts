@@ -146,6 +146,10 @@ export function createConversationRoutes(
         .status(400)
         .json({ error: 'Title too long (max 255 characters)' });
     }
+    const trimmed = title.trim();
+    if (trimmed.length === 0) {
+      return res.status(400).json({ error: 'Title must not be empty' });
+    }
 
     const credentials = await httpAuth.credentials(req, {
       allow: ['user'],
@@ -153,11 +157,11 @@ export function createConversationRoutes(
     const userId = credentials.principal.userEntityRef;
 
     try {
-      const updated = await store.updateTitle(userId, id, title.trim());
+      const updated = await store.updateTitle(userId, id, trimmed);
       if (!updated) {
         return res.status(404).json({ error: 'Conversation not found' });
       }
-      return res.json({ title: title.trim() });
+      return res.json({ title: trimmed });
     } catch (error) {
       logger.error(`Failed to update title for conversation ${id}: ${error}`);
       return res.status(500).json({ error: 'Failed to update conversation' });
