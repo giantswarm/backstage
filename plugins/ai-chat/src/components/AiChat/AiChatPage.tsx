@@ -294,6 +294,7 @@ export const AiChatPage = () => {
                 conversationApi={conversationApi}
                 selectedId={activeConversationId}
                 onSelectConversation={handleSelectConversation}
+                historyPath={historyPath}
               />
             </div>
           </Content>
