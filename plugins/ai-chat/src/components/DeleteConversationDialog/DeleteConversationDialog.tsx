@@ -8,6 +8,7 @@ import {
 } from '@backstage/ui';
 import { useRef } from 'react';
 import type { ConversationListItem } from '../../api';
+import { getConversationTitle } from '../../utils';
 
 interface DeleteConversationDialogProps {
   conversation: ConversationListItem | null;
@@ -24,8 +25,7 @@ export const DeleteConversationDialog = ({
   // dialog's close animation, when `conversation` has already been cleared.
   const lastTitleRef = useRef('');
   if (conversation) {
-    lastTitleRef.current =
-      conversation.title || conversation.preview || 'Untitled conversation';
+    lastTitleRef.current = getConversationTitle(conversation);
   }
   const title = lastTitleRef.current;
 

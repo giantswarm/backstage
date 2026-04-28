@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { Selection } from 'react-aria-components';
 import type { ConversationApi } from '../../api';
 import { useConversations } from '../../hooks/useConversations';
+import { getConversationTitle } from '../../utils';
 import { useContainerDimensions } from '@giantswarm/backstage-plugin-ui-react';
 
 // Parent chrome the sidebar sits beneath. Update if either changes.
@@ -133,9 +134,7 @@ export const RecentConversations = ({
               onSelectionChange={handleSelectionChange}
             >
               {item => (
-                <ListRow id={item.id}>
-                  {item.title || item.preview || 'Untitled conversation'}
-                </ListRow>
+                <ListRow id={item.id}>{getConversationTitle(item)}</ListRow>
               )}
             </List>
             {hiddenCount > 0 && (

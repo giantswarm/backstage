@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { useConversations } from '../../hooks/useConversations';
 import { DeleteConversationDialog } from '../DeleteConversationDialog';
 import type { ConversationApi, ConversationListItem } from '../../api';
+import { getConversationTitle } from '../../utils';
 import type { Selection } from 'react-aria-components';
 
 const useStyles = makeStyles(theme => ({
@@ -85,7 +86,7 @@ export const ConversationHistoryPage = ({
       cell: item => (
         <CellText
           className={item.id === activeId ? classes.activeTitle : undefined}
-          title={item.title || item.preview || 'Untitled conversation'}
+          title={getConversationTitle(item)}
           description={formatRelativeDate(item.updatedAt)}
         />
       ),
