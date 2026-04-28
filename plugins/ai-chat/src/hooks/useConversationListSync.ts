@@ -1,23 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { useAssistantState } from '@assistant-ui/react';
+import { type ThreadMessage, useAssistantState } from '@assistant-ui/react';
 import { ConversationApi, ConversationListItem } from '../api';
 import { useConversations } from './useConversations';
 import { useChatRuntimeContext } from './ChatRuntimeContext';
 
-type ThreadMessage = {
-  readonly role: string;
-  readonly content: ReadonlyArray<{
-    readonly type: string;
-    readonly text?: string;
-  }>;
-};
-
-function extractFirstUserText(messages: ReadonlyArray<ThreadMessage>): string {
+function extractFirstUserText(messages: readonly ThreadMessage[]): string {
   const firstUser = messages.find(m => m.role === 'user');
   if (!firstUser) return '';
   return firstUser.content
-    .filter(p => p.type === 'text' && typeof p.text === 'string')
-    .map(p => p.text as string)
+    .filter(p => p.type === 'text')
+    .map(p => p.text)
     .join(' ')
     .trim();
 }
@@ -41,10 +33,7 @@ export const useConversationListSync = (conversationApi: ConversationApi) => {
   const isRunning = useAssistantState(({ thread }) =>
     Boolean(thread?.isRunning),
   );
-  const messages = useAssistantState(
-    ({ thread }) =>
-      thread?.messages as ReadonlyArray<ThreadMessage> | undefined,
-  );
+  const messages = useAssistantState(({ thread }) => thread?.messages);
 
   useEffect(() => {
     if (insertedRef.current) return;
