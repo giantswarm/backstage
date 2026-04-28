@@ -8,8 +8,6 @@ import {
 import { UIMessage } from 'ai';
 
 const TABLE_NAME = 'ai_chat_conversations';
-const DEFAULT_DISPLAY_LIMIT = 50;
-const MAX_DISPLAY_LIMIT = 100;
 
 const migrationsDir = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -154,14 +152,8 @@ export class ConversationStore {
 
   async getConversations(
     userId: string,
-    limit?: number,
   ): Promise<Omit<ConversationRecord, 'messages'>[]> {
     try {
-      const displayLimit = Math.min(
-        limit || DEFAULT_DISPLAY_LIMIT,
-        MAX_DISPLAY_LIMIT,
-      );
-
       const rows = await this.db(TABLE_NAME)
         .select(
           'id',
@@ -173,8 +165,7 @@ export class ConversationStore {
           'updated_at',
         )
         .where({ user_id: userId })
-        .orderBy('updated_at', 'desc')
-        .limit(displayLimit);
+        .orderBy('updated_at', 'desc');
 
       return rows.map(row => this.rowToListRecord(row));
     } catch (error) {

@@ -10,8 +10,6 @@ function isValidUuid(value: string): boolean {
   return UUID_REGEX.test(value);
 }
 
-const MAX_CONVERSATION_LIMIT = 100;
-
 export interface ConversationRoutesDeps {
   store: ConversationStore;
   httpAuth: HttpAuthService;
@@ -30,19 +28,8 @@ export function createConversationRoutes(
     });
     const userId = credentials.principal.userEntityRef;
 
-    let limit: number | undefined;
-    if (req.query.limit) {
-      const parsed = parseInt(req.query.limit as string, 10);
-      if (isNaN(parsed) || parsed < 1 || parsed > MAX_CONVERSATION_LIMIT) {
-        return res.status(400).json({
-          error: `Limit must be between 1 and ${MAX_CONVERSATION_LIMIT}`,
-        });
-      }
-      limit = parsed;
-    }
-
     try {
-      const conversations = await store.getConversations(userId, limit);
+      const conversations = await store.getConversations(userId);
       return res.json({ conversations, count: conversations.length });
     } catch (error) {
       logger.error(`Failed to retrieve conversations: ${error}`);
@@ -77,13 +64,8 @@ export function createConversationRoutes(
 
   router.post('/batch-delete', async (req, res) => {
     const { ids } = req.body ?? {};
-    if (!Array.isArray(ids)) {
-      return res.status(400).json({ error: 'ids must be an array' });
-    }
-    if (ids.length < 1 || ids.length > MAX_CONVERSATION_LIMIT) {
-      return res.status(400).json({
-        error: `ids must contain between 1 and ${MAX_CONVERSATION_LIMIT} items`,
-      });
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids must be a non-empty array' });
     }
     if (!ids.every(id => typeof id === 'string' && isValidUuid(id))) {
       return res.status(400).json({ error: 'Invalid id format' });
