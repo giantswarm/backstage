@@ -92,6 +92,7 @@ export const SidebarContent = NavContentBlueprint.make({
         <AiChatSidebarItem key="ai-chat" />,
         scaffolderItem && (
           <SidebarItem
+            key="create"
             icon={CreateComponentIcon}
             to="create"
             text="Create..."

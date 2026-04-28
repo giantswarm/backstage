@@ -9,9 +9,75 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Remove the Ingress template from the helm chart. Gateway API (HTTPRoute) is now the only way to expose the service, and the `route.enabled` toggle has been removed along with the `ingress` values block.
 
+## [0.124.4] - 2026-04-28
+
+### Added
+
+- Make sidebar logo image height configurable via `app.branding.logo.height`.
+
+### Fixed
+
+- Avoid flashing the default logo while the branding manifest is loading.
+
+See [./docs/releases/v0.124.4-changelog.md](./docs/releases/v0.124.4-changelog.md) for more information.
+
+## [0.124.3] - 2026-04-27
+
+### Added
+
+- Allow overriding the AI chat context window size via `aiChat.contextWindow` in app-config.
+
+### Changed
+
+- Improve markdown table rendering in AI chat: tables are now horizontally scrollable with better cell spacing.
+
+### Fixed
+
+- Cache-bust custom branding logo URLs so replaced logos appear immediately instead of being served stale from the browser cache.
+
+See [./docs/releases/v0.124.3-changelog.md](./docs/releases/v0.124.3-changelog.md) for more information.
+
+## [0.124.2] - 2026-04-27
+
+### Changed
+
+- Decouple custom branding from the gs-backend plugin so branding assets are served by a dedicated backend plugin and work without `gs:` config.
+
+See [./docs/releases/v0.124.2-changelog.md](./docs/releases/v0.124.2-changelog.md) for more information.
+
+## [0.124.1] - 2026-04-24
+
+### Fixed
+
+- Fix helm chart to allow for branding configmap.
+
+See [./docs/releases/v0.124.1-changelog.md](./docs/releases/v0.124.1-changelog.md) for more information.
+
+## [0.124.0] - 2026-04-23
+
+### Added
+
+- Add custom branding asset support with logo overrides, allowing UI logo customization via mounted volumes without code changes.
+
+See [./docs/releases/v0.124.0-changelog.md](./docs/releases/v0.124.0-changelog.md) for more information.
+
+## [0.123.0] - 2026-04-23
+
 ### Added
 
 - Add BackendTrafficPolicy template to the helm chart, to be able to customize HTTP connection settings.
+
+### Changed
+
+- Redesign tool call and tool group UI in AI chat with compact inline layout, argument summary previews, and inline status icons.
+
+### Fixed
+
+- Fix deprecation warning for the user settings General page by migrating to the new `configSchema` option.
+- Fix missing key prop warning on the scaffolder sidebar item.
+- Flush SSE chunks through compression middleware so streamed AI responses reach the client in real time.
+
+See [./docs/releases/v0.123.0-changelog.md](./docs/releases/v0.123.0-changelog.md) for more information.
 
 ## [0.122.3] - 2026-04-21
 
@@ -2290,7 +2356,13 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.122.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.4...HEAD
+[0.124.4]: https://github.com/giantswarm/backstage/compare/v0.124.3...v0.124.4
+[0.124.3]: https://github.com/giantswarm/backstage/compare/v0.124.2...v0.124.3
+[0.124.2]: https://github.com/giantswarm/backstage/compare/v0.124.1...v0.124.2
+[0.124.1]: https://github.com/giantswarm/backstage/compare/v0.124.0...v0.124.1
+[0.124.0]: https://github.com/giantswarm/backstage/compare/v0.123.0...v0.124.0
+[0.123.0]: https://github.com/giantswarm/backstage/compare/v0.122.2...v0.123.0
 [0.122.2]: https://github.com/giantswarm/backstage/compare/v0.122.1...v0.122.2
 [0.122.1]: https://github.com/giantswarm/backstage/compare/v0.122.0...v0.122.1
 [0.122.0]: https://github.com/giantswarm/backstage/compare/v0.121.0...v0.122.0

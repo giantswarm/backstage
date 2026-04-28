@@ -1,6 +1,6 @@
 {
   "name": "app",
-  "version": "0.37.0",
+  "version": "0.38.3",
   "private": true,
   "bundled": true,
   "backstage": {
@@ -14,7 +14,7 @@
     "lint": "backstage-cli package lint"
   },
   "dependencies": {
-    "@backstage-community/plugin-github-actions": "^0.21.0",
+    "@backstage-community/plugin-github-actions": "^0.22.0",
     "@backstage/app-defaults": "backstage:^",
     "@backstage/catalog-model": "backstage:^",
     "@backstage/cli": "backstage:^",
@@ -69,7 +69,8 @@
     "history": "^5.0.0",
     "react": "^18.0.2",
     "react-dom": "^18.0.2",
-    "react-router-dom": "^6.3.0"
+    "react-router-dom": "^6.3.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.32.3",

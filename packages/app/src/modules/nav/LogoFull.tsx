@@ -1,9 +1,15 @@
 import { makeStyles } from '@material-ui/core';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useBranding } from '../branding';
 
 const useStyles = makeStyles({
   svg: {
     width: 'auto',
     height: 30,
+  },
+  img: {
+    width: 'auto',
+    height: ({ imgHeight }: { imgHeight: number }) => imgHeight,
   },
   path: {
     fill: '#7df3e1',
@@ -11,7 +17,26 @@ const useStyles = makeStyles({
 });
 
 export const LogoFull = () => {
-  const classes = useStyles();
+  const configApi = useApi(configApiRef);
+  const imgHeight =
+    configApi.getOptionalNumber('app.branding.logo.height') ?? 30;
+  const classes = useStyles({ imgHeight });
+  const { hasAsset, getAssetUrl, isLoading } = useBranding();
+
+  if (isLoading) {
+    return null;
+  }
+
+  const customAsset =
+    (hasAsset('logo-full.svg') && 'logo-full.svg') ||
+    (hasAsset('logo-full.png') && 'logo-full.png') ||
+    undefined;
+
+  if (customAsset) {
+    return (
+      <img className={classes.img} src={getAssetUrl(customAsset)} alt="Logo" />
+    );
+  }
 
   return (
     <svg

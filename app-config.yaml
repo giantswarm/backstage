@@ -128,6 +128,7 @@ permission:
 mcpActions:
   name: 'My Company Backstage' # defaults to "backstage"
   description: 'Tools for managing your software catalog, creating new services from templates, and exploring your developer portal' # optional
+  namespacedToolNames: false
 
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.
@@ -221,6 +222,11 @@ aiChat:
 
   # Model to use (default: gpt-4o-mini)
   model: gpt-4o-mini
+
+  # Optional: override the context window size (in tokens) used to render
+  # the context usage bar. When set, applies regardless of the model name.
+  # When unset, a built-in lookup by model name prefix is used.
+  # contextWindow: 128000
 
   # Optional: override the built-in system prompt. MCP-specific additions
   # (e.g. muster prompt, failed-server notes) are still appended.

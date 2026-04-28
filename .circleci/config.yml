@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  architect: giantswarm/architect@6.15.0
+  architect: giantswarm/architect@7.0.0
 
 job_filters: &job_filters
   filters:
@@ -78,7 +78,7 @@ jobs:
     executor: architect/architect
     working_directory: ~/backstage
     docker:
-      - image: cimg/node:24.14.0
+      - image: cimg/node:24.15.0
 
     steps:
       - checkout

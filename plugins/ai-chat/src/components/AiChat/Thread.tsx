@@ -3,6 +3,7 @@ import {
   ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  ErrorPrimitive,
   ActionBarPrimitive,
   BranchPickerPrimitive,
   useAssistantApi,
@@ -227,9 +228,9 @@ const AssistantMessage = () => {
           }}
         />
         <MessagePrimitive.Error>
-          <div className={classes.errorMessage}>
-            Error occurred. Please try again.
-          </div>
+          <ErrorPrimitive.Root className={classes.errorMessage}>
+            <ErrorPrimitive.Message />
+          </ErrorPrimitive.Root>
         </MessagePrimitive.Error>
       </div>
       <div className={classes.messageActionsContainer}>

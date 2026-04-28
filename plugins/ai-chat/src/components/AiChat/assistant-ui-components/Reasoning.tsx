@@ -37,8 +37,7 @@ const useReasoningStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
       width: '100%',
-      marginTop: theme.spacing(0.5),
-      marginBottom: theme.spacing(1.5),
+      margin: theme.spacing(1, 0),
     },
     trigger: {
       display: 'inline-flex',
@@ -338,6 +337,12 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({
           .join(' ')}
         aria-expanded={isOpen}
       >
+        <ExpandMoreIcon
+          className={[
+            classes.triggerChevron,
+            isOpen ? classes.triggerChevronOpen : classes.triggerChevronClosed,
+          ].join(' ')}
+        />
         <span className={classes.triggerLabel}>
           <span>{triggerLabel}</span>
           {isReasoningStreaming ? (
@@ -346,12 +351,6 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({
             </span>
           ) : null}
         </span>
-        <ExpandMoreIcon
-          className={[
-            classes.triggerChevron,
-            isOpen ? classes.triggerChevronOpen : classes.triggerChevronClosed,
-          ].join(' ')}
-        />
       </button>
 
       <Collapse in={isOpen} timeout={ANIMATION_DURATION}>

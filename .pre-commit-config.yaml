@@ -1,6 +1,8 @@
 # DO NOT EDIT. Generated with:
 #
-#    devctl gen precommit
+#    devctl
+#
+#    https://github.com/giantswarm/devctl/blob/e7d0bc971fcd7c2c857099ffb66585b1e2ba977f/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 repos:

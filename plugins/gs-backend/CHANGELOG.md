@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.9.1
+
+### Patch Changes
+
+- a240221: Decouple custom branding from the gs-backend plugin. Branding asset serving moves to a dedicated `branding` backend plugin colocated in `packages/backend/src/branding/`, registered unconditionally so it works in deployments without a `gs:` config block. The frontend hook now resolves assets via the `branding` discovery prefix at `/api/branding/*`.
+
+## 0.9.0
+
+### Minor Changes
+
+- 0f6cd54: Add custom branding asset support with logo overrides, allowing organizations to customize UI logos via mounted volumes without code changes.
+
 ## 0.8.0
 
 ### Minor Changes

@@ -413,6 +413,22 @@ export async function createRouter(
         res.setHeader('Access-Control-Expose-Headers', 'X-AI-Chat-Debug-Meta');
       }
 
+      // Backstage's root HTTP router applies compression() middleware
+      // globally, which buffers res.write() calls. For SSE this means
+      // every event is held until res.end(), defeating real-time streaming.
+      // Wrap res.write to auto-flush after each write so chunks reach the
+      // client as the LLM produces them.
+      const originalWrite = res.write;
+      res.write = function flushingWrite(
+        ...args: Parameters<typeof originalWrite>
+      ) {
+        const ret = originalWrite.apply(res, args);
+        if (typeof (res as any).flush === 'function') {
+          (res as any).flush();
+        }
+        return ret;
+      } as typeof originalWrite;
+
       result.pipeUIMessageStreamToResponse(res);
     } catch (error) {
       chatLogger.error('Error in chat endpoint', error as Error);

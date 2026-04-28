@@ -1,5 +1,18 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.12.1
+
+### Patch Changes
+
+- 693d573: Allow overriding the context window size used by the context usage bar via `aiChat.contextWindow` in app-config. When set, this value is used regardless of the model name; otherwise the built-in model-prefix lookup applies.
+- 0c368e6: Improve markdown table rendering: wrap tables in a horizontally scrollable container and adjust cell padding and line-height for better readability.
+
+## 0.12.0
+
+### Minor Changes
+
+- d8d8e7b: Redesign tool call and tool group UI with compact inline layout, argument summary previews, inline status icons, and tool name breakdown in grouped headers.
+
 ## 0.11.6
 
 ### Patch Changes

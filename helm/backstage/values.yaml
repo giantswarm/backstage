@@ -194,6 +194,22 @@ database:
     # -- PostgreSQL container image for the CNPG cluster (registry.domain is prepended)
     image: giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716
 
+# -- Custom branding/UI asset settings (logos and favicons served by the branding backend plugin)
+branding:
+  # @schema type:boolean
+  # -- Enable serving custom branding assets (logos) from a mounted volume
+  enabled: false
+
+  # @schema type:string
+  # -- Filesystem path inside the container where branding assets are mounted
+  assetsPath: /app/branding-assets
+
+  # -- Volume source for the branding assets. Currently only the `configMap` source is supported; the volume `name` is supplied by the chart.
+  volume:
+    # @schema $ref:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.ConfigMapVolumeSource;additionalProperties:true
+    # -- ConfigMap volume source. At minimum, set `.name` to the name of the ConfigMap holding the assets
+    configMap: {}
+
 # -- Backstage application parameters
 backstage:
   # @schema item:string
