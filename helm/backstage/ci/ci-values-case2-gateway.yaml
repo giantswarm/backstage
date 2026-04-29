@@ -1,6 +1,5 @@
 # CI test case for Gateway API support
 name: backstage
-namespace: devportal
 backstageDiscovery:
   kubernetesId: backstage
 userID: 1000
