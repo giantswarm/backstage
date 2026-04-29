@@ -3,7 +3,6 @@ import {
   HttpAuthService,
   LoggerService,
   resolvePackagePath,
-  UserInfoService,
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
@@ -30,7 +29,6 @@ import {
   listSkills,
   getSkill,
   getDate,
-  createUserTools,
   createResourceTools,
   createContextUsageTool,
   recordUsage,
@@ -70,15 +68,13 @@ export interface RouterOptions {
   httpAuth: HttpAuthService;
   logger: LoggerService;
   config: Config;
-  userInfo: UserInfoService;
   conversationStore: ConversationStore;
 }
 
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { auth, httpAuth, logger, config, userInfo, conversationStore } =
-    options;
+  const { auth, httpAuth, logger, config, conversationStore } = options;
 
   const mcpClientCache = new McpClientCache(logger);
 
@@ -294,9 +290,6 @@ export async function createRouter(
       );
     }
 
-    // User-scoped tools that need access to the current request's credentials
-    const userTools = createUserTools(userInfo, credentials);
-
     // Context usage tool (scoped to user and conversation)
     const contextUsageTools = createContextUsageTool(userRef, conversationId);
 
@@ -428,7 +421,6 @@ export async function createRouter(
         listSkills,
         getSkill,
         getDate,
-        ...userTools,
         ...contextUsageTools,
       };
 
