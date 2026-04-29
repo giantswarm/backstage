@@ -228,6 +228,10 @@
                 "additionalProperties": false
             }
         },
+        "dummyChange": {
+            "description": "A property added simply to have a change in the schema and values, for testing.",
+            "type": "boolean"
+        },
         "externalAccess": {
             "description": "External access settings for programmatic API access",
             "type": "object",

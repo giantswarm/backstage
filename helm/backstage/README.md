@@ -127,3 +127,4 @@ Backstage app provided by Giant Swarm
 | route.backendTrafficPolicy.spec | object | `{}` | BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically |
 | ociRegistryCredentials | object | `{}` | Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig |
 | pluginKeys | list | `[]` | Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/ |
+| dummyChange | bool | `true` | A property added simply to have a change in the schema and values, for testing. |
