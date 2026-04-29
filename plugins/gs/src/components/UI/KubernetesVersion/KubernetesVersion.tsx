@@ -2,6 +2,7 @@ import { NotAvailable } from '../NotAvailable';
 import { Box, styled, Tooltip } from '@material-ui/core';
 import { useK8sVersionEOLDate } from '../../hooks';
 import { getKubernetesReleaseEOLStatus } from '../../utils/getKubernetesReleaseEOLStatus';
+import { KubernetesIcon } from '../../../assets/icons/CustomIcons';
 
 const EolLabel = styled(Box)(({ theme }) => ({
   display: 'inline-block',
@@ -45,26 +46,20 @@ export const KubernetesVersion = (
   return (
     <Tooltip title={eolStatus.message}>
       <Box
-        display="inline-block"
-        width="auto"
+        display="inline-flex"
+        alignItems="center"
+        gridGap={4}
         aria-label={`Kubernetes version: ${
           versionLabel || 'no information available'
         }`}
       >
         {!hideIcon && (
-          <>
-            <i
-              className="fa fa-kubernetes"
-              title="Kubernetes version"
-              role="presentation"
-              aria-hidden
-            />{' '}
-          </>
+          <KubernetesIcon fontSize="inherit" titleAccess="Kubernetes version" />
         )}
 
-        {!hideLabel && <span>Kubernetes </span>}
+        {!hideLabel && <span>Kubernetes</span>}
 
-        {versionLabel || <NotAvailable />}
+        <span>{versionLabel || <NotAvailable />}</span>
 
         {isEol && <EolLabel aria-label="End of life">EOL</EolLabel>}
       </Box>

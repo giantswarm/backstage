@@ -81,7 +81,6 @@ backend:
     script-src:
       - "'self'"
       - "'unsafe-eval'"
-      - 'https://use.fortawesome.com'
     worker-src:
       - "'self'"
       - "'unsafe-eval'"
