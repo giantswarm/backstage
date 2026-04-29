@@ -16,6 +16,9 @@ userID: 1000
 # @schema type:integer;minimum:0
 # -- Group ID for the pod security context (runAsGroup)
 groupID: 1000
+# @schema type:[integer, "null"];minimum:0
+# -- Group ID for the pod security context (fsGroup). When set, Kubernetes chowns mounted volume roots to this GID on mount, so the non-root Backstage process can write to freshly provisioned PVCs (e.g. file-backed SQLite). Leave unset if no volumes need writing.
+fsGroupID: null
 
 # -- Container image settings
 image:
@@ -174,6 +177,10 @@ sharedConfig: {}
 # -- Node selector labels to constrain pod scheduling to specific nodes
 nodeSelector: {}
 
+# @schema $ref:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.apps.v1.DeploymentStrategy;additionalProperties:true
+# -- Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume.
+strategy: {}
+
 # -- Database configuration
 database:
   # @schema enum:[sqlite, postgresql]
@@ -247,6 +254,10 @@ backstage:
   # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Volume
   # -- Additional volumes for the Backstage pod
   extraVolumes: []
+
+  # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/master/_definitions.json#/definitions/io.k8s.api.core.v1.Container
+  # -- Init containers to run before the Backstage container starts. Common use: `chown` a freshly provisioned PVC mount so the non-root Backstage user can write to it.
+  initContainers: []
 
 # -- Traditional Ingress configuration
 ingress:
