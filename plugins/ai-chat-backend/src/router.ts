@@ -1,4 +1,5 @@
 import {
+  AuthService,
   HttpAuthService,
   LoggerService,
   resolvePackagePath,
@@ -65,6 +66,7 @@ const musterPromptPath = resolvePackagePath(
 const musterSystemPrompt = readFileSync(musterPromptPath, 'utf-8');
 
 export interface RouterOptions {
+  auth: AuthService;
   httpAuth: HttpAuthService;
   logger: LoggerService;
   config: Config;
@@ -75,7 +77,8 @@ export interface RouterOptions {
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { httpAuth, logger, config, userInfo, conversationStore } = options;
+  const { auth, httpAuth, logger, config, userInfo, conversationStore } =
+    options;
 
   const mcpClientCache = new McpClientCache(logger);
 
@@ -247,12 +250,42 @@ export async function createRouter(
 
     const authTokens = extractMcpAuthTokens(req.headers);
 
+    // Mint a Backstage token bound to the calling user, scoped to the
+    // built-in `mcp-actions` plugin. Used by `useBackstageUserToken` MCP
+    // entries so the in-process MCP server sees the request as the
+    // logged-in user. If minting fails, those entries are skipped while
+    // other MCP servers still load.
+    let mcpActionsToken: string | undefined;
+    try {
+      const minted = await auth.getPluginRequestToken({
+        onBehalfOf: credentials,
+        targetPluginId: 'mcp-actions',
+      });
+      mcpActionsToken = minted.token;
+    } catch (error) {
+      chatLogger.warn(
+        `Failed to mint mcp-actions user token: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const backstageUser = mcpActionsToken
+      ? { userEntityRef: userRef, mcpActionsToken }
+      : undefined;
+
     const {
       tools: mcpTools,
       resources: mcpResources,
       failedServers,
       connectedServers,
-    } = await getMcpTools(config, authTokens, chatLogger, mcpClientCache);
+    } = await getMcpTools(
+      config,
+      authTokens,
+      backstageUser,
+      chatLogger,
+      mcpClientCache,
+    );
     chatLogger.debug(`MCP tools available: ${Object.keys(mcpTools).length}`);
     chatLogger.debug(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
     if (failedServers.length > 0) {
