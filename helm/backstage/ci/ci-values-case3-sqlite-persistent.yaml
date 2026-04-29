@@ -1,0 +1,92 @@
+# CI test case for SQLite persistence on a ReadWriteOnce PVC.
+# Exercises strategy, fsGroupID, and backstage.initContainers together
+# with the existing extraVolumes/extraVolumeMounts plumbing.
+name: backstage
+backstageDiscovery:
+  kubernetesId: backstage
+userID: 1000
+groupID: 1000
+fsGroupID: 1000
+image:
+  name: backstage
+  repository: giantswarm/backstage
+port: 7007
+registry:
+  domain: gsoci.azurecr.io
+authSessionSecret: fooBar
+circleci:
+  apiToken: dummyToken
+dexAuthCredentials:
+  example-1:
+    clientID: exampleOneDummyClientID
+    clientSecret: exampleOneDummyClientSecret
+githubAuthCredentials:
+  clientID: dummyClientID
+  clientSecret: dummyClientSecret
+githubAppCredentials:
+  appId: 42
+  webhookUrl: 'dummyWehbookUrl'
+  webhookSecret: 'dummyWebhookSecret'
+  clientId: 'dummyClientID'
+  clientSecret: 'dummyClientSecret'
+  privateKey: |
+    dummy
+    private
+    key
+grafana:
+  apiToken: dummyToken
+sentry:
+  app:
+    dsn: summySentryDSN
+  backend:
+    dsn: summySentryDSN
+
+# Recreate strategy avoids the RollingUpdate deadlock when the PVC is RWO:
+# a new pod can't mount the volume until the old pod has fully terminated.
+strategy:
+  type: Recreate
+
+backstage:
+  command: ['node', 'packages/backend']
+  args: []
+  extraAppConfig: []
+  extraEnvVars: []
+  # In a real deployment, override `backend.database.connection` to a path
+  # under the mounted PVC (e.g. /var/lib/backstage/db.sqlite). Omitted here
+  # because the chart's appConfig schema is currently closed.
+  # fsGroupID handles ownership of the freshly provisioned volume; this
+  # init container exists purely to assert the mount is readable from the
+  # non-root user, and to demonstrate the new initContainers value.
+  initContainers:
+    - name: verify-volume
+      image: busybox:1.36
+      command: ['sh', '-c', 'ls -ld /var/lib/backstage']
+      volumeMounts:
+        - name: sqlite-data
+          mountPath: /var/lib/backstage
+  extraVolumes:
+    - name: sqlite-data
+      persistentVolumeClaim:
+        claimName: backstage-sqlite
+  extraVolumeMounts:
+    - name: sqlite-data
+      mountPath: /var/lib/backstage
+
+resources:
+  verticalPodAutoscaler:
+    enabled: false
+  requests:
+    cpu: 30m
+    memory: 300M
+  limits:
+    cpu: 500m
+    memory: 600M
+
+database:
+  engine: sqlite
+
+ingress:
+  enabled: false
+
+route:
+  enabled: false

@@ -9,6 +9,10 @@ metadata:
     {{- include "labels.backstage" $ | nindent 4 }}
 spec:
   replicas: 1
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       app: {{ .Values.name }}
@@ -37,9 +41,16 @@ spec:
       securityContext:
         runAsUser: {{ .Values.userID }}
         runAsGroup: {{ .Values.groupID }}
+        {{- with .Values.fsGroupID }}
+        fsGroup: {{ . }}
+        {{- end }}
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      {{- if .Values.backstage.initContainers }}
+      initContainers:
+        {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.initContainers "context" $ ) | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ .Values.image.name }}
           image: "{{ .Values.registry.domain }}/{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
