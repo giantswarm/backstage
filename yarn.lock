@@ -3412,18 +3412,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage-community/plugin-github-actions@npm:^0.22.0":
-  version: 0.22.0
-  resolution: "@backstage-community/plugin-github-actions@npm:0.22.0"
+"@backstage-community/plugin-github-actions@npm:^0.23.0":
+  version: 0.23.0
+  resolution: "@backstage-community/plugin-github-actions@npm:0.23.0"
   dependencies:
-    "@backstage/catalog-model": "npm:^1.7.7"
-    "@backstage/core-compat-api": "npm:^0.5.9"
-    "@backstage/core-components": "npm:^0.18.8"
-    "@backstage/core-plugin-api": "npm:^1.12.4"
-    "@backstage/frontend-plugin-api": "npm:^0.15.1"
-    "@backstage/integration": "npm:^2.0.0"
-    "@backstage/integration-react": "npm:^1.2.16"
-    "@backstage/plugin-catalog-react": "npm:^2.1.0"
+    "@backstage/catalog-model": "npm:^1.8.0"
+    "@backstage/core-compat-api": "npm:^0.5.10"
+    "@backstage/core-components": "npm:^0.18.9"
+    "@backstage/core-plugin-api": "npm:^1.12.5"
+    "@backstage/frontend-plugin-api": "npm:^0.16.2"
+    "@backstage/integration": "npm:^2.0.1"
+    "@backstage/integration-react": "npm:^1.2.17"
+    "@backstage/plugin-catalog-react": "npm:^2.1.4"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:4.0.0-alpha.61"
@@ -3432,11 +3432,12 @@ __metadata:
     git-url-parse: "npm:^14.0.0"
     luxon: "npm:^3.0.0"
     react-use: "npm:^17.2.4"
+    zod: "npm:^4.0.0"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: 6.0.0-beta.0 || ^6.3.0
-  checksum: 10c0/f73a2b5281f8d30722abe74166849c10548b4bb9ddb6f65eadd60d971a4f37a20a9adc0a5e4fedac1c4933665cc3f69aa5859ba09e077554f46e9280964d91d2
+  checksum: 10c0/24104dd066f226ebd478accba337764f10fd4decb4c354add96e41df2676eb142b379b66973047c6d0f8b2d55227712cb700f90956e101f0882e48ff65a913c7
   languageName: node
   linkType: hard
 
@@ -23151,7 +23152,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "app@workspace:packages/app"
   dependencies:
-    "@backstage-community/plugin-github-actions": "npm:^0.22.0"
+    "@backstage-community/plugin-github-actions": "npm:^0.23.0"
     "@backstage/app-defaults": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
