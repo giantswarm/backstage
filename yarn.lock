@@ -249,15 +249,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/core@npm:^0.1.15":
-  version: 0.1.15
-  resolution: "@assistant-ui/core@npm:0.1.15"
+"@assistant-ui/core@npm:^0.1.16":
+  version: 0.1.16
+  resolution: "@assistant-ui/core@npm:0.1.16"
   dependencies:
     assistant-stream: "npm:^0.3.12"
     nanoid: "npm:^5.1.9"
   peerDependencies:
-    "@assistant-ui/store": ^0.2.8
-    "@assistant-ui/tap": ^0.5.9
+    "@assistant-ui/store": ^0.2.9
+    "@assistant-ui/tap": ^0.5.10
     "@types/react": "*"
     assistant-cloud: ^0.1.27
     react: ^18 || ^19
@@ -271,17 +271,17 @@ __metadata:
       optional: true
     zustand:
       optional: true
-  checksum: 10c0/acdb965621129206e92e97c5fa23aff2754a1321584fe82c2b4b488efd882f8197e0803c07d3a3e9a743ed70cb78361d91ce5c1fbf3771f16881ae9af84f0732
+  checksum: 10c0/128a2ab7032aad51256ff5c4fca3538d6326ca9ac563c83ee53ac9f07eb196b7c2f03958cf7d4a17cfd1bec7dc97db37f0eabfa6668d5fb5c243f489b0257400
   languageName: node
   linkType: hard
 
 "@assistant-ui/react-ai-sdk@npm:^1.3.1":
-  version: 1.3.20
-  resolution: "@assistant-ui/react-ai-sdk@npm:1.3.20"
+  version: 1.3.21
+  resolution: "@assistant-ui/react-ai-sdk@npm:1.3.21"
   dependencies:
     "@ai-sdk/react": "npm:^3.0.170"
-    "@assistant-ui/core": "npm:^0.1.15"
-    "@assistant-ui/store": "npm:^0.2.8"
+    "@assistant-ui/core": "npm:^0.1.16"
+    "@assistant-ui/store": "npm:^0.2.9"
     ai: "npm:^6.0.168"
     assistant-cloud: "npm:*"
   peerDependencies:
@@ -290,7 +290,7 @@ __metadata:
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/9d1cbb0b43c98a8bc7966dccbefcebc7b7347e8aaf4238904aa937ff8302fa71f9ce9dfd12d1eeecd610cc7ab10b0181163837e13e3d0cde5e7591aab6121217
+  checksum: 10c0/fe6012d253d0410171965c825a0f7e18fc749a89a7986f0dfeef25049262ec3764f2a8a892f30070ff97b46a6bbcd39b0212f0f4ed505b3228b0a6ea37a23e66
   languageName: node
   linkType: hard
 
@@ -335,12 +335,12 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react@npm:^0.12.1":
-  version: 0.12.26
-  resolution: "@assistant-ui/react@npm:0.12.26"
+  version: 0.12.27
+  resolution: "@assistant-ui/react@npm:0.12.27"
   dependencies:
-    "@assistant-ui/core": "npm:^0.1.15"
-    "@assistant-ui/store": "npm:^0.2.8"
-    "@assistant-ui/tap": "npm:^0.5.9"
+    "@assistant-ui/core": "npm:^0.1.16"
+    "@assistant-ui/store": "npm:^0.2.9"
+    "@assistant-ui/tap": "npm:^0.5.10"
     "@radix-ui/primitive": "npm:^1.1.3"
     "@radix-ui/react-compose-refs": "npm:^1.1.2"
     "@radix-ui/react-context": "npm:^1.1.3"
@@ -364,29 +364,29 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/fbb25347dd809acad1b26edd1d3651fa7cbf075c32a1e4ee689ec9de3a40c27859e2bfbf41e437ddb807be29310f331a3ec21bafe4d30f53d52c1535df0194d7
+  checksum: 10c0/e776120ac6a65ef99589d727b683bcca622c1d6d296fa64e7e3afab896bbfa97d65ede2be59cf7a2538d3b1d88bf13e3486376eb8e707f53b5c7f6c0df242c28
   languageName: node
   linkType: hard
 
-"@assistant-ui/store@npm:^0.2.8":
-  version: 0.2.8
-  resolution: "@assistant-ui/store@npm:0.2.8"
+"@assistant-ui/store@npm:^0.2.9":
+  version: 0.2.9
+  resolution: "@assistant-ui/store@npm:0.2.9"
   dependencies:
     use-effect-event: "npm:^2.0.3"
   peerDependencies:
-    "@assistant-ui/tap": ^0.5.9
+    "@assistant-ui/tap": ^0.5.10
     "@types/react": "*"
     react: ^18 || ^19
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/e9c8a31ef61e1e7c292839823657abdd4187075ec97ae3343f726c0043e0a64ad0a69234eb992dcd306ecc42cd25d1fb2546dad153aaa18f92ca180bab46261b
+  checksum: 10c0/0d16ddb2a2b06e2dcc31842f87f0b69cc2620c10b5fc52a59323102ec47b4b9715901e507319f2e89d135e1eee96d37a0f211765e4d7edef238cf8740bed7e87
   languageName: node
   linkType: hard
 
-"@assistant-ui/tap@npm:0.5.9":
-  version: 0.5.9
-  resolution: "@assistant-ui/tap@npm:0.5.9"
+"@assistant-ui/tap@npm:0.5.10":
+  version: 0.5.10
+  resolution: "@assistant-ui/tap@npm:0.5.10"
   peerDependencies:
     "@types/react": "*"
     react: ^18 || ^19
@@ -395,7 +395,7 @@ __metadata:
       optional: true
     react:
       optional: true
-  checksum: 10c0/27982d17e975638291a2a6ed40bdb1d7065ffffad576d5953919dbc3d6b7ca3fc69e75d9fb723c42fd793681e48012e7dace045d42137d004614435c1cab461a
+  checksum: 10c0/ee5bb6b111b6230ce48661ec98f6f35e60050953a43e79f16ab99b9a98defda9b730d0da15ee4fd7418e866ae478949e22bbf835201ee4b939d749df37c8b8eb
   languageName: node
   linkType: hard
 
