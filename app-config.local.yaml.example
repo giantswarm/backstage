@@ -8,6 +8,7 @@ app:
 backend:
   actions:
     pluginSources:
+      - auth
       - catalog
       - gs
   baseUrl: https://localhost:7007

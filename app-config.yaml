@@ -249,7 +249,14 @@ aiChat:
 
   # Optional: MCP servers configuration
   # mcp:
+  #   # In-process Backstage MCP server: forward the chat caller's user
+  #   # token so MCP actions run as the logged-in user (works with
+  #   # `auth.who-am-i` and any other user-context tools).
   #   - name: backstage-actions
   #     url: http://localhost:7007/api/mcp-actions/v1
-  #     headers:
-  #       Authorization: 'Bearer ${MCP_TOKEN}'
+  #     useBackstageUserToken: true
+  #   # External MCP server with a static bearer token:
+  #   # - name: external-mcp
+  #   #   url: https://external.example.com/mcp
+  #   #   headers:
+  #   #     Authorization: 'Bearer ${MCP_TOKEN}'

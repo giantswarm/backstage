@@ -101,6 +101,14 @@ export interface Config {
       };
       /** Optional: Auth provider name to use for this MCP server */
       authProvider?: string;
+      /**
+       * Optional: when true, the chat backend mints a Backstage token on
+       * behalf of the calling user (via the AuthService) scoped to the
+       * built-in `mcp-actions` plugin and sends it to this MCP server as
+       * `Authorization: Bearer <token>`. Use this for the in-process
+       * `mcp-actions` MCP server so requests run as the logged-in user.
+       */
+      useBackstageUserToken?: boolean;
       /** Optional: Installation name to prefix tool names and description */
       installation?: string;
       /**
