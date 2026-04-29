@@ -12,6 +12,7 @@ import {
   aiChatApiRef,
   aiChatDrawerApiRef,
   rootRouteRef,
+  historyRouteRef,
 } from '@giantswarm/backstage-plugin-ai-chat-react';
 
 const aiChatPage = PageBlueprint.make({
@@ -88,5 +89,6 @@ export const aiChatPlugin = createFrontendPlugin({
   ],
   routes: {
     root: rootRouteRef,
+    history: historyRouteRef,
   },
 });

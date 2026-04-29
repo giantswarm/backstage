@@ -55,7 +55,8 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
       overflowX: 'auto',
       position: 'relative',
     },
-    table: {
+    table: {},
+    tableAnimate: {
       animation: '$fadeInUp 0.3s ease-out',
     },
     tableCell: {
@@ -117,6 +118,7 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
 
 export const createMarkdownComponents = (
   classes: ReturnType<typeof useMarkdownStyles>,
+  options?: { animate?: boolean },
 ) =>
   memoizeMarkdownComponents({
     h1: ({ children }) => (
@@ -225,7 +227,14 @@ export const createMarkdownComponents = (
     hr: () => <hr className={classes.hr} />,
     table: ({ children }) => (
       <div className={classes.tableContainer}>
-        <Table className={classes.table}>{children}</Table>
+        <Table
+          className={classNames(
+            classes.table,
+            options?.animate && classes.tableAnimate,
+          )}
+        >
+          {children}
+        </Table>
       </div>
     ),
     thead: ({ children }) => <TableHead>{children}</TableHead>,

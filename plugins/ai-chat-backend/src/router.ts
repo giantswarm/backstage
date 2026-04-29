@@ -28,6 +28,7 @@ import { frontendTools } from './frontendTools';
 import {
   listSkills,
   getSkill,
+  getDate,
   createUserTools,
   createResourceTools,
   createContextUsageTool,
@@ -38,9 +39,18 @@ import {
   deduplicateToolCallIds,
   sanitizeMessages,
   stripStaleLargeToolResults,
+  pruneOldToolResults,
+  stripPastReasoning,
 } from './utils';
+import { ConversationStore } from './services/ConversationStore';
+import { createConversationRoutes } from './routes/conversationRoutes';
 
 const STALE_TOOL_RESULT_STRIP_LIST = ['list_tools', 'list_core_tools'];
+
+// Tool names whose results stay verbatim across the whole conversation,
+// even when older tool I/O is pruned to reclaim context. Skill content is
+// authoritative and the system prompt steers the model toward it.
+const PRUNE_PROTECTED_TOOLS = ['getSkill'];
 
 const systemPromptPath = resolvePackagePath(
   '@giantswarm/backstage-plugin-ai-chat-backend',
@@ -59,12 +69,13 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   userInfo: UserInfoService;
+  conversationStore: ConversationStore;
 }
 
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { httpAuth, logger, config, userInfo } = options;
+  const { httpAuth, logger, config, userInfo, conversationStore } = options;
 
   const mcpClientCache = new McpClientCache(logger);
 
@@ -89,6 +100,14 @@ export async function createRouter(
   // and would otherwise terminate the assistant turn immediately after the
   // first tool call, before the model ever sees the tool result.
   const maxSteps = config.getOptionalNumber('aiChat.maxSteps') ?? 20;
+
+  // Continuous tool-result pruning. After every turn, older tool outputs
+  // beyond a recent budget are replaced with a placeholder so the model
+  // doesn't carry their full payload forever. Mirrors OpenCode's prune.
+  const pruneReservedTokens =
+    config.getOptionalNumber('aiChat.pruning.reservedTokens') ?? 20000;
+  const pruneMinimumSavingsTokens =
+    config.getOptionalNumber('aiChat.pruning.minimumSavingsTokens') ?? 10000;
 
   // Get OpenAI configuration
   const openaiApiKey = config.getOptionalString('aiChat.openai.apiKey');
@@ -159,6 +178,12 @@ export async function createRouter(
     name: 'openai-compatible',
     baseURL: openaiBaseUrl ?? '',
     apiKey: openaiApiKey,
+    // Ask vLLM/KServe (and other OpenAI-compatible chat-completions
+    // servers) to include token usage in streaming responses by adding
+    // `stream_options: { include_usage: true }` to the request body.
+    // Without this, vLLM emits no usage chunk and `getContextUsage` has
+    // no data to show.
+    includeUsage: true,
   });
 
   const anthropic = createAnthropic({
@@ -204,6 +229,21 @@ export async function createRouter(
     }
 
     const { messages, tools } = parsed.data;
+
+    // Persist the conversation up-front (with just the user's message) so it
+    // shows up in history immediately and survives stream interruptions. The
+    // `onFinish` handler below updates the same row with the assistant reply.
+    let persistedConversationId = conversationId;
+    try {
+      const saved = await conversationStore.saveConversation(
+        userRef,
+        messages as UIMessage[],
+        conversationId,
+      );
+      persistedConversationId = saved.id;
+    } catch (saveErr) {
+      chatLogger.error(`Failed initial conversation save: ${saveErr}`);
+    }
 
     const authTokens = extractMcpAuthTokens(req.headers);
 
@@ -284,7 +324,7 @@ export async function createRouter(
       // muster MCP servers, which can weigh ~20K tokens) with a short
       // placeholder so they are not resent on every turn. The most recent
       // result for each listed tool is kept intact.
-      const { messages: prunedMessages, stats: stripStats } =
+      const { messages: strippedMessages, stats: stripStats } =
         stripStaleLargeToolResults(sanitizedMessages, {
           toolNames: STALE_TOOL_RESULT_STRIP_LIST,
         });
@@ -292,6 +332,41 @@ export async function createRouter(
         chatLogger.info('Stripped stale tool results from history', {
           strippedCount: stripStats.strippedCount,
           approxBytesSaved: stripStats.approxBytesSaved,
+        });
+      }
+
+      // General-purpose continuous prune: protect the most recent user turn
+      // and a budget of recent tool output, replace older tool results with
+      // a placeholder. Catches large tool I/O (Kubernetes, metrics, ...)
+      // that the name-allowlist strip above can't anticipate.
+      const { messages: prunedMessages, stats: pruneStats } =
+        pruneOldToolResults(strippedMessages, {
+          reservedTokens: pruneReservedTokens,
+          minimumSavingsTokens: pruneMinimumSavingsTokens,
+          protectedTools: PRUNE_PROTECTED_TOOLS,
+        });
+      if (pruneStats.prunedCount > 0) {
+        chatLogger.info('Pruned old tool results from history', {
+          prunedCount: pruneStats.prunedCount,
+          approxTokensSaved: pruneStats.prunableTokens,
+        });
+      } else if (pruneStats.prunableTokens > 0) {
+        chatLogger.debug('Pruning skipped: savings below threshold', {
+          prunableTokens: pruneStats.prunableTokens,
+          minimumSavingsTokens: pruneMinimumSavingsTokens,
+        });
+      }
+
+      // Strip reasoning content parts from assistant messages older than the
+      // last two user turns. Anthropic guidance: thinking blocks from
+      // completed turns don't need to round-trip; only the in-progress
+      // tool_use turn must preserve its thinking block.
+      const { messages: dereasonedMessages, stats: reasoningStats } =
+        stripPastReasoning(prunedMessages);
+      if (reasoningStats.strippedCount > 0) {
+        chatLogger.debug('Stripped past reasoning from history', {
+          strippedCount: reasoningStats.strippedCount,
+          approxTokensSaved: reasoningStats.approxTokensSaved,
         });
       }
 
@@ -319,6 +394,7 @@ export async function createRouter(
         ...mcpResourceTools,
         listSkills,
         getSkill,
+        getDate,
         ...userTools,
         ...contextUsageTools,
       };
@@ -326,8 +402,8 @@ export async function createRouter(
       const result = streamText({
         model: selectedModel as any,
         messages: systemMessage
-          ? [systemMessage, ...prunedMessages]
-          : prunedMessages,
+          ? [systemMessage, ...dereasonedMessages]
+          : dereasonedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
         stopWhen: stepCountIs(maxSteps),
@@ -429,12 +505,39 @@ export async function createRouter(
         return ret;
       } as typeof originalWrite;
 
-      result.pipeUIMessageStreamToResponse(res);
+      result.pipeUIMessageStreamToResponse(res, {
+        originalMessages: messages as UIMessage[],
+        generateMessageId: () => crypto.randomUUID(),
+        onFinish({ messages: allMessages }) {
+          // Fire-and-forget: update the conversation row created up-front
+          // with the full message history including the assistant reply.
+          conversationStore
+            .saveConversation(userRef, allMessages, persistedConversationId)
+            .then(saved => {
+              chatLogger.debug(
+                `Saved conversation ${saved.id} (${allMessages.length} messages)`,
+              );
+            })
+            .catch(saveErr => {
+              chatLogger.error(`Failed to save conversation: ${saveErr}`);
+            });
+        },
+      });
     } catch (error) {
       chatLogger.error('Error in chat endpoint', error as Error);
       throw error;
     }
   });
+
+  // Conversation history CRUD routes
+  router.use(
+    '/conversations',
+    createConversationRoutes({
+      store: conversationStore,
+      httpAuth,
+      logger,
+    }),
+  );
 
   // Health check endpoint
   router.get('/health', (_, res) => {

@@ -5,6 +5,26 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.125.0] - 2026-04-28
+
+### Added
+
+- Persist AI chat conversations and add a conversation history page with rename, delete, batch delete, and pagination, plus a history view in the chat drawer.
+- Add a `getDate` tool to the AI chat agent for retrieving the current date and time.
+- Prune older tool outputs in AI chat once cumulative tool I/O exceeds a configurable budget (`aiChat.pruning.reservedTokens`, `aiChat.pruning.minimumSavingsTokens`).
+
+### Changed
+
+- Report AI chat context size, output tokens, and cost by requesting token usage from OpenAI-compatible streaming responses (vLLM/KServe).
+- Clarify tool use in the muster system prompt to avoid calling internal tools via muster's `call_tool`.
+
+### Fixed
+
+- Re-observe the element when the ref target changes in `useContainerDimensions`.
+- Reject empty titles in `PATCH /conversations/:id/title` with HTTP 400.
+
+See [./docs/releases/v0.125.0-changelog.md](./docs/releases/v0.125.0-changelog.md) for more information.
+
 ## [0.124.4] - 2026-04-28
 
 ### Added
@@ -2352,7 +2372,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.124.4...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.125.0...HEAD
+[0.125.0]: https://github.com/giantswarm/backstage/compare/v0.124.4...v0.125.0
 [0.124.4]: https://github.com/giantswarm/backstage/compare/v0.124.3...v0.124.4
 [0.124.3]: https://github.com/giantswarm/backstage/compare/v0.124.2...v0.124.3
 [0.124.2]: https://github.com/giantswarm/backstage/compare/v0.124.1...v0.124.2

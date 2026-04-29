@@ -1,16 +1,12 @@
-import { memo, useState, useRef, useEffect, useMemo } from 'react';
-import { useMessagePartText, useAuiState } from '@assistant-ui/react';
+import { memo, useState, useRef, useEffect, useMemo, useContext } from 'react';
+import { useMessagePartText } from '@assistant-ui/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { createMarkdownComponents, useMarkdownStyles } from './MarkdownText';
+import { AnimateContext } from '../AnimateContext';
 
 // Characters revealed per animation frame (~300 chars/sec at 60fps).
 const CHARS_PER_FRAME = 10;
-
-// How recently a message must have been created (ms) to receive animation.
-// Handles the case where all SSE chunks arrive in one TCP read and are batched
-// into a single React render, so the component mounts with status 'complete'.
-const NEW_MESSAGE_THRESHOLD_MS = 10_000;
 
 // How long to pause text reveal after a table appears, so text resumes only
 // after the table's CSS fadeInUp animation (0.3s) has finished.
@@ -123,20 +119,22 @@ const SKIP_RULES: SkipRule[] = [
 
 const StreamingMarkdownTextImpl = () => {
   const classes = useMarkdownStyles();
-  const components = useMemo(
-    () => createMarkdownComponents(classes),
-    [classes],
-  );
   const { text: targetText, status } = useMessagePartText();
   const isStreaming = status.type === 'running';
 
-  // Also animate if the message was created very recently — handles the case
-  // where all SSE chunks arrive in one TCP read and are batched into one render.
-  const createdAt = useAuiState((s: any) => s.message.createdAt as Date);
-  const isNewMessage =
-    Date.now() - (createdAt?.getTime?.() ?? 0) < NEW_MESSAGE_THRESHOLD_MS;
+  // Also animate if this message was added after the Thread's initial render
+  // (i.e. by user interaction, not loaded from history).  Handles the case
+  // where all SSE chunks arrive in one TCP read and are batched into one
+  // render, so the component mounts with status 'complete'.
+  const animateNewMessages = useContext(AnimateContext);
+  const isNewMessage = useRef(animateNewMessages).current;
 
   const shouldAnimate = isStreaming || isNewMessage;
+
+  const components = useMemo(
+    () => createMarkdownComponents(classes, { animate: shouldAnimate }),
+    [classes, shouldAnimate],
+  );
 
   const revealedRef = useRef(shouldAnimate ? 0 : targetText.length);
   const [displayedText, setDisplayedText] = useState(() =>

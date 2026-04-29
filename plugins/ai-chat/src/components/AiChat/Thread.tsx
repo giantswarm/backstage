@@ -1,4 +1,12 @@
-import { useState, useMemo, useCallback } from 'react';
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  type CSSProperties,
+} from 'react';
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -41,6 +49,7 @@ import {
   ContextUsageDisplay,
 } from './assistant-ui-components';
 import classNames from 'classnames';
+import { AnimateContext } from './AnimateContext';
 
 const DEFAULT_WELCOME_TITLE = 'How can I help you today?';
 const DEFAULT_WELCOME_SUBTITLE =
@@ -174,10 +183,19 @@ const AssistantActionBar = () => {
 
 const UserMessage = () => {
   const classes = useStyles();
+  const animateNewMessages = useContext(AnimateContext);
+  // Capture at mount time so a later context flip doesn't retroactively animate
+  // existing messages.
+  const shouldAnimate = useRef(animateNewMessages).current;
 
   return (
     <MessagePrimitive.Root>
-      <div className={classes.userMessage}>
+      <div
+        className={classNames(
+          classes.userMessage,
+          shouldAnimate && classes.userMessageAnimate,
+        )}
+      >
         <MessagePrimitive.Content
           components={{
             Text: MarkdownText,
@@ -385,36 +403,48 @@ const useScrollToBottomOnSend = (usePageScroll: boolean) => {
 export const Thread = ({
   className,
   isSticky = true,
+  style,
 }: {
   className?: string;
   isSticky?: boolean;
+  style?: CSSProperties;
 }) => {
   const classes = useStyles();
   useScrollToBottomOnSend(isSticky);
 
+  // Start false so messages rendered on the initial mount (history / preload)
+  // skip entrance animations.  Flip to true after the first paint so that any
+  // message added later (user send, assistant stream) animates in.
+  const [animateNewMessages, setAnimateNewMessages] = useState(false);
+  useEffect(() => {
+    setAnimateNewMessages(true);
+  }, []);
+
   return (
-    <ThreadPrimitive.Root className={className ?? classes.root}>
-      <ThreadPrimitive.Viewport
-        className={classes.messagesContainer}
-        autoScroll={false}
-        scrollToBottomOnRunStart={false}
-      >
-        <ThreadPrimitive.Empty>
-          <ThreadWelcome />
-        </ThreadPrimitive.Empty>
+    <AnimateContext.Provider value={animateNewMessages}>
+      <ThreadPrimitive.Root className={className ?? classes.root} style={style}>
+        <ThreadPrimitive.Viewport
+          className={classes.messagesContainer}
+          autoScroll={false}
+          scrollToBottomOnRunStart={false}
+        >
+          <ThreadPrimitive.Empty>
+            <ThreadWelcome />
+          </ThreadPrimitive.Empty>
 
-        <ThreadPrimitive.Messages
-          components={{
-            UserMessage,
-            AssistantMessage,
-            EditComposer,
-          }}
-        />
+          <ThreadPrimitive.Messages
+            components={{
+              UserMessage,
+              AssistantMessage,
+              EditComposer,
+            }}
+          />
 
-        <LoadingIndicator />
-      </ThreadPrimitive.Viewport>
+          <LoadingIndicator />
+        </ThreadPrimitive.Viewport>
 
-      <Composer isSticky={isSticky} />
-    </ThreadPrimitive.Root>
+        <Composer isSticky={isSticky} />
+      </ThreadPrimitive.Root>
+    </AnimateContext.Provider>
   );
 };
