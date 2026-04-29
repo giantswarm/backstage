@@ -366,3 +366,6 @@ ociRegistryCredentials: {}
 # @schema item:object;itemProperties:{"keyId":{"type":"string"},"publicKey":{"type":"string"},"privateKey":{"type":"string"}}
 # -- Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/
 pluginKeys: []
+
+# -- A property added simply to have a change in the schema and values, for testing.
+dummyChange: true
