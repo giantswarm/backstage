@@ -107,7 +107,7 @@ backend:
     pluginSources:
       - auth
       - catalog
-      - scaffolder
+      - gs
 
   cache:
     store: memory

@@ -8,8 +8,8 @@ app:
 backend:
   actions:
     pluginSources:
+      - auth
       - catalog
-      - catalog-mcp
       - gs
   baseUrl: https://localhost:7007
   listen:
@@ -28,7 +28,6 @@ backend:
         accessRestrictions:
           - plugin: mcp-actions
           - plugin: catalog
-          - plugin: catalog-mcp
           - plugin: gs
 
 auth:
