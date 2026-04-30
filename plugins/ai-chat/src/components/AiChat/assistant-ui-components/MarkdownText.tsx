@@ -15,6 +15,7 @@ import TableRow from '@material-ui/core/TableRow';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import classNames from 'classnames';
+import { MermaidDiagram } from './MermaidDiagram';
 
 export const useMarkdownStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -23,19 +24,22 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
       to: { opacity: 1, transform: 'translateY(0)' },
     },
     codeBlock: {
-      backgroundColor: theme.palette.type === 'dark' ? '#1e1e1e' : '#f5f5f5',
+      backgroundColor: 'var(--bui-bg-neutral-1)',
       padding: theme.spacing(2),
-      borderRadius: theme.shape.borderRadius,
+      borderRadius: 'var(--bui-radius-3)',
       overflowX: 'auto',
       margin: theme.spacing(2, 0),
       fontFamily: 'monospace',
       fontSize: '0.875rem',
     },
+    codeBlockAnimate: {
+      animation: '$fadeInUp 0.3s ease-out',
+    },
     inlineCode: {
-      backgroundColor: theme.palette.type === 'dark' ? '#333' : '#eee',
+      backgroundColor: 'var(--bui-bg-neutral-2)',
       padding: theme.spacing(0, 0.5),
       margin: theme.spacing(0.25, 0),
-      borderRadius: theme.shape.borderRadius / 2,
+      borderRadius: 'var(--bui-radius-1)',
       fontFamily: 'monospace',
       fontSize: '0.875rem',
       display: 'inline-block',
@@ -248,8 +252,22 @@ export const createMarkdownComponents = (
     td: ({ children }) => (
       <TableCell className={classes.tableCell}>{children}</TableCell>
     ),
-    pre: ({ children }) => <pre className={classes.codeBlock}>{children}</pre>,
-    code: ({ children }) => {
+    pre: ({ children }) => {
+      return (
+        <pre
+          className={classNames(
+            classes.codeBlock,
+            options?.animate && classes.codeBlockAnimate,
+          )}
+        >
+          {children}
+        </pre>
+      );
+    },
+    code: ({ children, className }) => {
+      if (className && /\blanguage-mermaid\b/.test(className)) {
+        return <MermaidDiagram source={String(children)} />;
+      }
       const content = String(children);
       if (content.includes('\n')) {
         return <code>{children}</code>;
