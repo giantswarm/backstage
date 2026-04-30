@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.126.0] - 2026-04-30
+
 ### Added
 
 - Added configuration options to allow for persisting the SQLite database.
@@ -2395,7 +2397,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.125.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.126.0...HEAD
+[0.126.0]: https://github.com/giantswarm/backstage/compare/v0.125.0...v0.126.0
 [0.125.0]: https://github.com/giantswarm/backstage/compare/v0.124.4...v0.125.0
 [0.124.4]: https://github.com/giantswarm/backstage/compare/v0.124.3...v0.124.4
 [0.124.3]: https://github.com/giantswarm/backstage/compare/v0.124.2...v0.124.3
