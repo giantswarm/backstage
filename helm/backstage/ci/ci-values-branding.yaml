@@ -1,0 +1,5 @@
+branding:
+  enabled: true
+  volume:
+    configMap:
+      name: backstage-branding-assets
