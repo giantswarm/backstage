@@ -17,6 +17,11 @@ interface McpServerConfig {
   sessionHeader?: string;
 }
 
+export interface BackstageUserContext {
+  userEntityRef: string;
+  mcpActionsToken: string;
+}
+
 function getMcpServerHeaders(mcpConfig: Config): Record<string, string> {
   const serverHeaders = mcpConfig.getOptionalConfig('headers');
   const headers: Record<string, string> = {};
@@ -33,47 +38,77 @@ function getMcpServerHeaders(mcpConfig: Config): Record<string, string> {
 function readMcpServersFromConfig(
   config: Config,
   authTokens: AuthTokens,
+  backstageUser: BackstageUserContext | undefined,
 ): Record<string, McpServerConfig> {
   const mcpServers: Record<string, McpServerConfig> = {};
 
   const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
-  if (mcpConfigs && mcpConfigs.length > 0) {
-    mcpConfigs.forEach(mcp => {
-      const name = mcp.getString('name');
-      const url = mcp.getString('url');
-      const installation = mcp.getOptionalString('installation');
-      const sessionHeader = mcp.getOptionalString('sessionHeader');
+  if (!mcpConfigs || mcpConfigs.length === 0) {
+    return mcpServers;
+  }
 
-      // Rule 1: If authProvider is set, check if token exists
-      const authProvider = mcp.getOptionalString('authProvider');
-      if (authProvider) {
-        const token = authTokens[authProvider];
-        if (!token) {
-          return; // Skip if no token available
-        }
+  for (const mcp of mcpConfigs) {
+    const name = mcp.getString('name');
+    const url = mcp.getString('url');
+    const installation = mcp.getOptionalString('installation');
+    const sessionHeader = mcp.getOptionalString('sessionHeader');
 
-        mcpServers[name] = {
-          url,
-          headers: { Authorization: `Bearer ${token}` },
-          installation,
-          authToken: token,
-          sessionHeader,
-        };
-
-        return;
+    // Rule 1: Forward a Backstage token minted on behalf of the calling
+    // user, scoped to the built-in `mcp-actions` plugin. Use this for
+    // the in-process MCP server so calls run as the logged-in user.
+    const useBackstageUserToken = mcp.getOptionalBoolean(
+      'useBackstageUserToken',
+    );
+    if (useBackstageUserToken) {
+      if (!backstageUser) {
+        continue;
       }
 
-      // Rule 2: If headers configured, add server with those headers
-      const headers = getMcpServerHeaders(mcp);
-      if (headers) {
-        mcpServers[name] = { url, headers, installation, sessionHeader };
+      const extraHeaders = getMcpServerHeaders(mcp);
+      mcpServers[name] = {
+        url,
+        headers: {
+          ...extraHeaders,
+          Authorization: `Bearer ${backstageUser.mcpActionsToken}`,
+        },
+        installation,
+        // Stable per-user cache key so the cache survives across
+        // requests despite the Authorization token being minted fresh.
+        authToken: `bs-user:${backstageUser.userEntityRef}`,
+        sessionHeader,
+      };
 
-        return;
+      continue;
+    }
+
+    // Rule 2: If authProvider is set, check if token exists
+    const authProvider = mcp.getOptionalString('authProvider');
+    if (authProvider) {
+      const token = authTokens[authProvider];
+      if (!token) {
+        continue; // Skip if no token available
       }
 
-      // Rule 3: No headers and no authProvider, just add server
-      mcpServers[name] = { url, installation, sessionHeader };
-    });
+      mcpServers[name] = {
+        url,
+        headers: { Authorization: `Bearer ${token}` },
+        installation,
+        authToken: token,
+        sessionHeader,
+      };
+
+      continue;
+    }
+
+    // Rule 3: If headers configured, add server with those headers
+    const headers = getMcpServerHeaders(mcp);
+    if (headers) {
+      mcpServers[name] = { url, headers, installation, sessionHeader };
+      continue;
+    }
+
+    // Rule 4: No headers and no authProvider, just add server
+    mcpServers[name] = { url, installation, sessionHeader };
   }
 
   return mcpServers;
@@ -172,10 +207,15 @@ export interface McpToolsResult {
 export async function getMcpTools(
   config: Config,
   authTokens: AuthTokens,
+  backstageUser: BackstageUserContext | undefined,
   logger: LoggerService,
   clientCache: McpClientCache,
 ): Promise<McpToolsResult> {
-  const mcpServers = readMcpServersFromConfig(config, authTokens);
+  const mcpServers = readMcpServersFromConfig(
+    config,
+    authTokens,
+    backstageUser,
+  );
 
   const tools: ToolSet = {};
   const resources: { [resourceName: string]: string } = {};

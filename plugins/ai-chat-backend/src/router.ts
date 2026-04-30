@@ -1,8 +1,8 @@
 import {
+  AuthService,
   HttpAuthService,
   LoggerService,
   resolvePackagePath,
-  UserInfoService,
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
@@ -29,7 +29,6 @@ import {
   listSkills,
   getSkill,
   getDate,
-  createUserTools,
   createResourceTools,
   createContextUsageTool,
   recordUsage,
@@ -65,17 +64,17 @@ const musterPromptPath = resolvePackagePath(
 const musterSystemPrompt = readFileSync(musterPromptPath, 'utf-8');
 
 export interface RouterOptions {
+  auth: AuthService;
   httpAuth: HttpAuthService;
   logger: LoggerService;
   config: Config;
-  userInfo: UserInfoService;
   conversationStore: ConversationStore;
 }
 
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { httpAuth, logger, config, userInfo, conversationStore } = options;
+  const { auth, httpAuth, logger, config, conversationStore } = options;
 
   const mcpClientCache = new McpClientCache(logger);
 
@@ -247,12 +246,42 @@ export async function createRouter(
 
     const authTokens = extractMcpAuthTokens(req.headers);
 
+    // Mint a Backstage token bound to the calling user, scoped to the
+    // built-in `mcp-actions` plugin. Used by `useBackstageUserToken` MCP
+    // entries so the in-process MCP server sees the request as the
+    // logged-in user. If minting fails, those entries are skipped while
+    // other MCP servers still load.
+    let mcpActionsToken: string | undefined;
+    try {
+      const minted = await auth.getPluginRequestToken({
+        onBehalfOf: credentials,
+        targetPluginId: 'mcp-actions',
+      });
+      mcpActionsToken = minted.token;
+    } catch (error) {
+      chatLogger.warn(
+        `Failed to mint mcp-actions user token: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const backstageUser = mcpActionsToken
+      ? { userEntityRef: userRef, mcpActionsToken }
+      : undefined;
+
     const {
       tools: mcpTools,
       resources: mcpResources,
       failedServers,
       connectedServers,
-    } = await getMcpTools(config, authTokens, chatLogger, mcpClientCache);
+    } = await getMcpTools(
+      config,
+      authTokens,
+      backstageUser,
+      chatLogger,
+      mcpClientCache,
+    );
     chatLogger.debug(`MCP tools available: ${Object.keys(mcpTools).length}`);
     chatLogger.debug(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
     if (failedServers.length > 0) {
@@ -260,9 +289,6 @@ export async function createRouter(
         `${failedServers.length} MCP server(s) failed to connect: ${failedServers.map(s => s.name).join(', ')}`,
       );
     }
-
-    // User-scoped tools that need access to the current request's credentials
-    const userTools = createUserTools(userInfo, credentials);
 
     // Context usage tool (scoped to user and conversation)
     const contextUsageTools = createContextUsageTool(userRef, conversationId);
@@ -395,7 +421,6 @@ export async function createRouter(
         listSkills,
         getSkill,
         getDate,
-        ...userTools,
         ...contextUsageTools,
       };
 

@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Added configuration options to allow for persisting the SQLite database.
+
 ## [0.125.0] - 2026-04-28
 
 ### Added

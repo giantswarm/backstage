@@ -2,16 +2,18 @@ import { memo, useState, useRef, useEffect, useMemo, useContext } from 'react';
 import { useMessagePartText } from '@assistant-ui/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { createMarkdownComponents, useMarkdownStyles } from './MarkdownText';
 import { AnimateContext } from '../AnimateContext';
 
 // Characters revealed per animation frame (~300 chars/sec at 60fps).
 const CHARS_PER_FRAME = 10;
 
-// How long to pause text reveal after a table appears, so text resumes only
-// after the table's CSS fadeInUp animation (0.3s) has finished.
-// Slightly longer than the CSS duration to account for render delay.
-const TABLE_ANIMATION_PAUSE_MS = 350;
+// How long to pause text reveal after a block-level construct (table, code
+// block, so text resumes only after its CSS
+// fadeInUp animation (0.3s) has finished. Slightly longer than the CSS
+// duration to account for render delay.
+const REVEAL_ANIMATION_PAUSE_MS = 350;
 
 /**
  * If `pos` is inside the non-visual part of a markdown link — the `](url)`
@@ -56,12 +58,15 @@ function advancePastLinkUrl(text: string, pos: number): number {
 }
 
 /**
- * A rule that may advance the reveal position past a markdown construct so it
- * appears whole rather than character-by-character.
+ * A rule applied during text-reveal animation. Returns the desired reveal
+ * position given the current `pos`. May advance past a markdown construct so
+ * it appears whole, or return a position less than `pos` to halt the animation
+ * before a not-yet-complete construct (the tick loop guards against
+ * un-revealing already-shown text).
  */
 type SkipRule = {
   advance: (text: string, pos: number) => number;
-  /** Pause (ms) after this rule fires, e.g. to wait for a CSS animation. */
+  /** Pause (ms) after this rule advances, e.g. to wait for a CSS animation. */
   pauseMs?: number;
 };
 
@@ -108,13 +113,86 @@ function advancePastTable(text: string, pos: number): number {
 }
 
 /**
+ * Handles fenced code blocks (` ``` `-delimited) for the text-reveal animation.
+ *
+ * - If `pos` is inside a *closed* block, returns the position just after the
+ *   closing fence so the entire block is revealed at once.
+ * - If `pos` is at or past an *unclosed* opening fence (still streaming),
+ *   returns the opening fence's start so the animation halts there. This
+ *   prevents partial fenced content (e.g. an in-flight mermaid diagram) from
+ *   being parsed and rendered repeatedly as more text arrives.
+ */
+function advancePastFencedCodeBlock(text: string, pos: number): number {
+  const fences: { start: number; end: number }[] = [];
+  let lineStart = 0;
+  while (lineStart < text.length) {
+    let lineEnd = text.indexOf('\n', lineStart);
+    if (lineEnd === -1) lineEnd = text.length;
+    if (/^\s*```/.test(text.slice(lineStart, lineEnd))) {
+      fences.push({ start: lineStart, end: lineEnd });
+    }
+    lineStart = lineEnd + 1;
+  }
+
+  for (let i = 0; i < fences.length; i += 2) {
+    const open = fences[i];
+    const close = fences[i + 1];
+    if (pos < open.start) return pos;
+    if (!close) return open.start;
+    if (pos <= close.end) return Math.min(text.length, close.end + 1);
+  }
+  return pos;
+}
+
+/**
+ * Handles `<details>` HTML blocks for the text-reveal animation.
+ *
+ * - If `pos` is inside a *closed* `<details>...</details>` block, returns the
+ *   position just after the closing tag so the entire block is revealed at
+ *   once.
+ * - If `pos` is at or past an *unclosed* opening `<details>` tag (still
+ *   streaming), returns the opening tag's start so the animation halts there.
+ *   This prevents partial HTML (which rehype-raw may parse erratically) from
+ *   being rendered repeatedly as more text arrives.
+ */
+function advancePastDetailsBlock(text: string, pos: number): number {
+  const openRe = /<details(?:\s[^>]*)?>/gi;
+  const closeRe = /<\/details\s*>/gi;
+
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    openRe.lastIndex = searchFrom;
+    const open = openRe.exec(text);
+    if (!open) return pos;
+
+    if (pos < open.index) return pos;
+
+    closeRe.lastIndex = open.index + open[0].length;
+    const close = closeRe.exec(text);
+    if (!close) return open.index;
+
+    const blockEnd = close.index + close[0].length;
+    if (pos <= blockEnd) return Math.min(text.length, blockEnd);
+
+    searchFrom = blockEnd;
+  }
+
+  return pos;
+}
+
+/**
  * Pipeline of skip rules applied during text-reveal animation.
  * Each rule may advance the position past a markdown construct so it appears
- * whole. Add new entries here to handle additional constructs.
+ * whole, or hold the animation before a not-yet-complete construct.
+ *
+ * Order matters: the fenced-code-block rule runs last so it can clamp
+ * advancement made by earlier rules into a still-streaming code fence.
  */
 const SKIP_RULES: SkipRule[] = [
-  { advance: advancePastTable, pauseMs: TABLE_ANIMATION_PAUSE_MS },
+  { advance: advancePastTable, pauseMs: REVEAL_ANIMATION_PAUSE_MS },
+  { advance: advancePastDetailsBlock, pauseMs: REVEAL_ANIMATION_PAUSE_MS },
   { advance: advancePastLinkUrl },
+  { advance: advancePastFencedCodeBlock, pauseMs: REVEAL_ANIMATION_PAUSE_MS },
 ];
 
 const StreamingMarkdownTextImpl = () => {
@@ -167,18 +245,26 @@ const StreamingMarkdownTextImpl = () => {
       );
 
       // Run each skip rule in sequence. A rule may advance the position past
-      // a markdown construct and optionally request a pause (e.g. for CSS
-      // animations to finish before text resumes).
+      // a markdown construct (optionally requesting a pause for a CSS
+      // animation) or hold the position before a not-yet-complete construct.
       let newLen = rawLen;
       let pauseMs = 0;
       for (const rule of SKIP_RULES) {
-        const advanced = rule.advance(targetText, newLen);
-        if (advanced > newLen) {
-          newLen = advanced;
-          if (rule.pauseMs) {
-            pauseMs = rule.pauseMs;
-          }
+        const result = rule.advance(targetText, newLen);
+        if (result > newLen && rule.pauseMs) {
+          pauseMs = rule.pauseMs;
         }
+        newLen = result;
+      }
+
+      // Never un-reveal text that has already been shown.
+      newLen = Math.max(newLen, revealedRef.current);
+
+      if (newLen === revealedRef.current) {
+        // No progress (e.g. animation is held before an unclosed fence).
+        // Stop ticking; the effect re-runs whenever targetText changes, which
+        // will resume the animation once more text arrives.
+        return;
       }
 
       revealedRef.current = newLen;
@@ -201,8 +287,12 @@ const StreamingMarkdownTextImpl = () => {
   }, [isStreaming, targetText]);
 
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    <Markdown remarkPlugins={[remarkGfm]} components={components as any}>
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      components={components as any}
+    >
       {displayedText}
     </Markdown>
   );

@@ -19,6 +19,7 @@ Backstage app provided by Giant Swarm
 | backstageDiscovery.kubernetesId | string | `"backstage"` | Value to set for the backstage.io/kubernetes-id label on all resources, used for entity discovery in Backstage |
 | userID | int | `1000` | User ID for the pod security context (runAsUser) |
 | groupID | int | `1000` | Group ID for the pod security context (runAsGroup) |
+| fsGroupID | string | `nil` | Group ID for the pod security context (fsGroup). When set, Kubernetes chowns mounted volume roots to this GID on mount, so the non-root Backstage process can write to freshly provisioned PVCs (e.g. file-backed SQLite). Leave unset if no volumes need writing. |
 | image | object | `{"name":"backstage","repository":"giantswarm/backstage"}` | Container image settings |
 | image.name | string | `"backstage"` | Container name in the pod spec |
 | image.repository | string | `"giantswarm/backstage"` | Image repository path (prepended with registry.domain to form the full image reference) |
@@ -70,6 +71,7 @@ Backstage app provided by Giant Swarm
 | openai.apiKey | string | `""` | OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var) |
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
+| strategy | object | `{}` | Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume. |
 | database | object | `{"engine":"sqlite","postgresql":{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","storageSize":"5Gi"}}` | Database configuration |
 | database.engine | string | `"sqlite"` | Database engine to use |
 | database.postgresql | object | `{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","storageSize":"5Gi"}` | Settings for the PostgreSQL database (only used when engine is "postgresql") |
@@ -81,7 +83,7 @@ Backstage app provided by Giant Swarm
 | branding.assetsPath | string | `"/app/branding-assets"` | Filesystem path inside the container where branding assets are mounted |
 | branding.volume | object | `{"configMap":{}}` | Volume source for the branding assets. Currently only the `configMap` source is supported; the volume `name` is supplied by the chart. |
 | branding.volume.configMap | object | `{}` | ConfigMap volume source. At minimum, set `.name` to the name of the ConfigMap holding the assets |
-| backstage | object | `{"appConfig":{},"args":[],"command":["node","packages/backend"],"extraAppConfig":[],"extraEnvVars":[],"extraEnvVarsCM":[],"extraEnvVarsSecrets":[],"extraVolumeMounts":[],"extraVolumes":[]}` | Backstage application parameters |
+| backstage | object | `{"appConfig":{},"args":[],"command":["node","packages/backend"],"extraAppConfig":[],"extraEnvVars":[],"extraEnvVarsCM":[],"extraEnvVarsSecrets":[],"extraVolumeMounts":[],"extraVolumes":[],"initContainers":[]}` | Backstage application parameters |
 | backstage.command | list | `["node","packages/backend"]` | Container command to start the Backstage backend |
 | backstage.args | list | `[]` | Additional command arguments passed to the Backstage container |
 | backstage.extraAppConfig | list | `[]` | Extra app configuration files to inline into command arguments, each referencing a ConfigMap |
@@ -91,6 +93,7 @@ Backstage app provided by Giant Swarm
 | backstage.extraEnvVarsSecrets | list | `[]` | Names of existing Secrets to mount as envFrom sources in the Backstage container |
 | backstage.extraVolumeMounts | list | `[]` | Additional volume mounts for the Backstage container |
 | backstage.extraVolumes | list | `[]` | Additional volumes for the Backstage pod |
+| backstage.initContainers | list | `[]` | Init containers to run before the Backstage container starts. Common use: `chown` a freshly provisioned PVC mount so the non-root Backstage user can write to it. |
 | ingress | object | `{"annotations":{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true"},"className":"nginx","enabled":true,"hostnames":["default-hostname"]}` | Traditional Ingress configuration |
 | ingress.enabled | bool | `true` | Enable the Kubernetes Ingress resource for external HTTP access |
 | ingress.className | string | `"nginx"` | Ingress class name |

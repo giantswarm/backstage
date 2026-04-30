@@ -15,14 +15,14 @@ export const aiChatPlugin = createBackendPlugin({
   register(env) {
     env.registerInit({
       deps: {
+        auth: coreServices.auth,
         httpAuth: coreServices.httpAuth,
         httpRouter: coreServices.httpRouter,
         logger: coreServices.logger,
         config: coreServices.rootConfig,
-        userInfo: coreServices.userInfo,
         database: coreServices.database,
       },
-      async init({ httpAuth, httpRouter, logger, config, userInfo, database }) {
+      async init({ auth, httpAuth, httpRouter, logger, config, database }) {
         const conversationStore = await ConversationStore.create({
           database,
           logger,
@@ -30,10 +30,10 @@ export const aiChatPlugin = createBackendPlugin({
 
         httpRouter.use(
           await createRouter({
+            auth,
             httpAuth,
             logger,
             config,
-            userInfo,
             conversationStore,
           }),
         );

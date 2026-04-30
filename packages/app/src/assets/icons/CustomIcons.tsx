@@ -1,9 +1,4 @@
-import { IconComponent } from '@backstage/core-plugin-api';
-import { Icon, SvgIcon, SvgIconProps } from '@material-ui/core';
-
-export function faIcon(icon: string): IconComponent {
-  return props => <Icon className={`fa fa-${icon}`} {...props} />;
-}
+import { SvgIcon, SvgIconProps } from '@material-ui/core';
 
 export const GiantSwarmIcon = (props: SvgIconProps) => (
   <SvgIcon {...props} viewBox="0 0 354.3 354.3">
