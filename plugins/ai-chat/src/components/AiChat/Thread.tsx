@@ -6,6 +6,8 @@ import {
   useEffect,
   useRef,
   type CSSProperties,
+  type ChangeEvent,
+  type KeyboardEvent,
 } from 'react';
 import {
   ThreadPrimitive,
@@ -19,6 +21,7 @@ import {
   useThreadViewportStore,
   useAuiEvent,
 } from '@assistant-ui/react';
+import { flushResourcesSync } from '@assistant-ui/tap';
 import {
   useApi,
   configApiRef,
@@ -259,22 +262,59 @@ const AssistantMessage = () => {
   );
 };
 
+// Bypass ComposerPrimitive.Input: its compositionRef can get stuck on dead-key layouts (e.g. German backtick) and freeze the input.
+const useComposerInputBinding = () => {
+  const api = useAssistantApi();
+  const text = useAssistantState(({ composer }) => composer.text);
+  const isDisabled = useAssistantState(
+    ({ thread, composer }) =>
+      thread.isDisabled || Boolean(composer.dictation?.inputDisabled),
+  );
+
+  const handleChange = useCallback(
+    (e: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+      // Flush synchronously so the controlled TextField stays in sync with
+      // fast keystrokes — without this the store update is scheduled on a
+      // macrotask and React drops characters between renders.
+      flushResourcesSync(() => {
+        api.composer().setText(e.target.value);
+      });
+    },
+    [api],
+  );
+
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    if (e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    const target = e.target as HTMLElement;
+    target.closest('form')?.requestSubmit();
+  }, []);
+
+  return { value: text, disabled: isDisabled, handleChange, handleKeyDown };
+};
+
 const EditComposer = () => {
   const classes = useStyles();
+  const { value, disabled, handleChange, handleKeyDown } =
+    useComposerInputBinding();
 
   return (
     <ComposerPrimitive.Root className={classes.composerForm}>
-      <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
-        <TextField
-          variant="outlined"
-          size="small"
-          fullWidth
-          multiline
-          maxRows={4}
-          placeholder="Edit message..."
-          className={classes.composerInput}
-        />
-      </ComposerPrimitive.Input>
+      <TextField
+        name="input"
+        variant="outlined"
+        size="small"
+        fullWidth
+        multiline
+        maxRows={4}
+        placeholder="Edit message..."
+        className={classes.composerInput}
+        value={value}
+        disabled={disabled}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+      />
       <ComposerPrimitive.Cancel asChild>
         <Button variant="outlined" size="small">
           Cancel
@@ -291,6 +331,8 @@ const EditComposer = () => {
 
 const Composer = ({ isSticky = true }: { isSticky?: boolean }) => {
   const classes = useStyles();
+  const { value, disabled, handleChange, handleKeyDown } =
+    useComposerInputBinding();
 
   return (
     <div
@@ -306,19 +348,22 @@ const Composer = ({ isSticky = true }: { isSticky?: boolean }) => {
         )}
       >
         <ComposerPrimitive.Root className={classes.composerForm}>
-          <ComposerPrimitive.Input asChild addAttachmentOnPaste={false}>
-            <TextField
-              variant="outlined"
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
-              size="small"
-              fullWidth
-              multiline
-              maxRows={4}
-              placeholder="Ask a question..."
-              className={classes.composerInput}
-            />
-          </ComposerPrimitive.Input>
+          <TextField
+            name="input"
+            variant="outlined"
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            size="small"
+            fullWidth
+            multiline
+            maxRows={4}
+            placeholder="Ask a question..."
+            className={classes.composerInput}
+            value={value}
+            disabled={disabled}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+          />
 
           <ThreadPrimitive.If running={false}>
             <ComposerPrimitive.Send asChild>
