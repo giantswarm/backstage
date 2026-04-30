@@ -222,6 +222,23 @@ aiChat:
   # Model to use (default: gpt-4o-mini)
   model: gpt-4o-mini
 
+  # Expert-knowledge skills exposed to the model via `listSkills` /
+  # `getSkill` tools. The plugin ships a default set of bundled skills;
+  # deployments can opt out and/or extend them with extra sources.
+  # Merge order (later wins on name collision): bundled -> dir -> inline.
+  # skills:
+  #   # Set to false to opt out of the bundled skills.
+  #   bundled: true
+  #   # Optional directory of *.md files (e.g. mounted from a Kubernetes
+  #   # ConfigMap). Each file becomes a skill named after its basename.
+  #   dir: /etc/backstage/ai-skills
+  #   # Optional inline skills, defined directly in app-config.
+  #   inline:
+  #     - name: my-topic
+  #       content: |
+  #         # My topic
+  #         Expert knowledge about my topic...
+
   # Optional: override the context window size (in tokens) used to render
   # the context usage bar. When set, applies regardless of the model name.
   # When unset, a built-in lookup by model name prefix is used.
