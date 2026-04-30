@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.65.1
+
+### Patch Changes
+
+- 1ab6877: Replace the `fa fa-kubernetes` Font Awesome icon in `KubernetesVersion` with an inline `KubernetesIcon` SVG component, and remove the now-unused Font Awesome kit integration (script tag, `faIcon` helper, and `use.fortawesome.com` CSP entry).
+
 ## 0.65.0
 
 ### Minor Changes

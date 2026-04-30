@@ -1,5 +1,14 @@
 # backend
 
+## 0.19.6
+
+### Patch Changes
+
+- bf7bc0b: Remove `@terasky/backstage-plugin-catalog-mcp-backend` in favor of the built-in `catalog.query-catalog-entities` action from `@backstage/plugin-mcp-actions-backend`. The built-in action covers all `catalog-mcp.*` use cases via predicate filters, logical operators (`$all`, `$any`, `$not`), value operators (`$in`, `$exists`, `$contains`, `$hasPrefix`), field selection, sorting, and pagination.
+- Updated dependencies [e5d4c19]
+- Updated dependencies [8c05c63]
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.13.0
+
 ## 0.19.5
 
 ### Patch Changes

@@ -26,6 +26,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Remove the custom `getCurrentUserInfo` AI chat agent tool, superseded by the upstream `auth.who-am-i` tool from the `mcp-actions` MCP server.
 
+See [./docs/releases/v0.126.0-changelog.md](./docs/releases/v0.126.0-changelog.md) for more information.
+
 ## [0.125.0] - 2026-04-28
 
 ### Added
