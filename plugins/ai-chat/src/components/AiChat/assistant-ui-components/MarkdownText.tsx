@@ -4,6 +4,7 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 } from '@assistant-ui/react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import Typography from '@material-ui/core/Typography';
 import { Link as BackstageLink } from '@backstage/core-components';
@@ -116,6 +117,31 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
       border: 'none',
       borderTop: `1px solid ${theme.palette.divider}`,
       margin: theme.spacing(2, 0),
+    },
+    details: {
+      backgroundColor: 'var(--bui-bg-neutral-1)',
+      borderRadius: 'var(--bui-radius-3)',
+      padding: theme.spacing(1, 2),
+      margin: theme.spacing(2, 0),
+
+      '&[open] > summary': {
+        marginBottom: theme.spacing(1),
+      },
+    },
+    detailsAnimate: {
+      animation: '$fadeInUp 0.3s ease-out',
+    },
+    summary: {
+      cursor: 'pointer',
+      fontWeight: 500,
+      lineHeight: 1.6,
+      outline: 'none',
+
+      '&:focus-visible': {
+        outline: `2px solid ${theme.palette.primary.main}`,
+        outlineOffset: 2,
+        borderRadius: 'var(--bui-radius-1)',
+      },
     },
   }),
 );
@@ -274,6 +300,19 @@ export const createMarkdownComponents = (
       }
       return <code className={classes.inlineCode}>{children}</code>;
     },
+    details: ({ children }) => (
+      <details
+        className={classNames(
+          classes.details,
+          options?.animate && classes.detailsAnimate,
+        )}
+      >
+        {children}
+      </details>
+    ),
+    summary: ({ children }) => (
+      <summary className={classes.summary}>{children}</summary>
+    ),
   });
 
 const MarkdownTextImpl = () => {
@@ -283,6 +322,7 @@ const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
       components={components}
     />
   );

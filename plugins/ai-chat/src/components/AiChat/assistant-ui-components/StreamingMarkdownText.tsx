@@ -2,6 +2,7 @@ import { memo, useState, useRef, useEffect, useMemo, useContext } from 'react';
 import { useMessagePartText } from '@assistant-ui/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { createMarkdownComponents, useMarkdownStyles } from './MarkdownText';
 import { AnimateContext } from '../AnimateContext';
 
@@ -144,6 +145,42 @@ function advancePastFencedCodeBlock(text: string, pos: number): number {
 }
 
 /**
+ * Handles `<details>` HTML blocks for the text-reveal animation.
+ *
+ * - If `pos` is inside a *closed* `<details>...</details>` block, returns the
+ *   position just after the closing tag so the entire block is revealed at
+ *   once.
+ * - If `pos` is at or past an *unclosed* opening `<details>` tag (still
+ *   streaming), returns the opening tag's start so the animation halts there.
+ *   This prevents partial HTML (which rehype-raw may parse erratically) from
+ *   being rendered repeatedly as more text arrives.
+ */
+function advancePastDetailsBlock(text: string, pos: number): number {
+  const openRe = /<details(?:\s[^>]*)?>/gi;
+  const closeRe = /<\/details\s*>/gi;
+
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    openRe.lastIndex = searchFrom;
+    const open = openRe.exec(text);
+    if (!open) return pos;
+
+    if (pos < open.index) return pos;
+
+    closeRe.lastIndex = open.index + open[0].length;
+    const close = closeRe.exec(text);
+    if (!close) return open.index;
+
+    const blockEnd = close.index + close[0].length;
+    if (pos <= blockEnd) return Math.min(text.length, blockEnd);
+
+    searchFrom = blockEnd;
+  }
+
+  return pos;
+}
+
+/**
  * Pipeline of skip rules applied during text-reveal animation.
  * Each rule may advance the position past a markdown construct so it appears
  * whole, or hold the animation before a not-yet-complete construct.
@@ -153,6 +190,7 @@ function advancePastFencedCodeBlock(text: string, pos: number): number {
  */
 const SKIP_RULES: SkipRule[] = [
   { advance: advancePastTable, pauseMs: REVEAL_ANIMATION_PAUSE_MS },
+  { advance: advancePastDetailsBlock, pauseMs: REVEAL_ANIMATION_PAUSE_MS },
   { advance: advancePastLinkUrl },
   { advance: advancePastFencedCodeBlock, pauseMs: REVEAL_ANIMATION_PAUSE_MS },
 ];
@@ -249,8 +287,12 @@ const StreamingMarkdownTextImpl = () => {
   }, [isStreaming, targetText]);
 
   return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    <Markdown remarkPlugins={[remarkGfm]} components={components as any}>
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      components={components as any}
+    >
       {displayedText}
     </Markdown>
   );
