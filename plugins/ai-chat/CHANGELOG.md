@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.13.1
+
+### Patch Changes
+
+- b01606a: Render `<details>`/`<summary>` HTML in AI chat markdown.
+- d9e4112: Fix AI chat input freezing after typing dead keys (e.g., backtick on German keyboard) by replacing the upstream `ComposerPrimitive.Input` with a controlled `TextField` bound directly to the assistant runtime.
+- b01606a: Add Mermaid diagram support to AI chat markdown rendering.
+
 ## 0.13.0
 
 ### Minor Changes

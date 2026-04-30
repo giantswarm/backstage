@@ -1,5 +1,17 @@
 # app
 
+## 0.38.5
+
+### Patch Changes
+
+- 1ab6877: Replace the `fa fa-kubernetes` Font Awesome icon in `KubernetesVersion` with an inline `KubernetesIcon` SVG component, and remove the now-unused Font Awesome kit integration (script tag, `faIcon` helper, and `use.fortawesome.com` CSP entry).
+- Updated dependencies [b01606a]
+- Updated dependencies [d9e4112]
+- Updated dependencies [b01606a]
+- Updated dependencies [1ab6877]
+  - @giantswarm/backstage-plugin-ai-chat@0.13.1
+  - @giantswarm/backstage-plugin-gs@0.65.1
+
 ## 0.38.4
 
 ### Patch Changes

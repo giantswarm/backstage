@@ -5,9 +5,30 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.126.0] - 2026-04-30
+
 ### Added
 
 - Added configuration options to allow for persisting the SQLite database.
+- Add Mermaid diagram support to AI chat markdown rendering.
+- Render `<details>`/`<summary>` HTML in AI chat markdown.
+- Allow AI chat MCP servers to act as the logged-in Backstage user via the new `useBackstageUserToken` option, so user-context tools like `auth.who-am-i` work without a static external-access token.
+
+### Changed
+
+- Strip reasoning content from past AI chat assistant messages to reclaim context tokens for Claude conversations.
+- Replace the `fa-kubernetes` Font Awesome icon with an inline SVG and remove the Font Awesome kit integration.
+- Replace `@terasky/backstage-plugin-catalog-mcp-backend` with the built-in `catalog.query-catalog-entities` action from `@backstage/plugin-mcp-actions-backend`.
+
+### Fixed
+
+- Fix AI chat input freezing after typing dead keys (e.g., backtick on German keyboard).
+
+### Removed
+
+- Remove the custom `getCurrentUserInfo` AI chat agent tool, superseded by the upstream `auth.who-am-i` tool from the `mcp-actions` MCP server.
+
+See [./docs/releases/v0.126.0-changelog.md](./docs/releases/v0.126.0-changelog.md) for more information.
 
 ## [0.125.0] - 2026-04-28
 
@@ -2376,7 +2397,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.125.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.126.0...HEAD
+[0.126.0]: https://github.com/giantswarm/backstage/compare/v0.125.0...v0.126.0
 [0.125.0]: https://github.com/giantswarm/backstage/compare/v0.124.4...v0.125.0
 [0.124.4]: https://github.com/giantswarm/backstage/compare/v0.124.3...v0.124.4
 [0.124.3]: https://github.com/giantswarm/backstage/compare/v0.124.2...v0.124.3
