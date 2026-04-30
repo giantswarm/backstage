@@ -4,6 +4,7 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 } from '@assistant-ui/react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import Typography from '@material-ui/core/Typography';
 import { Link as BackstageLink } from '@backstage/core-components';
@@ -15,6 +16,7 @@ import TableRow from '@material-ui/core/TableRow';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import classNames from 'classnames';
+import { MermaidDiagram } from './MermaidDiagram';
 
 export const useMarkdownStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -23,19 +25,22 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
       to: { opacity: 1, transform: 'translateY(0)' },
     },
     codeBlock: {
-      backgroundColor: theme.palette.type === 'dark' ? '#1e1e1e' : '#f5f5f5',
+      backgroundColor: 'var(--bui-bg-neutral-1)',
       padding: theme.spacing(2),
-      borderRadius: theme.shape.borderRadius,
+      borderRadius: 'var(--bui-radius-3)',
       overflowX: 'auto',
       margin: theme.spacing(2, 0),
       fontFamily: 'monospace',
       fontSize: '0.875rem',
     },
+    codeBlockAnimate: {
+      animation: '$fadeInUp 0.3s ease-out',
+    },
     inlineCode: {
-      backgroundColor: theme.palette.type === 'dark' ? '#333' : '#eee',
+      backgroundColor: 'var(--bui-bg-neutral-2)',
       padding: theme.spacing(0, 0.5),
       margin: theme.spacing(0.25, 0),
-      borderRadius: theme.shape.borderRadius / 2,
+      borderRadius: 'var(--bui-radius-1)',
       fontFamily: 'monospace',
       fontSize: '0.875rem',
       display: 'inline-block',
@@ -112,6 +117,31 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
       border: 'none',
       borderTop: `1px solid ${theme.palette.divider}`,
       margin: theme.spacing(2, 0),
+    },
+    details: {
+      backgroundColor: 'var(--bui-bg-neutral-1)',
+      borderRadius: 'var(--bui-radius-3)',
+      padding: theme.spacing(1, 2),
+      margin: theme.spacing(2, 0),
+
+      '&[open] > summary': {
+        marginBottom: theme.spacing(1),
+      },
+    },
+    detailsAnimate: {
+      animation: '$fadeInUp 0.3s ease-out',
+    },
+    summary: {
+      cursor: 'pointer',
+      fontWeight: 500,
+      lineHeight: 1.6,
+      outline: 'none',
+
+      '&:focus-visible': {
+        outline: `2px solid ${theme.palette.primary.main}`,
+        outlineOffset: 2,
+        borderRadius: 'var(--bui-radius-1)',
+      },
     },
   }),
 );
@@ -248,14 +278,41 @@ export const createMarkdownComponents = (
     td: ({ children }) => (
       <TableCell className={classes.tableCell}>{children}</TableCell>
     ),
-    pre: ({ children }) => <pre className={classes.codeBlock}>{children}</pre>,
-    code: ({ children }) => {
+    pre: ({ children }) => {
+      return (
+        <pre
+          className={classNames(
+            classes.codeBlock,
+            options?.animate && classes.codeBlockAnimate,
+          )}
+        >
+          {children}
+        </pre>
+      );
+    },
+    code: ({ children, className }) => {
+      if (className && /\blanguage-mermaid\b/.test(className)) {
+        return <MermaidDiagram source={String(children)} />;
+      }
       const content = String(children);
       if (content.includes('\n')) {
         return <code>{children}</code>;
       }
       return <code className={classes.inlineCode}>{children}</code>;
     },
+    details: ({ children }) => (
+      <details
+        className={classNames(
+          classes.details,
+          options?.animate && classes.detailsAnimate,
+        )}
+      >
+        {children}
+      </details>
+    ),
+    summary: ({ children }) => (
+      <summary className={classes.summary}>{children}</summary>
+    ),
   });
 
 const MarkdownTextImpl = () => {
@@ -265,6 +322,7 @@ const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
       components={components}
     />
   );
