@@ -51,9 +51,24 @@ backstage:
   args: []
   extraAppConfig: []
   extraEnvVars: []
-  # In a real deployment, override `backend.database.connection` to a path
-  # under the mounted PVC (e.g. /var/lib/backstage/db.sqlite). Omitted here
-  # because the chart's appConfig schema is currently closed.
+  # Point Backstage's base sqlite connection at the PVC mount. The current
+  # better-sqlite3 connector rejects `connection.filename` on the base
+  # config (it errors with "`connection.filename` is not supported for
+  # the base sqlite connection. Prefer `connection.directory` or provide
+  # a filename for the plugin connection instead."), so the supported
+  # shape is `connection.directory: <path>` -- Backstage then creates one
+  # `<plugin>.sqlite` file per plugin under that directory.
+  #
+  # The chart's `backstage.appConfig` schema disallows arbitrary nested
+  # keys when given as an object, but it also accepts a string, which is
+  # rendered verbatim into the app-config ConfigMap. Use the string form
+  # to inject the database override.
+  appConfig: |
+    backend:
+      database:
+        client: better-sqlite3
+        connection:
+          directory: /var/lib/backstage
   # fsGroupID handles ownership of the freshly provisioned volume; this
   # init container exists purely to assert the mount is readable from the
   # non-root user, and to demonstrate the new initContainers value.

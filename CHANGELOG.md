@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- Make the sqlite-persistence CI test case (`ci-values-case3-sqlite-persistent.yaml`) inject a real `backend.database.connection.directory` override and update the surrounding comment so it reflects what current Backstage actually accepts. The previous comment suggested `connection: /var/lib/backstage/db.sqlite`, which the `Sqlite3Connector` rejects at runtime with `"connection.filename" is not supported for the base sqlite connection`.
+
 ## [0.126.0] - 2026-04-30
 
 ### Added
