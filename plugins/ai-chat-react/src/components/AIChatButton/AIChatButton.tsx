@@ -51,6 +51,7 @@ type AIChatButtonProps = {
    * drawer API is available, otherwise falls back to 'navigate'. */
   openMode?: AIChatButtonOpenMode;
   variant?: 'text' | 'outlined' | 'contained';
+  color?: 'inherit' | 'primary' | 'secondary' | 'default';
 };
 
 type AIChatButtonInnerProps = AIChatButtonProps & {
@@ -65,6 +66,7 @@ const AIChatButtonInner = ({
   troubleshoot,
   openMode,
   variant,
+  color,
 }: AIChatButtonInnerProps) => {
   const routeResolutionApi = useApi(routeResolutionApiRef);
   const chatPath = routeResolutionApi.resolve(rootRouteRef);
@@ -114,6 +116,7 @@ const AIChatButtonInner = ({
           )}
           size="small"
           variant={variant}
+          color={color}
           startIcon={<AIChatIcon />}
           onClick={handleClick}
           aria-haspopup={items.length > 1 ? 'true' : undefined}
@@ -160,6 +163,7 @@ export const AIChatButton = ({
   troubleshoot,
   openMode,
   variant,
+  color,
 }: AIChatButtonProps) => {
   const apiHolder = useApiHolder();
   const aiChatApi = apiHolder.get(aiChatApiRef);
@@ -179,6 +183,7 @@ export const AIChatButton = ({
       troubleshoot={troubleshoot}
       openMode={openMode}
       variant={variant}
+      color={color}
       displayLabel={displayLabel}
       displayTooltip={displayTooltip}
     />
