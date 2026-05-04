@@ -1,5 +1,11 @@
 # app
 
+## 0.39.0
+
+### Minor Changes
+
+- fe962ac: Allow customization of theme colors
+
 ## 0.38.5
 
 ### Patch Changes
