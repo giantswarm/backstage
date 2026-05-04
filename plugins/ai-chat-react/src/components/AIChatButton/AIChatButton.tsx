@@ -16,36 +16,23 @@ import { AIChatIcon } from '../../assets/icons';
 import { aiChatApiRef, aiChatDrawerApiRef } from '../../api';
 import { rootRouteRef } from '../../routes';
 
-const useStyles = makeStyles(theme => {
-  const outlinedBorder =
-    theme.palette.type === 'light'
-      ? 'rgba(0, 0, 0, 0.23)'
-      : 'rgba(255, 255, 255, 0.23)';
-
-  return {
-    button: {
-      textTransform: 'none',
-      paddingLeft: 11,
-      paddingRight: 11,
+const useStyles = makeStyles(() => ({
+  button: {
+    textTransform: 'none',
+    paddingLeft: 11,
+    paddingRight: 11,
+  },
+  troubleshootButton: {
+    backgroundColor: '#9a2c28',
+    color: '#ffffff',
+    '&:hover': {
+      backgroundColor: '#7a2320',
     },
-    outlinedButton: {
-      border: `1px solid ${outlinedBorder}`,
-      '&:hover': {
-        border: `1px solid ${outlinedBorder}`,
-      },
-    },
-    troubleshootButton: {
-      backgroundColor: '#9a2c28',
-      color: '#ffffff',
-      '&:hover': {
-        backgroundColor: '#7a2320',
-      },
-    },
-    menuItem: {
-      minWidth: 200,
-    },
-  };
-});
+  },
+  menuItem: {
+    minWidth: 200,
+  },
+}));
 
 export type AIChatButtonItem = {
   label?: string;
@@ -123,10 +110,8 @@ const AIChatButtonInner = ({
         <Button
           className={classNames(
             classes.button,
-            variant === 'outlined' && classes.outlinedButton,
             troubleshoot && classes.troubleshootButton,
           )}
-          color="inherit"
           size="small"
           variant={variant}
           startIcon={<AIChatIcon />}
