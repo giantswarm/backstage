@@ -94,10 +94,6 @@ export const useStyles = makeStyles((theme: Theme) =>
       backgroundColor: 'var(--bui-bg-neutral-2)',
       padding: theme.spacing(1.5, 2),
       borderRadius: 'var(--bui-radius-3)',
-
-      '& p': {
-        margin: 0,
-      },
     },
     userMessageAnimate: {
       animation: '$fadeInUp 0.3s ease-out',

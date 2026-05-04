@@ -45,11 +45,11 @@ import { useStyles } from './styles';
 import {
   Reasoning,
   ReasoningGroup,
-  MarkdownText,
   StreamingMarkdownText,
   ToolFallback,
   ToolGroup,
   ContextUsageDisplay,
+  UserMessageText,
 } from './assistant-ui-components';
 import classNames from 'classnames';
 import { AnimateContext } from './AnimateContext';
@@ -201,7 +201,7 @@ const UserMessage = () => {
       >
         <MessagePrimitive.Content
           components={{
-            Text: MarkdownText,
+            Text: UserMessageText,
           }}
         />
       </div>
