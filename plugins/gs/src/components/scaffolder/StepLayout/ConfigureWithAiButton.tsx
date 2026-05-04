@@ -20,7 +20,7 @@ export const ConfigureWithAiButton = ({
     `Installation: ${installationName}`,
     `Cluster: ${clusterName}`,
     '',
-    'Please separate non-confidential values from confdidential values clearly.',
+    'Please separate non-confidential values from confidential values clearly.',
   ].join('\n');
 
   return (
