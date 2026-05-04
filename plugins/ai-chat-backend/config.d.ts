@@ -81,6 +81,46 @@ export interface Config {
      */
     maxSteps?: number;
 
+    /**
+     * Sources of expert-knowledge skills exposed to the model via the
+     * `listSkills` and `getSkill` tools. The plugin ships a default set
+     * of bundled skills; deployments can opt out and/or extend them with
+     * additional sources. If no skills end up loaded, the tools are
+     * omitted from the toolset entirely.
+     *
+     * Merge order (later wins on name collision): bundled → `dir` → `inline`.
+     */
+    skills?: {
+      /**
+       * Whether to load the skills bundled with the plugin. Defaults to
+       * `true`. Set to `false` to opt out and rely solely on `dir` and/or
+       * `inline`.
+       * @visibility backend
+       */
+      bundled?: boolean;
+
+      /**
+       * Absolute path to a directory of `*.md` files. Each file becomes a
+       * skill named after its basename (e.g. `grafana.md` → `grafana`).
+       * Loaded once at backend startup. Entries override bundled skills
+       * with the same name.
+       * @visibility backend
+       */
+      dir?: string;
+
+      /**
+       * Inline skills. Entries override bundled and `dir` skills with the
+       * same name.
+       * @visibility backend
+       */
+      inline?: Array<{
+        /** Topic name (lowercase-with-hyphens recommended). */
+        name: string;
+        /** Markdown content of the skill. */
+        content: string;
+      }>;
+    };
+
     /** Optional: MCP servers configuration */
     mcp?: Array<{
       /** Name of the MCP server */

@@ -26,8 +26,7 @@ import { getMcpTools } from './getMcpTools';
 import { McpClientCache } from './McpClientCache';
 import { frontendTools } from './frontendTools';
 import {
-  listSkills,
-  getSkill,
+  createSkillTools,
   getDate,
   createResourceTools,
   createContextUsageTool,
@@ -77,6 +76,8 @@ export async function createRouter(
   const { auth, httpAuth, logger, config, conversationStore } = options;
 
   const mcpClientCache = new McpClientCache(logger);
+
+  const skillTools = createSkillTools(config, logger);
 
   const router = Router();
   router.use(express.json({ limit: '2mb' }));
@@ -418,8 +419,7 @@ export async function createRouter(
         ...frontendTools(tools),
         ...mcpTools,
         ...mcpResourceTools,
-        listSkills,
-        getSkill,
+        ...skillTools,
         getDate,
         ...contextUsageTools,
       };
