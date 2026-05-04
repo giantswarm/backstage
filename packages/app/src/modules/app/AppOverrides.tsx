@@ -13,7 +13,10 @@ import {
 import {
   IconBundleBlueprint,
   SignInPageBlueprint,
+  ThemeBlueprint,
 } from '@backstage/plugin-app-react';
+import DarkIcon from '@material-ui/icons/Brightness2';
+import LightIcon from '@material-ui/icons/WbSunny';
 import {
   analyticsApiRef,
   configApiRef,
@@ -49,6 +52,7 @@ import {
   GrafanaIcon,
 } from '../../assets/icons/CustomIcons';
 import { BrandingFavicon } from '../branding';
+import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -175,6 +179,36 @@ export const appOverrides = createFrontendModule({
       name: 'branding-favicon',
       params: {
         element: <BrandingFavicon />,
+      },
+    }),
+    /**
+     * Override the built-in `theme:app/light` and `theme:app/dark` extensions
+     * so palette overrides under `app.branding.theme` in app-config take effect.
+     * The `id`/`title`/`variant` match upstream defaults so the theme switcher
+     * UI and persisted user selections continue to work unchanged.
+     */
+    ThemeBlueprint.make({
+      name: 'light',
+      params: {
+        theme: {
+          id: 'light',
+          title: 'Light Theme',
+          variant: 'light',
+          icon: <LightIcon />,
+          Provider: LightThemeProvider,
+        },
+      },
+    }),
+    ThemeBlueprint.make({
+      name: 'dark',
+      params: {
+        theme: {
+          id: 'dark',
+          title: 'Dark Theme',
+          variant: 'dark',
+          icon: <DarkIcon />,
+          Provider: DarkThemeProvider,
+        },
       },
     }),
     ApiBlueprint.make({
