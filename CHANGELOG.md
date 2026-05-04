@@ -5,9 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.127.0] - 2026-05-04
+
+### Added
+
+- Allow customization of theme colors via `app.branding.theme` configuration.
+- Make AI-chat skills configurable per deployment via `aiChat.skills` (opt out of bundled skills with `bundled: false`, load extra skills from a directory with `dir`, or define them inline with `inline`).
+
 ### Fixed
 
 - Make the sqlite-persistence CI test case (`ci-values-case3-sqlite-persistent.yaml`) inject a real `backend.database.connection.directory` override and update the surrounding comment so it reflects what current Backstage actually accepts. The previous comment suggested `connection: /var/lib/backstage/db.sqlite`, which the `Sqlite3Connector` rejects at runtime with `"connection.filename" is not supported for the base sqlite connection`.
+
+See [./docs/releases/v0.127.0-changelog.md](./docs/releases/v0.127.0-changelog.md) for more information.
 
 ## [0.126.0] - 2026-04-30
 
@@ -2401,7 +2410,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.126.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.127.0...HEAD
+[0.127.0]: https://github.com/giantswarm/backstage/compare/v0.126.0...v0.127.0
 [0.126.0]: https://github.com/giantswarm/backstage/compare/v0.125.0...v0.126.0
 [0.125.0]: https://github.com/giantswarm/backstage/compare/v0.124.4...v0.125.0
 [0.124.4]: https://github.com/giantswarm/backstage/compare/v0.124.3...v0.124.4

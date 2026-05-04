@@ -1,5 +1,12 @@
 # backend
 
+## 0.19.7
+
+### Patch Changes
+
+- Updated dependencies [9a27302]
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.14.0
+
 ## 0.19.6
 
 ### Patch Changes
