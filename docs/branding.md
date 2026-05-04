@@ -1,6 +1,6 @@
 # Custom Branding
 
-The Dev Portal supports overriding the default sidebar logos, home page logo, and browser tab favicon with custom assets, without committing them to the source repository or loading them from external URLs.
+The Dev Portal supports overriding the default sidebar logos, home page logo, and browser tab favicon with custom assets, without committing them to the source repository or loading them from external URLs. It also supports overriding individual palette colors of the light and dark themes via app config, so deployments can match a customer's brand without rebuilding the frontend.
 
 Assets are placed into a directory on the backend's filesystem and served by the built-in `branding` backend plugin (defined in `packages/backend/src/branding/`). On the frontend, components check which assets are available and swap in the custom versions, falling back to the built-in defaults when none are provided.
 
@@ -112,11 +112,64 @@ Generate the base64 content with:
 base64 -w0 favicon-32x32.png
 ```
 
+## Theme colors
+
+Light and dark theme palette colors can be customized via `app.branding.theme.<variant>` in app config. Any unset key falls back to the Backstage default for that variant — overrides are merged on top of the built-in palette, not replacing it.
+
+```yaml
+app:
+  branding:
+    theme:
+      light:
+        primaryColor: '#1F5493'
+        secondaryColor: '#005B86'
+        backgroundColor: '#FFFFFF'
+        textColor: '#222222'
+        navigation:
+          background: '#171717'
+          indicator: '#9BF0E1'
+          color: '#FFFFFF'
+          selectedColor: '#FFFFFF'
+      dark:
+        primaryColor: '#9CC9FF'
+        secondaryColor: '#FF88B2'
+        backgroundColor: '#1A1A1A'
+        textColor: '#EEEEEE'
+        navigation:
+          background: '#424242'
+          indicator: '#9BF0E1'
+          color: '#B5B5B5'
+          selectedColor: '#FFFFFF'
+```
+
+`backgroundColor` sets the page background. It updates both the MUI `background.default` palette token (used by legacy components) and the `--bui-bg-app` CSS variable (used by `@backstage/ui` components) so the two stay in sync.
+
+`textColor` sets the default body text color. It updates both the MUI `text.primary` palette token and the `--bui-fg-primary` CSS variable.
+
+`neutralBackground1` through `neutralBackground4` set the four tiers of neutral surface backgrounds used by `@backstage/ui` components (cards, panels, hover surfaces). They map to the `--bui-bg-neutral-1` through `--bui-bg-neutral-4` CSS variables and have no MUI palette equivalent.
+
+The customization is wired into the New Frontend System: the built-in `theme:app/light` and `theme:app/dark` extensions are overridden in `packages/app/src/modules/app/AppOverrides.tsx`, and palette merging happens in `packages/app/src/modules/app/customThemes.tsx`. Theme variant `id`s match upstream so the theme switcher and persisted user selections continue to work.
+
+To preview overrides locally, drop a `theme:` block under `app.branding` in `app-config.local.yaml` and restart `yarn start`.
+
 ## Configuration reference
 
-| Key                       | Default                | Description                                                 |
-| ------------------------- | ---------------------- | ----------------------------------------------------------- |
-| `app.branding.assetsPath` | `/app/branding-assets` | Filesystem path where the backend looks for branding assets |
+| Key                                                 | Default                | Description                                                 |
+| --------------------------------------------------- | ---------------------- | ----------------------------------------------------------- |
+| `app.branding.assetsPath`                           | `/app/branding-assets` | Filesystem path where the backend looks for branding assets |
+| `app.branding.theme.light.primaryColor`             | Backstage default      | Primary brand color in the light theme                      |
+| `app.branding.theme.light.secondaryColor`           | Backstage default      | Secondary accent color in the light theme                   |
+| `app.branding.theme.light.backgroundColor`          | Backstage default      | Page background color in the light theme                    |
+| `app.branding.theme.light.textColor`                | Backstage default      | Default body text color in the light theme                  |
+| `app.branding.theme.light.neutralBackground1`       | Backstage default      | Tier 1 neutral surface background in the light theme        |
+| `app.branding.theme.light.neutralBackground2`       | Backstage default      | Tier 2 neutral surface background in the light theme        |
+| `app.branding.theme.light.neutralBackground3`       | Backstage default      | Tier 3 neutral surface background in the light theme        |
+| `app.branding.theme.light.neutralBackground4`       | Backstage default      | Tier 4 neutral surface background in the light theme        |
+| `app.branding.theme.light.navigation.background`    | Backstage default      | Sidebar background in the light theme                       |
+| `app.branding.theme.light.navigation.indicator`     | Backstage default      | Active-route indicator color in the light theme             |
+| `app.branding.theme.light.navigation.color`         | Backstage default      | Default nav item color in the light theme                   |
+| `app.branding.theme.light.navigation.selectedColor` | Backstage default      | Selected nav item color in the light theme                  |
+| `app.branding.theme.dark.*`                         | Backstage default      | Same keys as `light`, applied to the dark theme             |
 
 ### Helm values
 
