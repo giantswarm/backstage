@@ -20,7 +20,10 @@ import {
   ConfigurationDocs,
   ConfigurationDocsOptions,
 } from './ConfigurationDocs';
-import { ConfigureWithAiButton } from './ConfigureWithAiButton';
+import {
+  ConfigureWithAiButton,
+  ConfigureWithAiButtonOptions,
+} from './ConfigureWithAiButton';
 import { ReactNode, useState } from 'react';
 
 const useStyles = makeStyles(theme => ({
@@ -115,7 +118,7 @@ type UiOptions =
       formWidth?: number;
       note?: string;
       configurationDocs?: ConfigurationDocsOptions;
-      configureWithAi?: boolean;
+      configureWithAi?: ConfigureWithAiButtonOptions;
     }
   | undefined;
 
@@ -131,7 +134,7 @@ export const StepLayout: LayoutTemplate = ({
     formWidth,
     note: noteTemplate = '',
     configurationDocs: configurationDocsOptions,
-    configureWithAi,
+    configureWithAi: configureWithAiOptions,
   } = uiOptions ?? {};
 
   const showExtraContent = Boolean(configurationDocsOptions);
@@ -150,9 +153,12 @@ export const StepLayout: LayoutTemplate = ({
           </Grid>
         ),
       )}
-      {configureWithAi ? (
+      {configureWithAiOptions ? (
         <Grid item xs={12}>
-          <ConfigureWithAiButton formData={allFormData} />
+          <ConfigureWithAiButton
+            configureWithAiOptions={configureWithAiOptions}
+            formContext={formContext}
+          />
         </Grid>
       ) : null}
     </Grid>
