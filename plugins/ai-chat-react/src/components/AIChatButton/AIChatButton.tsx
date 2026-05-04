@@ -16,23 +16,36 @@ import { AIChatIcon } from '../../assets/icons';
 import { aiChatApiRef, aiChatDrawerApiRef } from '../../api';
 import { rootRouteRef } from '../../routes';
 
-const useStyles = makeStyles(() => ({
-  button: {
-    textTransform: 'none',
-    paddingLeft: 11,
-    paddingRight: 11,
-  },
-  troubleshootButton: {
-    backgroundColor: '#9a2c28',
-    color: '#ffffff',
-    '&:hover': {
-      backgroundColor: '#7a2320',
+const useStyles = makeStyles(theme => {
+  const outlinedBorder =
+    theme.palette.type === 'light'
+      ? 'rgba(0, 0, 0, 0.23)'
+      : 'rgba(255, 255, 255, 0.23)';
+
+  return {
+    button: {
+      textTransform: 'none',
+      paddingLeft: 11,
+      paddingRight: 11,
     },
-  },
-  menuItem: {
-    minWidth: 200,
-  },
-}));
+    outlinedButton: {
+      border: `1px solid ${outlinedBorder}`,
+      '&:hover': {
+        border: `1px solid ${outlinedBorder}`,
+      },
+    },
+    troubleshootButton: {
+      backgroundColor: '#9a2c28',
+      color: '#ffffff',
+      '&:hover': {
+        backgroundColor: '#7a2320',
+      },
+    },
+    menuItem: {
+      minWidth: 200,
+    },
+  };
+});
 
 export type AIChatButtonItem = {
   label?: string;
@@ -50,6 +63,7 @@ type AIChatButtonProps = {
    * 'navigate' navigates to the AI chat page. Defaults to 'drawer' when the
    * drawer API is available, otherwise falls back to 'navigate'. */
   openMode?: AIChatButtonOpenMode;
+  variant?: 'text' | 'outlined' | 'contained';
 };
 
 type AIChatButtonInnerProps = AIChatButtonProps & {
@@ -63,6 +77,7 @@ const AIChatButtonInner = ({
   displayTooltip,
   troubleshoot,
   openMode,
+  variant,
 }: AIChatButtonInnerProps) => {
   const routeResolutionApi = useApi(routeResolutionApiRef);
   const chatPath = routeResolutionApi.resolve(rootRouteRef);
@@ -108,10 +123,12 @@ const AIChatButtonInner = ({
         <Button
           className={classNames(
             classes.button,
+            variant === 'outlined' && classes.outlinedButton,
             troubleshoot && classes.troubleshootButton,
           )}
           color="inherit"
           size="small"
+          variant={variant}
           startIcon={<AIChatIcon />}
           onClick={handleClick}
           aria-haspopup={items.length > 1 ? 'true' : undefined}
@@ -157,6 +174,7 @@ export const AIChatButton = ({
   label,
   troubleshoot,
   openMode,
+  variant,
 }: AIChatButtonProps) => {
   const apiHolder = useApiHolder();
   const aiChatApi = apiHolder.get(aiChatApiRef);
@@ -175,6 +193,7 @@ export const AIChatButton = ({
       label={label}
       troubleshoot={troubleshoot}
       openMode={openMode}
+      variant={variant}
       displayLabel={displayLabel}
       displayTooltip={displayTooltip}
     />

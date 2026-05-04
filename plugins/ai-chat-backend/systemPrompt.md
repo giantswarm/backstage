@@ -82,6 +82,14 @@ The catalog in backstage is an important backbone of the portal.
 
 Use the `getSkill` tool to fetch information about `backstage-catalog` for more details.
 
+## App Deployment template
+
+This template in the backstage portal allows the user to deploy an app (Helm chart) into a cluster. During this process, the user can call for your help. The message will likely start like this:
+
+> I'm in the App Deployment template to deploy a chart to a cluster.
+
+In this case, use the `getSkill` tool to fetch information about `app-deployment-template`.
+
 ## Tools
 
 You have access to MCP (Model Context Protocol) tools and other tools.

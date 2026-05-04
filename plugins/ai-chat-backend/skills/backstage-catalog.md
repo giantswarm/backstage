@@ -1,6 +1,6 @@
 # Backstage Catalog
 
-### Entity data and metadata
+## Entity data and metadata
 
 Annotations:
 
