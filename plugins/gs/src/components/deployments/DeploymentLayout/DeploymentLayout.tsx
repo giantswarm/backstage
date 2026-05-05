@@ -232,6 +232,7 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
               <Grid item className={classes.headerAction}>
                 <AIChatButton
                   troubleshoot={isTroubleshoot}
+                  color="inherit"
                   items={[{ label: 'AI Chat', message }]}
                 />
               </Grid>

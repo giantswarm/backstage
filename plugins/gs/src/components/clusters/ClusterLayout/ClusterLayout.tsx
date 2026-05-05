@@ -168,6 +168,7 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
               troubleshoot={
                 calculateClusterStatus(cluster) !== ClusterStatuses.Ready
               }
+              color="inherit"
               items={[
                 {
                   label: 'AI Chat',
