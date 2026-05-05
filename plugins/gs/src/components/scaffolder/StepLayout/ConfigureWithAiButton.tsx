@@ -61,8 +61,6 @@ export const ConfigureWithAiButton = ({
     `Version: ${chartTag}`,
     `Installation: ${installationName}`,
     `Cluster: ${clusterName}`,
-    '',
-    'Please separate non-confidential values from confidential values clearly.',
   ].join('\n');
 
   return (
