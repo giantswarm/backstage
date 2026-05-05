@@ -198,6 +198,15 @@ catalog:
 grafana:
   domain: https://example.com
 
+# PagerDuty plugin configuration
+# https://pagerduty.github.io/backstage-plugin-docs/
+pagerDuty:
+  # REST API token (read-only is sufficient for the entity card).
+  apiToken: ${PAGERDUTY_TOKEN}
+  # Giant Swarm uses the EU region (app.eu.pagerduty.com).
+  apiBaseUrl: https://api.eu.pagerduty.com
+  eventsBaseUrl: https://events.eu.pagerduty.com/v2
+
 # AI Chat plugin configuration
 aiChat:
   # Anthropic configuration

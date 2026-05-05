@@ -88,4 +88,7 @@ backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
+// pagerduty plugin
+backend.add(import('@pagerduty/backstage-plugin-backend'));
+
 backend.start();
