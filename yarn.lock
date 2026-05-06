@@ -24956,6 +24956,7 @@ __metadata:
     "@material-ui/icons": "npm:^4.9.1"
     "@pagerduty/backstage-plugin": "npm:^0.19.0"
     "@playwright/test": "npm:^1.32.3"
+    "@remixicon/react": "npm:^4.9.0"
     "@roadiehq/backstage-plugin-github-pull-requests": "npm:^3.0.0"
     "@sentry/react": "npm:^10.0.0"
     "@telemetrydeck/sdk": "npm:^2.0.4"

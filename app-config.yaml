@@ -17,6 +17,19 @@ app:
     - api:ai-chat/drawer
     - app-root-element:ai-chat/drawer
 
+    # PagerDuty plugin is disabled — only the api:pagerduty extension is left
+    # registered (via pagerDutyPlugin in App.tsx) so our custom WhoIsOnCallEntityCard
+    # can still use pagerDutyApiRef.
+    - entity-card:pagerduty/EntityPagerDutyCard: false
+    - entity-card:pagerduty/EntityPagerDutySmallCard: false
+    - nav-item:pagerduty/PagerDutyNavBarItem: false
+    - page:pagerduty: false
+
+    # Entity overview card order: app-deployment, then who-is-on-call, then about.
+    - entity-card:gs/app-deployment
+    - entity-card:catalog/who-is-on-call
+    - entity-card:catalog/about
+
     - entity-card:catalog/depends-on-components: false
     - entity-card:catalog/depends-on-resources: false
     - entity-card:catalog/has-subcomponents: false
