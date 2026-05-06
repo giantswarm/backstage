@@ -13,6 +13,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Render AI chat user messages as plain text with preserved whitespace so line breaks (shift+enter) display consistently instead of being collapsed by markdown rendering.
 
+See [./docs/releases/v0.128.0-changelog.md](./docs/releases/v0.128.0-changelog.md) for more information.
+
 ## [0.127.0] - 2026-05-04
 
 ### Added

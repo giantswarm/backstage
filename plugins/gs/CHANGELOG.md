@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.66.0
+
+### Minor Changes
+
+- 9cf3777: Add "Configure with AI" button to App Deployment template
+
+### Patch Changes
+
+- Updated dependencies [9cf3777]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.5.0
+  - @giantswarm/backstage-plugin-flux-react@0.13.3
+
 ## 0.65.1
 
 ### Patch Changes

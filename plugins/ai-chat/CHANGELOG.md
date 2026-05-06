@@ -1,5 +1,13 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.13.2
+
+### Patch Changes
+
+- 02b1923: AI chat: render user messages as plain text with preserved whitespace, so line breaks (shift+enter) appear consistently in the message bubble instead of being collapsed by markdown rendering.
+- Updated dependencies [9cf3777]
+  - @giantswarm/backstage-plugin-ai-chat-react@0.5.0
+
 ## 0.13.1
 
 ### Patch Changes

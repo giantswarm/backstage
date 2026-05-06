@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-react
 
+## 0.5.0
+
+### Minor Changes
+
+- 9cf3777: Add "Configure with AI" button to App Deployment template
+
 ## 0.4.3
 
 ### Patch Changes
