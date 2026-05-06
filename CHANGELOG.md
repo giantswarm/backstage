@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.128.0] - 2026-05-06
+
+### Added
+
+- Add "Configure with AI" button to App Deployment template.
+
+### Fixed
+
+- Render AI chat user messages as plain text with preserved whitespace so line breaks (shift+enter) display consistently instead of being collapsed by markdown rendering.
+
+See [./docs/releases/v0.128.0-changelog.md](./docs/releases/v0.128.0-changelog.md) for more information.
+
 ## [0.127.0] - 2026-05-04
 
 ### Added
@@ -2410,7 +2422,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.127.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.128.0...HEAD
+[0.128.0]: https://github.com/giantswarm/backstage/compare/v0.127.0...v0.128.0
 [0.127.0]: https://github.com/giantswarm/backstage/compare/v0.126.0...v0.127.0
 [0.126.0]: https://github.com/giantswarm/backstage/compare/v0.125.0...v0.126.0
 [0.125.0]: https://github.com/giantswarm/backstage/compare/v0.124.4...v0.125.0
