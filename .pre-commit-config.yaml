@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/e7d0bc971fcd7c2c857099ffb66585b1e2ba977f/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#    https://github.com/giantswarm/devctl/blob/f8c9dbe49225b5327dc3e27f7db99439cb658ea3/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 repos:
@@ -21,7 +21,7 @@ repos:
 
   # Helm chart hooks for backstage
   - repo: https://github.com/losisin/helm-values-schema-json
-    rev: v2.3.1
+    rev: v2.4.0
     hooks:
       - id: helm-schema
         args:
