@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add "Configure with AI" button to App Deployment template.
+
+### Fixed
+
+- Render AI chat user messages as plain text with preserved whitespace so line breaks (shift+enter) display consistently instead of being collapsed by markdown rendering.
+
 ## [0.127.0] - 2026-05-04
 
 ### Added
