@@ -207,6 +207,12 @@ catalog:
         - System
         - User
         - Template
+  # processors:
+  #   pagerDutyAnnotations:
+  #     # Auto-annotates Group/User/Component entities with pagerduty.com/service-id
+  #     # and pagerduty.com/user-id by querying the PagerDuty REST API. Requires
+  #     # pagerDuty.apiToken to be set; otherwise the processor stays inactive.
+  #     enabled: true
 
 grafana:
   domain: https://example.com
