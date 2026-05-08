@@ -94,9 +94,22 @@ jobs:
           name: Install dependencies
           command: yarn install --immutable
 
+      - restore_cache:
+          name: Restore TypeScript incremental build info
+          keys:
+            - v1-tsbuildinfo-{{ .Branch }}-{{ .Revision }}
+            - v1-tsbuildinfo-{{ .Branch }}-
+            - v1-tsbuildinfo-
+
       - run:
           name: Typecheck code using the TypeScript compiler
           command: NODE_OPTIONS="--max-old-space-size=6144" yarn run tsc --noEmit
+
+      - save_cache:
+          name: Save TypeScript incremental build info
+          key: v1-tsbuildinfo-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - dist-types/tsconfig.tsbuildinfo
 
       - run:
           name: Lint code using ESlint
