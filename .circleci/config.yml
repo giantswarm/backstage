@@ -90,9 +90,26 @@ jobs:
             node --version
             yarn --version
 
+      - restore_cache:
+          name: Restore node_modules
+          keys:
+            - v1-node-modules-{{ checksum "yarn.lock" }}
+
       - run:
           name: Install dependencies
-          command: yarn install --immutable
+          command: |
+            if [ -f .yarn/install-state.gz ]; then
+              echo "node_modules cache hit — skipping yarn install"
+            else
+              yarn install --immutable
+            fi
+
+      - save_cache:
+          name: Save node_modules
+          key: v1-node-modules-{{ checksum "yarn.lock" }}
+          paths:
+            - node_modules
+            - .yarn/install-state.gz
 
       - restore_cache:
           name: Restore TypeScript incremental build info
