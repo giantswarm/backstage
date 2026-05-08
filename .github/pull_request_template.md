@@ -4,15 +4,19 @@
 
 ### What is the effect of this change to users?
 
+(Remove this section if no end-user facing change)
+
 ### How does it look like?
 
-(Please add anything that represents the change visually. Screenshots, output, logs, ...)
+(Please add anything that represents the change visually. Screenshots, output, logs, ... Remove if not applicable.)
 
 ### Any background context you can provide?
 
-(Please link issues or summarize.)
+(Please link issues or summarize. Remove if not applicable.)
 
 ### Do the docs need to be updated?
+
+(Yes/No is sufficient. If Yes, please do this in the same PR if possible.)
 
 ### Should this change be mentioned in the release notes?
 
