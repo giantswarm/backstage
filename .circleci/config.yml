@@ -76,6 +76,7 @@ workflows:
 jobs:
   buildjob:
     executor: architect/architect
+    resource_class: large
     working_directory: ~/backstage
     docker:
       - image: cimg/node:24.15.0
@@ -95,7 +96,7 @@ jobs:
 
       - run:
           name: Typecheck code using the TypeScript compiler
-          command: NODE_OPTIONS="--max-old-space-size=4096" yarn run tsc
+          command: NODE_OPTIONS="--max-old-space-size=6144" yarn run tsc --noEmit
 
       - run:
           name: Lint code using ESlint
