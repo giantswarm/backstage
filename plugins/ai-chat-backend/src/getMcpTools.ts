@@ -6,7 +6,7 @@ import {
   MCPClient,
 } from '@ai-sdk/mcp';
 import { AuthTokens } from './utils';
-import { McpClientCache } from './McpClientCache';
+import { isClosedClientError, McpClientCache } from './McpClientCache';
 import { createSessionAwareTransport } from './createSessionAwareTransport';
 
 interface McpServerConfig {
@@ -159,7 +159,52 @@ function sanitizeToolName(name: string): string {
     .substring(0, 128);
 }
 
-function collectTools(mcpClientTools: ToolSet, installation?: string): ToolSet {
+// Wrap a Tool's `execute` so a "closed client" error from the
+// underlying MCP transport eagerly marks the cache entry dead. This
+// turns a multi-turn retry loop ("I'm getting 'closed client' errors
+// from the Kubernetes MCP server, let me try once more...") into at
+// most one stale call followed by a clean reconnect on the next chat
+// request, while still surfacing the failure to the LLM for the
+// current turn so it can react.
+function wrapToolWithClosedClientDetection(
+  tool: Tool,
+  onClosedClientError: () => void,
+  logger: LoggerService,
+  serverName: string,
+  toolName: string,
+): Tool {
+  const original = (tool as { execute?: Function }).execute;
+  if (typeof original !== 'function') return tool;
+
+  return {
+    ...tool,
+    execute: async (...args: unknown[]) => {
+      try {
+        return await (original as Function).apply(tool, args);
+      } catch (err) {
+        if (isClosedClientError(err)) {
+          logger.warn(
+            `MCP tool '${toolName}' on server '${serverName}' returned a closed-client error; marking cache entry dead so the next request reconnects.`,
+          );
+          try {
+            onClosedClientError();
+          } catch {
+            // Don't let bookkeeping mask the real tool error.
+          }
+        }
+        throw err;
+      }
+    },
+  } as Tool;
+}
+
+function collectTools(
+  mcpClientTools: ToolSet,
+  installation: string | undefined,
+  serverName: string,
+  logger: LoggerService,
+  onClosedClientError: () => void,
+): ToolSet {
   const tools: ToolSet = {};
   Object.entries(mcpClientTools).forEach(([toolName, tool]) => {
     const toolInstance = tool as Tool;
@@ -167,9 +212,22 @@ function collectTools(mcpClientTools: ToolSet, installation?: string): ToolSet {
     if (installation) {
       toolInstance.description = `${toolInstance.description} (for installation: ${installation})`;
       const prefixedToolName = sanitizeToolName(`${installation}_${toolName}`);
-      tools[prefixedToolName] = toolInstance;
+      tools[prefixedToolName] = wrapToolWithClosedClientDetection(
+        toolInstance,
+        onClosedClientError,
+        logger,
+        serverName,
+        prefixedToolName,
+      );
     } else {
-      tools[sanitizeToolName(toolName)] = toolInstance;
+      const safeName = sanitizeToolName(toolName);
+      tools[safeName] = wrapToolWithClosedClientDetection(
+        toolInstance,
+        onClosedClientError,
+        logger,
+        serverName,
+        safeName,
+      );
     }
   });
   return tools;
@@ -179,11 +237,18 @@ async function getTools(
   mcpClient: MCPClient,
   serverName: string,
   logger: LoggerService,
+  onClosedClientError: () => void,
   installation?: string,
 ): Promise<ToolSet> {
   try {
     const mcpClientTools = (await mcpClient.tools()) as ToolSet;
-    const tools = collectTools(mcpClientTools, installation);
+    const tools = collectTools(
+      mcpClientTools,
+      installation,
+      serverName,
+      logger,
+      onClosedClientError,
+    );
     logger.debug(`Successfully loaded tools from MCP server: ${serverName}`);
     return tools;
   } catch (toolError) {
@@ -251,6 +316,7 @@ export async function getMcpTools(
         mcpClient,
         serverName,
         logger,
+        () => clientCache.markDead(cacheKey),
         server.installation,
       );
       Object.assign(tools, serverTools);
