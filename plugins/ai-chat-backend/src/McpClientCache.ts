@@ -27,8 +27,7 @@ const CLOSED_CLIENT_ERROR_FRAGMENT =
 
 export function isClosedClientError(error: unknown): boolean {
   if (!error) return false;
-  const message =
-    error instanceof Error ? error.message : String(error ?? '');
+  const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes(CLOSED_CLIENT_ERROR_FRAGMENT);
 }
 
@@ -95,9 +94,11 @@ export class McpClientCache {
           // the only practical way to detect closure without polling.
           // Cast through `unknown` to avoid lint complaints; runtime
           // shape is stable across the @ai-sdk/mcp 1.x line.
-          const transport = (client as unknown as {
-            transport?: { onclose?: (...args: unknown[]) => void };
-          }).transport;
+          const transport = (
+            client as unknown as {
+              transport?: { onclose?: (...args: unknown[]) => void };
+            }
+          ).transport;
           if (transport) {
             const previous = transport.onclose;
             transport.onclose = (...args: unknown[]) => {
