@@ -8,7 +8,7 @@ metadata:
     app: {{ .Values.name }}
     {{- include "labels.backstage" $ | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicas | default 1 }}
   {{- with .Values.strategy }}
   strategy:
     {{- toYaml . | nindent 4 }}
@@ -188,18 +188,12 @@ spec:
             capabilities:
               drop:
                 - ALL
+          {{- $defaultReadiness := dict "httpGet" (dict "path" "/.backstage/health/v1/readiness" "port" .Values.port) "initialDelaySeconds" 5 "periodSeconds" 10 }}
+          {{- $defaultLiveness := dict "httpGet" (dict "path" "/.backstage/health/v1/liveness" "port" .Values.port) "initialDelaySeconds" 10 "periodSeconds" 15 }}
           readinessProbe:
-            httpGet:
-              path: /.backstage/health/v1/readiness
-              port: {{ .Values.port }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            {{- toYaml (mergeOverwrite $defaultReadiness (.Values.readinessProbe | default dict)) | nindent 12 }}
           livenessProbe:
-            httpGet:
-              path: /.backstage/health/v1/liveness
-              port: {{ .Values.port }}
-            initialDelaySeconds: 10
-            periodSeconds: 15
+            {{- toYaml (mergeOverwrite $defaultLiveness (.Values.livenessProbe | default dict)) | nindent 12 }}
       volumes:
         {{- if .Values.githubAppCredentials }}
         - name: github-app-credentials

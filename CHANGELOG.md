@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Make `replicas`, `livenessProbe`, and `readinessProbe` configurable in the Helm chart. Defaults are unchanged. Allows operators to scale to multiple replicas (when backed by an RWX volume or external Postgres) and to relax probe timings on plugin-heavy installs whose cold-start exceeds the default 10s liveness delay.
+
 ## [0.128.0] - 2026-05-06
 
 ### Added

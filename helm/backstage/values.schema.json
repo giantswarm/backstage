@@ -372,6 +372,12 @@
             },
             "additionalProperties": false
         },
+        "livenessProbe": {
+            "description": "Override the liveness probe applied to the Backstage container. Fields specified here override the chart defaults (`/.backstage/health/v1/liveness`, `initialDelaySeconds: 10`, `periodSeconds: 15`). Bump `initialDelaySeconds` and `failureThreshold` for plugin-heavy installs whose cold-start exceeds 30-60s and would otherwise be killed mid-init.",
+            "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.Probe",
+            "type": "object",
+            "additionalProperties": true
+        },
         "name": {
             "description": "Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.)",
             "type": "string"
@@ -437,6 +443,12 @@
             "maximum": 65535,
             "minimum": 1
         },
+        "readinessProbe": {
+            "description": "Override the readiness probe applied to the Backstage container. Fields specified here override the chart defaults (`/.backstage/health/v1/readiness`, `initialDelaySeconds: 5`, `periodSeconds: 10`). Useful for slow cold-starts where the default 5s delay races plugin initialisation.",
+            "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.Probe",
+            "type": "object",
+            "additionalProperties": true
+        },
         "registry": {
             "description": "Container image registry settings",
             "type": "object",
@@ -447,6 +459,11 @@
                 }
             },
             "additionalProperties": false
+        },
+        "replicas": {
+            "description": "Number of Backstage pod replicas. Defaults to 1, which is the only safe value when the deployment is backed by a ReadWriteOnce PVC (file-backed SQLite). Multi-replica deployments require either an external Postgres database (set `database.engine: postgresql`) or a ReadWriteMany volume.",
+            "type": "integer",
+            "minimum": 1
         },
         "resources": {
             "description": "Resource requests, limits, and autoscaler settings for the Backstage container",
