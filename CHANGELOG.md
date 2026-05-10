@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.129.0] - 2026-05-10
+
+### Added
+
+- Make AI chat sampling parameters configurable per installation. The plugin previously called `streamText()` without `temperature`, `topP`, `topK`, `seed`, `minP`, or `maxOutputTokens`, so the server's defaults applied -- which for vLLM means `temperature=1.0, top_p=1.0, top_k=-1, seed=null`. That is far too loose for a tool-using agent backed by a reasoning model and was the dominant cause of token-cost variance in production agent loops (same prompt, fresh chat, observed total-token spread of 22k / 607k / 22k across three runs against the same Qwen3 endpoint). Config now accepts an `aiChat.sampling` block with `temperature`, `topP`, `topK`, `minP`, `seed`, and `maxOutputTokens`; all fields are optional and default behaviour with no `sampling:` block is unchanged. `temperature`, `topP`, `topK`, `seed`, and `maxOutputTokens` are forwarded through the AI SDK to every provider that supports them. `minP` is spliced into the request body via the OpenAI-compatible provider's `transformRequestBody` hook, since vLLM accepts it as a top-level field but it is not part of the AI SDK call settings. The `ai-chat-backend` README documents recommended values per model family (Qwen3 thinking/non-thinking, Qwen3-Coder, GPT-4 / GPT-4o, Anthropic Claude).
+
+See [./docs/releases/v0.129.0-changelog.md](./docs/releases/v0.129.0-changelog.md) for more information.
+
 ## [0.128.1] - 2026-05-09
 
 ### Fixed
@@ -2431,7 +2439,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.128.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.129.0...HEAD
+[0.129.0]: https://github.com/giantswarm/backstage/compare/v0.128.1...v0.129.0
 [0.128.1]: https://github.com/giantswarm/backstage/compare/v0.128.0...v0.128.1
 [0.128.0]: https://github.com/giantswarm/backstage/compare/v0.127.0...v0.128.0
 [0.127.0]: https://github.com/giantswarm/backstage/compare/v0.126.0...v0.127.0
