@@ -178,14 +178,30 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     };
   }, [identityApi, getMCPAuthHeaders, verboseDebugging]);
 
+  // The transport must be stable across renders. `useChatRuntime` keeps an
+  // internal AbortController per in-flight stream and tears it down when the
+  // transport identity changes; constructing a new transport on every render
+  // (even with logically identical config) was observed to cancel
+  // mid-stream chat fetches with a `TypeError: network error` (Envoy logs
+  // `response_flags: DC` against the Backstage upstream while
+  // `sawFinish=false` and the model was actively emitting
+  // `reasoning-delta` / `tool-input-delta` events). Memoising on the
+  // resolved api URL and the stable `getHeaders` / `debugFetch` callbacks
+  // keeps a single transport for the lifetime of the component.
+  const transport = useMemo(
+    () =>
+      new AssistantChatTransport({
+        api: apiUrl,
+        headers: getHeaders,
+        fetch: debugFetch,
+      }),
+    [apiUrl, getHeaders, debugFetch],
+  );
+
   const runtime = useChatRuntime({
     messages: options?.initialMessages,
     sendAutomaticallyWhen: shouldSendAutomatically,
-    transport: new AssistantChatTransport({
-      api: apiUrl,
-      headers: getHeaders,
-      fetch: debugFetch,
-    }),
+    transport,
   });
 
   return {

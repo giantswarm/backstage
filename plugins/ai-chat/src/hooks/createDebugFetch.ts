@@ -55,6 +55,38 @@ export function createDebugFetch(
     const method = (init?.method ?? 'GET').toUpperCase();
     const startedAt = performance.now();
     const conversationId = safeCall(getConversationId);
+    // Tracks whether the caller's AbortSignal fired during this fetch's
+    // lifetime, and what reason was attached. The AI SDK runtime
+    // typically wires its own AbortController.signal here; observing it
+    // tells us whether a stream that ended in `TypeError: network error`
+    // was canceled by the runtime (deliberate abort with a reason -- e.g.
+    // unmount, transport-rebuild, manual stop) or by a real network /
+    // proxy-side disconnect (signal never aborted).
+    const abortObservation: AbortObservation = {
+      aborted: init?.signal?.aborted === true,
+      reason: undefined,
+      atMs: undefined,
+    };
+    const abortListener = () => {
+      abortObservation.aborted = true;
+      abortObservation.reason = init?.signal?.reason;
+      abortObservation.atMs = performance.now() - startedAt;
+      try {
+        const reasonStr = formatAbortReason(init?.signal?.reason);
+        console.warn(
+          '%c[AI Chat]%c %s ABORT signaled by client at %sms%s -- reason: %s',
+          PREFIX_STYLE,
+          RESET_STYLE,
+          requestId,
+          abortObservation.atMs.toFixed(0),
+          conversationId ? ` (conv ${conversationId})` : '',
+          reasonStr,
+        );
+      } catch {
+        // Ignore logging errors
+      }
+    };
+    init?.signal?.addEventListener('abort', abortListener, { once: true });
 
     logRequestStart({ requestId, url, method, conversationId });
 
@@ -96,6 +128,7 @@ export function createDebugFetch(
         conversationId,
         response: cloned,
         verbose,
+        abortObservation,
       });
     } catch {
       // Cloning a streaming Response can fail in rare browser edge cases;
@@ -104,6 +137,25 @@ export function createDebugFetch(
 
     return response;
   };
+}
+
+interface AbortObservation {
+  aborted: boolean;
+  reason: unknown;
+  atMs: number | undefined;
+}
+
+function formatAbortReason(reason: unknown): string {
+  if (reason === undefined || reason === null) return 'no reason';
+  if (reason instanceof Error) {
+    return `${reason.name}: ${reason.message}`;
+  }
+  if (typeof reason === 'string') return reason;
+  try {
+    return JSON.stringify(reason);
+  } catch {
+    return String(reason);
+  }
 }
 
 function safeCall<T>(fn: (() => T) | undefined): T | undefined {
@@ -333,6 +385,7 @@ async function instrumentSSEStream(args: {
   conversationId: string | undefined;
   response: Response;
   verbose: boolean;
+  abortObservation: AbortObservation;
 }): Promise<void> {
   const body = args.response.body;
   if (!body) return;
@@ -399,6 +452,7 @@ async function instrumentSSEStream(args: {
     counters,
     totalDurationMs: totalDuration,
     readError,
+    abortObservation: args.abortObservation,
   });
 }
 
@@ -442,10 +496,14 @@ function reportStreamOutcome(args: {
   counters: StreamCounters;
   totalDurationMs: number;
   readError: unknown;
+  abortObservation: AbortObservation;
 }) {
   const { counters } = args;
   const duration = (args.totalDurationMs / 1000).toFixed(1);
   const conv = args.conversationId ? ` (conv ${args.conversationId})` : '';
+  const abortNote = args.abortObservation.aborted
+    ? ` [client-aborted at ${args.abortObservation.atMs?.toFixed(0) ?? '?'}ms reason="${formatAbortReason(args.abortObservation.reason)}"]`
+    : '';
 
   // Render the structured summary inline as a single JSON-shaped string so
   // it survives consumers that flatten the args[] array (Cursor's IDE
@@ -480,12 +538,34 @@ function reportStreamOutcome(args: {
       // has finished consuming. Log informationally so it isn't
       // mistaken for a real network failure.
       console.warn(
-        '%c[AI Chat]%c %s SSE stream torn down AFTER `finish` (post-completion teardown, message already committed) in %ss%s -- %s: %s %s',
+        '%c[AI Chat]%c %s SSE stream torn down AFTER `finish` (post-completion teardown, message already committed) in %ss%s%s -- %s: %s %s',
         PREFIX_STYLE,
         RESET_STYLE,
         args.requestId,
         duration,
         conv,
+        abortNote,
+        errName,
+        errMsg,
+        summaryStr,
+      );
+      return;
+    }
+
+    if (args.abortObservation.aborted) {
+      // The caller's AbortSignal fired before/while the stream was being
+      // read. That's a deliberate client-side cancel (transport rebuild,
+      // component unmount, manual stop, or a useChatRuntime that sees a
+      // dependency change). Distinguish from a real network outage so
+      // the banner can be classified correctly.
+      console.warn(
+        '%c[AI Chat]%c %s SSE stream cancelled by client AbortSignal after %ss%s%s -- %s: %s %s',
+        PREFIX_STYLE,
+        RESET_STYLE,
+        args.requestId,
+        duration,
+        conv,
+        abortNote,
         errName,
         errMsg,
         summaryStr,
@@ -494,12 +574,13 @@ function reportStreamOutcome(args: {
     }
 
     console.error(
-      '%c[AI Chat]%c %s SSE STREAM READ FAILED after %ss%s -- %s: %s %s',
+      '%c[AI Chat]%c %s SSE STREAM READ FAILED after %ss%s%s -- %s: %s %s',
       PREFIX_STYLE,
       RESET_STYLE,
       args.requestId,
       duration,
       conv,
+      abortNote,
       errName,
       errMsg,
       summaryStr,
