@@ -452,22 +452,20 @@ function reportStreamOutcome(args: {
   // browser, log shippers that .join() the args, ...). Passing an object
   // as a trailing `console.error` argument renders nicely in Chrome
   // devtools but collapses to "[object Object]" everywhere else.
-  const summaryStr =
-    `summary={` +
-    [
-      `bytes=${counters.totalBytes}`,
-      `events=${counters.totalEvents}`,
-      `textDeltaChars=${counters.textDeltaChars}`,
-      `reasoningDeltas=${counters.reasoningDeltas}`,
-      `steps=${counters.steps}`,
-      `toolCalls=[${counters.toolCalls.join(', ')}]`,
-      `sawFinish=${counters.sawFinish}`,
-      `finishReason=${counters.lastFinishReason ?? 'n/a'}`,
-      `firstByteMs=${counters.firstByteAtMs?.toFixed(0) ?? 'n/a'}`,
-      `lastEventMs=${counters.lastEventAtMs?.toFixed(0) ?? 'n/a'}`,
-      `lastEventType=${counters.lastEventType ?? 'none'}`,
-    ].join(' ') +
-    `}`;
+  const summaryFields = [
+    `bytes=${counters.totalBytes}`,
+    `events=${counters.totalEvents}`,
+    `textDeltaChars=${counters.textDeltaChars}`,
+    `reasoningDeltas=${counters.reasoningDeltas}`,
+    `steps=${counters.steps}`,
+    `toolCalls=[${counters.toolCalls.join(', ')}]`,
+    `sawFinish=${counters.sawFinish}`,
+    `finishReason=${counters.lastFinishReason ?? 'n/a'}`,
+    `firstByteMs=${counters.firstByteAtMs?.toFixed(0) ?? 'n/a'}`,
+    `lastEventMs=${counters.lastEventAtMs?.toFixed(0) ?? 'n/a'}`,
+    `lastEventType=${counters.lastEventType ?? 'none'}`,
+  ].join(' ');
+  const summaryStr = `summary={${summaryFields}}`;
 
   if (args.readError) {
     const e = args.readError as { name?: string; message?: string };
