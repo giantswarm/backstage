@@ -82,6 +82,61 @@ export interface Config {
     maxSteps?: number;
 
     /**
+     * Sampling parameters passed through to the underlying provider via
+     * the Vercel AI SDK's `streamText` call. All fields are optional; when
+     * unset, the provider/server defaults apply (e.g. vLLM defaults to
+     * `temperature=1.0, top_p=1.0, top_k=-1, seed=null`, which is far too
+     * loose for tool-using agents and the dominant cause of token-cost
+     * variance in production agent loops).
+     *
+     * Recommended values are model-specific -- see the model card for the
+     * model `aiChat.model` points at. The README has a "Sampling" section
+     * with recipes for common model families (Qwen3 thinking-mode, Qwen3
+     * non-thinking, GPT-4 / GPT-4o, Anthropic Claude).
+     */
+    sampling?: {
+      /**
+       * `0.0` = greedy decoding, `> 0` = sample. Provider/server default
+       * applies if unset. NOTE: Do not use greedy (`0`) for thinking-mode
+       * models like Qwen3 -- the Qwen team explicitly warns it leads to
+       * performance degradation and endless repetitions.
+       * @visibility backend
+       */
+      temperature?: number;
+      /**
+       * Nucleus sampling cutoff in `(0, 1]`.
+       * @visibility backend
+       */
+      topP?: number;
+      /**
+       * Top-K sampling cutoff. Not supported by all providers; the AI SDK
+       * routes it through provider options where applicable.
+       * @visibility backend
+       */
+      topK?: number;
+      /**
+       * Min-P sampling cutoff in `[0, 1)`. Not supported by all providers;
+       * the AI SDK routes it through provider options where applicable.
+       * @visibility backend
+       */
+      minP?: number;
+      /**
+       * Fixed seed. Combined with `temperature: 0`, makes single-turn
+       * responses bit-identical across runs. Recommended ONLY for
+       * evaluation / regression-test deployments; omit in production so
+       * users don't see the same deterministic answer to ambiguous
+       * questions.
+       * @visibility backend
+       */
+      seed?: number;
+      /**
+       * Optional maximum number of output tokens per step.
+       * @visibility backend
+       */
+      maxOutputTokens?: number;
+    };
+
+    /**
      * Sources of expert-knowledge skills exposed to the model via the
      * `listSkills` and `getSkill` tools. The plugin ships a default set
      * of bundled skills; deployments can opt out and/or extend them with
