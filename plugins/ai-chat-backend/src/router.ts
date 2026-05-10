@@ -101,6 +101,48 @@ export async function createRouter(
   // first tool call, before the model ever sees the tool result.
   const maxSteps = config.getOptionalNumber('aiChat.maxSteps') ?? 20;
 
+  // Sampling parameters passed through to streamText. All optional; when
+  // unset the SDK / provider defaults apply (vLLM defaults to
+  // temperature=1.0 which is the dominant cause of token-cost variance
+  // in tool-using agent loops). Recommended values are model-specific --
+  // see the README for recipes.
+  //
+  // `temperature`, `topP`, `topK`, `seed`, `maxOutputTokens` are top-level
+  // CallSettings on `streamText` and are forwarded to every provider that
+  // supports them. `minP` is not part of the SDK CallSettings; for
+  // OpenAI-compatible servers (notably vLLM) we splice it into the request
+  // body via the provider's `transformRequestBody` hook below.
+  const samplingConfig = config.getOptionalConfig('aiChat.sampling');
+  const samplingParams: {
+    temperature?: number;
+    topP?: number;
+    topK?: number;
+    seed?: number;
+    maxOutputTokens?: number;
+  } = {};
+  let samplingMinP: number | undefined;
+  if (samplingConfig) {
+    const temperature = samplingConfig.getOptionalNumber('temperature');
+    if (temperature !== undefined) samplingParams.temperature = temperature;
+    const topP = samplingConfig.getOptionalNumber('topP');
+    if (topP !== undefined) samplingParams.topP = topP;
+    const topK = samplingConfig.getOptionalNumber('topK');
+    if (topK !== undefined) samplingParams.topK = topK;
+    const seed = samplingConfig.getOptionalNumber('seed');
+    if (seed !== undefined) samplingParams.seed = seed;
+    const maxOutputTokens = samplingConfig.getOptionalNumber('maxOutputTokens');
+    if (maxOutputTokens !== undefined)
+      samplingParams.maxOutputTokens = maxOutputTokens;
+    samplingMinP = samplingConfig.getOptionalNumber('minP');
+    const all = {
+      ...samplingParams,
+      ...(samplingMinP !== undefined ? { minP: samplingMinP } : {}),
+    };
+    if (Object.keys(all).length > 0) {
+      logger.info('AI chat sampling parameters configured', all);
+    }
+  }
+
   // Continuous tool-result pruning. After every turn, older tool outputs
   // beyond a recent budget are replaced with a placeholder so the model
   // doesn't carry their full payload forever. Mirrors OpenCode's prune.
@@ -184,6 +226,15 @@ export async function createRouter(
     // Without this, vLLM emits no usage chunk and `getContextUsage` has
     // no data to show.
     includeUsage: true,
+    // `min_p` is not part of the AI SDK CallSettings, but vLLM accepts it
+    // as a top-level field on `/v1/chat/completions`. When configured
+    // under `aiChat.sampling.minP`, splice it into the outgoing request
+    // body. Recommended for Qwen3 thinking-mode (Qwen team's recipe is
+    // `temperature=0.6, topP=0.95, topK=20, minP=0`).
+    transformRequestBody:
+      samplingMinP !== undefined
+        ? args => ({ ...args, min_p: samplingMinP })
+        : undefined,
   });
 
   const anthropic = createAnthropic({
@@ -433,6 +484,7 @@ export async function createRouter(
         abortSignal: req.socket ? undefined : undefined,
         stopWhen: stepCountIs(maxSteps),
         tools: allTools as ToolSet,
+        ...samplingParams,
         providerOptions: isAnthropicModel
           ? {
               anthropic: {
