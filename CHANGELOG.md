@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.129.1] - 2026-05-10
 
+### Fixed
+
+- AI chat: always log network-level diagnostics (request URL, response status / headers, fetch errors, SSE stream lifecycle including premature termination) to the browser console so a "Network error" banner can be triaged from a user report without requiring the `ai-chat-verbose-debugging` feature flag. Verbose payload-level logging (messages, system prompt, tool schemas, per-event SSE detail) remains gated on the feature flag in non-production builds.
+
 See [./docs/releases/v0.129.1-changelog.md](./docs/releases/v0.129.1-changelog.md) for more information.
 
 ## [0.129.0] - 2026-05-10
