@@ -91,14 +91,26 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     }
   }, [isNewConversation, featureFlagsApi]);
 
-  // Verbose debugging is only enabled in non-production builds to avoid
-  // leaking backend internals (system prompt, tool schemas) to end users
-  // who toggle the feature flag in production.
+  // Verbose debugging adds payload-level inspection (request body, system
+  // prompt, tool schemas, per-event SSE log). It must stay gated on
+  // non-production builds because those payloads include the system prompt
+  // and tool descriptions; even with the feature flag toggled they should
+  // not leak to end users on a production deployment.
   const verboseDebugging =
     process.env.NODE_ENV !== 'production' &&
     featureFlagsApi.isActive('ai-chat-verbose-debugging');
+  // The lightweight network-diagnostic tier is always installed: it logs
+  // request URLs, response status / headers, fetch errors and SSE stream
+  // termination details (clean finish vs. premature close vs. error event)
+  // to the browser console. None of this exposes message content or backend
+  // internals -- it is the minimum needed to triage a "Network error"
+  // banner from a user report.
   const debugFetch = useMemo(
-    () => (verboseDebugging ? createDebugFetch() : undefined),
+    () =>
+      createDebugFetch({
+        verbose: verboseDebugging,
+        getConversationId: () => conversationIdRef.current,
+      }),
     [verboseDebugging],
   );
 
