@@ -447,71 +447,104 @@ function reportStreamOutcome(args: {
   const duration = (args.totalDurationMs / 1000).toFixed(1);
   const conv = args.conversationId ? ` (conv ${args.conversationId})` : '';
 
-  const summary = {
-    bytes: counters.totalBytes,
-    events: counters.totalEvents,
-    textDeltaChars: counters.textDeltaChars,
-    toolCalls: counters.toolCalls,
-    reasoningDeltas: counters.reasoningDeltas,
-    steps: counters.steps,
-    finishReason: counters.lastFinishReason,
-    firstByteMs: counters.firstByteAtMs?.toFixed(0),
-    lastEventMs: counters.lastEventAtMs?.toFixed(0),
-    lastEventType: counters.lastEventType,
-  };
+  // Render the structured summary inline as a single JSON-shaped string so
+  // it survives consumers that flatten the args[] array (Cursor's IDE
+  // browser, log shippers that .join() the args, ...). Passing an object
+  // as a trailing `console.error` argument renders nicely in Chrome
+  // devtools but collapses to "[object Object]" everywhere else.
+  const summaryStr =
+    `summary={` +
+    [
+      `bytes=${counters.totalBytes}`,
+      `events=${counters.totalEvents}`,
+      `textDeltaChars=${counters.textDeltaChars}`,
+      `reasoningDeltas=${counters.reasoningDeltas}`,
+      `steps=${counters.steps}`,
+      `toolCalls=[${counters.toolCalls.join(', ')}]`,
+      `sawFinish=${counters.sawFinish}`,
+      `finishReason=${counters.lastFinishReason ?? 'n/a'}`,
+      `firstByteMs=${counters.firstByteAtMs?.toFixed(0) ?? 'n/a'}`,
+      `lastEventMs=${counters.lastEventAtMs?.toFixed(0) ?? 'n/a'}`,
+      `lastEventType=${counters.lastEventType ?? 'none'}`,
+    ].join(' ') +
+    `}`;
 
   if (args.readError) {
     const e = args.readError as { name?: string; message?: string };
+    const errName = e?.name ?? typeof args.readError;
+    const errMsg = e?.message ?? String(args.readError);
+
+    if (counters.sawFinish) {
+      // The stream emitted a `finish` event before the read errored, so
+      // the assistant message was committed successfully. The teardown
+      // error is then a post-completion artifact -- typically the AI
+      // SDK aborting the underlying fetch to release the body once it
+      // has finished consuming. Log informationally so it isn't
+      // mistaken for a real network failure.
+      console.warn(
+        '%c[AI Chat]%c %s SSE stream torn down AFTER `finish` (post-completion teardown, message already committed) in %ss%s -- %s: %s %s',
+        PREFIX_STYLE,
+        RESET_STYLE,
+        args.requestId,
+        duration,
+        conv,
+        errName,
+        errMsg,
+        summaryStr,
+      );
+      return;
+    }
+
     console.error(
-      '%c[AI Chat]%c %s SSE STREAM READ FAILED after %ss%s -- %s: %s',
+      '%c[AI Chat]%c %s SSE STREAM READ FAILED after %ss%s -- %s: %s %s',
       PREFIX_STYLE,
       RESET_STYLE,
       args.requestId,
       duration,
       conv,
-      e?.name ?? typeof args.readError,
-      e?.message ?? String(args.readError),
-      summary,
+      errName,
+      errMsg,
+      summaryStr,
     );
     return;
   }
 
   if (counters.sawErrorEvent) {
     console.error(
-      '%c[AI Chat]%c %s SSE stream contained an `error` event after %ss%s',
+      '%c[AI Chat]%c %s SSE stream contained an `error` event after %ss%s %s',
       PREFIX_STYLE,
       RESET_STYLE,
       args.requestId,
       duration,
       conv,
-      summary,
+      summaryStr,
     );
     return;
   }
 
   if (!counters.sawFinish && counters.totalEvents > 0) {
     console.warn(
-      '%c[AI Chat]%c %s SSE stream ended WITHOUT a `finish` event after %ss%s -- last event was `%s` -- this is the typical fingerprint of a proxy / gateway stream timeout or upstream disconnect',
+      '%c[AI Chat]%c %s SSE stream ended WITHOUT a `finish` event after %ss%s -- last event was `%s` -- this is the typical fingerprint of a proxy / gateway stream timeout or upstream disconnect %s',
       PREFIX_STYLE,
       RESET_STYLE,
       args.requestId,
       duration,
       conv,
       counters.lastEventType ?? 'none',
-      summary,
+      summaryStr,
     );
     return;
   }
 
   if (counters.totalEvents === 0) {
     console.warn(
-      '%c[AI Chat]%c %s SSE stream produced no events after %ss%s -- response body closed without any data',
+      '%c[AI Chat]%c %s SSE stream produced no events after %ss%s -- response body closed without any data %s',
       PREFIX_STYLE,
       RESET_STYLE,
       args.requestId,
       duration,
       conv,
-      summary,
+      summaryStr,
     );
     return;
   }

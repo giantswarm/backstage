@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.129.2] - 2026-05-10
+
+### Fixed
+
+- AI chat instrumentation: render the SSE stream summary inline in the log message (`bytes=... events=... sawFinish=... lastEventType=...`) instead of attaching it as a trailing object argument, so it stays readable in browser-console consumers that flatten the args array (devtools-snapshotters, log shippers, the Cursor IDE browser, etc.) rather than collapsing to "[object Object]". Also classify a stream read error that arrives after a `finish` event was already parsed as a post-completion teardown (`console.warn`, message already committed) instead of a network failure (`console.error`); this matches the actual semantics of the AI SDK aborting the underlying fetch once it has finished consuming the stream.
+
+See [./docs/releases/v0.129.2-changelog.md](./docs/releases/v0.129.2-changelog.md) for more information.
+
 ## [0.129.1] - 2026-05-10
 
 ### Fixed
@@ -2447,7 +2455,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.129.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.129.2...HEAD
+[0.129.2]: https://github.com/giantswarm/backstage/compare/v0.129.1...v0.129.2
 [0.129.1]: https://github.com/giantswarm/backstage/compare/v0.129.0...v0.129.1
 [0.129.0]: https://github.com/giantswarm/backstage/compare/v0.128.1...v0.129.0
 [0.128.1]: https://github.com/giantswarm/backstage/compare/v0.128.0...v0.128.1
