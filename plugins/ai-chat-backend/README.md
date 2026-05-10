@@ -53,13 +53,13 @@ useful.
 
 ### Recommended values per model family
 
-| Model family | temperature | topP | topK | minP | notes |
-|---|---|---|---|---|---|
-| Qwen3 thinking-mode | 0.6 | 0.95 | 20 | 0 | Qwen team's official recipe; do **not** use greedy decoding -- the Qwen team explicitly warns it leads to performance degradation and endless repetitions |
-| Qwen3 non-thinking | 0.7 | 0.8 | 20 | 0 | Qwen team's official recipe |
-| Qwen3-Coder | 0.7 | -- | -- | -- | |
-| GPT-4 / GPT-4o (tool use) | 0.0 - 0.3 | -- | -- | -- | greedy is fine here |
-| Anthropic Claude (tool use) | 0.0 - 0.3 | -- | -- | -- | greedy is fine here |
+| Model family                | temperature | topP | topK | minP | notes                                                                                                                                                     |
+| --------------------------- | ----------- | ---- | ---- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Qwen3 thinking-mode         | 0.6         | 0.95 | 20   | 0    | Qwen team's official recipe; do **not** use greedy decoding -- the Qwen team explicitly warns it leads to performance degradation and endless repetitions |
+| Qwen3 non-thinking          | 0.7         | 0.8  | 20   | 0    | Qwen team's official recipe                                                                                                                               |
+| Qwen3-Coder                 | 0.7         | --   | --   | --   |                                                                                                                                                           |
+| GPT-4 / GPT-4o (tool use)   | 0.0 - 0.3   | --   | --   | --   | greedy is fine here                                                                                                                                       |
+| Anthropic Claude (tool use) | 0.0 - 0.3   | --   | --   | --   | greedy is fine here                                                                                                                                       |
 
 ### Examples
 

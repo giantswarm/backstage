@@ -134,7 +134,10 @@ export async function createRouter(
     if (maxOutputTokens !== undefined)
       samplingParams.maxOutputTokens = maxOutputTokens;
     samplingMinP = samplingConfig.getOptionalNumber('minP');
-    const all = { ...samplingParams, ...(samplingMinP !== undefined ? { minP: samplingMinP } : {}) };
+    const all = {
+      ...samplingParams,
+      ...(samplingMinP !== undefined ? { minP: samplingMinP } : {}),
+    };
     if (Object.keys(all).length > 0) {
       logger.info('AI chat sampling parameters configured', all);
     }
