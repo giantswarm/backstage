@@ -209,7 +209,13 @@ function logFetchError(args: {
       );
     }
     if (e?.stack) {
-      console.error('%c[AI Chat]%c %s stack:', PREFIX_STYLE, RESET_STYLE, args.requestId, e.stack);
+      console.error(
+        '%c[AI Chat]%c %s stack:',
+        PREFIX_STYLE,
+        RESET_STYLE,
+        args.requestId,
+        e.stack,
+      );
     }
   } catch {
     // Ignore logging errors
