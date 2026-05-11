@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.130.0] - 2026-05-11
+
 ### Added
 
 - PagerDuty integration: "Who is on call" entity card, catalog processor that auto-annotates entities with PagerDuty IDs, and MCP action to resolve PagerDuty IDs from catalog entities.
@@ -2465,7 +2467,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.129.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.130.0...HEAD
+[0.130.0]: https://github.com/giantswarm/backstage/compare/v0.129.2...v0.130.0
 [0.129.2]: https://github.com/giantswarm/backstage/compare/v0.129.1...v0.129.2
 [0.129.1]: https://github.com/giantswarm/backstage/compare/v0.129.0...v0.129.1
 [0.129.0]: https://github.com/giantswarm/backstage/compare/v0.128.1...v0.129.0
