@@ -412,6 +412,17 @@
             },
             "additionalProperties": false
         },
+        "pagerduty": {
+            "description": "PagerDuty integration settings",
+            "type": "object",
+            "properties": {
+                "apiToken": {
+                    "description": "PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var)",
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
         "pluginKeys": {
             "description": "Plugin signing key pairs, each mounted as files under /app/plugin-keys/\u003ckeyId\u003e/",
             "type": "array",
