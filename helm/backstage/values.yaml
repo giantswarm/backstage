@@ -33,6 +33,37 @@ image:
 # -- Container port for the Backstage backend, also used for the Service and Ingress backend
 port: 7007
 
+# -- Liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).
+probes:
+  # -- Liveness probe timing
+  liveness:
+    # @schema type:integer;minimum:0
+    # -- Seconds after the container starts before the first liveness probe is performed
+    initialDelaySeconds: 10
+    # @schema type:integer;minimum:1
+    # -- How often (in seconds) to perform the liveness probe
+    periodSeconds: 15
+    # @schema type:integer;minimum:1
+    # -- Number of seconds after which the liveness probe times out
+    timeoutSeconds: 5
+    # @schema type:integer;minimum:1
+    # -- Consecutive failures required to mark the container Unhealthy
+    failureThreshold: 3
+  # -- Readiness probe timing
+  readiness:
+    # @schema type:integer;minimum:0
+    # -- Seconds after the container starts before the first readiness probe is performed
+    initialDelaySeconds: 5
+    # @schema type:integer;minimum:1
+    # -- How often (in seconds) to perform the readiness probe
+    periodSeconds: 10
+    # @schema type:integer;minimum:1
+    # -- Number of seconds after which the readiness probe times out
+    timeoutSeconds: 5
+    # @schema type:integer;minimum:1
+    # -- Consecutive failures required to mark the container NotReady
+    failureThreshold: 3
+
 # -- Container image registry settings
 registry:
   # @schema type:string

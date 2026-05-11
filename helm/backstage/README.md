@@ -24,6 +24,17 @@ Backstage app provided by Giant Swarm
 | image.name | string | `"backstage"` | Container name in the pod spec |
 | image.repository | string | `"giantswarm/backstage"` | Image repository path (prepended with registry.domain to form the full image reference) |
 | port | int | `7007` | Container port for the Backstage backend, also used for the Service and Ingress backend |
+| probes | object | `{"liveness":{"failureThreshold":3,"initialDelaySeconds":10,"periodSeconds":15,"timeoutSeconds":5},"readiness":{"failureThreshold":3,"initialDelaySeconds":5,"periodSeconds":10,"timeoutSeconds":5}}` | Liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default). |
+| probes.liveness | object | `{"failureThreshold":3,"initialDelaySeconds":10,"periodSeconds":15,"timeoutSeconds":5}` | Liveness probe timing |
+| probes.liveness.initialDelaySeconds | int | `10` | Seconds after the container starts before the first liveness probe is performed |
+| probes.liveness.periodSeconds | int | `15` | How often (in seconds) to perform the liveness probe |
+| probes.liveness.timeoutSeconds | int | `5` | Number of seconds after which the liveness probe times out |
+| probes.liveness.failureThreshold | int | `3` | Consecutive failures required to mark the container Unhealthy |
+| probes.readiness | object | `{"failureThreshold":3,"initialDelaySeconds":5,"periodSeconds":10,"timeoutSeconds":5}` | Readiness probe timing |
+| probes.readiness.initialDelaySeconds | int | `5` | Seconds after the container starts before the first readiness probe is performed |
+| probes.readiness.periodSeconds | int | `10` | How often (in seconds) to perform the readiness probe |
+| probes.readiness.timeoutSeconds | int | `5` | Number of seconds after which the readiness probe times out |
+| probes.readiness.failureThreshold | int | `3` | Consecutive failures required to mark the container NotReady |
 | registry | object | `{"domain":"gsoci.azurecr.io"}` | Container image registry settings |
 | registry.domain | string | `"gsoci.azurecr.io"` | Container image registry domain prepended to image.repository |
 | resources | object | `{"limits":{"cpu":"500m","memory":"600Mi"},"requests":{"cpu":"20m","memory":"250Mi"},"verticalPodAutoscaler":{"enabled":true}}` | Resource requests, limits, and autoscaler settings for the Backstage container |

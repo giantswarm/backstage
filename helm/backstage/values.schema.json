@@ -437,6 +437,67 @@
             "maximum": 65535,
             "minimum": 1
         },
+        "probes": {
+            "description": "Liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take \u003e1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).",
+            "type": "object",
+            "properties": {
+                "liveness": {
+                    "description": "Liveness probe timing",
+                    "type": "object",
+                    "properties": {
+                        "failureThreshold": {
+                            "description": "Consecutive failures required to mark the container Unhealthy",
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "initialDelaySeconds": {
+                            "description": "Seconds after the container starts before the first liveness probe is performed",
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "periodSeconds": {
+                            "description": "How often (in seconds) to perform the liveness probe",
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "timeoutSeconds": {
+                            "description": "Number of seconds after which the liveness probe times out",
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "readiness": {
+                    "description": "Readiness probe timing",
+                    "type": "object",
+                    "properties": {
+                        "failureThreshold": {
+                            "description": "Consecutive failures required to mark the container NotReady",
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "initialDelaySeconds": {
+                            "description": "Seconds after the container starts before the first readiness probe is performed",
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "periodSeconds": {
+                            "description": "How often (in seconds) to perform the readiness probe",
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "timeoutSeconds": {
+                            "description": "Number of seconds after which the readiness probe times out",
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
         "registry": {
             "description": "Container image registry settings",
             "type": "object",

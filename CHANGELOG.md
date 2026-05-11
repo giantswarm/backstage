@@ -5,14 +5,9 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
-## [0.129.3] - 2026-05-10
+### Changed
 
-### Fixed
-
-- Stabilise the AI chat transport across React renders. `useChatSetup` constructed a fresh `AssistantChatTransport` on every render and handed it to `useChatRuntime`; when its identity changed mid-stream (e.g. as a side effect of a state update triggered by streamed `reasoning-delta` / `tool-input-delta` events), the runtime tore down the in-flight chat fetch with `TypeError: network error`. Envoy logged the symptom as `response_flags: DC` (downstream remote disconnect) against a healthy Backstage upstream while the SSE stream summary was `sawFinish=false`, last event `tool-input-delta`, surfacing in the UI as a "Network error" banner even though no real network outage occurred. The transport is now memoised on the resolved API URL and the stable `getHeaders` / `debugFetch` callbacks, so a single transport lives for the component's lifetime.
-- AI chat instrumentation: observe the caller's `AbortSignal` and log abort events with the reason inline (`ABORT signaled by client at <ms> -- reason: <name>: <message>`). Stream-outcome lines now annotate aborted streams with `[client-aborted at Nms reason="..."]` so a "Network error" banner can be classified as a deliberate client cancel (transport rebuild, unmount, manual stop) versus a real proxy / network failure (no abort signal fired, raw stream error). Read errors that fired after the caller aborted are now logged as `console.warn` ("cancelled by client AbortSignal") rather than `console.error` ("STREAM READ FAILED"), reserving the latter for the genuine pre-`finish`, non-aborted failure mode.
-
-See [./docs/releases/v0.129.3-changelog.md](./docs/releases/v0.129.3-changelog.md) for more information.
+- Backstage liveness/readiness probe timings are now configurable via `.Values.probes.{liveness,readiness}` (`initialDelaySeconds`, `periodSeconds`, `timeoutSeconds`, `failureThreshold`) and the default `timeoutSeconds` is raised from the k8s implicit `1` to `5`. The HTTP path/port stay fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`). The k8s default `1s` is tight against the chart's 500m CPU limit: event-loop stalls during plugin startup, GC, or DB reconnects regularly miss the deadline and surface as `Unhealthy: ... context deadline exceeded` events even though the pod keeps serving traffic (observed on the BWI Backstage Deployment on spidertron, 2026-05-11).
 
 ## [0.129.2] - 2026-05-10
 
@@ -2464,8 +2459,7 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.129.3...HEAD
-[0.129.3]: https://github.com/giantswarm/backstage/compare/v0.129.2...v0.129.3
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.129.2...HEAD
 [0.129.2]: https://github.com/giantswarm/backstage/compare/v0.129.1...v0.129.2
 [0.129.1]: https://github.com/giantswarm/backstage/compare/v0.129.0...v0.129.1
 [0.129.0]: https://github.com/giantswarm/backstage/compare/v0.128.1...v0.129.0
