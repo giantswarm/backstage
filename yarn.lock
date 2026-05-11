@@ -10522,7 +10522,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-catalog-backend-module-gs@npm:^0.3.0, @giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs":
+"@giantswarm/backstage-plugin-catalog-backend-module-gs@npm:^0.4.0, @giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs"
   dependencies:
@@ -10612,7 +10612,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-gs-backend@npm:^0.9.1, @giantswarm/backstage-plugin-gs-backend@workspace:plugins/gs-backend":
+"@giantswarm/backstage-plugin-gs-backend@npm:^0.10.0, @giantswarm/backstage-plugin-gs-backend@workspace:plugins/gs-backend":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-backend@workspace:plugins/gs-backend"
   dependencies:
@@ -25726,8 +25726,8 @@ __metadata:
     "@devangelista/backstage-scaffolder-kubernetes": "npm:^0.5.0"
     "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.16.0"
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.13.1"
-    "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.3.0"
-    "@giantswarm/backstage-plugin-gs-backend": "npm:^0.9.1"
+    "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.4.0"
+    "@giantswarm/backstage-plugin-gs-backend": "npm:^0.10.0"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.12.0"
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "npm:^0.10.0"
     "@internal/backend-common": "workspace:^"
