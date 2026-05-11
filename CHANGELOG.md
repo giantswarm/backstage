@@ -5,9 +5,17 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.130.0] - 2026-05-11
+
+### Added
+
+- PagerDuty integration: "Who is on call" entity card, catalog processor that auto-annotates entities with PagerDuty IDs, and MCP action to resolve PagerDuty IDs from catalog entities.
+
 ### Changed
 
 - Backstage liveness/readiness probe timings are now configurable via `.Values.probes.{liveness,readiness}` (`initialDelaySeconds`, `periodSeconds`, `timeoutSeconds`, `failureThreshold`) and the default `timeoutSeconds` is raised from the k8s implicit `1` to `5`. The HTTP path/port stay fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`). The k8s default `1s` is tight against the chart's 500m CPU limit: event-loop stalls during plugin startup, GC, or DB reconnects regularly miss the deadline and surface as `Unhealthy: ... context deadline exceeded` events even though the pod keeps serving traffic (observed on the BWI Backstage Deployment on spidertron, 2026-05-11).
+
+See [./docs/releases/v0.130.0-changelog.md](./docs/releases/v0.130.0-changelog.md) for more information.
 
 ## [0.129.2] - 2026-05-10
 
@@ -2459,7 +2467,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.129.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.130.0...HEAD
+[0.130.0]: https://github.com/giantswarm/backstage/compare/v0.129.2...v0.130.0
 [0.129.2]: https://github.com/giantswarm/backstage/compare/v0.129.1...v0.129.2
 [0.129.1]: https://github.com/giantswarm/backstage/compare/v0.129.0...v0.129.1
 [0.129.0]: https://github.com/giantswarm/backstage/compare/v0.128.1...v0.129.0

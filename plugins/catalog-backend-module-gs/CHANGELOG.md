@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-catalog-backend-module-gs
 
+## 0.4.0
+
+### Minor Changes
+
+- ac09102: Add PagerDuty integration: "Who is on call" entity card, catalog processor that auto-annotates entities with PagerDuty IDs, and MCP action to resolve PagerDuty IDs from catalog entities.
+
 ## 0.3.0
 
 ### Minor Changes
