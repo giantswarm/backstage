@@ -17,6 +17,19 @@ app:
     - api:ai-chat/drawer
     - app-root-element:ai-chat/drawer
 
+    # PagerDuty plugin is disabled — only the api:pagerduty extension is left
+    # registered (via pagerDutyPlugin in App.tsx) so our custom WhoIsOnCallEntityCard
+    # can still use pagerDutyApiRef.
+    - entity-card:pagerduty/EntityPagerDutyCard: false
+    - entity-card:pagerduty/EntityPagerDutySmallCard: false
+    - nav-item:pagerduty/PagerDutyNavBarItem: false
+    - page:pagerduty: false
+
+    # Entity overview card order: app-deployment, then who-is-on-call, then about.
+    - entity-card:gs/app-deployment
+    - entity-card:catalog/who-is-on-call
+    - entity-card:catalog/about
+
     - entity-card:catalog/depends-on-components: false
     - entity-card:catalog/depends-on-resources: false
     - entity-card:catalog/has-subcomponents: false
@@ -108,6 +121,10 @@ backend:
       - auth
       - catalog
       - gs
+    # Optional: filter which actions are available to the model. By default, all actions from the listed pluginSources are included.
+    # filter:
+    #   exclude:
+    #     - id: 'gs:get-pagerduty-ids-for-entity'
 
   cache:
     store: memory
@@ -194,9 +211,23 @@ catalog:
         - System
         - User
         - Template
+  # processors:
+  #   pagerDutyAnnotations:
+  #     # Auto-annotates Group/User/Component entities with pagerduty.com/service-id
+  #     # and pagerduty.com/user-id by querying the PagerDuty REST API. Requires
+  #     # pagerDuty.apiToken to be set; otherwise the processor stays inactive.
+  #     enabled: true
 
 grafana:
   domain: https://example.com
+
+# PagerDuty plugin configuration
+# https://pagerduty.github.io/backstage-plugin-docs/
+pagerDuty:
+  # REST API token (read-only is sufficient for the entity card).
+  apiToken: ${PAGERDUTY_TOKEN}
+  # Giant Swarm uses the EU region (app.eu.pagerduty.com).
+  apiBaseUrl: https://api.eu.pagerduty.com
 
 # AI Chat plugin configuration
 aiChat:

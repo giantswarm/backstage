@@ -80,6 +80,8 @@ Backstage app provided by Giant Swarm
 | anthropic.apiKey | string | `""` | Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var) |
 | openai | object | `{"apiKey":""}` | OpenAI provider settings |
 | openai.apiKey | string | `""` | OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var) |
+| pagerduty | object | `{"apiToken":""}` | PagerDuty integration settings |
+| pagerduty.apiToken | string | `""` | PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var) |
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
 | strategy | object | `{}` | Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume. |

@@ -200,6 +200,12 @@ openai:
   # -- OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var)
   apiKey: ''
 
+# -- PagerDuty integration settings
+pagerduty:
+  # @schema type:string
+  # -- PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var)
+  apiToken: ''
+
 # @schema type:[object, string]
 # -- Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword
 sharedConfig: {}

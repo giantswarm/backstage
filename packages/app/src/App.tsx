@@ -29,6 +29,7 @@ import { kubernetesPluginOverrides } from './modules/kubernetes';
 import apiDocsPlugin from '@backstage/plugin-api-docs/alpha';
 import { apiDocsPluginOverrides } from './modules/api-docs';
 import githubActionsPlugin from '@backstage-community/plugin-github-actions/alpha';
+import pagerDutyPlugin from '@pagerduty/backstage-plugin/alpha';
 import signalsPlugin from '@backstage/plugin-signals/alpha';
 
 // Legacy plugins (compat-converted for NFS route ref discovery):
@@ -69,6 +70,7 @@ const app = createApp({
     apiDocsPlugin,
     apiDocsPluginOverrides,
     githubActionsPlugin,
+    pagerDutyPlugin,
     signalsPlugin,
 
     // Legacy plugins (compat-converted for NFS route ref discovery):

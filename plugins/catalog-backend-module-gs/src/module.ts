@@ -7,6 +7,7 @@ import {
   catalogServiceRef,
 } from '@backstage/plugin-catalog-node';
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
+import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
 
 export const catalogModuleGS = createBackendModule({
@@ -50,6 +51,19 @@ export const catalogModuleGS = createBackendModule({
               auth,
             }),
           );
+        }
+
+        const pdEnabled = config.getOptionalBoolean(
+          'catalog.processors.pagerDutyAnnotations.enabled',
+        );
+        if (pdEnabled) {
+          const pdProcessor = PagerDutyAnnotationProcessor.fromConfig({
+            config,
+            logger,
+          });
+          if (pdProcessor) {
+            catalog.addProcessor(pdProcessor);
+          }
         }
       },
     });

@@ -88,4 +88,9 @@ backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
+// pagerduty plugin (optional — only loaded when a token is configured)
+if (process.env.PAGERDUTY_TOKEN) {
+  backend.add(import('@pagerduty/backstage-plugin-backend'));
+}
+
 backend.start();

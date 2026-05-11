@@ -27,6 +27,7 @@
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/catalog-client": "backstage:^",
+    "@backstage/catalog-model": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/integration": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
