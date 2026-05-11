@@ -3,6 +3,7 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
+import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import {
   DefaultGithubCredentialsProvider,
   ScmIntegrations,
@@ -28,6 +29,7 @@ export const gsPlugin = createBackendPlugin({
         containerRegistry: containerRegistryServiceRef,
         mimir: mimirServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
+        catalog: catalogServiceRef,
       },
       async init({
         httpRouter,
@@ -36,6 +38,7 @@ export const gsPlugin = createBackendPlugin({
         containerRegistry,
         mimir,
         actionsRegistry,
+        catalog,
       }) {
         const integrations = ScmIntegrations.fromConfig(config);
         const githubCredentialsProvider =
@@ -53,6 +56,7 @@ export const gsPlugin = createBackendPlugin({
           actionsRegistry,
           containerRegistry,
           githubCredentialsProvider,
+          catalog,
           logger,
         );
       },

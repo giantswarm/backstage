@@ -1,7 +1,9 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
+import { parseEntityRef } from '@backstage/catalog-model';
 import { NotFoundError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
+import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import fetch from 'node-fetch';
 import { fetchGitHubRawContent } from './githubRawContent';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
@@ -9,11 +11,14 @@ import { containerRegistryServiceRef } from './services/ContainerRegistryService
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
 const DEPRECATED_VALUES_SCHEMA_ANNOTATION =
   'application.giantswarm.io/values-schema';
+const PAGERDUTY_SERVICE_ID_ANNOTATION = 'pagerduty.com/service-id';
+const PAGERDUTY_USER_ID_ANNOTATION = 'pagerduty.com/user-id';
 
 export function registerMcpActions(
   actionsRegistry: ActionsRegistryService,
   containerRegistry: typeof containerRegistryServiceRef.T,
   githubCredentialsProvider: GithubCredentialsProvider,
+  catalog: typeof catalogServiceRef.T,
   logger: LoggerService,
 ) {
   actionsRegistry.register({
@@ -108,4 +113,83 @@ export function registerMcpActions(
   });
 
   logger.info('Registered MCP action: get-helm-chart-values');
+
+  actionsRegistry.register({
+    name: 'get-pagerduty-ids-for-entity',
+    title: 'Get PagerDuty IDs for a Catalog Entity',
+    description:
+      'Resolves the PagerDuty service ID and/or user ID associated with a Backstage catalog entity. ' +
+      'Backstage entities are auto-annotated with PagerDuty IDs by the PagerDutyAnnotationProcessor: ' +
+      `\`Group\` entities of type "team" and \`Component\` entities owned by such a team carry \`${PAGERDUTY_SERVICE_ID_ANNOTATION}\`; ` +
+      `\`User\` entities matched by email carry \`${PAGERDUTY_USER_ID_ANNOTATION}\`. ` +
+      'Use this to resolve a catalog entity reference (e.g. a component, team or user) to the PagerDuty IDs ' +
+      'that PagerDuty MCP server tools require as input (for example, looking up the current on-call, listing incidents, ' +
+      'or finding a user). Returns whichever IDs are present on the entity; throws "not found" if the entity has neither ' +
+      'annotation or does not exist.',
+    schema: {
+      input: z =>
+        z.object({
+          entityRef: z
+            .string()
+            .describe(
+              'Backstage entity reference, e.g. "component:default/my-app", "group:default/team-honeybadger", or "user:default/dmitry". Kind and namespace default to "component" / "default" if omitted.',
+            ),
+        }),
+      output: z =>
+        z.object({
+          entityRef: z
+            .string()
+            .describe(
+              'The fully-qualified entity reference that was resolved.',
+            ),
+          kind: z.string().describe('The kind of the resolved entity.'),
+          serviceId: z
+            .string()
+            .optional()
+            .describe(
+              'PagerDuty service ID, when present. Pass this to PagerDuty MCP server tools that take a service ID.',
+            ),
+          userId: z
+            .string()
+            .optional()
+            .describe(
+              'PagerDuty user ID, when present. Pass this to PagerDuty MCP server tools that take a user ID.',
+            ),
+        }),
+    },
+    attributes: { readOnly: true, idempotent: true },
+    action: async ({ input, credentials }) => {
+      const parsed = parseEntityRef(input.entityRef, {
+        defaultKind: 'component',
+        defaultNamespace: 'default',
+      });
+      const fullRef = `${parsed.kind.toLowerCase()}:${parsed.namespace}/${parsed.name}`;
+
+      const entity = await catalog.getEntityByRef(parsed, { credentials });
+      if (!entity) {
+        throw new NotFoundError(`Entity ${fullRef} not found in catalog`);
+      }
+
+      const annotations = entity.metadata.annotations ?? {};
+      const serviceId = annotations[PAGERDUTY_SERVICE_ID_ANNOTATION];
+      const userId = annotations[PAGERDUTY_USER_ID_ANNOTATION];
+
+      if (!serviceId && !userId) {
+        throw new NotFoundError(
+          `Entity ${fullRef} has no PagerDuty annotations (${PAGERDUTY_SERVICE_ID_ANNOTATION}, ${PAGERDUTY_USER_ID_ANNOTATION})`,
+        );
+      }
+
+      return {
+        output: {
+          entityRef: fullRef,
+          kind: entity.kind,
+          ...(serviceId ? { serviceId } : {}),
+          ...(userId ? { userId } : {}),
+        },
+      };
+    },
+  });
+
+  logger.info('Registered MCP action: get-pagerduty-ids-for-entity');
 }

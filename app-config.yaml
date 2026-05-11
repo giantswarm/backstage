@@ -121,6 +121,10 @@ backend:
       - auth
       - catalog
       - gs
+    # Optional: filter which actions are available to the model. By default, all actions from the listed pluginSources are included.
+    # filter:
+    #   exclude:
+    #     - id: 'gs:get-pagerduty-ids-for-entity'
 
   cache:
     store: memory

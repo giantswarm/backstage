@@ -10620,6 +10620,7 @@ __metadata:
     "@backstage/backend-plugin-api": "backstage:^"
     "@backstage/backend-test-utils": "backstage:^"
     "@backstage/catalog-client": "backstage:^"
+    "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/integration": "backstage:^"

@@ -1,7 +1,9 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { ActionsRegistryService } from '@backstage/backend-plugin-api/alpha';
+import type { Entity } from '@backstage/catalog-model';
 import { NotFoundError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
+import type { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { registerMcpActions } from './mcpActions';
 import { containerRegistryServiceRef } from './services/ContainerRegistryService';
 
@@ -22,8 +24,10 @@ describe('registerMcpActions', () => {
     Pick<typeof containerRegistryServiceRef.T, 'getTagManifest'>
   >;
   let githubCredentialsProvider: jest.Mocked<GithubCredentialsProvider>;
+  let catalog: jest.Mocked<Pick<typeof catalogServiceRef.T, 'getEntityByRef'>>;
   let logger: jest.Mocked<LoggerService>;
-  let registeredAction: Parameters<ActionsRegistryService['register']>[0];
+  let helmAction: Parameters<ActionsRegistryService['register']>[0];
+  let pagerDutyAction: Parameters<ActionsRegistryService['register']>[0];
 
   beforeEach(() => {
     actionsRegistry = {
@@ -34,6 +38,9 @@ describe('registerMcpActions', () => {
     };
     githubCredentialsProvider = {
       getCredentials: jest.fn().mockResolvedValue({ token: 'ghp_test-token' }),
+    };
+    catalog = {
+      getEntityByRef: jest.fn(),
     };
     logger = {
       info: jest.fn(),
@@ -47,17 +54,19 @@ describe('registerMcpActions', () => {
       actionsRegistry,
       containerRegistry as unknown as typeof containerRegistryServiceRef.T,
       githubCredentialsProvider,
+      catalog as unknown as typeof catalogServiceRef.T,
       logger,
     );
 
-    registeredAction = actionsRegistry.register.mock.calls[0][0];
+    helmAction = actionsRegistry.register.mock.calls[0][0];
+    pagerDutyAction = actionsRegistry.register.mock.calls[1][0];
     mockFetch.mockReset();
   });
 
   it('registers the get-helm-chart-values action', () => {
-    expect(actionsRegistry.register).toHaveBeenCalledTimes(1);
-    expect(registeredAction.name).toBe('get-helm-chart-values');
-    expect(registeredAction.attributes).toEqual({ readOnly: true });
+    expect(actionsRegistry.register).toHaveBeenCalledTimes(2);
+    expect(helmAction.name).toBe('get-helm-chart-values');
+    expect(helmAction.attributes).toEqual({ readOnly: true });
   });
 
   it('fetches schema using the current annotation', async () => {
@@ -80,7 +89,7 @@ describe('registerMcpActions', () => {
       text: async () => schemaContent,
     });
 
-    const result = await registeredAction.action({
+    const result = await helmAction.action({
       input: {
         registry: 'gsoci.azurecr.io',
         repository: 'charts/giantswarm/my-app',
@@ -133,7 +142,7 @@ describe('registerMcpActions', () => {
       text: async () => valuesContent,
     });
 
-    const result = await registeredAction.action({
+    const result = await helmAction.action({
       input: {
         registry: 'gsoci.azurecr.io',
         repository: 'charts/giantswarm/my-app',
@@ -175,7 +184,7 @@ describe('registerMcpActions', () => {
       text: async () => '{}',
     });
 
-    const result = await registeredAction.action({
+    const result = await helmAction.action({
       input: {
         registry: 'gsoci.azurecr.io',
         repository: 'charts/giantswarm/my-app',
@@ -208,7 +217,7 @@ describe('registerMcpActions', () => {
     });
 
     await expect(
-      registeredAction.action({
+      helmAction.action({
         input: {
           registry: 'gsoci.azurecr.io',
           repository: 'charts/giantswarm/my-app',
@@ -230,7 +239,7 @@ describe('registerMcpActions', () => {
     });
 
     await expect(
-      registeredAction.action({
+      helmAction.action({
         input: {
           registry: 'gsoci.azurecr.io',
           repository: 'charts/giantswarm/my-app',
@@ -261,7 +270,7 @@ describe('registerMcpActions', () => {
     });
 
     await expect(
-      registeredAction.action({
+      helmAction.action({
         input: {
           registry: 'gsoci.azurecr.io',
           repository: 'charts/giantswarm/my-app',
@@ -301,7 +310,7 @@ describe('registerMcpActions', () => {
       text: async () => schemaContent,
     });
 
-    const result = await registeredAction.action({
+    const result = await helmAction.action({
       input: {
         registry: 'gsoci.azurecr.io',
         repository: 'charts/giantswarm/my-app',
@@ -319,6 +328,122 @@ describe('registerMcpActions', () => {
         content: schemaContent,
         contentType: 'schema',
       },
+    });
+  });
+
+  describe('get-pagerduty-ids-for-entity', () => {
+    const mkEntity = (
+      kind: string,
+      name: string,
+      annotations: Record<string, string>,
+    ): Entity => ({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind,
+      metadata: { name, namespace: 'default', annotations },
+    });
+
+    it('registers the action with the expected metadata', () => {
+      expect(pagerDutyAction.name).toBe('get-pagerduty-ids-for-entity');
+      expect(pagerDutyAction.attributes).toEqual({
+        readOnly: true,
+        idempotent: true,
+      });
+    });
+
+    it('returns serviceId for a Group entity', async () => {
+      catalog.getEntityByRef.mockResolvedValue(
+        mkEntity('Group', 'team-otter', {
+          'pagerduty.com/service-id': 'PABC123',
+        }),
+      );
+
+      const result = await pagerDutyAction.action({
+        input: { entityRef: 'group:default/team-otter' },
+        logger,
+        credentials: {} as any,
+      });
+
+      expect(catalog.getEntityByRef).toHaveBeenCalledWith(
+        { kind: 'group', namespace: 'default', name: 'team-otter' },
+        { credentials: {} },
+      );
+      expect(result).toEqual({
+        output: {
+          entityRef: 'group:default/team-otter',
+          kind: 'Group',
+          serviceId: 'PABC123',
+        },
+      });
+    });
+
+    it('returns serviceId for a Component entity', async () => {
+      catalog.getEntityByRef.mockResolvedValue(
+        mkEntity('Component', 'my-app', {
+          'pagerduty.com/service-id': 'PDEF456',
+        }),
+      );
+
+      const result = await pagerDutyAction.action({
+        input: { entityRef: 'component:default/my-app' },
+        logger,
+        credentials: {} as any,
+      });
+
+      expect(result).toEqual({
+        output: {
+          entityRef: 'component:default/my-app',
+          kind: 'Component',
+          serviceId: 'PDEF456',
+        },
+      });
+    });
+
+    it('returns userId for a User entity', async () => {
+      catalog.getEntityByRef.mockResolvedValue(
+        mkEntity('User', 'jdoe', {
+          'pagerduty.com/user-id': 'PXYZ789',
+        }),
+      );
+
+      const result = await pagerDutyAction.action({
+        input: { entityRef: 'user:default/jdoe' },
+        logger,
+        credentials: {} as any,
+      });
+
+      expect(result).toEqual({
+        output: {
+          entityRef: 'user:default/jdoe',
+          kind: 'User',
+          userId: 'PXYZ789',
+        },
+      });
+    });
+
+    it('throws NotFoundError when the entity does not exist', async () => {
+      catalog.getEntityByRef.mockResolvedValue(undefined);
+
+      await expect(
+        pagerDutyAction.action({
+          input: { entityRef: 'component:default/missing' },
+          logger,
+          credentials: {} as any,
+        }),
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('throws NotFoundError when the entity has neither PagerDuty annotation', async () => {
+      catalog.getEntityByRef.mockResolvedValue(
+        mkEntity('Component', 'my-app', {}),
+      );
+
+      await expect(
+        pagerDutyAction.action({
+          input: { entityRef: 'component:default/my-app' },
+          logger,
+          credentials: {} as any,
+        }),
+      ).rejects.toThrow(NotFoundError);
     });
   });
 });
