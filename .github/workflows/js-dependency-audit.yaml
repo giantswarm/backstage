@@ -12,7 +12,6 @@ on:
       - '**/.yarnrc.yml'
       - '**/pnpm-lock.yaml'
       - '**/pnpm-workspace.yaml'
-      - '.github/workflows/js-dependency-audit.yaml'  # TODO: remove before merge
 
 permissions: {}
 
