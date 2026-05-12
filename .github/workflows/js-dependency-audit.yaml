@@ -17,8 +17,7 @@ permissions: {}
 
 jobs:
   audit:
-    # TODO: switch ref to @main once the reusable workflow has landed.
-    uses: giantswarm/github-workflows/.github/workflows/js-dependency-audit.yaml@add-npm-audit-workflow
+    uses: giantswarm/github-workflows/.github/workflows/js-dependency-audit.yaml@main
     permissions:
       contents: read
       pull-requests: write
