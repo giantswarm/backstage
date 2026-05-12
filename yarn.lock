@@ -35747,6 +35747,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jszip@npm:3.7.1":
+  version: 3.7.1
+  resolution: "jszip@npm:3.7.1"
+  dependencies:
+    lie: "npm:~3.3.0"
+    pako: "npm:~1.0.2"
+    readable-stream: "npm:~2.3.6"
+    set-immediate-shim: "npm:~1.0.1"
+  checksum: 10c0/c43156811a3f6eb002b4e8d6d4be3191bd756191f63b1b01a38ecd860f3dd8cf451729bb3dcdae68003a93719ceed051a3de34356eabb3b7ec7d3ed834f42895
+  languageName: node
+  linkType: hard
+
 "jszip@npm:^3.10.1":
   version: 3.10.1
   resolution: "jszip@npm:3.10.1"
@@ -44136,6 +44148,7 @@ __metadata:
     husky: "npm:^9.1.7"
     jest: "npm:^30.2.0"
     jsdom: "npm:^27.1.0"
+    jszip: "npm:3.7.1"
     lint-staged: "npm:^16.2.7"
     node-gyp: "npm:^11.0.0"
     patch-package: "npm:^8.0.0"
@@ -44633,6 +44646,13 @@ __metadata:
   version: 1.0.1
   resolution: "set-harmonic-interval@npm:1.0.1"
   checksum: 10c0/49014d928a62c8418507bf66ffef7066783e8fb19f76e955318bbae5a8c4b56e1a7176b370f9040ef9de51531aa522a3f96fa5c47b1534635aa577ff7c12f9c6
+  languageName: node
+  linkType: hard
+
+"set-immediate-shim@npm:~1.0.1":
+  version: 1.0.1
+  resolution: "set-immediate-shim@npm:1.0.1"
+  checksum: 10c0/8d21dbb2ad0299a1df9a90c4ddaf5d38ac7af4fafab3064e29d5d5434820a406362bb6b5def0adf189333e92daf50ec756848f48b281705355ed984491beeb93
   languageName: node
   linkType: hard
 
