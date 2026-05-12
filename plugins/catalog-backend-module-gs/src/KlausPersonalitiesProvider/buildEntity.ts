@@ -36,6 +36,14 @@ export function buildPersonalityEntity(
       `${personality.toolchain.repository}:${personality.toolchain.tag}`;
   }
 
+  const dependsOn: string[] = [dependsOnParent];
+  const toolchainEntityRef = toolchainEntityRefFromRepository(
+    personality.toolchain?.repository,
+  );
+  if (toolchainEntityRef) {
+    dependsOn.push(toolchainEntityRef);
+  }
+
   const entity: Entity = {
     apiVersion: 'backstage.io/v1alpha1',
     kind: 'Component',
@@ -51,7 +59,7 @@ export function buildPersonalityEntity(
       lifecycle: 'production',
       owner: 'team-bumblebee',
       system: 'klaus',
-      dependsOn: [dependsOnParent],
+      dependsOn,
     },
   };
 
@@ -59,4 +67,28 @@ export function buildPersonalityEntity(
     entity,
     locationKey: `${PROVIDER_NAME}:${owner}/${repo}/personalities/${name}`,
   };
+}
+
+// Returns undefined for missing or malformed repository strings so the
+// personality entity is still emitted without the cross-link.
+function toolchainEntityRefFromRepository(
+  repository: string | undefined,
+): string | undefined {
+  if (!repository) {
+    return undefined;
+  }
+  const segments = repository.split('/');
+  if (segments.length < 2) {
+    return undefined;
+  }
+  const short = segments[segments.length - 1];
+  if (!short) {
+    return undefined;
+  }
+  const internal =
+    repository.includes('/klaus-toolchains-internal/') ||
+    segments[0] === 'gsociprivate.azurecr.io';
+  return internal
+    ? `component:default/klaus-toolchain-${short}-internal`
+    : `component:default/klaus-toolchain-${short}`;
 }

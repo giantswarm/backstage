@@ -8,6 +8,7 @@ import {
 } from '@backstage/plugin-catalog-node';
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
 import { KlausPersonalitiesProvider } from './KlausPersonalitiesProvider';
+import { KlausToolchainsProvider } from './KlausToolchainsProvider';
 import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
@@ -83,6 +84,19 @@ export const catalogModuleGS = createBackendModule({
         if (klausPersonalitiesEnabled) {
           catalog.addEntityProvider(
             KlausPersonalitiesProvider.fromConfig({
+              config,
+              logger,
+              scheduler,
+            }),
+          );
+        }
+
+        const klausToolchainsEnabled = config.getOptionalBoolean(
+          'catalog.providers.klausToolchains.enabled',
+        );
+        if (klausToolchainsEnabled) {
+          catalog.addEntityProvider(
+            KlausToolchainsProvider.fromConfig({
               config,
               logger,
               scheduler,

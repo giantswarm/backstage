@@ -40,6 +40,7 @@ import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
   isEntityKlausPersonality,
+  isEntityKlausToolchain,
   isEntityKratixResource,
   isEntityWithIcon,
 } from './components/utils/entity';
@@ -300,6 +301,19 @@ const klausPersonalityVersionHistoryEntityCard = EntityCardBlueprint.make({
   },
 });
 
+const klausToolchainVersionHistoryEntityCard = EntityCardBlueprint.make({
+  name: 'klaus-toolchain-version-history',
+  params: {
+    type: 'content',
+    filter: entity => isEntityKlausToolchain(entity),
+    loader: async () => {
+      const { EntityKlausToolchainVersionHistoryCard } =
+        await import('./components/catalog/EntityKlausToolchainVersionHistoryCard');
+      return <EntityKlausToolchainVersionHistoryCard />;
+    },
+  },
+});
+
 // Entity content tabs for the catalog entity page
 const deploymentsEntityContent = EntityContentBlueprint.make({
   name: 'deployments',
@@ -345,6 +359,20 @@ const klausPersonalityVersionHistoryEntityContent = EntityContentBlueprint.make(
     },
   },
 );
+
+const klausToolchainVersionHistoryEntityContent = EntityContentBlueprint.make({
+  name: 'klaus-toolchain-version-history',
+  params: {
+    path: '/version-history',
+    title: 'Version History',
+    filter: entity => isEntityKlausToolchain(entity),
+    loader: async () => {
+      const { EntityKlausToolchainVersionHistoryContent } =
+        await import('./components/catalog/EntityKlausToolchainVersionHistoryContent');
+      return <EntityKlausToolchainVersionHistoryContent />;
+    },
+  },
+});
 
 const kratixResourcesEntityContent = EntityContentBlueprint.make({
   name: 'kratix-resources',
@@ -655,10 +683,12 @@ export const gsPlugin = createFrontendPlugin({
     soulEntityCard,
     versionHistoryEntityCard,
     klausPersonalityVersionHistoryEntityCard,
+    klausToolchainVersionHistoryEntityCard,
     // Entity content tabs
     deploymentsEntityContent,
     versionHistoryEntityContent,
     klausPersonalityVersionHistoryEntityContent,
+    klausToolchainVersionHistoryEntityContent,
     kratixResourcesEntityContent,
     // Entity content layout
     helmChartContentLayout,

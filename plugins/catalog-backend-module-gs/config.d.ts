@@ -41,6 +41,23 @@ export interface Config {
          */
         schedule?: SchedulerServiceTaskScheduleDefinitionConfig;
       };
+      klausToolchains?: {
+        /**
+         * Enables the Klaus toolchains entity provider. When true, the
+         * provider discovers toolchains identified by top-level directories
+         * named `klaus-*` containing a `Dockerfile` in
+         * `giantswarm/klaus-toolchains` and
+         * `giantswarm/klaus-toolchains-internal`, and emits one Component
+         * entity per toolchain.
+         * @visibility backend
+         */
+        enabled?: boolean;
+        /**
+         * Optional schedule override for the toolchains refresh task.
+         * @visibility backend
+         */
+        schedule?: SchedulerServiceTaskScheduleDefinitionConfig;
+      };
     };
   };
 }

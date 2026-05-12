@@ -75,7 +75,10 @@ describe('buildPersonalityEntity', () => {
         lifecycle: 'production',
         owner: 'team-bumblebee',
         system: 'klaus',
-        dependsOn: ['component:default/klaus-personalities'],
+        dependsOn: [
+          'component:default/klaus-personalities',
+          'component:default/klaus-toolchain-go',
+        ],
       },
     });
   });
@@ -91,6 +94,7 @@ describe('buildPersonalityEntity', () => {
     ]);
     expect((result.entity.spec as { dependsOn: string[] }).dependsOn).toEqual([
       'component:default/klaus-personalities-internal',
+      'component:default/klaus-toolchain-go-internal',
     ]);
     expect(
       result.entity.metadata.annotations?.[
@@ -99,7 +103,7 @@ describe('buildPersonalityEntity', () => {
     ).toBe('gsociprivate.azurecr.io/giantswarm/klaus-toolchains/go:0.1.26');
   });
 
-  it('omits the toolchain annotation when toolchain info is missing', () => {
+  it('omits the toolchain annotation and dependsOn link when toolchain info is missing', () => {
     const result = buildPersonalityEntity({
       ...basePublic,
       toolchain: undefined,
@@ -109,6 +113,19 @@ describe('buildPersonalityEntity', () => {
         'giantswarm.io/klaus-personality-toolchain'
       ],
     ).toBeUndefined();
+    expect((result.entity.spec as { dependsOn: string[] }).dependsOn).toEqual([
+      'component:default/klaus-personalities',
+    ]);
+  });
+
+  it('omits the toolchain dependsOn link when toolchain.repository is malformed', () => {
+    const result = buildPersonalityEntity({
+      ...basePublic,
+      toolchain: { repository: 'no-slashes-here', tag: '1.0.0' },
+    });
+    expect((result.entity.spec as { dependsOn: string[] }).dependsOn).toEqual([
+      'component:default/klaus-personalities',
+    ]);
   });
 
   it('uses the discovered branch in URLs', () => {

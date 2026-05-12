@@ -1,0 +1,1 @@
+export { EntityKlausToolchainVersionHistoryContent } from './EntityKlausToolchainVersionHistoryContent';
