@@ -46,11 +46,9 @@
     "husky": "^9.1.7",
     "jest": "^30.2.0",
     "jsdom": "^27.1.0",
-    "jszip": "3.7.1",
     "lint-staged": "^16.2.7",
     "node-gyp": "^11.0.0",
     "prettier": "^3.0.0",
-    "tough-cookie": "4.1.2",
     "ts-node": "^10.9.2",
     "typescript": "~5.9.0"
   },

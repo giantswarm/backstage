@@ -35747,18 +35747,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"jszip@npm:3.7.1":
-  version: 3.7.1
-  resolution: "jszip@npm:3.7.1"
-  dependencies:
-    lie: "npm:~3.3.0"
-    pako: "npm:~1.0.2"
-    readable-stream: "npm:~2.3.6"
-    set-immediate-shim: "npm:~1.0.1"
-  checksum: 10c0/c43156811a3f6eb002b4e8d6d4be3191bd756191f63b1b01a38ecd860f3dd8cf451729bb3dcdae68003a93719ceed051a3de34356eabb3b7ec7d3ed834f42895
-  languageName: node
-  linkType: hard
-
 "jszip@npm:^3.10.1":
   version: 3.10.1
   resolution: "jszip@npm:3.10.1"
@@ -41754,15 +41742,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"psl@npm:^1.1.33":
-  version: 1.15.0
-  resolution: "psl@npm:1.15.0"
-  dependencies:
-    punycode: "npm:^2.3.1"
-  checksum: 10c0/d8d45a99e4ca62ca12ac3c373e63d80d2368d38892daa40cfddaa1eb908be98cd549ac059783ef3a56cfd96d57ae8e2fd9ae53d1378d90d42bc661ff924e102a
-  languageName: node
-  linkType: hard
-
 "public-encrypt@npm:^4.0.3":
   version: 4.0.3
   resolution: "public-encrypt@npm:4.0.3"
@@ -44148,13 +44127,11 @@ __metadata:
     husky: "npm:^9.1.7"
     jest: "npm:^30.2.0"
     jsdom: "npm:^27.1.0"
-    jszip: "npm:3.7.1"
     lint-staged: "npm:^16.2.7"
     node-gyp: "npm:^11.0.0"
     patch-package: "npm:^8.0.0"
     postinstall-postinstall: "npm:^2.1.0"
     prettier: "npm:^3.0.0"
-    tough-cookie: "npm:4.1.2"
     ts-node: "npm:^10.9.2"
     typescript: "npm:~5.9.0"
   languageName: unknown
@@ -44646,13 +44623,6 @@ __metadata:
   version: 1.0.1
   resolution: "set-harmonic-interval@npm:1.0.1"
   checksum: 10c0/49014d928a62c8418507bf66ffef7066783e8fb19f76e955318bbae5a8c4b56e1a7176b370f9040ef9de51531aa522a3f96fa5c47b1534635aa577ff7c12f9c6
-  languageName: node
-  linkType: hard
-
-"set-immediate-shim@npm:~1.0.1":
-  version: 1.0.1
-  resolution: "set-immediate-shim@npm:1.0.1"
-  checksum: 10c0/8d21dbb2ad0299a1df9a90c4ddaf5d38ac7af4fafab3064e29d5d5434820a406362bb6b5def0adf189333e92daf50ec756848f48b281705355ed984491beeb93
   languageName: node
   linkType: hard
 
@@ -46529,18 +46499,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tough-cookie@npm:4.1.2":
-  version: 4.1.2
-  resolution: "tough-cookie@npm:4.1.2"
-  dependencies:
-    psl: "npm:^1.1.33"
-    punycode: "npm:^2.1.1"
-    universalify: "npm:^0.2.0"
-    url-parse: "npm:^1.5.3"
-  checksum: 10c0/1f9d97bc9ff22b41e107eca4a146064f916e567b5557795dbfe742f098557ba1101b8f7c4e02ac785236663f7f086c37dc595a5b9813ef8fb27f8d800dc9eb9b
-  languageName: node
-  linkType: hard
-
 "tough-cookie@npm:^6.0.0":
   version: 6.0.0
   resolution: "tough-cookie@npm:6.0.0"
@@ -47521,13 +47479,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"universalify@npm:^0.2.0":
-  version: 0.2.0
-  resolution: "universalify@npm:0.2.0"
-  checksum: 10c0/cedbe4d4ca3967edf24c0800cfc161c5a15e240dac28e3ce575c689abc11f2c81ccc6532c8752af3b40f9120fb5e454abecd359e164f4f6aa44c29cd37e194fe
-  languageName: node
-  linkType: hard
-
 "universalify@npm:^2.0.0":
   version: 2.0.1
   resolution: "universalify@npm:2.0.1"
@@ -47683,7 +47634,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"url-parse@npm:^1.4.3, url-parse@npm:^1.5.10, url-parse@npm:^1.5.3":
+"url-parse@npm:^1.4.3, url-parse@npm:^1.5.10":
   version: 1.5.10
   resolution: "url-parse@npm:1.5.10"
   dependencies:
