@@ -1,0 +1,1 @@
+export { LatestReleaseProcessor } from './LatestReleaseProcessor';

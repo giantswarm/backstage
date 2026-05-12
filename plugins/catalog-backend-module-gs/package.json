@@ -31,6 +31,7 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
     "@types/js-yaml": "^4"
   },

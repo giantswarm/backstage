@@ -217,6 +217,13 @@ catalog:
   #     # and pagerduty.com/user-id by querying the PagerDuty REST API. Requires
   #     # pagerDuty.apiToken to be set; otherwise the processor stays inactive.
   #     enabled: true
+  #   latestRelease:
+  #     # Annotates Component entities that have github.com/project-slug with
+  #     # giantswarm.io/latest-release-tag and giantswarm.io/latest-release-date.
+  #     # Defaults to GitHub's canonical /releases/latest, or matches by tag
+  #     # prefix when giantswarm.io/release-tag-prefix is set (monorepos).
+  #     enabled: true
+  #     cacheTtlSeconds: 3600
 
 grafana:
   domain: https://example.com

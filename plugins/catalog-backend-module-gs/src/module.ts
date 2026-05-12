@@ -7,6 +7,7 @@ import {
   catalogServiceRef,
 } from '@backstage/plugin-catalog-node';
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
+import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
 
@@ -64,6 +65,15 @@ export const catalogModuleGS = createBackendModule({
           if (pdProcessor) {
             catalog.addProcessor(pdProcessor);
           }
+        }
+
+        const latestReleaseEnabled = config.getOptionalBoolean(
+          'catalog.processors.latestRelease.enabled',
+        );
+        if (latestReleaseEnabled) {
+          catalog.addProcessor(
+            LatestReleaseProcessor.fromConfig({ config, logger }),
+          );
         }
       },
     });
