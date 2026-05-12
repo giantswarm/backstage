@@ -10,6 +10,7 @@ const source = {
   owner: 'giantswarm',
   repo: 'klaus-personalities',
   internal: false,
+  ociRegistry: 'gsoci.azurecr.io',
 };
 
 function makeFetch(handler: (url: string) => Response | Promise<Response>) {

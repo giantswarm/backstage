@@ -287,6 +287,19 @@ const soulEntityCard = EntityCardBlueprint.make({
   },
 });
 
+const klausPersonalityVersionHistoryEntityCard = EntityCardBlueprint.make({
+  name: 'klaus-version-history',
+  params: {
+    type: 'content',
+    filter: entity => isEntityKlausPersonality(entity),
+    loader: async () => {
+      const { EntityKlausPersonalityVersionHistoryCard } =
+        await import('./components/catalog/EntityKlausPersonalityVersionHistoryCard');
+      return <EntityKlausPersonalityVersionHistoryCard />;
+    },
+  },
+});
+
 // Entity content tabs for the catalog entity page
 const deploymentsEntityContent = EntityContentBlueprint.make({
   name: 'deployments',
@@ -316,6 +329,22 @@ const versionHistoryEntityContent = EntityContentBlueprint.make({
     },
   },
 });
+
+const klausPersonalityVersionHistoryEntityContent = EntityContentBlueprint.make(
+  {
+    name: 'klaus-version-history',
+    params: {
+      path: '/version-history',
+      title: 'Version History',
+      filter: entity => isEntityKlausPersonality(entity),
+      loader: async () => {
+        const { EntityKlausPersonalityVersionHistoryContent } =
+          await import('./components/catalog/EntityKlausPersonalityVersionHistoryContent');
+        return <EntityKlausPersonalityVersionHistoryContent />;
+      },
+    },
+  },
+);
 
 const kratixResourcesEntityContent = EntityContentBlueprint.make({
   name: 'kratix-resources',
@@ -625,9 +654,11 @@ export const gsPlugin = createFrontendPlugin({
     readmeEntityCard,
     soulEntityCard,
     versionHistoryEntityCard,
+    klausPersonalityVersionHistoryEntityCard,
     // Entity content tabs
     deploymentsEntityContent,
     versionHistoryEntityContent,
+    klausPersonalityVersionHistoryEntityContent,
     kratixResourcesEntityContent,
     // Entity content layout
     helmChartContentLayout,

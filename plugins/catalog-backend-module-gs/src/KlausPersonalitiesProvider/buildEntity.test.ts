@@ -7,6 +7,7 @@ const basePublic: DiscoveredPersonality = {
     owner: 'giantswarm',
     repo: 'klaus-personalities',
     internal: false,
+    ociRegistry: 'gsoci.azurecr.io',
   },
   branch: 'main',
   toolchain: {
@@ -22,6 +23,7 @@ const baseInternal: DiscoveredPersonality = {
     owner: 'giantswarm',
     repo: 'klaus-personalities-internal',
     internal: true,
+    ociRegistry: 'gsociprivate.azurecr.io',
   },
   branch: 'main',
   toolchain: {
@@ -62,6 +64,8 @@ describe('buildPersonalityEntity', () => {
             'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/SOUL.md',
           'giantswarm.io/klaus-personality-yaml-url':
             'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/personality.yaml',
+          'giantswarm.io/klaus-personality-image':
+            'gsoci.azurecr.io/giantswarm/klaus-personalities/sre',
           'giantswarm.io/klaus-personality-toolchain':
             'gsoci.azurecr.io/giantswarm/klaus-toolchains/go:0.1.12',
         },

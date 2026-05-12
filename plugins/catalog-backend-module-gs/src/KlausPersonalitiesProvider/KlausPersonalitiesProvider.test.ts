@@ -60,11 +60,17 @@ describe('KlausPersonalitiesProvider', () => {
 
     const provider = new KlausPersonalitiesProvider({
       sources: [
-        { owner: 'giantswarm', repo: 'klaus-personalities', internal: false },
+        {
+          owner: 'giantswarm',
+          repo: 'klaus-personalities',
+          internal: false,
+          ociRegistry: 'gsoci.azurecr.io',
+        },
         {
           owner: 'giantswarm',
           repo: 'klaus-personalities-internal',
           internal: true,
+          ociRegistry: 'gsociprivate.azurecr.io',
         },
       ],
       credentialsProvider,

@@ -8,7 +8,7 @@ export function buildPersonalityEntity(
   personality: DiscoveredPersonality,
 ): DeferredEntity {
   const { name, source, branch } = personality;
-  const { owner, repo, internal } = source;
+  const { owner, repo, internal, ociRegistry } = source;
   const entityName = internal
     ? `klaus-personality-${name}-internal`
     : `klaus-personality-${name}`;
@@ -17,6 +17,7 @@ export function buildPersonalityEntity(
   const dirUrl = `${repoUrl}/tree/${branch}/personalities/${name}`;
   const soulUrl = `${repoUrl}/blob/${branch}/personalities/${name}/SOUL.md`;
   const personalityYamlUrl = `${repoUrl}/blob/${branch}/personalities/${name}/personality.yaml`;
+  const imageRef = `${ociRegistry}/${owner}/${repo}/${name}`;
   const dependsOnParent = internal
     ? 'component:default/klaus-personalities-internal'
     : 'component:default/klaus-personalities';
@@ -28,6 +29,7 @@ export function buildPersonalityEntity(
     'github.com/project-slug': `${owner}/${repo}`,
     'giantswarm.io/klaus-soul-url': soulUrl,
     'giantswarm.io/klaus-personality-yaml-url': personalityYamlUrl,
+    'giantswarm.io/klaus-personality-image': imageRef,
   };
   if (personality.toolchain) {
     annotations['giantswarm.io/klaus-personality-toolchain'] =

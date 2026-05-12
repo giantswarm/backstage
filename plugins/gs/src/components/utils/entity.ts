@@ -13,6 +13,8 @@ export const GS_LATEST_RELEASE_TAG = 'giantswarm.io/latest-release-tag';
 
 export const GS_APP_DEPLOYMENT_ACTION = 'giantswarm.io/app-deployment-action';
 export const GS_KLAUS_SOUL_URL = 'giantswarm.io/klaus-soul-url';
+export const GS_KLAUS_PERSONALITY_IMAGE =
+  'giantswarm.io/klaus-personality-image';
 
 export const getSourceLocationFromEntity = (entity: Entity) => {
   const location = entity.metadata.annotations?.[ANNOTATION_SOURCE_LOCATION];
@@ -86,6 +88,10 @@ export const isEntityKlausPersonality = (entity: Entity) => {
 
 export const getKlausSoulUrlFromEntity = (entity: Entity) => {
   return entity.metadata.annotations?.[GS_KLAUS_SOUL_URL];
+};
+
+export const getKlausPersonalityImageFromEntity = (entity: Entity) => {
+  return entity.metadata.annotations?.[GS_KLAUS_PERSONALITY_IMAGE];
 };
 
 export const isEntityWithIcon = (entity: Entity) => {

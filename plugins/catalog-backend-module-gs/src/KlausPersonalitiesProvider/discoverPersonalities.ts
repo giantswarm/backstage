@@ -9,6 +9,7 @@ export interface KlausPersonalitySource {
   owner: string;
   repo: string;
   internal: boolean;
+  ociRegistry: string;
 }
 
 export interface DiscoveredPersonality {
