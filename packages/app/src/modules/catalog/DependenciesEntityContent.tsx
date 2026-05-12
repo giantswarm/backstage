@@ -1,13 +1,33 @@
-import { EntityContentBlueprint } from '@backstage/plugin-catalog-react/alpha';
+import {
+  EntityContentBlueprint,
+  EntityRelationCard,
+  entityColumnPresets,
+} from '@backstage/plugin-catalog-react/alpha';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import Grid from '@material-ui/core/Grid';
 import Link from '@material-ui/core/Link';
 import Typography from '@material-ui/core/Typography';
 import {
+  Entity,
+  RELATION_DEPENDENCY_OF,
+  RELATION_DEPENDS_ON,
+  RELATION_HAS_PART,
+  RELATION_PART_OF,
+  parseEntityRef,
+} from '@backstage/catalog-model';
+import {
   EntityDependencyOfComponentsCard,
   EntityDependsOnComponentsCard,
-  EntityDependsOnResourcesCard,
+  EntityHasSubcomponentsCard,
 } from '@backstage/plugin-catalog';
+
+function hasRelation(entity: Entity, type: string, kind: string): boolean {
+  return (entity.relations ?? []).some(rel => {
+    if (rel.type !== type) return false;
+    const ref = parseEntityRef(rel.targetRef);
+    return ref.kind.toLowerCase() === kind.toLowerCase();
+  });
+}
 
 function DependenciesContent() {
   const { entity } = useEntity();
@@ -16,6 +36,45 @@ function DependenciesContent() {
   const depsUrl = projectSlug
     ? `https://github.com/${projectSlug}/network/dependencies`
     : undefined;
+
+  const showPartOfSystem = hasRelation(entity, RELATION_PART_OF, 'System');
+  const showSubcomponentOf = hasRelation(entity, RELATION_PART_OF, 'Component');
+  const showHasSubcomponents = hasRelation(
+    entity,
+    RELATION_HAS_PART,
+    'Component',
+  );
+  const showDependsOn = hasRelation(entity, RELATION_DEPENDS_ON, 'Component');
+  const showDependencyOf = hasRelation(
+    entity,
+    RELATION_DEPENDENCY_OF,
+    'Component',
+  );
+
+  const hasAnyRelation =
+    showPartOfSystem ||
+    showSubcomponentOf ||
+    showHasSubcomponents ||
+    showDependsOn ||
+    showDependencyOf;
+
+  if (!hasAnyRelation) {
+    return (
+      <Typography variant="body2">
+        No dependencies or relationships found for {title} in the catalog.
+        {depsUrl ? (
+          <>
+            {' '}
+            Use the{' '}
+            <Link href={depsUrl} target="_blank" rel="noopener noreferrer">
+              GitHub dependencies page
+            </Link>{' '}
+            for an overview of code-level dependencies.
+          </>
+        ) : null}
+      </Typography>
+    );
+  }
 
   return (
     <Grid container spacing={3} alignItems="stretch">
@@ -40,19 +99,53 @@ function DependenciesContent() {
           )}
         </Typography>
       </Grid>
-      <Grid item md={12}>
-        <EntityDependsOnComponentsCard
-          title={`Components ${title} depends on`}
-        />
-      </Grid>
-      <Grid item md={12}>
-        <EntityDependsOnResourcesCard title={`Resources ${title} depends on`} />
-      </Grid>
-      <Grid item md={12}>
-        <EntityDependencyOfComponentsCard
-          title={`Components depending on ${title}`}
-        />
-      </Grid>
+      {showPartOfSystem && (
+        <Grid item md={12}>
+          <EntityRelationCard
+            title="Part of"
+            entityKind="System"
+            relationType={RELATION_PART_OF}
+            columnConfig={entityColumnPresets.system.columns}
+            emptyState={{
+              message: `${title} is not part of any system.`,
+              helpLink: entityColumnPresets.system.helpLink,
+            }}
+          />
+        </Grid>
+      )}
+      {showSubcomponentOf && (
+        <Grid item md={12}>
+          <EntityRelationCard
+            title="Subcomponent of"
+            entityKind="Component"
+            relationType={RELATION_PART_OF}
+            columnConfig={entityColumnPresets.component.columns}
+            emptyState={{
+              message: `${title} is not a subcomponent of another component.`,
+              helpLink: entityColumnPresets.component.helpLink,
+            }}
+          />
+        </Grid>
+      )}
+      {showHasSubcomponents && (
+        <Grid item md={12}>
+          <EntityHasSubcomponentsCard title={`Subcomponents of ${title}`} />
+        </Grid>
+      )}
+      {showDependsOn && (
+        <Grid item md={12}>
+          <EntityDependsOnComponentsCard
+            title={`Components ${title} depends on`}
+          />
+        </Grid>
+      )}
+      {showDependencyOf && (
+        <Grid item md={12}>
+          <EntityDependencyOfComponentsCard
+            title={`Components depending on ${title}`}
+          />
+        </Grid>
+      )}
     </Grid>
   );
 }
