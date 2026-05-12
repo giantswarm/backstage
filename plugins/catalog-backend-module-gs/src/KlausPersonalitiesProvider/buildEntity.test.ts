@@ -50,7 +50,7 @@ describe('buildPersonalityEntity', () => {
       kind: 'Component',
       metadata: {
         name: 'klaus-personality-sre',
-        title: 'sre',
+        title: 'sre personality',
         tags: ['klaus-personality', 'public'],
         annotations: {
           'backstage.io/source-location':
@@ -85,7 +85,7 @@ describe('buildPersonalityEntity', () => {
     const result = buildPersonalityEntity(baseInternal);
 
     expect(result.entity.metadata.name).toBe('klaus-personality-sre-internal');
-    expect(result.entity.metadata.title).toBe('sre (internal)');
+    expect(result.entity.metadata.title).toBe('sre personality (internal)');
     expect(result.entity.metadata.tags).toEqual([
       'klaus-personality',
       'internal',

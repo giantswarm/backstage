@@ -12,7 +12,9 @@ export function buildPersonalityEntity(
   const entityName = internal
     ? `klaus-personality-${name}-internal`
     : `klaus-personality-${name}`;
-  const title = internal ? `${name} (internal)` : name;
+  const title = internal
+    ? `${name} personality (internal)`
+    : `${name} personality`;
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const dirUrl = `${repoUrl}/tree/${branch}/personalities/${name}`;
   const soulUrl = `${repoUrl}/blob/${branch}/personalities/${name}/SOUL.md`;

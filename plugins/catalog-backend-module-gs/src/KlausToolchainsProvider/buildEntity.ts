@@ -12,7 +12,7 @@ export function buildToolchainEntity(
   const entityName = internal
     ? `klaus-toolchain-${name}-internal`
     : `klaus-toolchain-${name}`;
-  const title = internal ? `${name} (internal)` : name;
+  const title = internal ? `${name} toolchain (internal)` : `${name} toolchain`;
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const dirUrl = `${repoUrl}/tree/${branch}/${dirName}`;
   const dockerfileUrl = `${repoUrl}/blob/${branch}/${dirName}/Dockerfile`;

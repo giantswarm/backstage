@@ -37,7 +37,7 @@ describe('buildToolchainEntity', () => {
       kind: 'Component',
       metadata: {
         name: 'klaus-toolchain-go',
-        title: 'go',
+        title: 'go toolchain',
         tags: ['klaus-toolchain', 'public'],
         annotations: {
           'backstage.io/source-location':
@@ -67,7 +67,7 @@ describe('buildToolchainEntity', () => {
     const result = buildToolchainEntity(baseInternal);
 
     expect(result.entity.metadata.name).toBe('klaus-toolchain-python-internal');
-    expect(result.entity.metadata.title).toBe('python (internal)');
+    expect(result.entity.metadata.title).toBe('python toolchain (internal)');
     expect(result.entity.metadata.tags).toEqual([
       'klaus-toolchain',
       'internal',
