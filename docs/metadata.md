@@ -58,9 +58,19 @@ An annotation we set on component entities in rare cases to provide a link from 
 
 Specifies the date and time of the latest release (as in a new tagged release in the revision control system) of a component entity. Value must be a string in ISO 8601 format.
 
+Can be set manually, or populated automatically by the `LatestReleaseProcessor` (see `giantswarm.io/release-tag-prefix` and `github.com/project-slug`).
+
 ### giantswarm.io/latest-release-tag
 
 The version tag of the latest release (as in a revision control system) of a component entity.
+
+Can be set manually, or populated automatically by the `LatestReleaseProcessor` (see `giantswarm.io/release-tag-prefix` and `github.com/project-slug`).
+
+### giantswarm.io/release-tag-prefix
+
+Used on component entities that map to a subproject of a monorepo whose releases are tagged with a per-subproject prefix (for example `sre/v0.1.5`). When set together with `github.com/project-slug`, the `LatestReleaseProcessor` paginates the repository's GitHub releases and picks the most recent non-draft release whose `tag_name` starts with this prefix, then writes the resulting tag and date into `giantswarm.io/latest-release-tag` and `giantswarm.io/latest-release-date`.
+
+When the annotation is absent, the processor falls back to GitHub's canonical `/releases/latest` endpoint (newest non-draft, non-prerelease release across the whole repository).
 
 ### github.com/project-slug
 
