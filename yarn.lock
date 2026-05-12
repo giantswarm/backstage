@@ -10527,6 +10527,7 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs"
   dependencies:
     "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/integration": "backstage:^"
