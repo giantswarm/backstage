@@ -224,6 +224,13 @@ catalog:
   #     # prefix when giantswarm.io/release-tag-prefix is set (monorepos).
   #     enabled: true
   #     cacheTtlSeconds: 3600
+  providers:
+    klausPersonalities:
+      # Discovers personalities under personalities/<name>/ in
+      # giantswarm/klaus-personalities and giantswarm/klaus-personalities-internal
+      # and emits one Component entity per personality. Requires GitHub
+      # credentials with access to the internal repo.
+      enabled: true
 
 grafana:
   domain: https://example.com
