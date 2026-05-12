@@ -47,6 +47,7 @@ describe('buildToolchainEntity', () => {
           'backstage.io/managed-by-origin-location':
             'url:https://github.com/giantswarm/klaus-toolchains',
           'github.com/project-slug': 'giantswarm/klaus-toolchains',
+          'giantswarm.io/release-tag-prefix': 'go/',
           'giantswarm.io/klaus-toolchain-image':
             'gsoci.azurecr.io/giantswarm/klaus-toolchains/go',
           'giantswarm.io/klaus-toolchain-dockerfile-url':

@@ -60,6 +60,7 @@ describe('buildPersonalityEntity', () => {
           'backstage.io/managed-by-origin-location':
             'url:https://github.com/giantswarm/klaus-personalities',
           'github.com/project-slug': 'giantswarm/klaus-personalities',
+          'giantswarm.io/release-tag-prefix': 'sre/',
           'giantswarm.io/klaus-soul-url':
             'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/SOUL.md',
           'giantswarm.io/klaus-personality-yaml-url':

@@ -26,6 +26,7 @@ export function buildToolchainEntity(
     'backstage.io/managed-by-location': `url:${repoUrl}`,
     'backstage.io/managed-by-origin-location': `url:${repoUrl}`,
     'github.com/project-slug': `${owner}/${repo}`,
+    'giantswarm.io/release-tag-prefix': `${name}/`,
     'giantswarm.io/klaus-toolchain-image': imageRef,
     'giantswarm.io/klaus-toolchain-dockerfile-url': dockerfileUrl,
   };

@@ -29,6 +29,7 @@ export function buildPersonalityEntity(
     'backstage.io/managed-by-location': `url:${repoUrl}`,
     'backstage.io/managed-by-origin-location': `url:${repoUrl}`,
     'github.com/project-slug': `${owner}/${repo}`,
+    'giantswarm.io/release-tag-prefix': `${name}/`,
     'giantswarm.io/klaus-soul-url': soulUrl,
     'giantswarm.io/klaus-personality-yaml-url': personalityYamlUrl,
     'giantswarm.io/klaus-personality-image': imageRef,
