@@ -39,6 +39,7 @@ import {
 import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
+  isEntityKlausPersonality,
   isEntityKratixResource,
   isEntityWithIcon,
 } from './components/utils/entity';
@@ -269,6 +270,19 @@ const readmeEntityCard = EntityCardBlueprint.make({
       const { EntityReadmeCard } =
         await import('./components/catalog/EntityReadmeCard');
       return <EntityReadmeCard />;
+    },
+  },
+});
+
+const soulEntityCard = EntityCardBlueprint.make({
+  name: 'klaus-soul',
+  params: {
+    type: 'content',
+    filter: entity => isEntityKlausPersonality(entity),
+    loader: async () => {
+      const { EntitySoulCard } =
+        await import('./components/catalog/EntitySoulCard');
+      return <EntitySoulCard />;
     },
   },
 });
@@ -609,6 +623,7 @@ export const gsPlugin = createFrontendPlugin({
     installationDetailsEntityCard,
     kratixStatusEntityCard,
     readmeEntityCard,
+    soulEntityCard,
     versionHistoryEntityCard,
     // Entity content tabs
     deploymentsEntityContent,

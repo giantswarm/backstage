@@ -1,0 +1,1 @@
+export { EntitySoulCard } from './EntitySoulCard';
