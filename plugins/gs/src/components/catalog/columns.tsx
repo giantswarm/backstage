@@ -151,7 +151,7 @@ export const columnFactories = Object.freeze({
       render: ({ entity }) => {
         const helmCharts = getHelmChartsFromEntity(entity);
 
-        if (!helmCharts) {
+        if (helmCharts.length === 0) {
           return undefined;
         }
 
