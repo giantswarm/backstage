@@ -75,15 +75,13 @@ describe('buildPersonalityEntity', () => {
         lifecycle: 'production',
         owner: 'team-bumblebee',
         system: 'klaus',
-        dependsOn: [
-          'component:default/klaus-personalities',
-          'component:default/klaus-toolchain-go',
-        ],
+        subcomponentOf: 'klaus-personalities',
+        dependsOn: ['component:default/klaus-toolchain-go'],
       },
     });
   });
 
-  it('uses -internal name suffix and depends on the internal parent', () => {
+  it('uses -internal name suffix and is a subcomponent of the internal parent', () => {
     const result = buildPersonalityEntity(baseInternal);
 
     expect(result.entity.metadata.name).toBe('klaus-personality-sre-internal');
@@ -92,8 +90,10 @@ describe('buildPersonalityEntity', () => {
       'klaus-personality',
       'internal',
     ]);
+    expect(
+      (result.entity.spec as { subcomponentOf: string }).subcomponentOf,
+    ).toBe('klaus-personalities-internal');
     expect((result.entity.spec as { dependsOn: string[] }).dependsOn).toEqual([
-      'component:default/klaus-personalities-internal',
       'component:default/klaus-toolchain-go-internal',
     ]);
     expect(
@@ -113,9 +113,12 @@ describe('buildPersonalityEntity', () => {
         'giantswarm.io/klaus-personality-toolchain'
       ],
     ).toBeUndefined();
-    expect((result.entity.spec as { dependsOn: string[] }).dependsOn).toEqual([
-      'component:default/klaus-personalities',
-    ]);
+    expect(
+      (result.entity.spec as { dependsOn?: string[] }).dependsOn,
+    ).toBeUndefined();
+    expect(
+      (result.entity.spec as { subcomponentOf: string }).subcomponentOf,
+    ).toBe('klaus-personalities');
   });
 
   it('omits the toolchain dependsOn link when toolchain.repository is malformed', () => {
@@ -123,9 +126,12 @@ describe('buildPersonalityEntity', () => {
       ...basePublic,
       toolchain: { repository: 'no-slashes-here', tag: '1.0.0' },
     });
-    expect((result.entity.spec as { dependsOn: string[] }).dependsOn).toEqual([
-      'component:default/klaus-personalities',
-    ]);
+    expect(
+      (result.entity.spec as { dependsOn?: string[] }).dependsOn,
+    ).toBeUndefined();
+    expect(
+      (result.entity.spec as { subcomponentOf: string }).subcomponentOf,
+    ).toBe('klaus-personalities');
   });
 
   it('uses the discovered branch in URLs', () => {

@@ -18,9 +18,9 @@ export function buildPersonalityEntity(
   const soulUrl = `${repoUrl}/blob/${branch}/personalities/${name}/SOUL.md`;
   const personalityYamlUrl = `${repoUrl}/blob/${branch}/personalities/${name}/personality.yaml`;
   const imageRef = `${ociRegistry}/${owner}/${repo}/${name}`;
-  const dependsOnParent = internal
-    ? 'component:default/klaus-personalities-internal'
-    : 'component:default/klaus-personalities';
+  const subcomponentOf = internal
+    ? 'klaus-personalities-internal'
+    : 'klaus-personalities';
 
   const annotations: Record<string, string> = {
     'backstage.io/source-location': `url:${dirUrl}`,
@@ -36,13 +36,9 @@ export function buildPersonalityEntity(
       `${personality.toolchain.repository}:${personality.toolchain.tag}`;
   }
 
-  const dependsOn: string[] = [dependsOnParent];
   const toolchainEntityRef = toolchainEntityRefFromRepository(
     personality.toolchain?.repository,
   );
-  if (toolchainEntityRef) {
-    dependsOn.push(toolchainEntityRef);
-  }
 
   const entity: Entity = {
     apiVersion: 'backstage.io/v1alpha1',
@@ -59,7 +55,8 @@ export function buildPersonalityEntity(
       lifecycle: 'production',
       owner: 'team-bumblebee',
       system: 'klaus',
-      dependsOn,
+      subcomponentOf,
+      ...(toolchainEntityRef ? { dependsOn: [toolchainEntityRef] } : {}),
     },
   };
 

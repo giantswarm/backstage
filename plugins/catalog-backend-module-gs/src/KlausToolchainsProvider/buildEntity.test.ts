@@ -58,12 +58,12 @@ describe('buildToolchainEntity', () => {
         lifecycle: 'production',
         owner: 'team-bumblebee',
         system: 'klaus',
-        dependsOn: ['component:default/klaus-toolchains'],
+        subcomponentOf: 'klaus-toolchains',
       },
     });
   });
 
-  it('uses -internal name suffix and depends on the internal parent', () => {
+  it('uses -internal name suffix and is a subcomponent of the internal parent', () => {
     const result = buildToolchainEntity(baseInternal);
 
     expect(result.entity.metadata.name).toBe('klaus-toolchain-python-internal');
@@ -72,9 +72,9 @@ describe('buildToolchainEntity', () => {
       'klaus-toolchain',
       'internal',
     ]);
-    expect((result.entity.spec as { dependsOn: string[] }).dependsOn).toEqual([
-      'component:default/klaus-toolchains-internal',
-    ]);
+    expect(
+      (result.entity.spec as { subcomponentOf: string }).subcomponentOf,
+    ).toBe('klaus-toolchains-internal');
     expect(
       result.entity.metadata.annotations?.[
         'giantswarm.io/klaus-toolchain-image'

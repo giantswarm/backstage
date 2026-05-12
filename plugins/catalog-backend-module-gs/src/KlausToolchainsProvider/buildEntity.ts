@@ -17,9 +17,9 @@ export function buildToolchainEntity(
   const dirUrl = `${repoUrl}/tree/${branch}/${dirName}`;
   const dockerfileUrl = `${repoUrl}/blob/${branch}/${dirName}/Dockerfile`;
   const imageRef = `${ociRegistry}/${owner}/${repo}/${name}`;
-  const dependsOnParent = internal
-    ? 'component:default/klaus-toolchains-internal'
-    : 'component:default/klaus-toolchains';
+  const subcomponentOf = internal
+    ? 'klaus-toolchains-internal'
+    : 'klaus-toolchains';
 
   const annotations: Record<string, string> = {
     'backstage.io/source-location': `url:${dirUrl}`,
@@ -45,7 +45,7 @@ export function buildToolchainEntity(
       lifecycle: 'production',
       owner: 'team-bumblebee',
       system: 'klaus',
-      dependsOn: [dependsOnParent],
+      subcomponentOf,
     },
   };
 
