@@ -30,15 +30,6 @@ export function buildPersonalityEntity(options: {
     'giantswarm.io/klaus-soul-url': soulUrl,
     'giantswarm.io/oci-repository': imageRef,
   };
-  if (personality.toolchain) {
-    annotations['giantswarm.io/klaus-personality-toolchain'] =
-      `${personality.toolchain.repository}:${personality.toolchain.tag}`;
-  }
-  if (personality.plugins.length > 0) {
-    annotations['giantswarm.io/klaus-personality-plugins'] = personality.plugins
-      .map(p => `${p.repository}:${p.tag}`)
-      .join('\n');
-  }
 
   const dependsOn: string[] = [];
   if (personality.toolchain) {

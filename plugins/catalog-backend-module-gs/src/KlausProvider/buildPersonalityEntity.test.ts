@@ -124,8 +124,6 @@ describe('buildPersonalityEntity', () => {
             'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/SOUL.md',
           'giantswarm.io/oci-repository':
             'gsoci.azurecr.io/giantswarm/klaus-personalities/sre',
-          'giantswarm.io/klaus-personality-toolchain':
-            'gsoci.azurecr.io/giantswarm/klaus-toolchains/go:0.1.12',
         },
       },
       spec: {
@@ -162,30 +160,20 @@ describe('buildPersonalityEntity', () => {
     expect(
       result.entity.metadata.annotations?.['giantswarm.io/oci-repository'],
     ).toBe('gsociprivate.azurecr.io/giantswarm/klaus-personalities/sre');
-    expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-personality-plugins'
-      ],
-    ).toBe('gsociprivate.azurecr.io/giantswarm/klaus-plugins/gs-base:v0.9.0');
   });
 
-  it('omits dependsOn and the toolchain annotation when toolchain info is missing', () => {
+  it('omits dependsOn when toolchain info is missing', () => {
     const result = buildPersonalityEntity({
       personality: { ...publicSrePersonality, toolchain: undefined },
       instance: publicInstance,
       instances,
     });
     expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-personality-toolchain'
-      ],
-    ).toBeUndefined();
-    expect(
       (result.entity.spec as { dependsOn?: string[] }).dependsOn,
     ).toBeUndefined();
   });
 
-  it('omits unresolved dependsOn refs but keeps the annotation', () => {
+  it('omits dependsOn when the toolchain ref cannot be resolved', () => {
     const result = buildPersonalityEntity({
       personality: {
         ...publicSrePersonality,
@@ -200,11 +188,6 @@ describe('buildPersonalityEntity', () => {
     expect(
       (result.entity.spec as { dependsOn?: string[] }).dependsOn,
     ).toBeUndefined();
-    expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-personality-toolchain'
-      ],
-    ).toBe('unknown.example.com/foo/bar/baz:1.0.0');
   });
 
   it('omits system when not configured but always emits owner', () => {
