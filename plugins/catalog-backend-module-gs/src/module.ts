@@ -7,6 +7,7 @@ import {
   catalogServiceRef,
 } from '@backstage/plugin-catalog-node';
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
+import { KlausProvider } from './KlausProvider';
 import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
@@ -74,6 +75,15 @@ export const catalogModuleGS = createBackendModule({
           catalog.addProcessor(
             LatestReleaseProcessor.fromConfig({ config, logger }),
           );
+        }
+
+        const klausProviders = KlausProvider.fromConfig({
+          config,
+          logger,
+          scheduler,
+        });
+        for (const provider of klausProviders) {
+          catalog.addEntityProvider(provider);
         }
       },
     });

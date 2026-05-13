@@ -2,27 +2,24 @@ import { useMemo } from 'react';
 import { Table } from '@backstage/core-components';
 import { Box, Typography } from '@material-ui/core';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
-import { useHelmChartTags } from '../../../hooks/useHelmChartTags';
-import { ChartTagData, getInitialColumns } from './columns';
-import { parseChartRef } from '../../../utils/parseChartRef';
+import { useHelmChartTags } from '../../hooks/useHelmChartTags';
+import { OciTagData, getOciTagColumns } from './columns';
+import { parseChartRef } from '../../utils/parseChartRef';
 
-const TABLE_ID = 'chart-tags';
+const TABLE_ID = 'oci-tags';
 
-type ChartTagsTableProps = {
-  chartRef: string;
-  chartName: string;
+export type OciTagsTableProps = {
+  ociRepository: string;
+  name: string;
 };
 
-export const ChartTagsTable = ({
-  chartRef,
-  chartName,
-}: ChartTagsTableProps) => {
+export const OciTagsTable = ({ ociRepository, name }: OciTagsTableProps) => {
   const { tags, latestStableVersion, isLoading, error } =
-    useHelmChartTags(chartRef);
+    useHelmChartTags(ociRepository);
 
   const { visibleColumns } = useTableColumns(TABLE_ID);
 
-  const tableData: ChartTagData[] = useMemo(() => {
+  const tableData: OciTagData[] = useMemo(() => {
     if (!tags) {
       return [];
     }
@@ -35,7 +32,7 @@ export const ChartTagsTable = ({
   }, [tags, latestStableVersion]);
 
   const columns = useMemo(
-    () => getInitialColumns(visibleColumns),
+    () => getOciTagColumns(visibleColumns),
     [visibleColumns],
   );
 
@@ -45,7 +42,7 @@ export const ChartTagsTable = ({
       return <Typography color="error">{error.message}</Typography>;
     }
 
-    const { repository } = parseChartRef(chartRef);
+    const { repository } = parseChartRef(ociRepository);
     emptyContent = (
       <Box px={2} py={8}>
         <Typography variant="inherit" color="textSecondary">
@@ -57,7 +54,7 @@ export const ChartTagsTable = ({
   }
 
   return (
-    <Table<ChartTagData>
+    <Table<OciTagData>
       isLoading={isLoading}
       options={{
         pageSize: 50,
@@ -69,7 +66,7 @@ export const ChartTagsTable = ({
       style={{ width: '100%' }}
       title={
         <Typography variant="h6">
-          Tags for {chartName} chart ({tableData.length})
+          Versions of {name} ({tableData.length})
         </Typography>
       }
       columns={columns}

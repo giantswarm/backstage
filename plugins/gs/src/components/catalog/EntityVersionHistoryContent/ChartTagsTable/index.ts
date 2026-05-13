@@ -1,1 +1,0 @@
-export { ChartTagsTable } from './ChartTagsTable';

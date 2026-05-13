@@ -26,6 +26,7 @@
   "dependencies": {
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/catalog-model": "backstage:^",
+    "@backstage/config": "backstage:^",
     "@backstage/integration": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
     "js-yaml": "^4.1.0"
@@ -36,9 +37,11 @@
     "@types/js-yaml": "^4"
   },
   "files": [
+    "config.d.ts",
     "dist",
     "migrations"
   ],
+  "configSchema": "config.d.ts",
   "bugs": "https://github.com/giantswarm/backstage/issues",
   "author": "Giant Swarm"
 }

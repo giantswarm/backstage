@@ -225,6 +225,27 @@ catalog:
   #     enabled: true
   #     cacheTtlSeconds: 3600
 
+  # providers:
+  #   # Klaus entity providers. Each top-level key is an instance ID. For each
+  #   # instance, personalities/toolchains/plugins are independently optional and
+  #   # are discovered from the given GitHub repo.
+  #   klaus:
+  #     public:
+  #       owner: team-bumblebee
+  #       namespace: ''
+  #       namePostfix: ''
+  #       titlePostfix: ''
+  #       tags: []
+  #       personalities:
+  #         sourceRepository: https://github.com/giantswarm/klaus-personalities
+  #         ociRepository: gsoci.azurecr.io/giantswarm/klaus-personalities
+  #       toolchains:
+  #         sourceRepository: https://github.com/giantswarm/klaus-toolchains
+  #         ociRepository: gsoci.azurecr.io/giantswarm/klaus-toolchains
+  #       plugins:
+  #         sourceRepository: https://github.com/giantswarm/klaus-plugins
+  #         ociRepository: gsoci.azurecr.io/giantswarm/klaus-plugins
+
 grafana:
   domain: https://example.com
 

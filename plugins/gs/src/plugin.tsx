@@ -39,8 +39,10 @@ import {
 import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
+  isEntityKlausPersonality,
   isEntityKratixResource,
   isEntityWithIcon,
+  isEntityWithOciRepository,
 } from './components/utils/entity';
 import {
   gsAuthProvidersApiRef,
@@ -251,11 +253,24 @@ const versionHistoryEntityCard = EntityCardBlueprint.make({
   name: 'version-history',
   params: {
     type: 'content',
-    filter: entity => isEntityHelmChartTagged(entity),
+    filter: entity => isEntityWithOciRepository(entity),
     loader: async () => {
       const { EntityVersionHistoryCard } =
         await import('./components/catalog/EntityVersionHistoryCard');
       return <EntityVersionHistoryCard />;
+    },
+  },
+});
+
+const helmChartVersionHistoryEntityCard = EntityCardBlueprint.make({
+  name: 'helm-chart-version-history',
+  params: {
+    type: 'content',
+    filter: entity => isEntityHelmChartTagged(entity),
+    loader: async () => {
+      const { EntityHelmChartVersionHistoryCard } =
+        await import('./components/catalog/EntityHelmChartVersionHistoryCard');
+      return <EntityHelmChartVersionHistoryCard />;
     },
   },
 });
@@ -269,6 +284,19 @@ const readmeEntityCard = EntityCardBlueprint.make({
       const { EntityReadmeCard } =
         await import('./components/catalog/EntityReadmeCard');
       return <EntityReadmeCard />;
+    },
+  },
+});
+
+const soulEntityCard = EntityCardBlueprint.make({
+  name: 'klaus-soul',
+  params: {
+    type: 'content',
+    filter: entity => isEntityKlausPersonality(entity),
+    loader: async () => {
+      const { EntitySoulCard } =
+        await import('./components/catalog/EntitySoulCard');
+      return <EntitySoulCard />;
     },
   },
 });
@@ -294,11 +322,25 @@ const versionHistoryEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/version-history',
     title: 'Version History',
-    filter: entity => isEntityHelmChartTagged(entity),
+    filter: entity => isEntityWithOciRepository(entity),
     loader: async () => {
       const { EntityVersionHistoryContent } =
         await import('./components/catalog/EntityVersionHistoryContent');
       return <EntityVersionHistoryContent />;
+    },
+  },
+});
+
+const helmChartVersionHistoryEntityContent = EntityContentBlueprint.make({
+  name: 'helm-chart-version-history',
+  params: {
+    path: '/version-history',
+    title: 'Version History',
+    filter: entity => isEntityHelmChartTagged(entity),
+    loader: async () => {
+      const { EntityHelmChartVersionHistoryContent } =
+        await import('./components/catalog/EntityHelmChartVersionHistoryContent');
+      return <EntityHelmChartVersionHistoryContent />;
     },
   },
 });
@@ -609,10 +651,13 @@ export const gsPlugin = createFrontendPlugin({
     installationDetailsEntityCard,
     kratixStatusEntityCard,
     readmeEntityCard,
+    soulEntityCard,
     versionHistoryEntityCard,
+    helmChartVersionHistoryEntityCard,
     // Entity content tabs
     deploymentsEntityContent,
     versionHistoryEntityContent,
+    helmChartVersionHistoryEntityContent,
     kratixResourcesEntityContent,
     // Entity content layout
     helmChartContentLayout,

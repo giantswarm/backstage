@@ -12,6 +12,8 @@ export const GS_LATEST_RELEASE_DATE = 'giantswarm.io/latest-release-date';
 export const GS_LATEST_RELEASE_TAG = 'giantswarm.io/latest-release-tag';
 
 export const GS_APP_DEPLOYMENT_ACTION = 'giantswarm.io/app-deployment-action';
+export const GS_KLAUS_SOUL_URL = 'giantswarm.io/klaus-soul-url';
+export const GS_OCI_REPOSITORY = 'giantswarm.io/oci-repository';
 
 export const getSourceLocationFromEntity = (entity: Entity) => {
   const location = entity.metadata.annotations?.[ANNOTATION_SOURCE_LOCATION];
@@ -75,6 +77,24 @@ export const isEntityKratixResource = (entity: Entity) => {
 export const isEntityHelmChartTagged = (entity: Entity) => {
   const tags = entity.metadata.tags ?? [];
   return tags.includes('helmchart');
+};
+
+export const isEntityKlausPersonality = (entity: Entity) => {
+  return (
+    entity.kind === 'Component' && entity.spec?.type === 'klaus-personality'
+  );
+};
+
+export const getKlausSoulUrlFromEntity = (entity: Entity) => {
+  return entity.metadata.annotations?.[GS_KLAUS_SOUL_URL];
+};
+
+export const getOciRepositoryFromEntity = (entity: Entity) => {
+  return entity.metadata.annotations?.[GS_OCI_REPOSITORY];
+};
+
+export const isEntityWithOciRepository = (entity: Entity) => {
+  return Boolean(getOciRepositoryFromEntity(entity));
 };
 
 export const isEntityWithIcon = (entity: Entity) => {

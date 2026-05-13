@@ -10530,6 +10530,7 @@ __metadata:
     "@backstage/backend-test-utils": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
+    "@backstage/config": "backstage:^"
     "@backstage/integration": "backstage:^"
     "@backstage/plugin-catalog-node": "backstage:^"
     "@types/js-yaml": "npm:^4"
