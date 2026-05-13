@@ -7,6 +7,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.131.0] - 2026-05-13
 
+## [0.131.0] - 2026-05-13
+
 ### Added
 
 - `KlausProvider` catalog entity provider that discovers Klaus personalities, toolchains, and plugins from GitHub and emits Component entities. Supports multiple instances (e.g. `public` and `internal`) and resolves personality → toolchain/plugin `dependsOn` references across them.
@@ -2479,6 +2481,7 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 - Disable anonymous access.
 
 [Unreleased]: https://github.com/giantswarm/backstage/compare/v0.131.0...HEAD
+[0.131.0]: https://github.com/giantswarm/backstage/compare/v0.131.0...v0.131.0
 [0.131.0]: https://github.com/giantswarm/backstage/compare/v0.130.0...v0.131.0
 [0.130.0]: https://github.com/giantswarm/backstage/compare/v0.129.2...v0.130.0
 [0.129.2]: https://github.com/giantswarm/backstage/compare/v0.129.1...v0.129.2
