@@ -9,6 +9,10 @@ import {
 } from './legacyEntityExtensions';
 import { EntityPresentationApi } from './EntityPresentationApi';
 import { WhoIsOnCallEntityCard } from './WhoIsOnCallEntityCard';
+import {
+  SubcomponentOfEntityCard,
+  SubcomponentsOfEntityCard,
+} from './RelationEntityCards';
 
 export const catalogPluginOverrides = createFrontendModule({
   pluginId: 'catalog',
@@ -21,5 +25,7 @@ export const catalogPluginOverrides = createFrontendModule({
     GraphEntityContent,
     GrafanaDashboardsEntityCard,
     WhoIsOnCallEntityCard,
+    SubcomponentOfEntityCard,
+    SubcomponentsOfEntityCard,
   ],
 });
