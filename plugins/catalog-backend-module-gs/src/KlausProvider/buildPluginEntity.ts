@@ -9,13 +9,12 @@ export function buildPluginEntity(options: {
   instance: KlausInstanceConfig;
 }): DeferredEntity {
   const { plugin, instance } = options;
-  const { name, source, branch, pluginDir, description, version } = plugin;
+  const { name, source, branch, pluginDir, description } = plugin;
   const { owner, repo, ociRepository } = source;
   const { namePostfix, titlePostfix } = instance;
 
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const dirUrl = `${repoUrl}/tree/${branch}/${pluginDir}`;
-  const pluginJsonUrl = `${repoUrl}/blob/${branch}/${pluginDir}/.claude-plugin/plugin.json`;
   const imageRef = `${ociRepository}/${name}`;
 
   const annotations: Record<string, string> = {
@@ -25,11 +24,7 @@ export function buildPluginEntity(options: {
     'github.com/project-slug': `${owner}/${repo}`,
     'giantswarm.io/release-tag-prefix': `${name}/`,
     'giantswarm.io/oci-repository': imageRef,
-    'giantswarm.io/klaus-plugin-json-url': pluginJsonUrl,
   };
-  if (version) {
-    annotations['giantswarm.io/klaus-plugin-marketplace-version'] = version;
-  }
 
   const tags = Array.from(new Set(['klaus-plugin', ...instance.tags]));
 

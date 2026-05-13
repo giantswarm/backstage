@@ -15,7 +15,6 @@ export function buildToolchainEntity(options: {
 
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const dirUrl = `${repoUrl}/tree/${branch}/${dirName}`;
-  const dockerfileUrl = `${repoUrl}/blob/${branch}/${dirName}/Dockerfile`;
   const imageRef = `${ociRepository}/${name}`;
 
   const annotations: Record<string, string> = {
@@ -25,7 +24,6 @@ export function buildToolchainEntity(options: {
     'github.com/project-slug': `${owner}/${repo}`,
     'giantswarm.io/release-tag-prefix': `${name}/`,
     'giantswarm.io/oci-repository': imageRef,
-    'giantswarm.io/klaus-toolchain-dockerfile-url': dockerfileUrl,
   };
 
   const tags = Array.from(new Set(['klaus-toolchain', ...instance.tags]));

@@ -45,18 +45,15 @@ describe('discoverPlugins', () => {
         return textResponse(
           JSON.stringify({
             name: 'giantswarm',
-            version: '1.0.0',
             plugins: [
               {
                 name: 'base',
                 source: './plugins/base',
                 description: 'Base plugin',
-                version: '0.1.0',
               },
               {
                 name: 'gs-base',
                 source: './plugins/gs-base',
-                version: '0.2.0',
               },
             ],
           }),
@@ -78,7 +75,6 @@ describe('discoverPlugins', () => {
         source,
         branch: 'main',
         description: 'Base plugin',
-        version: '0.1.0',
         pluginDir: 'plugins/base',
       },
       {
@@ -86,7 +82,6 @@ describe('discoverPlugins', () => {
         source,
         branch: 'main',
         description: undefined,
-        version: '0.2.0',
         pluginDir: 'plugins/gs-base',
       },
     ]);

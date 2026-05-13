@@ -8,7 +8,6 @@ export interface DiscoveredPlugin {
   source: KlausSourceConfig;
   branch: string;
   description?: string;
-  version?: string;
   pluginDir: string;
 }
 
@@ -17,7 +16,6 @@ interface MarketplaceJson {
     name?: string;
     source?: string;
     description?: string;
-    version?: string;
   }>;
 }
 
@@ -63,7 +61,6 @@ export async function discoverPlugins(options: {
       source,
       branch,
       description: entry.description,
-      version: entry.version,
       pluginDir: entry.source.replace(/^\.\//, ''),
     });
   }

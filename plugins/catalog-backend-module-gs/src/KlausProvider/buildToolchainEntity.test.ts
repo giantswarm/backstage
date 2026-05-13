@@ -75,8 +75,6 @@ describe('buildToolchainEntity', () => {
           'giantswarm.io/release-tag-prefix': 'go/',
           'giantswarm.io/oci-repository':
             'gsoci.azurecr.io/giantswarm/klaus-toolchains/go',
-          'giantswarm.io/klaus-toolchain-dockerfile-url':
-            'https://github.com/giantswarm/klaus-toolchains/blob/main/klaus-go/Dockerfile',
         },
       },
       spec: {
@@ -129,13 +127,6 @@ describe('buildToolchainEntity', () => {
       result.entity.metadata.annotations?.['backstage.io/source-location'],
     ).toBe(
       'url:https://github.com/giantswarm/klaus-toolchains/tree/develop/klaus-go',
-    );
-    expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-toolchain-dockerfile-url'
-      ],
-    ).toBe(
-      'https://github.com/giantswarm/klaus-toolchains/blob/develop/klaus-go/Dockerfile',
     );
   });
 });

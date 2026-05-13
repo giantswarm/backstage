@@ -122,8 +122,6 @@ describe('buildPersonalityEntity', () => {
           'giantswarm.io/release-tag-prefix': 'sre/',
           'giantswarm.io/klaus-soul-url':
             'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/SOUL.md',
-          'giantswarm.io/klaus-personality-yaml-url':
-            'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/personality.yaml',
           'giantswarm.io/oci-repository':
             'gsoci.azurecr.io/giantswarm/klaus-personalities/sre',
           'giantswarm.io/klaus-personality-toolchain':

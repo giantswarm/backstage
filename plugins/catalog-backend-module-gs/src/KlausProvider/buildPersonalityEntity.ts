@@ -19,7 +19,6 @@ export function buildPersonalityEntity(options: {
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const dirUrl = `${repoUrl}/tree/${branch}/personalities/${name}`;
   const soulUrl = `${repoUrl}/blob/${branch}/personalities/${name}/SOUL.md`;
-  const personalityYamlUrl = `${repoUrl}/blob/${branch}/personalities/${name}/personality.yaml`;
   const imageRef = `${ociRepository}/${name}`;
 
   const annotations: Record<string, string> = {
@@ -29,7 +28,6 @@ export function buildPersonalityEntity(options: {
     'github.com/project-slug': `${owner}/${repo}`,
     'giantswarm.io/release-tag-prefix': `${name}/`,
     'giantswarm.io/klaus-soul-url': soulUrl,
-    'giantswarm.io/klaus-personality-yaml-url': personalityYamlUrl,
     'giantswarm.io/oci-repository': imageRef,
   };
   if (personality.toolchain) {

@@ -42,7 +42,6 @@ const publicBasePlugin: DiscoveredPlugin = {
   source: publicInstance.plugins!,
   branch: 'main',
   description: 'Base plugin',
-  version: '0.1.0',
   pluginDir: 'plugins/base',
 };
 
@@ -71,9 +70,6 @@ describe('buildPluginEntity', () => {
           'giantswarm.io/release-tag-prefix': 'base/',
           'giantswarm.io/oci-repository':
             'gsoci.azurecr.io/giantswarm/klaus-plugins/base',
-          'giantswarm.io/klaus-plugin-json-url':
-            'https://github.com/giantswarm/klaus-plugins/blob/main/plugins/base/.claude-plugin/plugin.json',
-          'giantswarm.io/klaus-plugin-marketplace-version': '0.1.0',
         },
       },
       spec: {
@@ -117,18 +113,6 @@ describe('buildPluginEntity', () => {
     );
   });
 
-  it('omits the marketplace-version annotation when version is missing', () => {
-    const result = buildPluginEntity({
-      plugin: { ...publicBasePlugin, version: undefined },
-      instance: publicInstance,
-    });
-    expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-plugin-marketplace-version'
-      ],
-    ).toBeUndefined();
-  });
-
   it('omits system when not configured but always emits owner', () => {
     const result = buildPluginEntity({
       plugin: publicBasePlugin,
@@ -149,13 +133,6 @@ describe('buildPluginEntity', () => {
       result.entity.metadata.annotations?.['backstage.io/source-location'],
     ).toBe(
       'url:https://github.com/giantswarm/klaus-plugins/tree/develop/plugins/base',
-    );
-    expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-plugin-json-url'
-      ],
-    ).toBe(
-      'https://github.com/giantswarm/klaus-plugins/blob/develop/plugins/base/.claude-plugin/plugin.json',
     );
   });
 });
