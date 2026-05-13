@@ -73,7 +73,7 @@ describe('buildToolchainEntity', () => {
             'url:https://github.com/giantswarm/klaus-toolchains/tree/main/klaus-go',
           'github.com/project-slug': 'giantswarm/klaus-toolchains',
           'giantswarm.io/release-tag-prefix': 'go/',
-          'giantswarm.io/klaus-toolchain-image':
+          'giantswarm.io/oci-repository':
             'gsoci.azurecr.io/giantswarm/klaus-toolchains/go',
           'giantswarm.io/klaus-toolchain-dockerfile-url':
             'https://github.com/giantswarm/klaus-toolchains/blob/main/klaus-go/Dockerfile',
@@ -102,9 +102,7 @@ describe('buildToolchainEntity', () => {
       'internal',
     ]);
     expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-toolchain-image'
-      ],
+      result.entity.metadata.annotations?.['giantswarm.io/oci-repository'],
     ).toBe('gsociprivate.azurecr.io/giantswarm/klaus-toolchains/go');
     expect(
       (result.entity.spec as { subcomponentOf: string }).subcomponentOf,

@@ -4,15 +4,15 @@ import {
   isTableColumnHidden,
   semverCompareSort,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { DateComponent } from '../../../UI';
+import { DateComponent } from '../../UI';
 
-export type ChartTagData = {
+export type OciTagData = {
   tag: string;
   isLatest: boolean;
   createdAt: string | null;
 };
 
-export const ChartTagColumns = {
+export const OciTagColumns = {
   TAG: 'tag',
   CREATED_AT: 'createdAt',
 } as const;
@@ -40,15 +40,15 @@ const LatestChip = ({ isLatest }: LatestChipProps) => {
   return <Chip label="Latest" size="small" className={classes.latestChip} />;
 };
 
-export function getInitialColumns(
+export function getOciTagColumns(
   visibleColumns?: string[],
-): TableColumn<ChartTagData>[] {
-  const columns: TableColumn<ChartTagData>[] = [
+): TableColumn<OciTagData>[] {
+  const columns: TableColumn<OciTagData>[] = [
     {
       title: 'Tag',
-      field: ChartTagColumns.TAG,
+      field: OciTagColumns.TAG,
       defaultSort: 'desc',
-      render: (row: ChartTagData) => (
+      render: (row: OciTagData) => (
         <Box display="flex" alignItems="center">
           <Typography variant="body2">{row.tag}</Typography>
           <LatestChip isLatest={row.isLatest} />
@@ -58,9 +58,9 @@ export function getInitialColumns(
     },
     {
       title: 'Created',
-      field: ChartTagColumns.CREATED_AT,
+      field: OciTagColumns.CREATED_AT,
       type: 'datetime',
-      render: (row: ChartTagData) => (
+      render: (row: OciTagData) => (
         <DateComponent value={row.createdAt} relative />
       ),
     },

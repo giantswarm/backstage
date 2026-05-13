@@ -1,27 +1,35 @@
-import { QueryClientProvider } from '../../QueryClientProvider';
-import { ChartTagsTable } from './ChartTagsTable';
 import {
-  EntityChartProvider,
-  useCurrentEntityChart,
-} from '../EntityChartContext';
+  useEntity,
+  useEntityPresentation,
+} from '@backstage/plugin-catalog-react';
+import { Box, Typography } from '@material-ui/core';
+import { QueryClientProvider } from '../../QueryClientProvider';
+import { getOciRepositoryFromEntity } from '../../utils/entity';
+import { OciTagsTable } from '../OciTagsTable';
 
 const VersionHistoryContent = () => {
-  const { selectedChart } = useCurrentEntityChart();
+  const { entity } = useEntity();
+  const { primaryTitle } = useEntityPresentation(entity);
+  const ociRepository = getOciRepositoryFromEntity(entity);
 
-  return (
-    <ChartTagsTable
-      chartRef={selectedChart.ref}
-      chartName={selectedChart.name}
-    />
-  );
+  if (!ociRepository) {
+    return (
+      <Box px={2} py={8}>
+        <Typography variant="inherit" color="textSecondary">
+          No <code>giantswarm.io/oci-repository</code> annotation set on this
+          entity.
+        </Typography>
+      </Box>
+    );
+  }
+
+  return <OciTagsTable ociRepository={ociRepository} name={primaryTitle} />;
 };
 
 export const EntityVersionHistoryContent = () => {
   return (
     <QueryClientProvider>
-      <EntityChartProvider>
-        <VersionHistoryContent />
-      </EntityChartProvider>
+      <VersionHistoryContent />
     </QueryClientProvider>
   );
 };

@@ -124,7 +124,7 @@ describe('buildPersonalityEntity', () => {
             'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/SOUL.md',
           'giantswarm.io/klaus-personality-yaml-url':
             'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/personality.yaml',
-          'giantswarm.io/klaus-personality-image':
+          'giantswarm.io/oci-repository':
             'gsoci.azurecr.io/giantswarm/klaus-personalities/sre',
           'giantswarm.io/klaus-personality-toolchain':
             'gsoci.azurecr.io/giantswarm/klaus-toolchains/go:0.1.12',
@@ -162,9 +162,7 @@ describe('buildPersonalityEntity', () => {
       'component:default/klaus-plugin-gs-base-internal',
     ]);
     expect(
-      result.entity.metadata.annotations?.[
-        'giantswarm.io/klaus-personality-image'
-      ],
+      result.entity.metadata.annotations?.['giantswarm.io/oci-repository'],
     ).toBe('gsociprivate.azurecr.io/giantswarm/klaus-personalities/sre');
     expect(
       result.entity.metadata.annotations?.[

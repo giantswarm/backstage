@@ -1,6 +1,5 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Link, Progress } from '@backstage/core-components';
-import { useEntity } from '@backstage/plugin-catalog-react';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import {
   Box,
@@ -14,8 +13,7 @@ import CalendarTodayIcon from '@material-ui/icons/CalendarToday';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { DateComponent } from '../../UI';
-import { QueryClientProvider } from '../../QueryClientProvider';
-import { getKlausToolchainImageFromEntity } from '../../utils/entity';
+import { parseChartRef } from '../../utils/parseChartRef';
 
 const MAX_TAGS_TO_DISPLAY = 5;
 
@@ -75,28 +73,34 @@ const LatestChip = ({ isLatest }: LatestChipProps) => {
   return <Chip label="Latest" size="small" className={classes.latestChip} />;
 };
 
-const VersionHistoryCardContent = () => {
+export type OciTagsListCardProps = {
+  ociRepository: string;
+  viewAllPath?: string;
+};
+
+export const OciTagsListCard = ({
+  ociRepository,
+  viewAllPath = 'version-history',
+}: OciTagsListCardProps) => {
   const classes = useStyles();
-  const { entity } = useEntity();
-  const imageRef = getKlausToolchainImageFromEntity(entity);
   const { tags, latestStableVersion, isLoading, error } =
-    useHelmChartTags(imageRef);
+    useHelmChartTags(ociRepository);
 
   const renderContent = () => {
-    if (!imageRef) {
-      return (
-        <Typography variant="inherit" color="textSecondary">
-          No <code>giantswarm.io/klaus-toolchain-image</code> annotation set on
-          this entity.
-        </Typography>
-      );
-    }
-
     if (isLoading) {
       return <Progress />;
     }
 
     if (error) {
+      if (error.name === 'NotFoundError') {
+        const { repository } = parseChartRef(ociRepository);
+        return (
+          <Typography variant="inherit" color="textSecondary">
+            The repository <code>{repository}</code> is not available in the
+            registry.
+          </Typography>
+        );
+      }
       return <Typography color="error">{error.message}</Typography>;
     }
 
@@ -141,22 +145,12 @@ const VersionHistoryCardContent = () => {
     <InfoCard
       title="Version History"
       headerActions={
-        imageRef ? (
-          <Link component={RouterLink} to="version-history">
-            <Typography variant="body1">View all →</Typography>
-          </Link>
-        ) : undefined
+        <Link component={RouterLink} to={viewAllPath}>
+          <Typography variant="body1">View all →</Typography>
+        </Link>
       }
     >
       {renderContent()}
     </InfoCard>
-  );
-};
-
-export const EntityKlausToolchainVersionHistoryCard = () => {
-  return (
-    <QueryClientProvider>
-      <VersionHistoryCardContent />
-    </QueryClientProvider>
   );
 };

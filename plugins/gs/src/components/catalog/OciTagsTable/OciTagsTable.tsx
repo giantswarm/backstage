@@ -1,28 +1,25 @@
 import { useMemo } from 'react';
 import { Table } from '@backstage/core-components';
-import { useEntity } from '@backstage/plugin-catalog-react';
-import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { Box, Typography } from '@material-ui/core';
+import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
-import { QueryClientProvider } from '../../QueryClientProvider';
-import { getKlausToolchainImageFromEntity } from '../../utils/entity';
+import { OciTagData, getOciTagColumns } from './columns';
 import { parseChartRef } from '../../utils/parseChartRef';
-import {
-  type ChartTagData,
-  getChartTagColumns,
-} from '../EntityVersionHistoryContent/ChartTagsTable';
 
-const TABLE_ID = 'klaus-toolchain-tags';
+const TABLE_ID = 'oci-tags';
 
-const KlausToolchainTagsTable = () => {
-  const { entity } = useEntity();
-  const imageRef = getKlausToolchainImageFromEntity(entity);
+export type OciTagsTableProps = {
+  ociRepository: string;
+  name: string;
+};
+
+export const OciTagsTable = ({ ociRepository, name }: OciTagsTableProps) => {
   const { tags, latestStableVersion, isLoading, error } =
-    useHelmChartTags(imageRef);
+    useHelmChartTags(ociRepository);
 
   const { visibleColumns } = useTableColumns(TABLE_ID);
 
-  const tableData: ChartTagData[] = useMemo(() => {
+  const tableData: OciTagData[] = useMemo(() => {
     if (!tags) {
       return [];
     }
@@ -35,20 +32,9 @@ const KlausToolchainTagsTable = () => {
   }, [tags, latestStableVersion]);
 
   const columns = useMemo(
-    () => getChartTagColumns(visibleColumns),
+    () => getOciTagColumns(visibleColumns),
     [visibleColumns],
   );
-
-  if (!imageRef) {
-    return (
-      <Box px={2} py={8}>
-        <Typography variant="inherit" color="textSecondary">
-          No <code>giantswarm.io/klaus-toolchain-image</code> annotation set on
-          this entity.
-        </Typography>
-      </Box>
-    );
-  }
 
   let emptyContent = null;
   if (error) {
@@ -56,7 +42,7 @@ const KlausToolchainTagsTable = () => {
       return <Typography color="error">{error.message}</Typography>;
     }
 
-    const { repository } = parseChartRef(imageRef);
+    const { repository } = parseChartRef(ociRepository);
     emptyContent = (
       <Box px={2} py={8}>
         <Typography variant="inherit" color="textSecondary">
@@ -67,10 +53,8 @@ const KlausToolchainTagsTable = () => {
     );
   }
 
-  const { name: toolchainName } = parseChartRef(imageRef);
-
   return (
-    <Table<ChartTagData>
+    <Table<OciTagData>
       isLoading={isLoading}
       options={{
         pageSize: 50,
@@ -82,19 +66,11 @@ const KlausToolchainTagsTable = () => {
       style={{ width: '100%' }}
       title={
         <Typography variant="h6">
-          Versions of {toolchainName} ({tableData.length})
+          Versions of {name} ({tableData.length})
         </Typography>
       }
       columns={columns}
       emptyContent={emptyContent}
     />
-  );
-};
-
-export const EntityKlausToolchainVersionHistoryContent = () => {
-  return (
-    <QueryClientProvider>
-      <KlausToolchainTagsTable />
-    </QueryClientProvider>
   );
 };

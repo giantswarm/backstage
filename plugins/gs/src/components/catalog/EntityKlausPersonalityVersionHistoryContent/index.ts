@@ -1,1 +1,0 @@
-export { EntityKlausPersonalityVersionHistoryContent } from './EntityKlausPersonalityVersionHistoryContent';

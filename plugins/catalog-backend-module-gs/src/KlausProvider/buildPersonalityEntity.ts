@@ -30,7 +30,7 @@ export function buildPersonalityEntity(options: {
     'giantswarm.io/release-tag-prefix': `${name}/`,
     'giantswarm.io/klaus-soul-url': soulUrl,
     'giantswarm.io/klaus-personality-yaml-url': personalityYamlUrl,
-    'giantswarm.io/klaus-personality-image': imageRef,
+    'giantswarm.io/oci-repository': imageRef,
   };
   if (personality.toolchain) {
     annotations['giantswarm.io/klaus-personality-toolchain'] =

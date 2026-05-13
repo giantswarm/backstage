@@ -69,7 +69,7 @@ describe('buildPluginEntity', () => {
             'url:https://github.com/giantswarm/klaus-plugins/tree/main/plugins/base',
           'github.com/project-slug': 'giantswarm/klaus-plugins',
           'giantswarm.io/release-tag-prefix': 'base/',
-          'giantswarm.io/klaus-plugin-image':
+          'giantswarm.io/oci-repository':
             'gsoci.azurecr.io/giantswarm/klaus-plugins/base',
           'giantswarm.io/klaus-plugin-json-url':
             'https://github.com/giantswarm/klaus-plugins/blob/main/plugins/base/.claude-plugin/plugin.json',
@@ -100,7 +100,7 @@ describe('buildPluginEntity', () => {
     expect(result.entity.metadata.title).toBe('gs-base plugin (internal)');
     expect(result.entity.metadata.tags).toEqual(['klaus-plugin', 'internal']);
     expect(
-      result.entity.metadata.annotations?.['giantswarm.io/klaus-plugin-image'],
+      result.entity.metadata.annotations?.['giantswarm.io/oci-repository'],
     ).toBe('gsociprivate.azurecr.io/giantswarm/klaus-plugins/gs-base');
     expect(
       (result.entity.spec as { subcomponentOf: string }).subcomponentOf,
