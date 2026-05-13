@@ -26,6 +26,7 @@
   "dependencies": {
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/catalog-model": "backstage:^",
+    "@backstage/config": "backstage:^",
     "@backstage/integration": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
     "js-yaml": "^4.1.0"

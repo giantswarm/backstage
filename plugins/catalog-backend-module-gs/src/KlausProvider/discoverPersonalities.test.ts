@@ -1,16 +1,18 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import type { GithubCredentialsProvider } from '@backstage/integration';
+import type { KlausSourceConfig } from './config';
 import { discoverPersonalities } from './discoverPersonalities';
 
 const credentialsProvider: GithubCredentialsProvider = {
   getCredentials: jest.fn().mockResolvedValue({ token: 'fake-token' }),
 } as unknown as GithubCredentialsProvider;
 
-const source = {
+const source: KlausSourceConfig = {
+  kind: 'personalities',
+  sourceRepository: 'https://github.com/giantswarm/klaus-personalities',
   owner: 'giantswarm',
   repo: 'klaus-personalities',
-  internal: false,
-  ociRegistry: 'gsoci.azurecr.io',
+  ociRepository: 'gsoci.azurecr.io/giantswarm/klaus-personalities',
 };
 
 function makeFetch(handler: (url: string) => Response | Promise<Response>) {

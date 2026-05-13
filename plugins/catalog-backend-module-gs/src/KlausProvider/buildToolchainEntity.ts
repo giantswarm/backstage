@@ -1,25 +1,22 @@
 import type { Entity } from '@backstage/catalog-model';
 import type { DeferredEntity } from '@backstage/plugin-catalog-node';
+import type { KlausInstanceConfig } from './config';
 import type { DiscoveredToolchain } from './discoverToolchains';
+import { PROVIDER_NAME } from './buildPersonalityEntity';
 
-export const PROVIDER_NAME = 'klaus-toolchains-provider';
-
-export function buildToolchainEntity(
-  toolchain: DiscoveredToolchain,
-): DeferredEntity {
+export function buildToolchainEntity(options: {
+  toolchain: DiscoveredToolchain;
+  instance: KlausInstanceConfig;
+}): DeferredEntity {
+  const { toolchain, instance } = options;
   const { name, dirName, source, branch } = toolchain;
-  const { owner, repo, internal, ociRegistry } = source;
-  const entityName = internal
-    ? `klaus-toolchain-${name}-internal`
-    : `klaus-toolchain-${name}`;
-  const title = internal ? `${name} toolchain (internal)` : `${name} toolchain`;
+  const { owner, repo, ociRepository } = source;
+  const { namePostfix, titlePostfix } = instance;
+
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const dirUrl = `${repoUrl}/tree/${branch}/${dirName}`;
   const dockerfileUrl = `${repoUrl}/blob/${branch}/${dirName}/Dockerfile`;
-  const imageRef = `${ociRegistry}/${owner}/${repo}/${name}`;
-  const subcomponentOf = internal
-    ? 'klaus-toolchains-internal'
-    : 'klaus-toolchains';
+  const imageRef = `${ociRepository}/${name}`;
 
   const annotations: Record<string, string> = {
     'backstage.io/source-location': `url:${dirUrl}`,
@@ -31,27 +28,32 @@ export function buildToolchainEntity(
     'giantswarm.io/klaus-toolchain-dockerfile-url': dockerfileUrl,
   };
 
+  const tags = Array.from(new Set(['klaus-toolchain', ...instance.tags]));
+
+  const namespace = instance.namespace ?? 'default';
+
   const entity: Entity = {
     apiVersion: 'backstage.io/v1alpha1',
     kind: 'Component',
     metadata: {
-      name: entityName,
-      title,
-      description: `Klaus toolchain "${name}"${internal ? ' (internal)' : ''} from ${owner}/${repo}.`,
-      tags: ['klaus-toolchain', internal ? 'internal' : 'public'],
+      name: `klaus-toolchain-${name}${namePostfix}`,
+      ...(instance.namespace ? { namespace: instance.namespace } : {}),
+      title: `${name} toolchain${titlePostfix}`,
+      description: `Klaus toolchain "${name}" from ${owner}/${repo}.`,
+      tags,
       annotations,
     },
     spec: {
       type: 'klaus-toolchain',
       lifecycle: 'production',
-      owner: 'team-bumblebee',
-      system: 'klaus',
-      subcomponentOf,
+      owner: instance.owner,
+      ...(instance.system ? { system: instance.system } : {}),
+      subcomponentOf: `component:${namespace}/${repo}`,
     },
   };
 
   return {
     entity,
-    locationKey: `${PROVIDER_NAME}:${owner}/${repo}/${dirName}`,
+    locationKey: `${PROVIDER_NAME}:${instance.id}:${owner}/${repo}/${dirName}`,
   };
 }
