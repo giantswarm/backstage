@@ -14,10 +14,6 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Helm charts column in the catalog no longer shows "Yes (0)" for entities without charts.
 
-### Removed
-
-- Unused `giantswarm.io/klaus-personality-toolchain` and `giantswarm.io/klaus-personality-plugins` annotations from Klaus personality entities.
-
 ## [0.130.0] - 2026-05-11
 
 ### Added
