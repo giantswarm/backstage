@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.131.0] - 2026-05-13
+
 ### Added
 
 - Add `LatestReleaseProcessor` that annotates Component entities with `giantswarm.io/latest-release-tag` and `giantswarm.io/latest-release-date` from GitHub Releases, with optional tag-prefix matching for monorepos.
@@ -2482,7 +2484,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.130.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.131.0...HEAD
+[0.131.0]: https://github.com/giantswarm/backstage/compare/v0.130.0...v0.131.0
 [0.130.0]: https://github.com/giantswarm/backstage/compare/v0.129.2...v0.130.0
 [0.129.2]: https://github.com/giantswarm/backstage/compare/v0.129.1...v0.129.2
 [0.129.1]: https://github.com/giantswarm/backstage/compare/v0.129.0...v0.129.1
