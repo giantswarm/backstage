@@ -5,6 +5,19 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Add `LatestReleaseProcessor` that annotates Component entities with `giantswarm.io/latest-release-tag` and `giantswarm.io/latest-release-date` from GitHub Releases, with optional tag-prefix matching for monorepos.
+- Add `KlausProvider`, a catalog entity provider that discovers Klaus personalities, toolchains, and plugins from GitHub and emits them as Component entities.
+
+### Fixed
+
+- Fix Helm charts column in the catalog showing "Yes (0)" for entities without charts.
+
+### Removed
+
+- Drop unused `giantswarm.io/klaus-personality-toolchain` and `giantswarm.io/klaus-personality-plugins` annotations from Klaus personality entities.
+
 ## [0.130.0] - 2026-05-11
 
 ### Added
