@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.66.1
+
+### Patch Changes
+
+- 87680d7: Fix Helm charts column in the catalog showing "Yes (0)" for entities without charts.
+
 ## 0.66.0
 
 ### Minor Changes
