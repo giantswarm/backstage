@@ -228,13 +228,14 @@ catalog:
   # providers:
   #   # Klaus entity providers. Each top-level key is an instance ID. For each
   #   # instance, personalities/toolchains/plugins are independently optional and
-  #   # are discovered from the given GitHub repo + emitted with the configured
-  #   # OCI image annotation, name postfix, title postfix, and tags. Requires
-  #   # GitHub credentials with access to the configured repos (the internal
-  #   # instance below needs access to the *-internal repos).
+  #   # are discovered from the given GitHub repo.
   #   klaus:
   #     public:
   #       owner: team-bumblebee
+  #       namespace: ''
+  #       namePostfix: ''
+  #       titlePostfix: ''
+  #       tags: []
   #       personalities:
   #         sourceRepository: https://github.com/giantswarm/klaus-personalities
   #         ociRepository: gsoci.azurecr.io/giantswarm/klaus-personalities
@@ -244,17 +245,6 @@ catalog:
   #       plugins:
   #         sourceRepository: https://github.com/giantswarm/klaus-plugins
   #         ociRepository: gsoci.azurecr.io/giantswarm/klaus-plugins
-  #     internal:
-  #       owner: team-bumblebee
-  #       namePostfix: '-internal'
-  #       titlePostfix: ' (internal)'
-  #       tags: [internal]
-  #       personalities:
-  #         sourceRepository: https://github.com/giantswarm/klaus-personalities-internal
-  #         ociRepository: gsociprivate.azurecr.io/giantswarm/klaus-personalities
-  #       toolchains:
-  #         sourceRepository: https://github.com/giantswarm/klaus-toolchains-internal
-  #         ociRepository: gsociprivate.azurecr.io/giantswarm/klaus-toolchains
 
 grafana:
   domain: https://example.com
