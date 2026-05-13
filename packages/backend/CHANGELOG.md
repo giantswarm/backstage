@@ -1,5 +1,14 @@
 # backend
 
+## 0.20.1
+
+### Patch Changes
+
+- Updated dependencies [4db80ca]
+- Updated dependencies [2a4a2bf]
+- Updated dependencies [2a4a2bf]
+  - @giantswarm/backstage-plugin-catalog-backend-module-gs@0.5.0
+
 ## 0.20.0
 
 ### Minor Changes

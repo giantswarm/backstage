@@ -18,6 +18,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Drop unused `giantswarm.io/klaus-personality-toolchain` and `giantswarm.io/klaus-personality-plugins` annotations from Klaus personality entities.
 
+See [./docs/releases/v0.131.0-changelog.md](./docs/releases/v0.131.0-changelog.md) for more information.
+
 ## [0.130.0] - 2026-05-11
 
 ### Added
