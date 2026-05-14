@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.131.1] - 2026-05-14
+
+### Fixed
+
+- Catalog: fall back to PAT or unauthenticated requests when the configured GitHub App has no access to a repo, so `LatestReleaseProcessor` and `SbomDependencyProcessor` work for repos outside the App's installation (and public repos work without any integration configured).
+- AI chat: pin the `ai` package to a single version via root yarn resolution to fix `AI_TypeValidationError` when invoking MCP tools.
+
+See [./docs/releases/v0.131.1-changelog.md](./docs/releases/v0.131.1-changelog.md) for more information.
+
 ## [0.131.0] - 2026-05-13
 
 ### Added
@@ -2480,7 +2489,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.131.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.131.1...HEAD
+[0.131.1]: https://github.com/giantswarm/backstage/compare/v0.131.0...v0.131.1
 [0.131.0]: https://github.com/giantswarm/backstage/compare/v0.130.0...v0.131.0
 [0.130.0]: https://github.com/giantswarm/backstage/compare/v0.129.2...v0.130.0
 [0.129.2]: https://github.com/giantswarm/backstage/compare/v0.129.1...v0.129.2
