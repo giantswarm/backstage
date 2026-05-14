@@ -5,6 +5,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- Catalog: fall back to PAT or unauthenticated requests when the configured GitHub App has no access to a repo, so `LatestReleaseProcessor` and `SbomDependencyProcessor` work for repos outside the App's installation (and public repos work without any integration configured).
+- AI chat: pin the `ai` package to a single version via root yarn resolution to fix `AI_TypeValidationError` when invoking MCP tools.
+
 ## [0.131.0] - 2026-05-13
 
 ### Added
