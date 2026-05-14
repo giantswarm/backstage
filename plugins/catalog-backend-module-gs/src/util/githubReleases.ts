@@ -27,7 +27,7 @@ export async function listLatestReleasesByPrefix(options: {
   owner: string;
   repo: string;
   prefixes: string[];
-  token: string;
+  token?: string;
   fetchImpl?: typeof fetch;
   logger: LoggerService;
   label: string;
@@ -104,7 +104,7 @@ export async function listLatestReleasesByPrefix(options: {
 export async function getLatestStableRelease(options: {
   owner: string;
   repo: string;
-  token: string;
+  token?: string;
   fetchImpl?: typeof fetch;
   logger: LoggerService;
   label: string;
@@ -148,7 +148,7 @@ function findMatchingPrefix(
 
 async function githubFetch(options: {
   url: string;
-  token: string;
+  token?: string;
   fetchImpl: typeof fetch;
   logger: LoggerService;
   label: string;
@@ -163,14 +163,16 @@ async function githubFetch(options: {
     allowNotFound = false,
   } = options;
 
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const response = await fetchImpl(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    });
+    const response = await fetchImpl(url, { headers });
 
     if (
       response.status === 429 ||

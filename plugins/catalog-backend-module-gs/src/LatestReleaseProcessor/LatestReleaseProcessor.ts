@@ -12,6 +12,7 @@ import type {
 import {
   DefaultGithubCredentialsProvider,
   type GithubCredentialsProvider,
+  type ScmIntegrationRegistry,
   ScmIntegrations,
 } from '@backstage/integration';
 import {
@@ -19,6 +20,7 @@ import {
   type LatestRelease,
   listLatestReleasesByPrefix,
 } from '../util/githubReleases';
+import { resolveGithubToken } from '../util/githubToken';
 
 const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const RELEASE_TAG_PREFIX_ANNOTATION = 'giantswarm.io/release-tag-prefix';
@@ -36,6 +38,7 @@ type FetchFn = typeof fetch;
 export class LatestReleaseProcessor implements CatalogProcessor {
   private readonly logger: LoggerService;
   private readonly credentialsProvider: GithubCredentialsProvider;
+  private readonly integrations: ScmIntegrationRegistry;
   private readonly cacheTtlMs: number;
   private readonly fetchImpl: FetchFn;
   private readonly cache = new Map<string, CacheEntry>();
@@ -56,6 +59,7 @@ export class LatestReleaseProcessor implements CatalogProcessor {
     return new LatestReleaseProcessor({
       logger,
       credentialsProvider,
+      integrations,
       cacheTtlMs:
         cacheTtlSeconds !== undefined
           ? cacheTtlSeconds * 1000
@@ -67,11 +71,13 @@ export class LatestReleaseProcessor implements CatalogProcessor {
   constructor(options: {
     logger: LoggerService;
     credentialsProvider: GithubCredentialsProvider;
+    integrations: ScmIntegrationRegistry;
     cacheTtlMs?: number;
     fetchImpl?: FetchFn;
   }) {
     this.logger = options.logger;
     this.credentialsProvider = options.credentialsProvider;
+    this.integrations = options.integrations;
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
@@ -155,12 +161,12 @@ export class LatestReleaseProcessor implements CatalogProcessor {
     prefix: string | undefined,
   ): Promise<LatestRelease | undefined> {
     const repoUrl = `https://github.com/${owner}/${repo}`;
-    const { token } = await this.credentialsProvider.getCredentials({
+    const token = await resolveGithubToken({
       url: repoUrl,
+      credentialsProvider: this.credentialsProvider,
+      integrations: this.integrations,
+      logger: this.logger,
     });
-    if (!token) {
-      throw new Error(`No GitHub credentials for ${repoUrl}`);
-    }
     const label = `LatestReleaseProcessor: ${owner}/${repo}${
       prefix ? ` prefix=${prefix}` : ''
     }`;

@@ -69,6 +69,7 @@ export class SbomDependencyProcessor implements CatalogProcessor {
 
     await createSbomRefreshTask({
       credentialsProvider,
+      integrations,
       catalogApi,
       auth,
       db,
