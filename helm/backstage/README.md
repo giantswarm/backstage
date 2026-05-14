@@ -61,6 +61,8 @@ Backstage app provided by Giant Swarm
 | githubAppCredentials.clientSecret | string | `""` | GitHub App OAuth client secret |
 | githubAppCredentials.webhookSecret | string | `""` | GitHub App webhook secret |
 | githubAppCredentials.privateKey | string | `""` | GitHub App private key (PEM format) |
+| github | object | `{"publicReadToken":""}` | GitHub integration settings (PAT used as fallback by catalog processors when the GitHub App lacks access to a repository) |
+| github.publicReadToken | string | `""` | GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var) |
 | grafana | object | `{"apiToken":""}` | Grafana integration settings |
 | grafana.apiToken | string | `""` | Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var) |
 | sentry | object | `{"app":{"dsn":""},"backend":{"dsn":""},"reportURI":""}` | Sentry error tracking settings |

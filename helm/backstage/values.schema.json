@@ -247,6 +247,17 @@
             ],
             "minimum": 0
         },
+        "github": {
+            "description": "GitHub integration settings (PAT used as fallback by catalog processors when the GitHub App lacks access to a repository)",
+            "type": "object",
+            "properties": {
+                "publicReadToken": {
+                    "description": "GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var)",
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
         "githubAppCredentials": {
             "description": "GitHub App credentials for repository access and webhooks",
             "type": "object",

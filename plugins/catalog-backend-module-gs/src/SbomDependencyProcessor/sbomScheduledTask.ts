@@ -5,8 +5,12 @@ import type {
   SchedulerServiceTaskScheduleDefinition,
 } from '@backstage/backend-plugin-api';
 import type { CatalogService } from '@backstage/plugin-catalog-node';
-import type { GithubCredentialsProvider } from '@backstage/integration';
+import type {
+  GithubCredentialsProvider,
+  ScmIntegrationRegistry,
+} from '@backstage/integration';
 import type { Knex } from 'knex';
+import { resolveGithubToken } from '../util/githubToken';
 
 const GITHUB_PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const GIANTSWARM_PURL_RE = /^pkg:golang\/github\.com\/giantswarm\/([^@/]+)/;
@@ -32,6 +36,7 @@ interface SbomApiResponse {
 
 export async function createSbomRefreshTask(options: {
   credentialsProvider: GithubCredentialsProvider;
+  integrations: ScmIntegrationRegistry;
   catalogApi: CatalogService;
   auth: AuthService;
   db: Knex;
@@ -39,8 +44,15 @@ export async function createSbomRefreshTask(options: {
   scheduler: SchedulerService;
   schedule?: SchedulerServiceTaskScheduleDefinition;
 }) {
-  const { credentialsProvider, catalogApi, auth, db, logger, scheduler } =
-    options;
+  const {
+    credentialsProvider,
+    integrations,
+    catalogApi,
+    auth,
+    db,
+    logger,
+    scheduler,
+  } = options;
   const schedule = options.schedule ?? DEFAULT_SCHEDULE;
 
   await scheduler.scheduleTask({
@@ -49,6 +61,7 @@ export async function createSbomRefreshTask(options: {
     fn: async () => {
       await refreshSbomDependencies({
         credentialsProvider,
+        integrations,
         catalogApi,
         auth,
         db,
@@ -60,12 +73,14 @@ export async function createSbomRefreshTask(options: {
 
 export async function refreshSbomDependencies(options: {
   credentialsProvider: GithubCredentialsProvider;
+  integrations: ScmIntegrationRegistry;
   catalogApi: CatalogService;
   auth: AuthService;
   db: Knex;
   logger: LoggerService;
 }) {
-  const { credentialsProvider, catalogApi, auth, db, logger } = options;
+  const { credentialsProvider, integrations, catalogApi, auth, db, logger } =
+    options;
 
   const { token } = await auth.getPluginRequestToken({
     onBehalfOf: await auth.getOwnServiceCredentials(),
@@ -101,6 +116,7 @@ export async function refreshSbomDependencies(options: {
         const dependencies = await fetchSbomDependencies(
           slug,
           credentialsProvider,
+          integrations,
           logger,
         );
 
@@ -177,27 +193,31 @@ function getRetryDelayMs(response: Response): number {
 async function fetchSbomDependencies(
   slug: string,
   credentialsProvider: GithubCredentialsProvider,
+  integrations: ScmIntegrationRegistry,
   logger: LoggerService,
 ): Promise<string[]> {
   const repoUrl = `https://github.com/${slug}`;
-  const { token } = await credentialsProvider.getCredentials({ url: repoUrl });
-
-  if (!token) {
-    throw new Error(`No GitHub credentials for ${repoUrl}`);
-  }
+  const token = await resolveGithubToken({
+    url: repoUrl,
+    credentialsProvider,
+    integrations,
+    logger,
+  });
 
   const [owner, repo] = slug.split('/');
+
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const response = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/dependency-graph/sbom`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-      },
+      { headers },
     );
 
     if (

@@ -1,6 +1,9 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import type { Entity } from '@backstage/catalog-model';
-import type { GithubCredentialsProvider } from '@backstage/integration';
+import type {
+  GithubCredentialsProvider,
+  ScmIntegrationRegistry,
+} from '@backstage/integration';
 import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 
 const dummyLocation = { type: 'url', target: 'https://example.com' };
@@ -10,6 +13,10 @@ const dummyCache = { get: jest.fn(), set: jest.fn() } as any;
 const credentialsProvider: GithubCredentialsProvider = {
   getCredentials: jest.fn().mockResolvedValue({ token: 'fake-token' }),
 } as unknown as GithubCredentialsProvider;
+
+const integrations = {
+  github: { byUrl: jest.fn().mockReturnValue(undefined) },
+} as unknown as ScmIntegrationRegistry;
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -31,10 +38,18 @@ function component(
   };
 }
 
-function makeProcessor(fetchImpl: jest.Mock, cacheTtlMs = 60_000) {
+function makeProcessor(
+  fetchImpl: jest.Mock,
+  cacheTtlMs = 60_000,
+  overrides: {
+    credentialsProvider?: GithubCredentialsProvider;
+    integrations?: ScmIntegrationRegistry;
+  } = {},
+) {
   return new LatestReleaseProcessor({
     logger: mockServices.logger.mock(),
-    credentialsProvider,
+    credentialsProvider: overrides.credentialsProvider ?? credentialsProvider,
+    integrations: overrides.integrations ?? integrations,
     cacheTtlMs,
     fetchImpl: fetchImpl as unknown as typeof fetch,
   });
@@ -309,6 +324,84 @@ describe('LatestReleaseProcessor', () => {
     await Promise.all([p1, p2]);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the integration PAT when the credentials provider throws', async () => {
+    const throwingProvider = {
+      getCredentials: jest
+        .fn()
+        .mockRejectedValue(new Error('App has no access to repository athena')),
+    } as unknown as GithubCredentialsProvider;
+    const integrationsWithPat = {
+      github: {
+        byUrl: jest.fn().mockReturnValue({ config: { token: 'pat-fallback' } }),
+      },
+    } as unknown as ScmIntegrationRegistry;
+
+    const fetchImpl = jest.fn(async (_url: string, init: RequestInit) => {
+      const headers = init.headers as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer pat-fallback');
+      return jsonResponse({
+        tag_name: 'v1.0.0',
+        published_at: '2026-04-01T00:00:00Z',
+        draft: false,
+        prerelease: false,
+      });
+    });
+    const processor = makeProcessor(fetchImpl, 60_000, {
+      credentialsProvider: throwingProvider,
+      integrations: integrationsWithPat,
+    });
+
+    const entity = component('athena', {
+      'github.com/project-slug': 'giantswarm/athena',
+    });
+    const result = await processor.preProcessEntity(
+      entity,
+      dummyLocation,
+      dummyEmit,
+      dummyLocation,
+      dummyCache,
+    );
+
+    expect(result.metadata.annotations).toMatchObject({
+      'giantswarm.io/latest-release-tag': 'v1.0.0',
+    });
+  });
+
+  it('issues an unauthenticated request when no token is available', async () => {
+    const emptyProvider = {
+      getCredentials: jest.fn().mockResolvedValue({ token: undefined }),
+    } as unknown as GithubCredentialsProvider;
+
+    const fetchImpl = jest.fn(async (_url: string, init: RequestInit) => {
+      const headers = init.headers as Record<string, string>;
+      expect(headers.Authorization).toBeUndefined();
+      return jsonResponse({
+        tag_name: 'v2.0.0',
+        published_at: '2026-04-02T00:00:00Z',
+        draft: false,
+        prerelease: false,
+      });
+    });
+    const processor = makeProcessor(fetchImpl, 60_000, {
+      credentialsProvider: emptyProvider,
+    });
+
+    const entity = component('public-repo', {
+      'github.com/project-slug': 'giantswarm/public-repo',
+    });
+    const result = await processor.preProcessEntity(
+      entity,
+      dummyLocation,
+      dummyEmit,
+      dummyLocation,
+      dummyCache,
+    );
+
+    expect(result.metadata.annotations).toMatchObject({
+      'giantswarm.io/latest-release-tag': 'v2.0.0',
+    });
   });
 
   it('returns the original entity when the GitHub fetch fails', async () => {
