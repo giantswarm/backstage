@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.13.4
+
+### Patch Changes
+
+- 1ee4d77: Pin `ai` to a single version via root yarn resolution to fix `AI_TypeValidationError` when invoking MCP tools. The backend's `ai@6.0.177` emitted `tool-input-available` chunks with a new `toolMetadata` field that the client's older nested `ai@6.0.168` (pinned by `@ai-sdk/react`) rejected as an unrecognized key.
+
 ## 0.13.3
 
 ### Patch Changes
