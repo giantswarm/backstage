@@ -145,6 +145,12 @@ githubAppCredentials:
   # -- GitHub App private key (PEM format)
   privateKey: ''
 
+# -- GitHub integration settings (PAT used as fallback by catalog processors when the GitHub App lacks access to a repository)
+github:
+  # @schema type:string
+  # -- GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var)
+  publicReadToken: ''
+
 # -- Grafana integration settings
 grafana:
   # @schema type:string
