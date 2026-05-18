@@ -228,8 +228,7 @@ catalog:
   #     # Annotates Component entities that have giantswarm.io/helmcharts with
   #     # giantswarm.io/latest-release-tag and giantswarm.io/latest-release-date,
   #     # pulled from the referenced OCI registry. For multi-chart entities,
-  #     # the highest semver across all listed charts wins. Customer
-  #     # deployments typically enable this and disable latestRelease.
+  #     # the highest semver across all listed charts wins.
   #     enabled: true
   #     cacheTtlSeconds: 3600
 
