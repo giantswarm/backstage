@@ -4,7 +4,7 @@ import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ChartPickerProps, ChartPickerValue } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { getHelmChartsFromEntity, GS_HELMCHARTS } from '../../utils/entity';
-import { parseChartRef } from '../../utils/parseChartRef';
+import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
 import { useCatalogEntityByRef } from '../../hooks';
 
 type ChartPickerFieldProps = {

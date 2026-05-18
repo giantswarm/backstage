@@ -1,6 +1,6 @@
 import { get } from 'lodash';
 import { generateUID } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { parseChartRef } from './parseChartRef';
+import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
 
 const CURRENT_USER_PLACEHOLDER_REGEXP = /\${{currentUser\(\)}}/;
 const GENERATE_UID_PLACEHOLDER_REGEXP =

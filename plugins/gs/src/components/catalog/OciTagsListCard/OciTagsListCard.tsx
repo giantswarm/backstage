@@ -13,7 +13,7 @@ import CalendarTodayIcon from '@material-ui/icons/CalendarToday';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { DateComponent } from '../../UI';
-import { parseChartRef } from '../../utils/parseChartRef';
+import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
 
 const MAX_TAGS_TO_DISPLAY = 5;
 

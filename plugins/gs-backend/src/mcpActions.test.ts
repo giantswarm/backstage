@@ -5,7 +5,7 @@ import { NotFoundError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import type { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { registerMcpActions } from './mcpActions';
-import { containerRegistryServiceRef } from './services/ContainerRegistryService';
+import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 
 // Mock node-fetch
 jest.mock('node-fetch', () => jest.fn());

@@ -2,7 +2,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { containerRegistryApiRef } from '../../apis/containerRegistry';
-import { parseChartRef } from '../utils/parseChartRef';
+import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
 
 export function useHelmChartTagManifest(
   chartRef: string | undefined,

@@ -23,6 +23,39 @@ export interface Config {
          */
         enabled?: boolean;
       };
+      latestRelease?: {
+        /**
+         * Enables the latest-release processor that annotates Component
+         * entities with `giantswarm.io/latest-release-{tag,date}` derived
+         * from GitHub Releases for the repo named in
+         * `github.com/project-slug`.
+         * @visibility backend
+         */
+        enabled?: boolean;
+        /**
+         * Optional TTL for the in-memory release cache, in seconds.
+         * Defaults to 3600 (1 hour).
+         * @visibility backend
+         */
+        cacheTtlSeconds?: number;
+      };
+      latestOciRelease?: {
+        /**
+         * Enables the latest-release processor that annotates Component
+         * entities with `giantswarm.io/latest-release-{tag,date}` derived
+         * from the OCI registry referenced by `giantswarm.io/helmcharts`.
+         * For multi-chart entities, the highest semver across all listed
+         * charts wins.
+         * @visibility backend
+         */
+        enabled?: boolean;
+        /**
+         * Optional TTL for the in-memory tags cache, in seconds.
+         * Defaults to 3600 (1 hour).
+         * @visibility backend
+         */
+        cacheTtlSeconds?: number;
+      };
     };
     providers?: {
       /**

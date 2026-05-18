@@ -3,7 +3,7 @@ import { useCurrentEntityChart } from '../EntityChartContext';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { useHelmChartReadme } from '../../hooks/useHelmChartReadme';
 import { QueryClientProvider } from '../../QueryClientProvider';
-import { parseChartRef } from '../../utils/parseChartRef';
+import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
 import { CollapsibleMarkdownCard } from '../../UI';
 
 const ReadmeCardContent = () => {

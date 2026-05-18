@@ -4,7 +4,7 @@ import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
 import { fetchGitHubRawContent } from './githubRawContent';
-import { containerRegistryServiceRef } from './services/ContainerRegistryService';
+import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 
 export async function createRouter({

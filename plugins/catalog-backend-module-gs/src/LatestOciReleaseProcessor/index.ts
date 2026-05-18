@@ -1,0 +1,1 @@
+export { LatestOciReleaseProcessor } from './LatestOciReleaseProcessor';
