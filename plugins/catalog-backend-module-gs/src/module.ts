@@ -85,17 +85,11 @@ export const catalogModuleGS = createBackendModule({
           'catalog.processors.latestOciRelease.enabled',
         );
         if (latestOciReleaseEnabled) {
-          const cacheTtlSeconds = config.getOptionalNumber(
-            'catalog.processors.latestOciRelease.cacheTtlSeconds',
-          );
           catalog.addProcessor(
-            LatestOciReleaseProcessor.fromService({
+            LatestOciReleaseProcessor.fromConfig({
+              config,
               logger,
               containerRegistry,
-              cacheTtlMs:
-                cacheTtlSeconds !== undefined
-                  ? cacheTtlSeconds * 1000
-                  : undefined,
             }),
           );
         }

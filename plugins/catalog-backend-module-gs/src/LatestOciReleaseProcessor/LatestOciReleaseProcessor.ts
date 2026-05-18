@@ -1,5 +1,8 @@
 import type { Entity } from '@backstage/catalog-model';
-import type { LoggerService } from '@backstage/backend-plugin-api';
+import type {
+  LoggerService,
+  RootConfigService,
+} from '@backstage/backend-plugin-api';
 import type {
   CatalogProcessor,
   CatalogProcessorCache,
@@ -45,12 +48,23 @@ export class LatestOciReleaseProcessor implements CatalogProcessor {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly inflight = new Map<string, Promise<CacheEntry>>();
 
-  static fromService(options: {
+  static fromConfig(options: {
+    config: RootConfigService;
     logger: LoggerService;
-    cacheTtlMs?: number;
     containerRegistry: typeof containerRegistryServiceRef.T;
   }): LatestOciReleaseProcessor {
-    return new LatestOciReleaseProcessor(options);
+    const { config, logger, containerRegistry } = options;
+    const cacheTtlSeconds = config.getOptionalNumber(
+      'catalog.processors.latestOciRelease.cacheTtlSeconds',
+    );
+    return new LatestOciReleaseProcessor({
+      logger,
+      containerRegistry,
+      cacheTtlMs:
+        cacheTtlSeconds !== undefined
+          ? cacheTtlSeconds * 1000
+          : DEFAULT_CACHE_TTL_MS,
+    });
   }
 
   constructor(options: {
