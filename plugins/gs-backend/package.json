@@ -32,7 +32,7 @@
     "@backstage/integration": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
     "@backstage/types": "backstage:^",
-    "@giantswarm/backstage-plugin-gs-node": "*",
+    "@giantswarm/backstage-plugin-gs-node": "^0.1.0",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0",
     "node-fetch": "^3.3.2",
