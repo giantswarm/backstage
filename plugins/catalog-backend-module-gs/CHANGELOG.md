@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-catalog-backend-module-gs
 
+## 0.6.0
+
+### Minor Changes
+
+- 610ead0: Add `LatestOciReleaseProcessor` that annotates `Component` entities carrying `giantswarm.io/helmcharts` with `giantswarm.io/latest-release-tag` and `giantswarm.io/latest-release-date` from the referenced OCI registry. For multi-chart entities the highest-semver stable tag wins; prerelease tags are skipped. Toggle via `catalog.processors.latestOciRelease.enabled`.
+
+  Introduce a new `@giantswarm/backstage-plugin-gs-node` node-library package and move the container-registry client code (`ContainerRegistryService`, `AcrRegistryClient`, `OciRegistryClient`, `RegistryAuthClient`, `RegistryError`, registry utils, and `containerRegistryServiceRef`) into it so it can be shared between `gs-backend` and the catalog module. Move `parseChartRef` from `plugins/gs` to `gs-common` so it can be used backend-side.
+
+### Patch Changes
+
+- Updated dependencies [610ead0]
+  - @giantswarm/backstage-plugin-gs-node@0.2.0
+  - @giantswarm/backstage-plugin-gs-common@0.21.1
+
 ## 0.5.1
 
 ### Patch Changes
