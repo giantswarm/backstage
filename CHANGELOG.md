@@ -13,6 +13,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Introduce a new `@giantswarm/backstage-plugin-gs-node` node-library package and move the container-registry client code into it so it can be shared between `gs-backend` and the catalog module. Move `parseChartRef` from `plugins/gs` to `gs-common` so it can be used backend-side.
 
+See [./docs/releases/v0.132.0-changelog.md](./docs/releases/v0.132.0-changelog.md) for more information.
+
 ## [0.131.1] - 2026-05-14
 
 ### Fixed
