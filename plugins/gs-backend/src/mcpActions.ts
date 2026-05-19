@@ -6,7 +6,7 @@ import { GithubCredentialsProvider } from '@backstage/integration';
 import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import fetch from 'node-fetch';
 import { fetchGitHubRawContent } from './githubRawContent';
-import { containerRegistryServiceRef } from './services/ContainerRegistryService';
+import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 
 const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
 const DEPRECATED_VALUES_SCHEMA_ANNOTATION =

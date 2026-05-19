@@ -27,14 +27,20 @@
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/catalog-model": "backstage:^",
     "@backstage/config": "backstage:^",
+    "@backstage/errors": "backstage:^",
     "@backstage/integration": "backstage:^",
+    "@backstage/plugin-catalog-common": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
-    "js-yaml": "^4.1.0"
+    "@giantswarm/backstage-plugin-gs-common": "^0.21.0",
+    "@giantswarm/backstage-plugin-gs-node": "^0.1.0",
+    "js-yaml": "^4.1.0",
+    "semver": "^7.7.3"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
-    "@types/js-yaml": "^4"
+    "@types/js-yaml": "^4",
+    "@types/semver": "^7"
   },
   "files": [
     "config.d.ts",

@@ -1,6 +1,6 @@
 import { ANNOTATION_SOURCE_LOCATION, Entity } from '@backstage/catalog-model';
 import { formatVersion } from './helpers';
-import { parseChartRef } from './parseChartRef';
+import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
 
 export const GS_ICON_URL = 'giantswarm.io/icon-url';
 export const GS_INGRESS_HOST = 'giantswarm.io/ingress-host';

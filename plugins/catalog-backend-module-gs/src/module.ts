@@ -6,8 +6,10 @@ import {
   catalogProcessingExtensionPoint,
   catalogServiceRef,
 } from '@backstage/plugin-catalog-node';
+import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
 import { KlausProvider } from './KlausProvider';
+import { LatestOciReleaseProcessor } from './LatestOciReleaseProcessor';
 import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
@@ -26,6 +28,7 @@ export const catalogModuleGS = createBackendModule({
         logger: coreServices.logger,
         scheduler: coreServices.scheduler,
         auth: coreServices.auth,
+        containerRegistry: containerRegistryServiceRef,
       },
       async init({
         catalog,
@@ -36,6 +39,7 @@ export const catalogModuleGS = createBackendModule({
         logger,
         scheduler,
         auth,
+        containerRegistry,
       }) {
         catalog.addProcessor(new GiantSwarmLocationProcessor(urlReader));
 
@@ -74,6 +78,19 @@ export const catalogModuleGS = createBackendModule({
         if (latestReleaseEnabled) {
           catalog.addProcessor(
             LatestReleaseProcessor.fromConfig({ config, logger }),
+          );
+        }
+
+        const latestOciReleaseEnabled = config.getOptionalBoolean(
+          'catalog.processors.latestOciRelease.enabled',
+        );
+        if (latestOciReleaseEnabled) {
+          catalog.addProcessor(
+            LatestOciReleaseProcessor.fromConfig({
+              config,
+              logger,
+              containerRegistry,
+            }),
           );
         }
 

@@ -4,7 +4,7 @@ import { Box, Typography } from '@material-ui/core';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { OciTagData, getOciTagColumns } from './columns';
-import { parseChartRef } from '../../utils/parseChartRef';
+import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
 
 const TABLE_ID = 'oci-tags';
 
