@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.132.0] - 2026-05-19
+
 ### Added
 
 - Add `LatestOciReleaseProcessor` that annotates Component entities carrying `giantswarm.io/helmcharts` with `giantswarm.io/latest-release-tag` and `giantswarm.io/latest-release-date` from the referenced OCI registry. For multi-chart entities the highest-semver stable tag wins; prerelease tags are skipped. Toggle via `catalog.processors.latestOciRelease.enabled`.
@@ -2499,7 +2501,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.131.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.132.0...HEAD
+[0.132.0]: https://github.com/giantswarm/backstage/compare/v0.131.1...v0.132.0
 [0.131.1]: https://github.com/giantswarm/backstage/compare/v0.131.0...v0.131.1
 [0.131.0]: https://github.com/giantswarm/backstage/compare/v0.130.0...v0.131.0
 [0.130.0]: https://github.com/giantswarm/backstage/compare/v0.129.2...v0.130.0
