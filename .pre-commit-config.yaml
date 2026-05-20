@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/f8c9dbe49225b5327dc3e27f7db99439cb658ea3/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#    https://github.com/giantswarm/devctl/blob/814a91071850fc945ec1d58f92b761156ad7edb4/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 repos:
@@ -18,6 +18,13 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
         exclude: ".*testdata/.*"
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [--strict]
 
   # Helm chart hooks for backstage
   - repo: https://github.com/losisin/helm-values-schema-json
