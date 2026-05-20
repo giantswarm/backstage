@@ -10378,7 +10378,6 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
-    "@modelcontextprotocol/sdk": "npm:^1.25.3"
     "@types/express": "npm:^5.0.0"
     "@types/supertest": "npm:^2.0.12"
     ai: "npm:^6.0.176"
@@ -12509,7 +12508,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@modelcontextprotocol/sdk@npm:^1.25.2, @modelcontextprotocol/sdk@npm:^1.25.3":
+"@modelcontextprotocol/sdk@npm:^1.25.2":
   version: 1.29.0
   resolution: "@modelcontextprotocol/sdk@npm:1.29.0"
   dependencies:

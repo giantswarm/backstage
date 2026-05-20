@@ -7,14 +7,12 @@ import {
 } from '@ai-sdk/mcp';
 import { AuthTokens } from './utils';
 import { isClosedClientError, McpClientCache } from './McpClientCache';
-import { createSessionAwareTransport } from './createSessionAwareTransport';
 
 interface McpServerConfig {
   url: string;
   headers?: Record<string, string>;
   installation?: string;
   authToken?: string;
-  sessionHeader?: string;
 }
 
 export interface BackstageUserContext {
@@ -51,7 +49,6 @@ function readMcpServersFromConfig(
     const name = mcp.getString('name');
     const url = mcp.getString('url');
     const installation = mcp.getOptionalString('installation');
-    const sessionHeader = mcp.getOptionalString('sessionHeader');
 
     // Rule 1: Forward a Backstage token minted on behalf of the calling
     // user, scoped to the built-in `mcp-actions` plugin. Use this for
@@ -75,7 +72,6 @@ function readMcpServersFromConfig(
         // Stable per-user cache key so the cache survives across
         // requests despite the Authorization token being minted fresh.
         authToken: `bs-user:${backstageUser.userEntityRef}`,
-        sessionHeader,
       };
 
       continue;
@@ -94,7 +90,6 @@ function readMcpServersFromConfig(
         headers: { Authorization: `Bearer ${token}` },
         installation,
         authToken: token,
-        sessionHeader,
       };
 
       continue;
@@ -103,12 +98,12 @@ function readMcpServersFromConfig(
     // Rule 3: If headers configured, add server with those headers
     const headers = getMcpServerHeaders(mcp);
     if (headers) {
-      mcpServers[name] = { url, headers, installation, sessionHeader };
+      mcpServers[name] = { url, headers, installation };
       continue;
     }
 
     // Rule 4: No headers and no authProvider, just add server
-    mcpServers[name] = { url, installation, sessionHeader };
+    mcpServers[name] = { url, installation };
   }
 
   return mcpServers;
@@ -294,18 +289,11 @@ export async function getMcpTools(
       const mcpClient = await clientCache.getOrCreate(cacheKey, () =>
         createMCPClient({
           name: serverName,
-          transport: server.sessionHeader
-            ? createSessionAwareTransport({
-                url: server.url,
-                headers: server.headers,
-                sessionHeader: server.sessionHeader,
-                logger,
-              })
-            : {
-                type: 'http',
-                url: server.url,
-                headers: server.headers,
-              },
+          transport: {
+            type: 'http',
+            url: server.url,
+            headers: server.headers,
+          },
         }),
       );
 
