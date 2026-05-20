@@ -582,10 +582,32 @@ export async function createRouter(
         return ret;
       } as typeof originalWrite;
 
+      // Observe whether the client received the full stream or hung up
+      // early. `finish` fires after the last byte is handed to the kernel;
+      // `close` fires when the socket closes. If `close` arrives before
+      // `finish`, the client disconnected mid-stream -- the exact failure
+      // that surfaces in the browser as `TypeError: network error` and
+      // that previously left no trace in backend logs.
+      const streamStartMs = Date.now();
+      let modelFinished = false;
+      let responseFinished = false;
+      res.once('finish', () => {
+        responseFinished = true;
+      });
+      res.once('close', () => {
+        if (responseFinished) return;
+        chatLogger.warn('Client disconnected before chat stream finished', {
+          requestId,
+          elapsedMs: Date.now() - streamStartMs,
+          modelFinished,
+        });
+      });
+
       result.pipeUIMessageStreamToResponse(res, {
         originalMessages: messages as UIMessage[],
         generateMessageId: () => crypto.randomUUID(),
         onFinish({ messages: allMessages }) {
+          modelFinished = true;
           // Fire-and-forget: update the conversation row created up-front
           // with the full message history including the assistant reply.
           conversationStore
