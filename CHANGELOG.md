@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.132.1] - 2026-05-20
 
+### Fixed
+
+- AI chat: fix muster MCP connection by dropping the obsolete custom session-aware transport that broke against `@modelcontextprotocol/sdk` 1.29.0. Muster now uses the spec-standard `Mcp-Session-Id` header, which `@ai-sdk/mcp`'s built-in HTTP transport handles natively.
+
 See [./docs/releases/v0.132.1-changelog.md](./docs/releases/v0.132.1-changelog.md) for more information.
 
 ## [0.132.0] - 2026-05-19
