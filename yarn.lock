@@ -10428,6 +10428,7 @@ __metadata:
     "@backstage/theme": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
+    "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.9.13"
     "@material-ui/icons": "npm:^4.9.1"

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   useApi,
+  useApiHolder,
   identityApiRef,
   discoveryApiRef,
   configApiRef,
@@ -17,6 +18,7 @@ import {
   UIMessage,
 } from 'ai';
 import { useQuery } from '@tanstack/react-query';
+import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { mcpAuthProvidersApiRef } from '../api';
 import { createDebugFetch } from './createDebugFetch';
 
@@ -69,6 +71,10 @@ export function useChatSetup(options?: UseChatSetupOptions) {
   const configApi = useApi(configApiRef);
   const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
   const featureFlagsApi = useApi(featureFlagsApiRef);
+  // Optional: the error reporter is only registered when
+  // `app.errorReporter.sentry` is configured. Use the api holder so the
+  // chat still works in environments without Sentry wiring.
+  const errorReporter = useApiHolder().get(errorReporterApiRef);
   // Generate the conversation id eagerly so getConversationId() never returns
   // null while the first user message is in flight. This lets the optimistic
   // history-list insert (useConversationListSync) fire on the first message,
@@ -198,10 +204,33 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     [apiUrl, getHeaders, debugFetch],
   );
 
+  // Forward chat-level errors (raised by the AI SDK after fetch/stream
+  // failures or non-OK responses) to the error reporter. Aborts are
+  // filtered out upstream by the SDK before this fires. Network-class
+  // failures use the same TypeError + /fetch|network/i fingerprint the
+  // SDK uses internally; they are reported as warnings to avoid paging
+  // on every flaky-wifi user, while genuinely unexpected errors are
+  // reported as errors.
+  const onError = useCallback(
+    (err: Error) => {
+      if (!errorReporter) return;
+      const isNetworkError =
+        err instanceof TypeError && /fetch|network/i.test(err.message);
+      errorReporter.notify(err, {
+        level: isNetworkError ? 'warning' : 'error',
+        source: 'ai-chat',
+        conversationId: conversationIdRef.current,
+        isNetworkError,
+      });
+    },
+    [errorReporter],
+  );
+
   const runtime = useChatRuntime({
     messages: options?.initialMessages,
     sendAutomaticallyWhen: shouldSendAutomatically,
     transport,
+    onError,
   });
 
   return {
