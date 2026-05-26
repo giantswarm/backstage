@@ -87,16 +87,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/gateway@npm:3.0.112":
-  version: 3.0.112
-  resolution: "@ai-sdk/gateway@npm:3.0.112"
+"@ai-sdk/gateway@npm:3.0.114":
+  version: 3.0.114
+  resolution: "@ai-sdk/gateway@npm:3.0.114"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.10"
     "@ai-sdk/provider-utils": "npm:4.0.27"
     "@vercel/oidc": "npm:3.2.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/52485b8eeea357bbfe6c0957010ba3f518505df57034a422c1c14333695b75587231e329217742ad90b84444336c5ae8806066d960906242346db9612cf25498
+  checksum: 10c0/8a3f426c458c4a5eb8121e0f4a9814765dda29a25dc3efb458aea05abd94ff34fedb3987ab1d97e8f457156222f4149cd116f96cc03382ce2ff215106b6da70d
   languageName: node
   linkType: hard
 
@@ -14061,7 +14061,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentelemetry/api@npm:1.9.0, @opentelemetry/api@npm:^1.3.0, @opentelemetry/api@npm:^1.4.0, @opentelemetry/api@npm:^1.9.0":
+"@opentelemetry/api@npm:^1.3.0, @opentelemetry/api@npm:^1.4.0, @opentelemetry/api@npm:^1.9.0":
   version: 1.9.0
   resolution: "@opentelemetry/api@npm:1.9.0"
   checksum: 10c0/9aae2fe6e8a3a3eeb6c1fdef78e1939cf05a0f37f8a4fae4d6bf2e09eb1e06f966ece85805626e01ba5fab48072b94f19b835449e58b6d26720ee19a58298add
@@ -24581,17 +24581,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:6.0.177":
-  version: 6.0.177
-  resolution: "ai@npm:6.0.177"
+"ai@npm:6.0.180":
+  version: 6.0.180
+  resolution: "ai@npm:6.0.180"
   dependencies:
-    "@ai-sdk/gateway": "npm:3.0.112"
+    "@ai-sdk/gateway": "npm:3.0.114"
     "@ai-sdk/provider": "npm:3.0.10"
     "@ai-sdk/provider-utils": "npm:4.0.27"
-    "@opentelemetry/api": "npm:1.9.0"
+    "@opentelemetry/api": "npm:^1.9.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/a3527b15bc1228dffb34f74bfe5b51759eeb6063fa46a0896883083ee3ff2bad56d363f7f95e7d1d1c6544ed8e0acf40617f3bfeffa224e5b721eb49fc1d943a
+  checksum: 10c0/78dbd27926fb350dd393bb8310a7f694452d0b35ad107ea193887095a46bb310e29bd7980468411460fbd8d5d8a2ad39556c6f03857d0d54ac7ba24f1ac78874
   languageName: node
   linkType: hard
 
