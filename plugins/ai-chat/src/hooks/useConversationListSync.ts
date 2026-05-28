@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { type ThreadMessage, useAssistantState } from '@assistant-ui/react';
+import { type ThreadMessage, useAuiState } from '@assistant-ui/react';
 import { ConversationApi, ConversationListItem } from '../api';
 import { useConversations } from './useConversations';
 import { useChatRuntimeContext } from './ChatRuntimeContext';
@@ -30,10 +30,8 @@ export const useConversationListSync = (conversationApi: ConversationApi) => {
   const insertedRef = useRef(false);
   const wasRunningRef = useRef(false);
 
-  const isRunning = useAssistantState(({ thread }) =>
-    Boolean(thread?.isRunning),
-  );
-  const messages = useAssistantState(({ thread }) => thread?.messages);
+  const isRunning = useAuiState(({ thread }) => Boolean(thread?.isRunning));
+  const messages = useAuiState(({ thread }) => thread?.messages);
 
   useEffect(() => {
     if (insertedRef.current) return;
