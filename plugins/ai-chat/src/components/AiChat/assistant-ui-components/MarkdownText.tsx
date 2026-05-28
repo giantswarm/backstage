@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import {
   MarkdownTextPrimitive,
+  type MarkdownTextPrimitiveProps,
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 } from '@assistant-ui/react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -149,7 +150,7 @@ export const useMarkdownStyles = makeStyles((theme: Theme) =>
 export const createMarkdownComponents = (
   classes: ReturnType<typeof useMarkdownStyles>,
   options?: { animate?: boolean },
-) =>
+): MarkdownTextPrimitiveProps['components'] =>
   memoizeMarkdownComponents({
     h1: ({ children }) => (
       <Typography

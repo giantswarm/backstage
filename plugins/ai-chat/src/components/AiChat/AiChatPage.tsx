@@ -1,7 +1,7 @@
 import {
   AssistantRuntimeProvider,
-  useAssistantApi,
-  useAssistantState,
+  useAui,
+  useAuiState,
 } from '@assistant-ui/react';
 import { DevToolsModal } from '@assistant-ui/react-devtools';
 import { Content } from '@backstage/core-components';
@@ -70,7 +70,7 @@ interface InitialMessageHandlerProps {
 
 const InitialMessageHandler = ({ isReady }: InitialMessageHandlerProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const api = useAssistantApi();
+  const api = useAui();
   const hasSubmitted = useRef(false);
 
   useEffect(() => {
@@ -141,7 +141,7 @@ const ActiveConversationTracker = ({
   onActiveIdChange: (id: string) => void;
 }) => {
   const { getConversationId } = useChatRuntimeContext();
-  const messageCount = useAssistantState(
+  const messageCount = useAuiState(
     ({ thread }) => thread?.messages?.length ?? 0,
   );
 

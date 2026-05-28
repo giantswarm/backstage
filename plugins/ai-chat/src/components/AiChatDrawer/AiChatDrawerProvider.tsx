@@ -8,8 +8,8 @@ import {
 } from 'react';
 import {
   AssistantRuntimeProvider,
-  useAssistantApi,
-  useAssistantState,
+  useAui,
+  useAuiState,
 } from '@assistant-ui/react';
 import {
   useApi,
@@ -94,9 +94,9 @@ const DrawerInner = ({
   onActiveIdChange(id: string): void;
   onSelectConversation(id: string): void;
 }) => {
-  const assistantApi = useAssistantApi();
+  const assistantApi = useAui();
   const { isReady, getConversationId } = useChatRuntimeContext();
-  const messageCount = useAssistantState(
+  const messageCount = useAuiState(
     ({ thread }) => thread?.messages?.length ?? 0,
   );
 

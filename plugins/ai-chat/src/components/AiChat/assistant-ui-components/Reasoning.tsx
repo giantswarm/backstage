@@ -10,7 +10,7 @@ import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
 import Collapse from '@material-ui/core/Collapse';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import {
-  useAssistantState,
+  useAuiState,
   useMessagePartReasoning,
   type ReasoningMessagePartComponent,
   type ReasoningGroupComponent,
@@ -150,7 +150,7 @@ const ReasoningImpl: ReasoningMessagePartComponent = () => {
   const { text: targetText, status } = useMessagePartReasoning();
 
   const isStreaming = status.type === 'running';
-  const createdAt = useAssistantState(
+  const createdAt = useAuiState(
     ({ message }) => message.createdAt as Date | undefined,
   );
   const isNewMessage =
@@ -229,7 +229,7 @@ const ReasoningGroupImpl: ReasoningGroupComponent = ({
 }) => {
   const classes = useReasoningStyles();
 
-  const isReasoningStreaming = useAssistantState(({ message }) => {
+  const isReasoningStreaming = useAuiState(({ message }) => {
     if (message.status?.type !== 'running') return false;
     const lastIndex = message.content.length - 1;
     if (lastIndex < 0) return false;

@@ -16,8 +16,8 @@ import {
   ErrorPrimitive,
   ActionBarPrimitive,
   BranchPickerPrimitive,
-  useAssistantApi,
-  useAssistantState,
+  useAui,
+  useAuiState,
   useThreadViewportStore,
   useAuiEvent,
 } from '@assistant-ui/react';
@@ -69,7 +69,7 @@ const DEFAULT_WELCOME_SUGGESTIONS = [
 
 const ThreadWelcome = () => {
   const classes = useStyles();
-  const api = useAssistantApi();
+  const api = useAui();
   const configApi = useApi(configApiRef);
 
   const title =
@@ -264,9 +264,9 @@ const AssistantMessage = () => {
 
 // Bypass ComposerPrimitive.Input: its compositionRef can get stuck on dead-key layouts (e.g. German backtick) and freeze the input.
 const useComposerInputBinding = () => {
-  const api = useAssistantApi();
-  const text = useAssistantState(({ composer }) => composer.text);
-  const isDisabled = useAssistantState(
+  const api = useAui();
+  const text = useAuiState(({ composer }) => composer.text);
+  const isDisabled = useAuiState(
     ({ thread, composer }) =>
       thread.isDisabled || Boolean(composer.dictation?.inputDisabled),
   );
@@ -403,7 +403,7 @@ const LoadingIndicator = () => {
   // is streaming, the per-message Reasoning trigger ("Thinking 3s...") and
   // the streaming text itself act as the live progress indicator, and a
   // second spinner below the message would be visual noise.
-  const showSpinner = useAssistantState(({ thread }) => {
+  const showSpinner = useAuiState(({ thread }) => {
     const messages = thread?.messages;
     if (!messages || messages.length === 0) return true;
     const last = messages[messages.length - 1];
