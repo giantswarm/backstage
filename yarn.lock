@@ -24560,9 +24560,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:6.0.180":
-  version: 6.0.180
-  resolution: "ai@npm:6.0.180"
+"ai@npm:6.0.182":
+  version: 6.0.182
+  resolution: "ai@npm:6.0.182"
   dependencies:
     "@ai-sdk/gateway": "npm:3.0.114"
     "@ai-sdk/provider": "npm:3.0.10"
@@ -24570,7 +24570,7 @@ __metadata:
     "@opentelemetry/api": "npm:^1.9.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/78dbd27926fb350dd393bb8310a7f694452d0b35ad107ea193887095a46bb310e29bd7980468411460fbd8d5d8a2ad39556c6f03857d0d54ac7ba24f1ac78874
+  checksum: 10c0/6c4e19a9ddc6b7effb1e91feee9f3c4c0217bfacd7bf0a681aa392782720f8f25bacff2cf7ef6d121feca057f667276f2fd59c8759f12d7f1ef254ec39c76e4f
   languageName: node
   linkType: hard
 
