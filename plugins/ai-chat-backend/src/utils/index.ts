@@ -7,4 +7,5 @@ export { stripPastReasoning } from './stripPastReasoning';
 export {
   usesAdaptiveThinking,
   buildAnthropicProviderOptions,
+  DEFAULT_ANTHROPIC_EFFORT,
 } from './anthropicProviderOptions';

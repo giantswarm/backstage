@@ -41,6 +41,7 @@ import {
   stripPastReasoning,
   usesAdaptiveThinking,
   buildAnthropicProviderOptions,
+  DEFAULT_ANTHROPIC_EFFORT,
 } from './utils';
 import { ConversationStore } from './services/ConversationStore';
 import { createConversationRoutes } from './routes/conversationRoutes';
@@ -210,7 +211,8 @@ export async function createRouter(
   // `isAnthropicModel` are fixed for the router's lifetime, so the provider
   // options are computed once here. See utils/anthropicProviderOptions.ts.
   const anthropicEffort =
-    config.getOptionalString('aiChat.anthropic.effort') ?? 'high';
+    config.getOptionalString('aiChat.anthropic.effort') ??
+    DEFAULT_ANTHROPIC_EFFORT;
 
   // Adaptive-thinking models (Opus 4.7+, etc.) reject temperature/top_p/top_k
   // with a 400. Drop any configured under `aiChat.sampling` so they don't break
