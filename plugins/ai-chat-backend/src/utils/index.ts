@@ -4,3 +4,8 @@ export { sanitizeMessages } from './sanitizeMessages';
 export { stripStaleLargeToolResults } from './stripStaleLargeToolResults';
 export { pruneOldToolResults } from './pruneOldToolResults';
 export { stripPastReasoning } from './stripPastReasoning';
+export {
+  usesAdaptiveThinking,
+  buildAnthropicProviderOptions,
+  DEFAULT_ANTHROPIC_EFFORT,
+} from './anthropicProviderOptions';

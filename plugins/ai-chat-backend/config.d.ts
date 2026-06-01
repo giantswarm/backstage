@@ -12,6 +12,13 @@ export interface Config {
        * @visibility backend
        */
       baseUrl?: string;
+      /**
+       * Thinking effort for adaptive-thinking Claude models (Opus 4.5+,
+       * Sonnet 4.6). Maps to output_config.effort. Ignored by older Claude
+       * models, which use a fixed thinking budget instead. Defaults to 'high'.
+       * @visibility backend
+       */
+      effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
     };
 
     openai?: {

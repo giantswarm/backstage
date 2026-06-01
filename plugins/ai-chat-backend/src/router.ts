@@ -39,6 +39,9 @@ import {
   stripStaleLargeToolResults,
   pruneOldToolResults,
   stripPastReasoning,
+  usesAdaptiveThinking,
+  buildAnthropicProviderOptions,
+  DEFAULT_ANTHROPIC_EFFORT,
 } from './utils';
 import { ConversationStore } from './services/ConversationStore';
 import { createConversationRoutes } from './routes/conversationRoutes';
@@ -201,6 +204,36 @@ export async function createRouter(
       'No OpenAI API key configured for OpenAI model. Set aiChat.openai.apiKey in app-config.yaml',
     );
   }
+
+  // Anthropic thinking config is model-aware. Opus 4.5+/Sonnet 4.6 use the
+  // adaptive-thinking + `effort` interface; older Claude models use the legacy
+  // `thinking: { type: 'enabled', budgetTokens }` shape. `modelName` and
+  // `isAnthropicModel` are fixed for the router's lifetime, so the provider
+  // options are computed once here. See utils/anthropicProviderOptions.ts.
+  const anthropicEffort =
+    config.getOptionalString('aiChat.anthropic.effort') ??
+    DEFAULT_ANTHROPIC_EFFORT;
+
+  // Adaptive-thinking models (Opus 4.7+, etc.) reject temperature/top_p/top_k
+  // with a 400. Drop any configured under `aiChat.sampling` so they don't break
+  // Anthropic requests for those models.
+  if (isAnthropicModel && usesAdaptiveThinking(modelName)) {
+    const removed = (['temperature', 'topP', 'topK'] as const).filter(
+      k => samplingParams[k] !== undefined,
+    );
+    if (removed.length > 0) {
+      logger.warn(
+        `Ignoring sampling params not supported by ${modelName}: ${removed.join(', ')}`,
+      );
+      for (const k of removed) delete samplingParams[k];
+    }
+  }
+
+  const anthropicProviderOptions = buildAnthropicProviderOptions({
+    modelName,
+    isAnthropicModel,
+    effort: anthropicEffort,
+  });
 
   // Create provider clients
   const openai = createOpenAI({
@@ -485,12 +518,8 @@ export async function createRouter(
         stopWhen: stepCountIs(maxSteps),
         tools: allTools as ToolSet,
         ...samplingParams,
-        providerOptions: isAnthropicModel
-          ? {
-              anthropic: {
-                thinking: { type: 'enabled', budgetTokens: 10000 },
-              },
-            }
+        providerOptions: anthropicProviderOptions
+          ? { anthropic: anthropicProviderOptions }
           : undefined,
         onError({ error }) {
           chatLogger.error('Error during streaming:', error as Error);
@@ -546,9 +575,7 @@ export async function createRouter(
             connected: connectedServers,
             failed: failedServers.map(s => s.name),
           },
-          providerOptions: isAnthropicModel
-            ? { thinking: { type: 'enabled', budgetTokens: 10000 } }
-            : undefined,
+          providerOptions: anthropicProviderOptions,
           // Message transformations applied server-side (useful to spot
           // when the frontend's messages differ from what the LLM sees).
           messageCount: sanitizedMessages.length,
