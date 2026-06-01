@@ -5,6 +5,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- AI chat: add Opus 4.8 context window info.
+
+### Changed
+
+- AI chat: make the Anthropic thinking config model-aware so adaptive-thinking Claude models (Opus 4.5+, Sonnet 4.6) use the `adaptive` thinking interface with a configurable `effort` (`aiChat.anthropic.effort`, default `high`), while older Claude models keep the legacy budget-based interface.
+
+### Fixed
+
+- AI chat: forward chat-level errors to the error reporter (Sentry) so the "Network error" banner is no longer silent, and log a backend warning when the client disconnects mid-stream.
+
 ## [0.132.1] - 2026-05-20
 
 ### Fixed
