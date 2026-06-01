@@ -17,6 +17,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - AI chat: forward chat-level errors to the error reporter (Sentry) so the "Network error" banner is no longer silent, and log a backend warning when the client disconnects mid-stream.
 
+See [./docs/releases/v0.133.0-changelog.md](./docs/releases/v0.133.0-changelog.md) for more information.
+
 ## [0.132.1] - 2026-05-20
 
 ### Fixed
