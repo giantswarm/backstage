@@ -5,6 +5,22 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.133.0] - 2026-06-01
+
+### Added
+
+- AI chat: add Opus 4.8 context window info.
+
+### Changed
+
+- AI chat: make the Anthropic thinking config model-aware so adaptive-thinking Claude models (Opus 4.5+, Sonnet 4.6) use the `adaptive` thinking interface with a configurable `effort` (`aiChat.anthropic.effort`, default `high`), while older Claude models keep the legacy budget-based interface.
+
+### Fixed
+
+- AI chat: forward chat-level errors to the error reporter (Sentry) so the "Network error" banner is no longer silent, and log a backend warning when the client disconnects mid-stream.
+
+See [./docs/releases/v0.133.0-changelog.md](./docs/releases/v0.133.0-changelog.md) for more information.
+
 ## [0.132.1] - 2026-05-20
 
 ### Fixed
@@ -2509,7 +2525,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.132.1...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.133.0...HEAD
+[0.133.0]: https://github.com/giantswarm/backstage/compare/v0.132.1...v0.133.0
 [0.132.1]: https://github.com/giantswarm/backstage/compare/v0.132.0...v0.132.1
 [0.132.0]: https://github.com/giantswarm/backstage/compare/v0.131.1...v0.132.0
 [0.131.1]: https://github.com/giantswarm/backstage/compare/v0.131.0...v0.131.1

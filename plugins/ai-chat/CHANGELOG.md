@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.13.5
+
+### Patch Changes
+
+- 3871ed1: AI chat: forward chat-level errors to the error reporter (Sentry) so the "Network error" banner is no longer silent. Network-class failures (TypeError + /fetch|network/) are reported as warnings to avoid paging on flaky-wifi users; other errors are reported as errors. The error reporter is looked up via the api holder so the chat still works in environments where Sentry isn't wired up. On the backend, the chat route now logs a warning when the client socket closes before the SSE stream finishes, giving a server-side trace for mid-stream disconnects that previously left no log entry.
+- 08f6739: add Opus 4.8 context window info
+
 ## 0.13.4
 
 ### Patch Changes

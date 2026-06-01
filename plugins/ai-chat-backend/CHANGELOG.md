@@ -1,5 +1,15 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.17.0
+
+### Minor Changes
+
+- 08f6739: AI chat: make the Anthropic thinking config model-aware. Adaptive-thinking Claude models (Opus 4.5+, Sonnet 4.6) now use `thinking: { type: 'adaptive' }` plus `effort` (configurable via `aiChat.anthropic.effort`, default `high`) instead of the legacy `thinking: { type: 'enabled', budgetTokens }` shape, which those models reject with a 400 ("thinking.type.enabled is not supported for this model"). Older Claude models keep the legacy budget-based interface, and non-Claude models are unaffected. For adaptive-thinking models, `temperature`/`topP`/`topK` from `aiChat.sampling` are dropped (with a warning) since those models also reject them.
+
+### Patch Changes
+
+- 3871ed1: AI chat: forward chat-level errors to the error reporter (Sentry) so the "Network error" banner is no longer silent. Network-class failures (TypeError + /fetch|network/) are reported as warnings to avoid paging on flaky-wifi users; other errors are reported as errors. The error reporter is looked up via the api holder so the chat still works in environments where Sentry isn't wired up. On the backend, the chat route now logs a warning when the client socket closes before the SSE stream finishes, giving a server-side trace for mid-stream disconnects that previously left no log entry.
+
 ## 0.16.2
 
 ### Patch Changes
