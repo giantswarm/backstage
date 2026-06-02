@@ -200,8 +200,12 @@ export async function createRouter(
   }
 
   if (!isAnthropicModel && !isAzureConfigured && !openaiApiKey) {
-    logger.warn(
-      'No OpenAI API key configured for OpenAI model. Set aiChat.openai.apiKey in app-config.yaml',
+    // Expected when a customer hasn't set up the AI chat feature: the default
+    // model (gpt-4o-mini) selects the OpenAI provider, but no key is set. This
+    // is benign, so log at `info` — `warn` (and above) is forwarded to Sentry
+    // by the root logger and would otherwise create noise on every restart.
+    logger.info(
+      'AI chat: no OpenAI API key configured (aiChat.openai.apiKey); the AI chat feature is unavailable until a provider is configured.',
     );
   }
 
