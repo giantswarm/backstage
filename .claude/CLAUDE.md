@@ -396,4 +396,4 @@ Without the env var, the skills will hard-stop and ask you to configure it.
 
 ### Ownership
 
-- Code Owners: Team Honeybadger (@giantswarm/team-honeybadger)
+- Code Owners: Team Bumblebee (@giantswarm/team-bumblebee)
