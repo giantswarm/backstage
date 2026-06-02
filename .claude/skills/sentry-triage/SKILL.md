@@ -43,8 +43,9 @@ When invoked with no issue reference, produce a fast, grouped snapshot of everyt
 
 1. **List projects:** `find_projects(organizationSlug='giantswarm', query='backstage')` → the `backstage-<customer>-frontend` / `-backend` pairs.
 2. **Sweep open issues in parallel** — one call per project, all in a single message (independent reads; do **not** use subagents):
-   `search_issues(organizationSlug='giantswarm', projectSlugOrId='<project>', query='is:unresolved', sort='freq')`.
+   `search_issues(organizationSlug='giantswarm', projectSlugOrId='<project>', query='is:unresolved', sort='freq', limit=100)`.
    Per-project scoping is required — org-wide search returns nothing (see "Sweeping for every occurrence").
+   Always pass `limit=100` — the default is 10, which silently truncates busy projects.
 3. **Synthesize a digest — not raw dumps:**
    - **Group by signature, not by project.** Collapse the same title / `blocked-uri` seen across customers into one row plus an affected-project count. (For CSP groups, open one representative event to read its `blocked-uri` so duplicates merge correctly.)
    - **Signal first, noise summarized.** Lead with CSP violations and real exceptions; fold known noise (bot-probe `Untracked page view`, etc.) into a single counted line (see "Muting & noise reduction").
@@ -129,15 +130,19 @@ A single root cause fires one issue per customer project (see "Deployments & pro
 - Get the project list: `find_projects(organizationSlug='giantswarm', query='backstage')`.
 - For CSP, only sweep the **`-frontend`** projects — the browser posts CSP reports to the frontend project's `report-uri`, so they never land in `-backend`.
 - For each project, list every issue regardless of status:
-  `search_issues(organizationSlug='giantswarm', projectSlugOrId='backstage-<customer>-frontend', query='all issues regardless of status', sort='freq')`.
-  The phrase *"all issues regardless of status"* translates to an empty query = all statuses; a bare `is:unresolved` would hide already-resolved hits. Volumes are low (a handful per project).
+  `search_issues(organizationSlug='giantswarm', projectSlugOrId='backstage-<customer>-frontend', query='all issues regardless of status', sort='freq', limit=100)`.
+  The phrase *"all issues regardless of status"* translates to an empty query = all statuses; a bare `is:unresolved` would hide already-resolved hits. Always pass `limit=100` — the default of 10 silently drops issues on busier projects.
 - These are independent reads — fire them as **parallel tool calls in one message**, not subagents. A flat fetch doesn't need per-item reasoning, so subagents would only add context overhead.
 
 Identify CSP issues by title `Blocked '<kind>' from '<host>'` and culprit = a CSP directive. (Heads-up: `-frontend` projects also collect `Untracked page view` noise from internet bots probing `/wp-login.php`, `/phpmyadmin`, etc. — 0 users, ignore.)
 
 ### 2. Group by root cause, not by issue
 
-Group hits by **`blocked-uri`** (or `blocked-host`) from the event — **not** by project. The same blocked URI across N customers is **one** root cause and **one** fix. Open one representative event per distinct URI to confirm.
+Group hits by **`blocked-uri`** (or `blocked-host`) from the event — **not** by project. The same blocked URI across N customers is **one** root cause and **one** fix.
+
+The issue headline only shows the host (`Blocked 'image' from 'raw.githubusercontent.com'`), not the full URI. To get the full URI cheaply without fetching the entire issue, use:
+`search_issue_events(organizationSlug='giantswarm', issueId='<SHORT-ID>', query='', limit=1)`
+and read the `blocked-uri` tag from the first event. Do this for one representative issue per distinct host before merging duplicates.
 
 ### 3. Fan out to investigate each distinct source (Haiku subagents)
 
@@ -206,7 +211,7 @@ Ignoring is **per-issue, per-project**. A recurring noise *pattern* (e.g. each n
 
 ## Reference
 
-- **Org slug:** `giantswarm`. **Projects:** one `backstage-<customer>-frontend` + `-backend` pair per deployment — list them with `find_projects` (see "Deployments & projects").
+- **Org slug:** `giantswarm`. **Projects:** one `backstage-<customer>-frontend` + `-backend` pair per deployment — list them with `find_projects` (see "Deployments & projects"). The tool returns up to 25 results; if the count is exactly 25, re-run with a more specific query to check for truncation.
 - **CSP base config:** `app-config.yaml` → `backend.csp` (Helmet format). Enforced policy may be broader (deploy-time overrides).
 - **Frontend Sentry init:** `packages/app/src/apis/errorReporter/SentryErrorReporter.ts`.
 - **App repos / chart icons:** `github.com/giantswarm/<name>-app`, icon in `helm/<chart>/Chart.yaml` `icon:`, hosted on `s.giantswarm.io/app-icons/...`.
