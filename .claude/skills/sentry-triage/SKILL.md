@@ -23,14 +23,21 @@ Issues are read via the **Sentry MCP server** (`sentry-mcp`). The org slug is `g
 - `get_sentry_resource(url=...)` — fetch an issue/event by URL. Paste the Sentry URL directly; the resource type is auto-detected.
 - `search_issue_events(...)` — list/filter events within one issue (by environment, release, user, trace).
 - `search_issues(...)` — list issues **within one project** (pass `projectSlugOrId`). Org-wide search returns nothing — see "Sweeping for every occurrence".
-- `find_projects(organizationSlug='giantswarm', query='backstage')` — list the per-customer projects to sweep.
+- `find_projects(...)` — list the projects to sweep. Run it for **both** `query='backstage'` (per-customer pairs) **and** `query='devportal'` (the internal instance, which doesn't match `backstage-*`; see "Deployments & projects").
 - `update_issue(...)` — set status (resolved / ignored / archived).
 
 If the sentry-mcp tools are not loaded, find them with `ToolSearch` (`select:mcp__plugin_sentry-mcp_sentry__get_sentry_resource,...`). If the MCP server is not connected at all, tell the user — do **not** try `WebFetch` on the Sentry URL (it's authenticated and will only hit the login wall).
 
 ## Deployments & projects
 
-Backstage runs as a **separate deployment per customer**, and each one is its own pair of Sentry projects: **`backstage-<customer>-frontend`** and **`backstage-<customer>-backend`**. The frontend project receives browser events (CSP reports, React errors); the backend project receives Node/Express errors. List the current set with `find_projects(organizationSlug='giantswarm', query='backstage')` — there is one pair per customer.
+Backstage runs as a **separate deployment per customer**, and each one is its own pair of Sentry projects: **`backstage-<customer>-frontend`** and **`backstage-<customer>-backend`**. The frontend project receives browser events (CSP reports, React errors); the backend project receives Node/Express errors.
+
+**Enumerate every instance — there are two naming schemes, so query both and union the results:**
+
+- **Per-customer deployments:** `find_projects(organizationSlug='giantswarm', query='backstage')` → the `backstage-<customer>-frontend` / `-backend` pairs.
+- **The internal Giant Swarm dev portal** (Giant Swarm is its own customer) — this one does **not** follow the `backstage-*` convention: projects **`devportal-frontend`** / **`devportal-backend`**, short IDs **`DEVPORTAL-*`**. Get it with `find_projects(organizationSlug='giantswarm', query='devportal')`.
+
+`devportal` is the one known exception today; the `-frontend`/`-backend` suffix logic below still applies to it — only the prefix differs.
 
 Implications for triage:
 
@@ -41,7 +48,7 @@ Implications for triage:
 
 When invoked with no issue reference, produce a fast, grouped snapshot of everything **currently open** across the Backstage Sentry projects.
 
-1. **List projects:** `find_projects(organizationSlug='giantswarm', query='backstage')` → the `backstage-<customer>-frontend` / `-backend` pairs.
+1. **List projects:** enumerate both naming schemes and union them — `find_projects(..., query='backstage')` (the `backstage-<customer>-*` pairs) **and** `find_projects(..., query='devportal')` (the internal `devportal-frontend`/`-backend` pair). See "Deployments & projects".
 2. **Sweep open issues in parallel** — one call per project, all in a single message (independent reads; do **not** use subagents):
    `search_issues(organizationSlug='giantswarm', projectSlugOrId='<project>', query='is:unresolved', sort='freq', limit=100)`.
    Per-project scoping is required — org-wide search returns nothing (see "Sweeping for every occurrence").
@@ -70,7 +77,7 @@ Read the headline fields first: **Type**, **Message/Title**, **Culprit**, **Proj
 | `Type: csp`, `logger: csp`, message like `Blocked '<kind>' from '<host>'` | **CSP violation** (not a code bug) | "CSP violations" below |
 | A JS `Error` with a stack trace, `level: error/warning` | **Code exception** | "Code exceptions" below |
 
-The **Project** name locates the issue (see "Deployments & projects" below): the suffix tells you whether it's `-frontend` (browser: CSP, React) or `-backend` (Node/Express), and the prefix tells you which customer. The Document/page URL in the event confirms the customer and page.
+The **Project** name locates the issue (see "Deployments & projects" below): the suffix tells you whether it's `-frontend` (browser: CSP, React) or `-backend` (Node/Express), and the prefix tells you which deployment — a customer, or `devportal` for the internal Giant Swarm instance. The Document/page URL in the event confirms the deployment and page.
 
 ---
 
@@ -127,7 +134,7 @@ A single root cause fires one issue per customer project (see "Deployments & pro
 
 `search_issues` only works when scoped to a project via `projectSlugOrId`. **Org-wide it returns nothing** (`Project(s) … are not actively selected`), and tag / free-text filters like `logger:csp` or `Blocked` do **not** match at the issue-index level. So:
 
-- Get the project list: `find_projects(organizationSlug='giantswarm', query='backstage')`.
+- Get the project list: `find_projects(..., query='backstage')` **and** `find_projects(..., query='devportal')`, then union them (the internal instance doesn't match `backstage-*`; see "Deployments & projects").
 - For CSP, only sweep the **`-frontend`** projects — the browser posts CSP reports to the frontend project's `report-uri`, so they never land in `-backend`.
 - For each project, list every issue regardless of status:
   `search_issues(organizationSlug='giantswarm', projectSlugOrId='backstage-<customer>-frontend', query='all issues regardless of status', sort='freq', limit=100)`.
@@ -176,7 +183,7 @@ Not every issue is a bug to fix. Once classified, pick the disposition:
 |---|---|
 | Real bug, fixable in this repo | Fix in the owning plugin (+ changeset), reference the issue so it auto-closes — see "Resolving the issue". |
 | Shared root cause (e.g. a chart icon across many customers) | Fix at the **source** repo, then sweep all customers and resolve each once the fix ships — see "Sweeping for every occurrence". |
-| Real, but the fix is out of scope / not yours to make now | **File a tracking issue** for the owning team (e.g. in `giantswarm/giantswarm`, labelled with the team + `ui/backstage`), then resolve or ignore the Sentry issue with a `reason` that links it. |
+| Real, but the fix is out of scope / not yours to make now | **File a tracking issue** for the owning team (see "Filing a GitHub issue"), then resolve or ignore the Sentry issue with a `reason` that links it. |
 | Noise — not actionable (bot/scanner traffic, expected third-party errors) | **Ignore** it (below), and fix the *source* of the noise where possible so it stops recurring. |
 
 ### Ignoring (muting) an issue
@@ -203,15 +210,27 @@ Ignoring is **per-issue, per-project**. A recurring noise *pattern* (e.g. each n
 
 ---
 
+## Filing a GitHub issue from a Sentry issue
+
+When a Sentry issue needs a code change you won't make inline, file a tracking issue for the owning team — usually in `giantswarm/giantswarm`. Follow these conventions:
+
+1. **Link the Sentry issue.** Put at least one Sentry issue URL in the body so the GitHub issue is traceable back to its source. When one root cause spans several projects, link a representative issue (or all affected ones).
+2. **Set the `ui/backstage` label** — always — alongside the owning team label (e.g. `team/bumblebee`). This is what marks it as Backstage work and routes it.
+3. **No pseudo-labels in the title.** Don't prefix the title with `[backstage]` or similar bracketed tags — that's the `ui/backstage` label's job. Use a plain, descriptive title.
+
+Keep the body customer-agnostic where possible (file paths, root cause, fix options) rather than naming customers — `giantswarm/giantswarm` issues are widely visible.
+
+---
+
 ## Resolving the issue
 
-- A commit/PR whose message contains **`Fixes <ISSUE-SHORT-ID>`** (the issue's short ID, e.g. `BACKSTAGE-<CUSTOMER>-FRONTEND-<n>`) auto-closes the issue when merged — but only from a repo Sentry is linked to. For source-data fixes made in **another** repo (e.g. a chart icon), resolve the issue manually instead.
+- A commit/PR whose message contains **`Fixes <ISSUE-SHORT-ID>`** (the issue's short ID, e.g. `BACKSTAGE-<CUSTOMER>-FRONTEND-<n>` or `DEVPORTAL-FRONTEND-<n>`) auto-closes the issue when merged — but only from a repo Sentry is linked to. For source-data fixes made in **another** repo (e.g. a chart icon), resolve the issue manually instead.
 - To resolve directly: `update_issue(organizationSlug='giantswarm', issueId='<SHORT-ID>', status='resolved', reason='<what fixed it + the release/PR>')`. Always pass a `reason` — it's posted to the issue's activity feed.
 - **Cross-customer duplicates:** once the source fix has shipped (e.g. the app release exists — verify the tag, don't assume), resolve each customer's issue for that root cause. They'd clear on their own as catalogs re-import, but resolving with a `reason` documents it. If a release is only *triggered*, not yet published, wait or note that in the reason.
 
 ## Reference
 
-- **Org slug:** `giantswarm`. **Projects:** one `backstage-<customer>-frontend` + `-backend` pair per deployment — list them with `find_projects` (see "Deployments & projects"). The tool returns up to 25 results; if the count is exactly 25, re-run with a more specific query to check for truncation.
+- **Org slug:** `giantswarm`. **Projects:** one `backstage-<customer>-frontend` + `-backend` pair per deployment, **plus** the internal `devportal-frontend` / `devportal-backend` pair (short IDs `DEVPORTAL-*`, queried separately — it doesn't match `backstage-*`). List them with `find_projects` using both `query='backstage'` and `query='devportal'` (see "Deployments & projects"). The tool returns up to 25 results per query; if a count is exactly 25, re-run with a more specific query to check for truncation.
 - **CSP base config:** `app-config.yaml` → `backend.csp` (Helmet format). Enforced policy may be broader (deploy-time overrides).
 - **Frontend Sentry init:** `packages/app/src/apis/errorReporter/SentryErrorReporter.ts`.
 - **App repos / chart icons:** `github.com/giantswarm/<name>-app`, icon in `helm/<chart>/Chart.yaml` `icon:`, hosted on `s.giantswarm.io/app-icons/...`.
