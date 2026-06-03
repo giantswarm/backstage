@@ -7,6 +7,7 @@
  */
 import {
   createFrontendModule,
+  analyticsApiRef,
   ApiBlueprint,
   AppRootElementBlueprint,
 } from '@backstage/frontend-plugin-api';
@@ -18,7 +19,6 @@ import {
 import DarkIcon from '@material-ui/icons/Brightness2';
 import LightIcon from '@material-ui/icons/WbSunny';
 import {
-  analyticsApiRef,
   configApiRef,
   discoveryApiRef,
   fetchApiRef,

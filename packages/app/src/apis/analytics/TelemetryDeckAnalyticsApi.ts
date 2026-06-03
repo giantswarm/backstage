@@ -1,9 +1,5 @@
-import {
-  AnalyticsApi,
-  AnalyticsEvent,
-  ConfigApi,
-  IdentityApi,
-} from '@backstage/core-plugin-api';
+import { ConfigApi, IdentityApi } from '@backstage/core-plugin-api';
+import { AnalyticsApi, AnalyticsEvent } from '@backstage/frontend-plugin-api';
 import TelemetryDeck from '@telemetrydeck/sdk';
 import {
   getGuestUserEntityRef,
@@ -87,12 +83,16 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
    * The app's RouteTracker resolves each navigation against the registered
    * routes and stores the owning plugin/extension in the analytics context.
    * When nothing matches (e.g. internet bots probing for /wp-login.php and
-   * similar paths on the public URL), the context keeps its default values
-   * of pluginId 'app' and extensionId 'app'.
+   * similar paths on the public URL), the RouteTracker contributes no
+   * attributes and the navigate event inherits the AppRoot extension
+   * boundary's context values: pluginId 'app' and extensionId 'app/root'.
+   * This contract is pinned by the integration test in
+   * TelemetryDeckAnalyticsApi.test.tsx, which captures events emitted by
+   * the real RouteTracker.
    */
   private static isRegisteredRoute(event: AnalyticsEvent): boolean {
     const { pluginId, extensionId } = event.context;
-    return pluginId !== 'app' || extensionId !== 'app';
+    return pluginId !== 'app' || extensionId !== 'app/root';
   }
 
   captureEvent(event: AnalyticsEvent): void {
