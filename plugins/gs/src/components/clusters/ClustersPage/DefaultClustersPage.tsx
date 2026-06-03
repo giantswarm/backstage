@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Content, Header, Page } from '@backstage/core-components';
+import { Content } from '@backstage/core-components';
 import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';
 import { ClustersDataProvider } from '../ClustersDataProvider';
@@ -16,22 +16,16 @@ export function BaseClustersPage(props: BaseClustersPageProps) {
   const { filters, content = <ClustersTable /> } = props;
 
   return (
-    <Page themeId="service">
-      <Header
-        title="Kubernetes clusters by Giant Swarm"
-        subtitle="Your Kubernetes clusters as managed or known by your Giant Swarm management clusters."
-      />
-      <Content>
-        <ErrorsProvider>
-          <ClustersDataProvider>
-            <FiltersLayout>
-              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-              <FiltersLayout.Content>{content}</FiltersLayout.Content>
-            </FiltersLayout>
-          </ClustersDataProvider>
-        </ErrorsProvider>
-      </Content>
-    </Page>
+    <Content>
+      <ErrorsProvider>
+        <ClustersDataProvider>
+          <FiltersLayout>
+            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+            <FiltersLayout.Content>{content}</FiltersLayout.Content>
+          </FiltersLayout>
+        </ClustersDataProvider>
+      </ErrorsProvider>
+    </Content>
   );
 }
 

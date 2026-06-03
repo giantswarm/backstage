@@ -63,7 +63,6 @@ const clustersPage = PageBlueprint.make({
   params: {
     title: 'Clusters',
     icon: <StorageIcon />,
-    noHeader: true,
     path: '/clusters',
     routeRef: clustersRouteRef,
     loader: async () => {
@@ -79,7 +78,6 @@ const deploymentsPage = PageBlueprint.make({
   params: {
     title: 'Deployments',
     icon: <CloudUploadIcon />,
-    noHeader: true,
     path: '/deployments',
     routeRef: deploymentsRouteRef,
     loader: async () => {
@@ -95,7 +93,6 @@ const installationsPage = PageBlueprint.make({
   params: {
     title: 'Installations',
     icon: <ApartmentIcon />,
-    noHeader: true,
     path: '/installations',
     routeRef: installationsRouteRef,
     loader: async () => {

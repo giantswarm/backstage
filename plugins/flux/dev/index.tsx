@@ -7,20 +7,29 @@ import {
   FluxResourcesTreeViewResourceTypePicker,
   FluxResourcesTreeViewTreeSearch,
 } from '@giantswarm/backstage-plugin-flux-react';
-import { FluxPage } from '../src/components/FluxPage';
+import { FluxResourcesListPage } from '../src/components/FluxResourcesListPage';
+import { FluxResourcesTreePage } from '../src/components/FluxResourcesTreePage';
 
 createDevApp()
   .addPage({
     element: (
-      <FluxPage
-        listFilters={
+      <FluxResourcesListPage
+        filters={
           <>
             <FluxResourcesListViewClusterPicker />
             <FluxResourcesListViewKindPicker />
             <FluxResourcesListViewStatusPicker />
           </>
         }
-        treeFilters={
+      />
+    ),
+    title: 'List view',
+    path: '/flux/list',
+  })
+  .addPage({
+    element: (
+      <FluxResourcesTreePage
+        filters={
           <>
             <FluxResourcesTreeViewClusterPicker />
             <FluxResourcesTreeViewResourceTypePicker />
@@ -29,7 +38,7 @@ createDevApp()
         }
       />
     ),
-    title: 'Root Page',
-    path: '/flux',
+    title: 'Tree view',
+    path: '/flux/tree',
   })
   .render();

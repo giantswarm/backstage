@@ -1,11 +1,13 @@
 import { PageBlueprint } from '@backstage/frontend-plugin-api';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
+import FolderIcon from '@material-ui/icons/Folder';
 
-// Catalog index page — render GSCustomCatalogPage directly (full page component)
+// Catalog index page — render GSCustomCatalogPage with the NFS page header
 export const IndexPage = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
     return originalFactory({
-      noHeader: true,
+      title: 'Catalog',
+      icon: <FolderIcon fontSize="inherit" />,
       routeRef: catalogPlugin.routes.catalogIndex,
       path: '/catalog',
       loader: async () => {

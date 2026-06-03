@@ -12,7 +12,7 @@ import {
  */
 export const FluxListFilterBlueprint = createExtensionBlueprint({
   kind: 'flux-list-filter',
-  attachTo: { id: 'page:flux', input: 'listFilters' },
+  attachTo: { id: 'sub-page:flux/list', input: 'filters' },
   output: [coreExtensionData.reactElement],
   factory(params: { loader: () => Promise<JSX.Element> }, { node }) {
     return [

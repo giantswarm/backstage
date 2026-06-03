@@ -12,7 +12,7 @@ import {
  */
 export const FluxTreeFilterBlueprint = createExtensionBlueprint({
   kind: 'flux-tree-filter',
-  attachTo: { id: 'page:flux', input: 'treeFilters' },
+  attachTo: { id: 'sub-page:flux/tree', input: 'filters' },
   output: [coreExtensionData.reactElement],
   factory(params: { loader: () => Promise<JSX.Element> }, { node }) {
     return [
