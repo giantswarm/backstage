@@ -5,6 +5,11 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Fixed
+
+- AI chat: log "no OpenAI API key configured" at `info` instead of `warn` to reduce Sentry noise for customers who haven't configured the feature.
+- App: stop reporting "Untracked page view" warnings to Sentry for paths that don't match any registered app route (e.g. bot/scanner probes like `/wp-login.php`).
+
 ## [0.133.0] - 2026-06-01
 
 ### Added
