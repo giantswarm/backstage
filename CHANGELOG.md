@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.133.1] - 2026-06-03
+
+### Fixed
+
+- AI chat: log "no OpenAI API key configured" at `info` instead of `warn` to reduce Sentry noise for customers who haven't configured the feature.
+- App: stop reporting "Untracked page view" warnings to Sentry for paths that don't match any registered app route (e.g. bot/scanner probes like `/wp-login.php`).
+
+See [./docs/releases/v0.133.1-changelog.md](./docs/releases/v0.133.1-changelog.md) for more information.
+
 ## [0.133.0] - 2026-06-01
 
 ### Added
@@ -2525,7 +2534,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.133.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.133.1...HEAD
+[0.133.1]: https://github.com/giantswarm/backstage/compare/v0.133.0...v0.133.1
 [0.133.0]: https://github.com/giantswarm/backstage/compare/v0.132.1...v0.133.0
 [0.132.1]: https://github.com/giantswarm/backstage/compare/v0.132.0...v0.132.1
 [0.132.0]: https://github.com/giantswarm/backstage/compare/v0.131.1...v0.132.0
