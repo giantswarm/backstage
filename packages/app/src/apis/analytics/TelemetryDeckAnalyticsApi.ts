@@ -81,6 +81,20 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     }
   }
 
+  /**
+   * Whether the navigation matched a route registered in the app.
+   *
+   * The app's RouteTracker resolves each navigation against the registered
+   * routes and stores the owning plugin/extension in the analytics context.
+   * When nothing matches (e.g. internet bots probing for /wp-login.php and
+   * similar paths on the public URL), the context keeps its default values
+   * of pluginId 'app' and extensionId 'app'.
+   */
+  private static isRegisteredRoute(event: AnalyticsEvent): boolean {
+    const { pluginId, extensionId } = event.context;
+    return pluginId !== 'app' || extensionId !== 'app';
+  }
+
   captureEvent(event: AnalyticsEvent): void {
     if (event.action !== 'navigate' || !event.subject) {
       return;
@@ -89,7 +103,13 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     const pathname = event.subject.split('?')[0].split('#')[0];
     const payload = getTelemetryPageViewPayload(pathname);
 
-    if (payload.page === 'Unknown page') {
+    if (
+      payload.page === 'Unknown page' &&
+      TelemetryDeckAnalyticsApi.isRegisteredRoute(event)
+    ) {
+      // Only report untracked page views for paths that resolved to a real
+      // app route. Unmatched paths land on the "Not Found" page and are
+      // mostly bot/scanner probes — reporting them creates Sentry noise.
       this.errorReporterApi?.notify(`Untracked page view: ${pathname}`, {
         level: 'warning',
         type: 'untracked_page_view',
