@@ -2,7 +2,6 @@ import {
   coreExtensionData,
   createExtensionInput,
   createFrontendPlugin,
-  NavItemBlueprint,
   PageBlueprint,
 } from '@backstage/frontend-plugin-api';
 
@@ -23,15 +22,6 @@ import {
   treeSearch,
 } from './filters';
 
-const fluxNavItem = NavItemBlueprint.make({
-  disabled: true,
-  params: {
-    title: 'Flux',
-    icon: FluxIcon,
-    routeRef: rootRouteRef,
-  },
-});
-
 const fluxPage = PageBlueprint.makeWithOverrides({
   disabled: true,
   inputs: {
@@ -40,6 +30,8 @@ const fluxPage = PageBlueprint.makeWithOverrides({
   },
   factory(originalFactory, { inputs }) {
     return originalFactory({
+      title: 'Flux',
+      icon: <FluxIcon />,
       noHeader: true,
       path: '/flux',
       routeRef: rootRouteRef,
@@ -66,7 +58,6 @@ export const fluxPlugin = createFrontendPlugin({
   pluginId: 'flux',
   extensions: [
     fluxPage,
-    fluxNavItem,
     listClusterPicker,
     listKindPicker,
     listStatusPicker,

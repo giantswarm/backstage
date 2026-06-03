@@ -1,7 +1,6 @@
 import {
   createFrontendPlugin,
   PageBlueprint,
-  NavItemBlueprint,
   ApiBlueprint,
   ExtensionDefinition,
 } from '@backstage/frontend-plugin-api';
@@ -62,6 +61,8 @@ const clustersPage = PageBlueprint.make({
   name: 'clusters',
   disabled: true,
   params: {
+    title: 'Clusters',
+    icon: <StorageIcon />,
     noHeader: true,
     path: '/clusters',
     routeRef: clustersRouteRef,
@@ -76,6 +77,8 @@ const deploymentsPage = PageBlueprint.make({
   name: 'deployments',
   disabled: true,
   params: {
+    title: 'Deployments',
+    icon: <CloudUploadIcon />,
     noHeader: true,
     path: '/deployments',
     routeRef: deploymentsRouteRef,
@@ -90,6 +93,8 @@ const installationsPage = PageBlueprint.make({
   name: 'installations',
   disabled: true,
   params: {
+    title: 'Installations',
+    icon: <ApartmentIcon />,
     noHeader: true,
     path: '/installations',
     routeRef: installationsRouteRef,
@@ -98,37 +103,6 @@ const installationsPage = PageBlueprint.make({
         await import('./components/catalog/InstallationsPage');
       return <InstallationsPage />;
     },
-  },
-});
-
-// Nav items (forward-compat; not consumed by legacy sidebar)
-const clustersNavItem = NavItemBlueprint.make({
-  name: 'clusters',
-  disabled: true,
-  params: {
-    title: 'Clusters',
-    icon: StorageIcon,
-    routeRef: clustersRouteRef,
-  },
-});
-
-const deploymentsNavItem = NavItemBlueprint.make({
-  name: 'deployments',
-  disabled: true,
-  params: {
-    title: 'Deployments',
-    icon: CloudUploadIcon,
-    routeRef: deploymentsRouteRef,
-  },
-});
-
-const installationsNavItem = NavItemBlueprint.make({
-  name: 'installations',
-  disabled: true,
-  params: {
-    title: 'Installations',
-    icon: ApartmentIcon,
-    routeRef: installationsRouteRef,
   },
 });
 
@@ -638,9 +612,6 @@ export const gsPlugin = createFrontendPlugin({
     clustersPage,
     deploymentsPage,
     installationsPage,
-    clustersNavItem,
-    deploymentsNavItem,
-    installationsNavItem,
     gsAuthProvidersApi,
     gsAuthApi,
     containerRegistryApi,
