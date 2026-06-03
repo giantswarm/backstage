@@ -2,13 +2,7 @@
  * InstallationsPage component is based on the DefaultCatalogPage.tsx - https://github.com/backstage/backstage/blob/v1.16.0/plugins/catalog/src/components/CatalogPage/DefaultCatalogPage.tsx
  */
 
-import {
-  Content,
-  ContentHeader,
-  PageWithHeader,
-  SupportButton,
-  TableProps,
-} from '@backstage/core-components';
+import { Content, TableProps } from '@backstage/core-components';
 
 import {
   CatalogFilterLayout,
@@ -63,30 +57,25 @@ export function InstallationsPage(props: InstallationsPageProps) {
   } = props;
 
   return (
-    <PageWithHeader title="Installations" themeId="home">
-      <Content>
-        <ContentHeader title="">
-          <SupportButton>Installations</SupportButton>
-        </ContentHeader>
-        <EntityListProvider>
-          <CatalogFilterLayout>
-            <CatalogFilterLayout.Filters>
-              <EntityKindPicker initialFilter="resource" hidden />
-              <EntityTypePicker initialFilter="installation" hidden />
-              <EntityCustomerPicker />
-              <EntityProviderPicker />
-              <EntityPipelinePicker />
-            </CatalogFilterLayout.Filters>
-            <CatalogFilterLayout.Content>
-              <CustomCatalogTable
-                columns={columnsFunc}
-                tableOptions={tableOptions}
-                emptyContent={emptyContent}
-              />
-            </CatalogFilterLayout.Content>
-          </CatalogFilterLayout>
-        </EntityListProvider>
-      </Content>
-    </PageWithHeader>
+    <Content>
+      <EntityListProvider>
+        <CatalogFilterLayout>
+          <CatalogFilterLayout.Filters>
+            <EntityKindPicker initialFilter="resource" hidden />
+            <EntityTypePicker initialFilter="installation" hidden />
+            <EntityCustomerPicker />
+            <EntityProviderPicker />
+            <EntityPipelinePicker />
+          </CatalogFilterLayout.Filters>
+          <CatalogFilterLayout.Content>
+            <CustomCatalogTable
+              columns={columnsFunc}
+              tableOptions={tableOptions}
+              emptyContent={emptyContent}
+            />
+          </CatalogFilterLayout.Content>
+        </CatalogFilterLayout>
+      </EntityListProvider>
+    </Content>
   );
 }

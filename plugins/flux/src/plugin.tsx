@@ -3,6 +3,7 @@ import {
   createExtensionInput,
   createFrontendPlugin,
   PageBlueprint,
+  SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 
 import { FluxIcon } from '@giantswarm/backstage-plugin-flux-react';
@@ -22,33 +23,53 @@ import {
   treeSearch,
 } from './filters';
 
-const fluxPage = PageBlueprint.makeWithOverrides({
+const fluxPage = PageBlueprint.make({
   disabled: true,
+  params: {
+    title: 'Flux',
+    icon: <FluxIcon />,
+    path: '/flux',
+    routeRef: rootRouteRef,
+  },
+});
+
+const fluxListSubPage = SubPageBlueprint.makeWithOverrides({
+  name: 'list',
   inputs: {
-    listFilters: createExtensionInput([coreExtensionData.reactElement]),
-    treeFilters: createExtensionInput([coreExtensionData.reactElement]),
+    filters: createExtensionInput([coreExtensionData.reactElement]),
   },
   factory(originalFactory, { inputs }) {
     return originalFactory({
-      title: 'Flux',
-      icon: <FluxIcon />,
-      noHeader: true,
-      path: '/flux',
-      routeRef: rootRouteRef,
+      path: 'list',
+      title: 'List view',
       loader: async () => {
-        const { FluxPage } = await import('./components/FluxPage');
-        const listFilters = inputs.listFilters.map(filter =>
+        const { FluxResourcesListPage } =
+          await import('./components/FluxResourcesListPage');
+        const filters = inputs.filters.map(filter =>
           filter.get(coreExtensionData.reactElement),
         );
-        const treeFilters = inputs.treeFilters.map(filter =>
+        return <FluxResourcesListPage filters={<>{filters}</>} />;
+      },
+    });
+  },
+});
+
+const fluxTreeSubPage = SubPageBlueprint.makeWithOverrides({
+  name: 'tree',
+  inputs: {
+    filters: createExtensionInput([coreExtensionData.reactElement]),
+  },
+  factory(originalFactory, { inputs }) {
+    return originalFactory({
+      path: 'tree',
+      title: 'Tree view',
+      loader: async () => {
+        const { FluxResourcesTreePage } =
+          await import('./components/FluxResourcesTreePage');
+        const filters = inputs.filters.map(filter =>
           filter.get(coreExtensionData.reactElement),
         );
-        return (
-          <FluxPage
-            listFilters={<>{listFilters}</>}
-            treeFilters={<>{treeFilters}</>}
-          />
-        );
+        return <FluxResourcesTreePage filters={<>{filters}</>} />;
       },
     });
   },
@@ -58,6 +79,8 @@ export const fluxPlugin = createFrontendPlugin({
   pluginId: 'flux',
   extensions: [
     fluxPage,
+    fluxListSubPage,
+    fluxTreeSubPage,
     listClusterPicker,
     listKindPicker,
     listStatusPicker,

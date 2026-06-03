@@ -1,5 +1,3 @@
-export { FluxPageLayout } from './FluxPageLayout';
-
 export { FluxResourcesTreeView } from './FluxResourcesTreeView';
 export { ResourceTypePicker as FluxResourcesTreeViewResourceTypePicker } from './FluxResourcesTreeView/filters/ResourceTypePicker';
 export { ClusterPicker as FluxResourcesTreeViewClusterPicker } from './FluxResourcesTreeView/filters/ClusterPicker';

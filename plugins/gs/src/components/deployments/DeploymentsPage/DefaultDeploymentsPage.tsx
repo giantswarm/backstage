@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Content, Header, Page } from '@backstage/core-components';
+import { Content } from '@backstage/core-components';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { deploymentsRouteRef } from '../../../routes';
@@ -20,22 +20,16 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
   } = props;
 
   return (
-    <Page themeId="service">
-      <Header
-        title="Deployed applications"
-        subtitle="Instances of your applications deployed to Kubernetes clusters"
-      />
-      <Content>
-        <ErrorsProvider>
-          <DeploymentsDataProvider>
-            <FiltersLayout>
-              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-              <FiltersLayout.Content>{content}</FiltersLayout.Content>
-            </FiltersLayout>
-          </DeploymentsDataProvider>
-        </ErrorsProvider>
-      </Content>
-    </Page>
+    <Content>
+      <ErrorsProvider>
+        <DeploymentsDataProvider>
+          <FiltersLayout>
+            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+            <FiltersLayout.Content>{content}</FiltersLayout.Content>
+          </FiltersLayout>
+        </DeploymentsDataProvider>
+      </ErrorsProvider>
+    </Content>
   );
 }
 
