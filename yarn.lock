@@ -35561,8 +35561,8 @@ __metadata:
   linkType: hard
 
 "json-schema-library@npm:^11.1.0":
-  version: 11.4.0
-  resolution: "json-schema-library@npm:11.4.0"
+  version: 11.4.1
+  resolution: "json-schema-library@npm:11.4.1"
   dependencies:
     "@hyperjump/json-schema-formats": "npm:^1.0.1"
     "@sagold/json-pointer": "npm:^7.2.1"
@@ -35570,7 +35570,7 @@ __metadata:
     fast-deep-equal: "npm:^3.1.3"
     uri-js: "npm:^4.4.1"
     valid-url: "npm:^1.0.9"
-  checksum: 10c0/dba49115d896903c7dcc66e7ca5eb266ccf7f068a4734a6d0f55b9e9002e1639e33191773ced9d1bdfd42544ab96c577838ab13309788f9dd403c79634328853
+  checksum: 10c0/db5e157acbdfca4abf0bdb1167ce5e4852204367566f5d2ccff94a665d79e4a04b1f06d5f342b21f43fc3a110147f238b4f7f9e33f1d19019b2b16d6bc7c29db
   languageName: node
   linkType: hard
 
