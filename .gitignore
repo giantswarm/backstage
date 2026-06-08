@@ -80,3 +80,6 @@ CLAUDE.local.md
 
 # Ignore branding customization assets
 /branding-assets
+
+# graphify knowledge graph (regenerable, rebuilt by the post-commit hook)
+graphify-out/
