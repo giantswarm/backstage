@@ -42,7 +42,7 @@ import {
   gsAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
-import { grafanaPlugin } from '@k-phoen/backstage-plugin-grafana';
+import { grafanaPlugin } from '@backstage-community/plugin-grafana';
 import { SentryErrorReporter } from '../../apis/errorReporter';
 import { TelemetryDeckAnalyticsApi } from '../../apis/analytics';
 import {

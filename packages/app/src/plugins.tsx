@@ -1,1 +1,1 @@
-export { grafanaPlugin } from '@k-phoen/backstage-plugin-grafana';
+export { grafanaPlugin } from '@backstage-community/plugin-grafana';

@@ -17,7 +17,7 @@ import { EntityGithubPullRequestsContent } from '@roadiehq/backstage-plugin-gith
 import {
   EntityGrafanaDashboardsCard,
   isDashboardSelectorAvailable,
-} from '@k-phoen/backstage-plugin-grafana';
+} from '@backstage-community/plugin-grafana';
 
 export const GitHubPullRequestsEntityContent =
   convertLegacyEntityContentExtension(EntityGithubPullRequestsContent, {
