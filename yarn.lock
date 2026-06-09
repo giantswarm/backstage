@@ -416,9 +416,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/tap@npm:0.5.11":
-  version: 0.5.11
-  resolution: "@assistant-ui/tap@npm:0.5.11"
+"@assistant-ui/tap@npm:0.5.12":
+  version: 0.5.12
+  resolution: "@assistant-ui/tap@npm:0.5.12"
   peerDependencies:
     "@types/react": "*"
     react: ^18 || ^19
@@ -427,7 +427,7 @@ __metadata:
       optional: true
     react:
       optional: true
-  checksum: 10c0/4408bc0ac88da3e292d7d2f3b7fabab9c0fb4fc6d6117fadefd29addd849373de3ba2386a1ec0b884ced40dd6e223a0f61ad4ecf171b5830686d79cddba08554
+  checksum: 10c0/37d5523adb2ebeb712d23438e0bc038d4cfe801bf137dd74d90973f33c895cc6db9730535c4dd6365b717ca29127f49255ee88e7f8333a287c822ba514e09623
   languageName: node
   linkType: hard
 
