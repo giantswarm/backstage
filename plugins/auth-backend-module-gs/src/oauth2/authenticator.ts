@@ -44,6 +44,10 @@ export const oauth2Authenticator = createOAuthAuthenticator({
     const authorizationUrl = config.getString('authorizationUrl');
     const tokenUrl = config.getString('tokenUrl');
     const includeBasicAuth = config.getOptionalBoolean('includeBasicAuth');
+    // RFC 8707 resource indicator. The MCP authorization spec requires
+    // clients to send this in both authorization and token requests so the
+    // issued access token is audience-bound to the target MCP server.
+    const resource = config.getOptionalString('resource');
 
     if (config.has('scope')) {
       throw new Error(
@@ -115,6 +119,12 @@ export const oauth2Authenticator = createOAuthAuthenticator({
         (strategy as any)._pendingCodeVerifier = null; // Clear after use
       }
 
+      // RFC 8707: bind the token to the target resource on every grant,
+      // including refresh_token grants which reuse this code path.
+      if (resource) {
+        params.resource = resource;
+      }
+
       return originalGetOAuthAccessToken(code, params, callback);
     };
 
@@ -123,6 +133,7 @@ export const oauth2Authenticator = createOAuthAuthenticator({
       clientId,
       authorizationUrl,
       callbackUrl,
+      resource,
     };
 
     return helperWithConfig;
@@ -161,6 +172,11 @@ export const oauth2Authenticator = createOAuthAuthenticator({
     authUrl.searchParams.set('code_challenge_method', pkce.codeChallengeMethod);
     authUrl.searchParams.set('access_type', 'offline');
     authUrl.searchParams.set('prompt', 'consent');
+
+    // RFC 8707: request a token audience-bound to the target resource
+    if (config.resource) {
+      authUrl.searchParams.set('resource', config.resource);
+    }
 
     // Add scopes - ensure they're included
     if (input.scope) {
