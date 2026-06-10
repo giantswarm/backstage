@@ -134,6 +134,12 @@ export async function createRouter(
         next(err);
         return;
       }
+      if (err.name === 'InputError') {
+        res
+          .status(400)
+          .json({ error: { name: err.name, message: err.message } });
+        return;
+      }
       if (err.name === 'ServiceUnavailableError') {
         res
           .status(503)
