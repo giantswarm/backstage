@@ -86,6 +86,7 @@ export const SidebarContent = NavContentBlueprint.make({
         nav.take('page:gs/clusters'),
         nav.take('page:gs/installations'),
         nav.take('page:flux'),
+        nav.take('page:muster'),
       ].filter(Boolean);
 
       const group3 = [
