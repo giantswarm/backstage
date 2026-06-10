@@ -1,5 +1,15 @@
 # app
 
+## 0.40.2
+
+### Patch Changes
+
+- 44c9c69: Migrate the Grafana plugin from `@k-phoen/backstage-plugin-grafana` to the actively maintained `@backstage-community/plugin-grafana` (v0.20.0). The exported symbols (`grafanaPlugin`, `EntityGrafanaDashboardsCard`, `isDashboardSelectorAvailable`) and the `grafana.domain` configuration are unchanged, so this is a drop-in replacement with no behavior change.
+- Updated dependencies [6aea60f]
+  - @giantswarm/backstage-plugin-flux-react@0.14.0
+  - @giantswarm/backstage-plugin-flux@0.9.0
+  - @giantswarm/backstage-plugin-gs@0.67.0
+
 ## 0.40.1
 
 ### Patch Changes
