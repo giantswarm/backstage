@@ -55,9 +55,7 @@ describe('workflowToGraph', () => {
     const { edges } = workflowToGraph(workflow);
     const sequenceEdges = edges.filter(edge => edge.id.startsWith('seq-'));
 
-    expect(
-      sequenceEdges.map(edge => [edge.source, edge.target]),
-    ).toEqual([
+    expect(sequenceEdges.map(edge => [edge.source, edge.target])).toEqual([
       [INPUT_NODE_ID, 'check-cluster'],
       ['check-cluster', 'deploy'],
       ['deploy', 'rollback'],

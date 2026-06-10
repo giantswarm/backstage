@@ -114,10 +114,7 @@ export function WorkflowDetailPage() {
 
   return (
     <Content>
-      <ContentHeader
-        title={workflow.name}
-        description={workflow.description}
-      />
+      <ContentHeader title={workflow.name} description={workflow.description} />
       <Grid container spacing={2}>
         <Grid item xs={12} md={8} className={classes.canvasContainer}>
           <WorkflowCanvas

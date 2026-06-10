@@ -1,9 +1,6 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import type { MCPClient } from '@ai-sdk/mcp';
-import {
-  MusterMcpClient,
-  readMusterServerFromConfig,
-} from './MusterMcpClient';
+import { MusterMcpClient, readMusterServerFromConfig } from './MusterMcpClient';
 
 describe('readMusterServerFromConfig', () => {
   const logger = mockServices.logger.mock();
@@ -75,8 +72,9 @@ describe('MusterMcpClient', () => {
 
   function buildClient(execute: jest.Mock) {
     const mcpClient = {
-      toolsFromDefinitions: jest.fn(({ tools }: { tools: { name: string }[] }) =>
-        Object.fromEntries(tools.map(tool => [tool.name, { execute }])),
+      toolsFromDefinitions: jest.fn(
+        ({ tools }: { tools: { name: string }[] }) =>
+          Object.fromEntries(tools.map(tool => [tool.name, { execute }])),
       ),
       close: jest.fn(),
     } as unknown as MCPClient;

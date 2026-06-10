@@ -50,8 +50,7 @@ export function readMusterServerFromConfig(
   config: Config,
   logger: LoggerService,
 ): MusterServerConfig | undefined {
-  const serverName =
-    config.getOptionalString('muster.serverName') ?? 'muster';
+  const serverName = config.getOptionalString('muster.serverName') ?? 'muster';
 
   const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
   const mcpConfig = mcpConfigs?.find(
@@ -181,9 +180,7 @@ export class MusterMcpClient {
         'Muster MCP client expired or closed; creating a new connection',
       );
       // Close the old client in the background; don't block the request.
-      existing.clientPromise
-        .then(client => client.close())
-        .catch(() => {});
+      existing.clientPromise.then(client => client.close()).catch(() => {});
     }
 
     const entry: CacheEntry = {

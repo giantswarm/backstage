@@ -57,13 +57,7 @@ function formatDuration(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-function JsonSection({
-  title,
-  value,
-}: {
-  title: string;
-  value: unknown;
-}) {
+function JsonSection({ title, value }: { title: string; value: unknown }) {
   const classes = useStyles();
   if (value === undefined || value === null) {
     return null;

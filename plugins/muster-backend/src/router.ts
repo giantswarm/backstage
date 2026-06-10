@@ -3,10 +3,7 @@ import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
-import {
-  MusterMcpClient,
-  readMusterServerFromConfig,
-} from './MusterMcpClient';
+import { MusterMcpClient, readMusterServerFromConfig } from './MusterMcpClient';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -81,7 +78,9 @@ export async function createRouter(
 
     if (
       status !== undefined &&
-      !EXECUTION_STATUSES.includes(status as (typeof EXECUTION_STATUSES)[number])
+      !EXECUTION_STATUSES.includes(
+        status as (typeof EXECUTION_STATUSES)[number],
+      )
     ) {
       throw new InputError(
         `status must be one of: ${EXECUTION_STATUSES.join(', ')}`,
@@ -136,7 +135,9 @@ export async function createRouter(
         return;
       }
       if (err.name === 'ServiceUnavailableError') {
-        res.status(503).json({ error: { name: err.name, message: err.message } });
+        res
+          .status(503)
+          .json({ error: { name: err.name, message: err.message } });
         return;
       }
       next(err);

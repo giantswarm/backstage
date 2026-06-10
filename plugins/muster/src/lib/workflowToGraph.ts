@@ -56,7 +56,11 @@ function extractConditionEvaluation(
   executionStep: WorkflowExecutionStep | undefined,
 ): boolean | undefined {
   const result = executionStep?.result;
-  if (result && typeof result === 'object' && 'condition_evaluation' in result) {
+  if (
+    result &&
+    typeof result === 'object' &&
+    'condition_evaluation' in result
+  ) {
     const value = (result as Record<string, unknown>).condition_evaluation;
     if (typeof value === 'boolean') {
       return value;

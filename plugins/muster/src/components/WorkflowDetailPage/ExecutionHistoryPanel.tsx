@@ -90,9 +90,7 @@ export function ExecutionHistoryPanel({
         ))}
         {executions.length === 0 && (
           <ListItem>
-            <ListItemText
-              secondary="No executions recorded for this workflow."
-            />
+            <ListItemText secondary="No executions recorded for this workflow." />
           </ListItem>
         )}
       </List>

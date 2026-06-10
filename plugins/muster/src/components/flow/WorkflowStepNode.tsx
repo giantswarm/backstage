@@ -80,7 +80,7 @@ function conditionSummary(condition: WorkflowCondition): string {
   const negated = condition.expect_not !== undefined;
   const source = condition.from_step
     ? `from ${condition.from_step}`
-    : condition.tool ?? '';
+    : (condition.tool ?? '');
   return `${negated ? 'unless' : 'if'} ${source}`.trim();
 }
 
@@ -112,10 +112,10 @@ export const WorkflowStepNode = memo(({ data, selected }: Props) => {
 
   const hasFooter = Boolean(
     step.store ||
-      step.allow_failure ||
-      condition ||
-      skippedLabel ||
-      data.executionStep?.error,
+    step.allow_failure ||
+    condition ||
+    skippedLabel ||
+    data.executionStep?.error,
   );
 
   return (
@@ -155,11 +155,7 @@ export const WorkflowStepNode = memo(({ data, selected }: Props) => {
             <Chip className={classes.chip} size="small" label="store" />
           )}
           {step.allow_failure && (
-            <Chip
-              className={classes.chip}
-              size="small"
-              label="allow failure"
-            />
+            <Chip className={classes.chip} size="small" label="allow failure" />
           )}
           {condition && (
             <Chip
