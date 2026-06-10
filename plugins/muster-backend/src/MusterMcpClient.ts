@@ -105,7 +105,7 @@ export class MusterMcpClient {
   private entry: CacheEntry | undefined;
 
   constructor(
-    private readonly server: MusterServerConfig,
+    server: MusterServerConfig,
     private readonly logger: LoggerService,
     private readonly clientFactory: () => Promise<MCPClient> = () =>
       createMCPClient({
