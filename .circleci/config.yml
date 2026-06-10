@@ -79,7 +79,7 @@ jobs:
     resource_class: large
     working_directory: ~/backstage
     docker:
-      - image: cimg/node:24.15.0
+      - image: cimg/node:24.16.0
 
     steps:
       - checkout
