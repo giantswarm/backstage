@@ -7,6 +7,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.133.2] - 2026-06-10
 
+### Changed
+
+- App: migrate the Clusters, Deployments, Installations, Catalog, and Flux pages to the new frontend system page header. The Flux page's list and tree views are now header tabs (`/flux` redirects to `/flux/list`), and the catalog page title is now just "Catalog" (overridable via app-config).
+- App: migrate the Grafana plugin to the actively maintained `@backstage-community/plugin-grafana` — a drop-in replacement with no behavior change.
+
+### Fixed
+
+- Auth: the MCP OAuth2 authenticator now sends the RFC 8707 `resource` parameter in authorization and token requests when a `resource` option is configured on an `mcp-*` auth provider, so issued access tokens are audience-bound to the target MCP server. This fixes the AI chat losing access to MCP servers fronted by JWT-validating gateways that reject tokens without the expected `aud` claim.
+
 See [./docs/releases/v0.133.2-changelog.md](./docs/releases/v0.133.2-changelog.md) for more information.
 
 ## [0.133.1] - 2026-06-03
