@@ -343,3 +343,8 @@ aiChat:
   #   #   url: https://external.example.com/mcp
   #   #   headers:
   #   #     Authorization: 'Bearer ${MCP_TOKEN}'
+  #   # Muster MCP aggregator. The entry named `muster` is also used by the
+  #   # muster plugin (workflow visualization) -- see
+  #   # plugins/muster-backend/README.md.
+  #   # - name: muster
+  #   #   url: http://localhost:8091/mcp

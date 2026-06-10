@@ -85,6 +85,9 @@ backend.add(import('@giantswarm/backstage-plugin-gs-backend'));
 // ai chat plugin
 backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 
+// muster plugin (workflow visualization)
+backend.add(import('@giantswarm/backstage-plugin-muster-backend'));
+
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
