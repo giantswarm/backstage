@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.134.0] - 2026-06-10
+
 ### Added
 
 - Muster: add workflow visualization. A new `muster` page renders muster workflow definitions as flow diagrams (one node per step, dashed condition edges) with execution history and live per-step status overlay. Backed by a new `muster` backend plugin that proxies the muster MCP server's `core_workflow_*` tools over REST, reusing the `aiChat.mcp` entry named `muster` for connection config.
@@ -2553,7 +2555,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.133.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.134.0...HEAD
+[0.134.0]: https://github.com/giantswarm/backstage/compare/v0.133.2...v0.134.0
 [0.133.2]: https://github.com/giantswarm/backstage/compare/v0.133.1...v0.133.2
 [0.133.1]: https://github.com/giantswarm/backstage/compare/v0.133.0...v0.133.1
 [0.133.0]: https://github.com/giantswarm/backstage/compare/v0.132.1...v0.133.0
