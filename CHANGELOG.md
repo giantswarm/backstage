@@ -9,6 +9,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - Muster: add workflow visualization. A new `muster` page renders muster workflow definitions as flow diagrams (one node per step, dashed condition edges) with execution history and live per-step status overlay. Backed by a new `muster` backend plugin that proxies the muster MCP server's `core_workflow_*` tools over REST, reusing the `aiChat.mcp` entry named `muster` for connection config.
 
+See [./docs/releases/v0.134.0-changelog.md](./docs/releases/v0.134.0-changelog.md) for more information.
+
 ## [0.133.2] - 2026-06-10
 
 ### Changed
