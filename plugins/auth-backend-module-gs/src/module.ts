@@ -16,6 +16,7 @@ import {
 } from '@backstage/plugin-auth-backend-module-oidc-provider';
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
+import { createClusterTokenRouter } from './clusterToken/router';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -90,8 +91,15 @@ export const authModuleGsProviders = createBackendModule({
         config: coreServices.rootConfig,
         logger: coreServices.rootLogger,
         httpRouter: coreServices.httpRouter,
+        httpAuth: coreServices.httpAuth,
       },
-      async init({ providersExtensionPoint, config, logger, httpRouter }) {
+      async init({
+        providersExtensionPoint,
+        config,
+        logger,
+        httpRouter,
+        httpAuth,
+      }) {
         const baseUrl = config.getString('backend.baseUrl');
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
@@ -161,6 +169,18 @@ export const authModuleGsProviders = createBackendModule({
               authenticator: oauth2Authenticator,
             }),
           });
+        }
+
+        const clusterTokenRouter = createClusterTokenRouter({
+          config,
+          logger,
+          httpAuth,
+        });
+        if (clusterTokenRouter) {
+          logger.info(
+            'Cluster token broker is configured, registering cluster token route',
+          );
+          httpRouter.use(clusterTokenRouter);
         }
       },
     });

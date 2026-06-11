@@ -7,6 +7,35 @@ export interface Config {
     /** @visibility frontend */
     authProvider: string;
 
+    /**
+     * Cluster token broker (muster) used to silently mint per-management-cluster
+     * tokens from the user's main Dex session, replacing the per-cluster OAuth
+     * popups for covered installations.
+     */
+    clusterTokenBroker?: {
+      /**
+       * OAuth token endpoint of the broker, e.g. https://muster.example.com/oauth/token.
+       * Its presence enables the silent broker path in the frontend.
+       * @visibility frontend
+       */
+      tokenUrl: string;
+      /**
+       * Confidential client ID registered with the broker.
+       * @visibility backend
+       */
+      clientId: string;
+      /**
+       * @visibility secret
+       */
+      clientSecret: string;
+      /**
+       * Optional scope sent with the RFC 8693 exchange request. Usually unset:
+       * the broker's per-audience configuration owns the scope set.
+       * @visibility backend
+       */
+      scope?: string;
+    };
+
     /** @deepVisibility frontend */
     clusterDetails?: {
       resources?: {
@@ -42,6 +71,13 @@ export interface Config {
         providers?: string[];
         authProvider: string;
         oidcTokenProvider?: string;
+        /**
+         * Audience requested from the cluster token broker for this
+         * installation (typically the installation name). Setting it marks the
+         * installation as fully covered by the broker and removes its entry
+         * from the provider settings page.
+         */
+        clusterTokenAudience?: string;
         backendUrl?: string;
         baseDomain?: string;
         region?: string;

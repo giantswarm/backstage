@@ -35,6 +35,14 @@ import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 
 let warned = false;
 
+/**
+ * Short-lived cluster token minted by the cluster token broker.
+ */
+export type ClusterToken = {
+  token: string;
+  expiresInSeconds?: number;
+};
+
 type Options<AuthSession> = {
   /**
    * DiscoveryApi instance used to locate the auth backend endpoint.
@@ -69,6 +77,13 @@ type Options<AuthSession> = {
    * Options used to configure auth popup
    */
   popupOptions?: PopupOptions;
+  /**
+   * Optional function used to silently mint a cluster token through the
+   * token broker. When provided, refreshSession tries it before the
+   * cookie-based refresh, so broker-covered clusters never trigger a login
+   * popup. Returning undefined or throwing falls back to the legacy flow.
+   */
+  clusterTokenProvider?: () => Promise<ClusterToken | undefined>;
 };
 
 function defaultJoinScopes(scopes: Set<string>) {
@@ -91,6 +106,9 @@ export class DefaultAuthConnector<
   private readonly sessionTransform: (response: any) => Promise<AuthSession>;
   private readonly enableExperimentalRedirectFlow: boolean;
   private readonly popupOptions: PopupOptions | undefined;
+  private readonly clusterTokenProvider?: () => Promise<
+    ClusterToken | undefined
+  >;
   constructor(options: Options<AuthSession>) {
     const {
       configApi,
@@ -101,6 +119,7 @@ export class DefaultAuthConnector<
       oauthRequestApi,
       sessionTransform = id => id,
       popupOptions,
+      clusterTokenProvider,
     } = options;
 
     if (!warned && !configApi) {
@@ -132,6 +151,7 @@ export class DefaultAuthConnector<
     this.joinScopesFunc = joinScopes;
     this.sessionTransform = sessionTransform;
     this.popupOptions = popupOptions;
+    this.clusterTokenProvider = clusterTokenProvider;
   }
 
   async createSession(
@@ -149,6 +169,26 @@ export class DefaultAuthConnector<
   async refreshSession(
     options?: AuthConnectorRefreshSessionOptions,
   ): Promise<any> {
+    if (this.clusterTokenProvider) {
+      try {
+        const clusterToken = await this.clusterTokenProvider();
+        if (clusterToken) {
+          return await this.sessionTransform({
+            providerInfo: {
+              idToken: clusterToken.token,
+              accessToken: clusterToken.token,
+              scope: options ? this.joinScopesFunc(options.scopes) : '',
+              expiresInSeconds: clusterToken.expiresInSeconds,
+            },
+          });
+        }
+      } catch {
+        // The broker is unreachable or the cluster is not migrated yet --
+        // fall back to the legacy cookie-based refresh (and ultimately the
+        // login popup).
+      }
+    }
+
     const res = await fetch(
       await this.buildUrl('/refresh', {
         optional: true,

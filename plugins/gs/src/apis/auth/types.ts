@@ -29,6 +29,11 @@ export type AuthProvider = {
   providerName: string;
   providerDisplayName: string;
   installationName: string;
+  /**
+   * Audience requested from the cluster token broker for this installation.
+   * When set, the installation is considered fully covered by the broker.
+   */
+  clusterTokenAudience?: string;
 };
 
 export type GSAuthProvidersApi = {
