@@ -1,5 +1,26 @@
 # app
 
+## 0.40.4
+
+### Patch Changes
+
+- c117a5e: Support muster MCP servers behind per-user auth (`authProvider` entries in
+  `aiChat.mcp`): the muster frontend now forwards the user's OAuth token to the
+  muster-backend proxy, which opens per-user MCP sessions. Previously such
+  servers were reported as unconfigured and the Workflows page failed with a 503.
+
+  Also addresses review feedback on the initial muster plugins: the shared MCP
+  client cache moved from ai-chat-backend to `@giantswarm/backstage-plugin-gs-node`
+  and is reused by muster-backend; config parsing no longer throws on unnamed
+  `aiChat.mcp` entries; muster-backend uses `@backstage/errors` classes instead
+  of a hand-rolled error middleware; query parameter validation rejects empty
+  and repeated values; execution fetch errors are surfaced in the UI instead of
+  being silently swallowed; duplicate workflow step ids no longer drop nodes
+  from the graph; and `formatDuration` is shared instead of copy-pasted.
+
+- Updated dependencies [c117a5e]
+  - @giantswarm/backstage-plugin-muster@0.2.0
+
 ## 0.40.3
 
 ### Patch Changes
