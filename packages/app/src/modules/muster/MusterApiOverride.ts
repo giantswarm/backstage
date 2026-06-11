@@ -4,6 +4,7 @@ import {
   MusterAuthProviders,
 } from '@giantswarm/backstage-plugin-muster';
 import { gsAuthProvidersApiRef } from '@giantswarm/backstage-plugin-gs';
+import { getOptionalMainAuthApi } from '../auth/getOptionalMainAuthApi';
 
 export const MusterApiOverride = ApiBlueprint.make({
   name: 'auth-providers',
@@ -13,7 +14,11 @@ export const MusterApiOverride = ApiBlueprint.make({
       deps: { gsAuthProvidersApi: gsAuthProvidersApiRef },
       factory: ({ gsAuthProvidersApi }) => {
         const authProviders = gsAuthProvidersApi.getMCPAuthApis();
-        return new MusterAuthProviders(authProviders);
+        // Same single sign-on fallback as the ai-chat MCP auth providers:
+        // without a dedicated provider entry, the main Dex ID token is
+        // forwarded as the muster bearer token.
+        const mainAuthApi = getOptionalMainAuthApi(gsAuthProvidersApi);
+        return new MusterAuthProviders(authProviders, mainAuthApi);
       },
     }),
 });
