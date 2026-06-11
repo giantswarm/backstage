@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.135.1] - 2026-06-11
 
+### Fixed
+
+- Muster: fix the Workflows page failing with 401 on muster MCP servers requiring per-user auth -- the `aiChat.mcp[].name` and `muster.serverName` config keys were not frontend-visible, so the browser could not resolve the server's auth provider and never sent the user's token.
+
 See [./docs/releases/v0.135.1-changelog.md](./docs/releases/v0.135.1-changelog.md) for more information.
 
 ## [0.135.0] - 2026-06-11
