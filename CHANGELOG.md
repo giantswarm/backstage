@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.135.3] - 2026-06-11
 
+### Fixed
+
+- Muster: fix the Workflows page failing with "tool not found" against real muster servers. The muster aggregator only exposes its meta-tools over MCP, so the workflow proxy now invokes the core workflow tools through the `call_tool` meta-tool and unwraps its result envelope.
+
 See [./docs/releases/v0.135.3-changelog.md](./docs/releases/v0.135.3-changelog.md) for more information.
 
 ## [0.135.2] - 2026-06-11
