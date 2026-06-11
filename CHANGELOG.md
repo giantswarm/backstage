@@ -7,6 +7,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.135.2] - 2026-06-11
 
+### Fixed
+
+- AI chat: fix chat requests hanging forever when an MCP server is slow or its responses are dropped by the transport. MCP servers now load in parallel with a per-server timeout (15s default, configurable via `aiChat.mcp[].timeoutMs`); hanging servers degrade gracefully instead of blocking the chat. Also patch `@ai-sdk/mcp` to treat SSE events without an explicit `event:` field as `message` events per the SSE specification, fixing silently dropped responses from MCP servers behind agentgateway.
+
 See [./docs/releases/v0.135.2-changelog.md](./docs/releases/v0.135.2-changelog.md) for more information.
 
 ## [0.135.1] - 2026-06-11
