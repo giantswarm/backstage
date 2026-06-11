@@ -152,9 +152,7 @@ describe('MusterMcpClient', () => {
   it('invokes workflow tools through the call_tool meta-tool', async () => {
     const execute = jest.fn().mockResolvedValue(
       callToolEnvelope({
-        content: [
-          { type: 'text', text: '{"workflows":[{"name":"wf-a"}]}' },
-        ],
+        content: [{ type: 'text', text: '{"workflows":[{"name":"wf-a"}]}' }],
         isError: false,
       }),
     );
