@@ -10,9 +10,10 @@ import {
   McpClientCache,
 } from '@giantswarm/backstage-plugin-gs-node';
 
-// Muster workflow tools proxied by this plugin. Definitions are passed to
-// `toolsFromDefinitions` so we never have to list the (potentially huge)
-// aggregated muster tool catalog just to call four core tools.
+// Muster workflow tools proxied by this plugin. The muster aggregator only
+// exposes its meta-tools (list_tools, call_tool, ...) over MCP; concrete
+// tools like core_workflow_list must be invoked through the `call_tool`
+// meta-tool with the target tool name and arguments.
 const WORKFLOW_TOOL_NAMES = [
   'core_workflow_list',
   'core_workflow_get',
@@ -21,6 +22,9 @@ const WORKFLOW_TOOL_NAMES = [
 ] as const;
 
 export type WorkflowToolName = (typeof WORKFLOW_TOOL_NAMES)[number];
+
+/** Muster meta-tool used to execute any aggregated tool by name. */
+const CALL_TOOL = 'call_tool';
 
 const CACHE_KEY_SERVER_NAME = 'muster';
 
@@ -126,32 +130,33 @@ export class MusterMcpClient {
         ? { ...this.server.headers, Authorization: `Bearer ${authToken}` }
         : this.server.headers;
 
+    if (!WORKFLOW_TOOL_NAMES.includes(toolName)) {
+      throw new NotFoundError(`Unknown muster tool: ${toolName}`);
+    }
+
     const client = await this.cache.getOrCreate(cacheKey, () =>
       this.clientFactory(headers),
     );
     const tools = client.toolsFromDefinitions({
-      tools: WORKFLOW_TOOL_NAMES.map(name => ({
-        name,
-        inputSchema: { type: 'object' as const },
-      })),
+      tools: [{ name: CALL_TOOL, inputSchema: { type: 'object' as const } }],
     });
 
-    const tool = tools[toolName];
-    if (!tool) {
-      throw new NotFoundError(`Unknown muster tool: ${toolName}`);
-    }
-    if (typeof tool.execute !== 'function') {
+    const tool = tools[CALL_TOOL];
+    if (!tool || typeof tool.execute !== 'function') {
       throw new ServiceUnavailableError(
-        `Muster tool ${toolName} has no executor`,
+        `Muster meta-tool ${CALL_TOOL} has no executor`,
       );
     }
 
     let result;
     try {
-      result = await tool.execute(args, {
-        toolCallId: `muster-backend-${toolName}`,
-        messages: [],
-      });
+      result = await tool.execute(
+        { name: toolName, arguments: args },
+        {
+          toolCallId: `muster-backend-${toolName}`,
+          messages: [],
+        },
+      );
     } catch (error) {
       if (isClosedClientError(error)) {
         this.logger.warn(
@@ -170,11 +175,13 @@ export class MusterMcpClient {
   }
 
   /**
-   * Muster returns JSON payloads serialized into MCP text content blocks.
-   * Unwrap the first text block and parse it; tool-level errors (isError)
-   * surface as exceptions with the error text.
+   * Unwrap an MCP tool result's first text content block. Tool-level errors
+   * (isError) surface as exceptions with the error text.
    */
-  private parseResult(result: unknown, toolName: string): unknown {
+  private unwrapTextContent(
+    result: unknown,
+    toolName: string,
+  ): string | undefined {
     const { content, isError } = (result ?? {}) as {
       content?: ContentItem[];
       isError?: boolean;
@@ -188,6 +195,40 @@ export class MusterMcpClient {
       );
     }
 
+    return text;
+  }
+
+  /**
+   * The `call_tool` meta-tool wraps the target tool's MCP result as a JSON
+   * string inside its own text content block, so unwrap twice: first the
+   * meta-tool envelope, then the target tool's result, whose text payload is
+   * the JSON document the workflow endpoints return.
+   */
+  private parseResult(result: unknown, toolName: string): unknown {
+    const envelope = this.unwrapTextContent(result, toolName);
+    if (envelope === undefined) {
+      return undefined;
+    }
+
+    let inner: unknown;
+    try {
+      inner = JSON.parse(envelope);
+    } catch {
+      // Not a call_tool envelope; treat it as the tool's direct payload.
+      return envelope;
+    }
+
+    if (
+      inner === null ||
+      typeof inner !== 'object' ||
+      !Array.isArray((inner as { content?: unknown }).content)
+    ) {
+      // Direct JSON payload from a server that exposes tools without the
+      // call_tool envelope.
+      return inner;
+    }
+
+    const text = this.unwrapTextContent(inner, toolName);
     if (text === undefined) {
       return undefined;
     }
