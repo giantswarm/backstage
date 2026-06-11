@@ -5,6 +5,14 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.135.1] - 2026-06-11
+
+### Fixed
+
+- Muster: fix the Workflows page failing with 401 on muster MCP servers requiring per-user auth -- the `aiChat.mcp[].name` and `muster.serverName` config keys were not frontend-visible, so the browser could not resolve the server's auth provider and never sent the user's token.
+
+See [./docs/releases/v0.135.1-changelog.md](./docs/releases/v0.135.1-changelog.md) for more information.
+
 ## [0.135.0] - 2026-06-11
 
 ### Added
@@ -2571,7 +2579,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.135.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.135.1...HEAD
+[0.135.1]: https://github.com/giantswarm/backstage/compare/v0.135.0...v0.135.1
 [0.135.0]: https://github.com/giantswarm/backstage/compare/v0.134.0...v0.135.0
 [0.134.0]: https://github.com/giantswarm/backstage/compare/v0.133.2...v0.134.0
 [0.133.2]: https://github.com/giantswarm/backstage/compare/v0.133.1...v0.133.2
