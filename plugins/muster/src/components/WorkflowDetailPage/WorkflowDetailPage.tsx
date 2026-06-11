@@ -8,6 +8,7 @@ import {
   ResponseErrorPanel,
 } from '@backstage/core-components';
 import { Grid, makeStyles } from '@material-ui/core';
+import { Alert } from '@material-ui/lab';
 import { useQuery } from '@tanstack/react-query';
 import { Node } from '@xyflow/react';
 import { musterApiRef } from '../../apis';
@@ -115,6 +116,12 @@ export function WorkflowDetailPage() {
   return (
     <Content>
       <ContentHeader title={workflow.name} description={workflow.description} />
+      {executionQuery.error && (
+        <Alert severity="error" style={{ marginBottom: 16 }}>
+          Failed to load the selected execution:{' '}
+          {(executionQuery.error as Error).message}
+        </Alert>
+      )}
       <Grid container spacing={2}>
         <Grid item xs={12} md={8} className={classes.canvasContainer}>
           <WorkflowCanvas
@@ -125,14 +132,21 @@ export function WorkflowDetailPage() {
           />
         </Grid>
         <Grid item xs={12} md={4} className={classes.historyContainer}>
-          <ExecutionHistoryPanel
-            executions={executionsQuery.data?.executions ?? []}
-            selectedExecutionId={selectedExecutionId}
-            onSelect={executionId => {
-              setSelectedExecutionId(executionId);
-              setSelectedStepId(undefined);
-            }}
-          />
+          {executionsQuery.error ? (
+            <ResponseErrorPanel
+              title="Failed to load executions"
+              error={executionsQuery.error as Error}
+            />
+          ) : (
+            <ExecutionHistoryPanel
+              executions={executionsQuery.data?.executions ?? []}
+              selectedExecutionId={selectedExecutionId}
+              onSelect={executionId => {
+                setSelectedExecutionId(executionId);
+                setSelectedStepId(undefined);
+              }}
+            />
+          )}
         </Grid>
       </Grid>
       <StepDetailDrawer

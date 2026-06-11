@@ -127,3 +127,17 @@ export interface MusterApi {
   ): Promise<WorkflowExecutionListResponse>;
   getExecution(executionId: string): Promise<WorkflowExecution>;
 }
+
+export interface MusterAuthCredentials {
+  token?: string;
+}
+
+/**
+ * Resolves per-user OAuth credentials for the muster MCP server's
+ * `authProvider` (same semantics as ai-chat's MCPAuthProvidersApi). The
+ * default implementation knows no providers; the app overrides it with the
+ * gs auth providers.
+ */
+export interface MusterAuthProvidersApi {
+  getCredentials(authProvider: string): Promise<MusterAuthCredentials>;
+}

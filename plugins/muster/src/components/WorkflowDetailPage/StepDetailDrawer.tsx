@@ -13,6 +13,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { WorkflowExecutionStep, WorkflowStep } from '../../apis';
 import { StatusIcon } from '../flow';
+import { formatDuration } from '../../lib/formatDuration';
 import { StepNodeStatus } from '../../lib/workflowToGraph';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -51,11 +52,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     wordBreak: 'break-word',
   },
 }));
-
-function formatDuration(durationMs: number): string {
-  if (durationMs < 1000) return `${durationMs}ms`;
-  return `${(durationMs / 1000).toFixed(1)}s`;
-}
 
 function JsonSection({ title, value }: { title: string; value: unknown }) {
   const classes = useStyles();

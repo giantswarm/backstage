@@ -104,7 +104,24 @@ export function workflowToGraph(
   });
 
   const steps = workflow.steps ?? [];
+
+  // Step ids are expected to be unique, but xyflow silently drops nodes and
+  // edges with colliding ids. Suffix duplicates with their index so every
+  // step stays visible; condition edges resolve to the first occurrence.
+  const nodeIds: string[] = [];
+  const nodeIdByStepId = new Map<string, string>();
   steps.forEach((step, index) => {
+    const nodeId = nodeIdByStepId.has(step.id)
+      ? `${step.id}__${index}`
+      : step.id;
+    nodeIds.push(nodeId);
+    if (!nodeIdByStepId.has(step.id)) {
+      nodeIdByStepId.set(step.id, nodeId);
+    }
+  });
+
+  steps.forEach((step, index) => {
+    const nodeId = nodeIds[index];
     const executionStep = executionSteps.get(step.id);
     let status: StepNodeStatus | undefined;
     if (execution) {
@@ -112,7 +129,7 @@ export function workflowToGraph(
     }
 
     nodes.push({
-      id: step.id,
+      id: nodeId,
       type: 'workflowStep',
       position: {
         x: 0,
@@ -128,22 +145,23 @@ export function workflowToGraph(
       },
     });
 
-    const source = index === 0 ? INPUT_NODE_ID : steps[index - 1].id;
+    const source = index === 0 ? INPUT_NODE_ID : nodeIds[index - 1];
     edges.push({
-      id: `seq-${source}-${step.id}`,
+      id: `seq-${source}-${nodeId}`,
       source,
-      target: step.id,
+      target: nodeId,
       // Animate the edge into the currently running step.
       animated: status === 'inprogress',
     });
 
     const fromStep = step.condition?.from_step;
-    if (fromStep && steps.some(s => s.id === fromStep)) {
+    const fromNodeId = fromStep ? nodeIdByStepId.get(fromStep) : undefined;
+    if (fromNodeId) {
       edges.push({
-        id: `cond-${fromStep}-${step.id}`,
-        source: fromStep,
+        id: `cond-${fromNodeId}-${nodeId}`,
+        source: fromNodeId,
         sourceHandle: 'condition-out',
-        target: step.id,
+        target: nodeId,
         targetHandle: 'condition-in',
         label: summarizeCondition(step),
         style: { strokeDasharray: '6 4' },

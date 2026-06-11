@@ -1,5 +1,6 @@
 import {
   ApiBlueprint,
+  configApiRef,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
@@ -7,7 +8,12 @@ import {
 } from '@backstage/frontend-plugin-api';
 import AccountTreeIcon from '@material-ui/icons/AccountTree';
 
-import { musterApiRef, MusterApiClient } from './apis';
+import {
+  musterApiRef,
+  MusterApiClient,
+  MusterAuthProviders,
+  musterAuthProvidersApiRef,
+} from './apis';
 import { rootRouteRef, workflowDetailRouteRef } from './routes';
 
 const musterPage = PageBlueprint.make({
@@ -28,15 +34,34 @@ const musterApi = ApiBlueprint.make({
       deps: {
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
+        configApi: configApiRef,
+        authProvidersApi: musterAuthProvidersApiRef,
       },
-      factory: ({ discoveryApi, fetchApi }) =>
-        new MusterApiClient({ discoveryApi, fetchApi }),
+      factory: ({ discoveryApi, fetchApi, configApi, authProvidersApi }) =>
+        new MusterApiClient({
+          discoveryApi,
+          fetchApi,
+          configApi,
+          authProvidersApi,
+        }),
+    }),
+});
+
+// Default knows no providers; the app overrides this with the gs auth
+// providers (see packages/app/src/modules/muster).
+const musterAuthProvidersApi = ApiBlueprint.make({
+  name: 'auth-providers',
+  params: defineParams =>
+    defineParams({
+      api: musterAuthProvidersApiRef,
+      deps: {},
+      factory: () => new MusterAuthProviders(),
     }),
 });
 
 export const musterPlugin = createFrontendPlugin({
   pluginId: 'muster',
-  extensions: [musterPage, musterApi],
+  extensions: [musterPage, musterApi, musterAuthProvidersApi],
   routes: {
     root: rootRouteRef,
     workflowDetail: workflowDetailRouteRef,

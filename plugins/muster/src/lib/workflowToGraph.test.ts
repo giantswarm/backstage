@@ -31,6 +31,30 @@ const workflow: Workflow = {
 };
 
 describe('workflowToGraph', () => {
+  it('keeps all nodes and edges when step ids collide', () => {
+    const duplicated: Workflow = {
+      name: 'dupes',
+      steps: [
+        { id: 'step', tool: 'tool_a' },
+        { id: 'step', tool: 'tool_b' },
+        { id: 'other', tool: 'tool_c' },
+      ],
+    };
+
+    const { nodes, edges } = workflowToGraph(duplicated);
+
+    const nodeIds = nodes.map(node => node.id);
+    expect(nodeIds).toEqual([INPUT_NODE_ID, 'step', 'step__1', 'other']);
+    expect(new Set(nodeIds).size).toBe(nodeIds.length);
+
+    const sequenceEdges = edges.filter(edge => edge.id.startsWith('seq-'));
+    expect(sequenceEdges.map(edge => [edge.source, edge.target])).toEqual([
+      [INPUT_NODE_ID, 'step'],
+      ['step', 'step__1'],
+      ['step__1', 'other'],
+    ]);
+  });
+
   it('creates an input node and one node per step in vertical order', () => {
     const { nodes } = workflowToGraph(workflow);
 

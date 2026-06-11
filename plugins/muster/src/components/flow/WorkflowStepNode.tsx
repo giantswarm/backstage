@@ -8,6 +8,7 @@ import {
   useTheme,
 } from '@material-ui/core';
 import classNames from 'classnames';
+import { formatDuration } from '../../lib/formatDuration';
 import { StepNodeData } from '../../lib/workflowToGraph';
 import { WorkflowCondition } from '../../apis/types';
 import { statusColor } from './statusColors';
@@ -82,11 +83,6 @@ function conditionSummary(condition: WorkflowCondition): string {
     ? `from ${condition.from_step}`
     : (condition.tool ?? '');
   return `${negated ? 'unless' : 'if'} ${source}`.trim();
-}
-
-function formatDuration(durationMs: number): string {
-  if (durationMs < 1000) return `${durationMs}ms`;
-  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 function skippedChipLabel(data: StepNodeData): string | undefined {

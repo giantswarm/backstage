@@ -6,7 +6,10 @@ import {
   MCPClient,
 } from '@ai-sdk/mcp';
 import { AuthTokens } from './utils';
-import { isClosedClientError, McpClientCache } from './McpClientCache';
+import {
+  isClosedClientError,
+  McpClientCache,
+} from '@giantswarm/backstage-plugin-gs-node';
 
 interface McpServerConfig {
   url: string;
