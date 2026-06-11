@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-muster-backend
 
+## 0.2.3
+
+### Patch Changes
+
+- 95d1e6e: Fixed the workflow endpoints failing with "tool not found" against real muster servers. The muster aggregator only exposes its meta-tools (`list_tools`, `call_tool`, ...) over MCP, so the proxy now invokes the core workflow tools through the `call_tool` meta-tool and unwraps its result envelope.
+
 ## 0.2.2
 
 ### Patch Changes
