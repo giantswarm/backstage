@@ -16,7 +16,17 @@ interface McpServerConfig {
   headers?: Record<string, string>;
   installation?: string;
   authToken?: string;
+  timeoutMs?: number;
 }
+
+/**
+ * Upper bound for connecting to an MCP server and loading its resources
+ * and tools. Without it a single unresponsive server hangs the whole chat
+ * request forever (observed in production when an MCP server's responses
+ * were silently dropped by the transport). Override per server with
+ * `aiChat.mcp[].timeoutMs`.
+ */
+const DEFAULT_MCP_SERVER_TIMEOUT_MS = 15_000;
 
 export interface BackstageUserContext {
   userEntityRef: string;
@@ -52,6 +62,7 @@ function readMcpServersFromConfig(
     const name = mcp.getString('name');
     const url = mcp.getString('url');
     const installation = mcp.getOptionalString('installation');
+    const timeoutMs = mcp.getOptionalNumber('timeoutMs');
 
     // Rule 1: Forward a Backstage token minted on behalf of the calling
     // user, scoped to the built-in `mcp-actions` plugin. Use this for
@@ -75,6 +86,7 @@ function readMcpServersFromConfig(
         // Stable per-user cache key so the cache survives across
         // requests despite the Authorization token being minted fresh.
         authToken: `bs-user:${backstageUser.userEntityRef}`,
+        timeoutMs,
       };
 
       continue;
@@ -93,6 +105,7 @@ function readMcpServersFromConfig(
         headers: { Authorization: `Bearer ${token}` },
         installation,
         authToken: token,
+        timeoutMs,
       };
 
       continue;
@@ -101,12 +114,12 @@ function readMcpServersFromConfig(
     // Rule 3: If headers configured, add server with those headers
     const headers = getMcpServerHeaders(mcp);
     if (headers) {
-      mcpServers[name] = { url, headers, installation };
+      mcpServers[name] = { url, headers, installation, timeoutMs };
       continue;
     }
 
     // Rule 4: No headers and no authProvider, just add server
-    mcpServers[name] = { url, installation };
+    mcpServers[name] = { url, installation, timeoutMs };
   }
 
   return mcpServers;
@@ -267,6 +280,77 @@ export interface McpToolsResult {
   connectedServers: string[];
 }
 
+interface ServerLoadResult {
+  serverName: string;
+  tools?: ToolSet;
+  resources?: { [resourceName: string]: string };
+  error?: string;
+}
+
+async function loadServer(
+  serverName: string,
+  server: McpServerConfig,
+  logger: LoggerService,
+  clientCache: McpClientCache,
+): Promise<ServerLoadResult> {
+  const cacheKey = McpClientCache.buildKey(serverName, server.authToken);
+  const timeoutMs = server.timeoutMs ?? DEFAULT_MCP_SERVER_TIMEOUT_MS;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Timed out after ${timeoutMs}ms waiting for MCP server '${serverName}'`,
+          ),
+        ),
+      timeoutMs,
+    );
+    timer.unref?.();
+  });
+
+  try {
+    const load = (async () => {
+      const mcpClient = await clientCache.getOrCreate(cacheKey, () =>
+        createMCPClient({
+          name: serverName,
+          transport: {
+            type: 'http',
+            url: server.url,
+            headers: server.headers,
+          },
+        }),
+      );
+
+      const serverResources = await getResources(mcpClient, serverName, logger);
+      const serverTools = await getTools(
+        mcpClient,
+        serverName,
+        logger,
+        () => clientCache.markDead(cacheKey),
+        server.installation,
+      );
+
+      return { serverName, tools: serverTools, resources: serverResources };
+    })();
+
+    return await Promise.race([load, timeout]);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(
+      `Failed to connect to MCP server '${serverName}' at ${server.url}: ${errorMessage}`,
+    );
+    // Evict the broken session so the next request retries. Not awaited:
+    // invalidate awaits the cached client promise before closing it, which
+    // may itself never settle when the server is hanging.
+    void clientCache.invalidate(cacheKey).catch(() => {});
+    return { serverName, error: errorMessage };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function getMcpTools(
   config: Config,
   authTokens: AuthTokens,
@@ -285,42 +369,23 @@ export async function getMcpTools(
   const failedServers: Array<{ name: string; error: string }> = [];
   const connectedServers: string[] = [];
 
-  for (const [serverName, server] of Object.entries(mcpServers)) {
-    const cacheKey = McpClientCache.buildKey(serverName, server.authToken);
+  // Load all servers in parallel; each is individually bounded by its
+  // timeout so one slow or hanging server neither delays nor blocks the
+  // others. Results are merged in config order to keep tool precedence
+  // deterministic.
+  const results = await Promise.all(
+    Object.entries(mcpServers).map(([serverName, server]) =>
+      loadServer(serverName, server, logger, clientCache),
+    ),
+  );
 
-    try {
-      const mcpClient = await clientCache.getOrCreate(cacheKey, () =>
-        createMCPClient({
-          name: serverName,
-          transport: {
-            type: 'http',
-            url: server.url,
-            headers: server.headers,
-          },
-        }),
-      );
-
-      const serverResources = await getResources(mcpClient, serverName, logger);
-      Object.assign(resources, serverResources);
-
-      const serverTools = await getTools(
-        mcpClient,
-        serverName,
-        logger,
-        () => clientCache.markDead(cacheKey),
-        server.installation,
-      );
-      Object.assign(tools, serverTools);
-      connectedServers.push(serverName);
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      logger.error(
-        `Failed to connect to MCP server '${serverName}' at ${server.url}: ${errorMessage}`,
-      );
-      failedServers.push({ name: serverName, error: errorMessage });
-      // Evict broken session so the next request retries
-      await clientCache.invalidate(cacheKey);
+  for (const result of results) {
+    if (result.error !== undefined) {
+      failedServers.push({ name: result.serverName, error: result.error });
+    } else {
+      Object.assign(resources, result.resources);
+      Object.assign(tools, result.tools);
+      connectedServers.push(result.serverName);
     }
   }
 
