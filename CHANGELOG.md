@@ -7,6 +7,18 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [0.135.0] - 2026-06-11
 
+### Added
+
+- Muster: support muster MCP servers behind per-user auth (`authProvider` entries in `aiChat.mcp`). The muster frontend now forwards the user's OAuth token to the muster backend proxy, which opens per-user MCP sessions. Previously such servers were reported as unconfigured and the Workflows page failed with a 503.
+
+### Changed
+
+- The shared MCP client cache moved from the AI chat backend plugin to `@giantswarm/backstage-plugin-gs-node` and is reused by the muster backend plugin.
+
+### Fixed
+
+- Muster: an `aiChat.mcp` entry without a `name` no longer crashes plugin registration; execution fetch errors are surfaced in the workflow detail UI instead of being silently swallowed; duplicate workflow step ids no longer drop nodes from the graph; query parameter validation rejects empty and repeated values.
+
 See [./docs/releases/v0.135.0-changelog.md](./docs/releases/v0.135.0-changelog.md) for more information.
 
 ## [0.134.0] - 2026-06-10
