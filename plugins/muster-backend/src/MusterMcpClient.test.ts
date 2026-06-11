@@ -135,27 +135,81 @@ describe('MusterMcpClient', () => {
     return { client, factory };
   }
 
-  it('parses JSON text content from tool results', async () => {
-    const execute = jest.fn().mockResolvedValue({
-      content: [{ type: 'text', text: '{"workflows":[{"name":"wf-a"}]}' }],
+  /**
+   * Wrap a target tool's MCP result the way muster's call_tool meta-tool
+   * returns it: as a JSON string inside the meta-tool's text content block.
+   */
+  function callToolEnvelope(inner: {
+    content: { type: string; text: string }[];
+    isError?: boolean;
+  }) {
+    return {
+      content: [{ type: 'text', text: JSON.stringify(inner) }],
       isError: false,
-    });
+    };
+  }
+
+  it('invokes workflow tools through the call_tool meta-tool', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [
+          { type: 'text', text: '{"workflows":[{"name":"wf-a"}]}' },
+        ],
+        isError: false,
+      }),
+    );
     const { client } = buildClient(execute);
 
     const result = await client.callTool('core_workflow_list', {});
 
     expect(result).toEqual({ workflows: [{ name: 'wf-a' }] });
     expect(execute).toHaveBeenCalledWith(
-      {},
+      { name: 'core_workflow_list', arguments: {} },
       expect.objectContaining({ toolCallId: expect.any(String) }),
     );
   });
 
-  it('throws on tool-level errors', async () => {
+  it('forwards tool arguments inside the call_tool payload', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [{ type: 'text', text: '{}' }] }),
+      );
+    const { client } = buildClient(execute);
+
+    await client.callTool('core_workflow_execution_list', {
+      workflow_name: 'wf-a',
+      limit: 5,
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      {
+        name: 'core_workflow_execution_list',
+        arguments: { workflow_name: 'wf-a', limit: 5 },
+      },
+      expect.anything(),
+    );
+  });
+
+  it('throws on meta-tool errors', async () => {
     const execute = jest.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'workflow not found' }],
+      content: [{ type: 'text', text: "tool 'core_workflow_get' not found" }],
       isError: true,
     });
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callTool('core_workflow_get', { name: 'missing' }),
+    ).rejects.toThrow("tool 'core_workflow_get' not found");
+  });
+
+  it('throws on target tool errors inside the envelope', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: 'workflow not found' }],
+        isError: true,
+      }),
+    );
     const { client } = buildClient(execute);
 
     await expect(
@@ -163,10 +217,12 @@ describe('MusterMcpClient', () => {
     ).rejects.toThrow('workflow not found');
   });
 
-  it('returns raw text when the payload is not JSON', async () => {
-    const execute = jest.fn().mockResolvedValue({
-      content: [{ type: 'text', text: 'plain text' }],
-    });
+  it('returns raw text when the inner payload is not JSON', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: 'plain text' }],
+      }),
+    );
     const { client } = buildClient(execute);
 
     await expect(client.callTool('core_workflow_list', {})).resolves.toBe(
@@ -174,7 +230,19 @@ describe('MusterMcpClient', () => {
     );
   });
 
-  it('reports a clean error when a tool has no executor', async () => {
+  it('supports servers that return the payload without an envelope', async () => {
+    const execute = jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text: '{"workflows":[{"name":"wf-a"}]}' }],
+      isError: false,
+    });
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('core_workflow_list', {})).resolves.toEqual({
+      workflows: [{ name: 'wf-a' }],
+    });
+  });
+
+  it('reports a clean error when call_tool has no executor', async () => {
     const { client } = buildClient(undefined);
 
     await expect(client.callTool('core_workflow_list', {})).rejects.toThrow(
@@ -183,9 +251,11 @@ describe('MusterMcpClient', () => {
   });
 
   it('passes an Authorization header for per-user tokens', async () => {
-    const execute = jest.fn().mockResolvedValue({
-      content: [{ type: 'text', text: '{}' }],
-    });
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [{ type: 'text', text: '{}' }] }),
+      );
     const { client, factory } = buildClient(execute);
 
     await client.callTool('core_workflow_list', {}, { authToken: 'token-a' });
@@ -194,9 +264,11 @@ describe('MusterMcpClient', () => {
   });
 
   it('caches clients per user token', async () => {
-    const execute = jest.fn().mockResolvedValue({
-      content: [{ type: 'text', text: '{}' }],
-    });
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [{ type: 'text', text: '{}' }] }),
+      );
     const { client, factory } = buildClient(execute);
 
     await client.callTool('core_workflow_list', {}, { authToken: 'token-a' });
