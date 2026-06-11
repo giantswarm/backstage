@@ -1,5 +1,12 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [c117a5e]
+  - @giantswarm/backstage-plugin-gs-node@0.3.0
+
 ## 0.10.1
 
 ### Patch Changes

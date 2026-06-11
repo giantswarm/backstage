@@ -1,6 +1,6 @@
 {
   "name": "@giantswarm/backstage-plugin-gs-backend",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "license": "Apache-2.0",
   "private": true,
   "main": "src/index.ts",
@@ -32,7 +32,7 @@
     "@backstage/integration": "backstage:^",
     "@backstage/plugin-catalog-node": "backstage:^",
     "@backstage/types": "backstage:^",
-    "@giantswarm/backstage-plugin-gs-node": "^0.2.0",
+    "@giantswarm/backstage-plugin-gs-node": "^0.3.0",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0",
     "node-fetch": "^3.3.2",
