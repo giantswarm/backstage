@@ -1,5 +1,16 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.17.3
+
+### Patch Changes
+
+- f84adcc: Fix AI chat hanging forever when an MCP server is slow or its responses are dropped by the transport.
+  - MCP servers are now connected in parallel and each connection/tool-load is bounded by a timeout (15s default, configurable per server via `aiChat.mcp[].timeoutMs`). A hanging server is reported as failed and the chat continues with the remaining servers' tools.
+  - Patch `@ai-sdk/mcp` to treat SSE events without an explicit `event:` field as `message` events, per the SSE specification. MCP servers behind agentgateway emit bare `data:` frames, which the unpatched client silently dropped — leaving the request promise pending forever and hanging the whole chat request.
+
+- Updated dependencies [f84adcc]
+  - @giantswarm/backstage-plugin-gs-node@0.3.1
+
 ## 0.17.2
 
 ### Patch Changes
