@@ -11,6 +11,7 @@ import { fluxPluginOverrides } from './modules/flux';
 import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { aiChatPluginOverrides } from './modules/ai-chat';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
+import { musterPluginOverrides } from './modules/muster';
 
 // Upstream NFS plugins:
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
@@ -53,6 +54,7 @@ const app = createApp({
     aiChatPlugin,
     aiChatPluginOverrides,
     musterPlugin,
+    musterPluginOverrides,
 
     // Upstream NFS plugins:
     catalogPlugin,

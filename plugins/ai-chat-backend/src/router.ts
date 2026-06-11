@@ -23,7 +23,7 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
-import { McpClientCache } from './McpClientCache';
+import { McpClientCache } from '@giantswarm/backstage-plugin-gs-node';
 import { frontendTools } from './frontendTools';
 import {
   createSkillTools,

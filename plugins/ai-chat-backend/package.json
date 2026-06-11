@@ -34,6 +34,7 @@
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
+    "@giantswarm/backstage-plugin-gs-node": "workspace:^",
     "ai": "^6.0.176",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0",

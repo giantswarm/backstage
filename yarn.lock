@@ -10645,6 +10645,7 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
+    "@giantswarm/backstage-plugin-gs-node": "workspace:^"
     "@types/express": "npm:^5.0.0"
     "@types/supertest": "npm:^2.0.12"
     ai: "npm:^6.0.176"
@@ -10872,10 +10873,11 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-gs-node@npm:^0.2.0, @giantswarm/backstage-plugin-gs-node@workspace:plugins/gs-node":
+"@giantswarm/backstage-plugin-gs-node@npm:^0.2.0, @giantswarm/backstage-plugin-gs-node@workspace:^, @giantswarm/backstage-plugin-gs-node@workspace:plugins/gs-node":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-node@workspace:plugins/gs-node"
   dependencies:
+    "@ai-sdk/mcp": "npm:^1.0.41"
     "@backstage/backend-plugin-api": "backstage:^"
     "@backstage/backend-test-utils": "backstage:^"
     "@backstage/cli": "backstage:^"
@@ -11003,11 +11005,13 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-muster-backend@workspace:plugins/muster-backend"
   dependencies:
     "@ai-sdk/mcp": "npm:^1.0.41"
+    "@backstage/backend-defaults": "backstage:^"
     "@backstage/backend-plugin-api": "backstage:^"
     "@backstage/backend-test-utils": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
+    "@giantswarm/backstage-plugin-gs-node": "workspace:^"
     "@types/express": "npm:^5.0.0"
     "@types/supertest": "npm:^2.0.12"
     express: "npm:^5.0.0"
@@ -11030,6 +11034,7 @@ __metadata:
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
+    "@material-ui/lab": "npm:^4.0.0-alpha.61"
     "@tanstack/react-query": "npm:^5.82.0"
     "@testing-library/jest-dom": "npm:^6.0.0"
     "@testing-library/react": "npm:^16.0.0"

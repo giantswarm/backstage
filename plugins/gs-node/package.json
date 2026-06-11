@@ -24,6 +24,7 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
+    "@ai-sdk/mcp": "^1.0.41",
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/types": "backstage:^",

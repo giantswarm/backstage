@@ -10,6 +10,7 @@ import {
 import AccountTreeIcon from '@material-ui/icons/AccountTree';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { WorkflowExecutionSummary } from '../../apis';
+import { formatDuration } from '../../lib/formatDuration';
 import { StatusIcon } from '../flow';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -28,11 +29,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     minWidth: 32,
   },
 }));
-
-function formatDuration(durationMs: number): string {
-  if (durationMs < 1000) return `${durationMs}ms`;
-  return `${(durationMs / 1000).toFixed(1)}s`;
-}
 
 export interface ExecutionHistoryPanelProps {
   executions: WorkflowExecutionSummary[];
