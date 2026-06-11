@@ -25,7 +25,7 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@ai-sdk/mcp": "^1.0.41",
+    "@ai-sdk/mcp": "patch:@ai-sdk/mcp@npm%3A1.0.46#~/.yarn/patches/@ai-sdk-mcp-npm-1.0.46-b48c61b836.patch",
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
