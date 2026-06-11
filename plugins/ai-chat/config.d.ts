@@ -25,6 +25,12 @@ export interface Config {
     /** Optional: MCP servers configuration */
     mcp?: Array<{
       /**
+       * Name of the MCP server entry. Frontend-visible so plugins can look
+       * up an entry's auth provider by name (e.g. the muster plugin).
+       * @visibility frontend
+       */
+      name?: string;
+      /**
        * Optional: Auth provider name to use for this MCP server
        * @visibility frontend
        */
