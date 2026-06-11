@@ -1,5 +1,15 @@
 # app
 
+## 0.40.5
+
+### Patch Changes
+
+- Updated dependencies [5b7e7ba]
+- Updated dependencies [bc88c69]
+  - @giantswarm/backstage-plugin-gs@0.68.0
+  - @giantswarm/backstage-plugin-ai-chat@0.14.0
+  - @giantswarm/backstage-plugin-muster@0.3.0
+
 ## 0.40.4
 
 ### Patch Changes

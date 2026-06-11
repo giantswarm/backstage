@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.136.0] - 2026-06-11
+
+### Added
+
+- Auth: mint per-management-cluster tokens silently through the muster token broker instead of per-cluster OAuth popups. A new authenticated `POST /api/auth/cluster-token/:installation` backend route exchanges the user's main Dex ID token for a short-lived cluster token (RFC 8693), cached per user and installation; the kubernetes auth connectors try this silent path before the cookie-based refresh, keeping the legacy popup as fallback for unmigrated clusters. Configured via `gs.clusterTokenBroker`; installations marked with `gs.installations.<name>.clusterTokenAudience` disappear from the provider settings page, collapsing it to the single main login.
+- AI chat / muster: forward the main Dex ID token as the MCP bearer token when an MCP server's `authProvider` has no dedicated `auth.providers` entry, enabling single sign-on for muster. Deployments activate this by removing the `mcp-muster` provider from `auth.providers`, which also removes the separate PKCE login from the user settings page.
+
+See [./docs/releases/v0.136.0-changelog.md](./docs/releases/v0.136.0-changelog.md) for more information.
+
 ## [0.135.3] - 2026-06-11
 
 ### Fixed
@@ -2595,7 +2604,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.135.3...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.136.0...HEAD
+[0.136.0]: https://github.com/giantswarm/backstage/compare/v0.135.3...v0.136.0
 [0.135.3]: https://github.com/giantswarm/backstage/compare/v0.135.2...v0.135.3
 [0.135.2]: https://github.com/giantswarm/backstage/compare/v0.135.1...v0.135.2
 [0.135.1]: https://github.com/giantswarm/backstage/compare/v0.135.0...v0.135.1
