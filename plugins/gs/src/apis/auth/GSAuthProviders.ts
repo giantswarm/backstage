@@ -8,11 +8,13 @@ import {
   gsAuthProvidersApiRef,
 } from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
-import { DefaultAuthConnector } from './DefaultAuthConnector';
+import { ClusterToken, DefaultAuthConnector } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
+
+const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
 
 /**
  * A client for authenticating towards Giant Swarm Management APIs.
@@ -85,13 +87,83 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         providerName: oidcTokenProvider,
         providerDisplayName,
         installationName,
+        clusterTokenAudience: installationConfig.getOptionalString(
+          'clusterTokenAudience',
+        ),
       };
     });
   }
 
+  /**
+   * Returns a function that silently mints a per-cluster token through the
+   * cluster token broker (the backend's /api/auth/cluster-token route), or
+   * undefined when the broker path does not apply to this provider. The main
+   * auth provider is excluded: its session is the broker's subject token.
+   */
+  private createClusterTokenProvider(
+    installationName: string,
+    providerName: string,
+  ): (() => Promise<ClusterToken | undefined>) | undefined {
+    if (!this.configApi) {
+      return undefined;
+    }
+    const brokerConfigured = Boolean(
+      this.configApi.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
+    );
+    const mainProviderName =
+      this.configApi.getOptionalString('gs.authProvider');
+    if (
+      !brokerConfigured ||
+      !mainProviderName ||
+      providerName === mainProviderName
+    ) {
+      return undefined;
+    }
+
+    // The cluster token route is served by the main backend, not by
+    // per-installation backend overrides.
+    const backendBaseUrl = this.configApi.getString('backend.baseUrl');
+
+    return async () => {
+      const mainAuthApi = this.getMainAuthApi();
+      const idToken = await mainAuthApi.getIdToken({ optional: true });
+      if (!idToken) {
+        return undefined;
+      }
+      const identity = await mainAuthApi.getBackstageIdentity({
+        optional: true,
+      });
+      if (!identity) {
+        return undefined;
+      }
+
+      const response = await fetch(
+        `${backendBaseUrl}/api/auth/cluster-token/${encodeURIComponent(
+          installationName,
+        )}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${identity.token}`,
+            [SUBJECT_TOKEN_HEADER]: idToken,
+          },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Cluster token request failed, ${response.statusText}`);
+      }
+
+      const { token, expiresInSeconds } = await response.json();
+      if (!token) {
+        return undefined;
+      }
+      return { token, expiresInSeconds };
+    };
+  }
+
   private createKubernetesAuthApis() {
     const entries = this.kubernetesAuthProviders.map(
-      ({ providerName, providerDisplayName }) => {
+      ({ providerName, providerDisplayName, installationName }) => {
         const authConnector = new DefaultAuthConnector({
           configApi: this.configApi,
           discoveryApi: this.discoveryApi,
@@ -104,6 +176,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
             title: providerDisplayName,
             icon: GiantSwarmIcon,
           },
+          clusterTokenProvider: this.createClusterTokenProvider(
+            installationName,
+            providerName,
+          ),
           sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
             const session: OAuth2Session = {
               ...res,
@@ -251,7 +327,26 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   getProviders() {
-    return [...this.kubernetesAuthProviders, ...this.mcpAuthProviders];
+    // Installations explicitly marked as covered by the cluster token broker
+    // (clusterTokenAudience set) get their tokens silently through the main
+    // login, so their separate provider entries disappear from the settings
+    // page. The main login itself always stays.
+    const brokerConfigured = Boolean(
+      this.configApi?.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
+    );
+    const mainProviderName =
+      this.configApi?.getOptionalString('gs.authProvider');
+
+    const kubernetesAuthProviders = this.kubernetesAuthProviders.filter(
+      ({ providerName, clusterTokenAudience }) => {
+        if (!brokerConfigured || providerName === mainProviderName) {
+          return true;
+        }
+        return !clusterTokenAudience;
+      },
+    );
+
+    return [...kubernetesAuthProviders, ...this.mcpAuthProviders];
   }
 
   getAuthApi(providerName: string) {
