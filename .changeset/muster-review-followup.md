@@ -10,8 +10,7 @@
 Support muster MCP servers behind per-user auth (`authProvider` entries in
 `aiChat.mcp`): the muster frontend now forwards the user's OAuth token to the
 muster-backend proxy, which opens per-user MCP sessions. Previously such
-servers were reported as unconfigured and the Workflows page failed with a
-503.
+servers were reported as unconfigured and the Workflows page failed with a 503.
 
 Also addresses review feedback on the initial muster plugins: the shared MCP
 client cache moved from ai-chat-backend to `@giantswarm/backstage-plugin-gs-node`

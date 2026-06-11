@@ -105,9 +105,8 @@ export class MusterApiClient implements MusterApi {
     if (!authProvider || !this.authProvidersApi) {
       return {};
     }
-    const credentials = await this.authProvidersApi.getCredentials(
-      authProvider,
-    );
+    const credentials =
+      await this.authProvidersApi.getCredentials(authProvider);
     if (!credentials.token) {
       return {};
     }
