@@ -15,10 +15,10 @@ repos:
       - id: check-shebang-scripts-are-executable
       - id: detect-private-key
       - id: end-of-file-fixer
-        exclude: ".*testdata/.*"
+        exclude: "(.*testdata/.*|^\\.yarn/.*)"
       - id: mixed-line-ending
       - id: trailing-whitespace
-        exclude: ".*testdata/.*"
+        exclude: "(.*testdata/.*|^\\.yarn/.*)"
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
