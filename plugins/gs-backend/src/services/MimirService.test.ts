@@ -46,7 +46,7 @@ function makeResponse(
       get: (name: string) => (name === 'content-type' ? contentType : null),
     },
     text: jest.fn().mockResolvedValue(body),
-    json: jest.fn().mockResolvedValue(JSON.parse(body)),
+    json: jest.fn().mockImplementation(async () => JSON.parse(body)),
   };
 }
 
