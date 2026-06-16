@@ -104,9 +104,18 @@ export class MimirService {
     }
 
     if (!response.ok) {
+      const contentType = response.headers.get('content-type') ?? '';
       const body = await response.text().catch(() => '');
+      const truncated = body.length > 300 ? `${body.slice(0, 300)}…` : body;
+
+      if (response.status === 400 && contentType.includes('text/html')) {
+        throw new AuthenticationError(
+          `Mimir gateway rejected the request for installation "${installationName}" (HTTP 400)`,
+        );
+      }
+
       throw new ServiceUnavailableError(
-        `Mimir returned HTTP ${response.status} for installation "${installationName}": ${body}`,
+        `Mimir returned HTTP ${response.status} for installation "${installationName}": ${truncated}`,
       );
     }
 
