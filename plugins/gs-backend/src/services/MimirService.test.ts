@@ -1,4 +1,7 @@
-import { LoggerService, RootConfigService } from '@backstage/backend-plugin-api';
+import {
+  LoggerService,
+  RootConfigService,
+} from '@backstage/backend-plugin-api';
 import {
   AuthenticationError,
   NotFoundError,
@@ -39,7 +42,9 @@ function makeResponse(
   return {
     status,
     ok: status >= 200 && status < 300,
-    headers: { get: (name: string) => (name === 'content-type' ? contentType : null) },
+    headers: {
+      get: (name: string) => (name === 'content-type' ? contentType : null),
+    },
     text: jest.fn().mockResolvedValue(body),
     json: jest.fn().mockResolvedValue(JSON.parse(body)),
   };
@@ -57,7 +62,10 @@ describe('MimirService.query', () => {
   });
 
   it('returns parsed JSON on 200', async () => {
-    const payload = { status: 'success', data: { resultType: 'vector', result: [] } };
+    const payload = {
+      status: 'success',
+      data: { resultType: 'vector', result: [] },
+    };
     mockFetch.mockResolvedValue(makeResponse(200, JSON.stringify(payload)));
 
     const result = await service.query({
@@ -88,7 +96,11 @@ describe('MimirService.query', () => {
     mockFetch.mockResolvedValue(makeResponse(401, 'Unauthorized'));
 
     await expect(
-      service.query({ installationName: 'alba', query: 'up', oidcToken: 'bad' }),
+      service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'bad',
+      }),
     ).rejects.toThrow(AuthenticationError);
   });
 
@@ -96,25 +108,45 @@ describe('MimirService.query', () => {
     mockFetch.mockResolvedValue(makeResponse(403, 'Forbidden'));
 
     await expect(
-      service.query({ installationName: 'alba', query: 'up', oidcToken: 'bad' }),
+      service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'bad',
+      }),
     ).rejects.toThrow(AuthenticationError);
   });
 
   it('throws AuthenticationError on 400 with text/html (gateway rejection)', async () => {
     const htmlBody = '<html><body>Error 400 — token too large</body></html>';
-    mockFetch.mockResolvedValue(makeResponse(400, htmlBody, 'text/html; charset=utf-8'));
+    mockFetch.mockResolvedValue(
+      makeResponse(400, htmlBody, 'text/html; charset=utf-8'),
+    );
 
     await expect(
-      service.query({ installationName: 'alba', query: 'up', oidcToken: 'large-token' }),
+      service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'large-token',
+      }),
     ).rejects.toThrow(AuthenticationError);
   });
 
   it('throws ServiceUnavailableError on 400 with JSON (bad PromQL)', async () => {
-    const jsonBody = JSON.stringify({ status: 'error', errorType: 'bad_data', error: 'invalid query' });
-    mockFetch.mockResolvedValue(makeResponse(400, jsonBody, 'application/json'));
+    const jsonBody = JSON.stringify({
+      status: 'error',
+      errorType: 'bad_data',
+      error: 'invalid query',
+    });
+    mockFetch.mockResolvedValue(
+      makeResponse(400, jsonBody, 'application/json'),
+    );
 
     await expect(
-      service.query({ installationName: 'alba', query: 'invalid{{', oidcToken: 'tok' }),
+      service.query({
+        installationName: 'alba',
+        query: 'invalid{{',
+        oidcToken: 'tok',
+      }),
     ).rejects.toThrow(ServiceUnavailableError);
   });
 
@@ -123,7 +155,11 @@ describe('MimirService.query', () => {
     mockFetch.mockResolvedValue(makeResponse(503, longBody, 'text/plain'));
 
     await expect(
-      service.query({ installationName: 'alba', query: 'up', oidcToken: 'tok' }),
+      service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'tok',
+      }),
     ).rejects.toThrow(/…$/);
   });
 
@@ -132,7 +168,11 @@ describe('MimirService.query', () => {
     mockFetch.mockResolvedValue(makeResponse(503, shortBody, 'text/plain'));
 
     await expect(
-      service.query({ installationName: 'alba', query: 'up', oidcToken: 'tok' }),
+      service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'tok',
+      }),
     ).rejects.toThrow(/service down/);
   });
 
@@ -140,7 +180,11 @@ describe('MimirService.query', () => {
     mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
 
     await expect(
-      service.query({ installationName: 'alba', query: 'up', oidcToken: 'tok' }),
+      service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'tok',
+      }),
     ).rejects.toThrow(ServiceUnavailableError);
   });
 });
