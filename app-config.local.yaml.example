@@ -45,15 +45,36 @@ techdocs:
 #     - targetUrl: 'https://${{HOSTNAME}}/projects/${{PROJECT_NAME}}/repos/${{REPOSITORY_NAME}}/browse/${{PATH}}?at=${{REVISION}}'
 #       gitRepositoryUrlPattern: '^https:\/\/(?<HOSTNAME>bitbucket.+?)\/scm\/(?<PROJECT_NAME>.+?)\/(?<REPOSITORY_NAME>.+?)(\.git)?$'
 
+# Cluster access uses the broker-only model: one main Dex login, and every
+# other cluster's Kubernetes token is minted silently by the muster
+# cluster-token broker from that session -- no per-cluster login popups and no
+# per-cluster auth.providers blocks. A full annotated example lives in
+# /app-config.example.yaml.
+#
+# auth:
+#   providers:
+#     # The single main login -- the only oidc-<mc> provider you need.
+#     oidc-main:
+#       development:
+#         metadataUrl: ${MAIN_OIDC_METADATA_URL}
+#         clientId: ${MAIN_OIDC_CLIENT_ID}
+#         clientSecret: ${MAIN_OIDC_CLIENT_SECRET}
+
 # gs:
-#   authProvider: oidc-mcname
+#   authProvider: oidc-main
+#   clusterTokenBroker:
+#     tokenUrl: ${CLUSTER_TOKEN_BROKER_URL}
+#     clientId: ${CLUSTER_TOKEN_BROKER_CLIENT_ID}
+#     clientSecret: ${CLUSTER_TOKEN_BROKER_CLIENT_SECRET}
 #   installations:
 #     mcname:
 #       pipeline: stable-testing
 #       providers: [capa]
 #       authProvider: oidc
 #       oidcTokenProvider: oidc-mcname
-#       baseDomain: mcname.awsprod.gigantic.io
+#       # Broker-covered: token minted silently from the main session.
+#       clusterTokenAudience: mcname
+#       baseDomain: mcname.example.gigantic.io
 #       region: eu-central-1
 
 # kubernetes:
@@ -61,7 +82,7 @@ techdocs:
 #     - type: 'config'
 #       clusters:
 #         - name: mcname
-#           url: https://happaapi.mcname.awsprod.gigantic.io
+#           url: https://happaapi.mcname.example.gigantic.io
 #           authProvider: oidc
 #           oidcTokenProvider: oidc-mcname
 

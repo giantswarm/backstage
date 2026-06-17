@@ -112,5 +112,16 @@ export interface Config {
         minorVersion: string;
       };
     };
+
+    /** @deepVisibility frontend */
+    kubernetes?: {
+      /**
+       * Per-request timeout (in milliseconds) for the Kubernetes proxy. Bounds
+       * how long an unreachable management cluster can keep a request in-flight
+       * before it becomes a fast, typed per-cluster error, so a single down
+       * cluster cannot freeze the whole clusters list. Defaults to 10000.
+       */
+      proxyTimeoutMs?: number;
+    };
   };
 }
