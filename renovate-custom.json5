@@ -1,0 +1,36 @@
+// Repo-specific Renovate rules, layered on top of the generated renovate.json5
+// (which extends this file last, so these rules win). devctl never touches
+// this file. Rules for a whole class of repos belong in
+// giantswarm/renovate-presets instead.
+{
+  reviewers: ['marians'],
+  reviewersFromCodeOwners: false,
+  prConcurrentLimit: 2,
+  schedule: [
+    'every weekend',
+    'every weekday after 5pm',
+    'every weekday before 8am',
+  ],
+  packageRules: [
+    {
+      groupName: 'ai-sdk packages',
+      matchPackageNames: ['@ai-sdk{/,}**'],
+    },
+    {
+      groupName: 'assistant-ui packages',
+      matchPackageNames: ['@assistant-ui{/,}**'],
+    },
+    {
+      groupName: 'backstage packages',
+      matchPackageNames: ['@backstage{/,}**'],
+    },
+    {
+      groupName: 'testing-library packages',
+      matchPackageNames: ['@testing-library{/,}**'],
+    },
+    {
+      groupName: 'date-fns packages',
+      matchPackageNames: ['date-fns', 'date-fns-tz'],
+    },
+  ],
+}
