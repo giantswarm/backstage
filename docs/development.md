@@ -258,7 +258,7 @@ a cross-platform CA, to create and sign your certificate.
    > On Linux, `mkcert` stores its CA under `$CAROOT` (default
    > `~/.local/share/mkcert`) but `mkcert -install` may need `sudo` to write the
    > system trust store. Running the install under plain `sudo` uses root's
-   > `CAROOT`, creating a *different* CA than the one that signed your leaf
+   > `CAROOT`, creating a _different_ CA than the one that signed your leaf
    > certificate -- so the browser still distrusts `https://localhost`. Pin
    > `CAROOT` for both steps, e.g.
    > `sudo env CAROOT="$HOME/.local/share/mkcert" "$(which mkcert)" -install`,
