@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.137.0] - 2026-06-17
+
 ### Changed
 
 - Auth: make the muster cluster-token broker the single per-cluster access path. Broker-backed installations (those with `gs.installations.<name>.clusterTokenAudience`) no longer fall back to the per-cluster OAuth popup or the cookie-based `/refresh`; the connector mints their tokens silently and, when the main Dex session is missing, triggers exactly one main SSO re-login and retries. Per-cluster failures now surface as a typed error with a coarse reason instead of failing silently. The `gs` auth backend module registers only the main `gs.authProvider`, so a stray `oidc-<mc>` provider block can no longer stall startup on an unreachable Dex's metadata discovery.
@@ -13,6 +15,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 ### Added
 
 - A persistent cluster-access status element in the sidebar (badge + popover) listing each accessed cluster with its state (healthy / degraded / session-expired) and a human-readable reason, with a "Sign in again" action when the main session expired.
+
+See [./docs/releases/v0.137.0-changelog.md](./docs/releases/v0.137.0-changelog.md) for more information.
 
 ## [0.136.0] - 2026-06-11
 
@@ -2613,7 +2617,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.136.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.137.0...HEAD
+[0.137.0]: https://github.com/giantswarm/backstage/compare/v0.136.0...v0.137.0
 [0.136.0]: https://github.com/giantswarm/backstage/compare/v0.135.3...v0.136.0
 [0.135.3]: https://github.com/giantswarm/backstage/compare/v0.135.2...v0.135.3
 [0.135.2]: https://github.com/giantswarm/backstage/compare/v0.135.1...v0.135.2
