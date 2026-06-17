@@ -122,6 +122,41 @@ button in your browser.
 
 To stop the development server, hit `Ctrl + C`.
 
+## Cluster access locally (broker-only)
+
+Backstage reaches every management cluster through a single main Dex login. A
+local instance does **not** need a per-cluster OIDC provider or login popup for
+each cluster: the muster cluster-token broker mints each cluster's Kubernetes
+token silently from your main session.
+
+You have two options when running locally:
+
+- **No cluster access** (simplest): leave `gs.installations` / `kubernetes`
+  empty. The catalog, scaffolder and most pages work without talking to any
+  management cluster.
+- **Broker-backed cluster access**: point your instance at a broker. In
+  `app-config.local.yaml` set:
+  - one main login provider under `auth.providers` (e.g. `oidc-main`) and
+    `gs.authProvider` referencing it,
+  - `gs.clusterTokenBroker.tokenUrl` (the muster `/oauth/token` endpoint) plus
+    its confidential `clientId` / `clientSecret`,
+  - each cluster under `gs.installations.<mc>` with `clusterTokenAudience: <mc>`
+    and a matching `kubernetes.clusterLocatorMethods` entry.
+
+  See [`/app-config.example.yaml`](../app-config.example.yaml) for a complete,
+  annotated example, and [configuration.md](configuration.md) for the field
+  reference. The broker client id/secret and main Dex client credentials are
+  the only cluster-access secrets you need; put them in your `.env`.
+
+When the main session expires you get exactly one main-login prompt, then work
+resumes -- there are no per-cluster popups. Per-cluster access health (healthy /
+degraded / session-expired, with a reason) is shown by the cluster-access status
+element in the sidebar.
+
+> The legacy per-cluster "headless" backend (one backend + `oidc-<mc>` provider
+> per cluster) has been retired; do not set up per-cluster providers or
+> `backendUrl` overrides for local development.
+
 ## Running backend and frontend separately
 
 With the `yarn start` command above, two processes -- backend and frontend -- are

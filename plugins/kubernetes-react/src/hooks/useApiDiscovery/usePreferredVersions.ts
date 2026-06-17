@@ -135,6 +135,38 @@ export function usePreferredVersions(
     return resourceVersions;
   }, [clusters, versionsToCheck, resourceQueries]);
 
+  // Track which clusters have finished discovery (Stage 1 + any Stage 2
+  // queries settled, success or error). This lets list queries start per
+  // cluster as soon as that cluster resolves, instead of waiting for the
+  // slowest/hung cluster in the fleet.
+  const clusterDiscoveryComplete = useMemo(() => {
+    const complete: Record<string, boolean> = {};
+    let resourceIndex = 0;
+    clusters.forEach((cluster, index) => {
+      const versions = versionsToCheck[cluster] || [];
+      const clusterResourceQueries = resourceQueries.slice(
+        resourceIndex,
+        resourceIndex + versions.length,
+      );
+      resourceIndex += versions.length;
+
+      if (!shouldDiscover) {
+        complete[cluster] = true;
+        return;
+      }
+      const groupSettled = !groupQueries[index].isLoading;
+      const resourcesSettled = clusterResourceQueries.every(q => !q.isLoading);
+      complete[cluster] = groupSettled && resourcesSettled;
+    });
+    return complete;
+  }, [
+    clusters,
+    groupQueries,
+    versionsToCheck,
+    resourceQueries,
+    shouldDiscover,
+  ]);
+
   const { clustersGVKs, incompatibilities, clientOutdatedStates } =
     useMemo(() => {
       const gvks: Record<string, CustomResourceMatcher> = {};
@@ -143,6 +175,13 @@ export function usePreferredVersions(
 
       clusters.forEach((cluster, index) => {
         const query = groupQueries[index];
+
+        // Don't resolve a GVK (and therefore don't start the list query) until
+        // this cluster's own discovery has settled. Avoids listing with a
+        // fallback version that discovery is about to refine.
+        if (!clusterDiscoveryComplete[cluster]) {
+          return;
+        }
 
         const resolved = resolvePreferredVersion({
           gvk,
@@ -182,6 +221,7 @@ export function usePreferredVersions(
       explicitVersion,
       clusterResourceVersions,
       fallbackToStatic,
+      clusterDiscoveryComplete,
     ]);
 
   const discoveryErrors = useMemo(() => {

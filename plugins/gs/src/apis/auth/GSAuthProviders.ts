@@ -8,13 +8,53 @@ import {
   gsAuthProvidersApiRef,
 } from './types';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
-import { ClusterToken, DefaultAuthConnector } from './DefaultAuthConnector';
+import {
+  ClusterToken,
+  ClusterTokenError,
+  ClusterTokenErrorReason,
+  DefaultAuthConnector,
+} from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
 
 const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
+
+/** Human-readable text shown in the cluster-access status popover. */
+const CLUSTER_TOKEN_ERROR_MESSAGES: Record<ClusterTokenErrorReason, string> = {
+  'session-expired': 'Your session expired -- sign in again',
+  subject_invalid: 'Your session was rejected -- sign in again',
+  broker_unreachable: 'Token broker is unreachable',
+  exchange_failed: 'Token exchange failed',
+  unknown: 'Cluster access failed',
+};
+
+const CLUSTER_TOKEN_ERROR_REASONS: ReadonlySet<string> = new Set([
+  'broker_unreachable',
+  'exchange_failed',
+  'subject_invalid',
+]);
+
+/**
+ * Maps a failed cluster-token backend response to a coarse, UI-facing reason.
+ * Prefers the backend's explicit `reason` field (Phase 2 enrichment) and falls
+ * back to the HTTP status when the body is unparseable or unknown.
+ */
+async function readClusterTokenErrorReason(
+  response: Response,
+): Promise<ClusterTokenErrorReason> {
+  try {
+    const body = (await response.json()) as { reason?: string };
+    if (body.reason && CLUSTER_TOKEN_ERROR_REASONS.has(body.reason)) {
+      return body.reason as ClusterTokenErrorReason;
+    }
+  } catch {
+    // Body was not JSON or had no reason -- fall back to the status code.
+  }
+  return response.status >= 500 ? 'broker_unreachable' : 'exchange_failed';
+}
 
 /**
  * A client for authenticating towards Giant Swarm Management APIs.
@@ -32,10 +72,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly mcpAuthProviders: AuthProvider[];
   private readonly mcpAuthApis: { [providerName: string]: AuthApi };
 
+  private readonly clusterAccessStatusApi?: ClusterAccessStatusApi;
+
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.oauthRequestApi = options.oauthRequestApi;
+    this.clusterAccessStatusApi = options.clusterAccessStatusApi;
 
     this.kubernetesAuthProviders = this.getKubernetesAuthProvidersFromConfig();
     this.kubernetesAuthApis = this.createKubernetesAuthApis();
@@ -123,41 +166,88 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     // The cluster token route is served by the main backend, not by
     // per-installation backend overrides.
     const backendBaseUrl = this.configApi.getString('backend.baseUrl');
+    const statusApi = this.clusterAccessStatusApi;
 
-    return async () => {
+    const mint = async (): Promise<ClusterToken | undefined> => {
       const mainAuthApi = this.getMainAuthApi();
-      const idToken = await mainAuthApi.getIdToken({ optional: true });
-      if (!idToken) {
-        return undefined;
+
+      // Auto re-auth: the non-optional getters return silently when the main
+      // Dex session exists and trigger the single main SSO login when it is
+      // gone -- the only popup a broker-backed cluster ever causes. A
+      // declined/failed login surfaces as a typed session-expired error.
+      let idToken: Awaited<ReturnType<typeof mainAuthApi.getIdToken>>;
+      let identity: Awaited<
+        ReturnType<typeof mainAuthApi.getBackstageIdentity>
+      >;
+      try {
+        idToken = await mainAuthApi.getIdToken();
+        identity = await mainAuthApi.getBackstageIdentity();
+      } catch (error) {
+        throw new ClusterTokenError(
+          installationName,
+          'session-expired',
+          'Main session expired and re-login did not complete',
+        );
       }
-      const identity = await mainAuthApi.getBackstageIdentity({
-        optional: true,
-      });
-      if (!identity) {
-        return undefined;
+      if (!idToken || !identity) {
+        throw new ClusterTokenError(installationName, 'session-expired');
       }
 
-      const response = await fetch(
-        `${backendBaseUrl}/api/auth/cluster-token/${encodeURIComponent(
-          installationName,
-        )}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${identity.token}`,
-            [SUBJECT_TOKEN_HEADER]: idToken,
+      let response: Response;
+      try {
+        response = await fetch(
+          `${backendBaseUrl}/api/auth/cluster-token/${encodeURIComponent(
+            installationName,
+          )}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${identity.token}`,
+              [SUBJECT_TOKEN_HEADER]: idToken,
+            },
           },
-        },
-      );
+        );
+      } catch (error) {
+        throw new ClusterTokenError(
+          installationName,
+          'broker_unreachable',
+          `Cluster token request failed: ${error}`,
+        );
+      }
       if (!response.ok) {
-        throw new Error(`Cluster token request failed, ${response.statusText}`);
+        const reason = await readClusterTokenErrorReason(response);
+        throw new ClusterTokenError(installationName, reason);
       }
 
       const { token, expiresInSeconds } = await response.json();
       if (!token) {
-        return undefined;
+        throw new ClusterTokenError(installationName, 'exchange_failed');
       }
       return { token, expiresInSeconds };
+    };
+
+    return async () => {
+      try {
+        const clusterToken = await mint();
+        statusApi?.recordHealthy(installationName);
+        return clusterToken;
+      } catch (error) {
+        if (error instanceof ClusterTokenError) {
+          const message = CLUSTER_TOKEN_ERROR_MESSAGES[error.reason];
+          // A rejected/expired main session is fixed by the single SSO
+          // re-login, so it is a session-expired state rather than a degraded
+          // cluster.
+          if (
+            error.reason === 'session-expired' ||
+            error.reason === 'subject_invalid'
+          ) {
+            statusApi?.recordSessionExpired(installationName, message);
+          } else {
+            statusApi?.recordDegraded(installationName, message);
+          }
+        }
+        throw error;
+      }
     };
   }
 

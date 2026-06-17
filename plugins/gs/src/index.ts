@@ -9,6 +9,13 @@ export { ReviewStep } from './components/scaffolder/ReviewStep';
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
+export {
+  clusterAccessStatusApiRef,
+  type ClusterAccessStatusApi,
+  type ClusterAccessStatusEntry,
+  type ClusterAccessState,
+} from './apis/clusterAccessStatus';
+export { ClusterAccessStatusSidebarItem } from './components/ClusterAccessStatus';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
 export { createCustomEntityPresentationRenderer as createGSEntityPresentationRenderer } from './apis/entityPresentation';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';

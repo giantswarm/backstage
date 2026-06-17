@@ -48,6 +48,10 @@ import {
   GSAuthProviders,
   gsAuthApiRef,
 } from './apis/auth';
+import {
+  clusterAccessStatusApiRef,
+  ClusterAccessStatusStore,
+} from './apis/clusterAccessStatus';
 import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 import {
   ContainerRegistryClient,
@@ -104,6 +108,16 @@ const installationsPage = PageBlueprint.make({
 });
 
 // APIs
+const clusterAccessStatusApi = ApiBlueprint.make({
+  name: 'cluster-access-status',
+  params: defineParams =>
+    defineParams({
+      api: clusterAccessStatusApiRef,
+      deps: {},
+      factory: () => ClusterAccessStatusStore.create(),
+    }),
+});
+
 const gsAuthProvidersApi = ApiBlueprint.make({
   name: 'auth-providers',
   params: defineParams =>
@@ -113,12 +127,19 @@ const gsAuthProvidersApi = ApiBlueprint.make({
         configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         oauthRequestApi: oauthRequestApiRef,
+        clusterAccessStatusApi: clusterAccessStatusApiRef,
       },
-      factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
+      factory: ({
+        configApi,
+        discoveryApi,
+        oauthRequestApi,
+        clusterAccessStatusApi: clusterAccessStatus,
+      }) =>
         GSAuthProviders.create({
           configApi,
           discoveryApi: discoveryApi as DiscoveryApiClient,
           oauthRequestApi,
+          clusterAccessStatusApi: clusterAccessStatus,
         }),
     }),
 });
@@ -609,6 +630,7 @@ export const gsPlugin = createFrontendPlugin({
     clustersPage,
     deploymentsPage,
     installationsPage,
+    clusterAccessStatusApi,
     gsAuthProvidersApi,
     gsAuthApi,
     containerRegistryApi,

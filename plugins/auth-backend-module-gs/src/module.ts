@@ -104,8 +104,17 @@ export const authModuleGsProviders = createBackendModule({
         const providersConfig = config.getConfig('auth.providers');
         const configuredProviders: string[] = providersConfig?.keys() || [];
 
-        const customOIDCProviders = configuredProviders.filter(provider =>
-          provider.startsWith(OIDC_PROVIDER_NAME_PREFIX),
+        // Broker-only cluster auth (giantswarm#36902): per-cluster oidc-<mc>
+        // providers are no longer used for cluster access -- the frontend mints
+        // those tokens via the muster cluster-token broker. Only the main SSO
+        // login provider (gs.authProvider) is registered here. Restricting the
+        // loop to it also prevents a stray oidc-<mc> block from stalling startup
+        // on an unreachable Dex's metadata discovery.
+        const mainAuthProvider = config.getOptionalString('gs.authProvider');
+        const customOIDCProviders = configuredProviders.filter(
+          provider =>
+            provider.startsWith(OIDC_PROVIDER_NAME_PREFIX) &&
+            provider === mainAuthProvider,
         );
         for (const providerName of customOIDCProviders) {
           try {
@@ -120,16 +129,11 @@ export const authModuleGsProviders = createBackendModule({
               throw new Error(response.statusText);
             }
 
-            const isMainAuthProvider =
-              config.getOptionalString('gs.authProvider') === providerName;
-
             providersExtensionPoint.registerProvider({
               providerId: providerName,
               factory: createOAuthProviderFactory({
                 authenticator: oidcAuthenticator,
-                signInResolver: isMainAuthProvider
-                  ? customSignInResolver
-                  : undefined,
+                signInResolver: customSignInResolver,
               }),
             });
           } catch (err) {

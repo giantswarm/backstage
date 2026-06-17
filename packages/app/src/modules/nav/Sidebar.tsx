@@ -25,6 +25,7 @@ import {
   aiChatDrawerApiRef,
   rootRouteRef as aiChatRouteRef,
 } from '@giantswarm/backstage-plugin-ai-chat-react';
+import { ClusterAccessStatusSidebarItem } from '@giantswarm/backstage-plugin-gs';
 
 function AiChatSidebarItem() {
   const apiHolder = useApiHolder();
@@ -119,6 +120,8 @@ export const SidebarContent = NavContentBlueprint.make({
             ])}
           </SidebarGroup>
           <SidebarSpace />
+          <SidebarDivider />
+          <ClusterAccessStatusSidebarItem />
           <SidebarDivider />
           <SidebarGroup
             label="Settings"

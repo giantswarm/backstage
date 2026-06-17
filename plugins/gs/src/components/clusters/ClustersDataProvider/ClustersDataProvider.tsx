@@ -1,5 +1,14 @@
-import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { useApi } from '@backstage/core-plugin-api';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
+import { clusterAccessStatusApiRef } from '../../../apis/clusterAccessStatus';
 import {
   useControlPlanesForClusters,
   useProviderClustersForClusters,
@@ -25,6 +34,20 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { findResourceByRef } from '../../utils/findResourceByRef';
+
+/** Turns a per-cluster list/discovery error into a short status reason. */
+function describeClusterError(error: Error): string {
+  if (/timed out/i.test(error.message)) {
+    return 'API unreachable (timeout)';
+  }
+  if (error.name === 'ForbiddenError') {
+    return 'Access forbidden';
+  }
+  if (error.name === 'NotFoundError') {
+    return 'API not found';
+  }
+  return error.message || 'API request failed';
+}
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
@@ -73,10 +96,13 @@ export const ClustersDataProvider = ({
 
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
+  const clusterAccessStatusApi = useApi(clusterAccessStatusApiRef);
+
   const {
     resources: clusterResources,
     errors: clusterErrors,
     isLoading: isLoadingClusters,
+    clustersData: clusterListResults,
     retry,
   } = useResources(activeInstallations, Cluster);
 
@@ -84,16 +110,13 @@ export const ClustersDataProvider = ({
     ClusterColumns.kubernetesVersion,
   );
 
-  const {
-    resources: controlPlaneResources,
-    errors: controlPlaneErrors,
-    isLoading: isLoadingControlPlanes,
-  } = useControlPlanesForClusters(clusterResources, {
-    enabled:
-      controlPlanesRequired &&
-      !isLoadingClusters &&
-      clusterResources.length > 0,
-  });
+  const { resources: controlPlaneResources, errors: controlPlaneErrors } =
+    useControlPlanesForClusters(clusterResources, {
+      enabled:
+        controlPlanesRequired &&
+        !isLoadingClusters &&
+        clusterResources.length > 0,
+    });
 
   const providerClustersRequired =
     visibleColumns.includes(ClusterColumns.appVersion) ||
@@ -118,7 +141,6 @@ export const ClustersDataProvider = ({
   const {
     resources: providerClusterIdentityResources,
     errors: providerClusterIdentityErrors,
-    isLoading: isLoadingProviderClusterIdentities,
   } = useProviderClusterIdentitiesForProviderClusters(
     providerClusterResources,
     {
@@ -129,11 +151,13 @@ export const ClustersDataProvider = ({
     },
   );
 
-  const isLoading =
-    isLoadingClusters ||
-    isLoadingControlPlanes ||
-    isLoadingProviderClusters ||
-    isLoadingProviderClusterIdentities;
+  // Only block the table while the primary cluster list has produced nothing
+  // yet. Once any installation resolves, its rows render immediately and the
+  // remaining (or hung, timed-out) installations resolve in the background --
+  // a single unreachable MC no longer freezes the whole view. Secondary column
+  // loads (control planes etc.) never gate the table.
+  const isInitialClustersLoading =
+    isLoadingClusters && clusterResources.length === 0;
 
   const errors = useMemo(() => {
     return [
@@ -159,11 +183,29 @@ export const ClustersDataProvider = ({
 
   useShowErrors(displayErrors);
 
-  const clustersData = useMemo(() => {
-    if (isLoading) {
-      return [];
+  // Feed the sidebar cluster-access status: a cluster whose list resolved is
+  // healthy; one whose request errored (e.g. timed out / unreachable) is
+  // degraded with a reason. This surfaces "MC X isn't working" for non-auth
+  // failures too (e.g. a DNS-broken MC), not just broker/auth errors.
+  useEffect(() => {
+    for (const { cluster } of clusterListResults) {
+      clusterAccessStatusApi.recordHealthy(cluster);
     }
+    for (const errorInfo of clusterErrors) {
+      if (errorInfo.type === 'incompatibility') {
+        continue;
+      }
+      if (errorInfo.error.name === 'RejectedError') {
+        continue;
+      }
+      clusterAccessStatusApi.recordDegraded(
+        errorInfo.cluster,
+        describeClusterError(errorInfo.error),
+      );
+    }
+  }, [clusterListResults, clusterErrors, clusterAccessStatusApi]);
 
+  const clustersData = useMemo(() => {
     return clusterResources.map(cluster => {
       let controlPlane = null;
       if (controlPlaneResources.length) {
@@ -213,7 +255,6 @@ export const ClustersDataProvider = ({
       });
     });
   }, [
-    isLoading,
     clusterResources,
     controlPlaneResources,
     providerClusterResources,
@@ -232,7 +273,7 @@ export const ClustersDataProvider = ({
     return {
       data: clustersData,
       filteredData,
-      isLoading,
+      isLoading: isInitialClustersLoading,
       retry,
       visibleColumns,
       setVisibleColumns,
@@ -245,7 +286,7 @@ export const ClustersDataProvider = ({
   }, [
     clustersData,
     filters,
-    isLoading,
+    isInitialClustersLoading,
     queryParameters,
     retry,
     updateFilters,

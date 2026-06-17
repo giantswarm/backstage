@@ -37,13 +37,17 @@ export function useResources<R extends KubeObject<any>>(
     enableDiscovery,
   });
 
+  // List queries are enabled per cluster as soon as that cluster's discovery
+  // resolves (it only appears in clustersGVKs once settled), so a healthy
+  // cluster lists immediately instead of waiting for the whole fleet's
+  // discovery (`isDiscovering`) to finish.
   const queriesInfo = useListResources<KubeObjectInterface>(
     Object.keys(clustersGVKs),
     clustersGVKs,
     options,
     {
       ...restQueryOptions,
-      enabled: (restQueryOptions?.enabled ?? true) && !isDiscovering,
+      enabled: restQueryOptions?.enabled ?? true,
     },
   );
 

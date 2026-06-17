@@ -1,0 +1,93 @@
+# Example app-config for the broker-only cluster-access model.
+#
+# Copy the blocks you need into your `app-config.local.yaml`. Cluster access
+# for every management cluster is handled by the muster cluster-token broker:
+# the user logs in once through the main Dex provider, and per-cluster
+# Kubernetes tokens are minted silently from that single session. There are no
+# per-cluster OIDC login popups and no `auth.providers.oidc-<mc>` blocks beyond
+# the one main login.
+#
+# The legacy per-cluster "headless" Backstage backend (one backend per cluster,
+# each with its own `oidc-<mc>` provider) has been retired in favour of this
+# model -- see `packages/backend-headless-service/README.md`.
+
+app:
+  baseUrl: http://localhost:3000
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+
+auth:
+  environment: development
+  session:
+    secret: ${AUTH_SESSION_SECRET}
+  providers:
+    # The single main login. Every cluster is reached through the broker using
+    # this Dex session as the RFC 8693 subject token, so this is the ONLY
+    # oidc-<mc> provider you need -- there are no per-cluster providers.
+    oidc-main:
+      development:
+        metadataUrl: ${MAIN_OIDC_METADATA_URL}
+        clientId: ${MAIN_OIDC_CLIENT_ID}
+        clientSecret: ${MAIN_OIDC_CLIENT_SECRET}
+
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters:
+        # The main installation, whose Dex session is the broker subject token.
+        - name: main
+          url: ${MAIN_API_ENDPOINT}
+          authProvider: oidc
+          oidcTokenProvider: oidc-main
+        # Any other installation is broker-covered: `oidcTokenProvider` stays as
+        # the k8s-plugin routing key, but it needs no `auth.providers` entry.
+        - name: example
+          url: ${EXAMPLE_API_ENDPOINT}
+          authProvider: oidc
+          oidcTokenProvider: oidc-example
+
+gs:
+  # Name of the main login provider above. Its session is exchanged for
+  # per-cluster tokens by the broker.
+  authProvider: oidc-main
+
+  # Muster cluster-token broker. Setting `tokenUrl` enables the silent
+  # per-cluster token path; without it Backstage falls back to per-cluster
+  # OIDC popups. `clientId`/`clientSecret` are the confidential client
+  # registered with the broker (backend-only / secret).
+  clusterTokenBroker:
+    tokenUrl: ${CLUSTER_TOKEN_BROKER_URL} # e.g. https://muster.example.gigantic.io/oauth/token
+    clientId: ${CLUSTER_TOKEN_BROKER_CLIENT_ID}
+    clientSecret: ${CLUSTER_TOKEN_BROKER_CLIENT_SECRET}
+
+  # Optional: bound each Kubernetes proxy request so one unreachable cluster
+  # cannot freeze the clusters list (default 10000ms).
+  kubernetes:
+    proxyTimeoutMs: 10000
+
+  installations:
+    main:
+      authProvider: oidc
+      oidcTokenProvider: oidc-main
+      pipeline: stable
+      providers:
+        - capa
+    example:
+      authProvider: oidc
+      oidcTokenProvider: oidc-example
+      # Marks this installation as fully broker-covered: its token is minted
+      # silently from the main session, and it gets no entry on the provider
+      # settings page.
+      clusterTokenAudience: example
+      pipeline: stable
+      providers:
+        - capa

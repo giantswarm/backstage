@@ -1,5 +1,83 @@
 # Configuration
 
+## Cluster access (broker-only)
+
+Backstage reaches every management cluster through a single main Dex login. The
+muster cluster-token broker exchanges the user's main session for a per-cluster
+Kubernetes token (RFC 8693), so covered clusters need **no** per-cluster OIDC
+login popup and **no** `auth.providers.oidc-<mc>` block. A complete, annotated
+example is in [`/app-config.example.yaml`](../app-config.example.yaml).
+
+### Main login provider
+
+```yaml
+gs:
+  # Name of the single main login provider (defined under auth.providers).
+  authProvider: oidc-main
+```
+
+### `gs.clusterTokenBroker`
+
+Setting `tokenUrl` enables the silent per-cluster token path. Without it,
+Backstage falls back to per-cluster OIDC popups.
+
+```yaml
+gs:
+  clusterTokenBroker:
+    # OAuth token endpoint of the broker. Its presence enables the broker path.
+    tokenUrl: https://muster.example.gigantic.io/oauth/token
+    # Confidential client registered with the broker (backend-only).
+    clientId: ${CLUSTER_TOKEN_BROKER_CLIENT_ID}
+    clientSecret: ${CLUSTER_TOKEN_BROKER_CLIENT_SECRET}
+    # Optional. Usually unset -- the broker's per-audience config owns the scope.
+    # scope: ...
+```
+
+### Broker-covered installations
+
+Each cluster is listed under `gs.installations.<mc>` and in
+`kubernetes.clusterLocatorMethods`. `oidcTokenProvider: oidc-<mc>` stays as the
+k8s-plugin routing key, but for a broker-covered cluster it needs no matching
+`auth.providers` entry. Setting `clusterTokenAudience` marks the installation as
+fully broker-covered, so its token is minted silently and it disappears from the
+provider settings page.
+
+```yaml
+gs:
+  installations:
+    example:
+      authProvider: oidc
+      oidcTokenProvider: oidc-example
+      clusterTokenAudience: example # broker-covered
+      pipeline: stable
+      providers:
+        - capa
+```
+
+### Cluster-access status element
+
+A sidebar status element shows the per-installation access state -- healthy,
+degraded (with a reason such as "Token broker is unreachable" or "API
+unreachable (timeout)"), or session-expired (with a "Sign in again" action that
+triggers the single main login). It is fed by both the broker token flow and
+the clusters list, and requires no configuration.
+
+When the main Dex session expires, the broker path triggers exactly one main
+login prompt and then resumes -- there are no per-cluster popups.
+
+### `gs.kubernetes.proxyTimeoutMs`
+
+Bounds each Kubernetes proxy request (default `10000`). An unreachable cluster
+becomes a fast, typed per-cluster error instead of freezing the whole clusters
+list; healthy clusters render immediately and the degraded one is marked in the
+status element and retried with capped backoff.
+
+```yaml
+gs:
+  kubernetes:
+    proxyTimeoutMs: 10000
+```
+
 ## Cluster details page resources
 
 The cluster details page allows you to configure resource links that will be displayed in place of the default links.

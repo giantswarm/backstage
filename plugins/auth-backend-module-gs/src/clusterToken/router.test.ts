@@ -201,7 +201,27 @@ describe('createClusterTokenRouter', () => {
       .set(SUBJECT_TOKEN_HEADER, 'subject-token');
 
     expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: 'Token exchange failed' });
+    expect(res.body).toEqual({
+      error: 'Token exchange failed',
+      reason: 'exchange_failed',
+    });
+  });
+
+  it('maps a rejected subject token to a subject_invalid reason', async () => {
+    mockBrokerResponse(
+      { error: 'invalid_grant', error_description: 'subject token expired' },
+      { status: 400 },
+    );
+
+    const res = await request(buildApp()!)
+      .post('/cluster-token/golem')
+      .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({
+      error: 'Token exchange failed',
+      reason: 'subject_invalid',
+    });
   });
 
   it('maps an unreachable broker to 502', async () => {
@@ -212,6 +232,9 @@ describe('createClusterTokenRouter', () => {
       .set(SUBJECT_TOKEN_HEADER, 'subject-token');
 
     expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: 'Token broker is unreachable' });
+    expect(res.body).toEqual({
+      error: 'Token broker is unreachable',
+      reason: 'broker_unreachable',
+    });
   });
 });
