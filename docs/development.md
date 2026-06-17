@@ -122,19 +122,82 @@ button in your browser.
 
 To stop the development server, hit `Ctrl + C`.
 
-## Cluster access locally (broker-only)
+## Cluster access locally
 
-Backstage reaches every management cluster through a single main Dex login. A
-local instance does **not** need a per-cluster OIDC provider or login popup for
-each cluster: the muster cluster-token broker mints each cluster's Kubernetes
-token silently from your main session.
+Backstage reaches every management cluster through a single main Dex login
+configured as `gs.authProvider`.
 
-You have two options when running locally:
+> [!IMPORTANT]
+> A main auth provider is **required** to run the app. The cluster-access status
+> element in the sidebar resolves the main auth API (`gsAuthApiRef`) at startup,
+> so an instance without `gs.authProvider` fails to render with
+> `No main auth provider configured. "gs.authProvider" configuration is missing.`
+> There is no "catalog-only / no auth" local mode -- pick one of the options
+> below.
 
-- **No cluster access** (simplest): leave `gs.installations` / `kubernetes`
-  empty. The catalog, scaffolder and most pages work without talking to any
-  management cluster.
-- **Broker-backed cluster access**: point your instance at a broker. In
+Two non-obvious values are needed before any login works locally; set them in
+your `.env` (see [Loading `.env`](#loading-env)) and reference them from
+`app-config.local.yaml`:
+
+- `auth.session.secret: ${AUTH_SESSION_SECRET}` -- the OIDC flow needs cookie
+  session support; without it `/api/auth/<provider>/start` returns
+  `Authentication failed, authentication requires session support`.
+- `EXTERNAL_ACCESS_MCP_TOKEN` -- referenced by the `backend.auth.externalAccess`
+  block in `app-config.local.yaml.example`. It ships empty in `.env.example`;
+  leaving it empty makes the backend fail to start with a "Missing required
+  config value at `backend.auth.externalAccess[0].options.token`" error. Any
+  non-empty string works for local dev.
+
+Choose one of:
+
+- **Single management cluster** (simplest): use one installation's Dex as the
+  main login and point the kubernetes plugin at that cluster. No broker is
+  needed -- the main login token reaches the cluster directly. Mirror that
+  installation's deployed config (in
+  `giantswarm-management-clusters/management-clusters/<mc>/extras/backstage/`)
+  into `app-config.local.yaml`, adapting the URLs to localhost:
+
+  ```yaml
+  auth:
+    environment: development
+    session:
+      secret: ${AUTH_SESSION_SECRET}
+    providers:
+      oidc-<mc>:
+        development:
+          metadataUrl: https://dex.<mc>.<baseDomain>/.well-known/openid-configuration
+          clientId: ${AUTH_DEX_<MC>_CLIENT_ID}
+          clientSecret: ${AUTH_DEX_<MC>_CLIENT_SECRET}
+  gs:
+    authProvider: oidc-<mc>
+    installations:
+      <mc>:
+        authProvider: oidc
+        oidcTokenProvider: oidc-<mc>
+        baseDomain: <mc>.<baseDomain>
+        region: <region>
+        pipeline: testing
+        providers: [capa]
+  kubernetes:
+    serviceLocatorMethod:
+      type: multiTenant
+    clusterLocatorMethods:
+      - type: config
+        clusters:
+          - name: <mc>
+            url: https://happaapi.<mc>.<baseDomain>
+            authProvider: oidc
+            oidcTokenProvider: oidc-<mc>
+  ```
+
+  The dev Dex client must allow the local callback
+  `https://localhost:7007/api/auth/oidc-<mc>/handler/frame`. The
+  `AUTH_DEX_<MC>_CLIENT_ID` / `_SECRET` dev credentials in the 1Password note are
+  registered for localhost.
+
+- **Broker-backed multi-cluster access**: point your instance at a muster
+  cluster-token broker, which mints each cluster's Kubernetes token silently
+  from your main session -- no per-cluster OIDC providers or login popups. In
   `app-config.local.yaml` set:
   - one main login provider under `auth.providers` (e.g. `oidc-main`) and
     `gs.authProvider` referencing it,
