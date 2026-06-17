@@ -59,11 +59,7 @@ export class ClusterAccessStatusStore implements ClusterAccessStatusApi {
     reason: string | undefined,
   ): void {
     const previous = this.entries.get(installation);
-    if (
-      previous &&
-      previous.state === state &&
-      previous.reason === reason
-    ) {
+    if (previous && previous.state === state && previous.reason === reason) {
       // No state change -- only refresh the timestamp, don't churn subscribers.
       previous.lastChecked = Date.now();
       return;

@@ -140,10 +140,7 @@ export class KubernetesClient implements KubernetesApi {
     // Bound the request so an unreachable cluster fails fast instead of
     // hanging the whole list. The caller's own signal (if any) still aborts.
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.proxyTimeoutMs,
-    );
+    const timeout = setTimeout(() => controller.abort(), this.proxyTimeoutMs);
     const callerSignal = options.init?.signal;
     const onCallerAbort = () => controller.abort();
     if (callerSignal) {

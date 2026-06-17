@@ -110,15 +110,13 @@ export const ClustersDataProvider = ({
     ClusterColumns.kubernetesVersion,
   );
 
-  const {
-    resources: controlPlaneResources,
-    errors: controlPlaneErrors,
-  } = useControlPlanesForClusters(clusterResources, {
-    enabled:
-      controlPlanesRequired &&
-      !isLoadingClusters &&
-      clusterResources.length > 0,
-  });
+  const { resources: controlPlaneResources, errors: controlPlaneErrors } =
+    useControlPlanesForClusters(clusterResources, {
+      enabled:
+        controlPlanesRequired &&
+        !isLoadingClusters &&
+        clusterResources.length > 0,
+    });
 
   const providerClustersRequired =
     visibleColumns.includes(ClusterColumns.appVersion) ||

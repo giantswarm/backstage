@@ -58,9 +58,7 @@ const useStyles = makeStyles(theme => ({
  * session-expired wins over degraded wins over healthy, because an expired
  * main session is the one thing the user can immediately fix.
  */
-function overallState(
-  entries: ClusterAccessStatusEntry[],
-): ClusterAccessState {
+function overallState(entries: ClusterAccessStatusEntry[]): ClusterAccessState {
   if (entries.some(e => e.state === 'session-expired')) {
     return 'session-expired';
   }

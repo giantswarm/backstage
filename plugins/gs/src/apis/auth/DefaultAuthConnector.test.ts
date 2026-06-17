@@ -1,5 +1,8 @@
 import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
-import { ClusterTokenError, DefaultAuthConnector } from './DefaultAuthConnector';
+import {
+  ClusterTokenError,
+  DefaultAuthConnector,
+} from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 
 const configApi = {
