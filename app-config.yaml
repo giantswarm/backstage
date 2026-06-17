@@ -254,7 +254,9 @@ catalog:
   #         ociRepository: gsoci.azurecr.io/giantswarm/klaus-plugins
 
 grafana:
-  domain: https://example.com
+  hosts:
+    - id: grafana-net
+      domain: https://example.com
 
 # PagerDuty plugin configuration
 # https://pagerduty.github.io/backstage-plugin-docs/
