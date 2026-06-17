@@ -14,6 +14,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - A persistent cluster-access status element in the sidebar (badge + popover) listing each accessed cluster with its state (healthy / degraded / session-expired) and a human-readable reason, with a "Sign in again" action when the main session expired.
 
+See [./docs/releases/v0.137.0-changelog.md](./docs/releases/v0.137.0-changelog.md) for more information.
+
 ## [0.136.0] - 2026-06-11
 
 ### Added

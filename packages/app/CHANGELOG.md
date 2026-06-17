@@ -1,5 +1,15 @@
 # app
 
+## 0.40.6
+
+### Patch Changes
+
+- Updated dependencies [865790a]
+  - @giantswarm/backstage-plugin-kubernetes-react@0.16.0
+  - @giantswarm/backstage-plugin-gs@0.69.0
+  - @giantswarm/backstage-plugin-flux@0.9.1
+  - @giantswarm/backstage-plugin-flux-react@0.14.1
+
 ## 0.40.5
 
 ### Patch Changes
