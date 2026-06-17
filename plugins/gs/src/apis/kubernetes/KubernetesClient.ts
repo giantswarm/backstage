@@ -13,12 +13,22 @@ import {
 } from '@backstage/plugin-kubernetes-common';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 
+/**
+ * Default per-request timeout for the k8s proxy. An unreachable management
+ * cluster otherwise keeps the request in-flight until the backend's TCP/DNS
+ * timeout (minutes), which freezes the whole clusters list. Bounding it here
+ * turns a hung cluster into a fast, typed per-cluster error. Override with
+ * `gs.kubernetes.proxyTimeoutMs`.
+ */
+const DEFAULT_PROXY_TIMEOUT_MS = 10000;
+
 export class KubernetesClient implements KubernetesApi {
   private readonly backendClient: KubernetesBackendClient;
   private readonly configApi: ConfigApi;
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly fetchApi: FetchApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
+  private readonly proxyTimeoutMs: number;
   private clusters: ClusterConfiguration[] | undefined;
 
   constructor(options: {
@@ -37,6 +47,9 @@ export class KubernetesClient implements KubernetesApi {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
+    this.proxyTimeoutMs =
+      options.configApi.getOptionalNumber('gs.kubernetes.proxyTimeoutMs') ??
+      DEFAULT_PROXY_TIMEOUT_MS;
   }
 
   getObjectsByEntity(
@@ -123,7 +136,43 @@ export class KubernetesClient implements KubernetesApi {
       authProvider,
       oidcTokenProvider,
     );
-    return await this.fetchApi.fetch(url, { ...options.init, headers });
+
+    // Bound the request so an unreachable cluster fails fast instead of
+    // hanging the whole list. The caller's own signal (if any) still aborts.
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.proxyTimeoutMs,
+    );
+    const callerSignal = options.init?.signal;
+    const onCallerAbort = () => controller.abort();
+    if (callerSignal) {
+      if (callerSignal.aborted) {
+        controller.abort();
+      } else {
+        callerSignal.addEventListener('abort', onCallerAbort);
+      }
+    }
+
+    try {
+      return await this.fetchApi.fetch(url, {
+        ...options.init,
+        headers,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted && !callerSignal?.aborted) {
+        throw new Error(
+          `Request to cluster ${cluster.name} timed out after ${this.proxyTimeoutMs}ms`,
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      if (callerSignal) {
+        callerSignal.removeEventListener('abort', onCallerAbort);
+      }
+    }
   }
 
   private static getKubernetesHeaders(

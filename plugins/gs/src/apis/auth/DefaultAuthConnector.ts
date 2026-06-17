@@ -43,6 +43,43 @@ export type ClusterToken = {
   expiresInSeconds?: number;
 };
 
+/**
+ * Coarse, UI-facing reason why a broker-backed cluster token could not be
+ * obtained. `session-expired` means the main Dex session is gone (and the
+ * single SSO re-login was declined or failed); the others mirror the backend
+ * cluster-token router's failure modes.
+ */
+export type ClusterTokenErrorReason =
+  | 'session-expired'
+  | 'broker_unreachable'
+  | 'exchange_failed'
+  | 'subject_invalid'
+  | 'unknown';
+
+/**
+ * Typed error thrown by a broker-backed `clusterTokenProvider`/refresh. Carries
+ * the affected installation and a coarse reason so the cluster-access status
+ * UI can show what went wrong without per-cluster login popups.
+ */
+export class ClusterTokenError extends Error {
+  readonly installation: string;
+  readonly reason: ClusterTokenErrorReason;
+
+  constructor(
+    installation: string,
+    reason: ClusterTokenErrorReason,
+    message?: string,
+  ) {
+    super(
+      message ??
+        `Cluster token request for installation "${installation}" failed: ${reason}`,
+    );
+    this.name = 'ClusterTokenError';
+    this.installation = installation;
+    this.reason = reason;
+  }
+}
+
 type Options<AuthSession> = {
   /**
    * DiscoveryApi instance used to locate the auth backend endpoint.
@@ -157,6 +194,12 @@ export class DefaultAuthConnector<
   async createSession(
     options: AuthConnectorCreateSessionOptions,
   ): Promise<AuthSession> {
+    // Broker-backed clusters never open a per-cluster login popup. A new
+    // session is minted exactly like a refresh -- through the broker, which
+    // itself triggers the single main Dex login when the main session is gone.
+    if (this.clusterTokenProvider) {
+      return this.mintBrokerSession(options.scopes);
+    }
     if (options.instantPopup) {
       if (this.enableExperimentalRedirectFlow) {
         return this.executeRedirect(options.scopes);
@@ -169,24 +212,11 @@ export class DefaultAuthConnector<
   async refreshSession(
     options?: AuthConnectorRefreshSessionOptions,
   ): Promise<any> {
+    // Broker-backed clusters are broker-only: no cookie `/refresh`, no popup.
+    // A failure surfaces as a typed ClusterTokenError instead of silently
+    // falling back to a legacy flow that 404s for private clusters.
     if (this.clusterTokenProvider) {
-      try {
-        const clusterToken = await this.clusterTokenProvider();
-        if (clusterToken) {
-          return await this.sessionTransform({
-            providerInfo: {
-              idToken: clusterToken.token,
-              accessToken: clusterToken.token,
-              scope: options ? this.joinScopesFunc(options.scopes) : '',
-              expiresInSeconds: clusterToken.expiresInSeconds,
-            },
-          });
-        }
-      } catch {
-        // The broker is unreachable or the cluster is not migrated yet --
-        // fall back to the legacy cookie-based refresh (and ultimately the
-        // login popup).
-      }
+      return this.mintBrokerSession(options?.scopes);
     }
 
     const res = await fetch(
@@ -222,6 +252,31 @@ export class DefaultAuthConnector<
       throw error;
     }
     return await this.sessionTransform(authInfo);
+  }
+
+  /**
+   * Mints a session for a broker-backed cluster through the injected
+   * `clusterTokenProvider`. The provider triggers the single main Dex login
+   * when the main session is missing and throws a typed {@link ClusterTokenError}
+   * on a real broker failure -- both propagate to the caller unchanged so the
+   * cluster-access status UI can react. No cookie refresh, no per-cluster popup.
+   */
+  private async mintBrokerSession(scopes?: Set<string>): Promise<AuthSession> {
+    const clusterToken = await this.clusterTokenProvider!();
+    if (!clusterToken) {
+      throw new ClusterTokenError(
+        this.installationId() ?? this.provider.id,
+        'unknown',
+      );
+    }
+    return await this.sessionTransform({
+      providerInfo: {
+        idToken: clusterToken.token,
+        accessToken: clusterToken.token,
+        scope: scopes ? this.joinScopesFunc(scopes) : '',
+        expiresInSeconds: clusterToken.expiresInSeconds,
+      },
+    });
   }
 
   async removeSession(): Promise<void> {
@@ -281,11 +336,19 @@ export class DefaultAuthConnector<
     return new Promise(() => {});
   }
 
+  /**
+   * Installation name encoded in the provider id (e.g. `oidc-golem` -> `golem`).
+   * Returns undefined when the id does not follow the `oidc-` convention.
+   */
+  private installationId(): string | undefined {
+    return this.provider.id.split('oidc-')[1];
+  }
+
   private async buildUrl(
     path: string,
     query?: { [key: string]: string | boolean | undefined },
   ): Promise<string> {
-    const installation = this.provider.id.split('oidc-')[1];
+    const installation = this.installationId();
     const baseUrl = await this.discoveryApi.getBaseUrl('auth', installation);
 
     const queryString = this.buildQueryString({

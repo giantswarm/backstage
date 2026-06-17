@@ -10,6 +10,7 @@ import {
   createApiRef,
 } from '@backstage/core-plugin-api';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 
 export const gsAuthApiRef = createApiRef<AuthApi>({
   id: 'plugin.gs.auth',
@@ -51,4 +52,10 @@ export type GSAuthProvidersApiCreateOptions = {
   configApi?: ConfigApi;
   oauthRequestApi: OAuthRequestApi;
   defaultScopes?: string[];
+  /**
+   * Store that records per-cluster access outcomes (success / degraded /
+   * session-expired) for the sidebar status element. Optional so tests and
+   * non-broker setups can omit it.
+   */
+  clusterAccessStatusApi?: ClusterAccessStatusApi;
 };

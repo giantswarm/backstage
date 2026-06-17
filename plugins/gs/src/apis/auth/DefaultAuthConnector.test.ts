@@ -1,5 +1,5 @@
 import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
-import { DefaultAuthConnector } from './DefaultAuthConnector';
+import { ClusterTokenError, DefaultAuthConnector } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 
 const configApi = {
@@ -54,7 +54,7 @@ describe('DefaultAuthConnector', () => {
   });
 
   describe('refreshSession', () => {
-    it('uses the cluster token broker before the cookie-based refresh', async () => {
+    it('mints the session through the broker without touching the cookie refresh', async () => {
       const fetchSpy = mockLegacyRefresh();
       const clusterTokenProvider = jest
         .fn()
@@ -76,30 +76,35 @@ describe('DefaultAuthConnector', () => {
       });
     });
 
-    it('falls back to the cookie-based refresh when the broker path fails', async () => {
+    it('propagates the broker error and never falls back to the cookie refresh', async () => {
       const fetchSpy = mockLegacyRefresh();
-      const clusterTokenProvider = jest
-        .fn()
-        .mockRejectedValue(new Error('broker unreachable'));
+      const brokerError = new ClusterTokenError('golem', 'broker_unreachable');
+      const clusterTokenProvider = jest.fn().mockRejectedValue(brokerError);
 
-      const session = await createConnector(
-        clusterTokenProvider,
-      ).refreshSession({ scopes: new Set(['openid']) });
+      await expect(
+        createConnector(clusterTokenProvider).refreshSession({
+          scopes: new Set(['openid']),
+        }),
+      ).rejects.toBe(brokerError);
 
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(session).toEqual(legacyRefreshResponse);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it('falls back to the cookie-based refresh when the broker yields no token', async () => {
+    it('throws a typed error when the broker yields no token', async () => {
       const fetchSpy = mockLegacyRefresh();
       const clusterTokenProvider = jest.fn().mockResolvedValue(undefined);
 
-      const session = await createConnector(
-        clusterTokenProvider,
-      ).refreshSession({ scopes: new Set(['openid']) });
+      await expect(
+        createConnector(clusterTokenProvider).refreshSession({
+          scopes: new Set(['openid']),
+        }),
+      ).rejects.toMatchObject({
+        name: 'ClusterTokenError',
+        installation: 'golem',
+        reason: 'unknown',
+      });
 
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(session).toEqual(legacyRefreshResponse);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('uses the cookie-based refresh when no broker is configured', async () => {

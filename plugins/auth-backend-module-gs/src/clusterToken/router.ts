@@ -147,7 +147,10 @@ export function createClusterTokenRouter(
           `Cluster token exchange for installation "${installation}" failed: broker unreachable`,
           error as Error,
         );
-        res.status(502).json({ error: 'Token broker is unreachable' });
+        res.status(502).json({
+          error: 'Token broker is unreachable',
+          reason: 'broker_unreachable',
+        });
         return;
       }
 
@@ -157,7 +160,17 @@ export function createClusterTokenRouter(
           `Cluster token exchange for installation "${installation}" failed with status ${response.status}: ${body}`,
         );
         tokenCache.delete(cacheKey);
-        res.status(502).json({ error: 'Token exchange failed' });
+        // A 4xx with an OAuth invalid_grant/invalid_token (or 401) means the
+        // forwarded subject token was rejected -- i.e. the user's main session,
+        // not the cluster, is the problem. Everything else is a broker-side
+        // exchange failure.
+        const subjectRejected =
+          response.status === 401 ||
+          /invalid_grant|invalid_token|invalid_request/.test(body);
+        res.status(502).json({
+          error: 'Token exchange failed',
+          reason: subjectRejected ? 'subject_invalid' : 'exchange_failed',
+        });
         return;
       }
 
@@ -169,7 +182,9 @@ export function createClusterTokenRouter(
         logger.warn(
           `Cluster token exchange for installation "${installation}" returned no access_token`,
         );
-        res.status(502).json({ error: 'Token exchange failed' });
+        res
+          .status(502)
+          .json({ error: 'Token exchange failed', reason: 'exchange_failed' });
         return;
       }
 

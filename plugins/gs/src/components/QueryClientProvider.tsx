@@ -31,6 +31,10 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
 
             return true;
           },
+          // Capped exponential backoff so a persistently failing cluster (e.g.
+          // an unreachable MC) is retried with increasing spacing instead of
+          // hammered, and never waits longer than 30s between attempts.
+          retryDelay: attempt => Math.min(1000 * 2 ** attempt, 30000),
           gcTime,
         },
       },
