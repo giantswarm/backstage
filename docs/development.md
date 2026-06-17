@@ -143,10 +143,10 @@ your `.env` (see [Loading `.env`](#loading-env)) and reference them from
   session support; without it `/api/auth/<provider>/start` returns
   `Authentication failed, authentication requires session support`.
 - `EXTERNAL_ACCESS_MCP_TOKEN` -- referenced by the `backend.auth.externalAccess`
-  block in `app-config.local.yaml.example`. It is empty in `.env.example`; leave
-  it empty and the backend fails to start with `Missing required config value at
-  'backend.auth.externalAccess[0].options.token'`. Any non-empty string works
-  for local dev.
+  block in `app-config.local.yaml.example`. It ships empty in `.env.example`;
+  leaving it empty makes the backend fail to start with a "Missing required
+  config value at `backend.auth.externalAccess[0].options.token`" error. Any
+  non-empty string works for local dev.
 
 Choose one of:
 
