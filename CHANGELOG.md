@@ -5,6 +5,15 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- Auth: make the muster cluster-token broker the single per-cluster access path. Broker-backed installations (those with `gs.installations.<name>.clusterTokenAudience`) no longer fall back to the per-cluster OAuth popup or the cookie-based `/refresh`; the connector mints their tokens silently and, when the main Dex session is missing, triggers exactly one main SSO re-login and retries. Per-cluster failures now surface as a typed error with a coarse reason instead of failing silently. The `gs` auth backend module registers only the main `gs.authProvider`, so a stray `oidc-<mc>` provider block can no longer stall startup on an unreachable Dex's metadata discovery.
+- Clusters: render the clusters list incrementally and non-blocking. Each kubernetes proxy request is now bounded by an `AbortController` timeout, healthy clusters appear as soon as they resolve instead of waiting on a hung installation, and persistently failing clusters back off with a capped exponential `retryDelay`.
+
+### Added
+
+- A persistent cluster-access status element in the sidebar (badge + popover) listing each accessed cluster with its state (healthy / degraded / session-expired) and a human-readable reason, with a "Sign in again" action when the main session expired.
+
 ## [0.136.0] - 2026-06-11
 
 ### Added
