@@ -1,1 +1,20 @@
+# app-test-suite config. Consumed by the generated `run-tests-with-ats` CircleCI
+# jobs (execute-chart-tests on branches, execute-chart-tests-release on tags).
+#
+# The smoke test (tests/ats/test_smoke.py) installs the backstage chart on a
+# kind cluster and waits for the `backstage` Deployment to become ready -- the
+# same deployment-readiness check the hand-written execute-smoke-test ran.
+#
+# Image availability: both jobs deploy the freshly-built image. On tags
+# execute-chart-tests-release `requires: push-to-registries-release`; on
+# branches (branchPublish) execute-chart-tests `requires: push-to-registries`
+# (the amd64 dev image). The chart's dev image tag matches the pushed tag, so
+# the smoke validates the chart against the just-built image on every PR.
+#
+# functional and upgrade steps are skipped (no functional tests defined; the
+# hand-written pipeline skipped them too via `--skip-steps upgrade functional`).
+app-tests-deploy-namespace: default
+
 smoke-tests-cluster-type: kind
+
+skip-steps: [functional,upgrade]
