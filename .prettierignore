@@ -7,6 +7,11 @@ helm/backstage/README.md
 helm/backstage/values.schema.json
 .vscode
 .github
+# CI config: .circleci/{config,workflows}.yml are devctl-generated (DO NOT EDIT)
+# and custom.yml/.ats are hand-maintained CI infra -- not prettier-governed,
+# same as the generated .github workflows above.
+.circleci
+.ats
 .yarn
 .pre-commit-config.yaml
 .claude
