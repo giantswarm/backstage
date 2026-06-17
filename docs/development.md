@@ -191,9 +191,17 @@ Choose one of:
   ```
 
   The dev Dex client must allow the local callback
-  `https://localhost:7007/api/auth/oidc-<mc>/handler/frame`. The
-  `AUTH_DEX_<MC>_CLIENT_ID` / `_SECRET` dev credentials in the 1Password note are
-  registered for localhost.
+  `https://localhost:7007/api/auth/oidc-<mc>/handler/frame`. Use the Dex client
+  that is registered for this localhost callback (the `AUTH_DEX_<MC>_CLIENT_ID` /
+  `_SECRET` values in the 1Password note should point at it). Do **not** reuse a
+  Dex client that is only registered for a deployed instance's callback URL -- a
+  login attempt with it fails at Dex with `Unregistered redirect_uri` (often
+  surfaced as a bare `Error 400` if a gateway sits in front of Dex and masks the
+  detail).
+
+  If login instead fails at the token step with a `401` and the Dex log shows
+  `invalid client_secret on token request`, the client secret in the 1Password
+  note has drifted from the live Dex client; reconcile it before retrying.
 
 - **Broker-backed multi-cluster access**: point your instance at a muster
   cluster-token broker, which mints each cluster's Kubernetes token silently
@@ -245,6 +253,17 @@ We recommend using [mkcert](https://github.com/FiloSottile/mkcert),
 a cross-platform CA, to create and sign your certificate.
 
 1. [Generate a certificate.](https://web.dev/articles/how-to-use-local-https#setup)
+
+   > [!IMPORTANT]
+   > On Linux, `mkcert` stores its CA under `$CAROOT` (default
+   > `~/.local/share/mkcert`) but `mkcert -install` may need `sudo` to write the
+   > system trust store. Running the install under plain `sudo` uses root's
+   > `CAROOT`, creating a *different* CA than the one that signed your leaf
+   > certificate -- so the browser still distrusts `https://localhost`. Pin
+   > `CAROOT` for both steps, e.g.
+   > `sudo env CAROOT="$HOME/.local/share/mkcert" "$(which mkcert)" -install`,
+   > then generate the leaf cert with the same `CAROOT`.
+
 2. Put certificate data into `certificate.yaml` file in root of the project. See [certificate.yaml.example](../certificate.yaml.example) for example.
 3. Add certificate configuration to `app` and `backend` packages. Use `https` instead of `http` in URLs:
 
