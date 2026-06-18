@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.14.2
+
+### Patch Changes
+
+- 2ed9ab4: Flux tree view now fills the available viewport height with its own internal scrolling, instead of collapsing to the height of the filter column. The tree also sits flush against the right and bottom page edges, and the gap above it is reduced.
+
 ## 0.14.1
 
 ### Patch Changes

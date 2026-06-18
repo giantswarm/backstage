@@ -5,9 +5,13 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.137.1] - 2026-06-18
+
 ### Changed
 
 - CI: prepare for the devctl-generated CircleCI config. The repo-specific jobs (the Node `buildjob` that feeds the image build, and the second `control-plane-catalog` chart push) move to `.circleci/custom.yml`; the `.ats/main.yaml` smoke-test config and a `renovate-custom.json5` (preserving the repo's Renovate reviewers, package groups, and schedule) are added so the upcoming generated `config.yml`/`workflows.yml` and regenerated `renovate.json5` keep the existing behavior.
+
+See [./docs/releases/v0.137.1-changelog.md](./docs/releases/v0.137.1-changelog.md) for more information.
 
 ## [0.137.0] - 2026-06-17
 
@@ -2621,7 +2625,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.137.0...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.137.1...HEAD
+[0.137.1]: https://github.com/giantswarm/backstage/compare/v0.137.0...v0.137.1
 [0.137.0]: https://github.com/giantswarm/backstage/compare/v0.136.0...v0.137.0
 [0.136.0]: https://github.com/giantswarm/backstage/compare/v0.135.3...v0.136.0
 [0.135.3]: https://github.com/giantswarm/backstage/compare/v0.135.2...v0.135.3
