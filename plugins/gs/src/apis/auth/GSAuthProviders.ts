@@ -439,6 +439,24 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     return [...kubernetesAuthProviders, ...this.mcpAuthProviders];
   }
 
+  getBrokerCoveredInstallations(): string[] {
+    const brokerConfigured = Boolean(
+      this.configApi?.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
+    );
+    if (!brokerConfigured) {
+      return [];
+    }
+    const mainProviderName =
+      this.configApi?.getOptionalString('gs.authProvider');
+
+    return this.kubernetesAuthProviders
+      .filter(
+        ({ providerName, clusterTokenAudience }) =>
+          providerName !== mainProviderName && Boolean(clusterTokenAudience),
+      )
+      .map(({ installationName }) => installationName);
+  }
+
   getAuthApi(providerName: string) {
     return (
       this.kubernetesAuthApis[providerName] || this.mcpAuthApis[providerName]

@@ -22,6 +22,17 @@ import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
  */
 const DEFAULT_PROXY_TIMEOUT_MS = 10000;
 
+/**
+ * Default cap on simultaneous in-flight proxy requests across the whole app.
+ * With every configured installation kicking off discovery + list (and a
+ * broker token mint) at once, an unbounded fan-out hammers the broker and the
+ * management-cluster apiservers, so some requests hit the proxy timeout before
+ * recovering on retry. Bounding concurrency smooths that storm. The browser's
+ * own per-host connection limit is ~6, so this matches the level at which
+ * extra parallelism stops helping. Override with `gs.kubernetes.proxyMaxConcurrency`.
+ */
+const DEFAULT_PROXY_MAX_CONCURRENCY = 6;
+
 export class KubernetesClient implements KubernetesApi {
   private readonly backendClient: KubernetesBackendClient;
   private readonly configApi: ConfigApi;
@@ -29,6 +40,9 @@ export class KubernetesClient implements KubernetesApi {
   private readonly fetchApi: FetchApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
   private readonly proxyTimeoutMs: number;
+  private readonly proxyMaxConcurrency: number;
+  private activeProxyRequests = 0;
+  private readonly proxyQueue: Array<() => void> = [];
   private clusters: ClusterConfiguration[] | undefined;
 
   constructor(options: {
@@ -50,6 +64,35 @@ export class KubernetesClient implements KubernetesApi {
     this.proxyTimeoutMs =
       options.configApi.getOptionalNumber('gs.kubernetes.proxyTimeoutMs') ??
       DEFAULT_PROXY_TIMEOUT_MS;
+    this.proxyMaxConcurrency =
+      options.configApi.getOptionalNumber(
+        'gs.kubernetes.proxyMaxConcurrency',
+      ) ?? DEFAULT_PROXY_MAX_CONCURRENCY;
+  }
+
+  /**
+   * Bounds simultaneous proxy requests. A released slot is handed directly to
+   * the next waiter (FIFO), so the active count never dips below the number of
+   * in-flight requests and the cap holds exactly.
+   *
+   * ponytail: a plain counter + a queue of resolvers. Single-tab, in-memory,
+   * no fairness beyond FIFO -- enough to tame the startup fan-out.
+   */
+  private async acquireProxySlot(): Promise<void> {
+    if (this.activeProxyRequests < this.proxyMaxConcurrency) {
+      this.activeProxyRequests++;
+      return;
+    }
+    await new Promise<void>(resolve => this.proxyQueue.push(resolve));
+  }
+
+  private releaseProxySlot(): void {
+    const next = this.proxyQueue.shift();
+    if (next) {
+      next();
+    } else {
+      this.activeProxyRequests--;
+    }
   }
 
   getObjectsByEntity(
@@ -118,57 +161,66 @@ export class KubernetesClient implements KubernetesApi {
     path: string;
     init?: RequestInit;
   }): Promise<Response> {
-    const cluster = await this.getCluster(options.clusterName);
-    if (!cluster) {
-      throw new Error(`Cluster ${options.clusterName} not found`);
-    }
-    const { authProvider, oidcTokenProvider } = cluster;
-    const kubernetesCredentials = await this.getCredentials(
-      authProvider,
-      oidcTokenProvider,
-    );
-    const url = `${await this.discoveryApi.getBaseUrl('kubernetes', cluster.name)}/proxy${
-      options.path
-    }`;
-    const headers = KubernetesClient.getKubernetesHeaders(
-      options,
-      kubernetesCredentials?.token,
-      authProvider,
-      oidcTokenProvider,
-    );
-
-    // Bound the request so an unreachable cluster fails fast instead of
-    // hanging the whole list. The caller's own signal (if any) still aborts.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.proxyTimeoutMs);
-    const callerSignal = options.init?.signal;
-    const onCallerAbort = () => controller.abort();
-    if (callerSignal) {
-      if (callerSignal.aborted) {
-        controller.abort();
-      } else {
-        callerSignal.addEventListener('abort', onCallerAbort);
-      }
-    }
-
+    // Wait for a concurrency slot before doing anything (including the broker
+    // token mint), so the whole connection is throttled, not just the fetch.
+    // Queue time deliberately does not count against the per-request timeout,
+    // which starts only once a slot is held.
+    await this.acquireProxySlot();
     try {
-      return await this.fetchApi.fetch(url, {
-        ...options.init,
-        headers,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      if (controller.signal.aborted && !callerSignal?.aborted) {
-        throw new Error(
-          `Request to cluster ${cluster.name} timed out after ${this.proxyTimeoutMs}ms`,
-        );
+      const cluster = await this.getCluster(options.clusterName);
+      if (!cluster) {
+        throw new Error(`Cluster ${options.clusterName} not found`);
       }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+      const { authProvider, oidcTokenProvider } = cluster;
+      const kubernetesCredentials = await this.getCredentials(
+        authProvider,
+        oidcTokenProvider,
+      );
+      const url = `${await this.discoveryApi.getBaseUrl('kubernetes', cluster.name)}/proxy${
+        options.path
+      }`;
+      const headers = KubernetesClient.getKubernetesHeaders(
+        options,
+        kubernetesCredentials?.token,
+        authProvider,
+        oidcTokenProvider,
+      );
+
+      // Bound the request so an unreachable cluster fails fast instead of
+      // hanging the whole list. The caller's own signal (if any) still aborts.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.proxyTimeoutMs);
+      const callerSignal = options.init?.signal;
+      const onCallerAbort = () => controller.abort();
       if (callerSignal) {
-        callerSignal.removeEventListener('abort', onCallerAbort);
+        if (callerSignal.aborted) {
+          controller.abort();
+        } else {
+          callerSignal.addEventListener('abort', onCallerAbort);
+        }
       }
+
+      try {
+        return await this.fetchApi.fetch(url, {
+          ...options.init,
+          headers,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (controller.signal.aborted && !callerSignal?.aborted) {
+          throw new Error(
+            `Request to cluster ${cluster.name} timed out after ${this.proxyTimeoutMs}ms`,
+          );
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+        if (callerSignal) {
+          callerSignal.removeEventListener('abort', onCallerAbort);
+        }
+      }
+    } finally {
+      this.releaseProxySlot();
     }
   }
 

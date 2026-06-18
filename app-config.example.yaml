@@ -70,9 +70,12 @@ gs:
     clientSecret: ${CLUSTER_TOKEN_BROKER_CLIENT_SECRET}
 
   # Optional: bound each Kubernetes proxy request so one unreachable cluster
-  # cannot freeze the clusters list (default 10000ms).
+  # cannot freeze the clusters list (default 10000ms), and cap how many proxy
+  # requests (including broker token mints) run at once so connecting to every
+  # installation on startup does not storm the broker/apiservers (default 6).
   kubernetes:
     proxyTimeoutMs: 10000
+    proxyMaxConcurrency: 6
 
   installations:
     main:

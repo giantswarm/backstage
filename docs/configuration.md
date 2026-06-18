@@ -56,11 +56,20 @@ gs:
 
 ### Cluster-access status element
 
-A sidebar status element shows the per-installation access state -- healthy,
-degraded (with a reason such as "Token broker is unreachable" or "API
-unreachable (timeout)"), or session-expired (with a "Sign in again" action that
-triggers the single main login). It is fed by both the broker token flow and
-the clusters list, and requires no configuration.
+A sidebar status element shows the per-installation access state -- connecting
+(the initial state while the first probe is in flight), healthy, degraded (with
+a reason such as "Token broker is unreachable" or "API unreachable (timeout)"),
+or session-expired (with a "Sign in again" action that triggers the single main
+login). It is fed by both the broker token flow and the clusters list, and
+requires no configuration.
+
+Cluster access is established for every broker-covered installation on app load,
+regardless of which page you are on, so the status element is always visible and
+lists every covered installation from the start (instead of only appearing after
+you open the clusters page). The connections are re-checked on a slow interval to
+keep the status live and broker tokens warm. Only broker-covered installations
+(those with `clusterTokenAudience` set) are connected automatically, so this
+never triggers a per-cluster login popup.
 
 When the main Dex session expires, the broker path triggers exactly one main
 login prompt and then resumes -- there are no per-cluster popups.
@@ -76,6 +85,22 @@ status element and retried with capped backoff.
 gs:
   kubernetes:
     proxyTimeoutMs: 10000
+```
+
+### `gs.kubernetes.proxyMaxConcurrency`
+
+Caps how many Kubernetes proxy requests run at once across the whole app,
+including broker token mints (default `6`). Establishing access to every
+installation on startup would otherwise fan out into a storm of simultaneous
+connections that overwhelms the broker and the management-cluster apiservers,
+causing some requests to hit the proxy timeout before recovering on retry.
+Bounding concurrency smooths that storm; `6` matches the browser's own per-host
+connection limit, beyond which extra parallelism stops helping.
+
+```yaml
+gs:
+  kubernetes:
+    proxyMaxConcurrency: 6
 ```
 
 ## Cluster details page resources

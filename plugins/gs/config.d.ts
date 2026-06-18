@@ -122,6 +122,14 @@ export interface Config {
        * cluster cannot freeze the whole clusters list. Defaults to 10000.
        */
       proxyTimeoutMs?: number;
+      /**
+       * Maximum number of simultaneous in-flight Kubernetes proxy requests
+       * across the whole app (including broker token mints). Bounds the
+       * startup fan-out when every configured installation connects at once,
+       * which otherwise overwhelms the broker and apiservers and produces
+       * spurious timeouts that only resolve on retry. Defaults to 6.
+       */
+      proxyMaxConcurrency?: number;
     };
   };
 }

@@ -23,12 +23,14 @@ import {
 import { gsAuthApiRef } from '../../apis/auth/types';
 
 const STATE_COLORS: Record<ClusterAccessState, string> = {
+  connecting: '#9e9e9e',
   healthy: '#2e7d32',
   degraded: '#f9a825',
   'session-expired': '#c62828',
 };
 
 const STATE_LABELS: Record<ClusterAccessState, string> = {
+  connecting: 'Connecting…',
   healthy: 'Healthy',
   degraded: 'Degraded',
   'session-expired': 'Session expired',
@@ -55,8 +57,10 @@ const useStyles = makeStyles(theme => ({
 
 /**
  * Computes the worst (most actionable) state across all tracked clusters.
- * session-expired wins over degraded wins over healthy, because an expired
- * main session is the one thing the user can immediately fix.
+ * session-expired wins over degraded, because an expired main session is the
+ * one thing the user can immediately fix. `connecting` ranks above plain
+ * healthy so the badge reflects in-flight probes on startup, but below any
+ * real problem.
  */
 function overallState(entries: ClusterAccessStatusEntry[]): ClusterAccessState {
   if (entries.some(e => e.state === 'session-expired')) {
@@ -64,6 +68,9 @@ function overallState(entries: ClusterAccessStatusEntry[]): ClusterAccessState {
   }
   if (entries.some(e => e.state === 'degraded')) {
     return 'degraded';
+  }
+  if (entries.some(e => e.state === 'connecting')) {
+    return 'connecting';
   }
   return 'healthy';
 }

@@ -4,9 +4,15 @@ import { createApiRef } from '@backstage/core-plugin-api';
 /**
  * Coarse health of per-cluster access, surfaced in the sidebar status element.
  * `session-expired` is distinct from `degraded` because it is fixed by a single
- * main SSO re-login, not by the cluster recovering.
+ * main SSO re-login, not by the cluster recovering. `connecting` is the initial
+ * state while the first access probe is still in flight -- it lets the sidebar
+ * list every covered installation immediately instead of waiting for a result.
  */
-export type ClusterAccessState = 'healthy' | 'degraded' | 'session-expired';
+export type ClusterAccessState =
+  | 'connecting'
+  | 'healthy'
+  | 'degraded'
+  | 'session-expired';
 
 export type ClusterAccessStatusEntry = {
   installation: string;
@@ -23,6 +29,11 @@ export type ClusterAccessStatusEntry = {
  * by the sidebar cluster-access status element.
  */
 export interface ClusterAccessStatusApi {
+  /**
+   * Marks an installation as connecting -- used to seed the sidebar with every
+   * broker-covered installation before its first access probe settles.
+   */
+  recordConnecting(installation: string): void;
   recordHealthy(installation: string): void;
   recordDegraded(installation: string, reason?: string): void;
   recordSessionExpired(installation: string, reason?: string): void;

@@ -27,9 +27,17 @@ function hangingFetch(): jest.Mock {
   );
 }
 
-function createClient(fetch: FetchApi['fetch'], proxyTimeoutMs?: number) {
+function createClient(
+  fetch: FetchApi['fetch'],
+  proxyTimeoutMs?: number,
+  proxyMaxConcurrency?: number,
+) {
   const configApi = {
-    getOptionalNumber: jest.fn().mockReturnValue(proxyTimeoutMs),
+    getOptionalNumber: jest.fn((key: string) =>
+      key === 'gs.kubernetes.proxyMaxConcurrency'
+        ? proxyMaxConcurrency
+        : proxyTimeoutMs,
+    ),
   } as unknown as ConfigApi;
   const discoveryApi = {
     getBaseUrl: jest.fn().mockResolvedValue('http://backend/api/kubernetes'),
@@ -74,6 +82,49 @@ describe('KubernetesClient.proxy', () => {
         init: { signal: controller.signal },
       }),
     ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('bounds the number of simultaneous in-flight proxy requests', async () => {
+    let activeFetches = 0;
+    let maxObserved = 0;
+    const release: Array<() => void> = [];
+    const fetch = jest.fn(() => {
+      activeFetches++;
+      maxObserved = Math.max(maxObserved, activeFetches);
+      return new Promise<Response>(resolve => {
+        release.push(() => {
+          activeFetches--;
+          resolve(new Response('{}', { status: 200 }));
+        });
+      });
+    });
+
+    // Cap concurrency at 2; fire four requests at once.
+    const client = createClient(fetch, 10_000, 2);
+    const calls = [0, 1, 2, 3].map(() =>
+      client.proxy({ clusterName: 'golem', path: '/version' }),
+    );
+
+    // Let the first batch start.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    // Drain: each release frees a slot for the next queued request. Loop with
+    // macrotask ticks so queued requests have time to acquire and fetch.
+    for (
+      let i = 0;
+      i < 20 && (fetch.mock.calls.length < 4 || release.length > 0);
+      i++
+    ) {
+      if (release.length > 0) {
+        release.shift()!();
+      }
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    await Promise.all(calls);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(maxObserved).toBe(2);
   });
 
   it('returns the response and clears the timeout on success', async () => {
