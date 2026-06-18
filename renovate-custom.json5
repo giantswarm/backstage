@@ -3,8 +3,10 @@
 // this file. Rules for a whole class of repos belong in
 // giantswarm/renovate-presets instead.
 {
-  reviewers: ['marians'],
   reviewersFromCodeOwners: false,
+  // Assign the reviewer (the generated renovate.json5 default) even on
+  // automerge-enabled PRs at creation time, instead of only when checks fail.
+  assignAutomerge: true,
   prConcurrentLimit: 2,
   schedule: [
     'every weekend',
