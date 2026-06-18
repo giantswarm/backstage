@@ -9,6 +9,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 - CI: cap the release image build to `linux/amd64`. The devctl-generated config built a multi-arch (amd64+arm64) image, but the arm64 cross-build of the backend's native modules (`isolated-vm`, `better-sqlite3`, `keytar`) runs under QEMU emulation and silently exceeds the orb's 20m no-output timeout, which blocked the tag pipeline (and therefore the chart catalog push) on `v0.137.1`. Every prior release was single-arch amd64 and the management clusters are amd64, so arm64 is unused.
 
+See [./docs/releases/v0.137.2-changelog.md](./docs/releases/v0.137.2-changelog.md) for more information.
+
 ## [0.137.1] - 2026-06-18
 
 ### Changed
