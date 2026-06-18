@@ -2,7 +2,12 @@ import { useEffect } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
+import { ClusterTokenError } from '../../apis/auth/DefaultAuthConnector';
 import { clusterAccessStatusApiRef } from '../../apis/clusterAccessStatus';
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled probe outcome: ${JSON.stringify(value)}`);
+}
 
 /**
  * Cheap, broadly-authorized apiserver endpoint used as a liveness probe. It is
@@ -79,7 +84,7 @@ export function classifyProbeError(
   attempt: number,
   maxRetries: number,
 ): ProbeOutcome {
-  if ((error as { name?: string })?.name === 'ClusterTokenError') {
+  if (error instanceof ClusterTokenError) {
     return { kind: 'skip' };
   }
   if (attempt < maxRetries) {
@@ -109,6 +114,9 @@ export function ClusterAccessConnector() {
     }
 
     let cancelled = false;
+    // Installations with a probe loop (including its retry backoff) still
+    // running, so a refresh tick never stacks a second loop on the same one.
+    const inFlight = new Set<string>();
 
     // Seed once so the sidebar lists every covered installation immediately,
     // before any probe settles. Re-probes (interval) intentionally do not
@@ -130,35 +138,43 @@ export function ClusterAccessConnector() {
         case 'retry':
           return false;
         default:
-          return true;
+          return assertNever(outcome);
       }
     };
 
     const probe = async (installation: string) => {
-      for (let attempt = 0; ; attempt++) {
-        if (cancelled) {
-          return;
-        }
-        let outcome: ProbeOutcome;
-        try {
-          const response = await kubernetesApi.proxy({
-            clusterName: installation,
-            path: HEALTH_PROBE_PATH,
-          });
-          outcome = classifyProbeResponse(response, attempt, MAX_RETRIES);
-        } catch (error) {
-          outcome = classifyProbeError(error, attempt, MAX_RETRIES);
-        }
-        if (cancelled) {
-          return;
-        }
-        // A retry with capped backoff is what lets an initial-storm timeout
-        // resolve on its own instead of sticking as degraded.
-        if (!apply(installation, outcome)) {
-          await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
-          continue;
-        }
+      if (inFlight.has(installation)) {
         return;
+      }
+      inFlight.add(installation);
+      try {
+        for (let attempt = 0; ; attempt++) {
+          if (cancelled) {
+            return;
+          }
+          let outcome: ProbeOutcome;
+          try {
+            const response = await kubernetesApi.proxy({
+              clusterName: installation,
+              path: HEALTH_PROBE_PATH,
+            });
+            outcome = classifyProbeResponse(response, attempt, MAX_RETRIES);
+          } catch (error) {
+            outcome = classifyProbeError(error, attempt, MAX_RETRIES);
+          }
+          if (cancelled) {
+            return;
+          }
+          // A retry with capped backoff is what lets an initial-storm timeout
+          // resolve on its own instead of sticking as degraded.
+          if (!apply(installation, outcome)) {
+            await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
+            continue;
+          }
+          return;
+        }
+      } finally {
+        inFlight.delete(installation);
       }
     };
 
