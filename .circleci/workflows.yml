@@ -37,6 +37,13 @@ workflows:
         name: push-to-registries-release
         dockerfile: packages/backend/Dockerfile
         split-china-push: true
+        # amd64-only: the backstage backend image bundles native modules
+        # (isolated-vm, better-sqlite3, keytar) whose arm64 cross-build runs
+        # under QEMU emulation and silently exceeds the orb's 20m no-output
+        # timeout. Every prior release was single-arch amd64 and the management
+        # clusters are amd64, so arm64 is unused. Kept in sync with the
+        # ImagePlatforms knob in giantswarm/github (team-bumblebee.yaml).
+        platforms: linux/amd64
         requires:
         # Repo-owned pre-build job (defined in .circleci/custom.yml). The
         # generated job cannot be injected with this dependency via the
