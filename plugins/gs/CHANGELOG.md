@@ -1,5 +1,17 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.70.0
+
+### Minor Changes
+
+- 3bcae7c: Cluster access is now established for every broker-covered installation on app load, independent of the current route, and the sidebar cluster-access status element is always visible (each installation starts in a new `connecting` state). Proxy requests — including broker token mints — are bounded by a global concurrency limit (`gs.kubernetes.proxyMaxConcurrency`, default 6) so the startup fan-out no longer overwhelms the broker and apiservers with a storm of simultaneous connections that intermittently time out before recovering.
+
+### Patch Changes
+
+- Updated dependencies [2ed9ab4]
+  - @giantswarm/backstage-plugin-flux-react@0.14.2
+  - @giantswarm/backstage-plugin-flux@0.9.2
+
 ## 0.69.0
 
 ### Minor Changes
