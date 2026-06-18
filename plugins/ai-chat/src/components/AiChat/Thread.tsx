@@ -21,7 +21,7 @@ import {
   useThreadViewportStore,
   useAuiEvent,
 } from '@assistant-ui/react';
-import { flushResourcesSync } from '@assistant-ui/tap';
+import { flushTapSync } from '@assistant-ui/tap';
 import {
   useApi,
   configApiRef,
@@ -276,7 +276,7 @@ const useComposerInputBinding = () => {
       // Flush synchronously so the controlled TextField stays in sync with
       // fast keystrokes — without this the store update is scheduled on a
       // macrotask and React drops characters between renders.
-      flushResourcesSync(() => {
+      flushTapSync(() => {
         api.composer().setText(e.target.value);
       });
     },
