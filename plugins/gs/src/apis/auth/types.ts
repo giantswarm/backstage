@@ -43,6 +43,14 @@ export type GSAuthProvidersApi = {
   getKubernetesAuthApis: () => { [providerName: string]: AuthApi };
   getMCPAuthApis: () => { [providerName: string]: AuthApi };
   getProviders: () => AuthProvider[];
+  /**
+   * Names of installations whose cluster access is fully covered by the token
+   * broker (broker configured, `clusterTokenAudience` set, not the main
+   * provider). These can be connected to silently -- without a per-cluster
+   * login popup -- so they are the set the global cluster-access connector
+   * probes on startup.
+   */
+  getBrokerCoveredInstallations: () => string[];
 };
 
 export type GSAuthProvidersApiCreateOptions = {

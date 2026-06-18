@@ -23,6 +23,10 @@ export class ClusterAccessStatusStore implements ClusterAccessStatusApi {
     return new ClusterAccessStatusStore();
   }
 
+  recordConnecting(installation: string): void {
+    this.record(installation, 'connecting', undefined);
+  }
+
   recordHealthy(installation: string): void {
     this.record(installation, 'healthy', undefined);
   }

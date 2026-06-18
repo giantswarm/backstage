@@ -15,7 +15,10 @@ export {
   type ClusterAccessStatusEntry,
   type ClusterAccessState,
 } from './apis/clusterAccessStatus';
-export { ClusterAccessStatusSidebarItem } from './components/ClusterAccessStatus';
+export {
+  ClusterAccessStatusSidebarItem,
+  ClusterAccessConnector,
+} from './components/ClusterAccessStatus';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
 export { createCustomEntityPresentationRenderer as createGSEntityPresentationRenderer } from './apis/entityPresentation';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';

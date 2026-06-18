@@ -22,6 +22,23 @@ describe('ClusterAccessStatusStore', () => {
     ]);
   });
 
+  it('seeds installations as connecting and lets later states replace it', () => {
+    const store = ClusterAccessStatusStore.create();
+
+    store.recordConnecting('golem');
+    store.recordConnecting('alpha');
+    expect(store.getSnapshot()).toEqual([
+      expect.objectContaining({ installation: 'alpha', state: 'connecting' }),
+      expect.objectContaining({ installation: 'golem', state: 'connecting' }),
+    ]);
+
+    store.recordHealthy('golem');
+    expect(store.getSnapshot()).toEqual([
+      expect.objectContaining({ installation: 'alpha', state: 'connecting' }),
+      expect.objectContaining({ installation: 'golem', state: 'healthy' }),
+    ]);
+  });
+
   it('replays the latest snapshot to new subscribers', async () => {
     const store = ClusterAccessStatusStore.create();
     store.recordHealthy('golem');
