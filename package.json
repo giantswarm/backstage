@@ -71,7 +71,7 @@
     "@lezer/highlight": "1.2.3",
     "codemirror-json-schema": "0.8.1",
     "@assistant-ui/tap": "^0.9.2",
-    "ai": "6.0.196"
+    "ai": "6.0.197"
   },
   "prettier": "@backstage/cli/config/prettier",
   "lint-staged": {
