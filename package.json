@@ -57,7 +57,7 @@
     "@types/express-serve-static-core": "^5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "isolated-vm": "^6.0.2",
+    "isolated-vm": "^7.0.0",
     "knex": "^3.2.9",
     "ssh2": "^1.17.0",
     "@codemirror/autocomplete": "6.20.3",
