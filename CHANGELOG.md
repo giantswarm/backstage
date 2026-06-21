@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Changed
+
+- AI chat: optimize the muster system prompt. `systemPromptMuster.md` now front-loads the muster Kubernetes tool contract (`management_cluster: <mc>-mcp-kubernetes`, `podName`, `resourceType`, `tailLines`), steers workflow discovery to a ranked `filter_tools(query="<topic>")` for the muster 0.9.0+ discovery tier, and prefers a matching `workflow_*` over raw `x_kubernetes_*` tools. Cuts tool-call trial-and-error and tokens on common Kubernetes questions (#1776, #1784).
+
 ## [0.137.2] - 2026-06-18
 
 ### Fixed
