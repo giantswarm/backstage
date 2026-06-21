@@ -5,6 +5,8 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+## [0.138.0] - 2026-06-21
+
 ### Changed
 
 - AI chat: optimize the muster system prompt. `systemPromptMuster.md` now front-loads the muster Kubernetes tool contract (`management_cluster: <mc>-mcp-kubernetes`, `podName`, `resourceType`, `tailLines`), steers workflow discovery to a ranked `filter_tools(query="<topic>")` for the muster 0.9.0+ discovery tier, and prefers a matching `workflow_*` over raw `x_kubernetes_*` tools. Cuts tool-call trial-and-error and tokens on common Kubernetes questions (#1776, #1784).
@@ -2639,7 +2641,8 @@ See [./docs/releases/v0.40.0-changelog.md](./docs/releases/v0.40.0-changelog.md)
 
 - Disable anonymous access.
 
-[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.137.2...HEAD
+[Unreleased]: https://github.com/giantswarm/backstage/compare/v0.138.0...HEAD
+[0.138.0]: https://github.com/giantswarm/backstage/compare/v0.137.2...v0.138.0
 [0.137.2]: https://github.com/giantswarm/backstage/compare/v0.137.1...v0.137.2
 [0.137.1]: https://github.com/giantswarm/backstage/compare/v0.137.0...v0.137.1
 [0.137.0]: https://github.com/giantswarm/backstage/compare/v0.136.0...v0.137.0
