@@ -24,7 +24,6 @@
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new",
     "postinstall": "yarn patch-package",
-    "release": "yarn changeset version && yarn install --no-immutable && ts-node scripts/prepare-release.ts && yarn prettier --write --log-level silent '{packages,plugins}/*/{package.json,CHANGELOG.md}' 'docs/releases/*.md' './{package.json,CHANGELOG.md}'",
     "prepare": "husky"
   },
   "workspaces": {

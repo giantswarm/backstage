@@ -327,7 +327,7 @@ export class MyResource extends KubeObject<MyResourceInterface> {
 - **Docker**: Backend Dockerfile in `packages/backend/Dockerfile`
 - **Helm**: Charts in `helm/backstage/` directory
 - **CI/CD**: CircleCI (see `.circleci/config.yml`)
-- **Release Process**: Uses Changesets (`yarn release` command)
+- **Release Process**: Two axes. The app (image + Helm chart) is released automatically by git-cliff from conventional-commit PR titles on merge to `main` (`zz_generated.auto_release.yaml`); just merge a PR with a conventional title and CircleCI publishes the tagged image and chart. The `@giantswarm/backstage-plugin-*` packages are published to npm via Changesets — add a `.changeset/*.md` entry to trigger a "Version Packages" PR.
 
 ### Dependencies
 
