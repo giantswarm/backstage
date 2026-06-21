@@ -96,7 +96,7 @@ description: Common rules for working with this repository
 - **Docker**: Backend Dockerfile in `packages/backend/Dockerfile`
 - **Helm**: Charts in `helm/backstage/` directory
 - **CI/CD**: CircleCI configuration (see `.circleci/config.yml`)
-- **Release Process**: Uses Changesets (`yarn release` command)
+- **Release Process**: Two axes. The app (image + Helm chart) is released automatically by git-cliff from conventional-commit PR titles on merge to `main`; the `@giantswarm/backstage-plugin-*` packages are published to npm via Changesets (add a `.changeset/*.md` entry).
 
 ## Dependencies & Patches
 
