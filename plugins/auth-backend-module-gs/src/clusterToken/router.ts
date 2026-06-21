@@ -35,6 +35,20 @@ type CachedToken = {
   expiresAt: number;
 };
 
+/**
+ * Extracts the OAuth 2.0 `error` code (RFC 6749 section 5.2) from a broker
+ * error response body. Returns undefined for non-JSON bodies (e.g. an HTML
+ * error page from a proxy sitting in front of the broker).
+ */
+function parseOAuthError(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === 'string' ? parsed.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ClusterTokenRouterOptions {
   config: RootConfigService;
   logger: LoggerService;
@@ -160,13 +174,31 @@ export function createClusterTokenRouter(
           `Cluster token exchange for installation "${installation}" failed with status ${response.status}: ${body}`,
         );
         tokenCache.delete(cacheKey);
-        // A 4xx with an OAuth invalid_grant/invalid_token (or 401) means the
-        // forwarded subject token was rejected -- i.e. the user's main session,
-        // not the cluster, is the problem. Everything else is a broker-side
-        // exchange failure.
+
+        const oauthError = parseOAuthError(body);
+
+        // OAuth `invalid_client` means the broker could not authenticate
+        // ITSELF to muster (e.g. its confidential client record was wiped),
+        // not that the user's subject token was rejected. This is a broker
+        // outage that hits every cluster at once and must not be reported to
+        // users as an expired session.
+        if (oauthError === 'invalid_client') {
+          res.status(502).json({
+            error: 'Token exchange failed',
+            reason: 'broker_client_invalid',
+          });
+          return;
+        }
+
+        // An OAuth invalid_grant/invalid_token/invalid_request (or a bare 401
+        // that is not invalid_client) means the forwarded subject token was
+        // rejected -- i.e. the user's main session, not the cluster, is the
+        // problem. Everything else is a broker-side exchange failure.
         const subjectRejected =
           response.status === 401 ||
-          /invalid_grant|invalid_token|invalid_request/.test(body);
+          oauthError === 'invalid_grant' ||
+          oauthError === 'invalid_token' ||
+          oauthError === 'invalid_request';
         res.status(502).json({
           error: 'Token exchange failed',
           reason: subjectRejected ? 'subject_invalid' : 'exchange_failed',
