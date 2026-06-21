@@ -224,6 +224,43 @@ describe('createClusterTokenRouter', () => {
     });
   });
 
+  it('maps a broker client-auth failure to a broker_client_invalid reason', async () => {
+    mockBrokerResponse(
+      {
+        error: 'invalid_client',
+        error_description: 'client authentication failed',
+      },
+      { status: 401 },
+    );
+
+    const res = await request(buildApp()!)
+      .post('/cluster-token/golem')
+      .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({
+      error: 'Token exchange failed',
+      reason: 'broker_client_invalid',
+    });
+  });
+
+  it('still maps a non-invalid_client 401 to subject_invalid', async () => {
+    mockBrokerResponse(
+      { error: 'invalid_token', error_description: 'subject token rejected' },
+      { status: 401 },
+    );
+
+    const res = await request(buildApp()!)
+      .post('/cluster-token/golem')
+      .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({
+      error: 'Token exchange failed',
+      reason: 'subject_invalid',
+    });
+  });
+
   it('maps an unreachable broker to 502', async () => {
     jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
 
