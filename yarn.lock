@@ -35313,13 +35313,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"isolated-vm@npm:^6.0.2":
-  version: 6.1.2
-  resolution: "isolated-vm@npm:6.1.2"
+"isolated-vm@npm:^7.0.0":
+  version: 7.0.0
+  resolution: "isolated-vm@npm:7.0.0"
   dependencies:
     node-gyp: "npm:latest"
     node-gyp-build: "npm:^4.8.4"
-  checksum: 10c0/2209032b8296e6af49250f7e04ab904e9c331bbbf1bdf8eeca78e32ed6bd98c84ced42b785127f0f2828a1c5e66d82cb2bf1459e973620e19b485c5a00252e98
+  checksum: 10c0/cd7225a255ff1e177c64b32ee33bcd723715309f63061a1a6e7e667b655586451d25447de9e484a5fedef8dd5fce331bc1bc021a04768c73feccb6da4e52bcc2
   languageName: node
   linkType: hard
 
