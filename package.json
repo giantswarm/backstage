@@ -23,6 +23,7 @@
     "prettier:check": "prettier --check .",
     "prettier:fix": "prettier --write .",
     "new": "backstage-cli new",
+    "release:plugins": "yarn build:all && changeset publish",
     "postinstall": "yarn patch-package",
     "prepare": "husky"
   },
