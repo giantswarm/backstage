@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-ai-chat-react",
   "version": "0.5.0",
   "license": "Apache-2.0",
-  "private": true,
   "description": "Web library for the ai-chat plugin",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -13,7 +12,12 @@
   },
   "backstage": {
     "role": "web-library",
-    "pluginId": "ai-chat"
+    "pluginId": "ai-chat",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-ai-chat",
+      "@giantswarm/backstage-plugin-ai-chat-backend",
+      "@giantswarm/backstage-plugin-ai-chat-react"
+    ]
   },
   "sideEffects": false,
   "scripts": {

@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-error-reporter-react",
   "version": "0.3.0",
   "license": "Apache-2.0",
-  "private": true,
   "description": "Web library for error reporting",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -13,7 +12,10 @@
   },
   "backstage": {
     "role": "web-library",
-    "pluginId": "error-reporter"
+    "pluginId": "error-reporter",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-error-reporter-react"
+    ]
   },
   "sideEffects": false,
   "scripts": {
