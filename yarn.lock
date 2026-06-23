@@ -426,21 +426,21 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-markdown@npm:^0.14.0":
-  version: 0.14.1
-  resolution: "@assistant-ui/react-markdown@npm:0.14.1"
+  version: 0.14.4
+  resolution: "@assistant-ui/react-markdown@npm:0.14.4"
   dependencies:
-    "@radix-ui/react-primitive": "npm:^2.1.4"
-    "@radix-ui/react-use-callback-ref": "npm:^1.1.1"
+    "@radix-ui/react-primitive": "npm:^2.1.5"
+    "@radix-ui/react-use-callback-ref": "npm:^1.1.2"
     classnames: "npm:^2.5.1"
     react-markdown: "npm:^10.1.0"
   peerDependencies:
-    "@assistant-ui/react": ^0.14.8
+    "@assistant-ui/react": ^0.14.18
     "@types/react": "*"
     react: ^18 || ^19
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/774a52d6f639a0d3098425300a9b4baa6bb1f10812a90756aa9a4c63d9556cdd518a12b8c45a53f2fc51cfb3d5f0925e2b8c3994be78307d6a499efab787c71d
+  checksum: 10c0/8080c0642f2f724e97b891cabeac0898738d33895bfade73fc763b5d271a2273efb4d065f2cf78bd888e0155b0302a07187e1048b1586740f1e6119a7e8afa43
   languageName: node
   linkType: hard
 
@@ -16057,7 +16057,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@radix-ui/react-primitive@npm:2.1.4, @radix-ui/react-primitive@npm:^2.1.4":
+"@radix-ui/react-primitive@npm:2.1.4":
   version: 2.1.4
   resolution: "@radix-ui/react-primitive@npm:2.1.4"
   dependencies:
@@ -16569,7 +16569,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@radix-ui/react-use-callback-ref@npm:1.1.1, @radix-ui/react-use-callback-ref@npm:^1.1.1":
+"@radix-ui/react-use-callback-ref@npm:1.1.1":
   version: 1.1.1
   resolution: "@radix-ui/react-use-callback-ref@npm:1.1.1"
   peerDependencies:
