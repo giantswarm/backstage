@@ -19,21 +19,40 @@ function deriveChartRef(ociUrl: string | undefined): string | undefined {
  * Derives the chart tag from an OCIRepository reference.
  * For semver ranges like `>=1.2.3`, extracts the base version.
  * For exact tags like `1.2.3`, returns as-is.
+ * Supports Masterminds/semver wildcard placeholders (x, X, *),
+ * normalizing them to `0` (e.g. `1.2.x` → `1.2.0`).
  */
-function deriveChartTag(
+export function deriveChartTag(
   ref: { semver?: string; tag?: string; digest?: string } | undefined,
 ): string | undefined {
   if (!ref) return undefined;
-
   if (ref.tag) return ref.tag;
+  if (!ref.semver) return undefined;
 
-  if (ref.semver) {
-    // Extract version from semver range, e.g. ">=1.2.3 <2.0.0" → "1.2.3"
-    const match = ref.semver.match(/(\d+\.\d+\.\d+(?:-[^\s<>]+)?)/);
-    return match ? match[1] : undefined;
+  const s = ref.semver.trim();
+
+  // Strip leading constraint operator (>=, <=, !=, >, <, =, ~, ^)
+  const stripped = s.replace(/^(?:>=|<=|!=|[><=~^])\s*/, '');
+
+  // Match a version where components may be digits or wildcards (x, X, *)
+  const wcMatch = stripped.match(
+    /^(\d+|[xX*])(?:\.(\d+|[xX*])(?:\.(\d+|[xX*])(?:-([^\s<>]+))?)?)?$/,
+  );
+  if (wcMatch) {
+    const toNum = (v: string | undefined) =>
+      !v || /^[xX*]$/.test(v) ? '0' : v;
+    const major = toNum(wcMatch[1]);
+    const minor = toNum(wcMatch[2]);
+    const patch = toNum(wcMatch[3]);
+    const pre = wcMatch[4];
+    return pre
+      ? `${major}.${minor}.${patch}-${pre}`
+      : `${major}.${minor}.${patch}`;
   }
 
-  return undefined;
+  // Fallback: extract first concrete version from compound range (e.g. ">=1.2.3 <2.0.0")
+  const match = s.match(/(\d+\.\d+\.\d+(?:-[^\s<>]+)?)/);
+  return match ? match[1] : undefined;
 }
 
 export function useEditDeploymentData(
