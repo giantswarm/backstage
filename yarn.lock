@@ -11178,9 +11178,9 @@ __metadata:
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:^4.0.0-alpha.60"
-    "@rjsf/core": "npm:^5.24.8"
-    "@rjsf/utils": "npm:^5.24.8"
-    "@rjsf/validator-ajv8": "npm:^5.24.8"
+    "@rjsf/core": "npm:^6.0.0"
+    "@rjsf/utils": "npm:^6.0.0"
+    "@rjsf/validator-ajv8": "npm:^6.0.0"
     "@stoplight/json-schema-viewer": "npm:^4.16.4"
     "@stoplight/markdown-viewer": "npm:^5.7.1"
     "@stoplight/mosaic": "npm:^1.53.5"
@@ -19331,7 +19331,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/core@npm:5.24.13, @rjsf/core@npm:^5.24.8":
+"@rjsf/core@npm:5.24.13":
   version: 5.24.13
   resolution: "@rjsf/core@npm:5.24.13"
   dependencies:
@@ -19343,6 +19343,21 @@ __metadata:
     "@rjsf/utils": ^5.24.x
     react: ^16.14.0 || >=17
   checksum: 10c0/d97a034f9fdbd7d3663673a2a18fa463fce2333590c16ef2942142951facea9e03fdbd7a6bb0203b1803d21ba48fa328c8bfcfe845ffc94fc468c8d4a8008eef
+  languageName: node
+  linkType: hard
+
+"@rjsf/core@npm:^6.0.0":
+  version: 6.6.2
+  resolution: "@rjsf/core@npm:6.6.2"
+  dependencies:
+    lodash: "npm:^4.18.1"
+    lodash-es: "npm:^4.18.1"
+    markdown-to-jsx: "npm:^9.8.1"
+    prop-types: "npm:^15.8.1"
+  peerDependencies:
+    "@rjsf/utils": ^6.6.x
+    react: ">=18"
+  checksum: 10c0/a092201adac50c4718fb01866a07b2c71616fd902a63039b8528a97189b7d2cb6a225712267875a2a6559a1e78777f0fb6df6550af20ebbf5f91cf6b766e9a99
   languageName: node
   linkType: hard
 
@@ -19359,7 +19374,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/utils@npm:5.24.13, @rjsf/utils@npm:^5.24.8":
+"@rjsf/utils@npm:5.24.13":
   version: 5.24.13
   resolution: "@rjsf/utils@npm:5.24.13"
   dependencies:
@@ -19374,7 +19389,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rjsf/validator-ajv8@npm:5.24.13, @rjsf/validator-ajv8@npm:^5.24.8":
+"@rjsf/utils@npm:^6.0.0":
+  version: 6.6.2
+  resolution: "@rjsf/utils@npm:6.6.2"
+  dependencies:
+    "@x0k/json-schema-merge": "npm:^1.0.3"
+    fast-equals: "npm:^6.0.0"
+    fast-uri: "npm:^3.1.2"
+    jsonpointer: "npm:^5.0.1"
+    lodash: "npm:^4.18.1"
+    lodash-es: "npm:^4.18.1"
+    react-is: "npm:^18.3.1"
+  peerDependencies:
+    react: ">=18"
+  checksum: 10c0/592a1ca094256423929c353acaa536f88d041a2a3999520544c3794b4cbeb51f620099830f3df4dd0dd42a69c9493f97d8f2ffae51247c0f7427641047f85c51
+  languageName: node
+  linkType: hard
+
+"@rjsf/validator-ajv8@npm:5.24.13":
   version: 5.24.13
   resolution: "@rjsf/validator-ajv8@npm:5.24.13"
   dependencies:
@@ -19385,6 +19417,20 @@ __metadata:
   peerDependencies:
     "@rjsf/utils": ^5.24.x
   checksum: 10c0/db98c4deceadc332ab5bb5c4a34ca3b24d8ebfd88bbc4ce7cf3f4bbf8c55af009f1c19706eb0754d3c5fc1d7b99196c83e5074a020ece792faa271af7fdd3e9e
+  languageName: node
+  linkType: hard
+
+"@rjsf/validator-ajv8@npm:^6.0.0":
+  version: 6.6.2
+  resolution: "@rjsf/validator-ajv8@npm:6.6.2"
+  dependencies:
+    ajv: "npm:^8.20.0"
+    ajv-formats: "npm:^2.1.1"
+    lodash: "npm:^4.18.1"
+    lodash-es: "npm:^4.18.1"
+  peerDependencies:
+    "@rjsf/utils": ^6.6.x
+  checksum: 10c0/7a724fbfab1584f67478b3435ff26b42a750b7a3116ed31d2c068a425f21c31ea98600c299b4a510615412a1990057288d43625085f96532e7b7fcb5664bde9d
   languageName: node
   linkType: hard
 
@@ -25357,6 +25403,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@x0k/json-schema-merge@npm:^1.0.3":
+  version: 1.0.3
+  resolution: "@x0k/json-schema-merge@npm:1.0.3"
+  dependencies:
+    "@types/json-schema": "npm:^7.0.15"
+  checksum: 10c0/ff8823432fb90ba987218823e9f125efdddb97d706a88ccf86a07aa6972e32661a7862bffbdf2ecb882ae549e3e70f0a09118f6cc63a8b85aff7dd097b088b4a
+  languageName: node
+  linkType: hard
+
 "@xobotyi/scrollbar-width@npm:^1.9.5":
   version: 1.9.5
   resolution: "@xobotyi/scrollbar-width@npm:1.9.5"
@@ -25723,7 +25778,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ajv@npm:^8.0.0, ajv@npm:^8.0.1, ajv@npm:^8.10.0, ajv@npm:^8.11.0, ajv@npm:^8.12.0, ajv@npm:^8.16.0, ajv@npm:^8.17.1, ajv@npm:^8.6.3, ajv@npm:^8.9.0":
+"ajv@npm:^8.0.0, ajv@npm:^8.0.1, ajv@npm:^8.10.0, ajv@npm:^8.11.0, ajv@npm:^8.12.0, ajv@npm:^8.16.0, ajv@npm:^8.17.1, ajv@npm:^8.20.0, ajv@npm:^8.6.3, ajv@npm:^8.9.0":
   version: 8.20.0
   resolution: "ajv@npm:8.20.0"
   dependencies:
@@ -31812,6 +31867,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"fast-equals@npm:^6.0.0":
+  version: 6.0.0
+  resolution: "fast-equals@npm:6.0.0"
+  checksum: 10c0/aae54699ce848726679a947c8bbea78f2ea0384e4e1ee213c98f10881a17bb376bd11085eda4d6c89db5285635ee2f809b126d773532fcf602be355008a9d5ed
+  languageName: node
+  linkType: hard
+
 "fast-fifo@npm:^1.2.0, fast-fifo@npm:^1.3.2":
   version: 1.3.2
   resolution: "fast-fifo@npm:1.3.2"
@@ -31915,6 +31977,13 @@ __metadata:
   version: 3.0.2
   resolution: "fast-uri@npm:3.0.2"
   checksum: 10c0/8cdd3da7b4022a037d348d587d55caff74b7e4f862bbdd2cc35c1e6e3f97d0aedb567894d44c57ee8798d3192cceb97dcf41dbdabfa07dd2842a0474a6c6eeef
+  languageName: node
+  linkType: hard
+
+"fast-uri@npm:^3.1.2":
+  version: 3.1.2
+  resolution: "fast-uri@npm:3.1.2"
+  checksum: 10c0/5b35641895959f3f7ab7a7b1b5542bded159346f25ec9f256817b206d50b64eda5828e90d605a2e2fc645c90519a7259c2bab2c942ee728c88b88e5be21b090d
   languageName: node
   linkType: hard
 
@@ -37171,6 +37240,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"lodash-es@npm:^4.18.1":
+  version: 4.18.1
+  resolution: "lodash-es@npm:4.18.1"
+  checksum: 10c0/35d4dcf87ef07f8d090f409447575800108057e360b445f590d0d25d09e3d1e33a163d2fc100d4d072b0f901d5e2fc533cd7c4bfd8eeb38a06abec693823c8b8
+  languageName: node
+  linkType: hard
+
 "lodash.camelcase@npm:^4.3.0":
   version: 4.3.0
   resolution: "lodash.camelcase@npm:4.3.0"
@@ -37689,6 +37765,26 @@ __metadata:
   peerDependencies:
     react: ">= 0.14.0"
   checksum: 10c0/88213e64afd41d6934fbb70bcea0e2ef1f9553db1ba4c6f423b17d6e9c2b99c82b0fcbed29036dd5b91704b170803d1fae730ab40ae27af5c7994e2717686ebc
+  languageName: node
+  linkType: hard
+
+"markdown-to-jsx@npm:^9.8.1":
+  version: 9.8.2
+  resolution: "markdown-to-jsx@npm:9.8.2"
+  peerDependencies:
+    react: ">= 16.0.0"
+    solid-js: ">=1.0.0"
+    vue: ">=3.0.0"
+  peerDependenciesMeta:
+    react:
+      optional: true
+    react-native:
+      optional: true
+    solid-js:
+      optional: true
+    vue:
+      optional: true
+  checksum: 10c0/32b29961db357050db0271b0a776a0281477c765819212f19f96e04c771393520da2a9a0c69b59634313d767bf462deda4a1a93fa8c7c5ca0da09e7508022a8c
   languageName: node
   linkType: hard
 
