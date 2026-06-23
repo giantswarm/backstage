@@ -98,6 +98,7 @@ describe('registerMcpActions', () => {
       },
       logger,
       credentials: {} as any,
+      secrets: {} as any,
     });
 
     expect(containerRegistry.getTagManifest).toHaveBeenCalledWith(
@@ -151,6 +152,7 @@ describe('registerMcpActions', () => {
       },
       logger,
       credentials: {} as any,
+      secrets: {} as any,
     });
 
     expect(mockFetch).toHaveBeenCalledWith(valuesUrl, {
@@ -193,6 +195,7 @@ describe('registerMcpActions', () => {
       },
       logger,
       credentials: {} as any,
+      secrets: {} as any,
     });
 
     expect(mockFetch).toHaveBeenCalledWith(schemaUrl, {
@@ -226,6 +229,7 @@ describe('registerMcpActions', () => {
         },
         logger,
         credentials: {} as any,
+        secrets: {} as any,
       }),
     ).rejects.toThrow(NotFoundError);
   });
@@ -248,6 +252,7 @@ describe('registerMcpActions', () => {
         },
         logger,
         credentials: {} as any,
+        secrets: {} as any,
       }),
     ).rejects.toThrow(NotFoundError);
   });
@@ -279,6 +284,7 @@ describe('registerMcpActions', () => {
         },
         logger,
         credentials: {} as any,
+        secrets: {} as any,
       }),
     ).rejects.toThrow('Failed to fetch schema from');
 
@@ -319,6 +325,7 @@ describe('registerMcpActions', () => {
       },
       logger,
       credentials: {} as any,
+      secrets: {} as any,
     });
 
     expect(mockFetch).toHaveBeenCalledWith(schemaUrl, { headers: {} });
@@ -361,6 +368,7 @@ describe('registerMcpActions', () => {
         input: { entityRef: 'group:default/team-otter' },
         logger,
         credentials: {} as any,
+        secrets: {} as any,
       });
 
       expect(catalog.getEntityByRef).toHaveBeenCalledWith(
@@ -387,6 +395,7 @@ describe('registerMcpActions', () => {
         input: { entityRef: 'component:default/my-app' },
         logger,
         credentials: {} as any,
+        secrets: {} as any,
       });
 
       expect(result).toEqual({
@@ -409,6 +418,7 @@ describe('registerMcpActions', () => {
         input: { entityRef: 'user:default/jdoe' },
         logger,
         credentials: {} as any,
+        secrets: {} as any,
       });
 
       expect(result).toEqual({
@@ -428,6 +438,7 @@ describe('registerMcpActions', () => {
           input: { entityRef: 'component:default/missing' },
           logger,
           credentials: {} as any,
+          secrets: {} as any,
         }),
       ).rejects.toThrow(NotFoundError);
     });
@@ -442,6 +453,7 @@ describe('registerMcpActions', () => {
           input: { entityRef: 'component:default/my-app' },
           logger,
           credentials: {} as any,
+          secrets: {} as any,
         }),
       ).rejects.toThrow(NotFoundError);
     });
