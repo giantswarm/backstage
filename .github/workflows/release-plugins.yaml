@@ -1,0 +1,63 @@
+# Plugin release axis (changesets -> npm).
+#
+# Independent of the app axis (git-cliff `auto_release.yaml`, which tags
+# `vX.Y.Z` and drives the CircleCI image/chart pipeline). This workflow only
+# touches the `@giantswarm/backstage-plugin-*` npm packages.
+#
+# On every push to main, changesets/action either:
+#   - opens/updates a "Version Packages" PR consuming any pending
+#     `.changeset/*.md` files (PR title `chore(release): version plugins` --
+#     a non-bumping conventional type, so merging it does NOT make git-cliff
+#     cut a spurious app `vX.Y.Z` release), or
+#   - if the merged push already carried the version bump, builds the plugins
+#     and runs `changeset publish` to publish the bumped packages to npm and
+#     push their `@pkg@ver` tags (architect's `/^v.*/` filter ignores these).
+name: release-plugins
+
+on:
+  push:
+    branches:
+      - main
+
+# Avoid two publish runs racing on overlapping pushes to main.
+concurrency:
+  group: release-plugins-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write        # create the Version Packages PR branch + plugin tags
+  pull-requests: write   # open/update the Version Packages PR
+
+jobs:
+  release:
+    name: Release plugins
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Create Version Packages PR or publish to npm
+        uses: changesets/action@v1
+        with:
+          version: yarn changeset version
+          publish: yarn release:plugins
+          commit: 'chore(release): version plugins'
+          title: 'chore(release): version plugins'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
