@@ -29,7 +29,6 @@ import {
   clustersRouteRef,
   deploymentsRouteRef,
   entityDeploymentsRouteRef,
-  entityKratixResourcesRouteRef,
   fluxOverviewExternalRouteRef,
   fluxResourcesExternalRouteRef,
   installationsRouteRef,
@@ -39,7 +38,6 @@ import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
   isEntityKlausPersonality,
-  isEntityKratixResource,
   isEntityWithIcon,
   isEntityWithOciRepository,
 } from './components/utils/entity';
@@ -228,19 +226,6 @@ const installationDetailsEntityCard = EntityCardBlueprint.make({
   },
 });
 
-const kratixStatusEntityCard = EntityCardBlueprint.make({
-  name: 'kratix-status',
-  params: {
-    type: 'info',
-    filter: entity => isEntityKratixResource(entity),
-    loader: async () => {
-      const { EntityKratixStatusCard } =
-        await import('./components/catalog/EntityKratixStatusCard');
-      return <EntityKratixStatusCard />;
-    },
-  },
-});
-
 const versionHistoryEntityCard = EntityCardBlueprint.make({
   name: 'version-history',
   params: {
@@ -333,22 +318,6 @@ const helmChartVersionHistoryEntityContent = EntityContentBlueprint.make({
       const { EntityHelmChartVersionHistoryContent } =
         await import('./components/catalog/EntityHelmChartVersionHistoryContent');
       return <EntityHelmChartVersionHistoryContent />;
-    },
-  },
-});
-
-const kratixResourcesEntityContent = EntityContentBlueprint.make({
-  name: 'kratix-resources',
-  params: {
-    path: '/kratix-resources',
-    title: 'Kratix Resources',
-    group: 'operation',
-    routeRef: entityKratixResourcesRouteRef,
-    filter: entity => isEntityKratixResource(entity),
-    loader: async () => {
-      const { EntityKratixResourcesContent } =
-        await import('./components/catalog/EntityKratixResourcesContent');
-      return <EntityKratixResourcesContent />;
     },
   },
 });
@@ -639,7 +608,6 @@ export const gsPlugin = createFrontendPlugin({
     // Entity cards
     appDeploymentEntityCard,
     installationDetailsEntityCard,
-    kratixStatusEntityCard,
     readmeEntityCard,
     soulEntityCard,
     versionHistoryEntityCard,
@@ -648,7 +616,6 @@ export const gsPlugin = createFrontendPlugin({
     deploymentsEntityContent,
     versionHistoryEntityContent,
     helmChartVersionHistoryEntityContent,
-    kratixResourcesEntityContent,
     // Entity content layout
     helmChartContentLayout,
     // Entity header with icon
@@ -677,7 +644,6 @@ export const gsPlugin = createFrontendPlugin({
     clustersPage: clustersRouteRef,
     deploymentsPage: deploymentsRouteRef,
     entityContent: entityDeploymentsRouteRef,
-    entityKratixResourcesContent: entityKratixResourcesRouteRef,
   },
   externalRoutes: {
     fluxOverview: fluxOverviewExternalRouteRef,

@@ -70,10 +70,6 @@ export const isEntityInstallationResource = (entity: Entity) => {
   return entity.kind === 'Resource' && entity.spec?.type === 'installation';
 };
 
-export const isEntityKratixResource = (entity: Entity) => {
-  return entity.kind === 'Resource' && entity.spec?.type === 'kratix';
-};
-
 export const isEntityHelmChartTagged = (entity: Entity) => {
   const tags = entity.metadata.tags ?? [];
   return tags.includes('helmchart');
