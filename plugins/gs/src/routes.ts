@@ -24,8 +24,6 @@ export const deploymentDetailsRouteRef = createSubRouteRef({
 
 export const entityDeploymentsRouteRef = createRouteRef();
 
-export const entityKratixResourcesRouteRef = createRouteRef();
-
 export const fluxOverviewExternalRouteRef = createExternalRouteRef();
 
 export const fluxResourcesExternalRouteRef = createExternalRouteRef();

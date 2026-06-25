@@ -1,1 +1,0 @@
-export { EntityKratixResourcesContent } from './EntityKratixResourcesContent';

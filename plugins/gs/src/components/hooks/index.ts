@@ -23,8 +23,6 @@ export * from './useK8sVersionEOLDate';
 export * from './useNodePoolsForAWSCluster';
 export * from './useNodePoolsForAzureCluster';
 export * from './useNodePoolsForCluster';
-export * from './useResourceRequests';
-export * from './useResourceRequestStatusDetails';
 export * from './useTemplateString';
 export * from './useProviderClustersForClusters';
 export * from './useProviderClusterIdentitiesForProviderClusters';
