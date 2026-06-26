@@ -283,13 +283,13 @@ __metadata:
   linkType: hard
 
 "@apidevtools/json-schema-ref-parser@npm:^15.3.1":
-  version: 15.3.5
-  resolution: "@apidevtools/json-schema-ref-parser@npm:15.3.5"
+  version: 15.4.0
+  resolution: "@apidevtools/json-schema-ref-parser@npm:15.4.0"
   dependencies:
-    js-yaml: "npm:^4.1.1"
+    js-yaml: "npm:^4.2.0"
   peerDependencies:
     "@types/json-schema": ^7.0.15
-  checksum: 10c0/320006dd3b57f0a7b84e3ce3c3b55d0e59b0f7fcc39418e5f9b84d8b651f2cab35046f7dc86350c1e3803a10b288d316e197e093ab0394154b095e8c67ddb008
+  checksum: 10c0/9311517d13bb34a1f3bbedb558c5c7a66c861392139fef5461cf07f037286768b998cbf71b8d1b32cac8c1f20c1647219645fd9930c9ff75dfcd4ca4a963067e
   languageName: node
   linkType: hard
 
@@ -36681,7 +36681,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-yaml@npm:^4.0.0, js-yaml@npm:^4.1.0, js-yaml@npm:^4.1.1":
+"js-yaml@npm:^4.0.0, js-yaml@npm:^4.1.0, js-yaml@npm:^4.1.1, js-yaml@npm:^4.2.0":
   version: 4.2.0
   resolution: "js-yaml@npm:4.2.0"
   dependencies:
