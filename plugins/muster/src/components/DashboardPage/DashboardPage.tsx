@@ -300,6 +300,13 @@ export function DashboardPage() {
   const authenticated = !requiresAuth || (!overviewFailed && Boolean(overview));
   const toolCount = overview?.total;
 
+  // Tools stat: '—' when unauthenticated, '…' while the probe is in flight,
+  // else the live count (or '—' if muster reported none).
+  let toolStat: string | number = '—';
+  if (authenticated) {
+    toolStat = overviewLoading ? '…' : toolCount ?? '—';
+  }
+
   // ponytail: aggregator "servers connected" is derived from the CRD
   // `.status.state` (always readable, no muster session), not a dedicated
   // core_service_list call. The connected/total figures match what
@@ -397,16 +404,7 @@ export function DashboardPage() {
 
             <Box className={classes.statRow}>
               <Stat label="Aggregated servers" value={mcpServers.length} />
-              <Stat
-                label="Tools"
-                value={
-                  authenticated
-                    ? overviewLoading
-                      ? '…'
-                      : toolCount ?? '—'
-                    : '—'
-                }
-              />
+              <Stat label="Tools" value={toolStat} />
               <Stat label="Workflows" value={workflows.length} />
               {authenticated && (
                 <Stat

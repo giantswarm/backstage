@@ -8,5 +8,7 @@ export { DisclosureAccordion } from './DisclosureAccordion';
 export type { DisclosureAccordionProps } from './DisclosureAccordion';
 export { ToolList } from './ToolList';
 export type { ToolListItem, ToolListProps } from './ToolList';
+export { Gate } from './Gate';
+export type { GateProps } from './Gate';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';

@@ -1,164 +1,270 @@
-import { ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Content,
-  EmptyState,
-  Link,
-  Progress,
-  StatusAborted,
-  StatusError,
-  StatusOK,
-  StatusPending,
-  StatusWarning,
-  Table,
-  TableColumn,
-} from '@backstage/core-components';
-import { Chip, Typography } from '@material-ui/core';
+  Box,
+  Button,
+  CircularProgress,
+  Typography,
+  makeStyles,
+  Theme,
+} from '@material-ui/core';
+import Dns from '@material-ui/icons/Dns';
+import Power from '@material-ui/icons/Power';
+import Build from '@material-ui/icons/Build';
+import Lock from '@material-ui/icons/Lock';
+import { Content, EmptyState, Progress } from '@backstage/core-components';
+import { useApi } from '@backstage/core-plugin-api';
+import { useQuery } from '@tanstack/react-query';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import {
-  MCPServer,
-  MCPServerAuth,
-  mcpServerStateSeverity,
-} from '../../lib/k8s';
-import { ServerDetailPanel } from './ServerDetailPanel';
+import { SectionHeader, Gate } from '../shared';
+import { MCPServer } from '../../lib/k8s';
+import { musterApiRef } from '../../apis';
+import { StandardServerDisclosure } from './StandardServerDisclosure';
+import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
+import { CoreFamiliesPanel } from './CoreFamiliesPanel';
+import { AddAdHocServerButton } from './ServerMutationActions';
 
-/** Flat, table-friendly projection of an MCPServer CR (kept alongside the CR). */
-interface ServerRow {
-  id: string;
-  name: string;
-  family: string;
-  managementCluster: string;
-  installation: string;
-  type: string;
-  state: string;
-  lastConnected: string;
-  autoStart: string;
-  authType: string;
-  server: MCPServer;
-}
+const useStyles = makeStyles((theme: Theme) => ({
+  column: {
+    maxWidth: 1024,
+  },
+  section: {
+    paddingTop: theme.spacing(4),
+    paddingBottom: theme.spacing(4),
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    '&:last-child': {
+      borderBottom: 'none',
+    },
+  },
+  presentNote: {
+    marginBottom: theme.spacing(1.5),
+    color: theme.palette.text.secondary,
+  },
+  stack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+  },
+  topGate: {
+    marginBottom: theme.spacing(2),
+  },
+}));
 
-/** A short label describing the auth posture from spec.auth. */
-function authLabel(auth?: MCPServerAuth): string {
-  if (!auth || auth.type === undefined || auth.type === 'none') {
-    return 'none';
-  }
-  if (auth.tokenExchange?.enabled) {
-    return 'oauth (token exchange)';
-  }
-  if (auth.localMint?.enabled) {
-    return 'oauth (local mint)';
-  }
-  if (auth.forwardToken) {
-    return 'oauth (forward)';
-  }
-  return auth.type;
-}
+type StandardGroup = { family: string; servers: MCPServer[] };
 
-function stateBadge(state: string): ReactNode {
-  if (!state) {
-    return <StatusAborted>unknown</StatusAborted>;
-  }
-  switch (mcpServerStateSeverity(state as never)) {
-    case 'ok':
-      return <StatusOK>{state}</StatusOK>;
-    case 'error':
-      return <StatusError>{state}</StatusError>;
-    case 'warning':
-      return <StatusWarning>{state}</StatusWarning>;
-    default:
-      return <StatusPending>{state}</StatusPending>;
-  }
-}
+/**
+ * Partition the active instance's MCPServer CRs into the mockup's two server
+ * shapes: standard servers (a `spec.family.name` groups equivalent instances
+ * federated across management clusters; tool surface shown once, health per MC)
+ * and integration servers (singular servers with no family -- customer
+ * integrations and shared services). Family presence is the discriminator: the
+ * management-cluster label is set on both, but only the federated standard
+ * servers carry a family.
+ */
+function partitionServers(servers: MCPServer[]): {
+  standard: StandardGroup[];
+  integration: MCPServer[];
+} {
+  const standardByFamily = new Map<string, MCPServer[]>();
+  const integration: MCPServer[] = [];
 
-function toRow(server: MCPServer): ServerRow {
-  const lastConnected = server.getLastConnected();
-  return {
-    id: `${server.cluster}/${server.getName()}`,
-    name: server.getName(),
-    family: server.getFamily() ?? '-',
-    managementCluster: server.getManagementCluster() ?? '-',
-    installation: server.cluster,
-    type: server.getType() ?? '-',
-    state: server.getState() ?? '',
-    lastConnected: lastConnected
-      ? new Date(lastConnected).toLocaleString()
-      : '-',
-    autoStart: server.getAutoStart() ? 'yes' : 'no',
-    authType: authLabel(server.getAuth()),
-    server,
-  };
+  for (const server of servers) {
+    const family = server.getFamily();
+    if (family) {
+      standardByFamily.set(family, [
+        ...(standardByFamily.get(family) ?? []),
+        server,
+      ]);
+    } else {
+      integration.push(server);
+    }
+  }
+
+  const standard = [...standardByFamily.entries()]
+    .map(([family, group]) => ({ family, servers: group }))
+    .sort((a, b) => a.family.localeCompare(b.family));
+  integration.sort((a, b) => a.getName().localeCompare(b.getName()));
+
+  return { standard, integration };
 }
 
 export function McpServersPage() {
-  const { mcpServers, activeInstallation, isLoading } = useMusterInstance();
+  const classes = useStyles();
+  const { mcpServers, activeInstallation, activeInstallationInfo, isLoading } =
+    useMusterInstance();
+  const musterApi = useApi(musterApiRef);
 
-  const columns: TableColumn<ServerRow>[] = [
-    { title: 'Name', field: 'name', highlight: true },
-    { title: 'Family', field: 'family' },
-    {
-      title: 'Target MC',
-      field: 'managementCluster',
-      defaultGroupOrder: 0,
-    },
-    { title: 'Installation', field: 'installation' },
-    { title: 'Type', field: 'type' },
-    {
-      title: 'State',
-      field: 'state',
-      render: row => stateBadge(row.state),
-    },
-    { title: 'Last connected', field: 'lastConnected' },
-    { title: 'Auto start', field: 'autoStart' },
-    {
-      title: 'Auth',
-      field: 'authType',
-      render: row => <Chip size="small" label={row.authType} />,
-    },
-  ];
+  const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
+  const allowMutations = activeInstallationInfo?.allowMutations ?? false;
 
-  let body: ReactNode;
-  if (isLoading) {
-    body = <Progress />;
-  } else if (!activeInstallation) {
-    body = (
+  // Live probe: one round-trip that doubles as the auth check (a 401/403 flips
+  // the page to the not-authenticated state). Same pattern as the dashboard.
+  const {
+    data: probe,
+    isError: probeFailed,
+    refetch,
+  } = useQuery({
+    queryKey: ['muster', 'overview', activeInstallation],
+    queryFn: () =>
+      musterApi.filterTools({ installation: activeInstallation, limit: 1 }),
+    enabled: Boolean(activeInstallation),
+  });
+
+  const authenticated = !requiresAuth || (!probeFailed && Boolean(probe));
+
+  const [connecting, setConnecting] = useState(false);
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      await musterApi.signIn();
+      await refetch();
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const { standard, integration } = useMemo(
+    () => partitionServers(mcpServers),
+    [mcpServers],
+  );
+
+  const targetMcs = useMemo(
+    () =>
+      new Set(
+        standard.flatMap(g =>
+          g.servers
+            .map(s => s.getManagementCluster())
+            .filter((mc): mc is string => Boolean(mc)),
+        ),
+      ),
+    [standard],
+  );
+
+  let body;
+  if (isLoading || !activeInstallation) {
+    body = isLoading ? <Progress /> : (
       <EmptyState
         missing="data"
         title="Select an installation"
         description="Choose a muster installation above to list its aggregated MCP servers."
       />
     );
-  } else {
-    const rows = mcpServers.map(toRow);
+  } else if (mcpServers.length === 0) {
     body = (
-      <Table<ServerRow>
-        title={
-          <Typography variant="h6">MCP servers ({rows.length})</Typography>
-        }
-        columns={columns}
-        data={rows}
-        style={{ width: '100%' }}
-        options={{
-          grouping: true,
-          paging: rows.length > 50,
-          pageSize: 50,
-          pageSizeOptions: [25, 50, 100],
-          emptyRowsWhenPaging: false,
-          actionsColumnIndex: -1,
-        }}
-        detailPanel={({ rowData }) => (
-          <ServerDetailPanel server={rowData.server} />
-        )}
-        emptyContent={
-          <Typography
-            variant="body2"
-            color="textSecondary"
-            style={{ padding: 16 }}
-          >
-            No MCPServer CRs found in the selected installation(s). The muster
-            CRDs may not be installed there.
-          </Typography>
-        }
+      <EmptyState
+        missing="data"
+        title="No MCP servers"
+        description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
       />
+    );
+  } else {
+    body = (
+      <Box className={classes.column}>
+        {requiresAuth && !authenticated && (
+          <Box className={classes.topGate}>
+            <Gate
+              label="Server topology is visible from the CRDs, but tools and core families require an authenticated muster session."
+              action={
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="primary"
+                  disabled={connecting}
+                  startIcon={
+                    connecting ? (
+                      <CircularProgress size={14} color="inherit" />
+                    ) : (
+                      <Lock style={{ fontSize: 14 }} />
+                    )
+                  }
+                  onClick={handleConnect}
+                >
+                  Connect to muster
+                </Button>
+              }
+            />
+          </Box>
+        )}
+
+        {/* Standard servers — federated across management clusters */}
+        <Box className={classes.section}>
+          <SectionHeader
+            icon={<Dns />}
+            title="Standard servers"
+            description="muster federates the same backend MCP servers across the management clusters in this installation. Each family's tool surface is identical, so it is shown once; connection health is tracked per management cluster."
+          />
+          {standard.length === 0 ? (
+            <Typography variant="body2" color="textSecondary">
+              No federated (management-cluster-labelled) servers in this
+              installation.
+            </Typography>
+          ) : (
+            <>
+              <Typography variant="body2" className={classes.presentNote}>
+                {standard.length} {standard.length === 1 ? 'family' : 'families'}{' '}
+                across {targetMcs.size}{' '}
+                {targetMcs.size === 1 ? 'cluster' : 'clusters'}.
+              </Typography>
+              <Box className={classes.stack}>
+                {standard.map((group, idx) => (
+                  <StandardServerDisclosure
+                    key={group.family}
+                    family={group.family}
+                    servers={group.servers}
+                    authenticated={authenticated}
+                    defaultExpanded={idx === 0}
+                  />
+                ))}
+              </Box>
+            </>
+          )}
+        </Box>
+
+        {/* Integration servers — singular, outside the MC structure */}
+        <Box className={classes.section}>
+          <SectionHeader
+            icon={<Power />}
+            title="Integration servers"
+            description="Singular MCP servers muster fronts outside the management-cluster structure — customer integrations and shared services. Each carries its own endpoint, auth chain, and tool surface."
+            action={
+              <AddAdHocServerButton
+                installation={activeInstallation}
+                allowMutations={allowMutations}
+              />
+            }
+          />
+          {integration.length === 0 ? (
+            <Typography variant="body2" color="textSecondary">
+              No singular integration servers in this installation.
+            </Typography>
+          ) : (
+            <Box className={classes.stack}>
+              {integration.map(server => (
+                <IntegrationServerDisclosure
+                  key={`${server.cluster}/${server.getName()}`}
+                  server={server}
+                  authenticated={authenticated}
+                  allowMutations={allowMutations}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+
+        {/* muster core — tools muster provides directly */}
+        <Box className={classes.section}>
+          <SectionHeader
+            icon={<Build />}
+            title="muster core"
+            description="Tools muster provides directly — managing workflows, services, configuration, MCP server definitions, and authentication. Always available wherever muster is reachable, grouped by family."
+          />
+          {authenticated ? (
+            <CoreFamiliesPanel installation={activeInstallation} />
+          ) : (
+            <Gate label="Authenticate to muster to inspect its core tools." />
+          )}
+        </Box>
+      </Box>
     );
   }
 
@@ -166,10 +272,6 @@ export function McpServersPage() {
     <Content>
       <InstallationPicker />
       {body}
-      <Typography variant="caption" color="textSecondary">
-        Read-only view of muster MCPServer CRs.{' '}
-        <Link to="https://github.com/giantswarm/muster">muster docs</Link>
-      </Typography>
     </Content>
   );
 }
