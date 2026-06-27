@@ -7,11 +7,10 @@ import {
   Theme,
   Typography,
 } from '@material-ui/core';
-import AccountTreeIcon from '@material-ui/icons/AccountTree';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { WorkflowExecutionSummary } from '../../apis';
 import { formatDuration } from '../../lib/formatDuration';
-import { StatusIcon } from '../flow';
+import { ExecutionStatusBadge } from './executionStatus';
 
 const useStyles = makeStyles((theme: Theme) => ({
   panel: {
@@ -36,6 +35,10 @@ export interface ExecutionHistoryPanelProps {
   onSelect: (executionId?: string) => void;
 }
 
+/**
+ * List of past executions for a workflow. Selecting one loads its per-step
+ * results in the adjacent detail panel.
+ */
 export function ExecutionHistoryPanel({
   executions,
   selectedExecutionId,
@@ -49,19 +52,6 @@ export function ExecutionHistoryPanel({
         <Typography variant="subtitle1">Executions</Typography>
       </div>
       <List dense disablePadding>
-        <ListItem
-          button
-          selected={selectedExecutionId === undefined}
-          onClick={() => onSelect(undefined)}
-        >
-          <ListItemIcon className={classes.listIcon}>
-            <AccountTreeIcon fontSize="small" color="action" />
-          </ListItemIcon>
-          <ListItemText
-            primary="Definition"
-            secondary="Workflow without execution overlay"
-          />
-        </ListItem>
         {executions.map(execution => (
           <ListItem
             key={execution.execution_id}
@@ -70,7 +60,7 @@ export function ExecutionHistoryPanel({
             onClick={() => onSelect(execution.execution_id)}
           >
             <ListItemIcon className={classes.listIcon}>
-              <StatusIcon status={execution.status} />
+              <ExecutionStatusBadge status={execution.status} label="" />
             </ListItemIcon>
             <ListItemText
               primary={

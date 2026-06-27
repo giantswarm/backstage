@@ -94,3 +94,43 @@ gs:
       pipeline: stable
       providers:
         - capa
+
+# Muster management UI (plugins/muster frontend + plugins/muster-backend).
+#
+# CRD-backed views -- the dashboard, MCP-server manager, workflow definitions,
+# and the fleet health matrix -- read MCPServer/Workflow CRs
+# (muster.giantswarm.io/v1alpha1) through the Kubernetes proxy using the
+# `kubernetes` clusters configured above. The CRs are discovered live per
+# cluster, so no `kubernetes.customResources` registration is needed. The
+# InstallationPicker derives its list from those same clusters, so every MC
+# that runs a muster aggregator appears automatically -- nothing is hardcoded.
+#
+# `muster.installations` configures the MCP proxy (muster-backend) used for
+# live tool execution, workflow runs, and aggregator/auth state. List one
+# entry per muster aggregator -- a single muster federates many management
+# clusters. The endpoint is the per-MC muster URL
+# `https://muster.<mc>.<domain>/mcp`; the domain differs per installation and
+# cannot be derived from the name, so it is given here. Keep the
+# deployment-specific fleet out of source control via env-var substitution
+# (real per-MC endpoints live in each cluster's deployed config). Each entry's
+# `name` must match the Kubernetes cluster name above so the CRD picker and
+# the MCP proxy line up. Routes select the active installation via
+# `?installation=<name>`.
+muster:
+  installations:
+    - name: main
+      url: ${MUSTER_MAIN_URL} # e.g. https://muster.<mc>.<domain>/mcp
+      # Forward the logged-in user's token (the same Dex session used for
+      # cluster access; falls back to the main id token when no dedicated
+      # OAuth provider is registered for this name). Requests without a token
+      # are rejected with 401.
+      authProvider: oidc-main
+      # Read-only safety gate (the default). `call_tool` invocations whose
+      # tool name looks mutating -- apply/create/update/delete/patch/scale/
+      # restart/start/stop/exec/write/remove/set -- and workflow runs are
+      # blocked with 403 unless this is true. Leave unset for GitOps-managed
+      # installations; opt a single installation in only when you mean it.
+      # allowMutations: false
+    - name: example
+      url: ${MUSTER_EXAMPLE_URL}
+      authProvider: oidc-example

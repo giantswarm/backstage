@@ -10,23 +10,25 @@ import {
   McpClientCache,
 } from '@giantswarm/backstage-plugin-gs-node';
 
-// Muster workflow tools proxied by this plugin. The muster aggregator only
-// exposes its meta-tools (list_tools, call_tool, ...) over MCP; concrete
-// tools like core_workflow_list must be invoked through the `call_tool`
-// meta-tool with the target tool name and arguments.
-const WORKFLOW_TOOL_NAMES = [
-  'core_workflow_list',
-  'core_workflow_get',
-  'core_workflow_execution_list',
-  'core_workflow_execution_get',
+/**
+ * The muster aggregator only exposes its meta-tools over MCP. Discovery
+ * meta-tools (list_tools, filter_tools, ...) are invoked directly; concrete
+ * aggregated tools (core_workflow_list, core_mcpserver_list, x_<server>_*,
+ * workflow_<name>, ...) are invoked indirectly through the `call_tool`
+ * meta-tool with the target tool name + arguments.
+ */
+const META_TOOLS = [
+  'list_tools',
+  'describe_tool',
+  'list_core_tools',
+  'filter_tools',
+  'call_tool',
 ] as const;
 
-export type WorkflowToolName = (typeof WORKFLOW_TOOL_NAMES)[number];
+export type MetaToolName = (typeof META_TOOLS)[number];
 
 /** Muster meta-tool used to execute any aggregated tool by name. */
 const CALL_TOOL = 'call_tool';
-
-const CACHE_KEY_SERVER_NAME = 'muster';
 
 export interface MusterServerConfig {
   url: string;
@@ -39,14 +41,29 @@ export interface MusterServerConfig {
 }
 
 /**
- * Resolve the muster MCP server connection from the existing `aiChat.mcp`
- * config array, so deployments configure the muster endpoint once. The entry
- * is selected by name (`muster.serverName`, default `muster`) and supports
- * the same plain/static-header rules as ai-chat-backend's
- * readMcpServersFromConfig. Entries with `authProvider` require the
- * frontend to forward a per-user token with each request. Entries with
- * `useBackstageUserToken` are not supported by this proxy and are reported
- * as unconfigured.
+ * One muster aggregator endpoint. A single muster federates many management
+ * clusters, so the plugin can be pointed at several musters (one per
+ * installation) and routes select the active one via `?installation=`.
+ */
+export interface MusterInstallationConfig extends MusterServerConfig {
+  /** Stable installation id used for routing and as the client cache scope. */
+  name: string;
+  /**
+   * Allow mutating `call_tool` invocations against this installation. Default
+   * false: the proxy is read-only unless an operator opts a specific
+   * installation in. GitOps-managed resources should stay false.
+   */
+  allowMutations?: boolean;
+}
+
+/**
+ * Read a single muster MCP server connection from the existing `aiChat.mcp`
+ * config array (legacy single-installation path). The entry is selected by
+ * name (`muster.serverName`, default `muster`) and supports the same
+ * plain/static-header rules as ai-chat-backend's readMcpServersFromConfig.
+ * Entries with `authProvider` require the frontend to forward a per-user
+ * token; entries with `useBackstageUserToken` are unsupported and reported as
+ * unconfigured.
  */
 export function readMusterServerFromConfig(
   config: Config,
@@ -64,7 +81,7 @@ export function readMusterServerFromConfig(
 
   if (mcpConfig.getOptionalBoolean('useBackstageUserToken')) {
     logger.warn(
-      `MCP server '${serverName}' is configured with useBackstageUserToken, which the muster backend plugin does not support. Workflow visualization is disabled.`,
+      `MCP server '${serverName}' is configured with useBackstageUserToken, which the muster backend plugin does not support. Muster endpoints will be disabled.`,
     );
     return undefined;
   }
@@ -84,23 +101,85 @@ export function readMusterServerFromConfig(
   return { url, headers, authProvider };
 }
 
+function readHeaders(
+  headersConfig: Config | undefined,
+): Record<string, string> | undefined {
+  if (!headersConfig) {
+    return undefined;
+  }
+  const headers: Record<string, string> = {};
+  for (const key of headersConfig.keys()) {
+    headers[key] = headersConfig.getString(key);
+  }
+  return headers;
+}
+
+/**
+ * Resolve the set of muster installations the proxy can target, keyed by
+ * installation name.
+ *
+ * Two sources, in order of precedence:
+ *   1. `muster.installations` — an explicit list of `{ name, url,
+ *      authProvider?, allowMutations?, headers? }` entries (multi-installation).
+ *   2. The legacy single `aiChat.mcp` entry selected by `muster.serverName`
+ *      (default `muster`), registered under that name with mutations disabled.
+ *
+ * Returns an empty map when nothing is configured.
+ */
+export function readMusterInstallationsFromConfig(
+  config: Config,
+  logger: LoggerService,
+): Map<string, MusterInstallationConfig> {
+  const installations = new Map<string, MusterInstallationConfig>();
+
+  const explicit = config.getOptionalConfigArray('muster.installations');
+  if (explicit && explicit.length > 0) {
+    for (const entry of explicit) {
+      const name = entry.getString('name');
+      const url = entry.getString('url');
+      if (installations.has(name)) {
+        logger.warn(
+          `Duplicate muster installation '${name}' in muster.installations; keeping the first.`,
+        );
+        continue;
+      }
+      installations.set(name, {
+        name,
+        url,
+        authProvider: entry.getOptionalString('authProvider'),
+        allowMutations: entry.getOptionalBoolean('allowMutations') ?? false,
+        headers: readHeaders(entry.getOptionalConfig('headers')),
+      });
+    }
+    return installations;
+  }
+
+  const legacy = readMusterServerFromConfig(config, logger);
+  if (legacy) {
+    const name = config.getOptionalString('muster.serverName') ?? 'muster';
+    installations.set(name, { name, allowMutations: false, ...legacy });
+  }
+  return installations;
+}
+
 interface ContentItem {
   type: string;
   text?: string;
 }
 
 /**
- * Thin client around the muster MCP server exposing the core workflow tools
- * as typed JSON calls. Connections are cached per user token via the shared
- * McpClientCache (TTL-based and close-detected recreation), so a server
- * behind per-user auth gets one MCP session per user instead of one global
- * session.
+ * Thin client around a single muster MCP aggregator. It exposes muster's
+ * meta-tools as typed JSON calls: discovery meta-tools are invoked directly,
+ * concrete aggregated tools go through `call_tool`. Connections are cached per
+ * user token via the shared McpClientCache (TTL-based + close-detected
+ * recreation), scoped to this installation, so a server behind per-user auth
+ * gets one MCP session per user instead of one global session.
  */
 export class MusterMcpClient {
   private readonly cache: McpClientCache;
 
   constructor(
-    private readonly server: MusterServerConfig,
+    private readonly installation: MusterInstallationConfig,
     private readonly logger: LoggerService,
     private readonly clientFactory: (
       headers: Record<string, string> | undefined,
@@ -109,7 +188,7 @@ export class MusterMcpClient {
         name: 'muster-backend',
         transport: {
           type: 'http',
-          url: server.url,
+          url: installation.url,
           headers,
         },
       }),
@@ -117,46 +196,47 @@ export class MusterMcpClient {
     this.cache = new McpClientCache(logger);
   }
 
-  async callTool(
-    toolName: WorkflowToolName,
+  /**
+   * Invoke a muster meta-tool directly (list_tools, filter_tools,
+   * describe_tool, list_core_tools, call_tool) and return its parsed payload.
+   */
+  async invokeMetaTool(
+    metaTool: MetaToolName,
     args: Record<string, unknown>,
     options?: { authToken?: string },
   ): Promise<unknown> {
+    if (!META_TOOLS.includes(metaTool)) {
+      throw new NotFoundError(`Unknown muster meta-tool: ${metaTool}`);
+    }
+
     const authToken = options?.authToken;
-    const cacheKey = McpClientCache.buildKey(CACHE_KEY_SERVER_NAME, authToken);
+    const cacheKey = McpClientCache.buildKey(this.installation.name, authToken);
 
     const headers: Record<string, string> | undefined =
       authToken !== undefined
-        ? { ...this.server.headers, Authorization: `Bearer ${authToken}` }
-        : this.server.headers;
-
-    if (!WORKFLOW_TOOL_NAMES.includes(toolName)) {
-      throw new NotFoundError(`Unknown muster tool: ${toolName}`);
-    }
+        ? { ...this.installation.headers, Authorization: `Bearer ${authToken}` }
+        : this.installation.headers;
 
     const client = await this.cache.getOrCreate(cacheKey, () =>
       this.clientFactory(headers),
     );
     const tools = client.toolsFromDefinitions({
-      tools: [{ name: CALL_TOOL, inputSchema: { type: 'object' as const } }],
+      tools: [{ name: metaTool, inputSchema: { type: 'object' as const } }],
     });
 
-    const tool = tools[CALL_TOOL];
+    const tool = tools[metaTool];
     if (!tool || typeof tool.execute !== 'function') {
       throw new ServiceUnavailableError(
-        `Muster meta-tool ${CALL_TOOL} has no executor`,
+        `Muster meta-tool ${metaTool} has no executor`,
       );
     }
 
     let result;
     try {
-      result = await tool.execute(
-        { name: toolName, arguments: args },
-        {
-          toolCallId: `muster-backend-${toolName}`,
-          messages: [],
-        },
-      );
+      result = await tool.execute(args, {
+        toolCallId: `muster-backend-${metaTool}`,
+        messages: [],
+      });
     } catch (error) {
       if (isClosedClientError(error)) {
         this.logger.warn(
@@ -167,7 +247,50 @@ export class MusterMcpClient {
       throw error;
     }
 
-    return this.parseResult(result, toolName);
+    return this.parseResult(result, metaTool);
+  }
+
+  /**
+   * Execute a concrete aggregated tool by name through the `call_tool`
+   * meta-tool. This is the path for core_* tools, workflow_<name> runs, and
+   * x_<server>_* aggregated tools. The caller (router) is responsible for the
+   * read-only/mutation safety gate.
+   */
+  async callTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool(
+      CALL_TOOL,
+      { name: toolName, arguments: args },
+      options,
+    );
+  }
+
+  async listTools(options?: { authToken?: string }): Promise<unknown> {
+    return this.invokeMetaTool('list_tools', {}, options);
+  }
+
+  async filterTools(
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('filter_tools', args, options);
+  }
+
+  async describeTool(
+    name: string,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('describe_tool', { name }, options);
+  }
+
+  async listCoreTools(
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('list_core_tools', args, options);
   }
 
   async dispose(): Promise<void> {
@@ -199,10 +322,11 @@ export class MusterMcpClient {
   }
 
   /**
-   * The `call_tool` meta-tool wraps the target tool's MCP result as a JSON
-   * string inside its own text content block, so unwrap twice: first the
-   * meta-tool envelope, then the target tool's result, whose text payload is
-   * the JSON document the workflow endpoints return.
+   * Discovery meta-tools return their payload as a single JSON text block
+   * (one unwrap), while `call_tool` wraps the target tool's MCP result as a
+   * JSON string inside its own text block (two unwraps). This unwraps the
+   * outer envelope, and when the inner value is itself a `{ content: [...] }`
+   * MCP result it unwraps once more — covering both shapes with one path.
    */
   private parseResult(result: unknown, toolName: string): unknown {
     const envelope = this.unwrapTextContent(result, toolName);
@@ -214,7 +338,7 @@ export class MusterMcpClient {
     try {
       inner = JSON.parse(envelope);
     } catch {
-      // Not a call_tool envelope; treat it as the tool's direct payload.
+      // Not a JSON envelope; treat it as the tool's direct payload.
       return envelope;
     }
 
@@ -223,8 +347,8 @@ export class MusterMcpClient {
       typeof inner !== 'object' ||
       !Array.isArray((inner as { content?: unknown }).content)
     ) {
-      // Direct JSON payload from a server that exposes tools without the
-      // call_tool envelope.
+      // Direct JSON payload (discovery meta-tools, or a server that exposes
+      // tools without the call_tool envelope).
       return inner;
     }
 
