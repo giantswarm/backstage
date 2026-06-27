@@ -2,6 +2,8 @@ export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
+export { AvailabilityBadge } from './AvailabilityBadge';
+export type { AvailabilityBadgeProps } from './AvailabilityBadge';
 export { Stat } from './Stat';
 export type { StatProps } from './Stat';
 export { DisclosureAccordion } from './DisclosureAccordion';

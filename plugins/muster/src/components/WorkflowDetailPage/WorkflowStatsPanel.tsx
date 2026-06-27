@@ -1,84 +1,81 @@
 import {
   Box,
-  Grid,
+  Paper,
   Tooltip,
   Typography,
   makeStyles,
+  useTheme,
   Theme,
 } from '@material-ui/core';
-import { InfoCard, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { formatDuration } from '../../lib/formatDuration';
+import { Stat } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  metric: {
+  statRow: {
     display: 'flex',
-    flexDirection: 'column',
+    flexWrap: 'wrap',
+    gap: theme.spacing(2, 5),
   },
-  metricValue: {
-    fontSize: '1.5rem',
-    fontWeight: 600,
-    lineHeight: 1.1,
-  },
-  metricLabel: {
+  breakdown: {
+    marginTop: theme.spacing(2),
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(1, 2.5),
     color: theme.palette.text.secondary,
-    fontSize: '0.8rem',
+  },
+  outcome: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  outcomeValue: {
+    fontVariantNumeric: 'tabular-nums',
+    color: theme.palette.text.primary,
+  },
+  chartCard: {
+    marginTop: theme.spacing(3),
+    padding: theme.spacing(2),
+    borderRadius: theme.shape.borderRadius * 2,
+  },
+  chartTitle: {
+    marginBottom: theme.spacing(1.5),
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    fontSize: 11,
+    fontWeight: 500,
+    color: theme.palette.text.secondary,
   },
   chart: {
     display: 'flex',
     alignItems: 'flex-end',
     gap: 2,
-    height: 80,
-    marginTop: theme.spacing(1),
+    height: 160,
   },
   barColumn: {
     flex: '1 1 0',
-    minWidth: 4,
+    minWidth: 3,
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'flex-end',
     height: '100%',
   },
-  barCompleted: {
-    backgroundColor: theme.palette.success.main,
-  },
-  barFailed: {
-    backgroundColor: theme.palette.error.main,
-  },
-  legend: {
-    display: 'flex',
-    gap: theme.spacing(2),
-    marginTop: theme.spacing(1),
-  },
-  legendItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-  },
-  swatch: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
-  },
   note: {
+    display: 'block',
+    marginTop: theme.spacing(1.5),
     color: theme.palette.text.secondary,
-    marginTop: theme.spacing(1),
   },
 }));
-
-const Metric = ({ value, label }: { value: string; label: string }) => {
-  const classes = useStyles();
-  return (
-    <Box className={classes.metric}>
-      <span className={classes.metricValue}>{value}</span>
-      <span className={classes.metricLabel}>{label}</span>
-    </Box>
-  );
-};
 
 export interface WorkflowStatsPanelProps {
   name: string;
@@ -87,17 +84,22 @@ export interface WorkflowStatsPanelProps {
 
 /**
  * Run statistics for a workflow, sourced from the muster-backend's derived
- * `/workflows/:name/stats` (computed over a bounded execution sample). Includes
- * a dependency-free CSS stacked bar of completed-vs-failed runs per day.
+ * `/workflows/:name/stats` (computed over a bounded execution sample). Renders
+ * the mockup's Statistics block: a Stat row, a completed/failed outcome
+ * breakdown, and a dependency-free CSS stacked bar of runs per day.
  *
- * ponytail: the per-day bar is a hand-rolled CSS chart, not a charting library.
- * Upgrade path: swap for a real chart if richer interaction is needed.
+ * ponytail: the per-day bar is a hand-rolled CSS chart, not a charting library,
+ * and the breakdown is two-way (completed/failed) -- muster's execution
+ * summaries do not carry the mockup's tolerated-step-failure dimension. Upgrade
+ * path: a richer summary from the backend plus a chart lib if interaction is
+ * needed.
  */
 export function WorkflowStatsPanel({
   name,
   installation,
 }: WorkflowStatsPanelProps) {
   const classes = useStyles();
+  const theme = useTheme();
   const musterApi = useApi(musterApiRef);
 
   const { data, isLoading, error } = useQuery({
@@ -106,115 +108,132 @@ export function WorkflowStatsPanel({
     enabled: name !== '',
   });
 
-  let content;
   if (isLoading) {
-    content = <Progress />;
-  } else if (error) {
-    content = (
-      <Typography variant="body2" className={classes.note}>
+    return <Progress />;
+  }
+  if (error) {
+    return (
+      <Typography variant="body2" color="textSecondary">
         Statistics unavailable: {(error as Error).message}
       </Typography>
     );
-  } else if (!data || data.runs === 0) {
-    content = (
-      <Typography variant="body2" className={classes.note}>
+  }
+  if (!data || data.runs === 0) {
+    return (
+      <Typography variant="body2" color="textSecondary">
         No executions recorded for this workflow yet.
       </Typography>
     );
-  } else {
-    const successRate =
-      data.success_rate !== null
-        ? `${Math.round(data.success_rate * 100)}%`
-        : '-';
-    const avg =
-      data.avg_duration_ms !== null
-        ? formatDuration(data.avg_duration_ms)
-        : '-';
-    const max =
-      data.max_duration_ms !== null
-        ? formatDuration(data.max_duration_ms)
-        : '-';
-
-    const maxPerDay = data.per_day.reduce(
-      (acc, day) => Math.max(acc, day.completed + day.failed),
-      0,
-    );
-
-    content = (
-      <>
-        <Grid container spacing={2}>
-          <Grid item xs={6} sm={3}>
-            <Metric value={String(data.runs)} label="Runs" />
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Metric value={successRate} label="Success rate" />
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Metric value={avg} label="Avg duration" />
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Metric value={max} label="Max duration" />
-          </Grid>
-        </Grid>
-
-        {data.per_day.length > 0 && maxPerDay > 0 && (
-          <>
-            <Box className={classes.chart}>
-              {data.per_day.map(day => {
-                const total = day.completed + day.failed;
-                const heightPct = (total / maxPerDay) * 100;
-                const completedShare = total > 0 ? day.completed / total : 0;
-                return (
-                  <Tooltip
-                    key={day.date}
-                    arrow
-                    title={`${day.date}: ${day.completed} completed, ${day.failed} failed`}
-                  >
-                    <div className={classes.barColumn}>
-                      <div
-                        style={{
-                          height: `${heightPct}%`,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'flex-end',
-                        }}
-                      >
-                        <div
-                          className={classes.barFailed}
-                          style={{ height: `${(1 - completedShare) * 100}%` }}
-                        />
-                        <div
-                          className={classes.barCompleted}
-                          style={{ height: `${completedShare * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </Tooltip>
-                );
-              })}
-            </Box>
-            <Box className={classes.legend}>
-              <span className={classes.legendItem}>
-                <span className={`${classes.swatch} ${classes.barCompleted}`} />
-                completed
-              </span>
-              <span className={classes.legendItem}>
-                <span className={`${classes.swatch} ${classes.barFailed}`} />
-                failed
-              </span>
-            </Box>
-          </>
-        )}
-
-        {data.sampled < data.runs && (
-          <Typography variant="caption" className={classes.note}>
-            Rates and durations computed over the most recent {data.sampled} of{' '}
-            {data.runs} runs.
-          </Typography>
-        )}
-      </>
-    );
   }
 
-  return <InfoCard title="Run statistics">{content}</InfoCard>;
+  const successRatePct =
+    data.success_rate !== null ? Math.round(data.success_rate * 100) : null;
+  const successRate = successRatePct !== null ? `${successRatePct}%` : '—';
+  let successTone: 'ok' | 'warning' | undefined;
+  if (successRatePct !== null) {
+    successTone = successRatePct >= 95 ? 'ok' : 'warning';
+  }
+  const avg =
+    data.avg_duration_ms !== null ? formatDuration(data.avg_duration_ms) : '—';
+  const max =
+    data.max_duration_ms !== null ? formatDuration(data.max_duration_ms) : '—';
+
+  const maxPerDay = data.per_day.reduce(
+    (acc, day) => Math.max(acc, day.completed + day.failed),
+    0,
+  );
+
+  const completedColor = theme.palette.success.main;
+  const failedColor = theme.palette.error.main;
+
+  return (
+    <Box>
+      <Box className={classes.statRow}>
+        <Stat label="Runs" value={data.runs.toLocaleString()} />
+        <Stat
+          label="Success rate"
+          value={successRate}
+          tone={successTone}
+        />
+        <Stat label="Avg duration" value={avg} />
+        <Stat label="Max duration" value={max} />
+      </Box>
+
+      <Box className={classes.breakdown}>
+        <span className={classes.outcome}>
+          <span
+            className={classes.dot}
+            style={{ backgroundColor: completedColor }}
+          />
+          <span className={classes.outcomeValue}>
+            {data.completed.toLocaleString()}
+          </span>
+          completed
+        </span>
+        <span className={classes.outcome}>
+          <span
+            className={classes.dot}
+            style={{ backgroundColor: failedColor }}
+          />
+          <span className={classes.outcomeValue}>
+            {data.failed.toLocaleString()}
+          </span>
+          failed
+        </span>
+      </Box>
+
+      {data.per_day.length > 0 && maxPerDay > 0 && (
+        <Paper variant="outlined" className={classes.chartCard}>
+          <Typography component="div" className={classes.chartTitle}>
+            Runs per day
+          </Typography>
+          <Box className={classes.chart}>
+            {data.per_day.map(day => {
+              const total = day.completed + day.failed;
+              const heightPct = (total / maxPerDay) * 100;
+              const completedShare = total > 0 ? day.completed / total : 0;
+              return (
+                <Tooltip
+                  key={day.date}
+                  arrow
+                  title={`${day.date}: ${day.completed} completed, ${day.failed} failed`}
+                >
+                  <div className={classes.barColumn}>
+                    <div
+                      style={{
+                        height: `${heightPct}%`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'flex-end',
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: `${(1 - completedShare) * 100}%`,
+                          backgroundColor: failedColor,
+                        }}
+                      />
+                      <div
+                        style={{
+                          height: `${completedShare * 100}%`,
+                          backgroundColor: completedColor,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </Tooltip>
+              );
+            })}
+          </Box>
+        </Paper>
+      )}
+
+      {data.sampled < data.runs && (
+        <Typography variant="caption" className={classes.note}>
+          Rates and durations computed over the most recent {data.sampled} of{' '}
+          {data.runs} runs.
+        </Typography>
+      )}
+    </Box>
+  );
 }
