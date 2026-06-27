@@ -16,6 +16,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
+import { MusterInstallationInfo } from '../../apis/types';
 
 const STORAGE_KEY = 'muster-installation';
 
@@ -29,6 +30,8 @@ export type MusterInstance = {
   isLoadingInstallations: boolean;
   /** The single active muster instance every screen is scoped to. */
   activeInstallation: string | undefined;
+  /** Config-derived metadata (endpoint, auth/mutation posture) for the active instance. */
+  activeInstallationInfo: MusterInstallationInfo | undefined;
   setActiveInstallation: (installation: string) => void;
   /** MCPServer CRs of the active instance (one installation, not fan-out). */
   mcpServers: MCPServer[];
@@ -101,9 +104,14 @@ export const MusterInstanceProvider = ({
       queryFn: () => musterApi.listInstallations(),
     });
 
-  const installations = useMemo(
-    () => (installationsData?.installations ?? []).map(i => i.name),
+  const installationInfos = useMemo(
+    () => installationsData?.installations ?? [],
     [installationsData],
+  );
+
+  const installations = useMemo(
+    () => installationInfos.map(i => i.name),
+    [installationInfos],
   );
 
   const urlInstallation = searchParams.get('installation');
@@ -166,6 +174,11 @@ export const MusterInstanceProvider = ({
     }
   }, [activeInstallation, urlInstallation, stored, setSearchParams]);
 
+  const activeInstallationInfo = useMemo(
+    () => installationInfos.find(i => i.name === activeInstallation),
+    [installationInfos, activeInstallation],
+  );
+
   const clusters = activeInstallation ? [activeInstallation] : [];
 
   const {
@@ -206,6 +219,7 @@ export const MusterInstanceProvider = ({
       installations,
       isLoadingInstallations,
       activeInstallation,
+      activeInstallationInfo,
       setActiveInstallation,
       mcpServers,
       workflows,
@@ -223,6 +237,7 @@ export const MusterInstanceProvider = ({
       installations,
       isLoadingInstallations,
       activeInstallation,
+      activeInstallationInfo,
       setActiveInstallation,
       mcpServers,
       workflows,

@@ -7,6 +7,7 @@ import {
   TableRow,
   Tooltip,
   Typography,
+  useTheme,
 } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import {
@@ -15,6 +16,7 @@ import {
   mcpServerStateSeverity,
   worstSeverity,
 } from '../../lib/k8s';
+import { severityTone, toneColors } from '../shared';
 
 const UNLABELED = '—';
 
@@ -31,26 +33,17 @@ const useStyles = makeStyles(theme => ({
     textAlign: 'center',
     color: theme.palette.text.disabled,
   },
-  severityCell: {
+  dotCell: {
     textAlign: 'center',
-    fontWeight: 600,
     cursor: 'default',
   },
-  ok: {
-    backgroundColor: theme.palette.success.main,
-    color: theme.palette.getContrastText(theme.palette.success.main),
-  },
-  warning: {
-    backgroundColor: theme.palette.warning.main,
-    color: theme.palette.getContrastText(theme.palette.warning.main),
-  },
-  error: {
-    backgroundColor: theme.palette.error.main,
-    color: theme.palette.getContrastText(theme.palette.error.main),
-  },
-  unknown: {
-    backgroundColor: theme.palette.action.disabledBackground,
-    color: theme.palette.text.primary,
+  dot: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
   },
 }));
 
@@ -63,25 +56,21 @@ type FleetHealthMatrixProps = {
 };
 
 /**
- * Fleet health matrix recovered from the muster CRD: rows are target
- * management clusters (`muster.giantswarm.io/management-cluster` label),
- * columns are server families (`spec.family.name`), and each cell colours the
- * worst MCPServer `.status.state` in that intersection. Aggregates across all
- * selected installations.
+ * Fleet health matrix recovered from the muster CRD: rows are the target
+ * management clusters (`muster.giantswarm.io/management-cluster` label) the
+ * active muster federates, columns are server families (`spec.family.name`),
+ * and each cell is a coloured dot for the worst MCPServer `.status.state` in
+ * that intersection -- the mockups' state-dot language. Scoped to the single
+ * active installation (the picker's selection), not a cross-installation view.
  */
 export const FleetHealthMatrix = ({ servers }: FleetHealthMatrixProps) => {
   const classes = useStyles();
-  const severityClass: Record<MCPServerSeverity, string> = {
-    ok: classes.ok,
-    warning: classes.warning,
-    error: classes.error,
-    unknown: classes.unknown,
-  };
+  const theme = useTheme();
 
   if (servers.length === 0) {
     return (
       <Typography variant="body2" color="textSecondary">
-        No MCP servers found in the selected installations.
+        No MCP servers found in this installation.
       </Typography>
     );
   }
@@ -143,6 +132,7 @@ export const FleetHealthMatrix = ({ servers }: FleetHealthMatrixProps) => {
                     ),
                   'ok',
                 );
+                const dotColor = toneColors(theme, severityTone(severity)).main;
 
                 const tooltip = (
                   <Box>
@@ -156,10 +146,11 @@ export const FleetHealthMatrix = ({ servers }: FleetHealthMatrixProps) => {
 
                 return (
                   <Tooltip key={family} title={tooltip} arrow>
-                    <TableCell
-                      className={`${classes.severityCell} ${severityClass[severity]}`}
-                    >
-                      {cellServers.length}
+                    <TableCell className={classes.dotCell}>
+                      <span
+                        className={classes.dot}
+                        style={{ backgroundColor: dotColor }}
+                      />
                     </TableCell>
                   </Tooltip>
                 );

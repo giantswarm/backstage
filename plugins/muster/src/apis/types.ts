@@ -148,6 +148,8 @@ export interface WorkflowStats {
 /** One configured muster installation, as reported by `/installations`. */
 export interface MusterInstallationInfo {
   name: string;
+  /** The aggregator's MCP endpoint URL (mono-rendered on the dashboard). */
+  endpoint?: string;
   requiresAuth: boolean;
   /** When false, running workflows and other mutating calls are blocked. */
   allowMutations: boolean;
