@@ -13,7 +13,7 @@ import {
 import { Chip, Typography } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { InstallationPicker } from '../InstallationPicker';
-import { useMusterData } from '../MusterDataProvider';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import { MusterWorkflow } from '../../lib/k8s';
 import { workflowDetailRouteRef } from '../../routes';
 
@@ -45,7 +45,7 @@ function toRow(workflow: MusterWorkflow): WorkflowRow {
 }
 
 export function WorkflowsListPage() {
-  const { workflows, activeInstallations, isLoading } = useMusterData();
+  const { workflows, activeInstallation, isLoading } = useMusterInstance();
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
 
   const detailLink = (row: WorkflowRow) => {
@@ -107,12 +107,12 @@ export function WorkflowsListPage() {
   let body: ReactNode;
   if (isLoading) {
     body = <Progress />;
-  } else if (activeInstallations.length === 0) {
+  } else if (!activeInstallation) {
     body = (
       <EmptyState
         missing="data"
         title="Select an installation"
-        description="Choose one or more muster installations above to list their workflows."
+        description="Choose a muster installation above to list its workflows."
       />
     );
   } else {

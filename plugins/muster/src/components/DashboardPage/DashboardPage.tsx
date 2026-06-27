@@ -7,7 +7,7 @@ import {
   StatusOK,
   StatusWarning,
 } from '@backstage/core-components';
-import { useMusterData } from '../MusterDataProvider';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { FleetHealthMatrix } from './FleetHealthMatrix';
 import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
@@ -94,13 +94,8 @@ const InstallationCard = ({
 
 export function DashboardPage() {
   const classes = useStyles();
-  const { activeInstallations, mcpServers, workflows, isLoading } =
-    useMusterData();
-
-  const installations =
-    activeInstallations.length > 0
-      ? activeInstallations
-      : Array.from(new Set(mcpServers.map(s => s.cluster)));
+  const { activeInstallation, mcpServers, workflows, isLoading } =
+    useMusterInstance();
 
   return (
     <Content>
@@ -110,17 +105,15 @@ export function DashboardPage() {
         <Progress />
       ) : (
         <Grid container spacing={3}>
-          {installations.map(installation => (
-            <Grid item xs={12} md={4} key={installation}>
+          {activeInstallation && (
+            <Grid item xs={12} md={4}>
               <InstallationCard
-                installation={installation}
-                servers={mcpServers.filter(s => s.cluster === installation)}
-                workflowCount={
-                  workflows.filter(w => w.cluster === installation).length
-                }
+                installation={activeInstallation}
+                servers={mcpServers}
+                workflowCount={workflows.length}
               />
             </Grid>
-          ))}
+          )}
 
           <Grid item xs={12}>
             <InfoCard title="Fleet health">

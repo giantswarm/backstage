@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Button,
   Grid,
-  MenuItem,
   Paper,
-  TextField,
   Typography,
   makeStyles,
   Theme,
@@ -16,21 +14,11 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { InstallationPicker } from '../InstallationPicker';
-import { useMusterData } from '../MusterDataProvider';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import { ToolBrowser } from './ToolBrowser';
 import { ToolDetailPanel } from './ToolDetailPanel';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  controls: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(2),
-    flexWrap: 'wrap',
-    marginBottom: theme.spacing(2),
-  },
-  target: {
-    minWidth: 220,
-  },
   panel: {
     padding: theme.spacing(2),
     height: '100%',
@@ -41,43 +29,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
   },
 }));
-
-/**
- * Pick which installation MCP calls target. The CRD tabs fan out over every
- * selected installation, but a tool call must hit one aggregator, so the
- * explorer narrows the multi-selection down to a single target.
- */
-function TargetSelector({
-  installations,
-  value,
-  onChange,
-}: {
-  installations: string[];
-  value: string;
-  onChange: (installation: string) => void;
-}) {
-  const classes = useStyles();
-  if (installations.length <= 1) {
-    return null;
-  }
-  return (
-    <TextField
-      select
-      className={classes.target}
-      size="small"
-      variant="outlined"
-      label="Target installation"
-      value={value}
-      onChange={e => onChange(e.target.value)}
-    >
-      {installations.map(installation => (
-        <MenuItem key={installation} value={installation}>
-          {installation}
-        </MenuItem>
-      ))}
-    </TextField>
-  );
-}
 
 function AuthAffordance({ installation }: { installation: string }) {
   const musterApi = useApi(musterApiRef);
@@ -180,41 +131,20 @@ function ExplorerBody({ installation }: { installation: string }) {
  * guarded call_tool proxy with a JSON result viewer.
  */
 export function ToolExplorerPage() {
-  const classes = useStyles();
-  const { activeInstallations } = useMusterData();
-  const [target, setTarget] = useState('');
-
-  // Keep the single MCP target inside the (multi-)selected installations; reset
-  // to the first when the selection changes out from under it.
-  useEffect(() => {
-    if (activeInstallations.length === 0) {
-      setTarget('');
-    } else if (!activeInstallations.includes(target)) {
-      setTarget(activeInstallations[0]);
-    }
-  }, [activeInstallations, target]);
+  const { activeInstallation } = useMusterInstance();
 
   return (
     <Content>
       <InstallationPicker />
 
-      {activeInstallations.length === 0 ? (
+      {!activeInstallation ? (
         <EmptyState
           missing="data"
           title="Select an installation"
           description="Choose a muster installation above to browse and run its aggregated tools."
         />
       ) : (
-        <>
-          <Box className={classes.controls}>
-            <TargetSelector
-              installations={activeInstallations}
-              value={target}
-              onChange={setTarget}
-            />
-          </Box>
-          {target && <ExplorerBody installation={target} />}
-        </>
+        <ExplorerBody installation={activeInstallation} />
       )}
     </Content>
   );

@@ -1,34 +1,39 @@
 import { Box } from '@material-ui/core';
-import {
-  MultipleClustersSelector,
-  useClustersInfo,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useMusterData } from '../MusterDataProvider';
+import { Autocomplete } from '@giantswarm/backstage-plugin-ui-react';
+import { useMusterInstance } from '../MusterInstanceProvider';
 
 /**
- * Selects which muster installations the CRD reads fan out to. Reuses the
- * clusters-page selector mechanism (shared `installations` URL param +
- * localStorage), so the choice is remembered and shared with the rest of the
- * portal.
- *
- * ponytail: lists every reachable installation rather than probing for the
- * muster CRDs first. Installations without muster simply return isolated,
- * suppressed NotFound/incompatibility errors. Narrow to muster-running MCs
- * (config list or CRD presence) if the noise ever matters.
+ * Single-select picker over the muster installations ONLY. The list is sourced
+ * from the MusterInstanceProvider, which derives it from the backend's
+ * config-driven installation set -- so an MC that runs no muster aggregator can
+ * never appear here. Switching the picker re-scopes the whole muster section to
+ * the chosen instance.
  */
 export const InstallationPicker = () => {
-  const { setActiveInstallations } = useMusterData();
-  const { clusters, isLoading } = useClustersInfo();
+  const {
+    installations,
+    activeInstallation,
+    setActiveInstallation,
+    isLoadingInstallations,
+  } = useMusterInstance();
+
+  if (isLoadingInstallations || installations.length === 0) {
+    return null;
+  }
+
+  const items = installations.map(name => ({ label: name, value: name }));
 
   return (
-    <Box py={clusters.length > 1 ? 1 : 0}>
-      <MultipleClustersSelector
-        label="Installations"
-        persistToURL
-        urlParameterName="installations"
-        clusters={clusters}
-        disabled={isLoading}
-        onActiveClustersChange={setActiveInstallations}
+    <Box py={1} maxWidth={320}>
+      <Autocomplete
+        label="Installation"
+        items={items}
+        selectedValue={activeInstallation ?? null}
+        onChange={value => {
+          if (value) {
+            setActiveInstallation(value);
+          }
+        }}
       />
     </Box>
   );

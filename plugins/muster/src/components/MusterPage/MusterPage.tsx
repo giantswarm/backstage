@@ -1,6 +1,6 @@
 import { Header, Page, RoutedTabs } from '@backstage/core-components';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { MusterDataProvider } from '../MusterDataProvider';
+import { MusterInstanceProvider } from '../MusterInstanceProvider';
 import { DashboardPage } from '../DashboardPage';
 import { McpServersPage } from '../McpServersPage';
 import { WorkflowsListPage } from '../WorkflowsListPage';
@@ -13,9 +13,10 @@ import {
 
 /**
  * Top-level muster section: a Header plus tabbed navigation over the dashboard,
- * MCP-server manager, workflows, and tool explorer. CRD-backed tabs read
- * through the shared MusterDataProvider (multi-installation k8s fan-out);
- * MCP-backed tabs use the muster proxy.
+ * MCP-server manager, workflows, and tool explorer. Every tab is scoped to the
+ * single active muster instance held by the MusterInstanceProvider; the
+ * InstallationPicker switches it. CRD-backed tabs read the active instance's
+ * CRs through the kubernetes proxy; MCP-backed tabs use the muster proxy.
  */
 export function MusterPage() {
   const routes = [
@@ -45,9 +46,9 @@ export function MusterPage() {
         type="tool"
       />
       <ErrorsProvider>
-        <MusterDataProvider>
+        <MusterInstanceProvider>
           <RoutedTabs routes={routes} />
-        </MusterDataProvider>
+        </MusterInstanceProvider>
       </ErrorsProvider>
     </Page>
   );

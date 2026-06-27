@@ -37,7 +37,10 @@ import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { WorkflowArgDefinition } from '../../lib/k8s';
 import { findReferencedBy } from '../../lib/workflowReferences';
-import { MusterDataProvider, useMusterData } from '../MusterDataProvider';
+import {
+  MusterInstanceProvider,
+  useMusterInstance,
+} from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { workflowDetailRouteRef, workflowsRouteRef } from '../../routes';
 import { WorkflowStepCard } from './WorkflowStepCard';
@@ -115,7 +118,7 @@ function WorkflowDetailContent() {
   const musterApi = useApi(musterApiRef);
   const workflowsLink = useRouteRef(workflowsRouteRef);
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
-  const { workflows, isLoading, activeInstallations } = useMusterData();
+  const { workflows, isLoading, activeInstallation } = useMusterInstance();
 
   const [runOpen, setRunOpen] = useState(false);
   const [selectedExecutionId, setSelectedExecutionId] = useState<string>();
@@ -177,9 +180,9 @@ function WorkflowDetailContent() {
           missing="data"
           title={`Workflow "${name}" not found`}
           description={
-            activeInstallations.length === 0
+            !activeInstallation
               ? 'Select the installation that hosts this workflow above.'
-              : 'No Workflow CR with this name in the selected installation(s). Try selecting the installation it belongs to.'
+              : 'No Workflow CR with this name in the selected installation. Try switching to the installation it belongs to.'
           }
         />
       </Content>
@@ -405,7 +408,7 @@ function WorkflowDetailContent() {
 /**
  * Standalone (tabless) workflow detail page. CRD-driven: the structure (args,
  * steps, validity, step count, category) comes from the Workflow CR loaded by
- * the MusterDataProvider, while statistics, execution history, and runs use the
+ * the MusterInstanceProvider, while statistics, execution history, and runs use the
  * muster MCP proxy.
  */
 export function WorkflowDetailPage() {
@@ -413,9 +416,9 @@ export function WorkflowDetailPage() {
     <Page themeId="tool">
       <Header title="Workflow" type="Muster" />
       <ErrorsProvider>
-        <MusterDataProvider>
+        <MusterInstanceProvider>
           <WorkflowDetailContent />
-        </MusterDataProvider>
+        </MusterInstanceProvider>
       </ErrorsProvider>
     </Page>
   );

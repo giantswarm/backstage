@@ -14,7 +14,7 @@ import {
 } from '@backstage/core-components';
 import { Chip, Typography } from '@material-ui/core';
 import { InstallationPicker } from '../InstallationPicker';
-import { useMusterData } from '../MusterDataProvider';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import {
   MCPServer,
   MCPServerAuth,
@@ -90,7 +90,7 @@ function toRow(server: MCPServer): ServerRow {
 }
 
 export function McpServersPage() {
-  const { mcpServers, activeInstallations, isLoading } = useMusterData();
+  const { mcpServers, activeInstallation, isLoading } = useMusterInstance();
 
   const columns: TableColumn<ServerRow>[] = [
     { title: 'Name', field: 'name', highlight: true },
@@ -119,12 +119,12 @@ export function McpServersPage() {
   let body: ReactNode;
   if (isLoading) {
     body = <Progress />;
-  } else if (activeInstallations.length === 0) {
+  } else if (!activeInstallation) {
     body = (
       <EmptyState
         missing="data"
         title="Select an installation"
-        description="Choose one or more muster installations above to list their aggregated MCP servers."
+        description="Choose a muster installation above to list its aggregated MCP servers."
       />
     );
   } else {
