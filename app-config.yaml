@@ -345,8 +345,29 @@ aiChat:
   #   #   url: https://external.example.com/mcp
   #   #   headers:
   #   #     Authorization: 'Bearer ${MCP_TOKEN}'
-  #   # Muster MCP aggregator. The entry named `muster` is also used by the
-  #   # muster plugin (workflow visualization) -- see
-  #   # plugins/muster-backend/README.md.
+  #   # Muster MCP aggregator. The entry named `muster` is the legacy
+  #   # single-installation source for the muster plugin -- see
+  #   # plugins/muster-backend/README.md. Prefer the multi-installation
+  #   # `muster.installations` block below.
   #   # - name: muster
   #   #   url: http://localhost:8091/mcp
+
+# Muster management UI (plugins/muster + plugins/muster-backend).
+#
+# CRD-backed views (dashboard, MCP-server manager, workflow definitions, fleet
+# matrix) read MCPServer/Workflow CRs (muster.giantswarm.io/v1alpha1) through
+# the Kubernetes proxy -- discovered live per cluster, so no
+# `kubernetes.customResources` entry is required. The InstallationPicker
+# derives its list from the configured `kubernetes` clusters automatically.
+#
+# Uncomment `installations` to enable the MCP proxy used for the tool
+# explorer, workflow runs, and live aggregator/auth state. One entry per
+# muster aggregator; `name` must match the Kubernetes cluster name. The proxy
+# is read-only by default -- mutating `call_tool` names and workflow runs are
+# blocked unless `allowMutations: true`. See app-config.example.yaml.
+# muster:
+#   installations:
+#     - name: main
+#       url: https://muster.<mc>.<domain>/mcp
+#       authProvider: oidc-main
+#       # allowMutations: false   # read-only default; opt in per installation

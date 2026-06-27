@@ -37,6 +37,7 @@
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
+    "@backstage/types": "backstage:^",
     "@types/express": "^5.0.0",
     "@types/supertest": "^7.0.0",
     "supertest": "^7.0.0"

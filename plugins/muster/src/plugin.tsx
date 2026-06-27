@@ -14,11 +14,17 @@ import {
   MusterAuthProviders,
   musterAuthProvidersApiRef,
 } from './apis';
-import { rootRouteRef, workflowDetailRouteRef } from './routes';
+import {
+  mcpServersRouteRef,
+  rootRouteRef,
+  toolExplorerRouteRef,
+  workflowDetailRouteRef,
+  workflowsRouteRef,
+} from './routes';
 
 const musterPage = PageBlueprint.make({
   params: {
-    title: 'Workflows',
+    title: 'MCP Servers',
     icon: <AccountTreeIcon />,
     path: '/muster',
     routeRef: rootRouteRef,
@@ -64,6 +70,9 @@ export const musterPlugin = createFrontendPlugin({
   extensions: [musterPage, musterApi, musterAuthProvidersApi],
   routes: {
     root: rootRouteRef,
+    mcpServers: mcpServersRouteRef,
+    workflows: workflowsRouteRef,
+    toolExplorer: toolExplorerRouteRef,
     workflowDetail: workflowDetailRouteRef,
   },
 });
