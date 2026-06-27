@@ -74,7 +74,7 @@
     "vm2": "3.11.5",
     "sha.js": "2.4.12",
     "basic-ftp": "5.3.1",
-    "jsonpath-plus": "10.3.0",
+    "jsonpath-plus": "10.4.0",
     "protobufjs": "7.6.4",
     "@protobufjs/inquire": "1.1.2",
     "tar": "7.5.16",
