@@ -178,12 +178,12 @@ export class MusterApiClient implements MusterApi {
   }
 
   /**
-   * Resolve (and if needed mint, via the OAuth popup) a token for the muster
-   * auth provider. Unlike getAuthHeaders this surfaces success/failure so the
-   * UI can report whether sign-in worked.
+   * Resolve (and if needed mint, via the OAuth popup) a token for the target
+   * installation's muster auth provider. Unlike getAuthHeaders this surfaces
+   * success/failure so the UI can report whether sign-in worked.
    */
-  async signIn(): Promise<boolean> {
-    const authProvider = this.resolveAuthProvider();
+  async signIn(installation?: string): Promise<boolean> {
+    const authProvider = this.resolveAuthProvider(installation);
     if (!authProvider) {
       return true;
     }
@@ -196,14 +196,27 @@ export class MusterApiClient implements MusterApi {
   }
 
   /**
-   * The muster server's `authProvider` from the `aiChat.mcp` entry selected
-   * by `muster.serverName` (default `muster`) -- the same resolution the
-   * muster-backend proxy applies. When set, requests carry the user's OAuth
-   * token for that provider.
+   * The muster server's `authProvider`. Resolved per installation from
+   * `muster.installations[]` (the same config the muster-backend proxy reads),
+   * falling back to the legacy single-installation `aiChat.mcp` entry selected
+   * by `muster.serverName` (default `muster`). When set, requests carry the
+   * user's OAuth token for that provider.
    */
-  private resolveAuthProvider(): string | undefined {
+  private resolveAuthProvider(installation?: string): string | undefined {
     if (!this.configApi) {
       return undefined;
+    }
+    if (installation) {
+      const installations = this.configApi.getOptionalConfigArray(
+        'muster.installations',
+      );
+      const match = installations?.find(
+        i => i.getOptionalString('name') === installation,
+      );
+      const authProvider = match?.getOptionalString('authProvider');
+      if (authProvider) {
+        return authProvider;
+      }
     }
     const serverName =
       this.configApi.getOptionalString('muster.serverName') ?? 'muster';
@@ -214,8 +227,10 @@ export class MusterApiClient implements MusterApi {
     return mcpConfig?.getOptionalString('authProvider');
   }
 
-  private async getAuthHeaders(): Promise<Record<string, string>> {
-    const authProvider = this.resolveAuthProvider();
+  private async getAuthHeaders(
+    installation?: string,
+  ): Promise<Record<string, string>> {
+    const authProvider = this.resolveAuthProvider(installation);
     if (!authProvider || !this.authProvidersApi) {
       return {};
     }
@@ -234,7 +249,7 @@ export class MusterApiClient implements MusterApi {
    */
   private async get<T>(path: string, installation?: string): Promise<T> {
     const url = await this.buildUrl(path, installation);
-    const headers = await this.getAuthHeaders();
+    const headers = await this.getAuthHeaders(installation);
     const response = await this.fetchApi.fetch(url, { headers });
     return this.handleResponse<T>(response);
   }
@@ -250,7 +265,7 @@ export class MusterApiClient implements MusterApi {
   ): Promise<T> {
     const url = await this.buildUrl(path, installation);
     const headers = {
-      ...(await this.getAuthHeaders()),
+      ...(await this.getAuthHeaders(installation)),
       'Content-Type': 'application/json',
     };
     const response = await this.fetchApi.fetch(url, {

@@ -1,36 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Button,
   Grid,
-  MenuItem,
   Paper,
-  TextField,
   Typography,
   makeStyles,
   Theme,
 } from '@material-ui/core';
+import BuildIcon from '@material-ui/icons/Build';
 import { Alert } from '@material-ui/lab';
 import { Content, EmptyState } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
+import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { InstallationPicker } from '../InstallationPicker';
-import { useMusterData } from '../MusterDataProvider';
+import { useMusterInstance } from '../MusterInstanceProvider';
+import { SectionHeader } from '../shared';
 import { ToolBrowser } from './ToolBrowser';
 import { ToolDetailPanel } from './ToolDetailPanel';
+import { useToolPrefs } from './useToolPrefs';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  controls: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(2),
-    flexWrap: 'wrap',
-    marginBottom: theme.spacing(2),
-  },
-  target: {
-    minWidth: 220,
-  },
   panel: {
     padding: theme.spacing(2),
     height: '100%',
@@ -42,43 +34,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-/**
- * Pick which installation MCP calls target. The CRD tabs fan out over every
- * selected installation, but a tool call must hit one aggregator, so the
- * explorer narrows the multi-selection down to a single target.
- */
-function TargetSelector({
-  installations,
-  value,
-  onChange,
-}: {
-  installations: string[];
-  value: string;
-  onChange: (installation: string) => void;
-}) {
-  const classes = useStyles();
-  if (installations.length <= 1) {
-    return null;
-  }
-  return (
-    <TextField
-      select
-      className={classes.target}
-      size="small"
-      variant="outlined"
-      label="Target installation"
-      value={value}
-      onChange={e => onChange(e.target.value)}
-    >
-      {installations.map(installation => (
-        <MenuItem key={installation} value={installation}>
-          {installation}
-        </MenuItem>
-      ))}
-    </TextField>
-  );
-}
-
 function AuthAffordance({ installation }: { installation: string }) {
   const musterApi = useApi(musterApiRef);
   const queryClient = useQueryClient();
@@ -89,7 +44,7 @@ function AuthAffordance({ installation }: { installation: string }) {
   });
 
   const signIn = useMutation({
-    mutationFn: () => musterApi.signIn(),
+    mutationFn: () => musterApi.signIn(installation),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['muster'] });
     },
@@ -125,7 +80,9 @@ function AuthAffordance({ installation }: { installation: string }) {
 function ExplorerBody({ installation }: { installation: string }) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
+  const { mcpServers } = useMusterInstance();
   const [selected, setSelected] = useState<string | undefined>();
+  const prefs = useToolPrefs(installation);
 
   const { data: installationsData } = useQuery({
     queryKey: ['muster', 'installations'],
@@ -137,6 +94,24 @@ function ExplorerBody({ installation }: { installation: string }) {
       ?.allowMutations,
   );
 
+  // Map each aggregated server's tool-name prefix to its management cluster so
+  // the browser can group server tools by the MC they federate.
+  const servers = useMemo<ServerPrefixInfo[]>(
+    () =>
+      mcpServers.map(server => ({
+        prefix: server.getToolNamePrefix(),
+        serverName: server.getName(),
+        managementCluster: server.getManagementCluster(),
+        family: server.getFamily(),
+      })),
+    [mcpServers],
+  );
+
+  const handleSelect = (name: string) => {
+    setSelected(name);
+    prefs.pushRecent(name);
+  };
+
   return (
     <>
       <AuthAffordance installation={installation} />
@@ -146,7 +121,9 @@ function ExplorerBody({ installation }: { installation: string }) {
             <ToolBrowser
               installation={installation}
               selected={selected}
-              onSelect={setSelected}
+              onSelect={handleSelect}
+              servers={servers}
+              prefs={prefs}
             />
           </Paper>
         </Grid>
@@ -158,11 +135,17 @@ function ExplorerBody({ installation }: { installation: string }) {
                 name={selected}
                 installation={installation}
                 allowMutations={allowMutations}
+                isFavourite={prefs.isFavourite(selected)}
+                onToggleFavourite={() => prefs.toggleFavourite(selected)}
               />
             ) : (
               <Box className={classes.placeholder}>
                 <Typography variant="body1">
                   Select a tool to view its schema and run it.
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Press <strong>⌘K</strong> to search, ↑/↓ to navigate, ↵ to
+                  open.
                 </Typography>
               </Box>
             )}
@@ -175,46 +158,31 @@ function ExplorerBody({ installation }: { installation: string }) {
 
 /**
  * Unified explorer over muster's tool catalogue for one installation: browse
- * Core / Server / Workflow tools, search them (filter_tools BM25 ranking),
- * inspect a tool's input schema (describe_tool), and execute it through the
- * guarded call_tool proxy with a JSON result viewer.
+ * Core / Server / Workflow tools, search them (filter_tools BM25 ranking) with
+ * keyboard navigation, inspect a tool's input schema (describe_tool) via a
+ * typed form, and execute it through the guarded call_tool proxy with a
+ * readable result viewer.
  */
 export function ToolExplorerPage() {
-  const classes = useStyles();
-  const { activeInstallations } = useMusterData();
-  const [target, setTarget] = useState('');
-
-  // Keep the single MCP target inside the (multi-)selected installations; reset
-  // to the first when the selection changes out from under it.
-  useEffect(() => {
-    if (activeInstallations.length === 0) {
-      setTarget('');
-    } else if (!activeInstallations.includes(target)) {
-      setTarget(activeInstallations[0]);
-    }
-  }, [activeInstallations, target]);
+  const { activeInstallation } = useMusterInstance();
 
   return (
     <Content>
+      <SectionHeader
+        icon={<BuildIcon />}
+        title="Tool explorer"
+        description="Browse, search, and run the tools this muster aggregates — core tools, every connected server, and workflows. Read-only by default; mutating tools are clearly marked and gated."
+      />
       <InstallationPicker />
 
-      {activeInstallations.length === 0 ? (
+      {!activeInstallation ? (
         <EmptyState
           missing="data"
           title="Select an installation"
           description="Choose a muster installation above to browse and run its aggregated tools."
         />
       ) : (
-        <>
-          <Box className={classes.controls}>
-            <TargetSelector
-              installations={activeInstallations}
-              value={target}
-              onChange={setTarget}
-            />
-          </Box>
-          {target && <ExplorerBody installation={target} />}
-        </>
+        <ExplorerBody installation={activeInstallation} />
       )}
     </Content>
   );

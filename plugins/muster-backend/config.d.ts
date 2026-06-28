@@ -27,7 +27,9 @@ export interface Config {
       /**
        * Auth provider whose per-user OAuth token the frontend forwards for
        * this installation. When set, requests without a forwarded token are
-       * rejected with 401.
+       * rejected with 401. Frontend-visible (a provider name, not a secret) so
+       * the frontend can resolve which OAuth token to forward per installation.
+       * @visibility frontend
        */
       authProvider?: string;
       /**

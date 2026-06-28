@@ -133,6 +133,10 @@ export async function createRouter(
     res.json({
       installations: [...installations.values()].map(installation => ({
         name: installation.name,
+        // The aggregator endpoint (mono-rendered on the dashboard identity
+        // card). Per-MC domain isn't derivable from the name, so it comes from
+        // config rather than being fabricated frontend-side.
+        endpoint: installation.url,
         requiresAuth: Boolean(installation.authProvider),
         allowMutations: Boolean(installation.allowMutations),
       })),

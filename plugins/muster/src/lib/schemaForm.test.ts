@@ -79,3 +79,48 @@ describe('buildArgs', () => {
     expect(args.enabled).toBe(false);
   });
 });
+
+describe('array fields', () => {
+  const fields = schemaFields({
+    type: 'object',
+    required: ['labels'],
+    properties: {
+      labels: { type: 'array', items: { type: 'string' } },
+      ports: { type: 'array', items: { type: 'integer' } },
+      objs: { type: 'array', items: { type: 'object' } },
+    },
+  });
+
+  it('classifies primitive arrays as editable rows and object arrays as json', () => {
+    expect(fieldKind(fields[0])).toBe('array');
+    expect(fieldKind(fields[1])).toBe('array');
+    expect(fieldKind(fields[2])).toBe('json');
+  });
+
+  it('builds a primitive array from rows, dropping blanks and coercing items', () => {
+    const { args, errors } = buildArgs(fields, {
+      labels: ['a', '', 'b'],
+      ports: ['80', '443'],
+      objs: '[{"x":1}]',
+    });
+    expect(errors).toEqual({});
+    expect(args.labels).toEqual(['a', 'b']);
+    expect(args.ports).toEqual([80, 443]);
+    expect(args.objs).toEqual([{ x: 1 }]);
+  });
+
+  it('accepts a JSON-array string fallback for a primitive array', () => {
+    const { args, errors } = buildArgs(fields, {
+      labels: '["x","y"]',
+    });
+    expect(errors.labels).toBeUndefined();
+    expect(args.labels).toEqual(['x', 'y']);
+  });
+
+  it('reports a required array left empty and a non-array JSON fallback', () => {
+    expect(buildArgs(fields, { labels: [] }).errors.labels).toBe('required');
+    expect(buildArgs(fields, { labels: '{"a":1}' }).errors.labels).toBe(
+      'must be a JSON array',
+    );
+  });
+});

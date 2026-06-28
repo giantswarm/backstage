@@ -202,7 +202,12 @@ describe('createRouter', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
       installations: [
-        { name: 'muster', requiresAuth: false, allowMutations: false },
+        {
+          name: 'muster',
+          endpoint: 'injected',
+          requiresAuth: false,
+          allowMutations: false,
+        },
       ],
     });
   });

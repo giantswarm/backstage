@@ -1,34 +1,36 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Checkbox,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  FormControlLabel,
-  MenuItem,
-  TextField,
+  IconButton,
+  Tooltip,
   Typography,
   makeStyles,
   Theme,
 } from '@material-ui/core';
+import StarIcon from '@material-ui/icons/Star';
+import StarBorderIcon from '@material-ui/icons/StarBorder';
 import { Alert } from '@material-ui/lab';
-import { Progress, ResponseErrorPanel } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import {
   buildArgs,
   fieldKind,
+  FormValue,
   schemaFields,
-  SchemaField,
 } from '../../lib/schemaForm';
-import { classifyTool } from '../../lib/mutationGuard';
+import { classifyTool, ToolRisk } from '../../lib/mutationGuard';
+import { StateBadge } from '../shared';
+import { ToolArgField } from './ToolArgField';
 import { ToolResultViewer } from './ToolResultViewer';
+import { ExplorerError } from './ExplorerError';
+import { DetailSkeleton } from './states';
 
 const useStyles = makeStyles((theme: Theme) => ({
   header: {
@@ -41,18 +43,15 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontFamily: 'monospace',
     fontWeight: 600,
   },
+  spacer: {
+    marginLeft: 'auto',
+  },
   description: {
     marginTop: theme.spacing(1),
     whiteSpace: 'pre-wrap',
   },
   section: {
     marginTop: theme.spacing(2),
-  },
-  field: {
-    marginBottom: theme.spacing(2),
-  },
-  argType: {
-    color: theme.palette.text.secondary,
   },
   actions: {
     display: 'flex',
@@ -62,104 +61,37 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-function riskChip(risk: ReturnType<typeof classifyTool>) {
+function riskBadge(risk: ToolRisk) {
   switch (risk) {
     case 'blocked':
-      return (
-        <Chip size="small" color="secondary" label="apply/patch — blocked" />
-      );
+      return <StateBadge tone="error" label="Blocked · GitOps" />;
     case 'mutating':
-      return <Chip size="small" color="primary" label="mutating" />;
+      return <StateBadge tone="warning" label="Mutating" />;
     default:
-      return <Chip size="small" label="read-only" />;
+      return <StateBadge tone="ok" label="Read-only" />;
   }
 }
 
-function FieldInput({
-  field,
-  value,
-  error,
-  onChange,
-}: {
-  field: SchemaField;
-  value: string | boolean | undefined;
-  error?: string;
-  onChange: (value: string | boolean) => void;
-}) {
-  const classes = useStyles();
-  const kind = fieldKind(field);
+/** localStorage key for a tool's last-used arguments, scoped per installation. */
+function argsKey(installation: string | undefined, name: string): string {
+  return `muster-tool-args:${installation ?? 'default'}/${name}`;
+}
 
-  if (kind === 'boolean') {
-    return (
-      <FormControlLabel
-        className={classes.field}
-        control={
-          <Checkbox
-            checked={Boolean(value ?? field.default ?? false)}
-            onChange={e => onChange(e.target.checked)}
-          />
-        }
-        label={
-          <>
-            {field.name}
-            {field.required ? ' *' : ''}{' '}
-            <span className={classes.argType}>(boolean)</span>
-          </>
-        }
-      />
-    );
+function loadStoredArgs(key: string): Record<string, FormValue> {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Record<string, FormValue>) : {};
+  } catch {
+    return {};
   }
+}
 
-  const helperText =
-    error ??
-    field.description ??
-    (field.default !== undefined
-      ? `Default: ${JSON.stringify(field.default)}`
-      : undefined);
-  const isJson = kind === 'json';
-
-  if (kind === 'enum') {
-    return (
-      <TextField
-        select
-        className={classes.field}
-        fullWidth
-        required={field.required}
-        label={`${field.name} (${field.type})`}
-        helperText={helperText}
-        error={Boolean(error)}
-        value={(value as string | undefined) ?? ''}
-        onChange={e => onChange(e.target.value)}
-      >
-        <MenuItem value="">
-          <em>unset</em>
-        </MenuItem>
-        {(field.enumValues ?? []).map(option => {
-          const v = String(option);
-          return (
-            <MenuItem key={v} value={v}>
-              {v}
-            </MenuItem>
-          );
-        })}
-      </TextField>
-    );
+function storeArgs(key: string, values: Record<string, FormValue>) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(values));
+  } catch {
+    // localStorage may be unavailable (private mode); not fatal.
   }
-
-  return (
-    <TextField
-      className={classes.field}
-      fullWidth
-      multiline={isJson}
-      minRows={isJson ? 3 : undefined}
-      required={field.required}
-      label={`${field.name} (${field.type})`}
-      helperText={helperText}
-      error={Boolean(error)}
-      value={(value as string | undefined) ?? ''}
-      onChange={e => onChange(e.target.value)}
-    />
-  );
 }
 
 export interface ToolDetailPanelProps {
@@ -167,25 +99,42 @@ export interface ToolDetailPanelProps {
   installation?: string;
   /** Whether the target installation permits mutating calls. */
   allowMutations: boolean;
+  isFavourite: boolean;
+  onToggleFavourite: () => void;
 }
 
 /**
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
- * form, and executes it via the guarded `call_tool` proxy. Mutating tools are
- * gated: apply/patch are hard-blocked, other mutating verbs need an explicit
- * confirm and an installation that opts into mutations.
+ * form (typed widgets, inline validation, remembered last-used args), and
+ * executes it via the guarded `call_tool` proxy. Mutating tools are gated:
+ * apply/patch are hard-blocked, other mutating verbs need an explicit confirm
+ * and an installation that opts into mutations.
  */
 export function ToolDetailPanel({
   name,
   installation,
   allowMutations,
+  isFavourite,
+  onToggleFavourite,
 }: ToolDetailPanelProps) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
 
-  const [values, setValues] = useState<Record<string, string | boolean>>({});
+  const storageKey = argsKey(installation, name);
+  const [values, setValues] = useState<Record<string, FormValue>>(() =>
+    loadStoredArgs(storageKey),
+  );
+  const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [lastArgs, setLastArgs] = useState<Record<string, unknown>>({});
+
+  // Reload the remembered args when the selected tool changes.
+  useEffect(() => {
+    setValues(loadStoredArgs(storageKey));
+    setJsonModes({});
+    setFieldErrors({});
+  }, [storageKey]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['muster', 'describe-tool', installation, name],
@@ -196,12 +145,50 @@ export function ToolDetailPanel({
   const risk = classifyTool(name);
 
   const mutation = useMutation({
-    mutationFn: (args: Record<string, unknown>) =>
-      musterApi.callTool(name, args, installation),
+    mutationFn: async (args: Record<string, unknown>) => {
+      const startedAt = performance.now();
+      const result = await musterApi.callTool(name, args, installation);
+      return { result, durationMs: Math.round(performance.now() - startedAt) };
+    },
   });
 
-  const setValue = (key: string, value: string | boolean) =>
+  const setValue = (key: string, value: FormValue) =>
     setValues(prev => ({ ...prev, [key]: value }));
+
+  const toggleJson = (field: (typeof fields)[number]) => {
+    setJsonModes(prev => {
+      const nextOn = !prev[field.name];
+      // Convert the value between rows and a JSON string so neither is lost.
+      setValues(current => {
+        const v = current[field.name];
+        if (nextOn) {
+          const arr = Array.isArray(v) ? v : [];
+          return { ...current, [field.name]: JSON.stringify(arr) };
+        }
+        let rows: string[] = [];
+        if (typeof v === 'string' && v.trim() !== '') {
+          try {
+            const parsed = JSON.parse(v);
+            if (Array.isArray(parsed)) {
+              rows = parsed.map(item =>
+                typeof item === 'object' ? JSON.stringify(item) : String(item),
+              );
+            }
+          } catch {
+            rows = [];
+          }
+        }
+        return { ...current, [field.name]: rows };
+      });
+      return { ...prev, [field.name]: nextOn };
+    });
+  };
+
+  const execute = (args: Record<string, unknown>) => {
+    setLastArgs(args);
+    storeArgs(storageKey, values);
+    mutation.mutate(args);
+  };
 
   const run = () => {
     const { args, errors } = buildArgs(fields, values);
@@ -213,20 +200,20 @@ export function ToolDetailPanel({
       setConfirmOpen(true);
       return;
     }
-    mutation.mutate(args);
+    execute(args);
   };
 
   const confirmRun = () => {
     setConfirmOpen(false);
     const { args } = buildArgs(fields, values);
-    mutation.mutate(args);
+    execute(args);
   };
 
   if (isLoading) {
-    return <Progress />;
+    return <DetailSkeleton />;
   }
   if (error) {
-    return <ResponseErrorPanel error={error as Error} />;
+    return <ExplorerError error={error} installation={installation} />;
   }
 
   const blocked = risk === 'blocked';
@@ -239,7 +226,17 @@ export function ToolDetailPanel({
         <Typography variant="h6" className={classes.toolName}>
           {name}
         </Typography>
-        {riskChip(risk)}
+        {riskBadge(risk)}
+        <Box className={classes.spacer} />
+        <Tooltip title={isFavourite ? 'Remove favourite' : 'Add to favourites'}>
+          <IconButton size="small" onClick={onToggleFavourite}>
+            {isFavourite ? (
+              <StarIcon fontSize="small" color="primary" />
+            ) : (
+              <StarBorderIcon fontSize="small" />
+            )}
+          </IconButton>
+        </Tooltip>
       </Box>
       {data?.description && (
         <Typography
@@ -261,12 +258,16 @@ export function ToolDetailPanel({
           </Typography>
         ) : (
           fields.map(field => (
-            <FieldInput
+            <ToolArgField
               key={field.name}
               field={field}
               value={values[field.name]}
               error={fieldErrors[field.name]}
+              jsonMode={
+                Boolean(jsonModes[field.name]) && fieldKind(field) === 'array'
+              }
               onChange={value => setValue(field.name, value)}
+              onToggleJson={() => toggleJson(field)}
             />
           ))
         )}
@@ -311,7 +312,12 @@ export function ToolDetailPanel({
           <Typography variant="subtitle2" gutterBottom>
             Result
           </Typography>
-          <ToolResultViewer result={mutation.data} />
+          <ToolResultViewer
+            result={mutation.data.result}
+            durationMs={mutation.data.durationMs}
+            onRerun={() => execute(lastArgs)}
+            rerunDisabled={mutation.isPending}
+          />
         </Box>
       )}
 
