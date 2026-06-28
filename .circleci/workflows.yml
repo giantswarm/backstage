@@ -23,6 +23,10 @@ jobs:
         keys:
         - node-deps-yarn-v1-{{ checksum "yarn.lock" }}
         - node-deps-yarn-v1-
+    - restore_cache:
+        keys:
+        - node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
+        - node-build-yarn-v1-24.18.0-
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -30,6 +34,11 @@ jobs:
         key: node-deps-yarn-v1-{{ checksum "yarn.lock" }}
         paths:
         - .yarn/cache
+    - save_cache:
+        key: node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
+        paths:
+        - node_modules
+        - .yarn/install-state.gz
     - run:
         # The repo composes typecheck/lint/format/test into this one script
         # (the make-target interface), so CI and local runs share a command.
