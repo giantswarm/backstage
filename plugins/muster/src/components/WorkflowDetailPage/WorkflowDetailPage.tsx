@@ -39,12 +39,19 @@ import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { findReferencedBy } from '../../lib/workflowReferences';
+import { isGitOpsManaged } from '../../lib/gitops';
+import { WorkflowMutationActions } from '../WorkflowsListPage/WorkflowMutationActions';
 import {
   MusterInstanceProvider,
   useMusterInstance,
 } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
-import { SectionHeader, AvailabilityBadge, VIOLET } from '../shared';
+import {
+  SectionHeader,
+  AvailabilityBadge,
+  StateBadge,
+  VIOLET,
+} from '../shared';
 import {
   mcpServersRouteRef,
   toolExplorerRouteRef,
@@ -90,6 +97,11 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   runAction: {
     marginLeft: 'auto',
+  },
+  headerActions: {
+    marginTop: theme.spacing(2),
+    paddingTop: theme.spacing(1.5),
+    borderTop: `1px solid ${theme.palette.divider}`,
   },
   description: {
     marginTop: theme.spacing(1.5),
@@ -359,6 +371,11 @@ function WorkflowDetailContent() {
               {name}
             </Typography>
             <AvailabilityBadge available={workflow.isValid()} />
+            {isGitOpsManaged(workflow) ? (
+              <StateBadge tone="info" label="GitOps" />
+            ) : (
+              <StateBadge tone="neutral" label="Manually added" />
+            )}
             <Box className={classes.runAction}>{runButton}</Box>
           </Box>
 
@@ -387,6 +404,10 @@ function WorkflowDetailContent() {
                 Created <DateComponent value={created} relative tooltip />
               </span>
             )}
+          </Box>
+
+          <Box className={classes.headerActions}>
+            <WorkflowMutationActions workflow={workflow} />
           </Box>
         </Box>
 

@@ -106,6 +106,31 @@ export function toMcpServerDefinition(
 }
 
 /**
+ * Flatten a Workflow CR's spec into the argument shape muster's
+ * `core_workflow_create`/`_update`/`_validate` tools take (name + the spec's
+ * `description`/`args`/`steps`/`onFailure`/`output` fields; see
+ * internal/workflow/api_adapter.go). Used both to seed the ad-hoc edit form and
+ * as the body of the validate/save calls. Mirrors `toMcpServerDefinition`.
+ */
+export function toWorkflowDefinition(
+  workflow: KubeObject,
+): Record<string, unknown> {
+  const spec = (
+    workflow as unknown as { jsonData: { spec?: Record<string, unknown> } }
+  ).jsonData.spec;
+  const definition: Record<string, unknown> = { name: workflow.getName() };
+  if (!spec) {
+    return definition;
+  }
+  for (const key of ['description', 'args', 'steps', 'onFailure', 'output']) {
+    if (spec[key] !== undefined) {
+      definition[key] = spec[key];
+    }
+  }
+  return definition;
+}
+
+/**
  * Minimal YAML emitter for plain JSON values (string/number/boolean/null,
  * arrays, objects). Sufficient for rendering an MCPServer manifest in the
  * GitOps "manifest to commit" dialog.
