@@ -1,54 +1,89 @@
-import {
-  Box,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Tooltip,
-  Typography,
-  useTheme,
-} from '@material-ui/core';
-import { makeStyles } from '@material-ui/core/styles';
-import {
-  MCPServer,
-  MCPServerSeverity,
-  mcpServerStateSeverity,
-  worstSeverity,
-} from '../../lib/k8s';
-import { severityTone, toneColors } from '../shared';
+import { Box, Paper, Typography, makeStyles, Theme } from '@material-ui/core';
+import { MCPServer } from '../../lib/k8s';
+import { InstallationHealthPill } from '../shared';
+import { partitionServers, presenceByMc } from '../../lib/serverGrouping';
 
-const UNLABELED = '—';
-
-const useStyles = makeStyles(theme => ({
-  scroll: {
-    overflowX: 'auto',
+const useStyles = makeStyles((theme: Theme) => ({
+  stack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
   },
-  headerCell: {
+  groupLabel: {
+    marginTop: theme.spacing(1),
     fontWeight: 600,
-    whiteSpace: 'nowrap',
-    backgroundColor: theme.palette.background.default,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: theme.palette.text.secondary,
+    '&:first-child': {
+      marginTop: 0,
+    },
   },
-  emptyCell: {
-    textAlign: 'center',
-    color: theme.palette.text.disabled,
-  },
-  dotCell: {
-    textAlign: 'center',
-    cursor: 'default',
-  },
-  dot: {
-    display: 'inline-flex',
+  row: {
+    display: 'flex',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'center',
-    width: 10,
-    height: 10,
-    borderRadius: '50%',
+    gap: theme.spacing(1, 1.5),
+    padding: theme.spacing(1.25, 1.5),
+    borderRadius: theme.shape.borderRadius,
+  },
+  name: {
+    fontFamily: 'monospace',
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  kindLabel: {
+    fontSize: 11,
+    color: theme.palette.text.secondary,
+  },
+  pills: {
+    marginLeft: 'auto',
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+  },
+  count: {
+    marginLeft: theme.spacing(0.5),
+    fontSize: 12,
+    color: theme.palette.text.secondary,
+    fontVariantNumeric: 'tabular-nums',
   },
 }));
 
-function uniqueSorted(values: string[]): string[] {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+type HealthRowProps = {
+  name: string;
+  kind: string;
+  servers: MCPServer[];
+};
+
+/**
+ * One health row: a server (family or integration) and a health pill per
+ * management cluster it is federated across, mirroring the MCP-servers
+ * manager's summary rows.
+ */
+function HealthRow({ name, kind, servers }: HealthRowProps) {
+  const classes = useStyles();
+  const presence = presenceByMc(servers);
+  return (
+    <Paper variant="outlined" className={classes.row}>
+      <code className={classes.name}>{name}</code>
+      <span className={classes.kindLabel}>{kind}</span>
+      <Box className={classes.pills}>
+        {presence.map(p => (
+          <InstallationHealthPill
+            key={p.mc}
+            name={p.mc}
+            severity={p.severity}
+            state={p.state}
+          />
+        ))}
+        <span className={classes.count}>
+          {servers.length} {servers.length === 1 ? 'instance' : 'instances'}
+        </span>
+      </Box>
+    </Paper>
+  );
 }
 
 type FleetHealthMatrixProps = {
@@ -56,16 +91,16 @@ type FleetHealthMatrixProps = {
 };
 
 /**
- * Fleet health matrix recovered from the muster CRD: rows are the target
- * management clusters (`muster.giantswarm.io/management-cluster` label) the
- * active muster federates, columns are server families (`spec.family.name`),
- * and each cell is a coloured dot for the worst MCPServer `.status.state` in
- * that intersection -- the mockups' state-dot language. Scoped to the single
- * active installation (the picker's selection), not a cross-installation view.
+ * Fleet health summary recovered from the muster CRDs, realigned to mirror the
+ * MCP-servers manager: standard server families and singular integration
+ * servers each get a row carrying a health pill per management cluster they are
+ * federated across (worst `.status.state` in that family × cluster cell). Reads
+ * from `.status.state` alone, so it needs no muster session, and is scoped to
+ * the single active installation. `Auth Required` is treated as healthy, not
+ * degraded (see `mcpServerStateSeverity`).
  */
 export const FleetHealthMatrix = ({ servers }: FleetHealthMatrixProps) => {
   const classes = useStyles();
-  const theme = useTheme();
 
   if (servers.length === 0) {
     return (
@@ -75,90 +110,37 @@ export const FleetHealthMatrix = ({ servers }: FleetHealthMatrixProps) => {
     );
   }
 
-  const managementClusters = uniqueSorted(
-    servers.map(s => s.getManagementCluster() ?? UNLABELED),
-  );
-  const families = uniqueSorted(servers.map(s => s.getFamily() ?? UNLABELED));
+  const { standard, integration } = partitionServers(servers);
 
   return (
-    <Box className={classes.scroll}>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell className={classes.headerCell}>
-              Management cluster
-            </TableCell>
-            {families.map(family => (
-              <TableCell
-                key={family}
-                align="center"
-                className={classes.headerCell}
-              >
-                {family}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {managementClusters.map(mc => (
-            <TableRow key={mc}>
-              <TableCell
-                component="th"
-                scope="row"
-                className={classes.headerCell}
-              >
-                {mc}
-              </TableCell>
-              {families.map(family => {
-                const cellServers = servers.filter(
-                  s =>
-                    (s.getManagementCluster() ?? UNLABELED) === mc &&
-                    (s.getFamily() ?? UNLABELED) === family,
-                );
+    <Box className={classes.stack}>
+      {standard.length > 0 && (
+        <Typography variant="caption" className={classes.groupLabel}>
+          Standard servers
+        </Typography>
+      )}
+      {standard.map(group => (
+        <HealthRow
+          key={group.family}
+          name={group.family}
+          kind="standard server"
+          servers={group.servers}
+        />
+      ))}
 
-                if (cellServers.length === 0) {
-                  return (
-                    <TableCell key={family} className={classes.emptyCell}>
-                      ·
-                    </TableCell>
-                  );
-                }
-
-                const severity = cellServers.reduce<MCPServerSeverity>(
-                  (acc, server) =>
-                    worstSeverity(
-                      acc,
-                      mcpServerStateSeverity(server.getState()),
-                    ),
-                  'ok',
-                );
-                const dotColor = toneColors(theme, severityTone(severity)).main;
-
-                const tooltip = (
-                  <Box>
-                    {cellServers.map(server => (
-                      <div key={`${server.cluster}/${server.getName()}`}>
-                        {server.getName()} — {server.getState() ?? 'unknown'}
-                      </div>
-                    ))}
-                  </Box>
-                );
-
-                return (
-                  <Tooltip key={family} title={tooltip} arrow>
-                    <TableCell className={classes.dotCell}>
-                      <span
-                        className={classes.dot}
-                        style={{ backgroundColor: dotColor }}
-                      />
-                    </TableCell>
-                  </Tooltip>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {integration.length > 0 && (
+        <Typography variant="caption" className={classes.groupLabel}>
+          Integration servers
+        </Typography>
+      )}
+      {integration.map(server => (
+        <HealthRow
+          key={`${server.cluster}/${server.getName()}`}
+          name={server.getName()}
+          kind="integration server"
+          servers={[server]}
+        />
+      ))}
     </Box>
   );
 };

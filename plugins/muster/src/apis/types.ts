@@ -270,15 +270,6 @@ export interface MusterApi {
   ): Promise<WorkflowExecution>;
   /** Derived run statistics for a workflow (one installation). */
   getWorkflowStats(name: string, installation?: string): Promise<WorkflowStats>;
-  /**
-   * Run a workflow by invoking its `workflow_<name>` tool. Mutating: the
-   * proxy rejects this with 403 unless the installation opts into mutations.
-   */
-  runWorkflow(
-    name: string,
-    args: Record<string, unknown>,
-    installation?: string,
-  ): Promise<unknown>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */

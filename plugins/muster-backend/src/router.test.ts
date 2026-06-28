@@ -345,17 +345,6 @@ describe('createRouter', () => {
     });
   });
 
-  it('runs a workflow by invoking its workflow_<name> tool', async () => {
-    callTool.mockResolvedValue({ execution_id: 'abc' });
-
-    const response = await request(app)
-      .post('/workflows/wf-a/run')
-      .send({ arguments: { foo: 'bar' } });
-
-    expect(response.status).toBe(200);
-    expect(callTool).toHaveBeenCalledWith('workflow_wf-a', { foo: 'bar' }, {});
-  });
-
   describe('multi-installation routing', () => {
     it('requires the installation parameter when several are configured', async () => {
       const multiApp = await buildMultiApp([

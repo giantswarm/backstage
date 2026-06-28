@@ -16,8 +16,8 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import { SectionHeader, Gate } from '../shared';
-import { MCPServer } from '../../lib/k8s';
+import { SectionHeader, Gate, DisclosureAccordion } from '../shared';
+import { partitionServers } from '../../lib/serverGrouping';
 import { musterApiRef } from '../../apis';
 import { StandardServerDisclosure } from './StandardServerDisclosure';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
@@ -48,45 +48,23 @@ const useStyles = makeStyles((theme: Theme) => ({
   topGate: {
     marginBottom: theme.spacing(2),
   },
+  coreSummary: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(1, 1.5),
+    width: '100%',
+  },
+  coreName: {
+    fontFamily: 'monospace',
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  coreKind: {
+    fontSize: 11,
+    color: theme.palette.text.secondary,
+  },
 }));
-
-type StandardGroup = { family: string; servers: MCPServer[] };
-
-/**
- * Partition the active instance's MCPServer CRs into the mockup's two server
- * shapes: standard servers (a `spec.family.name` groups equivalent instances
- * federated across management clusters; tool surface shown once, health per MC)
- * and integration servers (singular servers with no family -- customer
- * integrations and shared services). Family presence is the discriminator: the
- * management-cluster label is set on both, but only the federated standard
- * servers carry a family.
- */
-function partitionServers(servers: MCPServer[]): {
-  standard: StandardGroup[];
-  integration: MCPServer[];
-} {
-  const standardByFamily = new Map<string, MCPServer[]>();
-  const integration: MCPServer[] = [];
-
-  for (const server of servers) {
-    const family = server.getFamily();
-    if (family) {
-      standardByFamily.set(family, [
-        ...(standardByFamily.get(family) ?? []),
-        server,
-      ]);
-    } else {
-      integration.push(server);
-    }
-  }
-
-  const standard = [...standardByFamily.entries()]
-    .map(([family, group]) => ({ family, servers: group }))
-    .sort((a, b) => a.family.localeCompare(b.family));
-  integration.sort((a, b) => a.getName().localeCompare(b.getName()));
-
-  return { standard, integration };
-}
 
 export function McpServersPage() {
   const classes = useStyles();
@@ -208,13 +186,13 @@ export function McpServersPage() {
                 .
               </Typography>
               <Box className={classes.stack}>
-                {standard.map((group, idx) => (
+                {standard.map(group => (
                   <StandardServerDisclosure
                     key={group.family}
                     family={group.family}
                     servers={group.servers}
                     authenticated={authenticated}
-                    defaultExpanded={idx === 0}
+                    defaultExpanded={false}
                   />
                 ))}
               </Box>
@@ -247,18 +225,30 @@ export function McpServersPage() {
           )}
         </Box>
 
-        {/* muster core — tools muster provides directly */}
+        {/* muster core — muster itself, as a server */}
         <Box className={classes.section}>
           <SectionHeader
             icon={<Build />}
             title="muster core"
-            description="Tools muster provides directly — managing workflows, services, configuration, MCP server definitions, and authentication. Always available wherever muster is reachable, grouped by family."
+            description="muster itself is an MCP server — it provides tools directly for managing workflows, services, configuration, MCP server definitions, and authentication. Always available wherever muster is reachable, grouped by family."
           />
-          {authenticated ? (
-            <CoreFamiliesPanel installation={activeInstallation} />
-          ) : (
-            <Gate label="Authenticate to muster to inspect its core tools." />
-          )}
+          <Box className={classes.stack}>
+            <DisclosureAccordion
+              defaultExpanded={false}
+              summary={
+                <Box className={classes.coreSummary}>
+                  <code className={classes.coreName}>muster</code>
+                  <span className={classes.coreKind}>core / control plane</span>
+                </Box>
+              }
+            >
+              {authenticated ? (
+                <CoreFamiliesPanel installation={activeInstallation} />
+              ) : (
+                <Gate label="Authenticate to muster to inspect its core tools." />
+              )}
+            </DisclosureAccordion>
+          </Box>
         </Box>
       </Box>
     );

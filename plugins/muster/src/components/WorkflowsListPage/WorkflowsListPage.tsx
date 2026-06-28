@@ -31,9 +31,11 @@ import Search from '@material-ui/icons/Search';
 import MoreHoriz from '@material-ui/icons/MoreHoriz';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import { AvailabilityBadge } from '../shared';
+import { AvailabilityBadge, StateBadge } from '../shared';
 import { MusterWorkflow } from '../../lib/k8s';
-import { workflowDetailRouteRef } from '../../routes';
+import { isGitOpsManaged } from '../../lib/gitops';
+import { toolExplorerRouteRef, workflowDetailRouteRef } from '../../routes';
+import { CreateWorkflowButton } from './WorkflowMutationActions';
 
 type AvailFilter = 'all' | 'available' | 'unavailable';
 
@@ -107,10 +109,11 @@ const useStyles = makeStyles((theme: Theme) => ({
 interface RowActionsProps {
   name: string;
   detailHref: string;
+  runHref: string;
 }
 
 /** The mockup's per-row menu: Open / Run workflow… / Copy name. */
-function RowActions({ name, detailHref }: RowActionsProps) {
+function RowActions({ name, detailHref, runHref }: RowActionsProps) {
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = (e: MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget);
@@ -138,11 +141,7 @@ function RowActions({ name, detailHref }: RowActionsProps) {
         <MenuItem
           onClick={() => {
             close();
-            navigate(
-              detailHref.includes('?')
-                ? `${detailHref}&run=1`
-                : `${detailHref}?run=1`,
-            );
+            navigate(runHref);
           }}
         >
           <ListItemText primary="Run workflow…" />
@@ -165,6 +164,7 @@ export function WorkflowsListPage() {
   const classes = useStyles();
   const { workflows, activeInstallation, isLoading } = useMusterInstance();
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
+  const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
 
   const [query, setQuery] = useState('');
   const [avail, setAvail] = useState<AvailFilter>('all');
@@ -174,6 +174,18 @@ export function WorkflowsListPage() {
     return workflow.cluster
       ? `${base}?installation=${encodeURIComponent(workflow.cluster)}`
       : base;
+  };
+
+  // Running a workflow executes its `workflow_<name>` tool, so "Run workflow…"
+  // lands on the unified tool explorer with that tool preselected.
+  const runHref = (workflow: MusterWorkflow) => {
+    const base = toolExplorerLink?.() ?? '#';
+    const params = new URLSearchParams();
+    if (workflow.cluster) {
+      params.set('installation', workflow.cluster);
+    }
+    params.set('tool', `workflow_${workflow.getName()}`);
+    return `${base}?${params.toString()}`;
   };
 
   const filtered = useMemo(() => {
@@ -247,6 +259,7 @@ export function WorkflowsListPage() {
         <Typography variant="caption" className={classes.showing}>
           Showing {filtered.length} of {workflows.length}
         </Typography>
+        <CreateWorkflowButton installation={activeInstallation} />
       </Box>
 
       <TableContainer className={classes.tableRegion}>
@@ -260,6 +273,7 @@ export function WorkflowsListPage() {
                 Steps
               </TableCell>
               <TableCell className={classes.headCell}>Available</TableCell>
+              <TableCell className={classes.headCell}>Source</TableCell>
               <TableCell className={classes.headCell} padding="checkbox" />
             </TableRow>
           </TableHead>
@@ -296,15 +310,26 @@ export function WorkflowsListPage() {
                   <TableCell>
                     <AvailabilityBadge available={w.isValid()} />
                   </TableCell>
+                  <TableCell>
+                    {isGitOpsManaged(w) ? (
+                      <StateBadge tone="info" label="GitOps" />
+                    ) : (
+                      <StateBadge tone="neutral" label="Manually added" />
+                    )}
+                  </TableCell>
                   <TableCell padding="checkbox">
-                    <RowActions name={w.getName()} detailHref={href} />
+                    <RowActions
+                      name={w.getName()}
+                      detailHref={href}
+                      runHref={runHref(w)}
+                    />
                   </TableCell>
                 </TableRow>
               );
             })}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className={classes.emptyRow}>
+                <TableCell colSpan={7} className={classes.emptyRow}>
                   No workflows match your filters.
                 </TableCell>
               </TableRow>

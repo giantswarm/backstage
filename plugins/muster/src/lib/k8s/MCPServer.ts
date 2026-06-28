@@ -149,6 +149,12 @@ export type MCPServerSeverity = 'ok' | 'warning' | 'error' | 'unknown';
 /**
  * Maps an MCPServer infrastructure state to a coarse severity used for the
  * dashboard health colouring.
+ *
+ * `Auth Required` is deliberately treated as healthy, not a warning: it means
+ * the server needs a user session, which the browsing user already has. The
+ * real per-user auth gap (if any) surfaces through the tool explorer's
+ * `servers_requiring_auth` affordance, so rendering it as amber here would be a
+ * false degraded signal.
  */
 export function mcpServerStateSeverity(
   state: MCPServerState | undefined,
@@ -156,12 +162,12 @@ export function mcpServerStateSeverity(
   switch (state) {
     case 'Running':
     case 'Connected':
+    case 'Auth Required':
       return 'ok';
     case 'Starting':
     case 'Connecting':
     case 'Stopped':
     case 'Disconnected':
-    case 'Auth Required':
       return 'warning';
     case 'Failed':
       return 'error';

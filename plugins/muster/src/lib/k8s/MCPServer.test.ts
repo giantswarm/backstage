@@ -42,8 +42,12 @@ describe('MCPServer.getToolNamePrefix', () => {
 describe('mcpServerStateSeverity', () => {
   it('maps states to coarse severities', () => {
     expect(mcpServerStateSeverity('Connected')).toBe('ok');
-    expect(mcpServerStateSeverity('Auth Required')).toBe('warning');
+    expect(mcpServerStateSeverity('Stopped')).toBe('warning');
     expect(mcpServerStateSeverity('Failed')).toBe('error');
     expect(mcpServerStateSeverity(undefined)).toBe('unknown');
+  });
+
+  it('treats Auth Required as healthy, not a warning', () => {
+    expect(mcpServerStateSeverity('Auth Required')).toBe('ok');
   });
 });

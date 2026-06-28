@@ -308,12 +308,13 @@ export function DashboardPage() {
     toolStat = overviewLoading ? '…' : (toolCount ?? '—');
   }
 
-  // ponytail: aggregator "servers connected" is derived from the CRD
-  // `.status.state` (always readable, no muster session), not a dedicated
-  // core_service_list call. The connected/total figures match what
-  // core_service_list reports; upgrade path is a backend /overview route
-  // surfacing the aggregator service's live servers_connected + tools.
-  const serversConnected = mcpServers.filter(
+  // ponytail: aggregator "servers healthy" is derived from the CRD
+  // `.status.state` severity (always readable, no muster session), not a
+  // dedicated core_service_list call. `Auth Required` counts as healthy (the
+  // browsing user has a session); only genuinely degraded states subtract.
+  // Upgrade path is a backend /overview route surfacing the aggregator
+  // service's live servers_connected + tools.
+  const serversHealthy = mcpServers.filter(
     s => mcpServerStateSeverity(s.getState()) === 'ok',
   ).length;
 
@@ -412,11 +413,9 @@ export function DashboardPage() {
               <Stat label="Workflows" value={workflows.length} />
               {authenticated && (
                 <Stat
-                  label="Servers connected"
-                  value={`${serversConnected}/${mcpServers.length}`}
-                  tone={
-                    serversConnected === mcpServers.length ? 'ok' : 'warning'
-                  }
+                  label="Servers healthy"
+                  value={`${serversHealthy}/${mcpServers.length}`}
+                  tone={serversHealthy === mcpServers.length ? 'ok' : 'warning'}
                 />
               )}
             </Box>
@@ -456,7 +455,7 @@ export function DashboardPage() {
             <SectionHeader
               icon={<Dns />}
               title="Fleet health"
-              description="MCPServer state across the management clusters this muster federates, by family. Each cell is the worst state in that cluster × family intersection."
+              description="MCPServer state grouped by server, mirroring the MCP-servers manager: each standard family and integration server carries a health pill per management cluster it is federated across (the worst state in that family × cluster cell)."
             />
             <FleetHealthMatrix servers={mcpServers} />
           </Box>

@@ -151,6 +151,8 @@ export interface ToolBrowserProps {
   /** MCPServer-derived prefixes, used to group server tools by management cluster. */
   servers: ServerPrefixInfo[];
   prefs: ToolPrefs;
+  /** Initial search query, e.g. seeded from a `?server=` deep link. */
+  initialQuery?: string;
 }
 
 /**
@@ -165,10 +167,11 @@ export function ToolBrowser({
   onSelect,
   servers,
   prefs,
+  initialQuery = '',
 }: ToolBrowserProps) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchRef = useRef<HTMLInputElement>(null);
   const trimmed = query.trim();

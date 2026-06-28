@@ -1,17 +1,7 @@
-import {
-  Box,
-  Typography,
-  makeStyles,
-  Theme,
-  useTheme,
-} from '@material-ui/core';
-import {
-  MCPServer,
-  MCPServerSeverity,
-  mcpServerStateSeverity,
-  worstSeverity,
-} from '../../lib/k8s';
-import { DisclosureAccordion, Gate, severityTone, toneColors } from '../shared';
+import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
+import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
+import { DisclosureAccordion, Gate, InstallationHealthPill } from '../shared';
+import { presenceByMc } from '../../lib/serverGrouping';
 import {
   AuthChain,
   DetailBlock,
@@ -56,26 +46,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
     fontVariantNumeric: 'tabular-nums',
   },
-  pill: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.75),
-    padding: theme.spacing(0.25, 0.75),
-    borderRadius: theme.shape.borderRadius,
-    border: `1px solid ${theme.palette.divider}`,
-    fontSize: 11,
-    whiteSpace: 'nowrap',
-  },
-  pillDot: {
-    width: 6,
-    height: 6,
-    borderRadius: '50%',
-    flexShrink: 0,
-  },
-  pillName: {
-    fontWeight: 500,
-    color: theme.palette.text.primary,
-  },
   managedNote: {
     color: theme.palette.text.secondary,
     marginTop: theme.spacing(1),
@@ -89,66 +59,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginBottom: theme.spacing(0.5),
   },
 }));
-
-const UNLABELED = '—';
-
-function InstallationHealthPill({
-  name,
-  severity,
-  state,
-}: {
-  name: string;
-  severity: MCPServerSeverity;
-  state: string;
-}) {
-  const classes = useStyles();
-  const theme = useTheme();
-  const color = toneColors(theme, severityTone(severity)).main;
-  return (
-    <span className={classes.pill} title={`${name}: ${state}`}>
-      <span className={classes.pillDot} style={{ backgroundColor: color }} />
-      <span className={classes.pillName}>{name}</span>
-      {severity !== 'ok' && (
-        <span style={{ color: toneColors(theme, severityTone(severity)).text }}>
-          {state}
-        </span>
-      )}
-    </span>
-  );
-}
-
-type McPresence = {
-  mc: string;
-  severity: MCPServerSeverity;
-  state: string;
-  server: MCPServer;
-};
-
-function presenceByMc(servers: MCPServer[]): McPresence[] {
-  const byMc = new Map<string, MCPServer[]>();
-  for (const s of servers) {
-    const mc = s.getManagementCluster() ?? UNLABELED;
-    byMc.set(mc, [...(byMc.get(mc) ?? []), s]);
-  }
-  return [...byMc.entries()]
-    .map(([mc, group]) => {
-      const severity = group.reduce<MCPServerSeverity>(
-        (acc, s) => worstSeverity(acc, mcpServerStateSeverity(s.getState())),
-        'ok',
-      );
-      // Pick the worst-state server as representative for that MC's detail.
-      const worst = group.reduce((acc, s) =>
-        mcpServerStateSeverity(s.getState()) === severity ? s : acc,
-      );
-      return {
-        mc,
-        severity,
-        state: worst.getState() ?? 'unknown',
-        server: worst,
-      };
-    })
-    .sort((a, b) => a.mc.localeCompare(b.mc));
-}
 
 export interface StandardServerDisclosureProps {
   /** The server family this row represents (e.g. `kubernetes`). */
