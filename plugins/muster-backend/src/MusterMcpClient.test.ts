@@ -132,7 +132,6 @@ describe('readMusterInstallationsFromConfig', () => {
               name: 'graveler',
               url: 'https://muster.graveler/mcp',
               authProvider: 'mcp-muster',
-              allowMutations: true,
             },
           ],
         },
@@ -145,12 +144,10 @@ describe('readMusterInstallationsFromConfig', () => {
       name: 'gazelle',
       url: 'https://muster.gazelle/mcp',
       authProvider: undefined,
-      allowMutations: false,
       headers: undefined,
     });
     expect(installations.get('graveler')).toMatchObject({
       authProvider: 'mcp-muster',
-      allowMutations: true,
     });
   });
 
@@ -166,7 +163,6 @@ describe('readMusterInstallationsFromConfig', () => {
     expect(installations.get('muster')).toMatchObject({
       name: 'muster',
       url: 'http://muster/mcp',
-      allowMutations: false,
     });
   });
 });

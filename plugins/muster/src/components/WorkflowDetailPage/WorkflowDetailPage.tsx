@@ -19,7 +19,6 @@ import {
   Box,
   Button,
   Grid,
-  Tooltip,
   Typography,
   makeStyles,
   useTheme,
@@ -247,22 +246,13 @@ function WorkflowDetailContent() {
 
   const installation = workflow?.cluster ?? installationParam;
 
-  // Whether the resolved installation permits mutations (gates the Run action).
-  const installationsQuery = useQuery({
-    queryKey: ['muster', 'installations'],
-    queryFn: () => musterApi.listInstallations(),
-  });
-  const allowMutations = installationsQuery.data?.installations.find(
-    i => i.name === installation,
-  )?.allowMutations;
-
   // Honour a `?run=1` deep link (the list's "Run workflow…" action) once the
-  // workflow has loaded and the installation permits it.
+  // workflow has loaded.
   useEffect(() => {
-    if (runIntent && workflow && allowMutations) {
+    if (runIntent && workflow) {
       setRunOpen(true);
     }
-  }, [runIntent, workflow, allowMutations]);
+  }, [runIntent, workflow]);
 
   const executionsQuery = useQuery({
     queryKey: ['muster', 'executions', installation, name],
@@ -332,7 +322,6 @@ function WorkflowDetailContent() {
       color="primary"
       variant="contained"
       startIcon={<PlayArrowIcon />}
-      disabled={!allowMutations}
       onClick={() => setRunOpen(true)}
     >
       Run
@@ -365,15 +354,7 @@ function WorkflowDetailContent() {
               {name}
             </Typography>
             <AvailabilityBadge available={workflow.isValid()} />
-            <Box className={classes.runAction}>
-              {allowMutations ? (
-                runButton
-              ) : (
-                <Tooltip title="Running a workflow mutates state. This installation is read-only (GitOps-managed); enable mutations in the muster proxy config to permit runs.">
-                  <span>{runButton}</span>
-                </Tooltip>
-              )}
-            </Box>
+            <Box className={classes.runAction}>{runButton}</Box>
           </Box>
 
           {workflow.getDescription() && (

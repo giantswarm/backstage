@@ -3,7 +3,6 @@ import { Config } from '@backstage/config';
 import {
   AuthenticationError,
   InputError,
-  NotAllowedError,
   ServiceUnavailableError,
 } from '@backstage/errors';
 import express from 'express';
@@ -23,35 +22,6 @@ const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
  * installation per request, so no provider suffix is needed.
  */
 export const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
-
-/**
- * Verbs that mark a tool as mutating. `call_tool` against a tool whose name
- * contains one of these is blocked unless the target installation opts in via
- * `allowMutations`. ponytail: name-heuristic guard, not a real capability
- * model — muster has no read/write tool annotation, so a misnamed mutating
- * tool could slip through (or a read tool named "...status" stays allowed).
- * Upgrade path: a server-provided read/write annotation on each tool.
- */
-const MUTATING_VERBS = [
-  'apply',
-  'create',
-  'update',
-  'delete',
-  'patch',
-  'scale',
-  'restart',
-  'stop',
-  'start',
-  'exec',
-  'write',
-  'remove',
-  'set',
-];
-
-function isMutatingTool(name: string): boolean {
-  const lower = name.toLowerCase();
-  return MUTATING_VERBS.some(verb => lower.includes(verb));
-}
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -97,7 +67,6 @@ export async function createRouter(
       installations.set('muster', {
         name: 'muster',
         url: 'injected',
-        allowMutations: false,
       });
     }
     for (const name of installations.keys()) {
@@ -111,7 +80,7 @@ export async function createRouter(
           installation.authProvider
             ? ` (per-user auth via provider '${installation.authProvider}')`
             : ''
-        }${installation.allowMutations ? ' [mutations enabled]' : ''}`,
+        }`,
       );
     }
   }
@@ -138,7 +107,6 @@ export async function createRouter(
         // config rather than being fabricated frontend-side.
         endpoint: installation.url,
         requiresAuth: Boolean(installation.authProvider),
-        allowMutations: Boolean(installation.allowMutations),
       })),
     });
   });
@@ -281,9 +249,9 @@ export async function createRouter(
   });
 
   /**
-   * Execute an aggregated tool. Read-only by default: a tool whose name looks
-   * mutating is rejected with 403 unless the target installation has
-   * `allowMutations: true`.
+   * Execute an aggregated tool. The UI executes whatever tools muster exposes;
+   * the trust boundary is the downstream MCP server's deployment (e.g.
+   * mcp-kubernetes is deployed read-only), not this proxy.
    */
   router.post('/call', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -299,12 +267,6 @@ export async function createRouter(
         Array.isArray(toolArgs))
     ) {
       throw new InputError('arguments must be a JSON object when provided');
-    }
-
-    if (isMutatingTool(name) && !installation.allowMutations) {
-      throw new NotAllowedError(
-        `Tool '${name}' looks mutating and installation '${installation.name}' is read-only. Enable muster.installations[].allowMutations to permit it.`,
-      );
     }
 
     const result = await client.callTool(
@@ -432,17 +394,10 @@ export async function createRouter(
   });
 
   /**
-   * Run a workflow by invoking its `workflow_<name>` aggregated tool. This
-   * executes side effects, so it is gated behind the installation's
-   * `allowMutations` flag.
+   * Run a workflow by invoking its `workflow_<name>` aggregated tool.
    */
   router.post('/workflows/:name/run', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    if (!installation.allowMutations) {
-      throw new NotAllowedError(
-        `Running workflows mutates state and installation '${installation.name}' is read-only. Enable muster.installations[].allowMutations to permit it.`,
-      );
-    }
 
     const args = req.body?.arguments ?? {};
     if (typeof args !== 'object' || args === null || Array.isArray(args)) {

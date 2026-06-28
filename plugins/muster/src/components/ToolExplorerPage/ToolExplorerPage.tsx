@@ -79,20 +79,9 @@ function AuthAffordance({ installation }: { installation: string }) {
 
 function ExplorerBody({ installation }: { installation: string }) {
   const classes = useStyles();
-  const musterApi = useApi(musterApiRef);
   const { mcpServers } = useMusterInstance();
   const [selected, setSelected] = useState<string | undefined>();
   const prefs = useToolPrefs(installation);
-
-  const { data: installationsData } = useQuery({
-    queryKey: ['muster', 'installations'],
-    queryFn: () => musterApi.listInstallations(),
-  });
-
-  const allowMutations = Boolean(
-    installationsData?.installations.find(i => i.name === installation)
-      ?.allowMutations,
-  );
 
   // Map each aggregated server's tool-name prefix to its management cluster so
   // the browser can group server tools by the MC they federate.
@@ -134,7 +123,6 @@ function ExplorerBody({ installation }: { installation: string }) {
                 key={`${installation}/${selected}`}
                 name={selected}
                 installation={installation}
-                allowMutations={allowMutations}
                 isFavourite={prefs.isFavourite(selected)}
                 onToggleFavourite={() => prefs.toggleFavourite(selected)}
               />
@@ -171,7 +159,7 @@ export function ToolExplorerPage() {
       <SectionHeader
         icon={<BuildIcon />}
         title="Tool explorer"
-        description="Browse, search, and run the tools this muster aggregates — core tools, every connected server, and workflows. Read-only by default; mutating tools are clearly marked and gated."
+        description="Browse, search, and run the tools this muster aggregates — core tools, every connected server, and workflows."
       />
       <InstallationPicker />
 

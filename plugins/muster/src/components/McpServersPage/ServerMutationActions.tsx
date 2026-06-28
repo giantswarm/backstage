@@ -29,7 +29,6 @@ import {
   toManifestYaml,
   toMcpServerDefinition,
 } from '../../lib/gitops';
-import { classifyTool } from '../../lib/mutationGuard';
 import { StateBadge } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -145,10 +144,8 @@ type LiveAction = {
 };
 
 /**
- * Confirm dialog for a live mutation against an ad-hoc server. On confirm it
- * runs the muster tool through the guarded `/call` proxy route; the backend
- * still enforces `allowMutations`, so a read-only installation surfaces the
- * 403 here rather than silently succeeding.
+ * Confirm dialog for a live mutation against an ad-hoc (manually added) server.
+ * On confirm it runs the muster tool through the `/call` proxy route.
  */
 function ConfirmActionDialog({
   server,
@@ -259,7 +256,7 @@ const NEW_SERVER_TEMPLATE = {
  * Ad-hoc server dialog: a JSON editor validated via `core_mcpserver_validate`
  * and saved via `core_mcpserver_create` (when `server` is absent) or
  * `core_mcpserver_update` (editing an existing ad-hoc server). Both calls go
- * through the guarded proxy (subject to `allowMutations`).
+ * through the `/call` proxy.
  */
 export function AdHocServerDialog({
   installation,
@@ -403,22 +400,16 @@ export function AdHocServerDialog({
 
 export interface ServerMutationActionsProps {
   server: MCPServer;
-  /** Whether the active installation opts into live mutations. */
-  allowMutations: boolean;
 }
 
 /**
- * Lifecycle/CRUD affordances for one server, gitops-aware (decided 2026-06-27):
- * GitOps-managed servers are read-only and route Add/Edit/Delete through a
- * GitOps PR/manifest; ad-hoc servers allow live core_mcpserver_* CRUD + service
- * start/stop/restart, behind the mutation guard + a confirm dialog. The backend
- * proxy still enforces `allowMutations`, so this is defence-in-depth, not the
- * only gate.
+ * Lifecycle/CRUD affordances for one server, gitops-aware. Provenance is the
+ * only restriction: GitOps-managed servers are read-only and route
+ * Add/Edit/Delete through a GitOps PR/manifest; manually-added (ad-hoc) servers
+ * allow live core_mcpserver_* CRUD + service start/stop/restart behind a
+ * confirm dialog.
  */
-export function ServerMutationActions({
-  server,
-  allowMutations,
-}: ServerMutationActionsProps) {
+export function ServerMutationActions({ server }: ServerMutationActionsProps) {
   const classes = useStyles();
   const managed = isGitOpsManaged(server);
 
@@ -459,23 +450,13 @@ export function ServerMutationActions({
     );
   }
 
-  // Ad-hoc server: live CRUD + service lifecycle, behind the mutation guard.
-  const deleteRisk = classifyTool('core_mcpserver_delete');
-  const liveAllowed = allowMutations && deleteRisk !== 'blocked';
-
+  // Manually-added (ad-hoc) server: live CRUD + service lifecycle.
   return (
     <Box className={classes.actions}>
-      <StateBadge tone="neutral" label="Ad-hoc (live CRUD)" />
-      {!liveAllowed && (
-        <Typography variant="body2" className={classes.managedNote}>
-          This installation is read-only; enable <code>allowMutations</code> to
-          edit, delete, or restart ad-hoc servers live.
-        </Typography>
-      )}
+      <StateBadge tone="neutral" label="Manually added" />
       <Button
         size="small"
         startIcon={<Edit />}
-        disabled={!liveAllowed}
         onClick={() => setEditOpen(true)}
       >
         Edit
@@ -483,7 +464,6 @@ export function ServerMutationActions({
       <Button
         size="small"
         startIcon={<PlayArrow />}
-        disabled={!liveAllowed}
         onClick={() =>
           setAction({
             label: `Start ${server.getName()}`,
@@ -497,7 +477,6 @@ export function ServerMutationActions({
       <Button
         size="small"
         startIcon={<Stop />}
-        disabled={!liveAllowed}
         onClick={() =>
           setAction({
             label: `Stop ${server.getName()}`,
@@ -511,7 +490,6 @@ export function ServerMutationActions({
       <Button
         size="small"
         startIcon={<Replay />}
-        disabled={!liveAllowed}
         onClick={() =>
           setAction({
             label: `Restart ${server.getName()}`,
@@ -525,7 +503,6 @@ export function ServerMutationActions({
       <Button
         size="small"
         startIcon={<DeleteOutline />}
-        disabled={!liveAllowed}
         onClick={() =>
           setAction({
             label: `Delete ${server.getName()}`,
@@ -555,15 +532,13 @@ export function ServerMutationActions({
 
 /**
  * Section-level "Add server" affordance. Adding a standard/fleet server is a
- * GitOps change (a manifest committed to the management-clusters repo); only
- * ad-hoc servers can be created live through muster, behind `allowMutations`.
+ * GitOps change (a manifest committed to the management-clusters repo); a
+ * manually-added (ad-hoc) server is created live through muster.
  */
 export function AddAdHocServerButton({
   installation,
-  allowMutations,
 }: {
   installation?: string;
-  allowMutations: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -571,13 +546,8 @@ export function AddAdHocServerButton({
       <Button
         size="small"
         startIcon={<Edit />}
-        disabled={!allowMutations}
         onClick={() => setOpen(true)}
-        title={
-          allowMutations
-            ? 'Create a live ad-hoc MCP server'
-            : 'Read-only installation: add fleet servers via a GitOps PR'
-        }
+        title="Create a live ad-hoc MCP server"
       >
         Add ad-hoc server
       </Button>
