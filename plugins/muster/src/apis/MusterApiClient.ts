@@ -107,18 +107,6 @@ export class MusterApiClient implements MusterApi {
     );
   }
 
-  async runWorkflow(
-    name: string,
-    args: Record<string, unknown>,
-    installation?: string,
-  ): Promise<unknown> {
-    return this.post<unknown>(
-      `/workflows/${encodeURIComponent(name)}/run`,
-      { arguments: args },
-      installation,
-    );
-  }
-
   async listServers(installation?: string): Promise<McpServerListResponse> {
     return this.get<McpServerListResponse>('/servers', installation);
   }

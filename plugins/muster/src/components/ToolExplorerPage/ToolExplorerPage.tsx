@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -80,7 +81,13 @@ function AuthAffordance({ installation }: { installation: string }) {
 function ExplorerBody({ installation }: { installation: string }) {
   const classes = useStyles();
   const { mcpServers } = useMusterInstance();
-  const [selected, setSelected] = useState<string | undefined>();
+  const [searchParams] = useSearchParams();
+  // Deep-link entry points (e.g. a workflow's "Run" button or a server's
+  // "open in tool explorer" link) preselect a tool via `?tool=` and/or scope
+  // the browse search to a server via `?server=`.
+  const toolParam = searchParams.get('tool') ?? undefined;
+  const serverParam = searchParams.get('server') ?? undefined;
+  const [selected, setSelected] = useState<string | undefined>(toolParam);
   const prefs = useToolPrefs(installation);
 
   // Map each aggregated server's tool-name prefix to its management cluster so
@@ -95,6 +102,10 @@ function ExplorerBody({ installation }: { installation: string }) {
       })),
     [mcpServers],
   );
+
+  // When deep-linked to a server without a specific tool, seed the browser
+  // search with the server name so its tools surface immediately.
+  const initialQuery = toolParam ? '' : (serverParam ?? '');
 
   const handleSelect = (name: string) => {
     setSelected(name);
@@ -113,6 +124,7 @@ function ExplorerBody({ installation }: { installation: string }) {
               onSelect={handleSelect}
               servers={servers}
               prefs={prefs}
+              initialQuery={initialQuery}
             />
           </Paper>
         </Grid>

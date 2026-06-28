@@ -393,25 +393,6 @@ export async function createRouter(
     });
   });
 
-  /**
-   * Run a workflow by invoking its `workflow_<name>` aggregated tool.
-   */
-  router.post('/workflows/:name/run', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
-
-    const args = req.body?.arguments ?? {};
-    if (typeof args !== 'object' || args === null || Array.isArray(args)) {
-      throw new InputError('arguments must be a JSON object when provided');
-    }
-
-    const result = await client.callTool(
-      `workflow_${req.params.name}`,
-      args as Record<string, unknown>,
-      readCallOptions(req, installation),
-    );
-    res.json(result);
-  });
-
   // --- Workflow executions -------------------------------------------------
 
   router.get('/executions', async (req, res) => {
