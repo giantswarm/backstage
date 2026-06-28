@@ -22,6 +22,8 @@
     "lint:all": "backstage-cli repo lint",
     "prettier:check": "prettier --check .",
     "prettier:fix": "prettier --write .",
+    "ci:verify": "NODE_OPTIONS=\"--max-old-space-size=6144\" yarn run tsc --noEmit && yarn run lint:all && yarn run prettier:check && yarn run test:all",
+    "ci:build": "touch github-app-credentials.yaml && NODE_ENV=production yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml && NODE_ENV=production yarn run build:backend-headless-service --config ../../app-config.yaml --config ../../app-config.production.yaml",
     "new": "backstage-cli new",
     "postinstall": "yarn patch-package",
     "prepare": "husky"
