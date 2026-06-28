@@ -7,9 +7,51 @@ version: 2.1
 orbs:
   architect: giantswarm/architect@9.5.5
 
+jobs:
+  # Self-contained Node build/test on a cimg/node executor (architect ships no
+  # Node job). Dependencies are restored from a cache keyed on the lockfile
+  # checksum and saved write-once-per-lockfile, the Node analogue of go-build's
+  # GOCACHE persist. The verify/build steps invoke package.json scripts, so a
+  # repo redirects its bespoke toolchain by editing those scripts, not this job.
+  node-build:
+    docker:
+    - image: cimg/node:24.18.0
+    resource_class: large
+    steps:
+    - checkout
+    - restore_cache:
+        keys:
+        - node-deps-yarn-{{ checksum "yarn.lock" }}
+        - node-deps-yarn-
+    - run:
+        name: Install dependencies
+        command: yarn install --immutable
+    - save_cache:
+        key: node-deps-yarn-{{ checksum "yarn.lock" }}
+        paths:
+        - .yarn/cache
+    - run:
+        # The repo composes typecheck/lint/format/test into this one script
+        # (the make-target interface), so CI and local runs share a command.
+        name: Verify
+        command: yarn run ci:verify
+    - run:
+        name: Build
+        command: yarn run ci:build
+    - persist_to_workspace:
+        # Hand the build output to the image jobs, which attach_workspace and
+        # overlay it into the Docker build context (gen.ci.image.preBuildJob).
+        root: .
+        paths:
+        - packages/*/dist/*
+
 workflows:
   build:
     jobs:
+    - node-build:
+        filters:
+          tags:
+            only: /^v.*/
 
     # Branch builds (opt-in): amd64 dev image to gsoci for PR validation,
     # coupled with the branch chart push below. v9's push-to-registries always
@@ -20,10 +62,7 @@ workflows:
         dockerfile: packages/backend/Dockerfile
         platforms: linux/amd64
         requires:
-        # Repo-owned pre-build job (defined in .circleci/custom.yml). The
-        # branch image build needs the same workspace handoff as the release
-        # job, so the generator carries the dependency.
-        - buildjob
+        - node-build
         filters:
           branches:
             ignore:
@@ -39,10 +78,7 @@ workflows:
         split-china-push: true
         platforms: linux/amd64
         requires:
-        # Repo-owned pre-build job (defined in .circleci/custom.yml). The
-        # generated job cannot be injected with this dependency via the
-        # append-only custom.yml merge, so the generator carries it.
-        - buildjob
+        - node-build
         filters:
           tags:
             only: /^v.*/
@@ -76,6 +112,8 @@ workflows:
         push_to_appcatalog: false
         push_to_oci_registry: false
         persist_chart_archive: true
+        requires:
+        - node-build
         filters:
           tags:
             only: /^v.*/

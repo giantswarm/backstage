@@ -3,91 +3,26 @@
 # .circleci/workflows.yml at pipeline runtime (yq `*+`: maps merge, job lists
 # append). devctl never touches this file.
 #
-# Generated job names available to reference in `requires`: build-image (branch),
-# push-to-registries-release, sync-china-registry, build-chart,
+# Generated job names available to reference in `requires`: node-build (the
+# install/verify/build job that persists packages/*/dist/*), push-to-registries
+# (branch), push-to-registries-release, sync-china-registry, build-chart,
 # execute-chart-tests, execute-chart-tests-release, push-chart-release (the
 # operations-platform catalog push).
 #
 # What this file carries beyond the golden pipeline:
-#   - buildjob: the Node build (install/typecheck/lint/prettier/test/build) that
-#     produces packages/*/dist/*. The generated image jobs (build-image and
-#     push-to-registries-release) wait on it via gen.ci.image.preBuildJob:
-#     buildjob and overlay its persisted workspace into the Docker build context
-#     (packages/backend/Dockerfile COPYs packages/backend/dist/*.tar.gz).
 #   - push-to-control-plane-app-catalog: backstage ships the single `backstage`
 #     chart to TWO catalogs. The generated push-chart-release publishes to the
 #     operations-platform catalog (gen.ci.appCatalog); this carries the second
 #     control-plane catalog push.
+#
+# The Node build (install/verify/build -> packages/*/dist/*) is now the
+# generated `node-build` job (gen.ci.node), which the image jobs require for the
+# workspace handoff; the hand-written `buildjob` it replaced lived here before.
 version: 2.1
-
-jobs:
-  buildjob:
-    executor: architect/architect
-    resource_class: large
-    working_directory: ~/backstage
-    docker:
-      - image: cimg/node:24.18.0
-    steps:
-      - checkout
-      - run:
-          name: Print node and yarn version info
-          command: |
-            node --version
-            yarn --version
-      - run:
-          name: Install dependencies
-          command: yarn install --immutable
-      - restore_cache:
-          name: Restore TypeScript incremental build info
-          keys:
-            - v1-tsbuildinfo-{{ .Branch }}-{{ .Revision }}
-            - v1-tsbuildinfo-{{ .Branch }}-
-            - v1-tsbuildinfo-
-      - run:
-          name: Typecheck code using the TypeScript compiler
-          command: NODE_OPTIONS="--max-old-space-size=6144" yarn run tsc --noEmit
-      - save_cache:
-          name: Save TypeScript incremental build info
-          key: v1-tsbuildinfo-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - dist-types/tsconfig.tsbuildinfo
-      - run:
-          name: Lint code using ESlint
-          command: yarn run lint:all
-      - run:
-          name: Validate code style using prettier
-          command: yarn run prettier:check
-      - run:
-          name: Run tests
-          command: yarn run test:all
-      - run:
-          name: Mock secret files
-          command: |
-            touch github-app-credentials.yaml
-      - run:
-          name: Build application
-          command: |
-            yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml
-            yarn run build:backend-headless-service --config ../../app-config.yaml --config ../../app-config.production.yaml
-          environment:
-            NODE_ENV: production
-      - persist_to_workspace:
-          root: ~/backstage
-          paths:
-            - packages/*/dist/*
 
 workflows:
   build:
     jobs:
-    # Node build feeding the generated image jobs (preBuildJob: buildjob).
-    - buildjob:
-        filters:
-          tags:
-            only: /^v.*/
-          branches:
-            ignore:
-            - main
-
     # Second catalog: the single `backstage` chart also ships to the
     # control-plane catalog. Gated on the same jobs as the generated
     # push-chart-release (operations-platform) so the same tested archive and
