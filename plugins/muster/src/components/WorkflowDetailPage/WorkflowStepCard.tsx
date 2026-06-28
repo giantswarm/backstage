@@ -298,10 +298,17 @@ function ConditionCallout({
     );
   }
 
-  const clauses: { key: string; verb: string; expectation?: typeof condition.expect }[] =
-    [];
+  const clauses: {
+    key: string;
+    verb: string;
+    expectation?: typeof condition.expect;
+  }[] = [];
   if (condition.expect) {
-    clauses.push({ key: 'expect', verb: 'matches', expectation: condition.expect });
+    clauses.push({
+      key: 'expect',
+      verb: 'matches',
+      expectation: condition.expect,
+    });
   }
   if (condition.expectNot) {
     clauses.push({
@@ -321,7 +328,11 @@ function ConditionCallout({
         <ul className={classes.conditionList}>
           {clauses.map(c => (
             <li key={c.key} className={classes.conditionItem}>
-              <Typography component="span" variant="caption" color="textSecondary">
+              <Typography
+                component="span"
+                variant="caption"
+                color="textSecondary"
+              >
                 {c.verb}{' '}
               </Typography>
               {c.expectation?.success !== undefined && (
@@ -394,7 +405,10 @@ function StepBadges({
   }
   if (parallel) {
     badges.push(
-      <span key="parallel" className={`${classes.badge} ${classes.badgeNeutral}`}>
+      <span
+        key="parallel"
+        className={`${classes.badge} ${classes.badgeNeutral}`}
+      >
         Parallel group
       </span>,
     );
@@ -445,9 +459,7 @@ function SubStepCard({
           {subStep.description}
         </Typography>
       )}
-      {subStep.condition && (
-        <ConditionCallout condition={subStep.condition} />
-      )}
+      {subStep.condition && <ConditionCallout condition={subStep.condition} />}
       <ToolBlock
         tool={subStep.tool}
         args={subStep.args}

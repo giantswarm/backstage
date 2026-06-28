@@ -142,7 +142,9 @@ export function McpServersPage() {
 
   let body;
   if (isLoading || !activeInstallation) {
-    body = isLoading ? <Progress /> : (
+    body = isLoading ? (
+      <Progress />
+    ) : (
       <EmptyState
         missing="data"
         title="Select an installation"
@@ -201,9 +203,10 @@ export function McpServersPage() {
           ) : (
             <>
               <Typography variant="body2" className={classes.presentNote}>
-                {standard.length} {standard.length === 1 ? 'family' : 'families'}{' '}
-                across {targetMcs.size}{' '}
-                {targetMcs.size === 1 ? 'cluster' : 'clusters'}.
+                {standard.length}{' '}
+                {standard.length === 1 ? 'family' : 'families'} across{' '}
+                {targetMcs.size} {targetMcs.size === 1 ? 'cluster' : 'clusters'}
+                .
               </Typography>
               <Box className={classes.stack}>
                 {standard.map((group, idx) => (

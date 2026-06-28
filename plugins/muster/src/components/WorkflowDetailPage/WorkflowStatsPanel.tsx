@@ -150,11 +150,7 @@ export function WorkflowStatsPanel({
     <Box>
       <Box className={classes.statRow}>
         <Stat label="Runs" value={data.runs.toLocaleString()} />
-        <Stat
-          label="Success rate"
-          value={successRate}
-          tone={successTone}
-        />
+        <Stat label="Success rate" value={successRate} tone={successTone} />
         <Stat label="Avg duration" value={avg} />
         <Stat label="Max duration" value={max} />
       </Box>

@@ -63,7 +63,11 @@ export function ExplorerEmpty({
           <Box mt={1}>
             <Divider />
           </Box>
-          <Typography variant="body2" color="textSecondary" style={{ marginTop: 8 }}>
+          <Typography
+            variant="body2"
+            color="textSecondary"
+            style={{ marginTop: 8 }}
+          >
             {description}
           </Typography>
         </>

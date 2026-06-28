@@ -36,7 +36,8 @@ const MUSTER_IDENTITY = {
     "A single MCP endpoint that aggregates the tools of many backend MCP servers running across Giant Swarm management clusters, plus muster's own core tools and reusable workflows. Agents connect once to muster and reach everything behind it.",
 };
 
-const MUSTER_ICON_LIGHT = 'https://s.giantswarm.io/app-icons/muster/1/light.svg';
+const MUSTER_ICON_LIGHT =
+  'https://s.giantswarm.io/app-icons/muster/1/light.svg';
 const MUSTER_ICON_DARK = 'https://s.giantswarm.io/app-icons/muster/1/dark.svg';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -304,7 +305,7 @@ export function DashboardPage() {
   // else the live count (or '—' if muster reported none).
   let toolStat: string | number = '—';
   if (authenticated) {
-    toolStat = overviewLoading ? '…' : toolCount ?? '—';
+    toolStat = overviewLoading ? '…' : (toolCount ?? '—');
   }
 
   // ponytail: aggregator "servers connected" is derived from the CRD
@@ -346,7 +347,10 @@ export function DashboardPage() {
               <Typography variant="subtitle1" className={classes.identityTitle}>
                 {MUSTER_IDENTITY.name}
               </Typography>
-              <Typography variant="body2" className={classes.identityDescription}>
+              <Typography
+                variant="body2"
+                className={classes.identityDescription}
+              >
                 {MUSTER_IDENTITY.description}
               </Typography>
             </Box>

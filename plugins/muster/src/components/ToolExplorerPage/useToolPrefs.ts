@@ -11,7 +11,9 @@ function load(k: string): string[] {
   try {
     const raw = window.localStorage.getItem(k);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string') : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(x => typeof x === 'string')
+      : [];
   } catch {
     return [];
   }

@@ -347,7 +347,9 @@ function WorkflowDetailContent() {
         {/* Header */}
         <Box className={classes.header}>
           <Box className={classes.breadcrumb}>
-            <Link to={withInstallation(mcpServersLink?.() ?? '#', installation)}>
+            <Link
+              to={withInstallation(mcpServersLink?.() ?? '#', installation)}
+            >
               MCP Servers
             </Link>
             <ChevronRight />

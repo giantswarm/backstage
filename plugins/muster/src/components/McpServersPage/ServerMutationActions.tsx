@@ -207,9 +207,9 @@ function ConfirmActionDialog({
             </>
           ) : (
             <>
-              Run <code>{action?.tool}</code> against <code>{server.getName()}</code>{' '}
-              on installation <code>{server.cluster}</code>. This is a live
-              mutation.
+              Run <code>{action?.tool}</code> against{' '}
+              <code>{server.getName()}</code> on installation{' '}
+              <code>{server.cluster}</code>. This is a live mutation.
             </>
           )}
         </DialogContentText>

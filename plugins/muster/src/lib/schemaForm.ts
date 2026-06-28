@@ -52,7 +52,9 @@ function isPrimitiveArray(field: SchemaField): boolean {
   if (field.itemEnumValues && field.itemEnumValues.length > 0) {
     return true;
   }
-  return Boolean(field.itemType && PRIMITIVE_ITEM_TYPES.includes(field.itemType));
+  return Boolean(
+    field.itemType && PRIMITIVE_ITEM_TYPES.includes(field.itemType),
+  );
 }
 
 export function fieldKind(field: SchemaField): FieldKind {

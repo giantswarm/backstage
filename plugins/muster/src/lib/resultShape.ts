@@ -15,9 +15,7 @@ export interface TableShape {
 const MAX_COLUMNS = 8;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' && value !== null && !Array.isArray(value)
-  );
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Pull the array of items out of a k8s-list-shaped result, if present. */

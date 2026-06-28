@@ -44,10 +44,10 @@ export function isGitOpsManaged(server: MCPServer): boolean {
   const p = readProvenance(server);
   return Boolean(
     p.fluxHelmRelease ||
-      p.fluxKustomization ||
-      p.helmRelease ||
-      p.managedBy === 'Helm' ||
-      p.managedBy === 'flux',
+    p.fluxKustomization ||
+    p.helmRelease ||
+    p.managedBy === 'Helm' ||
+    p.managedBy === 'flux',
   );
 }
 
@@ -75,8 +75,9 @@ export function provenanceReleaseId(p: Provenance): string | undefined {
 export function toMcpServerDefinition(
   server: MCPServer,
 ): Record<string, unknown> {
-  const spec = (server as unknown as { jsonData: { spec?: Record<string, unknown> } })
-    .jsonData.spec;
+  const spec = (
+    server as unknown as { jsonData: { spec?: Record<string, unknown> } }
+  ).jsonData.spec;
   const definition: Record<string, unknown> = { name: server.getName() };
   if (!spec) {
     return definition;
@@ -181,8 +182,9 @@ function quoteScalar(value: string): string {
  * never applies it live (GitOps-managed servers are read-only here).
  */
 export function toManifestYaml(server: MCPServer): string {
-  const spec = (server as unknown as { jsonData: { spec?: Record<string, unknown> } })
-    .jsonData.spec;
+  const spec = (
+    server as unknown as { jsonData: { spec?: Record<string, unknown> } }
+  ).jsonData.spec;
   const manifest = {
     apiVersion: 'muster.giantswarm.io/v1alpha1',
     kind: 'MCPServer',

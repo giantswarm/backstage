@@ -109,9 +109,10 @@ export function ToolResultViewer({
   const [mode, setMode] = useState<ViewMode>(table ? 'table' : 'parsed');
   const [collapsed, setCollapsed] = useState(false);
 
-  const pretty = useMemo(() => JSON.stringify(result, null, 2) ?? 'null', [
-    result,
-  ]);
+  const pretty = useMemo(
+    () => JSON.stringify(result, null, 2) ?? 'null',
+    [result],
+  );
   const raw = useMemo(() => JSON.stringify(result) ?? 'null', [result]);
   const sizeBytes = raw.length;
   // Rough token estimate (~4 chars/token); enough to flag a large result.
@@ -173,7 +174,11 @@ export function ToolResultViewer({
         {onRerun && (
           <Tooltip title="Run again with the same arguments">
             <span>
-              <IconButton size="small" onClick={onRerun} disabled={rerunDisabled}>
+              <IconButton
+                size="small"
+                onClick={onRerun}
+                disabled={rerunDisabled}
+              >
                 <ReplayIcon fontSize="small" />
               </IconButton>
             </span>

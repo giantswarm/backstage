@@ -1,7 +1,12 @@
 import { useMemo, useState, MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Content, EmptyState, Link, Progress } from '@backstage/core-components';
+import {
+  Content,
+  EmptyState,
+  Link,
+  Progress,
+} from '@backstage/core-components';
 import {
   Box,
   IconButton,
@@ -278,7 +283,10 @@ export function WorkflowsListPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="caption" className={classes.description}>
+                    <Typography
+                      variant="caption"
+                      className={classes.description}
+                    >
                       {w.getDescription() ?? ''}
                     </Typography>
                   </TableCell>

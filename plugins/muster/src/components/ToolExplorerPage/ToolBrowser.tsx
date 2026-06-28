@@ -23,7 +23,11 @@ import StarBorderIcon from '@material-ui/icons/StarBorder';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef, ToolSummary } from '../../apis';
-import { groupTools, ServerPrefixInfo, ToolGroup } from '../../lib/toolGrouping';
+import {
+  groupTools,
+  ServerPrefixInfo,
+  ToolGroup,
+} from '../../lib/toolGrouping';
 import { ExplorerError } from './ExplorerError';
 import { BrowserSkeleton } from './states';
 import { ToolPrefs } from './useToolPrefs';

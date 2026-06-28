@@ -207,8 +207,9 @@ export class MusterApiClient implements MusterApi {
       return undefined;
     }
     if (installation) {
-      const installations =
-        this.configApi.getOptionalConfigArray('muster.installations');
+      const installations = this.configApi.getOptionalConfigArray(
+        'muster.installations',
+      );
       const match = installations?.find(
         i => i.getOptionalString('name') === installation,
       );

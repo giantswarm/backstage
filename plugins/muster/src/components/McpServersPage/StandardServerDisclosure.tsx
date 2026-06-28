@@ -1,16 +1,17 @@
-import { Box, Typography, makeStyles, Theme, useTheme } from '@material-ui/core';
+import {
+  Box,
+  Typography,
+  makeStyles,
+  Theme,
+  useTheme,
+} from '@material-ui/core';
 import {
   MCPServer,
   MCPServerSeverity,
   mcpServerStateSeverity,
   worstSeverity,
 } from '../../lib/k8s';
-import {
-  DisclosureAccordion,
-  Gate,
-  severityTone,
-  toneColors,
-} from '../shared';
+import { DisclosureAccordion, Gate, severityTone, toneColors } from '../shared';
 import {
   AuthChain,
   DetailBlock,
@@ -19,7 +20,11 @@ import {
   ServerConfig,
   ServerTools,
 } from './serverDetail';
-import { isGitOpsManaged, provenanceReleaseId, readProvenance } from '../../lib/gitops';
+import {
+  isGitOpsManaged,
+  provenanceReleaseId,
+  readProvenance,
+} from '../../lib/gitops';
 
 const useStyles = makeStyles((theme: Theme) => ({
   summary: {
@@ -212,8 +217,8 @@ export function StandardServerDisclosure({
       <DetailBlock title="Configuration">
         <ServerConfig server={representative} />
         <Typography variant="caption" color="textSecondary">
-          Shared across the fleet; shown for {representative.getManagementCluster() ??
-            representative.getName()}.
+          Shared across the fleet; shown for{' '}
+          {representative.getManagementCluster() ?? representative.getName()}.
         </Typography>
       </DetailBlock>
 
