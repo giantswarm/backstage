@@ -33,7 +33,7 @@ import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { AvailabilityBadge } from '../shared';
 import { MusterWorkflow } from '../../lib/k8s';
-import { workflowDetailRouteRef } from '../../routes';
+import { toolExplorerRouteRef, workflowDetailRouteRef } from '../../routes';
 
 type AvailFilter = 'all' | 'available' | 'unavailable';
 
@@ -107,10 +107,11 @@ const useStyles = makeStyles((theme: Theme) => ({
 interface RowActionsProps {
   name: string;
   detailHref: string;
+  runHref: string;
 }
 
 /** The mockup's per-row menu: Open / Run workflow… / Copy name. */
-function RowActions({ name, detailHref }: RowActionsProps) {
+function RowActions({ name, detailHref, runHref }: RowActionsProps) {
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = (e: MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget);
@@ -138,11 +139,7 @@ function RowActions({ name, detailHref }: RowActionsProps) {
         <MenuItem
           onClick={() => {
             close();
-            navigate(
-              detailHref.includes('?')
-                ? `${detailHref}&run=1`
-                : `${detailHref}?run=1`,
-            );
+            navigate(runHref);
           }}
         >
           <ListItemText primary="Run workflow…" />
@@ -165,6 +162,7 @@ export function WorkflowsListPage() {
   const classes = useStyles();
   const { workflows, activeInstallation, isLoading } = useMusterInstance();
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
+  const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
 
   const [query, setQuery] = useState('');
   const [avail, setAvail] = useState<AvailFilter>('all');
@@ -174,6 +172,18 @@ export function WorkflowsListPage() {
     return workflow.cluster
       ? `${base}?installation=${encodeURIComponent(workflow.cluster)}`
       : base;
+  };
+
+  // Running a workflow executes its `workflow_<name>` tool, so "Run workflow…"
+  // lands on the unified tool explorer with that tool preselected.
+  const runHref = (workflow: MusterWorkflow) => {
+    const base = toolExplorerLink?.() ?? '#';
+    const params = new URLSearchParams();
+    if (workflow.cluster) {
+      params.set('installation', workflow.cluster);
+    }
+    params.set('tool', `workflow_${workflow.getName()}`);
+    return `${base}?${params.toString()}`;
   };
 
   const filtered = useMemo(() => {
@@ -297,7 +307,11 @@ export function WorkflowsListPage() {
                     <AvailabilityBadge available={w.isValid()} />
                   </TableCell>
                   <TableCell padding="checkbox">
-                    <RowActions name={w.getName()} detailHref={href} />
+                    <RowActions
+                      name={w.getName()}
+                      detailHref={href}
+                      runHref={runHref(w)}
+                    />
                   </TableCell>
                 </TableRow>
               );

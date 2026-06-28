@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import yaml from 'js-yaml';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -47,12 +47,12 @@ import { InstallationPicker } from '../InstallationPicker';
 import { SectionHeader, AvailabilityBadge, VIOLET } from '../shared';
 import {
   mcpServersRouteRef,
+  toolExplorerRouteRef,
   workflowDetailRouteRef,
   workflowsRouteRef,
 } from '../../routes';
 import { WorkflowStepCard } from './WorkflowStepCard';
 import { WorkflowStatsPanel } from './WorkflowStatsPanel';
-import { RunWorkflowDialog } from './RunWorkflowDialog';
 import { ExecutionHistoryPanel } from './ExecutionHistoryPanel';
 import { ExecutionDetailPanel } from './ExecutionDetailPanel';
 
@@ -224,15 +224,15 @@ function WorkflowDetailContent() {
   const { name = '' } = useParams<{ name: string }>();
   const [searchParams] = useSearchParams();
   const installationParam = searchParams.get('installation') ?? undefined;
-  const runIntent = searchParams.get('run') === '1';
 
+  const navigate = useNavigate();
   const musterApi = useApi(musterApiRef);
   const workflowsLink = useRouteRef(workflowsRouteRef);
   const mcpServersLink = useRouteRef(mcpServersRouteRef);
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
+  const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
   const { workflows, isLoading, activeInstallation } = useMusterInstance();
 
-  const [runOpen, setRunOpen] = useState(false);
   const [selectedExecutionId, setSelectedExecutionId] = useState<string>();
 
   const workflow = useMemo(() => {
@@ -245,14 +245,6 @@ function WorkflowDetailContent() {
   }, [workflows, name, installationParam]);
 
   const installation = workflow?.cluster ?? installationParam;
-
-  // Honour a `?run=1` deep link (the list's "Run workflow…" action) once the
-  // workflow has loaded.
-  useEffect(() => {
-    if (runIntent && workflow) {
-      setRunOpen(true);
-    }
-  }, [runIntent, workflow]);
 
   const executionsQuery = useQuery({
     queryKey: ['muster', 'executions', installation, name],
@@ -317,12 +309,25 @@ function WorkflowDetailContent() {
     yamlText = JSON.stringify(workflow.jsonData, null, 2);
   }
 
+  // Running a workflow is just executing its `workflow_<name>` aggregated tool,
+  // so "Run" lands on the unified execution surface (the tool explorer) with
+  // that tool preselected and its argument form ready.
+  const runExplorerLink = (() => {
+    const base = toolExplorerLink?.() ?? '#';
+    const params = new URLSearchParams();
+    if (installation) {
+      params.set('installation', installation);
+    }
+    params.set('tool', referencingTool);
+    return `${base}?${params.toString()}`;
+  })();
+
   const runButton = (
     <Button
       color="primary"
       variant="contained"
       startIcon={<PlayArrowIcon />}
-      onClick={() => setRunOpen(true)}
+      onClick={() => navigate(runExplorerLink)}
     >
       Run
     </Button>
@@ -554,15 +559,6 @@ function WorkflowDetailContent() {
           </Grid>
         </Box>
       </Box>
-
-      <RunWorkflowDialog
-        open={runOpen}
-        onClose={() => setRunOpen(false)}
-        name={name}
-        installation={installation}
-        args={args}
-        onRan={() => executionsQuery.refetch()}
-      />
     </Content>
   );
 }
