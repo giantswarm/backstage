@@ -21,13 +21,13 @@ jobs:
     - checkout
     - restore_cache:
         keys:
-        - node-deps-yarn-{{ checksum "yarn.lock" }}
-        - node-deps-yarn-
+        - node-deps-yarn-v1-{{ checksum "yarn.lock" }}
+        - node-deps-yarn-v1-
     - run:
         name: Install dependencies
         command: yarn install --immutable
     - save_cache:
-        key: node-deps-yarn-{{ checksum "yarn.lock" }}
+        key: node-deps-yarn-v1-{{ checksum "yarn.lock" }}
         paths:
         - .yarn/cache
     - run:
