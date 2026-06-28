@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Box,
   Chip,
+  IconButton,
+  InputAdornment,
   List,
   ListItem,
+  ListItemSecondaryAction,
   ListItemText,
   TextField,
   Typography,
@@ -14,10 +17,16 @@ import {
   Theme,
 } from '@material-ui/core';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import { Progress, ResponseErrorPanel } from '@backstage/core-components';
+import SearchIcon from '@material-ui/icons/Search';
+import StarIcon from '@material-ui/icons/Star';
+import StarBorderIcon from '@material-ui/icons/StarBorder';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef, ToolSummary } from '../../apis';
+import { groupTools, ServerPrefixInfo, ToolGroup } from '../../lib/toolGrouping';
+import { ExplorerError } from './ExplorerError';
+import { BrowserSkeleton } from './states';
+import { ToolPrefs } from './useToolPrefs';
 
 /** No-pattern page size used to pull the whole catalogue for browsing. */
 const BROWSE_LIMIT = 2000;
@@ -36,8 +45,19 @@ const useStyles = makeStyles((theme: Theme) => ({
     boxShadow: 'none',
     '&:before': { display: 'none' },
   },
+  groupSummary: {
+    minHeight: 40,
+  },
   groupTitle: {
     fontWeight: 600,
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: theme.spacing(1),
+  },
+  groupSub: {
+    color: theme.palette.text.secondary,
+    fontWeight: 400,
+    fontSize: '0.75rem',
   },
   details: {
     padding: 0,
@@ -48,40 +68,38 @@ const useStyles = makeStyles((theme: Theme) => ({
   selected: {
     backgroundColor: theme.palette.action.selected,
   },
+  active: {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: -2,
+  },
+  quickHeader: {
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontSize: '0.7rem',
+    color: theme.palette.text.secondary,
+    margin: theme.spacing(1, 0, 0.5),
+  },
+  kbd: {
+    fontFamily: 'monospace',
+    fontSize: '0.7rem',
+    color: theme.palette.text.secondary,
+  },
 }));
-
-/**
- * Group a tool name into a browse section. Core and workflow tools have fixed
- * sections; aggregated `x_<segment>_*` tools group by their first segment
- * (muster's family/server prefix).
- *
- * ponytail: groups aggregated tools by the leading name segment rather than
- * resolving each to its MCPServer CR (server prefixes aren't unique per the CR
- * heuristic). Upgrade path: match against the server tool-name prefixes once
- * the aggregator exposes them.
- */
-function groupFor(name: string): string {
-  if (name.startsWith('core_')) {
-    return 'Core';
-  }
-  if (name.startsWith('workflow_')) {
-    return 'Workflows';
-  }
-  if (name.startsWith('x_')) {
-    const segment = name.slice(2).split('_')[0];
-    return segment ? `Server: ${segment}` : 'Servers';
-  }
-  return 'Other';
-}
 
 function ToolRow({
   tool,
   selected,
+  active,
+  favourite,
   onSelect,
+  onToggleFavourite,
 }: {
   tool: ToolSummary;
   selected: boolean;
+  active?: boolean;
+  favourite: boolean;
   onSelect: (name: string) => void;
+  onToggleFavourite: (name: string) => void;
 }) {
   const classes = useStyles();
   return (
@@ -89,7 +107,9 @@ function ToolRow({
       button
       dense
       divider
-      className={selected ? classes.selected : undefined}
+      className={`${selected ? classes.selected : ''} ${
+        active ? classes.active : ''
+      }`}
       onClick={() => onSelect(tool.name)}
     >
       <ListItemText
@@ -103,6 +123,19 @@ function ToolRow({
         }
         secondary={tool.summary ?? tool.description}
       />
+      <ListItemSecondaryAction>
+        <IconButton
+          edge="end"
+          size="small"
+          onClick={() => onToggleFavourite(tool.name)}
+        >
+          {favourite ? (
+            <StarIcon fontSize="small" color="primary" />
+          ) : (
+            <StarBorderIcon fontSize="small" />
+          )}
+        </IconButton>
+      </ListItemSecondaryAction>
     </ListItem>
   );
 }
@@ -111,22 +144,42 @@ export interface ToolBrowserProps {
   installation?: string;
   selected?: string;
   onSelect: (name: string) => void;
+  /** MCPServer-derived prefixes, used to group server tools by management cluster. */
+  servers: ServerPrefixInfo[];
+  prefs: ToolPrefs;
 }
 
 /**
  * Left-hand browse/search panel. With an empty query it lists the whole
- * aggregated catalogue grouped into Core / Servers / Workflows; a non-empty
- * query switches to `filter_tools` BM25-ranked results.
+ * aggregated catalogue grouped into Core / Servers-by-management-cluster /
+ * Workflows (plus Favourites and Recent quick-access), and a non-empty query
+ * switches to `filter_tools` BM25-ranked results with keyboard navigation.
  */
 export function ToolBrowser({
   installation,
   selected,
   onSelect,
+  servers,
+  prefs,
 }: ToolBrowserProps) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const searchRef = useRef<HTMLInputElement>(null);
   const trimmed = query.trim();
+
+  // ⌘K / Ctrl-K focuses the search field from anywhere on the page.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const browse = useQuery({
     queryKey: ['muster', 'tools-browse', installation],
@@ -145,27 +198,48 @@ export function ToolBrowser({
     enabled: trimmed !== '',
   });
 
-  const grouped = useMemo(() => {
-    const tools = browse.data?.tools ?? [];
-    const groups = new Map<string, ToolSummary[]>();
-    for (const tool of tools) {
-      const key = groupFor(tool.name);
-      const bucket = groups.get(key) ?? [];
-      bucket.push(tool);
-      groups.set(key, bucket);
+  const allTools = useMemo(() => browse.data?.tools ?? [], [browse.data]);
+  const byName = useMemo(() => {
+    const map = new Map<string, ToolSummary>();
+    for (const tool of allTools) {
+      map.set(tool.name, tool);
     }
-    // Stable section order: Core, Workflows, Servers (alpha), Other last.
-    const rank = (key: string) => {
-      if (key === 'Core') return 0;
-      if (key === 'Workflows') return 1;
-      if (key === 'Other') return 3;
-      return 2;
-    };
-    return [...groups.entries()].sort(([a], [b]) => {
-      const r = rank(a) - rank(b);
-      return r !== 0 ? r : a.localeCompare(b);
-    });
-  }, [browse.data]);
+    return map;
+  }, [allTools]);
+
+  const groups = useMemo(
+    () => groupTools(allTools, servers),
+    [allTools, servers],
+  );
+
+  const searchTools = search.data?.tools ?? [];
+  useEffect(() => setActiveIndex(-1), [trimmed, searchTools.length]);
+
+  const onSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (trimmed === '' || searchTools.length === 0) {
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(i => Math.min(i + 1, searchTools.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const pick = searchTools[activeIndex] ?? searchTools[0];
+      if (pick) {
+        onSelect(pick.name);
+      }
+    }
+  };
+
+  const favouriteTools = prefs.favourites
+    .map(name => byName.get(name) ?? { name })
+    .filter(Boolean);
+  const recentTools = prefs.recents
+    .filter(name => !prefs.favourites.includes(name))
+    .map(name => byName.get(name) ?? { name });
 
   return (
     <Box>
@@ -175,29 +249,104 @@ export function ToolBrowser({
         variant="outlined"
         size="small"
         label="Search tools"
-        placeholder="e.g. list pods, prometheus query"
+        placeholder="e.g. list pods, prometheus query  (⌘K)"
         value={query}
+        inputRef={searchRef}
         onChange={e => setQuery(e.target.value)}
+        onKeyDown={onSearchKeyDown}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
       />
 
       {trimmed !== '' ? (
         <SearchResults
           isLoading={search.isLoading}
           error={search.error}
-          tools={search.data?.tools ?? []}
+          installation={installation}
+          tools={searchTools}
           truncated={search.data?.truncated ?? false}
           total={search.data?.total ?? 0}
           selected={selected}
+          activeIndex={activeIndex}
+          prefs={prefs}
           onSelect={onSelect}
         />
       ) : (
-        <BrowseGroups
-          isLoading={browse.isLoading}
-          error={browse.error}
-          groups={grouped}
-          selected={selected}
+        <>
+          {(favouriteTools.length > 0 || recentTools.length > 0) && (
+            <QuickAccess
+              favourites={favouriteTools}
+              recents={recentTools}
+              selected={selected}
+              prefs={prefs}
+              onSelect={onSelect}
+            />
+          )}
+          <BrowseGroups
+            isLoading={browse.isLoading}
+            error={browse.error}
+            installation={installation}
+            groups={groups}
+            selected={selected}
+            prefs={prefs}
+            onSelect={onSelect}
+          />
+        </>
+      )}
+    </Box>
+  );
+}
+
+function QuickAccess({
+  favourites,
+  recents,
+  selected,
+  prefs,
+  onSelect,
+}: {
+  favourites: ToolSummary[];
+  recents: ToolSummary[];
+  selected?: string;
+  prefs: ToolPrefs;
+  onSelect: (name: string) => void;
+}) {
+  const classes = useStyles();
+  const renderList = (tools: ToolSummary[]) => (
+    <List dense disablePadding>
+      {tools.map(tool => (
+        <ToolRow
+          key={tool.name}
+          tool={tool}
+          selected={tool.name === selected}
+          favourite={prefs.isFavourite(tool.name)}
           onSelect={onSelect}
+          onToggleFavourite={prefs.toggleFavourite}
         />
+      ))}
+    </List>
+  );
+  return (
+    <Box>
+      {favourites.length > 0 && (
+        <>
+          <Typography className={classes.quickHeader}>
+            Favourites ({favourites.length})
+          </Typography>
+          {renderList(favourites)}
+        </>
+      )}
+      {recents.length > 0 && (
+        <>
+          <Typography className={classes.quickHeader}>
+            Recent ({recents.length})
+          </Typography>
+          {renderList(recents)}
+        </>
       )}
     </Box>
   );
@@ -206,22 +355,26 @@ export function ToolBrowser({
 function BrowseGroups({
   isLoading,
   error,
+  installation,
   groups,
   selected,
+  prefs,
   onSelect,
 }: {
   isLoading: boolean;
   error: unknown;
-  groups: [string, ToolSummary[]][];
+  installation?: string;
+  groups: ToolGroup[];
   selected?: string;
+  prefs: ToolPrefs;
   onSelect: (name: string) => void;
 }) {
   const classes = useStyles();
   if (isLoading) {
-    return <Progress />;
+    return <BrowserSkeleton />;
   }
   if (error) {
-    return <ResponseErrorPanel error={error as Error} />;
+    return <ExplorerError error={error} installation={installation} />;
   }
   if (groups.length === 0) {
     return (
@@ -232,21 +385,34 @@ function BrowseGroups({
   }
   return (
     <>
-      {groups.map(([groupName, tools]) => (
-        <Accordion key={groupName} className={classes.group}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      {groups.map((group, index) => (
+        <Accordion
+          key={group.key}
+          className={classes.group}
+          defaultExpanded={group.kind === 'core' || index < 2}
+          TransitionProps={{ unmountOnExit: true }}
+        >
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            className={classes.groupSummary}
+          >
             <Typography className={classes.groupTitle}>
-              {groupName} ({tools.length})
+              {group.key} ({group.tools.length})
+              {group.subtitle && (
+                <span className={classes.groupSub}>· {group.subtitle}</span>
+              )}
             </Typography>
           </AccordionSummary>
           <AccordionDetails className={classes.details}>
             <List dense disablePadding style={{ width: '100%' }}>
-              {tools.map(tool => (
+              {group.tools.map(tool => (
                 <ToolRow
                   key={tool.name}
                   tool={tool}
                   selected={tool.name === selected}
+                  favourite={prefs.isFavourite(tool.name)}
                   onSelect={onSelect}
+                  onToggleFavourite={prefs.toggleFavourite}
                 />
               ))}
             </List>
@@ -260,25 +426,32 @@ function BrowseGroups({
 function SearchResults({
   isLoading,
   error,
+  installation,
   tools,
   truncated,
   total,
   selected,
+  activeIndex,
+  prefs,
   onSelect,
 }: {
   isLoading: boolean;
   error: unknown;
+  installation?: string;
   tools: ToolSummary[];
   truncated: boolean;
   total: number;
   selected?: string;
+  activeIndex: number;
+  prefs: ToolPrefs;
   onSelect: (name: string) => void;
 }) {
+  const classes = useStyles();
   if (isLoading) {
-    return <Progress />;
+    return <BrowserSkeleton rows={5} />;
   }
   if (error) {
-    return <ResponseErrorPanel error={error as Error} />;
+    return <ExplorerError error={error} installation={installation} />;
   }
   if (tools.length === 0) {
     return (
@@ -289,17 +462,26 @@ function SearchResults({
   }
   return (
     <>
-      <Typography variant="caption" color="textSecondary">
-        {total} match{total === 1 ? '' : 'es'}
-        {truncated ? ` (showing top ${tools.length})` : ''}
-      </Typography>
+      <Box display="flex" alignItems="center" style={{ gap: 8 }}>
+        <Typography variant="caption" color="textSecondary">
+          {total} match{total === 1 ? '' : 'es'}
+          {truncated ? ` (showing top ${tools.length})` : ''}
+        </Typography>
+        <Box flexGrow={1} />
+        <Typography variant="caption" className={classes.kbd}>
+          ↑↓ navigate · ↵ open
+        </Typography>
+      </Box>
       <List dense disablePadding>
-        {tools.map(tool => (
+        {tools.map((tool, index) => (
           <ToolRow
             key={tool.name}
             tool={tool}
             selected={tool.name === selected}
+            active={index === activeIndex}
+            favourite={prefs.isFavourite(tool.name)}
             onSelect={onSelect}
+            onToggleFavourite={prefs.toggleFavourite}
           />
         ))}
       </List>

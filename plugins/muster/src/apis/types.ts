@@ -305,12 +305,12 @@ export interface MusterApi {
     installation?: string,
   ): Promise<unknown>;
   /**
-   * Ensure a per-user token for the muster `authProvider` is available,
-   * triggering the OAuth/Dex popup if needed. Returns true when a token was
-   * obtained (or no provider is configured). Used by the tool explorer's
-   * "Sign in" affordance for servers in `Auth Required`.
+   * Ensure a per-user token for the target installation's muster `authProvider`
+   * is available, triggering the OAuth/Dex popup if needed. Returns true when a
+   * token was obtained (or no provider is configured). Used by the tool
+   * explorer's "Sign in" affordance for servers in `Auth Required`.
    */
-  signIn(): Promise<boolean>;
+  signIn(installation?: string): Promise<boolean>;
 }
 
 export interface MusterAuthCredentials {

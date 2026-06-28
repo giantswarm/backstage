@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -8,15 +8,19 @@ import {
   makeStyles,
   Theme,
 } from '@material-ui/core';
+import BuildIcon from '@material-ui/icons/Build';
 import { Alert } from '@material-ui/lab';
 import { Content, EmptyState } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
+import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
+import { SectionHeader } from '../shared';
 import { ToolBrowser } from './ToolBrowser';
 import { ToolDetailPanel } from './ToolDetailPanel';
+import { useToolPrefs } from './useToolPrefs';
 
 const useStyles = makeStyles((theme: Theme) => ({
   panel: {
@@ -40,7 +44,7 @@ function AuthAffordance({ installation }: { installation: string }) {
   });
 
   const signIn = useMutation({
-    mutationFn: () => musterApi.signIn(),
+    mutationFn: () => musterApi.signIn(installation),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['muster'] });
     },
@@ -76,7 +80,9 @@ function AuthAffordance({ installation }: { installation: string }) {
 function ExplorerBody({ installation }: { installation: string }) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
+  const { mcpServers } = useMusterInstance();
   const [selected, setSelected] = useState<string | undefined>();
+  const prefs = useToolPrefs(installation);
 
   const { data: installationsData } = useQuery({
     queryKey: ['muster', 'installations'],
@@ -88,6 +94,24 @@ function ExplorerBody({ installation }: { installation: string }) {
       ?.allowMutations,
   );
 
+  // Map each aggregated server's tool-name prefix to its management cluster so
+  // the browser can group server tools by the MC they federate.
+  const servers = useMemo<ServerPrefixInfo[]>(
+    () =>
+      mcpServers.map(server => ({
+        prefix: server.getToolNamePrefix(),
+        serverName: server.getName(),
+        managementCluster: server.getManagementCluster(),
+        family: server.getFamily(),
+      })),
+    [mcpServers],
+  );
+
+  const handleSelect = (name: string) => {
+    setSelected(name);
+    prefs.pushRecent(name);
+  };
+
   return (
     <>
       <AuthAffordance installation={installation} />
@@ -97,7 +121,9 @@ function ExplorerBody({ installation }: { installation: string }) {
             <ToolBrowser
               installation={installation}
               selected={selected}
-              onSelect={setSelected}
+              onSelect={handleSelect}
+              servers={servers}
+              prefs={prefs}
             />
           </Paper>
         </Grid>
@@ -109,11 +135,17 @@ function ExplorerBody({ installation }: { installation: string }) {
                 name={selected}
                 installation={installation}
                 allowMutations={allowMutations}
+                isFavourite={prefs.isFavourite(selected)}
+                onToggleFavourite={() => prefs.toggleFavourite(selected)}
               />
             ) : (
               <Box className={classes.placeholder}>
                 <Typography variant="body1">
                   Select a tool to view its schema and run it.
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Press <strong>⌘K</strong> to search, ↑/↓ to navigate, ↵ to
+                  open.
                 </Typography>
               </Box>
             )}
@@ -126,15 +158,21 @@ function ExplorerBody({ installation }: { installation: string }) {
 
 /**
  * Unified explorer over muster's tool catalogue for one installation: browse
- * Core / Server / Workflow tools, search them (filter_tools BM25 ranking),
- * inspect a tool's input schema (describe_tool), and execute it through the
- * guarded call_tool proxy with a JSON result viewer.
+ * Core / Server / Workflow tools, search them (filter_tools BM25 ranking) with
+ * keyboard navigation, inspect a tool's input schema (describe_tool) via a
+ * typed form, and execute it through the guarded call_tool proxy with a
+ * readable result viewer.
  */
 export function ToolExplorerPage() {
   const { activeInstallation } = useMusterInstance();
 
   return (
     <Content>
+      <SectionHeader
+        icon={<BuildIcon />}
+        title="Tool explorer"
+        description="Browse, search, and run the tools this muster aggregates — core tools, every connected server, and workflows. Read-only by default; mutating tools are clearly marked and gated."
+      />
       <InstallationPicker />
 
       {!activeInstallation ? (
