@@ -409,9 +409,7 @@ export interface ServerMutationActionsProps {
  * allow live core_mcpserver_* CRUD + service start/stop/restart behind a
  * confirm dialog.
  */
-export function ServerMutationActions({
-  server,
-}: ServerMutationActionsProps) {
+export function ServerMutationActions({ server }: ServerMutationActionsProps) {
   const classes = useStyles();
   const managed = isGitOpsManaged(server);
 

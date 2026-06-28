@@ -228,9 +228,7 @@ export function McpServersPage() {
             icon={<Power />}
             title="Integration servers"
             description="Singular MCP servers muster fronts outside the management-cluster structure — customer integrations and shared services. Each carries its own endpoint, auth chain, and tool surface."
-            action={
-              <AddAdHocServerButton installation={activeInstallation} />
-            }
+            action={<AddAdHocServerButton installation={activeInstallation} />}
           />
           {integration.length === 0 ? (
             <Typography variant="body2" color="textSecondary">
