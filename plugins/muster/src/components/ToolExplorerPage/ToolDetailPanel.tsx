@@ -2,11 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   IconButton,
   Tooltip,
   Typography,
@@ -25,8 +20,6 @@ import {
   FormValue,
   schemaFields,
 } from '../../lib/schemaForm';
-import { classifyTool, ToolRisk } from '../../lib/mutationGuard';
-import { StateBadge } from '../shared';
 import { ToolArgField } from './ToolArgField';
 import { ToolResultViewer } from './ToolResultViewer';
 import { ExplorerError } from './ExplorerError';
@@ -61,17 +54,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-function riskBadge(risk: ToolRisk) {
-  switch (risk) {
-    case 'blocked':
-      return <StateBadge tone="error" label="Blocked · GitOps" />;
-    case 'mutating':
-      return <StateBadge tone="warning" label="Mutating" />;
-    default:
-      return <StateBadge tone="ok" label="Read-only" />;
-  }
-}
-
 /** localStorage key for a tool's last-used arguments, scoped per installation. */
 function argsKey(installation: string | undefined, name: string): string {
   return `muster-tool-args:${installation ?? 'default'}/${name}`;
@@ -97,8 +79,6 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
-  /** Whether the target installation permits mutating calls. */
-  allowMutations: boolean;
   isFavourite: boolean;
   onToggleFavourite: () => void;
 }
@@ -106,14 +86,13 @@ export interface ToolDetailPanelProps {
 /**
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
- * executes it via the guarded `call_tool` proxy. Mutating tools are gated:
- * apply/patch are hard-blocked, other mutating verbs need an explicit confirm
- * and an installation that opts into mutations.
+ * executes it via the `call_tool` proxy. The UI executes whatever tools muster
+ * exposes; the trust boundary is the downstream MCP server's deployment (e.g.
+ * mcp-kubernetes is deployed read-only), not the portal.
  */
 export function ToolDetailPanel({
   name,
   installation,
-  allowMutations,
   isFavourite,
   onToggleFavourite,
 }: ToolDetailPanelProps) {
@@ -126,7 +105,6 @@ export function ToolDetailPanel({
   );
   const [jsonModes, setJsonModes] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [lastArgs, setLastArgs] = useState<Record<string, unknown>>({});
 
   // Reload the remembered args when the selected tool changes.
@@ -142,7 +120,6 @@ export function ToolDetailPanel({
   });
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
-  const risk = classifyTool(name);
 
   const mutation = useMutation({
     mutationFn: async (args: Record<string, unknown>) => {
@@ -196,16 +173,6 @@ export function ToolDetailPanel({
     if (Object.keys(errors).length > 0) {
       return;
     }
-    if (risk === 'mutating') {
-      setConfirmOpen(true);
-      return;
-    }
-    execute(args);
-  };
-
-  const confirmRun = () => {
-    setConfirmOpen(false);
-    const { args } = buildArgs(fields, values);
     execute(args);
   };
 
@@ -216,17 +183,12 @@ export function ToolDetailPanel({
     return <ExplorerError error={error} installation={installation} />;
   }
 
-  const blocked = risk === 'blocked';
-  const readOnlyInstallation = risk === 'mutating' && !allowMutations;
-  const executeDisabled = blocked || readOnlyInstallation || mutation.isPending;
-
   return (
     <Box>
       <Box className={classes.header}>
         <Typography variant="h6" className={classes.toolName}>
           {name}
         </Typography>
-        {riskBadge(risk)}
         <Box className={classes.spacer} />
         <Tooltip title={isFavourite ? 'Remove favourite' : 'Add to favourites'}>
           <IconButton size="small" onClick={onToggleFavourite}>
@@ -273,33 +235,15 @@ export function ToolDetailPanel({
         )}
       </Box>
 
-      {blocked && (
-        <Alert severity="warning" className={classes.section}>
-          This tool applies or patches cluster state. Clusters are managed via
-          GitOps, so it cannot be run from the portal.
-        </Alert>
-      )}
-      {readOnlyInstallation && (
-        <Alert severity="info" className={classes.section}>
-          This installation is read-only. Enable <code>allowMutations</code> for
-          it in the muster proxy config to run mutating tools.
-        </Alert>
-      )}
-
       <Box className={classes.actions}>
         <Button
           color="primary"
           variant="contained"
-          disabled={executeDisabled}
+          disabled={mutation.isPending}
           onClick={run}
         >
           {mutation.isPending ? 'Running…' : 'Execute'}
         </Button>
-        {risk === 'mutating' && allowMutations && (
-          <Typography variant="caption" color="textSecondary">
-            Mutating tool — you'll be asked to confirm.
-          </Typography>
-        )}
       </Box>
 
       {mutation.isError && (
@@ -320,23 +264,6 @@ export function ToolDetailPanel({
           />
         </Box>
       )}
-
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-        <DialogTitle>Run mutating tool?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            <code>{name}</code> looks like it mutates state. Confirm you want to
-            execute it against{' '}
-            <strong>{installation ?? 'the muster installation'}</strong>.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
-          <Button color="primary" variant="contained" onClick={confirmRun}>
-            Run
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }

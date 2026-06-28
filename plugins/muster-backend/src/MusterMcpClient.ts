@@ -48,12 +48,6 @@ export interface MusterServerConfig {
 export interface MusterInstallationConfig extends MusterServerConfig {
   /** Stable installation id used for routing and as the client cache scope. */
   name: string;
-  /**
-   * Allow mutating `call_tool` invocations against this installation. Default
-   * false: the proxy is read-only unless an operator opts a specific
-   * installation in. GitOps-managed resources should stay false.
-   */
-  allowMutations?: boolean;
 }
 
 /**
@@ -120,9 +114,9 @@ function readHeaders(
  *
  * Two sources, in order of precedence:
  *   1. `muster.installations` — an explicit list of `{ name, url,
- *      authProvider?, allowMutations?, headers? }` entries (multi-installation).
+ *      authProvider?, headers? }` entries (multi-installation).
  *   2. The legacy single `aiChat.mcp` entry selected by `muster.serverName`
- *      (default `muster`), registered under that name with mutations disabled.
+ *      (default `muster`), registered under that name.
  *
  * Returns an empty map when nothing is configured.
  */
@@ -147,7 +141,6 @@ export function readMusterInstallationsFromConfig(
         name,
         url,
         authProvider: entry.getOptionalString('authProvider'),
-        allowMutations: entry.getOptionalBoolean('allowMutations') ?? false,
         headers: readHeaders(entry.getOptionalConfig('headers')),
       });
     }
@@ -157,7 +150,7 @@ export function readMusterInstallationsFromConfig(
   const legacy = readMusterServerFromConfig(config, logger);
   if (legacy) {
     const name = config.getOptionalString('muster.serverName') ?? 'muster';
-    installations.set(name, { name, allowMutations: false, ...legacy });
+    installations.set(name, { name, ...legacy });
   }
   return installations;
 }

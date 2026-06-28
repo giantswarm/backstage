@@ -95,7 +95,6 @@ export function McpServersPage() {
   const musterApi = useApi(musterApiRef);
 
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
-  const allowMutations = activeInstallationInfo?.allowMutations ?? false;
 
   // Live probe: one round-trip that doubles as the auth check (a 401/403 flips
   // the page to the not-authenticated state). Same pattern as the dashboard.
@@ -230,10 +229,7 @@ export function McpServersPage() {
             title="Integration servers"
             description="Singular MCP servers muster fronts outside the management-cluster structure — customer integrations and shared services. Each carries its own endpoint, auth chain, and tool surface."
             action={
-              <AddAdHocServerButton
-                installation={activeInstallation}
-                allowMutations={allowMutations}
-              />
+              <AddAdHocServerButton installation={activeInstallation} />
             }
           />
           {integration.length === 0 ? (
@@ -247,7 +243,6 @@ export function McpServersPage() {
                   key={`${server.cluster}/${server.getName()}`}
                   server={server}
                   authenticated={authenticated}
-                  allowMutations={allowMutations}
                 />
               ))}
             </Box>

@@ -255,8 +255,8 @@ export class MusterApiClient implements MusterApi {
   }
 
   /**
-   * POST a muster-backend route. Used for mutating actions (workflow runs,
-   * tool calls); the proxy enforces the read-only/mutation gate server-side.
+   * POST a muster-backend route. Used for actions that have side effects
+   * (workflow runs, tool calls).
    */
   private async post<T>(
     path: string,

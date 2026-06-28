@@ -151,8 +151,6 @@ export interface MusterInstallationInfo {
   /** The aggregator's MCP endpoint URL (mono-rendered on the dashboard). */
   endpoint?: string;
   requiresAuth: boolean;
-  /** When false, running workflows and other mutating calls are blocked. */
-  allowMutations: boolean;
 }
 
 export interface MusterInstallationsResponse {
@@ -295,9 +293,9 @@ export interface MusterApi {
   /** Full description + input schema for one tool (one installation). */
   describeTool(name: string, installation?: string): Promise<ToolDetail>;
   /**
-   * Execute an aggregated tool. Mutating tools are rejected by the proxy with
-   * 403 unless the installation opts into mutations; the explorer also guards
-   * client-side (see mutationGuard).
+   * Execute an aggregated tool. The UI executes whatever tools muster exposes;
+   * the trust boundary is the downstream MCP server's deployment (e.g.
+   * mcp-kubernetes is deployed read-only), not the portal.
    */
   callTool(
     name: string,

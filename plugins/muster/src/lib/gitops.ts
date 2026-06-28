@@ -1,10 +1,11 @@
-import { MCPServer } from './k8s';
+import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /**
- * GitOps provenance recovered from an MCPServer CR's labels/annotations. Both
- * the Helm (`meta.helm.sh/*`) and Flux HelmRelease/Kustomization
- * (`*.toolkit.fluxcd.io/*`) conventions are checked, so a server deployed by
- * either path shows where it comes from.
+ * GitOps provenance recovered from a CR's labels/annotations. Both the Helm
+ * (`meta.helm.sh/*`) and Flux HelmRelease/Kustomization
+ * (`*.toolkit.fluxcd.io/*`) conventions are checked, so a resource deployed by
+ * either path shows where it comes from. Works for any muster CR carrying the
+ * standard markers (MCPServer, Workflow).
  */
 export interface Provenance {
   managedBy?: string;
@@ -16,9 +17,9 @@ export interface Provenance {
   fluxKustomizationNamespace?: string;
 }
 
-export function readProvenance(server: MCPServer): Provenance {
-  const labels = server.getLabels() ?? {};
-  const annotations = server.getAnnotations() ?? {};
+export function readProvenance(obj: KubeObject): Provenance {
+  const labels = obj.getLabels() ?? {};
+  const annotations = obj.getAnnotations() ?? {};
   return {
     managedBy: labels['app.kubernetes.io/managed-by'],
     helmRelease: annotations['meta.helm.sh/release-name'],
@@ -31,17 +32,18 @@ export function readProvenance(server: MCPServer): Provenance {
 }
 
 /**
- * Whether the server is owned by GitOps (Flux/Helm) and therefore read-only in
- * the app: editing it live via the muster store would be reverted by the
- * reconciler. Ad-hoc servers (created through muster's own store, no
+ * Whether the resource is owned by GitOps (Flux/Helm) and therefore read-only
+ * in the app: editing it live via the muster store would be reverted by the
+ * reconciler. Ad-hoc resources (created through muster's own store, no
  * Flux/Helm/Helm-managed-by markers) return false and may be mutated live.
  *
- * Decided 2026-06-27 (ad-hoc-live): GitOps-managed servers produce a PR/manifest
- * to commit; only ad-hoc servers allow live core_mcpserver_* CRUD. See the
- * MCPServer CRUD/GitOps-split ADR in the klaus-lab `decisions/` folder.
+ * Provenance is the only UI restriction: GitOps-managed resources produce a
+ * PR/manifest to commit; ad-hoc (manually added) resources allow live
+ * core_*_create/_update/_delete CRUD. Applies identically to MCPServer and
+ * Workflow CRs. See the provenance-only safety model ADR in klaus-lab.
  */
-export function isGitOpsManaged(server: MCPServer): boolean {
-  const p = readProvenance(server);
+export function isGitOpsManaged(obj: KubeObject): boolean {
+  const p = readProvenance(obj);
   return Boolean(
     p.fluxHelmRelease ||
     p.fluxKustomization ||
@@ -73,7 +75,7 @@ export function provenanceReleaseId(p: Provenance): string | undefined {
  * edit form and as the body of the validate/save calls.
  */
 export function toMcpServerDefinition(
-  server: MCPServer,
+  server: KubeObject,
 ): Record<string, unknown> {
   const spec = (
     server as unknown as { jsonData: { spec?: Record<string, unknown> } }
@@ -177,20 +179,25 @@ function quoteScalar(value: string): string {
 }
 
 /**
- * Render an MCPServer CR as a k8s manifest YAML for the GitOps PR path. This is
- * the artifact an operator commits to the management-clusters repo; the app
- * never applies it live (GitOps-managed servers are read-only here).
+ * Render a muster CR (MCPServer or Workflow) as a k8s manifest YAML for the
+ * GitOps PR path. This is the artifact an operator commits to the
+ * management-clusters repo; the app never applies it live (GitOps-managed
+ * resources are read-only here). The apiVersion/kind come from the object, so
+ * the same emitter serves both kinds.
  */
-export function toManifestYaml(server: MCPServer): string {
+export function toManifestYaml(
+  obj: KubeObject,
+  defaultNamespace = 'agentic-platform',
+): string {
   const spec = (
-    server as unknown as { jsonData: { spec?: Record<string, unknown> } }
+    obj as unknown as { jsonData: { spec?: Record<string, unknown> } }
   ).jsonData.spec;
   const manifest = {
-    apiVersion: 'muster.giantswarm.io/v1alpha1',
-    kind: 'MCPServer',
+    apiVersion: obj.getApiVersion() || 'muster.giantswarm.io/v1alpha1',
+    kind: obj.getKind() || 'MCPServer',
     metadata: {
-      name: server.getName(),
-      namespace: server.getNamespace() ?? 'agentic-platform',
+      name: obj.getName(),
+      namespace: obj.getNamespace() ?? defaultNamespace,
     },
     spec: spec ?? {},
   };

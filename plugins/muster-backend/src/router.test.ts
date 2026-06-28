@@ -206,7 +206,6 @@ describe('createRouter', () => {
           name: 'muster',
           endpoint: 'injected',
           requiresAuth: false,
-          allowMutations: false,
         },
       ],
     });
@@ -263,8 +262,8 @@ describe('createRouter', () => {
     expect(callTool).toHaveBeenCalledWith('core_mcpserver_list', {}, {});
   });
 
-  describe('/call safety guard', () => {
-    it('allows a read-only tool by default', async () => {
+  describe('/call', () => {
+    it('executes any tool unconditionally', async () => {
       callTool.mockResolvedValue({ ok: true });
 
       const response = await request(app)
@@ -275,24 +274,11 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith('core_service_list', {}, {});
     });
 
-    it('rejects a mutating tool on a read-only installation', async () => {
-      const response = await request(app)
-        .post('/call')
-        .send({ name: 'core_service_stop', arguments: { name: 'k8s' } });
-
-      expect(response.status).toBe(403);
-      expect(response.body.error.name).toBe('NotAllowedError');
-      expect(callTool).not.toHaveBeenCalled();
-    });
-
-    it('allows a mutating tool when the installation opts in', async () => {
-      const mutApp = await buildMultiApp([
-        { name: 'gazelle', url: 'http://g/mcp', allowMutations: true },
-      ]);
+    it('executes a mutating-looking tool without any gate', async () => {
       callTool.mockResolvedValue({ ok: true });
 
-      const response = await request(mutApp)
-        .post('/call?installation=gazelle')
+      const response = await request(app)
+        .post('/call')
         .send({ name: 'core_service_stop', arguments: { name: 'k8s' } });
 
       expect(response.status).toBe(200);
@@ -359,23 +345,11 @@ describe('createRouter', () => {
     });
   });
 
-  it('refuses to run a workflow on a read-only installation', async () => {
-    const response = await request(app)
-      .post('/workflows/wf-a/run')
-      .send({ arguments: { foo: 'bar' } });
-
-    expect(response.status).toBe(403);
-    expect(callTool).not.toHaveBeenCalled();
-  });
-
-  it('runs a workflow when mutations are enabled', async () => {
-    const mutApp = await buildMultiApp([
-      { name: 'gazelle', url: 'http://g/mcp', allowMutations: true },
-    ]);
+  it('runs a workflow by invoking its workflow_<name> tool', async () => {
     callTool.mockResolvedValue({ execution_id: 'abc' });
 
-    const response = await request(mutApp)
-      .post('/workflows/wf-a/run?installation=gazelle')
+    const response = await request(app)
+      .post('/workflows/wf-a/run')
       .send({ arguments: { foo: 'bar' } });
 
     expect(response.status).toBe(200);

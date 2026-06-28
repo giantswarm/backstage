@@ -42,7 +42,6 @@ const useStyles = makeStyles((theme: Theme) => ({
 export interface IntegrationServerDisclosureProps {
   server: MCPServer;
   authenticated: boolean;
-  allowMutations: boolean;
   defaultExpanded?: boolean;
 }
 
@@ -55,7 +54,6 @@ export interface IntegrationServerDisclosureProps {
 export function IntegrationServerDisclosure({
   server,
   authenticated,
-  allowMutations,
   defaultExpanded,
 }: IntegrationServerDisclosureProps) {
   const classes = useStyles();
@@ -116,7 +114,7 @@ export function IntegrationServerDisclosure({
         <Provenance server={server} />
       </DetailBlock>
 
-      <ServerMutationActions server={server} allowMutations={allowMutations} />
+      <ServerMutationActions server={server} />
     </DisclosureAccordion>
   );
 }

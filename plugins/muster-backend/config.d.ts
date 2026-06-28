@@ -32,11 +32,6 @@ export interface Config {
        * @visibility frontend
        */
       authProvider?: string;
-      /**
-       * Allow mutating `call_tool` invocations (and workflow runs) against
-       * this installation. Defaults to false: the proxy is read-only.
-       */
-      allowMutations?: boolean;
       /** Static headers added to every request to this installation. */
       headers?: { [key: string]: string };
     }>;
