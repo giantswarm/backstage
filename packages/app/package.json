@@ -10,7 +10,7 @@
     "start": "backstage-cli package start",
     "build": "backstage-cli package build",
     "clean": "backstage-cli package clean",
-    "test": "backstage-cli package test",
+    "test": "backstage-cli package test --watchAll=false",
     "lint": "backstage-cli package lint"
   },
   "dependencies": {
