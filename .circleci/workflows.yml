@@ -23,6 +23,15 @@ jobs:
         keys:
         - node-deps-yarn-v1-{{ checksum "yarn.lock" }}
         - node-deps-yarn-v1-
+    # Build-output cache: restore the materialized node_modules (with its
+    # compiled native addons) so the install reconciles incrementally instead
+    # of recompiling better-sqlite3/isolated-vm/etc. from source via node-gyp
+    # every run. Keyed on the node image version -- a node bump must not restore
+    # stale-ABI binaries. The Node analogue of go-build's $GOCACHE persist.
+    - restore_cache:
+        keys:
+        - node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
+        - node-build-yarn-v1-24.18.0-
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -30,6 +39,11 @@ jobs:
         key: node-deps-yarn-v1-{{ checksum "yarn.lock" }}
         paths:
         - .yarn/cache
+    - save_cache:
+        key: node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
+        paths:
+        - node_modules
+        - .yarn/install-state.gz
     - run:
         # The repo composes typecheck/lint/format/test into this one script
         # (the make-target interface), so CI and local runs share a command.
