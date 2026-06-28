@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { SectionHeader, Gate, DisclosureAccordion } from '../shared';
-import { MCPServer } from '../../lib/k8s';
+import { partitionServers } from '../../lib/serverGrouping';
 import { musterApiRef } from '../../apis';
 import { StandardServerDisclosure } from './StandardServerDisclosure';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
@@ -65,44 +65,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
   },
 }));
-
-type StandardGroup = { family: string; servers: MCPServer[] };
-
-/**
- * Partition the active instance's MCPServer CRs into the mockup's two server
- * shapes: standard servers (a `spec.family.name` groups equivalent instances
- * federated across management clusters; tool surface shown once, health per MC)
- * and integration servers (singular servers with no family -- customer
- * integrations and shared services). Family presence is the discriminator: the
- * management-cluster label is set on both, but only the federated standard
- * servers carry a family.
- */
-function partitionServers(servers: MCPServer[]): {
-  standard: StandardGroup[];
-  integration: MCPServer[];
-} {
-  const standardByFamily = new Map<string, MCPServer[]>();
-  const integration: MCPServer[] = [];
-
-  for (const server of servers) {
-    const family = server.getFamily();
-    if (family) {
-      standardByFamily.set(family, [
-        ...(standardByFamily.get(family) ?? []),
-        server,
-      ]);
-    } else {
-      integration.push(server);
-    }
-  }
-
-  const standard = [...standardByFamily.entries()]
-    .map(([family, group]) => ({ family, servers: group }))
-    .sort((a, b) => a.family.localeCompare(b.family));
-  integration.sort((a, b) => a.getName().localeCompare(b.getName()));
-
-  return { standard, integration };
-}
 
 export function McpServersPage() {
   const classes = useStyles();

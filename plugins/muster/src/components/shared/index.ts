@@ -12,5 +12,7 @@ export { ToolList } from './ToolList';
 export type { ToolListItem, ToolListProps } from './ToolList';
 export { Gate } from './Gate';
 export type { GateProps } from './Gate';
+export { InstallationHealthPill } from './InstallationHealthPill';
+export type { InstallationHealthPillProps } from './InstallationHealthPill';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
