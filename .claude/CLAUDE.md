@@ -27,14 +27,22 @@ yarn start app
 
 Run tests directly with the Bash tool — do not use the test-runner subagent.
 
-Use the `--coverage` flag to prevent the Bash tool from auto-backgrounding the command:
+`yarn test` and the per-package `test` script run once and exit (they pass
+`--watchAll=false`), so they will not hang in Jest watch mode. Watch mode is
+opt-in via `yarn test:watch`.
 
 ```bash
-# Run tests for a specific plugin (preferred)
-yarn test --coverage plugins/my-plugin --forceExit
+# Run tests for a specific plugin (preferred) — single run, exits
+yarn test plugins/my-plugin
+
+# Run a single package's tests — single run, exits
+yarn workspace @giantswarm/backstage-plugin-muster test
 
 # Run all tests with coverage
 yarn test:all
+
+# Interactive watch mode (humans, TDD) — does NOT exit
+yarn test:watch plugins/my-plugin
 
 # Run Playwright E2E tests
 yarn test:e2e
