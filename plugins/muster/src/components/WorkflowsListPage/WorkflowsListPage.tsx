@@ -30,7 +30,7 @@ import {
 import Search from '@material-ui/icons/Search';
 import MoreHoriz from '@material-ui/icons/MoreHoriz';
 import { InstallationPicker } from '../InstallationPicker';
-import { useMusterInstance } from '../MusterInstanceProvider';
+import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { AvailabilityBadge, StateBadge } from '../shared';
 import { MusterWorkflow } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
@@ -163,6 +163,7 @@ function RowActions({ name, detailHref, runHref }: RowActionsProps) {
 export function WorkflowsListPage() {
   const classes = useStyles();
   const { workflows, activeInstallation, isLoading } = useMusterInstance();
+  const { authenticated } = useMusterSession();
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
   const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
 
@@ -259,7 +260,10 @@ export function WorkflowsListPage() {
         <Typography variant="caption" className={classes.showing}>
           Showing {filtered.length} of {workflows.length}
         </Typography>
-        <CreateWorkflowButton installation={activeInstallation} />
+        <CreateWorkflowButton
+          installation={activeInstallation}
+          authenticated={authenticated}
+        />
       </Box>
 
       <TableContainer className={classes.tableRegion}>
