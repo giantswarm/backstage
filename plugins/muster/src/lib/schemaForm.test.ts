@@ -1,9 +1,4 @@
-import {
-  buildArgs,
-  enumDefaults,
-  fieldKind,
-  schemaFields,
-} from './schemaForm';
+import { buildArgs, enumDefaults, fieldKind, schemaFields } from './schemaForm';
 
 describe('schemaFields', () => {
   it('flattens an object schema and marks required fields', () => {

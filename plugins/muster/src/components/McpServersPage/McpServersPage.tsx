@@ -84,8 +84,11 @@ export function McpServersPage() {
 
   // Session state (and the connect action) are resolved once via the shared
   // hook so the manager, the dashboard and the workflows page agree (ADR D3).
-  const { authenticated, connecting, connect: handleConnect } =
-    useMusterSession();
+  const {
+    authenticated,
+    connecting,
+    connect: handleConnect,
+  } = useMusterSession();
 
   const { standard, integration } = useMemo(
     () => partitionServers(mcpServers),

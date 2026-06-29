@@ -200,18 +200,28 @@ export const MusterInstanceProvider = ({
     isLoading: isLoadingServers,
     retry: retryServers,
     queries: mcpServerQueries,
-  } = useResources(clusters, MCPServer, {}, {
-    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
-  });
+  } = useResources(
+    clusters,
+    MCPServer,
+    {},
+    {
+      refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+    },
+  );
 
   const {
     resources: workflows,
     errors: workflowErrors,
     retry: retryWorkflows,
     queries: workflowQueries,
-  } = useResources(clusters, MusterWorkflow, {}, {
-    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
-  });
+  } = useResources(
+    clusters,
+    MusterWorkflow,
+    {},
+    {
+      refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+    },
+  );
 
   // Freshness surfaced from the underlying react-query state: the newest
   // successful read across both CRD fan-outs, and whether any read is in

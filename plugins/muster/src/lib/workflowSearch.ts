@@ -53,7 +53,8 @@ export function searchScore(
   let total = 0;
   for (const q of queryTokens) {
     const nameScore = tokenScore(q, nameTokens);
-    const best = nameScore > 0 ? nameScore * NAME_WEIGHT : tokenScore(q, descTokens);
+    const best =
+      nameScore > 0 ? nameScore * NAME_WEIGHT : tokenScore(q, descTokens);
     if (best === 0) {
       return 0;
     }

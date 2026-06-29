@@ -1,4 +1,10 @@
-import { Navigate, Routes, Route, useLocation, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Routes,
+  Route,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { workflowDetailRouteRef } from '../routes';
 import { QueryClientProvider } from './QueryClientProvider';

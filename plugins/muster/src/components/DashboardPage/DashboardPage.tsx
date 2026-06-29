@@ -439,7 +439,9 @@ export function DashboardPage() {
               <Stat
                 label="Servers healthy"
                 value={
-                  serversPending ? '…' : `${serversHealthy}/${mcpServers.length}`
+                  serversPending
+                    ? '…'
+                    : `${serversHealthy}/${mcpServers.length}`
                 }
                 tone={serversPending ? undefined : serversHealthyTone}
               />
@@ -460,7 +462,9 @@ export function DashboardPage() {
                 icon={<Dns />}
                 title="MCP servers"
                 description="The MCP servers muster aggregates and the tools they expose, with per-cluster health."
-                count={serversPending ? 'Loading…' : `${mcpServers.length} servers`}
+                count={
+                  serversPending ? 'Loading…' : `${mcpServers.length} servers`
+                }
               />
               <BrowseCard
                 to={withInstallation(
@@ -471,7 +475,9 @@ export function DashboardPage() {
                 title="Workflows"
                 description="Reusable, named compositions of tool calls — searchable and filterable by availability."
                 count={
-                  workflowsPending ? 'Loading…' : `${workflows.length} workflows`
+                  workflowsPending
+                    ? 'Loading…'
+                    : `${workflows.length} workflows`
                 }
               />
             </Box>

@@ -23,8 +23,12 @@ describe('searchScore', () => {
 
   it('matches a query token as a prefix of a name token, not mid-token', () => {
     // The F3 bug: "dex" must NOT match "index".
-    expect(searchScore('dex-error-rate-high', '', tokens('dex'))).toBeGreaterThan(0);
-    expect(searchScore('loki-request-errors', 'index_stats', tokens('dex'))).toBe(0);
+    expect(
+      searchScore('dex-error-rate-high', '', tokens('dex')),
+    ).toBeGreaterThan(0);
+    expect(
+      searchScore('loki-request-errors', 'index_stats', tokens('dex')),
+    ).toBe(0);
     expect(
       searchScore('memcached-low-hit-ratio', 'index-cache hit', tokens('dex')),
     ).toBe(0);
@@ -32,7 +36,11 @@ describe('searchScore', () => {
 
   it('ranks a name match above a description-only match', () => {
     const nameHit = searchScore('dex-error-rate', 'unrelated', tokens('dex'));
-    const descHit = searchScore('something-else', 'dex session errors', tokens('dex'));
+    const descHit = searchScore(
+      'something-else',
+      'dex session errors',
+      tokens('dex'),
+    );
     expect(nameHit).toBeGreaterThan(descHit);
     expect(descHit).toBeGreaterThan(0);
   });
@@ -44,7 +52,9 @@ describe('searchScore', () => {
   });
 
   it('requires every query token to match (AND semantics)', () => {
-    expect(searchScore('dex-error-rate', '', tokens('dex error'))).toBeGreaterThan(0);
+    expect(
+      searchScore('dex-error-rate', '', tokens('dex error')),
+    ).toBeGreaterThan(0);
     expect(searchScore('dex-error-rate', '', tokens('dex missing'))).toBe(0);
   });
 });
@@ -52,10 +62,19 @@ describe('searchScore', () => {
 describe('searchByRelevance', () => {
   const fields = (i: { name: string; description: string }) => i;
   const workflows = [
-    { name: 'dex-error-rate-high', description: 'Dex authentication error rate' },
+    {
+      name: 'dex-error-rate-high',
+      description: 'Dex authentication error rate',
+    },
     { name: 'dex-token-issuance', description: 'Dex token issuance latency' },
-    { name: 'loki-request-errors', description: 'Loki request errors, index_stats' },
-    { name: 'memcached-low-hit-ratio', description: 'memcached index-cache hit ratio' },
+    {
+      name: 'loki-request-errors',
+      description: 'Loki request errors, index_stats',
+    },
+    {
+      name: 'memcached-low-hit-ratio',
+      description: 'memcached index-cache hit ratio',
+    },
   ];
 
   it('returns only boundary matches for "dex", excluding index-only rows', () => {
