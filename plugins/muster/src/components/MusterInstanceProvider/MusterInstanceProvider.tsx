@@ -20,6 +20,14 @@ import { MusterInstallationInfo } from '../../apis/types';
 
 const STORAGE_KEY = 'muster-installation';
 
+// A light background refetch so the live health reads (per-MC pills, the
+// "Servers healthy" stat, fleet health) don't drift silently from the CRD
+// between page loads. Configured once here so both the dashboard and the
+// MCP-servers manager inherit it (ADR D4). The reads are trivially cheap once
+// the cluster auth is warm; the manual refresh control covers the gap between
+// intervals.
+const HEALTH_REFETCH_INTERVAL_MS = 30_000;
+
 export type MusterInstance = {
   /**
    * The muster installations the picker may offer. Sourced from the backend's
@@ -38,6 +46,11 @@ export type MusterInstance = {
   /** Workflow CRs of the active instance. */
   workflows: MusterWorkflow[];
   isLoading: boolean;
+  /** Epoch-ms of the most recent successful CRD read, or undefined while cold. */
+  dataUpdatedAt: number | undefined;
+  /** Whether a (background or manual) health refetch is currently in flight. */
+  isRefreshing: boolean;
+  /** Re-fetch the live CRD reads on demand (manual refresh / error retry). */
   retry: () => void;
 };
 
@@ -186,13 +199,38 @@ export const MusterInstanceProvider = ({
     errors: mcpServerErrors,
     isLoading: isLoadingServers,
     retry: retryServers,
-  } = useResources(clusters, MCPServer);
+    queries: mcpServerQueries,
+  } = useResources(clusters, MCPServer, {}, {
+    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+  });
 
   const {
     resources: workflows,
     errors: workflowErrors,
     retry: retryWorkflows,
-  } = useResources(clusters, MusterWorkflow);
+    queries: workflowQueries,
+  } = useResources(clusters, MusterWorkflow, {}, {
+    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
+  });
+
+  // Freshness surfaced from the underlying react-query state: the newest
+  // successful read across both CRD fan-outs, and whether any read is in
+  // flight. The FreshnessIndicator turns these into "updated Xs ago" + a
+  // spinner on the manual refresh control (ADR D4).
+  const dataUpdatedAt = useMemo(() => {
+    const times = [...mcpServerQueries, ...workflowQueries]
+      .map(({ query }) => query.dataUpdatedAt)
+      .filter(t => t > 0);
+    return times.length > 0 ? Math.max(...times) : undefined;
+  }, [mcpServerQueries, workflowQueries]);
+
+  const isRefreshing = useMemo(
+    () =>
+      [...mcpServerQueries, ...workflowQueries].some(
+        ({ query }) => query.isFetching,
+      ),
+    [mcpServerQueries, workflowQueries],
+  );
 
   const errors = useMemo(
     () => [...mcpServerErrors, ...workflowErrors],
@@ -228,6 +266,8 @@ export const MusterInstanceProvider = ({
         (Boolean(activeInstallation) &&
           isLoadingServers &&
           mcpServers.length === 0),
+      dataUpdatedAt,
+      isRefreshing,
       retry: () => {
         retryServers();
         retryWorkflows();
@@ -242,6 +282,8 @@ export const MusterInstanceProvider = ({
       mcpServers,
       workflows,
       isLoadingServers,
+      dataUpdatedAt,
+      isRefreshing,
       retryServers,
       retryWorkflows,
     ],

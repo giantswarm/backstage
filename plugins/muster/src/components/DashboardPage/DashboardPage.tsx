@@ -22,7 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { FleetHealthMatrix } from './FleetHealthMatrix';
-import { SectionHeader, Stat, StateBadge } from '../shared';
+import { FreshnessIndicator, SectionHeader, Stat, StateBadge } from '../shared';
 import { serversHealthSummary } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef, workflowsRouteRef } from '../../routes';
@@ -263,6 +263,9 @@ export function DashboardPage() {
     mcpServers,
     workflows,
     isLoading,
+    dataUpdatedAt,
+    isRefreshing,
+    retry,
   } = useMusterInstance();
   const musterApi = useApi(musterApiRef);
   const identityApi = useApi(identityApiRef);
@@ -490,6 +493,13 @@ export function DashboardPage() {
               icon={<Dns />}
               title="Fleet health"
               description="MCPServer state grouped by server, mirroring the MCP-servers manager: each standard family and integration server carries a health pill per management cluster it is federated across (the worst state in that family × cluster cell)."
+              action={
+                <FreshnessIndicator
+                  updatedAt={dataUpdatedAt}
+                  isRefreshing={isRefreshing}
+                  onRefresh={retry}
+                />
+              }
             />
             {serversPending ? (
               <Typography variant="body2" color="textSecondary">

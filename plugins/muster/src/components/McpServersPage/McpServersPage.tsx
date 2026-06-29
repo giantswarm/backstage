@@ -14,7 +14,12 @@ import Lock from '@material-ui/icons/Lock';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { SectionHeader, Gate, DisclosureAccordion } from '../shared';
+import {
+  SectionHeader,
+  Gate,
+  DisclosureAccordion,
+  FreshnessIndicator,
+} from '../shared';
 import { partitionServers } from '../../lib/serverGrouping';
 import { StandardServerDisclosure } from './StandardServerDisclosure';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
@@ -65,8 +70,15 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 export function McpServersPage() {
   const classes = useStyles();
-  const { mcpServers, activeInstallation, activeInstallationInfo, isLoading } =
-    useMusterInstance();
+  const {
+    mcpServers,
+    activeInstallation,
+    activeInstallationInfo,
+    isLoading,
+    dataUpdatedAt,
+    isRefreshing,
+    retry,
+  } = useMusterInstance();
 
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
 
@@ -146,6 +158,13 @@ export function McpServersPage() {
             icon={<Dns />}
             title="Standard servers"
             description="muster federates the same backend MCP servers across the management clusters in this installation. Each family's tool surface is identical, so it is shown once; connection health is tracked per management cluster."
+            action={
+              <FreshnessIndicator
+                updatedAt={dataUpdatedAt}
+                isRefreshing={isRefreshing}
+                onRefresh={retry}
+              />
+            }
           />
           {standard.length === 0 ? (
             <Typography variant="body2" color="textSecondary">
