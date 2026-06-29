@@ -42,7 +42,10 @@ export class KubernetesClient implements KubernetesApi {
   private readonly proxyTimeoutMs: number;
   private readonly proxyMaxConcurrency: number;
   private activeProxyRequests = 0;
+  // Foreground (page) reads are served before background warm-up probes so a
+  // single-cluster read is never serialized behind the whole-fleet warm-up.
   private readonly proxyQueue: Array<() => void> = [];
+  private readonly proxyBackgroundQueue: Array<() => void> = [];
   private clusters: ClusterConfiguration[] | undefined;
 
   constructor(options: {
@@ -72,22 +75,30 @@ export class KubernetesClient implements KubernetesApi {
 
   /**
    * Bounds simultaneous proxy requests. A released slot is handed directly to
-   * the next waiter (FIFO), so the active count never dips below the number of
+   * the next waiter, so the active count never dips below the number of
    * in-flight requests and the cap holds exactly.
    *
-   * ponytail: a plain counter + a queue of resolvers. Single-tab, in-memory,
-   * no fairness beyond FIFO -- enough to tame the startup fan-out.
+   * Foreground requests (the default) are queued ahead of background warm-up
+   * probes: when a slot frees, a waiting foreground request is always served
+   * before any background one. This is what keeps a single-cluster page read
+   * from being serialized behind the whole-fleet cluster-access warm-up, which
+   * fires first on app load and would otherwise fill the queue.
+   *
+   * ponytail: a plain counter + two FIFO queues of resolvers. Single-tab,
+   * in-memory, no fairness beyond foreground-before-background FIFO -- enough
+   * to tame the startup fan-out without a real scheduler.
    */
-  private async acquireProxySlot(): Promise<void> {
+  private async acquireProxySlot(background: boolean): Promise<void> {
     if (this.activeProxyRequests < this.proxyMaxConcurrency) {
       this.activeProxyRequests++;
       return;
     }
-    await new Promise<void>(resolve => this.proxyQueue.push(resolve));
+    const queue = background ? this.proxyBackgroundQueue : this.proxyQueue;
+    await new Promise<void>(resolve => queue.push(resolve));
   }
 
   private releaseProxySlot(): void {
-    const next = this.proxyQueue.shift();
+    const next = this.proxyQueue.shift() ?? this.proxyBackgroundQueue.shift();
     if (next) {
       next();
     } else {
@@ -160,12 +171,25 @@ export class KubernetesClient implements KubernetesApi {
     clusterName: string;
     path: string;
     init?: RequestInit;
+    /**
+     * Marks the request as a background warm-up (e.g. the fleet cluster-access
+     * `/version` probe). Background requests yield to foreground page reads in
+     * the concurrency queue, so a single-cluster read is never serialized
+     * behind the whole-fleet warm-up. Defaults to false (foreground).
+     */
+    background?: boolean;
+    /**
+     * Per-request timeout override in ms. Defaults to `gs.kubernetes.proxyTimeoutMs`.
+     * Background probes use a short timeout so an unreachable cluster releases
+     * its slot quickly instead of holding it for the full default timeout.
+     */
+    timeoutMs?: number;
   }): Promise<Response> {
     // Wait for a concurrency slot before doing anything (including the broker
     // token mint), so the whole connection is throttled, not just the fetch.
     // Queue time deliberately does not count against the per-request timeout,
     // which starts only once a slot is held.
-    await this.acquireProxySlot();
+    await this.acquireProxySlot(options.background ?? false);
     try {
       const cluster = await this.getCluster(options.clusterName);
       if (!cluster) {
@@ -188,8 +212,9 @@ export class KubernetesClient implements KubernetesApi {
 
       // Bound the request so an unreachable cluster fails fast instead of
       // hanging the whole list. The caller's own signal (if any) still aborts.
+      const timeoutMs = options.timeoutMs ?? this.proxyTimeoutMs;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.proxyTimeoutMs);
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
       const callerSignal = options.init?.signal;
       const onCallerAbort = () => controller.abort();
       if (callerSignal) {
@@ -209,7 +234,7 @@ export class KubernetesClient implements KubernetesApi {
       } catch (error) {
         if (controller.signal.aborted && !callerSignal?.aborted) {
           throw new Error(
-            `Request to cluster ${cluster.name} timed out after ${this.proxyTimeoutMs}ms`,
+            `Request to cluster ${cluster.name} timed out after ${timeoutMs}ms`,
           );
         }
         throw error;

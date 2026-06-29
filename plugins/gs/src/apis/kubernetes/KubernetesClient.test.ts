@@ -127,6 +127,69 @@ describe('KubernetesClient.proxy', () => {
     expect(maxObserved).toBe(2);
   });
 
+  it('uses the per-request timeout override instead of the default', async () => {
+    const client = createClient(hangingFetch(), 10_000);
+
+    await expect(
+      client.proxy({
+        clusterName: 'golem',
+        path: '/version',
+        timeoutMs: 5,
+      }),
+    ).rejects.toThrow('Request to cluster golem timed out after 5ms');
+  });
+
+  it('serves a foreground read before a queued background warm-up probe', async () => {
+    const started: string[] = [];
+    const release: Array<() => void> = [];
+    const fetch = jest.fn((url: string | URL | Request) => {
+      started.push(String(url));
+      return new Promise<Response>(resolve => {
+        release.push(() => resolve(new Response('{}', { status: 200 })));
+      });
+    });
+
+    // Cap concurrency at 1 so the serving order is observable.
+    const client = createClient(fetch, 10_000, 1);
+
+    // A background probe takes the only slot.
+    const calls = [
+      client.proxy({
+        clusterName: 'golem',
+        path: '/bg-a',
+        background: true,
+      }),
+    ];
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // A second background probe and a foreground read queue behind it.
+    calls.push(
+      client.proxy({
+        clusterName: 'golem',
+        path: '/bg-b',
+        background: true,
+      }),
+      client.proxy({ clusterName: 'golem', path: '/fg' }),
+    );
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(started).toEqual(['http://backend/api/kubernetes/proxy/bg-a']);
+
+    // Freeing the slot serves the foreground read ahead of the queued
+    // background probe, even though the background probe was enqueued first.
+    release.shift()!();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(started[1]).toBe('http://backend/api/kubernetes/proxy/fg');
+
+    // Drain the remaining work.
+    for (let i = 0; i < 5 && release.length > 0; i++) {
+      release.shift()!();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    await Promise.all(calls);
+    expect(started[2]).toBe('http://backend/api/kubernetes/proxy/bg-b');
+  });
+
   it('returns the response and clears the timeout on success', async () => {
     const response = new Response('{}', { status: 200 });
     const fetch = jest.fn().mockResolvedValue(response);
