@@ -5,10 +5,8 @@ import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Content,
   EmptyState,
-  Header,
   Link,
   MarkdownContent,
-  Page,
   Progress,
   ResponseErrorPanel,
 } from '@backstage/core-components';
@@ -35,16 +33,12 @@ import AccountTree from '@material-ui/icons/AccountTree';
 import ExpandMore from '@material-ui/icons/ExpandMore';
 import { Alert } from '@material-ui/lab';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
-import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { findReferencedBy } from '../../lib/workflowReferences';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { WorkflowMutationActions } from '../WorkflowsListPage/WorkflowMutationActions';
-import {
-  MusterInstanceProvider,
-  useMusterInstance,
-} from '../MusterInstanceProvider';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import {
   SectionHeader,
@@ -597,14 +591,8 @@ function WorkflowDetailContent() {
  * collapsible YAML).
  */
 export function WorkflowDetailPage() {
-  return (
-    <Page themeId="tool">
-      <Header title="Workflow" type="Muster" />
-      <ErrorsProvider>
-        <MusterInstanceProvider>
-          <WorkflowDetailContent />
-        </MusterInstanceProvider>
-      </ErrorsProvider>
-    </Page>
-  );
+  // Rendered inside the Workflows tab, which the workflows sub-page already
+  // wraps in MusterProviders (shared muster instance + session) — so this is
+  // just the content. The NFS app shell owns the plugin header and page scroll.
+  return <WorkflowDetailContent />;
 }
