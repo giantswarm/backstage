@@ -4,6 +4,7 @@ import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
 import { ClusterTokenError } from '../../apis/auth/DefaultAuthConnector';
 import { clusterAccessStatusApiRef } from '../../apis/clusterAccessStatus';
+import { KubernetesClient } from '../../apis/kubernetes';
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled probe outcome: ${JSON.stringify(value)}`);
@@ -15,6 +16,15 @@ function assertNever(value: never): never {
  * mint and the apiserver round-trip succeeded.
  */
 const HEALTH_PROBE_PATH = '/version';
+
+/**
+ * Per-probe timeout, deliberately shorter than the default proxy timeout. The
+ * warm-up probes the whole fleet, so an unreachable cluster must release its
+ * concurrency slot quickly instead of holding it for the full default (~10s)
+ * and dominating the tail. A genuinely slow-but-healthy cluster recovers via
+ * the retry/backoff loop and the refresh interval.
+ */
+const PROBE_TIMEOUT_MS = 2000;
 
 /**
  * Re-probe interval. Keeps the sidebar live (a recovered or newly-broken
@@ -154,10 +164,14 @@ export function ClusterAccessConnector() {
           }
           let outcome: ProbeOutcome;
           try {
+            // Background warm-up: yields to foreground page reads and uses a
+            // short timeout so an unreachable cluster does not hold a slot.
             const response = await kubernetesApi.proxy({
               clusterName: installation,
               path: HEALTH_PROBE_PATH,
-            });
+              background: true,
+              timeoutMs: PROBE_TIMEOUT_MS,
+            } as Parameters<KubernetesClient['proxy']>[0]);
             outcome = classifyProbeResponse(response, attempt, MAX_RETRIES);
           } catch (error) {
             outcome = classifyProbeError(error, attempt, MAX_RETRIES);
