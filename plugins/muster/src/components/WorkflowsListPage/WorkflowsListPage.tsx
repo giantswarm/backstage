@@ -340,7 +340,9 @@ export function WorkflowsListPage() {
             {filtered.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className={classes.emptyRow}>
-                  No workflows match your filters.
+                  {workflows.length === 0
+                    ? 'No workflows in this installation.'
+                    : 'No workflows match your filters.'}
                 </TableCell>
               </TableRow>
             )}

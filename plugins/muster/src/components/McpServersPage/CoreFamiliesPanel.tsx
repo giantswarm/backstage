@@ -18,7 +18,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   familyTitle: {
     fontWeight: 600,
-    textTransform: 'capitalize',
   },
   count: {
     fontSize: 12,
@@ -37,6 +36,7 @@ const FAMILY_LABELS: Record<string, string> = {
   config: 'Configuration',
   mcpserver: 'MCP server definitions',
   auth: 'Authentication',
+  events: 'Events',
 };
 
 type Family = { key: string; label: string; tools: ToolSummary[] };
