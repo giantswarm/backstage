@@ -4,6 +4,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Box,
+  Button,
   Chip,
   IconButton,
   InputAdornment,
@@ -27,6 +28,7 @@ import {
   groupTools,
   ServerPrefixInfo,
   ToolGroup,
+  toolsForServer,
 } from '../../lib/toolGrouping';
 import { ExplorerError } from './ExplorerError';
 import { BrowserSkeleton } from './states';
@@ -82,6 +84,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontSize: '0.7rem',
     color: theme.palette.text.secondary,
     margin: theme.spacing(1, 0, 0.5),
+  },
+  scopeBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(1),
   },
   kbd: {
     fontFamily: 'monospace',
@@ -151,8 +159,17 @@ export interface ToolBrowserProps {
   /** MCPServer-derived prefixes, used to group server tools by management cluster. */
   servers: ServerPrefixInfo[];
   prefs: ToolPrefs;
-  /** Initial search query, e.g. seeded from a `?server=` deep link. */
-  initialQuery?: string;
+  /**
+   * Server CR name from a `?server=` deep link: scopes the browse to that
+   * server's tools (prefix filter) instead of seeding a free-text search.
+   */
+  serverScope?: string;
+  /**
+   * Whether the MCPServer CRs are still loading. The browse grouping depends on
+   * them, so hold the skeleton until they resolve to avoid reshuffling sections
+   * from raw `Server: <segment>` buckets to MC/fleet buckets on load (F2).
+   */
+  serversLoading?: boolean;
 }
 
 /**
@@ -167,12 +184,15 @@ export function ToolBrowser({
   onSelect,
   servers,
   prefs,
-  initialQuery = '',
+  serverScope,
+  serversLoading = false,
 }: ToolBrowserProps) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const [query, setQuery] = useState(initialQuery);
+  const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(-1);
+  // A `?server=` deep link scopes the browse until the user clears it.
+  const [scopeCleared, setScopeCleared] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const trimmed = query.trim();
 
@@ -214,9 +234,19 @@ export function ToolBrowser({
     return map;
   }, [allTools]);
 
+  // Scope to a `?server=` deep link's tools (by prefix) when set, the search box
+  // is empty, and the user hasn't cleared the scope.
+  const scoped = useMemo(
+    () =>
+      serverScope && !scopeCleared && trimmed === ''
+        ? toolsForServer(allTools, serverScope, servers)
+        : undefined,
+    [serverScope, scopeCleared, trimmed, allTools, servers],
+  );
+
   const groups = useMemo(
-    () => groupTools(allTools, servers),
-    [allTools, servers],
+    () => groupTools(scoped ? scoped.tools : allTools, servers),
+    [scoped, allTools, servers],
   );
 
   const searchTools = search.data?.tools ?? [];
@@ -285,17 +315,35 @@ export function ToolBrowser({
         />
       ) : (
         <>
-          {(favouriteTools.length > 0 || recentTools.length > 0) && (
-            <QuickAccess
-              favourites={favouriteTools}
-              recents={recentTools}
-              selected={selected}
-              prefs={prefs}
-              onSelect={onSelect}
-            />
+          {scoped ? (
+            <Box className={classes.scopeBanner}>
+              <Chip
+                size="small"
+                color="primary"
+                label={`Server: ${serverScope}`}
+              />
+              <Typography variant="caption" color="textSecondary">
+                {scoped.tools.length} tool
+                {scoped.tools.length === 1 ? '' : 's'}
+              </Typography>
+              <Box flexGrow={1} />
+              <Button size="small" onClick={() => setScopeCleared(true)}>
+                Show all tools
+              </Button>
+            </Box>
+          ) : (
+            (favouriteTools.length > 0 || recentTools.length > 0) && (
+              <QuickAccess
+                favourites={favouriteTools}
+                recents={recentTools}
+                selected={selected}
+                prefs={prefs}
+                onSelect={onSelect}
+              />
+            )
           )}
           <BrowseGroups
-            isLoading={browse.isLoading}
+            isLoading={browse.isLoading || serversLoading}
             error={browse.error}
             installation={installation}
             groups={groups}
