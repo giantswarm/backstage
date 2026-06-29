@@ -34,6 +34,7 @@ import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { AvailabilityBadge, StateBadge } from '../shared';
 import { MusterWorkflow } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
+import { searchByRelevance } from '../../lib/workflowSearch';
 import { toolExplorerRouteRef, workflowDetailRouteRef } from '../../routes';
 import { CreateWorkflowButton } from './WorkflowMutationActions';
 
@@ -190,17 +191,17 @@ export function WorkflowsListPage() {
   };
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return workflows.filter(w => {
+    const byStatus = workflows.filter(w => {
       const valid = w.isValid();
       if (statusFilter === 'valid' && !valid) return false;
       if (statusFilter === 'warnings' && valid) return false;
-      if (!needle) return true;
-      return (
-        w.getName().toLowerCase().includes(needle) ||
-        (w.getDescription() ?? '').toLowerCase().includes(needle)
-      );
+      return true;
     });
+    // Token-boundary scored search (F3): "dex" must not match "index".
+    return searchByRelevance(byStatus, query, w => ({
+      name: w.getName(),
+      description: w.getDescription() ?? '',
+    }));
   }, [workflows, query, statusFilter]);
 
   if (isLoading) {
