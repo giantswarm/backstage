@@ -34,5 +34,15 @@
       groupName: 'date-fns packages',
       matchPackageNames: ['date-fns', 'date-fns-tz'],
     },
+    {
+      // global-agent v4 is ESM-only and removed the CommonJS
+      // `global-agent/bootstrap` entrypoint that packages/backend/src/index.ts
+      // imports. v4 crashes the backend container at startup with
+      // "Cannot find module 'global-agent/bootstrap'" (verified in the
+      // execute-chart-tests smoke test on #1831). Hold on v3 until the backend's
+      // bootstrap import is migrated to the v4 API.
+      matchPackageNames: ['global-agent'],
+      allowedVersions: '<4',
+    },
   ],
 }
