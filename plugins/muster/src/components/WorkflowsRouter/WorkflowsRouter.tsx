@@ -6,10 +6,9 @@ import {
   useParams,
 } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { workflowDetailRouteRef } from '../routes';
-import { QueryClientProvider } from './QueryClientProvider';
-import { MusterPage } from './MusterPage';
-import { WorkflowDetailPage } from './WorkflowDetailPage';
+import { workflowDetailRouteRef } from '../../routes';
+import { WorkflowsListPage } from '../WorkflowsListPage';
+import { WorkflowDetailPage } from '../WorkflowDetailPage';
 
 /**
  * The bespoke `/workflows/:name/run` route was removed when Run was unified with
@@ -25,19 +24,18 @@ const LegacyRunRedirect = () => {
   return <Navigate to={`${to}${search}`} replace />;
 };
 
-export const Router = () => {
+/**
+ * Routing within the Workflows tab: the list and the per-workflow detail share
+ * the tab (the detail keeps the Workflows tab selected). Mounted inside
+ * MusterProviders by the workflows sub-page, so both views share one muster
+ * instance.
+ */
+export const WorkflowsRouter = () => {
   return (
-    <QueryClientProvider>
-      <Routes>
-        {/* Workflow detail is a full page (no tabs); more specific than the
-            catch-all below so it wins route ranking. */}
-        <Route
-          path={workflowDetailRouteRef.path}
-          element={<WorkflowDetailPage />}
-        />
-        <Route path="/workflows/:name/run" element={<LegacyRunRedirect />} />
-        <Route path="/*" element={<MusterPage />} />
-      </Routes>
-    </QueryClientProvider>
+    <Routes>
+      <Route index element={<WorkflowsListPage />} />
+      <Route path=":name/run" element={<LegacyRunRedirect />} />
+      <Route path=":name" element={<WorkflowDetailPage />} />
+    </Routes>
   );
 };
