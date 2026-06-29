@@ -1,5 +1,9 @@
 import { MCPServer, MANAGEMENT_CLUSTER_LABEL } from './k8s';
-import { partitionServers, presenceByMc } from './serverGrouping';
+import {
+  partitionServers,
+  presenceByMc,
+  selectRepresentative,
+} from './serverGrouping';
 
 function makeServer(opts: {
   name: string;
@@ -56,5 +60,54 @@ describe('presenceByMc', () => {
       makeServer({ name: 'k8s', mc: 'alpha', state: 'Auth Required' }),
     ]);
     expect(presence[0].severity).toBe('ok');
+  });
+});
+
+describe('selectRepresentative', () => {
+  // Federated families are listed in MC-alphabetical order, so the first server
+  // is a peer/customer MC; selection must not default to it (ADR D1).
+  const fleet = () => [
+    makeServer({ name: 'k8s-agama', mc: 'agama', state: 'Auth Required' }),
+    makeServer({ name: 'k8s-gazelle', mc: 'gazelle', state: 'Connected' }),
+    makeServer({ name: 'k8s-zebra', mc: 'zebra', state: 'Auth Required' }),
+  ];
+
+  it('prefers the active installation own server over list order', () => {
+    const rep = selectRepresentative(fleet(), 'gazelle');
+    expect(rep?.server.getManagementCluster()).toBe('gazelle');
+    expect(rep?.qualified).toBe(true);
+  });
+
+  it('prefers a connected server when the active installation has none of its own', () => {
+    const rep = selectRepresentative(fleet(), 'not-in-fleet');
+    expect(rep?.server.getManagementCluster()).toBe('gazelle');
+    expect(rep?.qualified).toBe(true);
+  });
+
+  it('does not default to the first (Auth Required) server by list order', () => {
+    const rep = selectRepresentative(
+      [
+        makeServer({ name: 'k8s-agama', mc: 'agama', state: 'Auth Required' }),
+        makeServer({ name: 'k8s-beta', mc: 'beta', state: 'Connected' }),
+      ],
+      undefined,
+    );
+    expect(rep?.server.getManagementCluster()).toBe('beta');
+  });
+
+  it('falls back to the first server but flags it unqualified when none own/connected', () => {
+    const rep = selectRepresentative(
+      [
+        makeServer({ name: 'k8s-agama', mc: 'agama', state: 'Auth Required' }),
+        makeServer({ name: 'k8s-zebra', mc: 'zebra', state: 'Failed' }),
+      ],
+      'gazelle',
+    );
+    expect(rep?.server.getManagementCluster()).toBe('agama');
+    expect(rep?.qualified).toBe(false);
+  });
+
+  it('returns undefined for an empty fleet', () => {
+    expect(selectRepresentative([], 'gazelle')).toBeUndefined();
   });
 });

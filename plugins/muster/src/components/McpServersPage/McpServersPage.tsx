@@ -191,6 +191,7 @@ export function McpServersPage() {
                     key={group.family}
                     family={group.family}
                     servers={group.servers}
+                    activeInstallation={activeInstallation}
                     authenticated={authenticated}
                     defaultExpanded={false}
                   />

@@ -47,6 +47,57 @@ export function partitionServers(servers: MCPServer[]): {
   return { standard, integration };
 }
 
+export type Representative = {
+  /** The server whose shared config/auth/tools are shown for the family. */
+  server: MCPServer;
+  /**
+   * Whether `server` legitimately stands in for the family on this screen: it is
+   * the active installation's own server, or at least a connected one. When
+   * false, no single MC should head the family (label it neutrally, e.g.
+   * "kubernetes (fleet)") because the representative is an arbitrary fallback.
+   */
+  qualified: boolean;
+};
+
+/**
+ * Choose the server that represents a federated family's shared config/auth/tools.
+ *
+ * A federated family is replicated across many management clusters whose auth
+ * chains legitimately differ, so "which one do we show?" matters: showing an
+ * arbitrary peer/customer MC misrepresents the family on another installation's
+ * screen. The order (ADR muster-ui-iteration-2, D1) is:
+ *
+ * 1. the active installation's own server (`managementCluster === active`), else
+ * 2. a connected server (`Connected`/`Running`), else
+ * 3. the first server as a fallback, flagged `qualified: false` so the caller
+ *    labels the family neutrally rather than by that server's MC.
+ *
+ * Note: severity `ok` is NOT a sufficient signal since `Auth Required` is now
+ * `ok` -- list order would then surface an arbitrary (alphabetically-first) MC.
+ */
+export function selectRepresentative(
+  servers: MCPServer[],
+  activeInstallation?: string,
+): Representative | undefined {
+  if (servers.length === 0) {
+    return undefined;
+  }
+  const own =
+    activeInstallation !== undefined
+      ? servers.find(s => s.getManagementCluster() === activeInstallation)
+      : undefined;
+  if (own) {
+    return { server: own, qualified: true };
+  }
+  const connected = servers.find(
+    s => s.getState() === 'Connected' || s.getState() === 'Running',
+  );
+  if (connected) {
+    return { server: connected, qualified: true };
+  }
+  return { server: servers[0], qualified: false };
+}
+
 export type McPresence = {
   mc: string;
   severity: MCPServerSeverity;
