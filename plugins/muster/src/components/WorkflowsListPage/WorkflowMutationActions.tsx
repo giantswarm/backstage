@@ -17,6 +17,7 @@ import GitHub from '@material-ui/icons/GitHub';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import Add from '@material-ui/icons/Add';
+import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
 import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
@@ -27,6 +28,7 @@ import {
   toManifestYaml,
   toWorkflowDefinition,
 } from '../../lib/gitops';
+import { mutationErrorMessage } from '../../lib/authError';
 import { StateBadge } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -168,7 +170,7 @@ function ConfirmDeleteDialog({
       );
       setDone(true);
     } catch (e) {
-      setError((e as Error).message);
+      setError(mutationErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -284,7 +286,7 @@ export function AdHocWorkflowDialog({
       await musterApi.callTool('core_workflow_validate', def, target);
       setMessage('Definition is valid.');
     } catch (e) {
-      setError((e as Error).message);
+      setError(mutationErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -305,7 +307,7 @@ export function AdHocWorkflowDialog({
       );
       setMessage('Saved. The CRD list will refresh shortly.');
     } catch (e) {
-      setError((e as Error).message);
+      setError(mutationErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -463,21 +465,41 @@ export function WorkflowMutationActions({
  */
 export function CreateWorkflowButton({
   installation,
+  authenticated = true,
 }: {
   installation?: string;
+  /**
+   * Whether there is an authenticated muster session for this installation.
+   * Creating a workflow runs `core_workflow_*` live through muster, which needs
+   * a session -- so it is disabled (with an explanatory tooltip) when there is
+   * none, rather than failing with a raw 401 after the user composes a
+   * definition.
+   */
+  authenticated?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const button = (
+    <Button
+      size="small"
+      variant="outlined"
+      startIcon={<Add />}
+      onClick={() => setOpen(true)}
+      disabled={!authenticated}
+      title="Create a live ad-hoc workflow"
+    >
+      Create workflow
+    </Button>
+  );
   return (
     <>
-      <Button
-        size="small"
-        variant="outlined"
-        startIcon={<Add />}
-        onClick={() => setOpen(true)}
-        title="Create a live ad-hoc workflow"
-      >
-        Create workflow
-      </Button>
+      {authenticated ? (
+        button
+      ) : (
+        <Tooltip title="Connect to muster (sign in) to create a workflow.">
+          {/* span wrapper so the tooltip still fires over the disabled button */}
+          <span>{button}</span>
+        </Tooltip>
+      )}
       <AdHocWorkflowDialog
         installation={installation}
         open={open}

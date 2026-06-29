@@ -370,9 +370,15 @@ export function ServerTools({
 
   const tools = data?.tools ?? [];
   if (tools.length === 0) {
+    // `Auth Required` is a session state, not a degraded one (ADR D3): the
+    // server exposes no tools because this user's session lacks the audience,
+    // not because it "may be down".
+    const authGated = server.getState() === 'Auth Required';
     return (
       <Typography variant="body2" className={classes.note}>
-        No tools exposed (server may be down or require authentication).
+        {authGated
+          ? 'No tools exposed — this server requires an authenticated muster session for your user.'
+          : 'No tools exposed (the server may be down or unreachable).'}
       </Typography>
     );
   }

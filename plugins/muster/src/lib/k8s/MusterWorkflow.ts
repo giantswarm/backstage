@@ -101,12 +101,40 @@ export class MusterWorkflow extends KubeObject<MusterWorkflowInterface> {
     return this.jsonData.status?.stepCount ?? this.getSteps().length;
   }
 
+  /**
+   * Whether muster considers the workflow definition valid (`status.valid`).
+   * This is a *quality* signal, not a runnability one: muster's validator has
+   * false-positives (e.g. it demands a top-level `tool` on `parallel`/`forEach`
+   * container steps), so an invalid workflow can still run. Surface validation
+   * complaints via `getValidationErrors()` as a non-blocking warning rather than
+   * gating runnability on this — see `isRunnable()`.
+   */
   isValid() {
     return this.jsonData.status?.valid ?? false;
   }
 
+  /**
+   * Whether the workflow can be run. muster exposes an aggregated
+   * `workflow_<name>` tool for every Workflow CR regardless of the validator's
+   * `status.valid` verdict, so any loaded workflow is runnable. Decoupling this
+   * from `isValid()` is decision D2 of the muster-UI iteration-2 ADR: a workflow
+   * that executes must never present as "Unavailable".
+   *
+   * ponytail: the CRD carries no per-workflow runnable signal, so any loaded
+   * workflow is treated as runnable. Upgrade path: if muster surfaces a
+   * tool-existence/health flag for the aggregated tool, gate on it here.
+   */
+  isRunnable() {
+    return true;
+  }
+
   getValidationErrors() {
     return this.jsonData.status?.validationErrors ?? [];
+  }
+
+  /** True when muster flagged the definition but it remains runnable. */
+  hasValidationWarning() {
+    return !this.isValid();
   }
 
   getReferencedTools() {

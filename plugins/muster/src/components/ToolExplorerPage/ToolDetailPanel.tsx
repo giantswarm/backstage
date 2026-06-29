@@ -16,6 +16,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import {
   buildArgs,
+  enumDefaults,
   fieldKind,
   FormValue,
   schemaFields,
@@ -120,6 +121,27 @@ export function ToolDetailPanel({
   });
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
+
+  // Once the schema resolves, pre-select enum defaults for fields the user (or
+  // a remembered session) hasn't set yet, so the form shows the effective value
+  // rather than a blank select.
+  useEffect(() => {
+    const defaults = enumDefaults(fields);
+    if (Object.keys(defaults).length === 0) {
+      return;
+    }
+    setValues(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [key, value] of Object.entries(defaults)) {
+        if (next[key] === undefined) {
+          next[key] = value;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [fields]);
 
   const mutation = useMutation({
     mutationFn: async (args: Record<string, unknown>) => {

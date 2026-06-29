@@ -76,7 +76,7 @@ export function ExecutionHistoryPanel({
         ))}
         {executions.length === 0 && (
           <ListItem>
-            <ListItemText secondary="No executions recorded for this workflow." />
+            <ListItemText secondary="No engine- or agent-driven executions recorded. Runs launched from the tool explorer are not recorded here." />
           </ListItem>
         )}
       </List>

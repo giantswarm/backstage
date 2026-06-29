@@ -1,7 +1,7 @@
 import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
-import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
+import { MCPServer } from '../../lib/k8s';
 import { DisclosureAccordion, Gate, InstallationHealthPill } from '../shared';
-import { presenceByMc } from '../../lib/serverGrouping';
+import { presenceByMc, selectRepresentative } from '../../lib/serverGrouping';
 import {
   AuthChain,
   DetailBlock,
@@ -65,6 +65,11 @@ export interface StandardServerDisclosureProps {
   family: string;
   /** All MCPServer CRs of that family across the active instance's target MCs. */
   servers: MCPServer[];
+  /**
+   * The active muster installation. Used to prefer this installation's own
+   * server as the family's representative rather than an arbitrary peer MC.
+   */
+  activeInstallation?: string;
   authenticated: boolean;
   defaultExpanded?: boolean;
 }
@@ -80,16 +85,21 @@ export interface StandardServerDisclosureProps {
 export function StandardServerDisclosure({
   family,
   servers,
+  activeInstallation,
   authenticated,
   defaultExpanded,
 }: StandardServerDisclosureProps) {
   const classes = useStyles();
   const presence = presenceByMc(servers);
 
-  // Representative instance for shared config/auth/tools: prefer a healthy one.
-  const representative =
-    servers.find(s => mcpServerStateSeverity(s.getState()) === 'ok') ??
-    servers[0];
+  // Representative instance for shared config/auth/tools: prefer the active
+  // installation's own server, then a connected one (never an arbitrary peer MC
+  // by list order -- see selectRepresentative / ADR D1).
+  const rep = selectRepresentative(servers, activeInstallation);
+  const representative = rep?.server ?? servers[0];
+  const repMc =
+    representative.getManagementCluster() ?? representative.getName();
+  const qualified = rep?.qualified ?? false;
   const toolPrefix = `x_${family}`;
   const managed = isGitOpsManaged(representative);
   const releaseId = provenanceReleaseId(readProvenance(representative));
@@ -127,13 +137,18 @@ export function StandardServerDisclosure({
       <DetailBlock title="Configuration">
         <ServerConfig server={representative} />
         <Typography variant="caption" color="textSecondary">
-          Shared across the fleet; shown for{' '}
-          {representative.getManagementCluster() ?? representative.getName()}.
+          {qualified
+            ? `Shared across the fleet; shown for ${repMc}.`
+            : `Federated across the fleet; no connected representative on this installation — values shown are from ${repMc} and may differ per cluster.`}
         </Typography>
       </DetailBlock>
 
       <DetailBlock title="Authentication / token chain">
         <AuthChain server={representative} />
+        <Typography variant="caption" color="textSecondary">
+          Shown for {repMc}; the auth/token chain differs per cluster (e.g.
+          forward-token vs token-exchange/OBO).
+        </Typography>
       </DetailBlock>
 
       <DetailBlock title="GitOps provenance">
