@@ -236,6 +236,8 @@ The following optional features are available:
 
 For the Giant Swarm devportal, we can enable asynchronous fetching of dependencies between components, based on the GitHub SBOM API. This will start updating dependency info once daily.
 
+Only dependencies whose target component exists in the catalog are added to a component's `dependsOn`. Giant Swarm Go packages that have no catalog component (e.g. archived libraries) are skipped so they don't appear as dangling relations on the entity page.
+
 ```yaml
 catalog:
   processors:
