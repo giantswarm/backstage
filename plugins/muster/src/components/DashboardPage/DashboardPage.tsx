@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode } from 'react';
 import {
   Box,
   Button,
@@ -19,7 +19,7 @@ import { Content, Link, Progress } from '@backstage/core-components';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { useMusterInstance } from '../MusterInstanceProvider';
+import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { FleetHealthMatrix } from './FleetHealthMatrix';
 import { FreshnessIndicator, SectionHeader, Stat, StateBadge } from '../shared';
@@ -272,8 +272,6 @@ export function DashboardPage() {
   const mcpServersLink = useRouteRef(mcpServersRouteRef);
   const workflowsLink = useRouteRef(workflowsRouteRef);
 
-  const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
-
   // The logged-in Backstage identity, shown in the "Authenticated as" badge.
   const { data: profile } = useQuery({
     queryKey: ['muster', 'identity'],
@@ -281,34 +279,26 @@ export function DashboardPage() {
   });
   const userLabel = profile?.displayName ?? profile?.email ?? 'you';
 
-  // Live aggregator probe: the tool count (the only stat that needs the muster
-  // session) and, by succeeding at all, that the session is authenticated. One
-  // round-trip; failing with an auth error flips the card to "Not authenticated".
+  // Session state (authenticated + connect) comes from the shared hook so the
+  // dashboard, the MCP-servers manager and the workflows page agree (ADR D3).
+  // The hook's probe and the count query below share the
+  // `['muster', 'overview', <installation>]` key, so react-query dedupes them to
+  // one round-trip and a connect refetch updates both.
   const {
-    data: overview,
-    isError: overviewFailed,
-    isLoading: overviewLoading,
-    refetch: refetchOverview,
-  } = useQuery({
+    authenticated,
+    connecting,
+    connect: handleConnect,
+  } = useMusterSession();
+
+  // The tool count is the only stat that needs the muster session; read it from
+  // the (deduped) overview query rather than the session hook, which only
+  // exposes auth state.
+  const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['muster', 'overview', activeInstallation],
     queryFn: () =>
       musterApi.filterTools({ installation: activeInstallation, limit: 1 }),
     enabled: Boolean(activeInstallation),
   });
-
-  const [connecting, setConnecting] = useState(false);
-  const handleConnect = async () => {
-    setConnecting(true);
-    try {
-      await musterApi.signIn();
-      await refetchOverview();
-    } finally {
-      setConnecting(false);
-    }
-  };
-
-  // Authenticated when no auth is required, or the live probe succeeded.
-  const authenticated = !requiresAuth || (!overviewFailed && Boolean(overview));
   const toolCount = overview?.total;
 
   // Tools stat: '—' when unauthenticated, '…' while the probe is in flight,

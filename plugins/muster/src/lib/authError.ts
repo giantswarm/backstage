@@ -14,7 +14,7 @@ export function isMusterAuthError(error: unknown): boolean {
   if (e.name === 'UnauthorizedError') {
     return true;
   }
-  return /\bHTTP 401\b|\b401\b|authentication failure/i.test(e.message ?? '');
+  return /\bHTTP 401\b|authentication failure/i.test(e.message ?? '');
 }
 
 /** User-facing prompt shown in place of a raw transport error on a 401. */
