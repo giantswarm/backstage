@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   CircularProgress,
+  LinearProgress,
   Paper,
   Typography,
   makeStyles,
@@ -44,6 +45,12 @@ const useStyles = makeStyles((theme: Theme) => ({
   // Reading-capped column (mockup `max-w-5xl`).
   column: {
     maxWidth: 1024,
+  },
+  // Thin progress bar shown under the header while the live CRD read is in
+  // flight, so a cold fleet warm-up does not blank the whole body.
+  bodyProgress: {
+    marginBottom: theme.spacing(2),
+    borderRadius: theme.shape.borderRadius,
   },
   intro: {
     maxWidth: '70ch',
@@ -318,14 +325,29 @@ export function DashboardPage() {
     s => mcpServerStateSeverity(s.getState()) === 'ok',
   ).length;
 
+  // On a cold load the single-cluster CRD read can be queued behind the
+  // whole-fleet auth warm-up. Rather than blank the whole body behind a
+  // full-page spinner, render the page chrome immediately from whatever
+  // persisted/last-known data react-query restored, and show placeholders +
+  // a thin progress bar only for the stats/health that have not arrived yet.
+  // (The root-cause serialization fix ships separately in plugins/gs.)
+  const serversPending = isLoading && mcpServers.length === 0;
+  const workflowsPending = isLoading && workflows.length === 0;
+
   return (
     <Content>
       <InstallationPicker />
 
-      {isLoading || !activeInstallation ? (
+      {!activeInstallation ? (
         <Progress />
       ) : (
         <Box className={classes.column}>
+          {isLoading && (
+            <LinearProgress
+              className={classes.bodyProgress}
+              aria-label="Loading live muster data"
+            />
+          )}
           <Typography variant="body2" className={classes.intro}>
             The live inventory of everything the platform&apos;s agents can
             reach right now — the MCP servers, their tools, and the reusable
@@ -408,13 +430,23 @@ export function DashboardPage() {
             </Box>
 
             <Box className={classes.statRow}>
-              <Stat label="Aggregated servers" value={mcpServers.length} />
+              <Stat
+                label="Aggregated servers"
+                value={serversPending ? '…' : mcpServers.length}
+              />
               <Stat label="Tools" value={toolStat} />
-              <Stat label="Workflows" value={workflows.length} />
+              <Stat
+                label="Workflows"
+                value={workflowsPending ? '…' : workflows.length}
+              />
               {authenticated && (
                 <Stat
                   label="Servers healthy"
-                  value={`${serversHealthy}/${mcpServers.length}`}
+                  value={
+                    serversPending
+                      ? '…'
+                      : `${serversHealthy}/${mcpServers.length}`
+                  }
                   tone={serversHealthy === mcpServers.length ? 'ok' : 'warning'}
                 />
               )}
@@ -435,7 +467,7 @@ export function DashboardPage() {
                 icon={<Dns />}
                 title="MCP servers"
                 description="The MCP servers muster aggregates and the tools they expose, with per-cluster health."
-                count={`${mcpServers.length} servers`}
+                count={serversPending ? 'Loading…' : `${mcpServers.length} servers`}
               />
               <BrowseCard
                 to={withInstallation(
@@ -445,7 +477,9 @@ export function DashboardPage() {
                 icon={<AccountTree />}
                 title="Workflows"
                 description="Reusable, named compositions of tool calls — searchable and filterable by availability."
-                count={`${workflows.length} workflows`}
+                count={
+                  workflowsPending ? 'Loading…' : `${workflows.length} workflows`
+                }
               />
             </Box>
           </Box>
@@ -457,7 +491,13 @@ export function DashboardPage() {
               title="Fleet health"
               description="MCPServer state grouped by server, mirroring the MCP-servers manager: each standard family and integration server carries a health pill per management cluster it is federated across (the worst state in that family × cluster cell)."
             />
-            <FleetHealthMatrix servers={mcpServers} />
+            {serversPending ? (
+              <Typography variant="body2" color="textSecondary">
+                Loading fleet health…
+              </Typography>
+            ) : (
+              <FleetHealthMatrix servers={mcpServers} />
+            )}
           </Box>
         </Box>
       )}
