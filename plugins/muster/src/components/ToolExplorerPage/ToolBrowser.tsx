@@ -440,11 +440,11 @@ function BrowseGroups({
   }
   return (
     <>
-      {groups.map((group, index) => (
+      {groups.map(group => (
         <Accordion
           key={group.key}
           className={classes.group}
-          defaultExpanded={group.kind === 'core' || index < 2}
+          defaultExpanded={group.kind === 'core'}
           TransitionProps={{ unmountOnExit: true }}
         >
           <AccordionSummary

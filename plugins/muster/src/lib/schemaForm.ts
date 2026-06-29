@@ -76,6 +76,23 @@ export function fieldKind(field: SchemaField): FieldKind {
   }
 }
 
+/**
+ * Seed initial form values from each enum/select field's schema `default`, so
+ * the widget shows the value the tool will actually use instead of rendering
+ * blank. Only enum fields are seeded: scalar defaults are surfaced as helper
+ * text and a blank optional field is still omitted (the tool applies its own
+ * default), so seeding them would only add redundant payload.
+ */
+export function enumDefaults(fields: SchemaField[]): Record<string, FormValue> {
+  const out: Record<string, FormValue> = {};
+  for (const field of fields) {
+    if (fieldKind(field) === 'enum' && field.default !== undefined) {
+      out[field.name] = String(field.default);
+    }
+  }
+  return out;
+}
+
 /** Flatten an object input schema into an ordered list of editable fields. */
 export function schemaFields(schema?: JsonSchema): SchemaField[] {
   const properties = schema?.properties;

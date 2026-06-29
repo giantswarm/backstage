@@ -1,4 +1,9 @@
-import { buildArgs, fieldKind, schemaFields } from './schemaForm';
+import {
+  buildArgs,
+  enumDefaults,
+  fieldKind,
+  schemaFields,
+} from './schemaForm';
 
 describe('schemaFields', () => {
   it('flattens an object schema and marks required fields', () => {
@@ -28,6 +33,31 @@ describe('schemaFields', () => {
   it('returns no fields for a schema without properties', () => {
     expect(schemaFields(undefined)).toEqual([]);
     expect(schemaFields({ type: 'object' })).toEqual([]);
+  });
+});
+
+describe('enumDefaults', () => {
+  it('seeds only enum fields that declare a default, as strings', () => {
+    const fields = schemaFields({
+      type: 'object',
+      properties: {
+        output: { type: 'string', enum: ['slim', 'full'], default: 'slim' },
+        priority: { type: 'integer', enum: [1, 2, 3], default: 2 },
+        format: { type: 'string', enum: ['json', 'yaml'] },
+        replicas: { type: 'integer', default: 1 },
+        name: { type: 'string' },
+      },
+    });
+
+    expect(enumDefaults(fields)).toEqual({ output: 'slim', priority: '2' });
+  });
+
+  it('returns nothing when no enum field has a default', () => {
+    const fields = schemaFields({
+      type: 'object',
+      properties: { name: { type: 'string', default: 'x' } },
+    });
+    expect(enumDefaults(fields)).toEqual({});
   });
 });
 
