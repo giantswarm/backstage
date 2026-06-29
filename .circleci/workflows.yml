@@ -23,6 +23,15 @@ jobs:
         keys:
         - node-deps-yarn-v1-{{ checksum "yarn.lock" }}
         - node-deps-yarn-v1-
+    # Build-output cache: restore the materialized node_modules (with its
+    # compiled native addons) so the install reconciles incrementally instead
+    # of recompiling better-sqlite3/isolated-vm/etc. from source via node-gyp
+    # every run. Keyed on the node image version -- a node bump must not restore
+    # stale-ABI binaries. The Node analogue of go-build's $GOCACHE persist.
+    - restore_cache:
+        keys:
+        - node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
+        - node-build-yarn-v1-24.18.0-
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -38,6 +47,17 @@ jobs:
     - run:
         name: Build
         command: yarn run ci:build
+    # Save the build-output cache *after* verify/build so it captures both the
+    # node_modules native addons compiled during install AND the tsc/eslint/jest
+    # incremental caches those steps write under node_modules/.cache -- the
+    # compute-side analogue of persisting $GOCACHE. Write-once per lockfile (the
+    # restore prefix keeps every run warm-started from the last good cache, so a
+    # red build never leaves a repo cold).
+    - save_cache:
+        key: node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
+        paths:
+        - node_modules
+        - .yarn/install-state.gz
     - persist_to_workspace:
         # Hand the build output to the image jobs, which attach_workspace and
         # overlay it into the Docker build context (gen.ci.image.preBuildJob).
