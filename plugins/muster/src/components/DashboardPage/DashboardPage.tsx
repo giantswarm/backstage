@@ -23,7 +23,7 @@ import { useMusterInstance } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { FleetHealthMatrix } from './FleetHealthMatrix';
 import { SectionHeader, Stat, StateBadge } from '../shared';
-import { mcpServerStateSeverity } from '../../lib/k8s';
+import { serversHealthSummary } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef, workflowsRouteRef } from '../../routes';
 
@@ -318,12 +318,13 @@ export function DashboardPage() {
   // ponytail: aggregator "servers healthy" is derived from the CRD
   // `.status.state` severity (always readable, no muster session), not a
   // dedicated core_service_list call. `Auth Required` counts as healthy (the
-  // browsing user has a session); only genuinely degraded states subtract.
+  // browsing user has a session); only genuinely degraded states subtract. The
+  // tone warns only when a meaningful fraction is unhealthy, so a single remote
+  // federated backend being down does not paint the stat permanently amber.
   // Upgrade path is a backend /overview route surfacing the aggregator
   // service's live servers_connected + tools.
-  const serversHealthy = mcpServers.filter(
-    s => mcpServerStateSeverity(s.getState()) === 'ok',
-  ).length;
+  const { healthy: serversHealthy, tone: serversHealthyTone } =
+    serversHealthSummary(mcpServers);
 
   // On a cold load the single-cluster CRD read can be queued behind the
   // whole-fleet auth warm-up. Rather than blank the whole body behind a
@@ -439,17 +440,16 @@ export function DashboardPage() {
                 label="Workflows"
                 value={workflowsPending ? '…' : workflows.length}
               />
-              {authenticated && (
-                <Stat
-                  label="Servers healthy"
-                  value={
-                    serversPending
-                      ? '…'
-                      : `${serversHealthy}/${mcpServers.length}`
-                  }
-                  tone={serversHealthy === mcpServers.length ? 'ok' : 'warning'}
-                />
-              )}
+              {/* Computed from the CRD reads, not the muster session, so it
+                  renders whenever the server list has loaded -- the same data
+                  the fleet-health pills below show unauthenticated. */}
+              <Stat
+                label="Servers healthy"
+                value={
+                  serversPending ? '…' : `${serversHealthy}/${mcpServers.length}`
+                }
+                tone={serversPending ? undefined : serversHealthyTone}
+              />
             </Box>
           </Paper>
 

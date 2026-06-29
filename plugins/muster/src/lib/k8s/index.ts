@@ -3,6 +3,8 @@ export {
   MANAGEMENT_CLUSTER_LABEL,
   mcpServerStateSeverity,
   worstSeverity,
+  serversHealthSummary,
+  SERVERS_HEALTH_WARNING_FRACTION,
 } from './MCPServer';
 export type {
   MCPServerState,
@@ -10,6 +12,7 @@ export type {
   MCPServerFamily,
   MCPServerAuth,
   MCPServerTokenExchange,
+  ServersHealthSummary,
 } from './MCPServer';
 export { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from './MusterWorkflow';
 export type {
