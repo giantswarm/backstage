@@ -370,7 +370,10 @@ function WorkflowDetailContent() {
             <Typography variant="h4" className={classes.title}>
               {name}
             </Typography>
-            <AvailabilityBadge available={workflow.isValid()} />
+            <AvailabilityBadge available={workflow.isRunnable()} />
+            {workflow.hasValidationWarning() && (
+              <StateBadge tone="warning" label="Validation warning" />
+            )}
             {isGitOpsManaged(workflow) ? (
               <StateBadge tone="info" label="GitOps" />
             ) : (
@@ -411,9 +414,10 @@ function WorkflowDetailContent() {
           </Box>
         </Box>
 
-        {!workflow.isValid() && (
+        {workflow.hasValidationWarning() && (
           <Alert severity="warning" style={{ marginTop: theme.spacing(2) }}>
-            This workflow is marked invalid by muster.
+            muster's validator flagged this workflow's definition. It can still
+            be run — this is a non-blocking warning, not an availability state.
             {validationErrors.length > 0 && (
               <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
                 {validationErrors.map(err => (
@@ -429,7 +433,7 @@ function WorkflowDetailContent() {
           <SectionHeader
             icon={<BarChart />}
             title="Statistics"
-            description="How often this workflow runs and how reliably, over a recent sample of executions."
+            description="How often this workflow runs and how reliably, over a recent sample of executions recorded by muster's workflow engine (engine- and agent-driven runs). A run launched from the tool explorer is not recorded here; its result is shown inline there."
           />
           <WorkflowStatsPanel name={name} installation={installation} />
         </Box>
@@ -549,7 +553,7 @@ function WorkflowDetailContent() {
           <SectionHeader
             icon={<History />}
             title="Executions"
-            description="Past runs of this workflow and their per-step results, from the muster aggregator."
+            description="Engine- and agent-driven runs of this workflow and their per-step results, as recorded by muster's aggregator. Runs launched from the tool explorer execute the aggregated tool directly and do not appear here."
           />
           <Grid container>
             <Grid item xs={12} md={4} className={classes.historyContainer}>

@@ -37,7 +37,7 @@ import { isGitOpsManaged } from '../../lib/gitops';
 import { toolExplorerRouteRef, workflowDetailRouteRef } from '../../routes';
 import { CreateWorkflowButton } from './WorkflowMutationActions';
 
-type AvailFilter = 'all' | 'available' | 'unavailable';
+type StatusFilter = 'all' | 'valid' | 'warnings';
 
 const useStyles = makeStyles((theme: Theme) => ({
   // Fixed filter bar above the scrolling table (mockup's `border-b py-3`).
@@ -167,7 +167,7 @@ export function WorkflowsListPage() {
   const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
 
   const [query, setQuery] = useState('');
-  const [avail, setAvail] = useState<AvailFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const detailHref = (workflow: MusterWorkflow) => {
     const base = workflowDetailLink?.({ name: workflow.getName() }) ?? '#';
@@ -191,16 +191,16 @@ export function WorkflowsListPage() {
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return workflows.filter(w => {
-      const available = w.isValid();
-      if (avail === 'available' && !available) return false;
-      if (avail === 'unavailable' && available) return false;
+      const valid = w.isValid();
+      if (statusFilter === 'valid' && !valid) return false;
+      if (statusFilter === 'warnings' && valid) return false;
       if (!needle) return true;
       return (
         w.getName().toLowerCase().includes(needle) ||
         (w.getDescription() ?? '').toLowerCase().includes(needle)
       );
     });
-  }, [workflows, query, avail]);
+  }, [workflows, query, statusFilter]);
 
   if (isLoading) {
     return (
@@ -249,12 +249,12 @@ export function WorkflowsListPage() {
           className={classes.availSelect}
           variant="outlined"
           margin="dense"
-          value={avail}
-          onChange={e => setAvail(e.target.value as AvailFilter)}
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value as StatusFilter)}
         >
           <MenuItem value="all">All workflows</MenuItem>
-          <MenuItem value="available">Available only</MenuItem>
-          <MenuItem value="unavailable">Unavailable only</MenuItem>
+          <MenuItem value="valid">Valid only</MenuItem>
+          <MenuItem value="warnings">Validation warnings</MenuItem>
         </Select>
         <Typography variant="caption" className={classes.showing}>
           Showing {filtered.length} of {workflows.length}
@@ -308,7 +308,12 @@ export function WorkflowsListPage() {
                     {w.getStepCount()}
                   </TableCell>
                   <TableCell>
-                    <AvailabilityBadge available={w.isValid()} />
+                    <Box display="flex" flexWrap="wrap" gridGap={4}>
+                      <AvailabilityBadge available={w.isRunnable()} />
+                      {w.hasValidationWarning() && (
+                        <StateBadge tone="warning" label="Validation warning" />
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     {isGitOpsManaged(w) ? (

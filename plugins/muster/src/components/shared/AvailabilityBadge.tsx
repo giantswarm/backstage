@@ -30,8 +30,10 @@ export interface AvailabilityBadgeProps {
  * Availability as muster reports it for the current caller, ported from the
  * mockups' `availability-badge.tsx`: an emerald "Available" (check) or a muted
  * "Unavailable" (minus) outlined pill. Shared by the Workflows table and the
- * workflow detail header so the two never drift. In the CRD-driven port,
- * availability maps onto `.status.valid` (a valid workflow is runnable).
+ * workflow detail header so the two never drift. Availability is runnability
+ * (`MusterWorkflow.isRunnable()`), decoupled from the validator's
+ * `.status.valid` per ADR D2: a validator complaint surfaces separately as a
+ * non-blocking "Validation warning", not as an "Unavailable" state.
  */
 export function AvailabilityBadge({ available }: AvailabilityBadgeProps) {
   const classes = useStyles();
