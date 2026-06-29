@@ -5,13 +5,20 @@ import {
   FetchApi,
 } from '@backstage/core-plugin-api';
 import {
+  FilterToolsOptions,
+  FilterToolsResponse,
   ListExecutionsOptions,
+  ListToolsResponse,
+  McpServerListResponse,
   MusterApi,
   MusterAuthProvidersApi,
+  MusterInstallationsResponse,
+  ToolDetail,
   WorkflowExecution,
   WorkflowExecutionListResponse,
   WorkflowGetResponse,
   WorkflowListResponse,
+  WorkflowStats,
 } from './types';
 
 export const musterApiRef = createApiRef<MusterApi>({
@@ -43,6 +50,10 @@ export class MusterApiClient implements MusterApi {
     this.authProvidersApi = options.authProvidersApi;
   }
 
+  async listInstallations(): Promise<MusterInstallationsResponse> {
+    return this.get<MusterInstallationsResponse>('/installations');
+  }
+
   async listWorkflows(): Promise<WorkflowListResponse> {
     return this.get<WorkflowListResponse>('/workflows');
   }
@@ -72,24 +83,128 @@ export class MusterApiClient implements MusterApi {
     const query = searchParams.toString();
     return this.get<WorkflowExecutionListResponse>(
       `/executions${query ? `?${query}` : ''}`,
+      options.installation,
     );
   }
 
-  async getExecution(executionId: string): Promise<WorkflowExecution> {
+  async getExecution(
+    executionId: string,
+    installation?: string,
+  ): Promise<WorkflowExecution> {
     return this.get<WorkflowExecution>(
       `/executions/${encodeURIComponent(executionId)}`,
+      installation,
     );
+  }
+
+  async getWorkflowStats(
+    name: string,
+    installation?: string,
+  ): Promise<WorkflowStats> {
+    return this.get<WorkflowStats>(
+      `/workflows/${encodeURIComponent(name)}/stats`,
+      installation,
+    );
+  }
+
+  async listServers(installation?: string): Promise<McpServerListResponse> {
+    return this.get<McpServerListResponse>('/servers', installation);
+  }
+
+  async filterTools(
+    options: FilterToolsOptions = {},
+  ): Promise<FilterToolsResponse> {
+    const { installation, pattern, query, includeSchema, limit, offset } =
+      options;
+    const searchParams = new URLSearchParams();
+    if (pattern) {
+      searchParams.set('pattern', pattern);
+    }
+    if (query) {
+      searchParams.set('query', query);
+    }
+    if (includeSchema !== undefined) {
+      searchParams.set('include_schema', String(includeSchema));
+    }
+    if (limit !== undefined) {
+      searchParams.set('limit', String(limit));
+    }
+    if (offset !== undefined) {
+      searchParams.set('offset', String(offset));
+    }
+    const qs = searchParams.toString();
+    return this.get<FilterToolsResponse>(
+      `/tools/filter${qs ? `?${qs}` : ''}`,
+      installation,
+    );
+  }
+
+  async listTools(installation?: string): Promise<ListToolsResponse> {
+    return this.get<ListToolsResponse>('/tools', installation);
+  }
+
+  async listCoreTools(installation?: string): Promise<FilterToolsResponse> {
+    return this.get<FilterToolsResponse>(
+      '/core-tools?include_schema=true',
+      installation,
+    );
+  }
+
+  async describeTool(name: string, installation?: string): Promise<ToolDetail> {
+    return this.get<ToolDetail>(
+      `/tools/${encodeURIComponent(name)}`,
+      installation,
+    );
+  }
+
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    installation?: string,
+  ): Promise<unknown> {
+    return this.post<unknown>('/call', { name, arguments: args }, installation);
   }
 
   /**
-   * The muster server's `authProvider` from the `aiChat.mcp` entry selected
-   * by `muster.serverName` (default `muster`) -- the same resolution the
-   * muster-backend proxy applies. When set, requests carry the user's OAuth
-   * token for that provider.
+   * Resolve (and if needed mint, via the OAuth popup) a token for the target
+   * installation's muster auth provider. Unlike getAuthHeaders this surfaces
+   * success/failure so the UI can report whether sign-in worked.
    */
-  private resolveAuthProvider(): string | undefined {
+  async signIn(installation?: string): Promise<boolean> {
+    const authProvider = this.resolveAuthProvider(installation);
+    if (!authProvider) {
+      return true;
+    }
+    if (!this.authProvidersApi) {
+      return false;
+    }
+    const credentials =
+      await this.authProvidersApi.getCredentials(authProvider);
+    return Boolean(credentials.token);
+  }
+
+  /**
+   * The muster server's `authProvider`. Resolved per installation from
+   * `muster.installations[]` (the same config the muster-backend proxy reads),
+   * falling back to the legacy single-installation `aiChat.mcp` entry selected
+   * by `muster.serverName` (default `muster`). When set, requests carry the
+   * user's OAuth token for that provider.
+   */
+  private resolveAuthProvider(installation?: string): string | undefined {
     if (!this.configApi) {
       return undefined;
+    }
+    if (installation) {
+      const installations = this.configApi.getOptionalConfigArray(
+        'muster.installations',
+      );
+      const match = installations?.find(
+        i => i.getOptionalString('name') === installation,
+      );
+      const authProvider = match?.getOptionalString('authProvider');
+      if (authProvider) {
+        return authProvider;
+      }
     }
     const serverName =
       this.configApi.getOptionalString('muster.serverName') ?? 'muster';
@@ -100,8 +215,10 @@ export class MusterApiClient implements MusterApi {
     return mcpConfig?.getOptionalString('authProvider');
   }
 
-  private async getAuthHeaders(): Promise<Record<string, string>> {
-    const authProvider = this.resolveAuthProvider();
+  private async getAuthHeaders(
+    installation?: string,
+  ): Promise<Record<string, string>> {
+    const authProvider = this.resolveAuthProvider(installation);
     if (!authProvider || !this.authProvidersApi) {
       return {};
     }
@@ -113,13 +230,50 @@ export class MusterApiClient implements MusterApi {
     return { [MUSTER_AUTH_HEADER]: credentials.token };
   }
 
-  private async get<T>(path: string): Promise<T> {
-    const baseUrl = await this.discoveryApi.getBaseUrl('muster');
-    const headers = await this.getAuthHeaders();
-    const response = await this.fetchApi.fetch(`${baseUrl}${path}`, {
-      headers,
-    });
+  /**
+   * GET a muster-backend route. `installation` selects the target muster when
+   * several are configured (appended as `?installation=`); it is preserved
+   * alongside any query string already present in `path`.
+   */
+  private async get<T>(path: string, installation?: string): Promise<T> {
+    const url = await this.buildUrl(path, installation);
+    const headers = await this.getAuthHeaders(installation);
+    const response = await this.fetchApi.fetch(url, { headers });
+    return this.handleResponse<T>(response);
+  }
 
+  /**
+   * POST a muster-backend route. Used for actions that have side effects
+   * (workflow runs, tool calls).
+   */
+  private async post<T>(
+    path: string,
+    body: unknown,
+    installation?: string,
+  ): Promise<T> {
+    const url = await this.buildUrl(path, installation);
+    const headers = {
+      ...(await this.getAuthHeaders(installation)),
+      'Content-Type': 'application/json',
+    };
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse<T>(response);
+  }
+
+  private async buildUrl(path: string, installation?: string): Promise<string> {
+    const baseUrl = await this.discoveryApi.getBaseUrl('muster');
+    const url = new URL(`${baseUrl}${path}`);
+    if (installation) {
+      url.searchParams.set('installation', installation);
+    }
+    return url.toString();
+  }
+
+  private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const message =

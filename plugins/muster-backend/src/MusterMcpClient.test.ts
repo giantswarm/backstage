@@ -1,6 +1,10 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import type { MCPClient } from '@ai-sdk/mcp';
-import { MusterMcpClient, readMusterServerFromConfig } from './MusterMcpClient';
+import {
+  MusterMcpClient,
+  readMusterInstallationsFromConfig,
+  readMusterServerFromConfig,
+} from './MusterMcpClient';
 
 describe('readMusterServerFromConfig', () => {
   const logger = mockServices.logger.mock();
@@ -110,6 +114,59 @@ describe('readMusterServerFromConfig', () => {
   });
 });
 
+describe('readMusterInstallationsFromConfig', () => {
+  const logger = mockServices.logger.mock();
+
+  it('returns an empty map without any config', () => {
+    const config = mockServices.rootConfig({ data: {} });
+    expect(readMusterInstallationsFromConfig(config, logger).size).toBe(0);
+  });
+
+  it('reads explicit installations', () => {
+    const config = mockServices.rootConfig({
+      data: {
+        muster: {
+          installations: [
+            { name: 'gazelle', url: 'https://muster.gazelle/mcp' },
+            {
+              name: 'graveler',
+              url: 'https://muster.graveler/mcp',
+              authProvider: 'mcp-muster',
+            },
+          ],
+        },
+      },
+    });
+
+    const installations = readMusterInstallationsFromConfig(config, logger);
+    expect([...installations.keys()]).toEqual(['gazelle', 'graveler']);
+    expect(installations.get('gazelle')).toEqual({
+      name: 'gazelle',
+      url: 'https://muster.gazelle/mcp',
+      authProvider: undefined,
+      headers: undefined,
+    });
+    expect(installations.get('graveler')).toMatchObject({
+      authProvider: 'mcp-muster',
+    });
+  });
+
+  it('falls back to the legacy aiChat.mcp entry', () => {
+    const config = mockServices.rootConfig({
+      data: {
+        aiChat: { mcp: [{ name: 'muster', url: 'http://muster/mcp' }] },
+      },
+    });
+
+    const installations = readMusterInstallationsFromConfig(config, logger);
+    expect([...installations.keys()]).toEqual(['muster']);
+    expect(installations.get('muster')).toMatchObject({
+      name: 'muster',
+      url: 'http://muster/mcp',
+    });
+  });
+});
+
 describe('MusterMcpClient', () => {
   const logger = mockServices.logger.mock();
 
@@ -128,7 +185,7 @@ describe('MusterMcpClient', () => {
       Promise.resolve(buildMcpClient(execute)),
     );
     const client = new MusterMcpClient(
-      { url: 'http://muster/mcp' },
+      { name: 'muster', url: 'http://muster/mcp' },
       logger,
       factory,
     );
@@ -164,6 +221,45 @@ describe('MusterMcpClient', () => {
     expect(execute).toHaveBeenCalledWith(
       { name: 'core_workflow_list', arguments: {} },
       expect.objectContaining({ toolCallId: expect.any(String) }),
+    );
+  });
+
+  it('invokes discovery meta-tools directly with a single unwrap', async () => {
+    // list_tools returns its payload as one JSON text block (no call_tool
+    // envelope), so parseResult must stop after a single unwrap.
+    const execute = jest.fn().mockResolvedValue({
+      content: [
+        {
+          type: 'text',
+          text: '{"tools":[{"name":"x_kubernetes_get"}],"servers_requiring_auth":[]}',
+        },
+      ],
+      isError: false,
+    });
+    const { client } = buildClient(execute);
+
+    await expect(client.listTools()).resolves.toEqual({
+      tools: [{ name: 'x_kubernetes_get' }],
+      servers_requiring_auth: [],
+    });
+    expect(execute).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ toolCallId: 'muster-backend-list_tools' }),
+    );
+  });
+
+  it('passes describe_tool the tool name', async () => {
+    const execute = jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text: '{"name":"x_kubernetes_get"}' }],
+      isError: false,
+    });
+    const { client } = buildClient(execute);
+
+    await client.describeTool('x_kubernetes_get');
+
+    expect(execute).toHaveBeenCalledWith(
+      { name: 'x_kubernetes_get' },
+      expect.objectContaining({ toolCallId: 'muster-backend-describe_tool' }),
     );
   });
 
