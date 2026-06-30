@@ -275,14 +275,22 @@ export function AdHocWorkflowDialog({
   };
 
   const parsed = (): Record<string, unknown> | undefined => {
+    let obj: unknown;
     try {
-      const obj = yaml.load(value) as Record<string, unknown>;
-      setError(undefined);
-      return obj;
+      obj = yaml.load(value);
     } catch (e) {
       setError(`Invalid YAML: ${(e as Error).message}`);
       return undefined;
     }
+    // yaml.load returns undefined for empty/comment-only input and a scalar or
+    // array for non-mapping documents -- none of which is a valid workflow
+    // definition. Reject them explicitly so the editor doesn't silently no-op.
+    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+      setError('Workflow definition must be a YAML mapping.');
+      return undefined;
+    }
+    setError(undefined);
+    return obj as Record<string, unknown>;
   };
 
   const validate = async () => {
