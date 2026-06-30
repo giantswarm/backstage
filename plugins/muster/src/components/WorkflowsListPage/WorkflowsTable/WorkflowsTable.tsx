@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Table } from '@backstage/core-components';
+import { MTableToolbar } from '@material-table/core';
 import { Box, Typography } from '@material-ui/core';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import useDebounce from 'react-use/esm/useDebounce';
@@ -53,17 +54,23 @@ export const WorkflowsTable = () => {
     [columns, saveVisibleColumns],
   );
 
-  // Render the "Create workflow" button as a toolbar free action, next to the
-  // column-selection button. Memoized so the 30s data refetch (which re-renders
-  // this component with a new `data` array) does not remount the button and
-  // close its open dialog.
-  const ActionComponent = useMemo(
-    () => () => (
-      <Box display="flex" alignItems="center" mr={2} style={{ marginTop: 10 }}>
-        <CreateWorkflowButton
-          installation={activeInstallation}
-          authenticated={authenticated}
-        />
+  // Render the standard toolbar (title, search, column-selection button) plus
+  // the "Create workflow" button beside it. Memoized so the 30s data refetch
+  // (which re-renders this component with a new `data` array) does not remount
+  // the toolbar -- which would drop focus from the search box and close the
+  // Create dialog.
+  const ToolbarComponent = useMemo(
+    () => (toolbarProps: React.ComponentProps<typeof MTableToolbar>) => (
+      <Box display="flex" alignItems="center">
+        <Box flexGrow={1}>
+          <MTableToolbar {...toolbarProps} />
+        </Box>
+        <Box flexShrink={0} mr={2}>
+          <CreateWorkflowButton
+            installation={activeInstallation}
+            authenticated={authenticated}
+          />
+        </Box>
       </Box>
     ),
     [activeInstallation, authenticated],
@@ -78,16 +85,8 @@ export const WorkflowsTable = () => {
         emptyRowsWhenPaging: false,
         columnsButton: true,
       }}
-      actions={[
-        {
-          // The icon is unused — `components.Action` renders the button instead.
-          icon: () => <></>,
-          isFreeAction: true,
-          onClick: () => {},
-        },
-      ]}
       components={{
-        Action: ActionComponent,
+        Toolbar: ToolbarComponent,
       }}
       data={filteredData}
       style={{ width: '100%' }}

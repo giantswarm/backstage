@@ -4,8 +4,14 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Box, Typography } from '@material-ui/core';
 import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
 import { workflowDetailRouteRef } from '../../../routes';
+import { matchesQuery } from '../../../lib/workflowSearch';
 import { AvailabilityBadge, StateBadge } from '../../shared';
 import { WorkflowRow } from '../WorkflowsDataProvider';
+
+const SOURCE_LABELS: Record<WorkflowRow['source'], string> = {
+  gitops: 'gitops',
+  manual: 'manually added',
+};
 
 export const WorkflowColumns = {
   name: 'name',
@@ -69,14 +75,15 @@ export const getInitialColumns = ({
       defaultSort: 'asc',
       render: row => <WorkflowNameCell row={row} />,
       // The description is shown under the name, so keep it searchable here.
+      // Token-boundary matching ("dex" must not match "index"); see
+      // workflowSearch.ts.
       customFilterAndSearch: (query, row) =>
-        `${row.name} ${row.description}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
+        matchesQuery(query, `${row.name} ${row.description}`),
     },
     {
       title: 'Namespace',
       field: WorkflowColumns.namespace,
+      render: row => <>{row.namespace || '-'}</>,
     },
     {
       title: 'Steps',
@@ -100,6 +107,10 @@ export const getInitialColumns = ({
     {
       title: 'Source',
       field: WorkflowColumns.source,
+      // Default search matches the raw `row.source` ("gitops"/"manual"); match
+      // the displayed label instead so "manually added" / "gitops" find rows.
+      customFilterAndSearch: (query, row) =>
+        SOURCE_LABELS[row.source].includes(query.toLowerCase()),
       render: row =>
         row.source === 'gitops' ? (
           <StateBadge tone="info" label="GitOps" />
