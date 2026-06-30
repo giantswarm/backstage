@@ -15,3 +15,4 @@ export * from './NotAvailable';
 export * from './SingleSelect';
 export * from './StructuredMetadataList';
 export * from './YamlEditor';
+export * from './YamlEditorFormField';

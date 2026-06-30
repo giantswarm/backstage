@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import yaml from 'js-yaml';
 import {
   Box,
   Button,
@@ -8,7 +9,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  TextField,
+  IconButton,
   Typography,
   makeStyles,
   Theme,
@@ -17,8 +18,10 @@ import GitHub from '@material-ui/icons/GitHub';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import Add from '@material-ui/icons/Add';
+import Close from '@material-ui/icons/Close';
 import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
+import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
 import {
@@ -54,11 +57,19 @@ const useStyles = makeStyles((theme: Theme) => ({
     border: `1px solid ${theme.palette.divider}`,
     backgroundColor: theme.palette.action.hover,
   },
-  editField: {
-    '& textarea': {
-      fontFamily: 'monospace',
-      fontSize: 12,
-    },
+  titleBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  closeButton: {
+    color: theme.palette.grey[500],
+  },
+  statusArea: {
+    minHeight: theme.spacing(8),
+    maxHeight: theme.spacing(16),
+    overflowY: 'auto',
+    marginTop: theme.spacing(1),
   },
   error: {
     color: theme.palette.error.main,
@@ -254,10 +265,9 @@ export function AdHocWorkflowDialog({
   // Seed the editor when the dialog opens.
   const seed = () => {
     setValue(
-      JSON.stringify(
+      yaml.dump(
         workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE,
-        null,
-        2,
+        { lineWidth: 120, noRefs: true },
       ),
     );
     setError(undefined);
@@ -265,14 +275,22 @@ export function AdHocWorkflowDialog({
   };
 
   const parsed = (): Record<string, unknown> | undefined => {
+    let obj: unknown;
     try {
-      const obj = JSON.parse(value);
-      setError(undefined);
-      return obj;
+      obj = yaml.load(value);
     } catch (e) {
-      setError(`Invalid JSON: ${(e as Error).message}`);
+      setError(`Invalid YAML: ${(e as Error).message}`);
       return undefined;
     }
+    // yaml.load returns undefined for empty/comment-only input and a scalar or
+    // array for non-mapping documents -- none of which is a valid workflow
+    // definition. Reject them explicitly so the editor doesn't silently no-op.
+    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+      setError('Workflow definition must be a YAML mapping.');
+      return undefined;
+    }
+    setError(undefined);
+    return obj as Record<string, unknown>;
   };
 
   const validate = async () => {
@@ -321,10 +339,19 @@ export function AdHocWorkflowDialog({
       fullWidth
       TransitionProps={{ onEnter: seed }}
     >
-      <DialogTitle>
-        {isEdit
-          ? `Edit ad-hoc workflow — ${workflow?.getName()}`
-          : 'Create workflow'}
+      <DialogTitle disableTypography className={classes.titleBar}>
+        <Typography variant="h6">
+          {isEdit
+            ? `Edit ad-hoc workflow — ${workflow?.getName()}`
+            : 'Create workflow'}
+        </Typography>
+        <IconButton
+          aria-label="close"
+          className={classes.closeButton}
+          onClick={onClose}
+        >
+          <Close />
+        </IconButton>
       </DialogTitle>
       <DialogContent>
         <DialogContentText>
@@ -332,34 +359,34 @@ export function AdHocWorkflowDialog({
           description/args, and steps). Validate before saving; both run as live
           mutations against installation <code>{target}</code>.
         </DialogContentText>
-        <TextField
-          className={classes.editField}
-          multiline
-          minRows={16}
-          fullWidth
-          variant="outlined"
+        <YamlEditorFormField
+          label="Workflow definition (YAML)"
           value={value}
-          onChange={e => setValue(e.target.value)}
+          onChange={setValue}
+          height={360}
+          maxHeight={360}
+          error={Boolean(error)}
         />
-        {error && (
-          <Typography variant="body2" className={classes.error}>
-            {error}
-          </Typography>
-        )}
-        {message && (
-          <Typography variant="body2" className={classes.ok}>
-            {message}
-          </Typography>
-        )}
+        <Box className={classes.statusArea}>
+          {error && (
+            <Typography variant="body2" className={classes.error}>
+              {error}
+            </Typography>
+          )}
+          {message && (
+            <Typography variant="body2" className={classes.ok}>
+              {message}
+            </Typography>
+          )}
+        </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
         <Button onClick={validate} disabled={busy}>
           Validate
         </Button>
         <Button
           onClick={save}
-          color="secondary"
+          color="primary"
           variant="contained"
           disabled={busy}
           startIcon={busy ? <CircularProgress size={14} /> : undefined}

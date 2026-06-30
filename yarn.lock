@@ -11815,6 +11815,7 @@ __metadata:
     codemirror-json-schema: "npm:^0.8.1"
     date-fns: "npm:^4.1.0"
     date-fns-tz: "npm:^3.2.0"
+    json-schema: "npm:^0.4.0"
     lodash: "npm:^4.17.21"
     qs: "npm:^6.14.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
