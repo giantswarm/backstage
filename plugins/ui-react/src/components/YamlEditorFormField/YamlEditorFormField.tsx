@@ -7,8 +7,8 @@ import {
   useTheme,
 } from '@material-ui/core';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
-import { YamlEditor } from '@giantswarm/backstage-plugin-ui-react';
 import { JSONSchema7 } from 'json-schema';
+import { YamlEditor } from '../YamlEditor';
 
 type YamlEditorFormFieldProps = {
   id?: string;
