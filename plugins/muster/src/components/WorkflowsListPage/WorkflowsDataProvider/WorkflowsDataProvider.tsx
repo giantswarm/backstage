@@ -2,7 +2,11 @@ import { createContext, ReactNode, useContext, useMemo } from 'react';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
 import { useMusterInstance } from '../../MusterInstanceProvider';
 import { isGitOpsManaged } from '../../../lib/gitops';
-import { NamespaceFilter, StatusFilter } from '../filters/filters';
+import {
+  NamespaceFilter,
+  SourceFilter,
+  StatusFilter,
+} from '../filters/filters';
 
 /**
  * A flattened, plain-object view of a `MusterWorkflow` CR. The shared
@@ -26,6 +30,7 @@ export type WorkflowRow = {
 export type DefaultWorkflowFilters = {
   status?: StatusFilter;
   namespace?: NamespaceFilter;
+  source?: SourceFilter;
 };
 
 export type WorkflowsData = FiltersData<DefaultWorkflowFilters> & {

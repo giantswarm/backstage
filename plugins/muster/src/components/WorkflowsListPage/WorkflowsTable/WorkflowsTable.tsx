@@ -84,6 +84,10 @@ export const WorkflowsTable = () => {
         pageSizeOptions: [10, 25, 50, 100],
         emptyRowsWhenPaging: false,
         columnsButton: true,
+        // Fixed layout makes cells honor the column widths so the Name column's
+        // CSS ellipsis truncates responsively instead of the column widening to
+        // fit a long name.
+        tableLayout: 'fixed',
       }}
       components={{
         Toolbar: ToolbarComponent,

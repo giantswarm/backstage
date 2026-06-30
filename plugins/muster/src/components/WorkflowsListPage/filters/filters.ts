@@ -42,3 +42,19 @@ export class NamespaceFilter implements FacetFilter {
     return this.values;
   }
 }
+
+export class SourceFilter implements FacetFilter {
+  constructor(readonly values: string[]) {}
+
+  filter(item: WorkflowRow): boolean {
+    if (this.values.length === 0) {
+      return true;
+    }
+
+    return this.values.includes(item.source);
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
