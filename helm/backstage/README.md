@@ -8,7 +8,7 @@ Backstage app provided by Giant Swarm
 
 | Repository | Name | Version |
 |------------|------|---------|
-| oci://registry-1.docker.io/bitnamicharts | common | 2.40.0 |
+| oci://registry-1.docker.io/bitnamicharts | common | 2.41.0 |
 
 ## Values
 
