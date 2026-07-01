@@ -39,6 +39,29 @@ describe('ClusterAccessStatusStore', () => {
     ]);
   });
 
+  it('removes an installation and notifies, but ignores an unknown one', async () => {
+    const store = ClusterAccessStatusStore.create();
+    store.recordHealthy('golem');
+    store.recordHealthy('alpha');
+
+    const snapshots: ClusterAccessStatusEntry[][] = [];
+    const subscription = store.status$().subscribe(s => snapshots.push(s));
+    await flush();
+    const baseline = snapshots.length;
+
+    store.remove('golem');
+    expect(store.getSnapshot()).toEqual([
+      expect.objectContaining({ installation: 'alpha', state: 'healthy' }),
+    ]);
+    expect(snapshots.length).toBe(baseline + 1);
+
+    // Not tracked -- no change, no churn.
+    store.remove('unknown');
+    expect(snapshots.length).toBe(baseline + 1);
+
+    subscription.unsubscribe();
+  });
+
   it('replays the latest snapshot to new subscribers', async () => {
     const store = ClusterAccessStatusStore.create();
     store.recordHealthy('golem');

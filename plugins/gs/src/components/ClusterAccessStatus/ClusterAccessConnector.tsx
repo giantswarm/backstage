@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
+import { useApi, SessionState } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
 import { ClusterTokenError } from '../../apis/auth/DefaultAuthConnector';
@@ -110,7 +110,12 @@ export function classifyProbeError(
  * cluster-access status with every installation so the status element is
  * visible immediately, then probing each cluster's apiserver to surface real
  * health. Only broker-covered installations are probed, so this never triggers
- * a per-cluster login popup. Renders nothing.
+ * a per-cluster login popup.
+ *
+ * Non-broker installations (per-cluster OIDC popup logins) can't be probed for
+ * the same reason, so they are instead surfaced by mirroring their auth session
+ * state: they appear while the user is signed in and drop off on sign-out.
+ * Renders nothing.
  */
 export function ClusterAccessConnector() {
   const kubernetesApi = useApi(kubernetesApiRef);
@@ -206,6 +211,46 @@ export function ClusterAccessConnector() {
       clearInterval(interval);
     };
   }, [kubernetesApi, authProvidersApi, statusApi]);
+
+  // Non-broker installations can't be probed proactively: a proxy call on one
+  // without a live session would pop up a per-cluster login. So instead of
+  // probing apiserver health, we mirror their auth session state -- an
+  // installation the user is signed in to shows up as accessible and drops off
+  // the widget when signed out. This is the "different logic" from the broker
+  // path above, which probes real apiserver health.
+  useEffect(() => {
+    const kubernetesAuthApis = authProvidersApi.getKubernetesAuthApis();
+    const brokerCovered = new Set(
+      authProvidersApi.getBrokerCoveredInstallations(),
+    );
+    // getProviders() already excludes broker-covered installations; the
+    // kubernetesAuthApis check drops MCP providers, and the brokerCovered guard
+    // is belt-and-suspenders so the two paths never both own an installation.
+    const nonBrokerProviders = authProvidersApi
+      .getProviders()
+      .filter(
+        provider =>
+          Boolean(kubernetesAuthApis[provider.providerName]) &&
+          !brokerCovered.has(provider.installationName),
+      );
+
+    const subscriptions = nonBrokerProviders.map(provider =>
+      kubernetesAuthApis[provider.providerName]
+        .sessionState$()
+        .subscribe(sessionState => {
+          if (sessionState === SessionState.SignedIn) {
+            statusApi.recordHealthy(provider.installationName);
+          } else {
+            // SignedOut -- no live session, so it is no longer accessed.
+            statusApi.remove(provider.installationName);
+          }
+        }),
+    );
+
+    return () => {
+      subscriptions.forEach(subscription => subscription.unsubscribe());
+    };
+  }, [authProvidersApi, statusApi]);
 
   return null;
 }

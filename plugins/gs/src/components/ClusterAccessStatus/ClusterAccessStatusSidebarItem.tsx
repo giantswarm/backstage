@@ -5,10 +5,6 @@ import {
   Box,
   Button,
   Divider,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Popover,
   Typography,
   makeStyles,
@@ -36,13 +32,32 @@ const STATE_LABELS: Record<ClusterAccessState, string> = {
   'session-expired': 'Session expired',
 };
 
+// Lowercase wording used in the header count summary ("1 degraded · 4 healthy").
+const SUMMARY_LABELS: Record<ClusterAccessState, string> = {
+  connecting: 'connecting',
+  healthy: 'healthy',
+  degraded: 'degraded',
+  'session-expired': 'session expired',
+};
+
+// Severity order shared by the summary and the row list -- worst first.
+const STATE_ORDER: ClusterAccessState[] = [
+  'session-expired',
+  'degraded',
+  'connecting',
+  'healthy',
+];
+
 const useStyles = makeStyles(theme => ({
   popover: {
     width: 340,
     maxWidth: '90vw',
   },
   header: {
-    padding: theme.spacing(2, 2, 1, 2),
+    padding: theme.spacing(1.5, 2, 1, 2),
+  },
+  summary: {
+    marginTop: theme.spacing(0.25),
   },
   badge: {
     position: 'absolute',
@@ -50,29 +65,75 @@ const useStyles = makeStyles(theme => ({
     bottom: -3,
     fontSize: 11,
   },
+  list: {
+    padding: theme.spacing(0.5, 0),
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(0.5, 2),
+  },
+  name: {
+    flexShrink: 0,
+  },
+  reason: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    // The caption is a smaller font than the name; nudge it down so its
+    // baseline lines up with the installation name instead of sitting high.
+    position: 'relative',
+    top: 2,
+  },
   actions: {
     padding: theme.spacing(1, 2, 2, 2),
   },
 }));
 
 /**
- * Computes the worst (most actionable) state across all tracked clusters.
- * session-expired wins over degraded, because an expired main session is the
- * one thing the user can immediately fix. `connecting` ranks above plain
- * healthy so the badge reflects in-flight probes on startup, but below any
- * real problem.
+ * Computes the worst (most actionable) state across all tracked clusters, using
+ * the shared {@link STATE_ORDER} severity ranking: session-expired wins over
+ * degraded, because an expired main session is the one thing the user can
+ * immediately fix; `connecting` ranks above plain healthy so the badge reflects
+ * in-flight probes on startup, but below any real problem. No entries → healthy.
  */
 function overallState(entries: ClusterAccessStatusEntry[]): ClusterAccessState {
-  if (entries.some(e => e.state === 'session-expired')) {
-    return 'session-expired';
+  return (
+    STATE_ORDER.find(state => entries.some(e => e.state === state)) ?? 'healthy'
+  );
+}
+
+type SummaryPart = { key: ClusterAccessState; label: string; muted: boolean };
+
+/**
+ * Compact, problem-first count of states for the header. Collapses to a single
+ * "All N healthy" part when nothing needs attention; otherwise lists each
+ * non-empty state worst-first ("1 degraded · 4 healthy").
+ */
+export function summarize(entries: ClusterAccessStatusEntry[]): SummaryPart[] {
+  const counts: Record<ClusterAccessState, number> = {
+    'session-expired': 0,
+    degraded: 0,
+    connecting: 0,
+    healthy: 0,
+  };
+  for (const entry of entries) {
+    counts[entry.state]++;
   }
-  if (entries.some(e => e.state === 'degraded')) {
-    return 'degraded';
+
+  const total = entries.length;
+  if (counts.healthy === total) {
+    return [{ key: 'healthy', label: `All ${total} healthy`, muted: true }];
   }
-  if (entries.some(e => e.state === 'connecting')) {
-    return 'connecting';
-  }
-  return 'healthy';
+
+  return STATE_ORDER.filter(state => counts[state] > 0).map(state => ({
+    key: state,
+    label: `${counts[state]} ${SUMMARY_LABELS[state]}`,
+    muted: state === 'healthy',
+  }));
 }
 
 function StatusDot({ color }: { color: string }) {
@@ -104,6 +165,7 @@ export function ClusterAccessStatusSidebarItem() {
   }, [statusApi]);
 
   const state = useMemo(() => overallState(entries), [entries]);
+  const summary = useMemo(() => summarize(entries), [entries]);
   const sessionExpired = state === 'session-expired';
   const color = STATE_COLORS[state];
 
@@ -138,24 +200,52 @@ export function ClusterAccessStatusSidebarItem() {
       >
         <div className={classes.header}>
           <Typography variant="subtitle1">Cluster access</Typography>
-          <Typography variant="body2" color="textSecondary">
-            {STATE_LABELS[state]}
+          <Typography
+            variant="body2"
+            color="textSecondary"
+            className={classes.summary}
+          >
+            {summary.map((part, index) => (
+              <span key={part.key}>
+                {index > 0 && ' · '}
+                <span
+                  style={
+                    part.muted ? undefined : { color: STATE_COLORS[part.key] }
+                  }
+                >
+                  {part.label}
+                </span>
+              </span>
+            ))}
           </Typography>
         </div>
         <Divider />
-        <List dense>
-          {entries.map(entry => (
-            <ListItem key={entry.installation}>
-              <ListItemIcon style={{ minWidth: 32 }}>
+        <div className={classes.list}>
+          {entries.map(entry => {
+            const reason =
+              entry.state === 'degraded' || entry.state === 'session-expired'
+                ? (entry.reason ?? STATE_LABELS[entry.state])
+                : undefined;
+            return (
+              <div key={entry.installation} className={classes.row}>
                 <StatusDot color={STATE_COLORS[entry.state]} />
-              </ListItemIcon>
-              <ListItemText
-                primary={entry.installation}
-                secondary={entry.reason ?? STATE_LABELS[entry.state]}
-              />
-            </ListItem>
-          ))}
-        </List>
+                <Typography variant="body2" noWrap className={classes.name}>
+                  {entry.installation}
+                </Typography>
+                {reason && (
+                  <Typography
+                    variant="caption"
+                    color="textSecondary"
+                    className={classes.reason}
+                    title={reason}
+                  >
+                    {reason}
+                  </Typography>
+                )}
+              </div>
+            );
+          })}
+        </div>
         {sessionExpired && (
           <>
             <Divider />

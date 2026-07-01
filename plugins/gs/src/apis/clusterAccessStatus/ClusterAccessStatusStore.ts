@@ -39,6 +39,15 @@ export class ClusterAccessStatusStore implements ClusterAccessStatusApi {
     this.record(installation, 'session-expired', reason);
   }
 
+  remove(installation: string): void {
+    if (!this.entries.delete(installation)) {
+      // Not tracked -- nothing changed, don't churn subscribers.
+      return;
+    }
+    const snapshot = this.getSnapshot();
+    this.subscribers.forEach(notify => notify(snapshot));
+  }
+
   getSnapshot(): ClusterAccessStatusEntry[] {
     return [...this.entries.values()].sort((a, b) =>
       a.installation.localeCompare(b.installation),
