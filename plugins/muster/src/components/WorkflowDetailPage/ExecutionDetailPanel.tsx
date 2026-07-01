@@ -12,7 +12,9 @@ const useStyles = makeStyles((theme: Theme) => ({
   panel: {
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius * 2,
-    height: '100%',
+    // Grow with content, but cap at the viewport so long step results scroll
+    // internally instead of stretching the page.
+    maxHeight: 'calc(100vh - 360px)',
     overflow: 'auto',
     padding: theme.spacing(2),
   },

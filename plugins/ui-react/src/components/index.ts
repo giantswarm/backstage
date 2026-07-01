@@ -13,6 +13,7 @@ export * from './MultiplePicker';
 export * from './MultipleSelect';
 export * from './NotAvailable';
 export * from './SingleSelect';
+export * from './StackedBarChart';
 export * from './StructuredMetadataList';
 export * from './YamlEditor';
 export * from './YamlEditorFormField';
