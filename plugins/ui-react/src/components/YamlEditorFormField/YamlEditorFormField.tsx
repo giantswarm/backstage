@@ -22,6 +22,7 @@ type YamlEditorFormFieldProps = {
   height?: number;
   maxHeight?: number;
   schema?: JSONSchema7;
+  readOnly?: boolean;
 };
 
 export const YamlEditorFormField = memo(
@@ -36,6 +37,7 @@ export const YamlEditorFormField = memo(
     height,
     maxHeight,
     schema,
+    readOnly,
   }: YamlEditorFormFieldProps) => {
     const theme = useTheme();
     return (
@@ -67,6 +69,7 @@ export const YamlEditorFormField = memo(
             maxHeight={maxHeight !== undefined ? `${maxHeight}px` : undefined}
             theme={theme.palette.type}
             error={error}
+            readOnly={readOnly}
           />
         </Box>
       </FormControl>

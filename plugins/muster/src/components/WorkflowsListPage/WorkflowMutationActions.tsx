@@ -14,7 +14,6 @@ import {
   makeStyles,
   Theme,
 } from '@material-ui/core';
-import GitHub from '@material-ui/icons/GitHub';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import Add from '@material-ui/icons/Add';
@@ -46,21 +45,16 @@ const useStyles = makeStyles((theme: Theme) => ({
     flex: 1,
     minWidth: 200,
   },
-  manifest: {
-    whiteSpace: 'pre',
-    overflowX: 'auto',
-    fontFamily: 'monospace',
-    fontSize: 12,
-    margin: 0,
-    padding: theme.spacing(1.5),
-    borderRadius: theme.shape.borderRadius,
-    border: `1px solid ${theme.palette.divider}`,
-    backgroundColor: theme.palette.action.hover,
-  },
   titleBar: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  // MUI's default DialogActions padding (8px) sits the footer buttons much
+  // closer to the edge than the 24px-padded content above; align the horizontal
+  // padding and give the buttons a bit more breathing room from the edge.
+  dialogActions: {
+    padding: theme.spacing(2, 3),
   },
   closeButton: {
     color: theme.palette.grey[500],
@@ -83,19 +77,17 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 /**
  * GitOps "manifest to commit" dialog: GitOps-managed workflows are read-only in
- * the app, so Edit/Remove produce a manifest the operator commits to the
+ * the app, so changes are made by committing the manifest to the
  * management-clusters repo (a PR), never a live mutation. Shows the rendered
  * Workflow manifest and the managing HelmRelease.
  */
 function GitOpsManifestDialog({
   workflow,
   open,
-  intent,
   onClose,
 }: {
   workflow: MusterWorkflow;
   open: boolean;
-  intent: 'edit' | 'delete';
   onClose: () => void;
 }) {
   const classes = useStyles();
@@ -108,9 +100,17 @@ function GitOpsManifestDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        {intent === 'delete' ? 'Remove via GitOps' : 'Edit via GitOps'} —{' '}
-        {workflow.getName()}
+      <DialogTitle disableTypography className={classes.titleBar}>
+        <Typography variant="h6">
+          Workflow manifest — {workflow.getName()}
+        </Typography>
+        <IconButton
+          aria-label="close"
+          className={classes.closeButton}
+          onClick={onClose}
+        >
+          <Close />
+        </IconButton>
       </DialogTitle>
       <DialogContent>
         <DialogContentText component="div">
@@ -122,22 +122,22 @@ function GitOpsManifestDialog({
             </>
           ) : null}
           . Live changes would be reverted by the reconciler, so they are
-          read-only here.{' '}
-          {intent === 'delete'
-            ? 'To remove it, delete its manifest in the management-clusters GitOps repo and open a PR.'
-            : 'To change it, edit its manifest in the management-clusters GitOps repo and open a PR.'}
+          read-only here. To change it, edit its manifest in the
+          management-clusters GitOps repo and open a PR.
         </DialogContentText>
         <Box mt={2}>
-          <Typography variant="caption" color="textSecondary">
-            Current manifest
-          </Typography>
-          <pre className={classes.manifest}>{manifest}</pre>
+          <YamlEditorFormField
+            label="Current manifest"
+            value={manifest}
+            readOnly
+            height={360}
+            maxHeight={360}
+          />
         </Box>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={copy}>Copy manifest</Button>
-        <Button onClick={onClose} color="primary">
-          Close
+      <DialogActions className={classes.dialogActions}>
+        <Button onClick={copy} color="primary" variant="contained">
+          Copy manifest
         </Button>
       </DialogActions>
     </Dialog>
@@ -211,7 +211,7 @@ function ConfirmDeleteDialog({
           </Box>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions className={classes.dialogActions}>
         <Button onClick={handleClose}>{done ? 'Close' : 'Cancel'}</Button>
         {!done && (
           <Button
@@ -380,7 +380,7 @@ export function AdHocWorkflowDialog({
           )}
         </Box>
       </DialogContent>
-      <DialogActions>
+      <DialogActions className={classes.dialogActions}>
         <Button onClick={validate} disabled={busy}>
           Validate
         </Button>
@@ -415,9 +415,7 @@ export function WorkflowMutationActions({
   const classes = useStyles();
   const managed = isGitOpsManaged(workflow);
 
-  const [gitopsIntent, setGitopsIntent] = useState<'edit' | 'delete' | null>(
-    null,
-  );
+  const [manifestOpen, setManifestOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -430,23 +428,15 @@ export function WorkflowMutationActions({
         </Typography>
         <Button
           size="small"
-          startIcon={<GitHub />}
-          onClick={() => setGitopsIntent('edit')}
+          variant="outlined"
+          onClick={() => setManifestOpen(true)}
         >
-          Edit via GitOps
-        </Button>
-        <Button
-          size="small"
-          startIcon={<DeleteOutline />}
-          onClick={() => setGitopsIntent('delete')}
-        >
-          Remove via GitOps
+          Show manifest
         </Button>
         <GitOpsManifestDialog
           workflow={workflow}
-          open={gitopsIntent !== null}
-          intent={gitopsIntent ?? 'edit'}
-          onClose={() => setGitopsIntent(null)}
+          open={manifestOpen}
+          onClose={() => setManifestOpen(false)}
         />
       </Box>
     );

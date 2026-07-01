@@ -18,7 +18,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     borderRadius: theme.shape.borderRadius * 2,
     backgroundColor: theme.palette.background.paper,
     overflow: 'auto',
-    height: '100%',
+    // Grow with content, but cap at the viewport so a long history scrolls
+    // internally instead of stretching the page.
+    maxHeight: 'calc(100vh - 360px)',
   },
   header: {
     padding: theme.spacing(1.5, 2),

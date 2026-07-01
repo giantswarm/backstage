@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import yaml from 'js-yaml';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Content,
@@ -11,9 +10,6 @@ import {
   ResponseErrorPanel,
 } from '@backstage/core-components';
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Box,
   Button,
   Grid,
@@ -28,9 +24,7 @@ import Tune from '@material-ui/icons/Tune';
 import FormatListNumbered from '@material-ui/icons/FormatListNumbered';
 import Share from '@material-ui/icons/Share';
 import History from '@material-ui/icons/History';
-import ChevronRight from '@material-ui/icons/ChevronRight';
 import AccountTree from '@material-ui/icons/AccountTree';
-import ExpandMore from '@material-ui/icons/ExpandMore';
 import { Alert } from '@material-ui/lab';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { useQuery } from '@tanstack/react-query';
@@ -46,12 +40,7 @@ import {
   StateBadge,
   VIOLET,
 } from '../shared';
-import {
-  mcpServersRouteRef,
-  toolExplorerRouteRef,
-  workflowDetailRouteRef,
-  workflowsRouteRef,
-} from '../../routes';
+import { toolExplorerRouteRef, workflowDetailRouteRef } from '../../routes';
 import { WorkflowStepCard } from './WorkflowStepCard';
 import { WorkflowStatsPanel } from './WorkflowStatsPanel';
 import { ExecutionHistoryPanel } from './ExecutionHistoryPanel';
@@ -68,16 +57,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   header: {
     paddingBottom: theme.spacing(3),
     borderBottom: `1px solid ${theme.palette.divider}`,
-  },
-  breadcrumb: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: theme.spacing(0.75),
-    marginBottom: theme.spacing(1.5),
-    color: theme.palette.text.secondary,
-    fontSize: 14,
-    '& svg': { fontSize: 14 },
   },
   titleRow: {
     display: 'flex',
@@ -101,7 +80,16 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginTop: theme.spacing(1.5),
     maxWidth: '80ch',
     color: theme.palette.text.secondary,
-    '& p': { margin: 0 },
+    // MarkdownContent emits bare <p> tags without MUI Typography classes, so
+    // they fall back to the document line-height. Match the body1 variant other
+    // paragraphs use so spacing reads consistently.
+    '& p': {
+      ...theme.typography.body1,
+      margin: 0,
+    },
+    '& p + p': {
+      marginTop: theme.spacing(1),
+    },
   },
   metaRow: {
     marginTop: theme.spacing(2),
@@ -194,26 +182,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontFamily: 'monospace',
     fontSize: 13,
   },
-  yamlAccordion: {
-    borderRadius: theme.shape.borderRadius * 2,
-    '&:before': { display: 'none' },
-  },
-  yamlSummary: {
-    fontWeight: 500,
-  },
-  yamlPre: {
-    margin: 0,
-    width: '100%',
-    overflowX: 'auto',
-    fontFamily: 'monospace',
-    fontSize: 12,
-    lineHeight: 1.6,
-    color: theme.palette.text.secondary,
-  },
-  historyContainer: {
-    height: 'calc(100vh - 360px)',
-    minHeight: 360,
-  },
 }));
 
 /** Append `?installation=` to a route path so deep links keep the instance. */
@@ -233,8 +201,6 @@ function WorkflowDetailContent() {
 
   const navigate = useNavigate();
   const musterApi = useApi(musterApiRef);
-  const workflowsLink = useRouteRef(workflowsRouteRef);
-  const mcpServersLink = useRouteRef(mcpServersRouteRef);
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
   const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
   const { workflows, isLoading, activeInstallation } = useMusterInstance();
@@ -308,13 +274,6 @@ function WorkflowDetailContent() {
   const created = workflow.getCreatedTimestamp();
   const referencingTool = `workflow_${name}`;
 
-  let yamlText: string;
-  try {
-    yamlText = yaml.dump(workflow.jsonData, { lineWidth: 120, noRefs: true });
-  } catch {
-    yamlText = JSON.stringify(workflow.jsonData, null, 2);
-  }
-
   // Running a workflow is just executing its `workflow_<name>` aggregated tool,
   // so "Run" lands on the unified execution surface (the tool explorer) with
   // that tool preselected and its argument form ready.
@@ -346,20 +305,6 @@ function WorkflowDetailContent() {
       <Box className={classes.column}>
         {/* Header */}
         <Box className={classes.header}>
-          <Box className={classes.breadcrumb}>
-            <Link
-              to={withInstallation(mcpServersLink?.() ?? '#', installation)}
-            >
-              MCP Servers
-            </Link>
-            <ChevronRight />
-            <Link to={withInstallation(workflowsLink?.() ?? '#', installation)}>
-              Workflows
-            </Link>
-            <ChevronRight />
-            <span>{name}</span>
-          </Box>
-
           <Box className={classes.titleRow}>
             <Typography variant="h4" className={classes.title}>
               {name}
@@ -528,20 +473,6 @@ function WorkflowDetailContent() {
           </Box>
         )}
 
-        {/* Raw definition */}
-        <Box className={classes.section}>
-          <Accordion variant="outlined" className={classes.yamlAccordion}>
-            <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography className={classes.yamlSummary}>
-                Definition (YAML)
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <pre className={classes.yamlPre}>{yamlText}</pre>
-            </AccordionDetails>
-          </Accordion>
-        </Box>
-
         {/* Executions — run history + per-execution step results (muster proxy) */}
         <Box className={classes.section}>
           <SectionHeader
@@ -550,7 +481,7 @@ function WorkflowDetailContent() {
             description="Engine- and agent-driven runs of this workflow and their per-step results, as recorded by muster's aggregator. Runs launched from the tool explorer execute the aggregated tool directly and do not appear here."
           />
           <Grid container>
-            <Grid item xs={12} md={4} className={classes.historyContainer}>
+            <Grid item xs={12} md={4}>
               {executionsQuery.error ? (
                 <ResponseErrorPanel
                   title="Failed to load executions"
@@ -564,7 +495,7 @@ function WorkflowDetailContent() {
                 />
               )}
             </Grid>
-            <Grid item xs={12} md={8} className={classes.historyContainer}>
+            <Grid item xs={12} md={8}>
               <ExecutionDetailPanel
                 execution={
                   selectedExecutionId ? executionQuery.data : undefined
@@ -586,9 +517,8 @@ function WorkflowDetailContent() {
  * Standalone (tabless) workflow detail page. CRD-driven: the structure (args,
  * steps, validity, step count) comes from the Workflow CR loaded by the
  * MusterInstanceProvider, while statistics, execution history, and runs use the
- * muster MCP proxy. Ported to the mockup's section rhythm (breadcrumb, header +
- * availability, statistics, arguments, numbered steps, referenced-by,
- * collapsible YAML).
+ * muster MCP proxy. Ported to the mockup's section rhythm (header +
+ * availability, statistics, arguments, numbered steps, referenced-by).
  */
 export function WorkflowDetailPage() {
   // Rendered inside the Workflows tab, which the workflows sub-page already
