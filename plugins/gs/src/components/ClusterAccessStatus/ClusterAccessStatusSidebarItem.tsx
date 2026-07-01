@@ -94,23 +94,16 @@ const useStyles = makeStyles(theme => ({
 }));
 
 /**
- * Computes the worst (most actionable) state across all tracked clusters.
- * session-expired wins over degraded, because an expired main session is the
- * one thing the user can immediately fix. `connecting` ranks above plain
- * healthy so the badge reflects in-flight probes on startup, but below any
- * real problem.
+ * Computes the worst (most actionable) state across all tracked clusters, using
+ * the shared {@link STATE_ORDER} severity ranking: session-expired wins over
+ * degraded, because an expired main session is the one thing the user can
+ * immediately fix; `connecting` ranks above plain healthy so the badge reflects
+ * in-flight probes on startup, but below any real problem. No entries → healthy.
  */
 function overallState(entries: ClusterAccessStatusEntry[]): ClusterAccessState {
-  if (entries.some(e => e.state === 'session-expired')) {
-    return 'session-expired';
-  }
-  if (entries.some(e => e.state === 'degraded')) {
-    return 'degraded';
-  }
-  if (entries.some(e => e.state === 'connecting')) {
-    return 'connecting';
-  }
-  return 'healthy';
+  return (
+    STATE_ORDER.find(state => entries.some(e => e.state === state)) ?? 'healthy'
+  );
 }
 
 type SummaryPart = { key: ClusterAccessState; label: string; muted: boolean };
