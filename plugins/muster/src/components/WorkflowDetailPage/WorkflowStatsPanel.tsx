@@ -51,7 +51,14 @@ function padPerDay(perDay: WorkflowStatsPerDay[]): WorkflowStatsPerDay[] {
   }
 
   const byDate = new Map(perDay.map(day => [day.date, day]));
-  const epochs = perDay.map(day => parseDay(day.date));
+  // Drop any unparseable dates so a single malformed key can't turn `end`/`start`
+  // into NaN and collapse the whole chart to an empty range.
+  const epochs = perDay
+    .map(day => parseDay(day.date))
+    .filter(epoch => !Number.isNaN(epoch));
+  if (epochs.length === 0) {
+    return perDay;
+  }
   // Anchor the right edge to today, but never truncate data that (somehow)
   // carries a later date.
   const end = Math.max(...epochs, todayEpoch());

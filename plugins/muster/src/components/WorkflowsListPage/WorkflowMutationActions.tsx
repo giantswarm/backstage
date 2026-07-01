@@ -77,19 +77,17 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 /**
  * GitOps "manifest to commit" dialog: GitOps-managed workflows are read-only in
- * the app, so Edit/Remove produce a manifest the operator commits to the
+ * the app, so changes are made by committing the manifest to the
  * management-clusters repo (a PR), never a live mutation. Shows the rendered
  * Workflow manifest and the managing HelmRelease.
  */
 function GitOpsManifestDialog({
   workflow,
   open,
-  intent,
   onClose,
 }: {
   workflow: MusterWorkflow;
   open: boolean;
-  intent: 'edit' | 'delete';
   onClose: () => void;
 }) {
   const classes = useStyles();
@@ -104,8 +102,7 @@ function GitOpsManifestDialog({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle disableTypography className={classes.titleBar}>
         <Typography variant="h6">
-          {intent === 'delete' ? 'Remove via GitOps' : 'Edit via GitOps'} —{' '}
-          {workflow.getName()}
+          Workflow manifest — {workflow.getName()}
         </Typography>
         <IconButton
           aria-label="close"
@@ -125,10 +122,8 @@ function GitOpsManifestDialog({
             </>
           ) : null}
           . Live changes would be reverted by the reconciler, so they are
-          read-only here.{' '}
-          {intent === 'delete'
-            ? 'To remove it, delete its manifest in the management-clusters GitOps repo and open a PR.'
-            : 'To change it, edit its manifest in the management-clusters GitOps repo and open a PR.'}
+          read-only here. To change it, edit its manifest in the
+          management-clusters GitOps repo and open a PR.
         </DialogContentText>
         <Box mt={2}>
           <YamlEditorFormField
@@ -420,7 +415,7 @@ export function WorkflowMutationActions({
   const classes = useStyles();
   const managed = isGitOpsManaged(workflow);
 
-  const [gitopsEditOpen, setGitopsEditOpen] = useState(false);
+  const [manifestOpen, setManifestOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -434,15 +429,14 @@ export function WorkflowMutationActions({
         <Button
           size="small"
           variant="outlined"
-          onClick={() => setGitopsEditOpen(true)}
+          onClick={() => setManifestOpen(true)}
         >
           Show manifest
         </Button>
         <GitOpsManifestDialog
           workflow={workflow}
-          open={gitopsEditOpen}
-          intent="edit"
-          onClose={() => setGitopsEditOpen(false)}
+          open={manifestOpen}
+          onClose={() => setManifestOpen(false)}
         />
       </Box>
     );
