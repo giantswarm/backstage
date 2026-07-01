@@ -37,6 +37,13 @@ export interface ClusterAccessStatusApi {
   recordHealthy(installation: string): void;
   recordDegraded(installation: string, reason?: string): void;
   recordSessionExpired(installation: string, reason?: string): void;
+  /**
+   * Drops an installation from the status set. Used for non-broker
+   * installations, which are tracked by auth session state rather than probed:
+   * when the user signs out of one it is no longer accessed and should leave
+   * the widget entirely.
+   */
+  remove(installation: string): void;
   getSnapshot(): ClusterAccessStatusEntry[];
   /**
    * Replays the latest snapshot to a new subscriber (on the next tick) and
