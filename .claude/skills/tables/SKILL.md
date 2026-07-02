@@ -1,7 +1,84 @@
 ---
 name: tables
-description: Patterns for implementing tables using '@backstage/core-components' Table, including column definitions, sorting, filtering, and visibility persistence.
+description: Patterns for implementing tables. Covers the bui Table ('@backstage/ui') — preferred for new, simple tables — and the feature-rich '@backstage/core-components' Table with search, filtering, and column-visibility persistence.
 ---
+
+## Choosing a table component
+
+Two table components are in use. **Prefer the bui `Table` (`@backstage/ui`) for
+new tables** — it matches the new Backstage design system and is the direction
+we're moving. But it is not yet a full replacement for the older component.
+
+| Need | Use |
+| --- | --- |
+| Simple listing, no built-in search/filter/column-toggle | **bui `Table`** from `@backstage/ui` |
+| Built-in quick-search, per-column filtering, column-visibility toggle, CSV export | **`Table`** from `@backstage/core-components` (material-table based) |
+
+The `@backstage/core-components` `Table` (documented in the bulk of this skill)
+wraps `@material-table/core` and is still the only option when you need its
+search box, `columnsButton`, `customFilterAndSearch`, or the faceted-sidebar
+pattern. The bui `Table` has **none** of those yet — no search, no filtering, no
+column visibility — so don't reach for it when those are required. Reference for
+bui usage: `plugins/ai-chat/src/components/ConversationHistoryTable/` and
+`plugins/gs/src/components/deployments/deployment-details/DeploymentGateway/DeploymentHttpRoutesCard/`.
+
+## bui Table (`@backstage/ui`)
+
+Data-driven: pass `columnConfig` + `data` (each row must have an `id: string |
+number`). Cells **must** return a cell component (`Cell`, `CellText`, or
+`CellProfile`) at the top level — bare text/fragments break the layout.
+
+```tsx
+import { Cell, CellText, ColumnConfig, Table } from '@backstage/ui';
+
+type Row = { id: string; name: string; status: string };
+
+const columnConfig: ColumnConfig<Row>[] = [
+  { id: 'name', label: 'Name', isRowHeader: true, cell: r => <CellText title={r.name} /> },
+  // CellText renders title (+ optional description) as the standard cell text
+  { id: 'status', label: 'Status', cell: r => <Cell><StatusBadge status={r.status} /></Cell> },
+];
+
+<Table<Row>
+  columnConfig={columnConfig}
+  data={rows}
+  isPending={isLoading}          // built-in loading state (`loading` is deprecated)
+  pagination={{ type: 'none' }}  // or { type: 'page', ... }
+  emptyState={<Text>No results</Text>}
+/>;
+```
+
+Key points:
+- Declare `@backstage/ui` in the plugin's `package.json` (`"backstage:^"`).
+- `ColumnConfig` fields: `id`, `label`, `cell`, plus optional `isRowHeader`,
+  `isSortable`, `isHidden`, `width`/`minWidth`/`maxWidth`, `header`.
+- `Table` handles `isPending` / `emptyState` / `error` internally — you don't
+  need the manual loading/empty branches the core-components Table requires.
+- `CellText` takes `title` (required) + optional `description`, `leadingIcon`,
+  `href`. Use `Cell` to wrap arbitrary custom content.
+- For consumer-managed pagination/sort, pair with the `useTable` hook and spread
+  its `tableProps` (see `ConversationHistoryTable`).
+- `isSortable` sorts in-memory; there is still no built-in search/filter box.
+
+### Gotcha: the loading skeleton needs `data={undefined}`, not `[]`
+
+The animated skeleton (`TableBodySkeleton`) only renders when
+`isPending && data === undefined` (internally `isInitialLoading = pending &&
+!data`). If you pass `data={rows}` where `rows` is `[]` during load, `!data` is
+false, so the skeleton never shows and the `emptyState` flashes instead. Gate
+the data on your loading flag:
+
+```tsx
+<Table
+  columnConfig={columnConfig}
+  data={isLoading ? undefined : rows}  // undefined → skeleton; [] → emptyState
+  isPending={isLoading}
+  emptyState={<Text>No results</Text>}
+/>
+```
+
+Then loading shows the skeleton, and only a settled empty result shows the
+empty state.
 
 ## Table Structure
 

@@ -32,6 +32,7 @@ import {
   findTargetClusterNamespace,
   findTargetClusterType,
 } from '../../../utils/findTargetCluster';
+import { getWorkloadNamespace } from '../../../utils/getWorkloadIdentifiers';
 import { getSourceKind, getSourceName } from '../../../utils/getSource';
 import { getUpdatedTimestamp } from '../../../utils/getUpdatedTimestamp';
 import {
@@ -53,6 +54,7 @@ export function DeploymentAboutCard() {
 
   const name = deployment.getName();
   const namespace = deployment.getNamespace();
+  const targetNamespace = getWorkloadNamespace(deployment);
 
   const clusterName = findTargetClusterName(deployment);
 
@@ -145,6 +147,11 @@ export function DeploymentAboutCard() {
         <AboutField label="Cluster" value={clusterName}>
           <AboutFieldValue>{clusterEl}</AboutFieldValue>
         </AboutField>
+
+        {targetNamespace && targetNamespace !== namespace && (
+          <AboutField label="Target namespace" value={targetNamespace} />
+        )}
+
         <AboutField label="App">
           <AboutFieldValue>
             <AsyncValue
