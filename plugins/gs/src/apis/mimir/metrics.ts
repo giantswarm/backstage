@@ -214,6 +214,46 @@ export const KubeletRunningPods = {
   source: 'kubelet',
 } as const satisfies PrometheusMetric;
 
+export const GatewayApiHttprouteHostnameInfo = {
+  name: 'gatewayapi_httproute_hostname_info',
+  description:
+    'Info series (value is always 1) with one time series per hostname exposed by a Gateway API HTTPRoute. The `hostname` label holds the exposed host; `name` and `namespace` identify the HTTPRoute. Note: the metric carries no backendRef, so a hostname cannot be linked directly to a specific workload — correlate via `namespace` (and optionally route `name`).',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteParentInfo = {
+  name: 'gatewayapi_httproute_parent_info',
+  description:
+    'Info series (value is always 1) with one time series per parentRef of a Gateway API HTTPRoute. `name`/`namespace` identify the HTTPRoute; `parent_name`/`parent_namespace` identify the Gateway it attaches to; `parent_section_name` is the Gateway listener name.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayListenerInfo = {
+  name: 'gatewayapi_gateway_listener_info',
+  description:
+    'Info series (value is always 1) with one time series per Gateway API Gateway listener. `name`/`namespace` identify the Gateway; `listener_name` is the listener section; `hostname` is the listener hostname pattern (may be a wildcard such as `*.example.com`); `protocol`/`port`/`tls_mode` describe the listener.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const CertmanagerCertificateExpirationTimestampSeconds = {
+  name: 'certmanager_certificate_expiration_timestamp_seconds',
+  description:
+    'The unix timestamp (notAfter) after which a cert-manager Certificate expires. `name` is the Certificate resource; `exported_namespace` is its namespace (note: the `namespace` label is the cert-manager controller namespace, not the certificate namespace). `issuer_name`/`issuer_kind`/`issuer_group` identify the issuer.',
+  type: 'gauge',
+  source: 'cert-manager',
+} as const satisfies PrometheusMetric;
+
+export const CertmanagerCertificateReadyStatus = {
+  name: 'certmanager_certificate_ready_status',
+  description:
+    'Readiness of a cert-manager Certificate. Emits one series per `condition` value (True/False/Unknown); the series whose value is 1 is the current state. `name`/`exported_namespace` identify the Certificate.',
+  type: 'gauge',
+  source: 'cert-manager',
+} as const satisfies PrometheusMetric;
+
 /**
  * All registered metrics. Use this to enumerate or inspect the full set
  * of metrics the application relies on.
@@ -245,4 +285,9 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   KubeNodeStatusCondition,
   KubeNodeCreated,
   KubeletRunningPods,
+  GatewayApiHttprouteHostnameInfo,
+  GatewayApiHttprouteParentInfo,
+  GatewayApiGatewayListenerInfo,
+  CertmanagerCertificateExpirationTimestampSeconds,
+  CertmanagerCertificateReadyStatus,
 ];
