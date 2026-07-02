@@ -61,11 +61,14 @@ export interface ResolveInputs {
 /**
  * Resolves the serving TLS certificate for a hostname by walking the chain:
  *
- *   HTTPRoute (hostname) → parentRef (Gateway + listener section)
+ *   HTTPRoute (hostname) → parentRef (Gateway, optional listener section)
  *     → Gateway listener (hostname pattern) → cert-manager Certificate
  *
- * The route→listener and hostname→listener hops are exact label / wildcard
- * matches. The final listener→certificate hop relies on cert-manager's
+ * The listener is identified by matching the hostname against each of the
+ * Gateway's listener hostname patterns; a parentRef `sectionName`, when set,
+ * further constrains which listener is considered. (A route without a
+ * sectionName attaches to every matching listener.) The final
+ * listener→certificate hop relies on cert-manager's
  * gateway-shim naming convention (`gateway-<gateway>-<listener>`), so it is
  * best-effort: when no matching Certificate series exists, `undefined` is
  * returned and the caller should render the cert as unknown rather than wrong.
@@ -90,71 +93,81 @@ export function resolveHostnameCert(
   );
   if (routeKeys.size === 0) return undefined;
 
-  // parentRefs of those routes → candidate (gateway, listener) sections.
-  const candidateListeners = parentSamples
+  // parentRefs of those routes → candidate Gateways. `parent_section_name` is
+  // the listener the route pins to, but it is optional: a route without a
+  // sectionName attaches to *every* listener of the Gateway whose hostname
+  // matches. So we keep the section only as an extra constraint when present,
+  // and otherwise resolve the listener purely by hostname match.
+  const candidateParents = parentSamples
     .filter(s => routeKeys.has(`${s.metric.namespace}/${s.metric.name}`))
     .map(s => ({
       gatewayName: s.metric.parent_name,
       gatewayNamespace: s.metric.parent_namespace,
-      listenerName: s.metric.parent_section_name,
+      section: s.metric.parent_section_name || undefined,
     }))
-    .filter(l => l.gatewayName && l.listenerName);
+    .filter(p => p.gatewayName && p.gatewayNamespace);
 
-  // Pick the listener whose hostname pattern actually matches this hostname.
-  for (const candidate of candidateListeners) {
-    const listener = listenerSamples.find(
+  for (const parent of candidateParents) {
+    // Listeners of this Gateway whose hostname pattern matches the hostname,
+    // restricted to the pinned section when the parentRef named one.
+    const matchingListeners = listenerSamples.filter(
       s =>
-        s.metric.name === candidate.gatewayName &&
-        s.metric.namespace === candidate.gatewayNamespace &&
-        s.metric.listener_name === candidate.listenerName,
-    );
-    if (!listener) continue;
-    if (!hostnameMatchesListener(hostname, listener.metric.hostname)) continue;
-
-    // Listener → Certificate (naming convention).
-    const certName = gatewayListenerCertName(
-      candidate.gatewayName,
-      candidate.listenerName,
-    );
-    const certNamespace = candidate.gatewayNamespace;
-
-    const expiration = expirationSamples.find(
-      s =>
-        s.metric.name === certName &&
-        s.metric.exported_namespace === certNamespace,
+        s.metric.name === parent.gatewayName &&
+        s.metric.namespace === parent.gatewayNamespace &&
+        (parent.section ? s.metric.listener_name === parent.section : true) &&
+        hostnameMatchesListener(hostname, s.metric.hostname),
     );
 
-    const readySeries = readySamples.filter(
-      s =>
-        s.metric.name === certName &&
-        s.metric.exported_namespace === certNamespace,
-    );
-    const activeReady = readySeries.find(s => s.value?.[1] === '1');
-    const readyCondition = activeReady?.metric.condition as
-      | 'True'
-      | 'False'
-      | 'Unknown'
-      | undefined;
+    for (const listener of matchingListeners) {
+      const listenerName = listener.metric.listener_name;
 
-    // Require at least one cert signal, otherwise treat as unresolved.
-    if (!expiration && readySeries.length === 0) return undefined;
+      // Listener → Certificate (cert-manager gateway-shim naming convention).
+      const certName = gatewayListenerCertName(
+        parent.gatewayName,
+        listenerName,
+      );
+      const certNamespace = parent.gatewayNamespace;
 
-    const expirationSeconds = expiration?.value?.[1]
-      ? Number(expiration.value[1])
-      : undefined;
+      const expiration = expirationSamples.find(
+        s =>
+          s.metric.name === certName &&
+          s.metric.exported_namespace === certNamespace,
+      );
 
-    return {
-      certName,
-      namespace: certNamespace,
-      hostnamePattern: listener.metric.hostname,
-      ready: readyCondition,
-      expirationSeconds:
-        expirationSeconds !== undefined && !isNaN(expirationSeconds)
-          ? expirationSeconds
-          : undefined,
-      issuerName: expiration?.metric.issuer_name,
-      issuerKind: expiration?.metric.issuer_kind,
-    };
+      const readySeries = readySamples.filter(
+        s =>
+          s.metric.name === certName &&
+          s.metric.exported_namespace === certNamespace,
+      );
+
+      // No cert signal for this listener — keep trying the route's other
+      // matching listeners/parents rather than giving up.
+      if (!expiration && readySeries.length === 0) continue;
+
+      const activeReady = readySeries.find(s => s.value?.[1] === '1');
+      const readyCondition = activeReady?.metric.condition as
+        | 'True'
+        | 'False'
+        | 'Unknown'
+        | undefined;
+
+      const expirationSeconds = expiration?.value?.[1]
+        ? Number(expiration.value[1])
+        : undefined;
+
+      return {
+        certName,
+        namespace: certNamespace,
+        hostnamePattern: listener.metric.hostname,
+        ready: readyCondition,
+        expirationSeconds:
+          expirationSeconds !== undefined && !isNaN(expirationSeconds)
+            ? expirationSeconds
+            : undefined,
+        issuerName: expiration?.metric.issuer_name,
+        issuerKind: expiration?.metric.issuer_kind,
+      };
+    }
   }
 
   return undefined;
