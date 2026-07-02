@@ -58,8 +58,8 @@
   "resolutions": {
     "@types/express": "^5",
     "@types/express-serve-static-core": "^5",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "isolated-vm": "^7.0.0",
     "knex": "^3.2.9",
     "ssh2": "^1.17.0",
