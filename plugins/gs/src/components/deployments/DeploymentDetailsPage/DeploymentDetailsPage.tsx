@@ -1,7 +1,7 @@
 import { AsyncDeploymentProvider } from './useCurrentDeployment';
 import { DeploymentLayout } from '../DeploymentLayout';
 import { DeploymentOverview } from '../deployment-details/DeploymentOverview';
-import { DeploymentGateway } from '../deployment-details/DeploymentGateway';
+import { DeploymentRoutes } from '../deployment-details/DeploymentRoutes';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 
@@ -15,9 +15,9 @@ export const DeploymentDetailsPage = () => {
               <DeploymentOverview />
             </ErrorsProvider>
           </DeploymentLayout.Route>
-          <DeploymentLayout.Route path="/gateways" title="Gateways">
+          <DeploymentLayout.Route path="/routes" title="Routes">
             <ErrorsProvider>
-              <DeploymentGateway />
+              <DeploymentRoutes />
             </ErrorsProvider>
           </DeploymentLayout.Route>
         </DeploymentLayout>
