@@ -167,8 +167,23 @@ Key backend plugins registered:
 
 Entry point: `packages/app/src/App.tsx`
 
-- React 18 with Material-UI v4 components
+- React 18
 - Backstage frontend plugin system
+
+#### UI component libraries
+
+Three layers, in order of preference for new work. **Prefer bui (`@backstage/ui`)
+for new UI** — it's the new Backstage design system and the direction we're
+migrating toward, and it's already in use across `gs`, `ui-react`, `ai-chat`, and
+`app`. Fall back to the legacy `@backstage/core-components` (classic Backstage
+components) and `@material-ui/core` (MUI v4 + `makeStyles`) only where bui has no
+equivalent yet — e.g. the feature-rich `Table`, `Page`/`Header`/`Content`
+scaffolding. Mixing all three in one file is expected during the migration. The
+bui stylesheet is imported once in `packages/app/src/index.tsx`; no `BUIProvider`
+is needed.
+
+See `docs/ui.md` and the **`ui`** Claude Code skill for details, including how to
+read Backstage Storybook component/story source without cloning the monorepo.
 
 ### Scaffolder Field Extensions
 
