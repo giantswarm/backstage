@@ -11,6 +11,7 @@ import {
   formatClusterType,
   formatServicePriority,
   getClusterCreationTimestamp,
+  getClusterDescription,
   getClusterOrganization,
   getClusterReleaseVersion,
   getClusterServicePriority,
@@ -145,6 +146,7 @@ export function ClusterAboutCard() {
   useShowErrors(controlPlaneErrors);
 
   const clusterType = calculateClusterType(cluster);
+  const description = getClusterDescription(cluster);
   const releaseVersion = getClusterReleaseVersion(cluster);
   const organization = getClusterOrganization(cluster);
   const servicePriority = getClusterServicePriority(cluster);
@@ -155,6 +157,12 @@ export function ClusterAboutCard() {
   return (
     <InfoCard>
       <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="5">
+        <AboutField label="Description">
+          <AboutFieldValue>
+            {description ? description : <NotAvailable />}
+          </AboutFieldValue>
+        </AboutField>
+
         <AboutField label="Type">
           <AboutFieldValue>
             <Box display="inline-flex" alignItems="center">

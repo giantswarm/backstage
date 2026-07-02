@@ -10,11 +10,12 @@ import {
   makeStyles,
 } from '@material-ui/core';
 import { useApiHolder } from '@backstage/core-plugin-api';
-import { routeResolutionApiRef, useApi } from '@backstage/frontend-plugin-api';
-import { useNavigate } from 'react-router-dom';
 import { AIChatIcon } from '../../assets/icons';
-import { aiChatApiRef, aiChatDrawerApiRef } from '../../api';
-import { rootRouteRef } from '../../routes';
+import { aiChatApiRef } from '../../api';
+import { AIChatButtonItem, AIChatButtonOpenMode } from './types';
+import { useOpenChat } from './useOpenChat';
+
+export type { AIChatButtonItem, AIChatButtonOpenMode } from './types';
 
 const useStyles = makeStyles(() => ({
   button: {
@@ -33,13 +34,6 @@ const useStyles = makeStyles(() => ({
     minWidth: 200,
   },
 }));
-
-export type AIChatButtonItem = {
-  label?: string;
-  message: string;
-};
-
-export type AIChatButtonOpenMode = 'drawer' | 'navigate';
 
 type AIChatButtonProps = {
   items: AIChatButtonItem[];
@@ -68,22 +62,9 @@ const AIChatButtonInner = ({
   variant,
   color,
 }: AIChatButtonInnerProps) => {
-  const routeResolutionApi = useApi(routeResolutionApiRef);
-  const chatPath = routeResolutionApi.resolve(rootRouteRef);
   const classes = useStyles();
-  const navigate = useNavigate();
-  const apiHolder = useApiHolder();
+  const openChat = useOpenChat(openMode);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-
-  const openChat = (message: string) => {
-    const drawerApi = apiHolder.get(aiChatDrawerApiRef);
-    if (openMode !== 'navigate' && drawerApi) {
-      drawerApi.openDrawer(message);
-    } else if (chatPath) {
-      const params = new URLSearchParams({ message });
-      navigate(`${chatPath()}?${params.toString()}`);
-    }
-  };
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();

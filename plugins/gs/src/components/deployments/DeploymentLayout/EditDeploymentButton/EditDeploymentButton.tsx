@@ -1,24 +1,15 @@
-import Button from '@material-ui/core/Button';
+import { Button, Tooltip, TooltipTrigger } from '@backstage/ui';
 import EditIcon from '@material-ui/icons/Edit';
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEditAppDeploymentTemplate } from '../../../hooks';
 import { useEditDeploymentData } from '../useEditDeploymentData';
 import { useDeploymentEditCompatibility } from './useDeploymentEditCompatibility';
-import { Box, makeStyles, Tooltip } from '@material-ui/core';
 import {
   findTargetClusterName,
   findTargetClusterNamespace,
 } from '../../utils/findTargetCluster';
-
-const useStyles = makeStyles(() => ({
-  button: {
-    textTransform: 'none',
-    paddingLeft: 11,
-    paddingRight: 11,
-  },
-}));
 
 export function EditDeploymentButton({
   deployment,
@@ -27,7 +18,7 @@ export function EditDeploymentButton({
   deployment: HelmRelease;
   installationName: string;
 }) {
-  const classes = useStyles();
+  const navigate = useNavigate();
 
   const { available, getTemplateUrl } = useEditAppDeploymentTemplate();
 
@@ -108,22 +99,20 @@ export function EditDeploymentButton({
   }
 
   return (
-    <Box>
-      <Tooltip title={tooltipTitle}>
-        <span>
-          <Button
-            className={classes.button}
-            color="inherit"
-            size="small"
-            startIcon={<EditIcon />}
-            component={Link}
-            to={editLink ?? ''}
-            disabled={isDisabled}
-          >
-            Edit
-          </Button>
-        </span>
-      </Tooltip>
-    </Box>
+    <TooltipTrigger>
+      <Button
+        variant="secondary"
+        iconStart={<EditIcon fontSize="inherit" />}
+        isDisabled={isDisabled}
+        onClick={() => {
+          if (editLink) {
+            navigate(editLink);
+          }
+        }}
+      >
+        Edit
+      </Button>
+      <Tooltip>{tooltipTitle}</Tooltip>
+    </TooltipTrigger>
   );
 }

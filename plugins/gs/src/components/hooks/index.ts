@@ -19,6 +19,7 @@ export * from './useHelmChartTags';
 export * from './useHelmChartValuesSchema';
 export * from './useHelmChartValuesYaml';
 export * from './useInstallationsInfo';
+export * from './useLayoutTabs';
 export * from './useK8sVersionEOLDate';
 export * from './useNodePoolsForAWSCluster';
 export * from './useNodePoolsForAzureCluster';

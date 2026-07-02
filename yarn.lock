@@ -11372,6 +11372,7 @@ __metadata:
   resolution: "@giantswarm/backstage-plugin-ai-chat-react@workspace:plugins/ai-chat-react"
   dependencies:
     "@backstage/cli": "backstage:^"
+    "@backstage/ui": "backstage:^"
     "@material-ui/core": "npm:^4.9.13"
     "@testing-library/jest-dom": "npm:^6.0.0"
     "@testing-library/react": "npm:^16.0.0"
