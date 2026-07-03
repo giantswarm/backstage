@@ -20,6 +20,15 @@
 # workspace handoff; the hand-written `buildjob` it replaced lived here before.
 version: 2.1
 
+jobs:
+  # Override just the resource_class of the generated `node-build` job. The
+  # dynamic-config deep-merge (yq `*+`) merges this map into the generated
+  # jobs.node-build; scalars from custom.yml win, so `docker`/`steps` stay as
+  # generated and only the executor size changes. Bumped from large (4 vCPU /
+  # 8 GB) to xlarge (8 vCPU / 16 GB) to speed up install/verify/build.
+  node-build:
+    resource_class: xlarge
+
 workflows:
   build:
     jobs:
