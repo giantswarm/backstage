@@ -366,33 +366,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/core@npm:^0.2.17":
-  version: 0.2.17
-  resolution: "@assistant-ui/core@npm:0.2.17"
-  dependencies:
-    assistant-stream: "npm:^0.3.23"
-    nanoid: "npm:^5.1.11"
-  peerDependencies:
-    "@assistant-ui/store": ^0.2.13
-    "@assistant-ui/tap": ^0.9.0
-    "@types/react": "*"
-    assistant-cloud: ^0.1.31
-    react: ^18 || ^19
-    zustand: ^5.0.11
-  peerDependenciesMeta:
-    "@types/react":
-      optional: true
-    assistant-cloud:
-      optional: true
-    react:
-      optional: true
-    zustand:
-      optional: true
-  checksum: 10c0/fb8e97020a6e07aeba0982263c5f814530eb16079ce5220714ec76d9c2f472311696bae9e876ed646c46bd37f41efd4f449a57279e9c11fcd04a7b3fc0469034
-  languageName: node
-  linkType: hard
-
-"@assistant-ui/core@npm:^0.2.19":
+"@assistant-ui/core@npm:^0.2.17, @assistant-ui/core@npm:^0.2.19":
   version: 0.2.19
   resolution: "@assistant-ui/core@npm:0.2.19"
   dependencies:
@@ -26737,26 +26711,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"assistant-stream@npm:^0.3.23":
-  version: 0.3.23
-  resolution: "assistant-stream@npm:0.3.23"
-  dependencies:
-    "@standard-schema/spec": "npm:^1.1.0"
-    nanoid: "npm:^5.1.11"
-    secure-json-parse: "npm:^4.1.0"
-  peerDependencies:
-    ioredis: ^5.10.1
-    redis: ^5.12.1
-  peerDependenciesMeta:
-    ioredis:
-      optional: true
-    redis:
-      optional: true
-  checksum: 10c0/71de8826e2f7638e1d6c458356d014af966b335c5ffa8de4158ea5ee62b0e48136fa7967051a44e664720a725585807363a4664386af7480a9837cdcec7243a5
-  languageName: node
-  linkType: hard
-
-"assistant-stream@npm:^0.3.24":
+"assistant-stream@npm:^0.3.23, assistant-stream@npm:^0.3.24, assistant-stream@npm:^0.3.6":
   version: 0.3.24
   resolution: "assistant-stream@npm:0.3.24"
   dependencies:
@@ -26772,17 +26727,6 @@ __metadata:
     redis:
       optional: true
   checksum: 10c0/b482f167698bc6adb4c26a17bbf8ceba60c6a83a5680e989a4dc73b2d3c9695a126be7028a50be184f745c8e8b1e03f71ea93fd656dc2a0a8a9a572a62adbf2e
-  languageName: node
-  linkType: hard
-
-"assistant-stream@npm:^0.3.6":
-  version: 0.3.6
-  resolution: "assistant-stream@npm:0.3.6"
-  dependencies:
-    "@standard-schema/spec": "npm:^1.1.0"
-    nanoid: "npm:^5.1.6"
-    secure-json-parse: "npm:^4.1.0"
-  checksum: 10c0/0583753733ef34c77888eebadcf2c38e7ac455c6968d493de8dbefc832766f00f9c7599949052a67b00ea749e1f795c97b308d87b572267e31a1ec72c9565e80
   languageName: node
   linkType: hard
 
@@ -40341,30 +40285,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nanoid@npm:^5.1.11":
-  version: 5.1.11
-  resolution: "nanoid@npm:5.1.11"
-  bin:
-    nanoid: bin/nanoid.js
-  checksum: 10c0/91580d18c29263ac0e871734f0d86e7f906f523f974d3c30fc65354ccf387ccffd606c2a6c28acc2977a3950146347e790ce9e3f514133a48995af5ccdb308ce
-  languageName: node
-  linkType: hard
-
 "nanoid@npm:^5.1.15":
   version: 5.1.16
   resolution: "nanoid@npm:5.1.16"
   bin:
     nanoid: bin/nanoid.js
   checksum: 10c0/04b4f96237f5639716da0e98f453361b313bebaf458bb67dea2d384724fc8b3340a28f032a4373052150bcf3b801d122e291d81ae4fc522969f55c134f4401a3
-  languageName: node
-  linkType: hard
-
-"nanoid@npm:^5.1.6":
-  version: 5.1.6
-  resolution: "nanoid@npm:5.1.6"
-  bin:
-    nanoid: bin/nanoid.js
-  checksum: 10c0/27b5b055ad8332cf4f0f9f6e2a494aa7e5ded89df4cab8c8490d4eabefe72c4423971d2745d22002868b1d50576a5e42b7b05214733b19f576382323282dd26e
   languageName: node
   linkType: hard
 
