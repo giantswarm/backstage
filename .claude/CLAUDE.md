@@ -198,8 +198,13 @@ falls through to the `'Unknown page'` default is reported to Sentry as a
 `Untracked page view: <path>` warning (see `captureEvent`), so forgetting this
 step turns every visit to the new page into recurring Sentry noise across all
 deployments. (Unregistered paths — bot/scanner probes — correctly land on
-"Not Found" and are *not* reported.) Update the test in
-`packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.test.tsx` accordingly.
+"Not Found" and are *not* reported.) Also add a representative path for the new
+route to the `knownTopLevelPaths` list in
+`packages/app/src/utils/telemetry.test.ts` — that enumeration test asserts every
+listed route resolves to a named page, so a missing mapping fails CI instead of
+silently flooding Sentry. Update
+`packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.test.tsx` too if the
+routing/reporting behaviour changes.
 
 ### Scaffolder Field Extensions
 

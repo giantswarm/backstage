@@ -117,6 +117,32 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'AI Chat' };
       break;
 
+    case pathname.startsWith('/ai-chat'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'AI Chat',
+        view: parts[2],
+      };
+      break;
+    }
+
+    case pathname === '/muster':
+      payload = { page: 'Muster index' };
+      break;
+
+    case pathname.startsWith('/muster'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Muster',
+        view: parts[2],
+      };
+      break;
+    }
+
+    case pathname === '/metrics':
+      payload = { page: 'Metrics' };
+      break;
+
     case pathname === '/search':
       payload = { page: 'Search' };
       break;
