@@ -218,6 +218,67 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for AI Chat history sub-route', () => {
+    const result = getTelemetryPageViewPayload('/ai-chat/history');
+    expect(result).toEqual({
+      page: 'AI Chat',
+      view: 'history',
+      path: '/ai-chat/history',
+    });
+  });
+
+  it('should return correct payload for muster index page', () => {
+    const result = getTelemetryPageViewPayload('/muster');
+    expect(result).toEqual({
+      page: 'Muster index',
+      path: '/muster',
+    });
+  });
+
+  it('should return correct payload for muster mcp-servers view', () => {
+    const result = getTelemetryPageViewPayload('/muster/mcp-servers');
+    expect(result).toEqual({
+      page: 'Muster',
+      view: 'mcp-servers',
+      path: '/muster/mcp-servers',
+    });
+  });
+
+  it('should return correct payload for muster workflows view', () => {
+    const result = getTelemetryPageViewPayload('/muster/workflows');
+    expect(result).toEqual({
+      page: 'Muster',
+      view: 'workflows',
+      path: '/muster/workflows',
+    });
+  });
+
+  it('should return correct payload for a muster workflow detail sub-route', () => {
+    const result = getTelemetryPageViewPayload('/muster/workflows/my-workflow');
+    expect(result).toEqual({
+      page: 'Muster',
+      view: 'workflows',
+      path: '/muster/workflows/my-workflow',
+    });
+  });
+
+  it('should return correct payload for muster tools view', () => {
+    const result = getTelemetryPageViewPayload('/muster/tools');
+    expect(result).toEqual({
+      page: 'Muster',
+      view: 'tools',
+      path: '/muster/tools',
+    });
+  });
+
+  it('should return correct payload for metrics page', () => {
+    const result = getTelemetryPageViewPayload('/metrics');
+    expect(result).toEqual({
+      page: 'Metrics',
+      path: '/metrics',
+    });
+  });
+
   it('should return correct payload for search page', () => {
     const result = getTelemetryPageViewPayload('/search');
     expect(result).toEqual({
@@ -231,6 +292,50 @@ describe('getTelemetryPageViewPayload', () => {
     expect(result).toEqual({
       page: 'Unknown page',
       path: '/unknown',
+    });
+  });
+
+  // Guard rail: every registered top-level route must map to a named page.
+  // A registered route that falls through to 'Unknown page' is reported to
+  // Sentry as an "Untracked page view" warning on every visit (see
+  // TelemetryDeckAnalyticsApi.captureEvent). When you add a new page/route,
+  // add a case to getTelemetryPageViewPayload and list a representative path
+  // here so a forgotten mapping fails CI instead of flooding Sentry.
+  describe('all known top-level routes resolve to a named page', () => {
+    const knownTopLevelPaths = [
+      '/',
+      '/catalog',
+      '/catalog/default/component/my-component',
+      '/catalog-graph',
+      '/docs',
+      '/docs/default/component/my-component',
+      '/create',
+      '/create/default/template/my-template',
+      '/settings',
+      '/installations',
+      '/clusters',
+      '/clusters/installation/org-demo/demo-cluster',
+      '/deployments',
+      '/deployments/gorilla/helmrelease/org-demo/my-app',
+      '/flux',
+      '/flux/tree',
+      '/ai-chat',
+      '/ai-chat/history',
+      '/muster',
+      '/muster/dashboard',
+      '/muster/mcp-servers',
+      '/muster/workflows',
+      '/muster/workflows/my-workflow',
+      '/muster/workflows/my-workflow/run',
+      '/muster/tools',
+      '/metrics',
+      '/search',
+    ];
+
+    it.each(knownTopLevelPaths)('%s', pathname => {
+      expect(getTelemetryPageViewPayload(pathname).page).not.toBe(
+        'Unknown page',
+      );
     });
   });
 });
