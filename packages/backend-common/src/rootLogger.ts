@@ -25,6 +25,15 @@ export const rootLogger = createServiceFactory({
             tracesSampleRate: logConfig.getNumber('tracesSampleRate'),
             ignoreErrors: [
               /^Index for techdocs was not created: indexer received 0 documents$/,
+              // Benign warning from @pagerduty/backstage-plugin-backend when we
+              // use the legacy single-token config (`pagerDuty.apiToken`) instead
+              // of the newer `pagerDuty.accounts` format. PagerDuty works fine —
+              // the plugin just logs this and falls back to the legacy path. We
+              // can't migrate to `accounts`: the plugin's single-account branch
+              // never sets its `fallbackEndpointConfig`, so any request without an
+              // explicit `account` (which is what our WhoIsOnCallEntityCard sends)
+              // throws when resolving the API base URL. See giantswarm/giantswarm#37085.
+              /^No PagerDuty accounts configuration found in config file\. Reverting to legacy configuration\.$/,
             ],
           },
           level: 'warn',
