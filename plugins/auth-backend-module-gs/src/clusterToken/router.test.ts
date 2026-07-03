@@ -286,7 +286,13 @@ describe('createClusterTokenRouter', () => {
   });
 
   it('maps an unreachable broker to 502', async () => {
-    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+    // Mirror an undici fetch rejection: the actionable code lives on
+    // `error.cause`, not the top-level "TypeError: fetch failed" message.
+    jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValue(
+        new TypeError('fetch failed', { cause: new Error('ECONNREFUSED') }),
+      );
 
     const res = await request(buildApp()!)
       .post('/cluster-token/golem')
@@ -297,5 +303,15 @@ describe('createClusterTokenRouter', () => {
       error: 'Token broker is unreachable',
       reason: 'broker_unreachable',
     });
+    // A genuine broker outage must reach Sentry with the underlying cause
+    // preserved, not just the opaque "fetch failed" wrapper.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.not.stringContaining('golem'),
+      expect.objectContaining({
+        installation: 'golem',
+        cause: expect.stringContaining('ECONNREFUSED'),
+      }),
+    );
   });
 });

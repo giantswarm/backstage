@@ -163,6 +163,13 @@ export function createClusterTokenRouter(
         logger.warn('Cluster token exchange failed: token broker unreachable', {
           installation,
           error: String(error),
+          // undici puts the actionable code (ECONNREFUSED/ENOTFOUND) on
+          // error.cause; String(error) alone collapses to "TypeError: fetch
+          // failed", which would make every outage cause look identical.
+          cause:
+            error instanceof Error && error.cause !== undefined
+              ? String(error.cause)
+              : null,
         });
         res.status(502).json({
           error: 'Token broker is unreachable',
