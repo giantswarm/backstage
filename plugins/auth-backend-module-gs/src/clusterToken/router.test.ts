@@ -77,6 +77,12 @@ function mockBrokerResponse(
 }
 
 describe('createClusterTokenRouter', () => {
+  beforeEach(() => {
+    // Clear accumulated call records (but keep mock implementations) so each
+    // test can assert on logger calls in isolation.
+    jest.clearAllMocks();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -205,6 +211,9 @@ describe('createClusterTokenRouter', () => {
       error: 'Token exchange failed',
       reason: 'exchange_failed',
     });
+    // A broker-side exchange failure is actionable and must reach Sentry.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.debug).not.toHaveBeenCalled();
   });
 
   it('maps a rejected subject token to a subject_invalid reason', async () => {
@@ -222,6 +231,10 @@ describe('createClusterTokenRouter', () => {
       error: 'Token exchange failed',
       reason: 'subject_invalid',
     });
+    // A rejected subject token is a routine, already-handled outcome; it must
+    // NOT reach Sentry (which the winston bridge forwards at `warn`).
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledTimes(1);
   });
 
   it('maps a broker client-auth failure to a broker_client_invalid reason', async () => {
@@ -242,6 +255,15 @@ describe('createClusterTokenRouter', () => {
       error: 'Token exchange failed',
       reason: 'broker_client_invalid',
     });
+    // A broker self-auth failure is a genuine outage: keep it at `warn`, but
+    // keep the installation out of the message (and in metadata) so a single
+    // outage collapses into one Sentry issue instead of one per installation.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.not.stringContaining('golem'),
+      expect.objectContaining({ installation: 'golem' }),
+    );
+    expect(logger.debug).not.toHaveBeenCalled();
   });
 
   it('still maps a non-invalid_client 401 to subject_invalid', async () => {
@@ -259,10 +281,18 @@ describe('createClusterTokenRouter', () => {
       error: 'Token exchange failed',
       reason: 'subject_invalid',
     });
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledTimes(1);
   });
 
   it('maps an unreachable broker to 502', async () => {
-    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+    // Mirror an undici fetch rejection: the actionable code lives on
+    // `error.cause`, not the top-level "TypeError: fetch failed" message.
+    jest
+      .spyOn(global, 'fetch')
+      .mockRejectedValue(
+        new TypeError('fetch failed', { cause: new Error('ECONNREFUSED') }),
+      );
 
     const res = await request(buildApp()!)
       .post('/cluster-token/golem')
@@ -273,5 +303,15 @@ describe('createClusterTokenRouter', () => {
       error: 'Token broker is unreachable',
       reason: 'broker_unreachable',
     });
+    // A genuine broker outage must reach Sentry with the underlying cause
+    // preserved, not just the opaque "fetch failed" wrapper.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.not.stringContaining('golem'),
+      expect.objectContaining({
+        installation: 'golem',
+        cause: expect.stringContaining('ECONNREFUSED'),
+      }),
+    );
   });
 });
