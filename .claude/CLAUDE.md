@@ -185,6 +185,22 @@ is needed.
 See `docs/ui.md` and the **`ui`** Claude Code skill for details, including how to
 read Backstage Storybook component/story source without cloning the monorepo.
 
+#### Analytics / Telemetry — keep in sync when adding pages
+
+Page views are reported via `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`,
+which maps each `navigate` event to a page name through
+`getTelemetryPageViewPayload` in `packages/app/src/utils/telemetry.ts`. That
+mapping is a hand-maintained `switch` over path prefixes.
+
+**When you add a new top-level page/route (a new plugin page, tab, or sub-route),
+add a matching case to `getTelemetryPageViewPayload`.** A *registered* route that
+falls through to the `'Unknown page'` default is reported to Sentry as a
+`Untracked page view: <path>` warning (see `captureEvent`), so forgetting this
+step turns every visit to the new page into recurring Sentry noise across all
+deployments. (Unregistered paths — bot/scanner probes — correctly land on
+"Not Found" and are *not* reported.) Update the test in
+`packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.test.tsx` accordingly.
+
 ### Scaffolder Field Extensions
 
 Custom field components for Backstage templates (in `plugins/gs`):
@@ -312,6 +328,29 @@ export class MyResource extends KubeObject<MyResourceInterface> {
 - Multi-version resources MUST have type guard methods (`isV1Beta1()`, etc.) for each version
 - Check available types: `node_modules/@giantswarm/k8s-types/dist/types/crds/`
 - Reference: `plugins/kubernetes-react/src/lib/k8s/capi/Cluster.ts`
+
+### Logging & error reporting
+
+The backend root logger forwards **every `warn` and `error` log to Sentry**
+(winston Sentry transport at `level: 'warn'` in
+`packages/backend-common/src/rootLogger.ts`). Pick log levels by whether a human
+should act, not by how bad it sounds:
+
+- `logger.error` / `logger.warn` — a real, actionable fault (a dependency is
+  down, a credential is invalid, an invariant broke). These become Sentry issues.
+- `logger.info` / `logger.debug` — expected, already-handled outcomes, even when a
+  request "fails": an upstream 4xx you translate into a clean response, an expired
+  user token, a retry that will recover. Logging these at `warn` floods Sentry.
+
+If a failure is handled gracefully (you return a structured error to the caller
+and no user is impacted), it's `info`/`debug`, not `warn`. And avoid putting
+high-cardinality values (installation name, entity id, raw response bodies) in the
+*message* of a `warn`/`error` — Sentry fingerprints on the message, so one root
+cause fans out into one issue per value. Put those in structured metadata instead.
+
+Frontend equivalent: `SentryErrorReporter`
+(`packages/app/src/apis/errorReporter/`); `warning`-level `notify()` calls also
+reach Sentry.
 
 ### Naming Conventions
 
