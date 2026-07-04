@@ -1,27 +1,22 @@
-import {
-  Content,
-  Header,
-  Page,
-  Progress,
-  RoutedTabs,
-} from '@backstage/core-components';
+import { ReactNode } from 'react';
+import { Content, Progress } from '@backstage/core-components';
 import {
   attachComponentData,
   useElementFilter,
 } from '@backstage/core-plugin-api';
 import { useRouteRefParams } from '@backstage/frontend-plugin-api';
-import Grid from '@material-ui/core/Grid';
-import { makeStyles } from '@material-ui/core/styles';
+import { PluginHeader } from '@backstage/ui';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
 import { useAsyncDeployment } from '../DeploymentDetailsPage/useCurrentDeployment';
 import { deploymentDetailsRouteRef } from '../../../routes';
-import { useCurrentUser } from '../../hooks';
+import { useCurrentUser, useLayoutTabs } from '../../hooks';
 import {
   App,
   HelmRelease,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
+import { AIChatButtonBui } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { getAggregatedStatus } from '../utils/getStatus';
 import {
   useMimirWorkloadStatus,
@@ -33,12 +28,6 @@ import {
   getWorkloadPodPrefix,
 } from '../utils/getWorkloadIdentifiers';
 import { EditDeploymentButton } from './EditDeploymentButton';
-
-const useStyles = makeStyles(theme => ({
-  headerAction: {
-    color: theme.page.fontColor,
-  },
-}));
 
 export type DeploymentLayoutRouteProps = {
   path: string;
@@ -61,54 +50,12 @@ attachComponentData(Route, 'core.gatherMountPoints', true);
 const PageContent = ({
   isLoading,
   error,
-  installationName,
-  deployment,
-  isGSUser,
-  children,
+  element,
 }: {
   isLoading: boolean;
   error: Error | null;
-  installationName: string;
-  deployment?: App | HelmRelease;
-  isGSUser?: boolean;
-  children?: React.ReactNode;
+  element: ReactNode;
 }) => {
-  const routes = useElementFilter(
-    children,
-    elements =>
-      elements
-        .selectByComponentData({
-          key: dataKey,
-          withStrictError:
-            'Child of DeploymentLayout must be a DeploymentLayout.Route',
-        })
-        .getElements<DeploymentLayoutRouteProps>()
-        .flatMap(({ props: elementProps }) => {
-          if (isLoading || !deployment) {
-            return [];
-          } else if (
-            elementProps.if &&
-            !elementProps.if({
-              deployment,
-              installationName,
-              isGSUser: Boolean(isGSUser),
-            })
-          ) {
-            return [];
-          }
-
-          return [
-            {
-              path: elementProps.path,
-              title: elementProps.title,
-              children: elementProps.children,
-              tabProps: elementProps.tabProps,
-            },
-          ];
-        }),
-    [deployment, isLoading, isGSUser],
-  );
-
   if (isLoading) {
     return (
       <Content>
@@ -125,7 +72,7 @@ const PageContent = ({
     );
   }
 
-  return <RoutedTabs routes={routes} />;
+  return <Content>{element}</Content>;
 };
 
 function isWorkloadReady(w: WorkloadReplicaStatus): boolean {
@@ -177,7 +124,6 @@ export interface DeploymentLayoutProps {
 }
 
 export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
-  const classes = useStyles();
   const { name } = useRouteRefParams(deploymentDetailsRouteRef);
 
   const {
@@ -206,49 +152,78 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
 
   const isLoading = deploymentIsLoading || currentUserIsLoading;
 
-  const type = `resource - ${deployment && deployment instanceof App ? 'Giant Swarm App' : 'Flux HelmRelease'}`;
-
-  return (
-    <Page themeId="service">
-      <Header title={name} type={type}>
-        {deployment && deployment instanceof HelmRelease && (
-          <Grid item className={classes.headerAction}>
-            <EditDeploymentButton
-              deployment={deployment}
-              installationName={installationName}
-            />
-          </Grid>
-        )}
-        {deployment &&
-          (() => {
-            const { message, isTroubleshoot } = getAIChatMessage(
+  const routes = useElementFilter(
+    children,
+    elements =>
+      elements
+        .selectByComponentData({
+          key: dataKey,
+          withStrictError:
+            'Child of DeploymentLayout must be a DeploymentLayout.Route',
+        })
+        .getElements<DeploymentLayoutRouteProps>()
+        .flatMap(({ props: elementProps }) => {
+          if (isLoading || !deployment) {
+            return [];
+          } else if (
+            elementProps.if &&
+            !elementProps.if({
               deployment,
               installationName,
-              workloads,
-              clusterName,
-              workloadNamespace,
-            );
-            return (
-              <Grid item className={classes.headerAction}>
-                <AIChatButton
-                  troubleshoot={isTroubleshoot}
-                  color="inherit"
-                  items={[{ label: 'AI Chat', message }]}
-                />
-              </Grid>
-            );
-          })()}
-      </Header>
-      <PageContent
-        isLoading={isLoading}
-        error={error}
-        installationName={installationName}
-        deployment={deployment}
-        isGSUser={isGSUser}
-      >
-        {children}
-      </PageContent>
-    </Page>
+              isGSUser: Boolean(isGSUser),
+            })
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              path: elementProps.path,
+              title: elementProps.title,
+              children: elementProps.children,
+            },
+          ];
+        }),
+    [deployment, isLoading, isGSUser],
+  );
+
+  const { tabs, element } = useLayoutTabs(routes);
+
+  return (
+    <>
+      <PluginHeader
+        icon={<CloudUploadIcon fontSize="inherit" />}
+        title={`Deployments / ${name}`}
+        tabs={tabs}
+        customActions={
+          <>
+            {deployment && deployment instanceof HelmRelease && (
+              <EditDeploymentButton
+                deployment={deployment}
+                installationName={installationName}
+              />
+            )}
+            {deployment &&
+              (() => {
+                const { message, isTroubleshoot } = getAIChatMessage(
+                  deployment,
+                  installationName,
+                  workloads,
+                  clusterName,
+                  workloadNamespace,
+                );
+                return (
+                  <AIChatButtonBui
+                    troubleshoot={isTroubleshoot}
+                    items={[{ label: 'AI Chat', message }]}
+                  />
+                );
+              })()}
+          </>
+        }
+      />
+      <PageContent isLoading={isLoading} error={error} element={element} />
+    </>
   );
 };
 

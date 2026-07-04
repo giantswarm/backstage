@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Box,
   Button,
@@ -12,13 +12,15 @@ import Power from '@material-ui/icons/Power';
 import Build from '@material-ui/icons/Build';
 import Lock from '@material-ui/icons/Lock';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
-import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
 import { InstallationPicker } from '../InstallationPicker';
-import { useMusterInstance } from '../MusterInstanceProvider';
-import { SectionHeader, Gate, DisclosureAccordion } from '../shared';
+import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
+import {
+  SectionHeader,
+  Gate,
+  DisclosureAccordion,
+  FreshnessIndicator,
+} from '../shared';
 import { partitionServers } from '../../lib/serverGrouping';
-import { musterApiRef } from '../../apis';
 import { StandardServerDisclosure } from './StandardServerDisclosure';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 import { CoreFamiliesPanel } from './CoreFamiliesPanel';
@@ -68,37 +70,25 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 export function McpServersPage() {
   const classes = useStyles();
-  const { mcpServers, activeInstallation, activeInstallationInfo, isLoading } =
-    useMusterInstance();
-  const musterApi = useApi(musterApiRef);
+  const {
+    mcpServers,
+    activeInstallation,
+    activeInstallationInfo,
+    isLoading,
+    dataUpdatedAt,
+    isRefreshing,
+    retry,
+  } = useMusterInstance();
 
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
 
-  // Live probe: one round-trip that doubles as the auth check (a 401/403 flips
-  // the page to the not-authenticated state). Same pattern as the dashboard.
+  // Session state (and the connect action) are resolved once via the shared
+  // hook so the manager, the dashboard and the workflows page agree (ADR D3).
   const {
-    data: probe,
-    isError: probeFailed,
-    refetch,
-  } = useQuery({
-    queryKey: ['muster', 'overview', activeInstallation],
-    queryFn: () =>
-      musterApi.filterTools({ installation: activeInstallation, limit: 1 }),
-    enabled: Boolean(activeInstallation),
-  });
-
-  const authenticated = !requiresAuth || (!probeFailed && Boolean(probe));
-
-  const [connecting, setConnecting] = useState(false);
-  const handleConnect = async () => {
-    setConnecting(true);
-    try {
-      await musterApi.signIn();
-      await refetch();
-    } finally {
-      setConnecting(false);
-    }
-  };
+    authenticated,
+    connecting,
+    connect: handleConnect,
+  } = useMusterSession();
 
   const { standard, integration } = useMemo(
     () => partitionServers(mcpServers),
@@ -171,6 +161,13 @@ export function McpServersPage() {
             icon={<Dns />}
             title="Standard servers"
             description="muster federates the same backend MCP servers across the management clusters in this installation. Each family's tool surface is identical, so it is shown once; connection health is tracked per management cluster."
+            action={
+              <FreshnessIndicator
+                updatedAt={dataUpdatedAt}
+                isRefreshing={isRefreshing}
+                onRefresh={retry}
+              />
+            }
           />
           {standard.length === 0 ? (
             <Typography variant="body2" color="textSecondary">
@@ -191,6 +188,7 @@ export function McpServersPage() {
                     key={group.family}
                     family={group.family}
                     servers={group.servers}
+                    activeInstallation={activeInstallation}
                     authenticated={authenticated}
                     defaultExpanded={false}
                   />
@@ -206,7 +204,12 @@ export function McpServersPage() {
             icon={<Power />}
             title="Integration servers"
             description="Singular MCP servers muster fronts outside the management-cluster structure — customer integrations and shared services. Each carries its own endpoint, auth chain, and tool surface."
-            action={<AddAdHocServerButton installation={activeInstallation} />}
+            action={
+              <AddAdHocServerButton
+                installation={activeInstallation}
+                authenticated={authenticated}
+              />
+            }
           />
           {integration.length === 0 ? (
             <Typography variant="body2" color="textSecondary">

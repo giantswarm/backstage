@@ -1,7 +1,84 @@
 ---
 name: tables
-description: Patterns for implementing tables using '@backstage/core-components' Table, including column definitions, sorting, filtering, and visibility persistence.
+description: Patterns for implementing tables. Covers the bui Table ('@backstage/ui') — preferred for new, simple tables — and the feature-rich '@backstage/core-components' Table with search, filtering, and column-visibility persistence.
 ---
+
+## Choosing a table component
+
+Two table components are in use. **Prefer the bui `Table` (`@backstage/ui`) for
+new tables** — it matches the new Backstage design system and is the direction
+we're moving. But it is not yet a full replacement for the older component.
+
+| Need | Use |
+| --- | --- |
+| Simple listing, no built-in search/filter/column-toggle | **bui `Table`** from `@backstage/ui` |
+| Built-in quick-search, per-column filtering, column-visibility toggle, CSV export | **`Table`** from `@backstage/core-components` (material-table based) |
+
+The `@backstage/core-components` `Table` (documented in the bulk of this skill)
+wraps `@material-table/core` and is still the only option when you need its
+search box, `columnsButton`, `customFilterAndSearch`, or the faceted-sidebar
+pattern. The bui `Table` has **none** of those yet — no search, no filtering, no
+column visibility — so don't reach for it when those are required. Reference for
+bui usage: `plugins/ai-chat/src/components/ConversationHistoryTable/` and
+`plugins/gs/src/components/deployments/deployment-details/DeploymentGateway/DeploymentHttpRoutesCard/`.
+
+## bui Table (`@backstage/ui`)
+
+Data-driven: pass `columnConfig` + `data` (each row must have an `id: string |
+number`). Cells **must** return a cell component (`Cell`, `CellText`, or
+`CellProfile`) at the top level — bare text/fragments break the layout.
+
+```tsx
+import { Cell, CellText, ColumnConfig, Table } from '@backstage/ui';
+
+type Row = { id: string; name: string; status: string };
+
+const columnConfig: ColumnConfig<Row>[] = [
+  { id: 'name', label: 'Name', isRowHeader: true, cell: r => <CellText title={r.name} /> },
+  // CellText renders title (+ optional description) as the standard cell text
+  { id: 'status', label: 'Status', cell: r => <Cell><StatusBadge status={r.status} /></Cell> },
+];
+
+<Table<Row>
+  columnConfig={columnConfig}
+  data={rows}
+  isPending={isLoading}          // built-in loading state (`loading` is deprecated)
+  pagination={{ type: 'none' }}  // or { type: 'page', ... }
+  emptyState={<Text>No results</Text>}
+/>;
+```
+
+Key points:
+- Declare `@backstage/ui` in the plugin's `package.json` (`"backstage:^"`).
+- `ColumnConfig` fields: `id`, `label`, `cell`, plus optional `isRowHeader`,
+  `isSortable`, `isHidden`, `width`/`minWidth`/`maxWidth`, `header`.
+- `Table` handles `isPending` / `emptyState` / `error` internally — you don't
+  need the manual loading/empty branches the core-components Table requires.
+- `CellText` takes `title` (required) + optional `description`, `leadingIcon`,
+  `href`. Use `Cell` to wrap arbitrary custom content.
+- For consumer-managed pagination/sort, pair with the `useTable` hook and spread
+  its `tableProps` (see `ConversationHistoryTable`).
+- `isSortable` sorts in-memory; there is still no built-in search/filter box.
+
+### Gotcha: the loading skeleton needs `data={undefined}`, not `[]`
+
+The animated skeleton (`TableBodySkeleton`) only renders when
+`isPending && data === undefined` (internally `isInitialLoading = pending &&
+!data`). If you pass `data={rows}` where `rows` is `[]` during load, `!data` is
+false, so the skeleton never shows and the `emptyState` flashes instead. Gate
+the data on your loading flag:
+
+```tsx
+<Table
+  columnConfig={columnConfig}
+  data={isLoading ? undefined : rows}  // undefined → skeleton; [] → emptyState
+  isPending={isLoading}
+  emptyState={<Text>No results</Text>}
+/>
+```
+
+Then loading shows the skeleton, and only a settled empty result shows the
+empty state.
 
 ## Table Structure
 
@@ -82,6 +159,41 @@ return columns.map(column => ({
 }
 ```
 
+### Gotcha: search matches the raw `field` value, not the rendered label
+
+The built-in quick-search ignores `render` and matches the raw value at
+`row[field]`. A column that renders a different label (e.g. `field: 'source'`
+holding `'gitops' | 'manual'` but rendering "GitOps" / "Manually added") will
+not match what the user sees typed in the search box. Fix it per column:
+
+- Add a `customFilterAndSearch` that matches the displayed label, **or**
+- Set `searchable: false` if the column should not participate in search (e.g. a
+  badge-only column).
+
+```tsx
+{
+  field: 'source',
+  customFilterAndSearch: (query, row) =>
+    SOURCE_LABELS[row.source].includes(query.toLowerCase()),
+  render: row => <SourceBadge source={row.source} />,
+}
+```
+
+### Token-boundary search
+
+The shared Table only **filters** rows on search; it cannot re-order them by a
+relevance score. If you need word-boundary matching (so `"dex"` does not match
+`"index"`), implement it inside `customFilterAndSearch` with a small tokenizer
+(split on `/[^a-z0-9]+/`, require each query token to be a prefix of some text
+token). Do not expect relevance ranking — only matching is achievable.
+
+### Prefer plain row objects over class instances
+
+Map domain objects (e.g. `KubeObject` subclasses) to a plain `RowType` in a data
+provider before passing them as `data`. Default `field`-based sort/search work on
+plain values; class getters do not, and you would otherwise need `customSort` +
+`customFilterAndSearch` on every column.
+
 ### DateTime Columns
 
 - Set `type: 'datetime'` for automatic date sorting
@@ -136,3 +248,80 @@ actions={[
 ### Not Available State
 
 - Use `<NotAvailable />` component when data is missing
+
+### Responsive column widths & truncation
+
+To make one column (e.g. Name) absorb the remaining space while the rest stay
+compact, give the secondary columns explicit widths and the primary one
+`width: 'auto'`, and enable fixed layout:
+
+```tsx
+options={{ /* ... */ tableLayout: 'fixed' }}
+// columns:
+{ field: 'name', width: 'auto', /* ... */ }
+{ field: 'namespace', width: '15%' }
+{ field: 'source', width: '10%' }
+```
+
+With `tableLayout: 'fixed'`, cells honor the declared widths. This also makes
+**CSS ellipsis responsive**: render the name with `noWrap` so it truncates to
+the actual cell width (full text on a wide viewport, ellipsis only when narrow),
+and keep the full value in a `title`. Do **not** hard-truncate with
+`String.slice(0, N)` — that is fixed regardless of available width and loses
+information on wide screens.
+
+```tsx
+<Link to={to} title={row.name} noWrap display="block">
+  {row.name}
+</Link>
+```
+
+### Custom toolbar content (e.g. a "Create" button)
+
+To add a custom element next to the search / columns button, override
+`components.Toolbar` and render the default `MTableToolbar` plus your element.
+Requires declaring `@material-table/core` in the plugin's `package.json`.
+
+```tsx
+import { MTableToolbar } from '@material-table/core';
+
+// Memoize so the toolbar (and its search box / any open dialog) is not
+// remounted on every data refetch:
+const ToolbarComponent = useMemo(
+  () => (props: React.ComponentProps<typeof MTableToolbar>) => (
+    <Box display="flex" alignItems="center">
+      <Box flexGrow={1}><MTableToolbar {...props} /></Box>
+      <Box flexShrink={0} mr={2}><CreateButton /></Box>
+    </Box>
+  ),
+  [/* deps the button needs */],
+);
+
+<Table components={{ Toolbar: ToolbarComponent }} options={{ columnsButton: true }} />
+```
+
+Avoid the `components.Action` hack (a dummy free-action whose icon renders the
+button): material-table renders `Action` once per entry in `actions`, so it
+silently duplicates the moment a second action is added.
+
+## Faceted Sidebar Filters
+
+List pages (Deployments, Installations, Workflows) filter via a sidebar of
+facets, not just the built-in search. All building blocks come from
+`@giantswarm/backstage-plugin-ui-react`: `FiltersLayout`, `MultiplePicker`
+(+ `MultiplePickerOption`), `useFilters`, `FacetFilter`, `FiltersData`. Reference:
+`plugins/gs/src/components/deployments/` (`DeploymentsDataProvider`,
+`DeploymentsPage/filters/`).
+
+1. **Filter classes** implement `FacetFilter` (`filter(row)` + `toQueryValue()`),
+   one per facet, returning `true` when no values are selected.
+2. **A data provider** runs `useFilters<MyFilters>()` and computes
+   `filteredData = data.filter(row => activeFilters.every(f => f.filter(row)))`;
+   it exposes `{ data, filteredData, filters, queryParameters, updateFilters }`
+   via context. Derive facet options from `data` (not `filteredData`) so options
+   don't disappear as the user selects.
+3. **Picker components** read the context and render `<MultiplePicker autocomplete>`,
+   calling `updateFilters({ key: new MyFilter(values) })`.
+4. **Layout**: wrap in `<FiltersLayout>` with `.Filters` (the pickers) and
+   `.Content` (the Table). `useFilters` persists selections to `?filters[...]`
+   URL params automatically.

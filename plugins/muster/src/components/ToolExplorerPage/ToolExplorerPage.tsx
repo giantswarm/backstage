@@ -80,7 +80,7 @@ function AuthAffordance({ installation }: { installation: string }) {
 
 function ExplorerBody({ installation }: { installation: string }) {
   const classes = useStyles();
-  const { mcpServers } = useMusterInstance();
+  const { mcpServers, isLoading } = useMusterInstance();
   const [searchParams] = useSearchParams();
   // Deep-link entry points (e.g. a workflow's "Run" button or a server's
   // "open in tool explorer" link) preselect a tool via `?tool=` and/or scope
@@ -103,9 +103,10 @@ function ExplorerBody({ installation }: { installation: string }) {
     [mcpServers],
   );
 
-  // When deep-linked to a server without a specific tool, seed the browser
-  // search with the server name so its tools surface immediately.
-  const initialQuery = toolParam ? '' : (serverParam ?? '');
+  // A `?server=` deep link (without a specific tool) scopes the browse to that
+  // server's tools by prefix -- not a free-text search, which would also match
+  // every tool whose description mentions the segment (tools F4).
+  const serverScope = toolParam ? undefined : serverParam;
 
   const handleSelect = (name: string) => {
     setSelected(name);
@@ -124,7 +125,8 @@ function ExplorerBody({ installation }: { installation: string }) {
               onSelect={handleSelect}
               servers={servers}
               prefs={prefs}
-              initialQuery={initialQuery}
+              serverScope={serverScope}
+              serversLoading={isLoading}
             />
           </Paper>
         </Grid>

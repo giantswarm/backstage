@@ -1,5 +1,7 @@
 import { ReactNode } from 'react';
 import { Content } from '@backstage/core-components';
+import { PluginHeader } from '@backstage/ui';
+import StorageIcon from '@material-ui/icons/Storage';
 import { FiltersLayout } from '../../FiltersLayout';
 import { ClustersTable } from '../ClustersTable';
 import { ClustersDataProvider } from '../ClustersDataProvider';
@@ -16,16 +18,22 @@ export function BaseClustersPage(props: BaseClustersPageProps) {
   const { filters, content = <ClustersTable /> } = props;
 
   return (
-    <Content>
-      <ErrorsProvider>
-        <ClustersDataProvider>
-          <FiltersLayout>
-            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-            <FiltersLayout.Content>{content}</FiltersLayout.Content>
-          </FiltersLayout>
-        </ClustersDataProvider>
-      </ErrorsProvider>
-    </Content>
+    <>
+      <PluginHeader
+        icon={<StorageIcon fontSize="inherit" />}
+        title="Clusters"
+      />
+      <Content>
+        <ErrorsProvider>
+          <ClustersDataProvider>
+            <FiltersLayout>
+              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+              <FiltersLayout.Content>{content}</FiltersLayout.Content>
+            </FiltersLayout>
+          </ClustersDataProvider>
+        </ErrorsProvider>
+      </Content>
+    </>
   );
 }
 

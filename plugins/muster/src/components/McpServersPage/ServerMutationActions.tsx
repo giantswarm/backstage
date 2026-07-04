@@ -19,6 +19,7 @@ import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import PlayArrow from '@material-ui/icons/PlayArrow';
 import Stop from '@material-ui/icons/Stop';
 import Replay from '@material-ui/icons/Replay';
+import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
@@ -29,6 +30,7 @@ import {
   toManifestYaml,
   toMcpServerDefinition,
 } from '../../lib/gitops';
+import { mutationErrorMessage } from '../../lib/authError';
 import { StateBadge } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -185,7 +187,7 @@ function ConfirmActionDialog({
       await musterApi.callTool(action.tool, action.args, server.cluster);
       setDone(true);
     } catch (e) {
-      setError((e as Error).message);
+      setError(mutationErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -313,7 +315,7 @@ export function AdHocServerDialog({
       await musterApi.callTool('core_mcpserver_validate', def, target);
       setMessage('Definition is valid.');
     } catch (e) {
-      setError((e as Error).message);
+      setError(mutationErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -334,7 +336,7 @@ export function AdHocServerDialog({
       );
       setMessage('Saved. The CRD list will refresh shortly.');
     } catch (e) {
-      setError((e as Error).message);
+      setError(mutationErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -537,20 +539,39 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
  */
 export function AddAdHocServerButton({
   installation,
+  authenticated = true,
 }: {
   installation?: string;
+  /**
+   * Whether there is an authenticated muster session for this installation.
+   * Adding an ad-hoc server runs `core_mcpserver_*` live through muster, which
+   * needs a session -- so it is disabled (with an explanatory tooltip) when
+   * there is none, rather than failing after the user composes a definition.
+   */
+  authenticated?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const button = (
+    <Button
+      size="small"
+      startIcon={<Edit />}
+      onClick={() => setOpen(true)}
+      disabled={!authenticated}
+      title="Create a live ad-hoc MCP server"
+    >
+      Add ad-hoc server
+    </Button>
+  );
   return (
     <>
-      <Button
-        size="small"
-        startIcon={<Edit />}
-        onClick={() => setOpen(true)}
-        title="Create a live ad-hoc MCP server"
-      >
-        Add ad-hoc server
-      </Button>
+      {authenticated ? (
+        button
+      ) : (
+        <Tooltip title="Connect to muster (sign in) to add an ad-hoc server.">
+          {/* span wrapper so the tooltip still fires over the disabled button */}
+          <span>{button}</span>
+        </Tooltip>
+      )}
       <AdHocServerDialog
         installation={installation}
         open={open}

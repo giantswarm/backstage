@@ -18,7 +18,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     borderRadius: theme.shape.borderRadius * 2,
     backgroundColor: theme.palette.background.paper,
     overflow: 'auto',
-    height: '100%',
+    // Grow with content, but cap at the viewport so a long history scrolls
+    // internally instead of stretching the page.
+    maxHeight: 'calc(100vh - 360px)',
   },
   header: {
     padding: theme.spacing(1.5, 2),
@@ -76,7 +78,7 @@ export function ExecutionHistoryPanel({
         ))}
         {executions.length === 0 && (
           <ListItem>
-            <ListItemText secondary="No executions recorded for this workflow." />
+            <ListItemText secondary="No engine- or agent-driven executions recorded. Runs launched from the tool explorer are not recorded here." />
           </ListItem>
         )}
       </List>

@@ -65,6 +65,9 @@ const clustersPage = PageBlueprint.make({
   params: {
     title: 'Clusters',
     icon: <StorageIcon />,
+    // The clusters pages render their own bui PluginHeader (list + detail),
+    // so suppress the app-shell header to avoid stacking two headers.
+    noHeader: true,
     path: '/clusters',
     routeRef: clustersRouteRef,
     loader: async () => {
@@ -80,6 +83,9 @@ const deploymentsPage = PageBlueprint.make({
   params: {
     title: 'Deployments',
     icon: <CloudUploadIcon />,
+    // The deployments pages render their own bui PluginHeader (list + detail),
+    // so suppress the app-shell header to avoid stacking two headers.
+    noHeader: true,
     path: '/deployments',
     routeRef: deploymentsRouteRef,
     loader: async () => {

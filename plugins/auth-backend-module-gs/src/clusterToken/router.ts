@@ -157,10 +157,20 @@ export function createClusterTokenRouter(
           body: params.toString(),
         });
       } catch (error) {
-        logger.warn(
-          `Cluster token exchange for installation "${installation}" failed: broker unreachable`,
-          error as Error,
-        );
+        // A broker fault, not a user problem. Keep the installation out of the
+        // message so the winston->Sentry bridge groups every installation's
+        // outage into a single issue instead of one per installation.
+        logger.warn('Cluster token exchange failed: token broker unreachable', {
+          installation,
+          error: String(error),
+          // undici puts the actionable code (ECONNREFUSED/ENOTFOUND) on
+          // error.cause; String(error) alone collapses to "TypeError: fetch
+          // failed", which would make every outage cause look identical.
+          cause:
+            error instanceof Error && error.cause !== undefined
+              ? String(error.cause)
+              : null,
+        });
         res.status(502).json({
           error: 'Token broker is unreachable',
           reason: 'broker_unreachable',
@@ -170,19 +180,32 @@ export function createClusterTokenRouter(
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
-        logger.warn(
-          `Cluster token exchange for installation "${installation}" failed with status ${response.status}: ${body}`,
-        );
         tokenCache.delete(cacheKey);
 
         const oauthError = parseOAuthError(body);
+
+        // The high-cardinality installation and raw body go into structured
+        // metadata, never the log message. The Sentry transport fingerprints
+        // `warn`/`error` on the message text, so a constant message per root
+        // cause collapses a broker fault into one Sentry issue rather than one
+        // per installation.
+        const meta = {
+          installation,
+          status: response.status,
+          oauthError: oauthError ?? null,
+          body,
+        };
 
         // OAuth `invalid_client` means the broker could not authenticate
         // ITSELF to muster (e.g. its confidential client record was wiped),
         // not that the user's subject token was rejected. This is a broker
         // outage that hits every cluster at once and must not be reported to
-        // users as an expired session.
+        // users as an expired session. Genuinely actionable -> stays at `warn`.
         if (oauthError === 'invalid_client') {
+          logger.warn(
+            'Cluster token exchange failed: broker could not authenticate to muster (invalid_client)',
+            meta,
+          );
           res.status(502).json({
             error: 'Token exchange failed',
             reason: 'broker_client_invalid',
@@ -193,15 +216,35 @@ export function createClusterTokenRouter(
         // An OAuth invalid_grant/invalid_token/invalid_request (or a bare 401
         // that is not invalid_client) means the forwarded subject token was
         // rejected -- i.e. the user's main session, not the cluster, is the
-        // problem. Everything else is a broker-side exchange failure.
+        // problem. This is routine (expired sessions) and already handled with
+        // 0 user impact, so it logs at `debug` and stays out of Sentry.
         const subjectRejected =
           response.status === 401 ||
           oauthError === 'invalid_grant' ||
           oauthError === 'invalid_token' ||
           oauthError === 'invalid_request';
+        if (subjectRejected) {
+          logger.debug(
+            'Cluster token exchange rejected: subject token invalid or expired',
+            meta,
+          );
+          res.status(502).json({
+            error: 'Token exchange failed',
+            reason: 'subject_invalid',
+          });
+          return;
+        }
+
+        // Everything else is a broker-side exchange failure -- e.g.
+        // `invalid_target`, where the audience/installation is not served by
+        // the broker (a registration/config gap). Actionable -> stays at `warn`.
+        logger.warn(
+          'Cluster token exchange failed: broker rejected the exchange',
+          meta,
+        );
         res.status(502).json({
           error: 'Token exchange failed',
-          reason: subjectRejected ? 'subject_invalid' : 'exchange_failed',
+          reason: 'exchange_failed',
         });
         return;
       }
@@ -212,7 +255,8 @@ export function createClusterTokenRouter(
       };
       if (!tokenResponse.access_token) {
         logger.warn(
-          `Cluster token exchange for installation "${installation}" returned no access_token`,
+          'Cluster token exchange failed: broker returned no access_token',
+          { installation },
         );
         res
           .status(502)

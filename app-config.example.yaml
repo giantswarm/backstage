@@ -63,7 +63,10 @@ gs:
   # Muster cluster-token broker. Setting `tokenUrl` enables the silent
   # per-cluster token path; without it Backstage falls back to per-cluster
   # OIDC popups. `clientId`/`clientSecret` are the confidential client
-  # registered with the broker (backend-only / secret).
+  # registered with the broker (backend-only / secret). This block is also
+  # what makes the "Cluster access" sidebar item appear: it shows the live
+  # health of every broker-covered installation (those with
+  # `clusterTokenAudience` set below). Env var values: see .env.example.
   clusterTokenBroker:
     tokenUrl: ${CLUSTER_TOKEN_BROKER_URL} # e.g. https://muster.example.gigantic.io/oauth/token
     clientId: ${CLUSTER_TOKEN_BROKER_CLIENT_ID}
@@ -89,7 +92,10 @@ gs:
       oidcTokenProvider: oidc-example
       # Marks this installation as fully broker-covered: its token is minted
       # silently from the main session, and it gets no entry on the provider
-      # settings page.
+      # settings page. NOTE: this has no effect on the main installation --
+      # the one whose `oidcTokenProvider` equals `gs.authProvider` above (here
+      # `main`) is always excluded from broker coverage, so do not bother
+      # setting `clusterTokenAudience` on it.
       clusterTokenAudience: example
       pipeline: stable
       providers:

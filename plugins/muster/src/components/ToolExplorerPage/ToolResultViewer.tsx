@@ -57,6 +57,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  headerCell: {
+    whiteSpace: 'nowrap',
+  },
   tableWrap: {
     maxHeight: 480,
     overflow: 'auto',
@@ -205,7 +208,9 @@ export function ToolResultViewer({
             <TableHead>
               <TableRow>
                 {table.columns.map(col => (
-                  <TableCell key={col}>{col}</TableCell>
+                  <TableCell key={col} className={classes.headerCell}>
+                    {col}
+                  </TableCell>
                 ))}
               </TableRow>
             </TableHead>

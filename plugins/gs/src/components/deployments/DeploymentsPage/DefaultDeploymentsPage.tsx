@@ -1,5 +1,7 @@
 import { ReactNode } from 'react';
 import { Content } from '@backstage/core-components';
+import { PluginHeader } from '@backstage/ui';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import { DeploymentsTable } from '../DeploymentsTable';
 import { DeploymentsDataProvider } from '../DeploymentsDataProvider';
 import { deploymentsRouteRef } from '../../../routes';
@@ -20,16 +22,22 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
   } = props;
 
   return (
-    <Content>
-      <ErrorsProvider>
-        <DeploymentsDataProvider>
-          <FiltersLayout>
-            <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
-            <FiltersLayout.Content>{content}</FiltersLayout.Content>
-          </FiltersLayout>
-        </DeploymentsDataProvider>
-      </ErrorsProvider>
-    </Content>
+    <>
+      <PluginHeader
+        icon={<CloudUploadIcon fontSize="inherit" />}
+        title="Deployments"
+      />
+      <Content>
+        <ErrorsProvider>
+          <DeploymentsDataProvider>
+            <FiltersLayout>
+              <FiltersLayout.Filters>{filters}</FiltersLayout.Filters>
+              <FiltersLayout.Content>{content}</FiltersLayout.Content>
+            </FiltersLayout>
+          </DeploymentsDataProvider>
+        </ErrorsProvider>
+      </Content>
+    </>
   );
 }
 

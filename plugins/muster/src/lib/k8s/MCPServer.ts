@@ -190,3 +190,47 @@ export function worstSeverity(
 ): MCPServerSeverity {
   return SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
 }
+
+/**
+ * Fraction of aggregated servers that must be unhealthy before the dashboard
+ * "Servers healthy" stat flips to amber.
+ *
+ * muster federates ~26 management clusters, so at least one remote backend is
+ * almost always degraded (goose/violet/garm DNS failures across trials).
+ * Colouring the stat amber on `healthy != total` made it near-permanently amber
+ * and therefore useless as a signal (dashboard review F1). Warn only when a
+ * meaningful fraction is unhealthy so the colour means "act on this".
+ *
+ * ponytail: fixed 10% threshold (5/55 stays green, 6/55 warns). The orthogonal
+ * scope question -- count the selected installation's own servers vs the full
+ * federated fan-out -- is a deferred PM decision (iteration-2 ADR open
+ * question #4), so the count still covers every aggregated server.
+ */
+export const SERVERS_HEALTH_WARNING_FRACTION = 0.1;
+
+export interface ServersHealthSummary {
+  healthy: number;
+  total: number;
+  tone: 'ok' | 'warning';
+}
+
+/**
+ * Counts how many aggregated servers are healthy (severity `ok`, which includes
+ * `Auth Required`) and decides the dashboard stat tone via
+ * {@link SERVERS_HEALTH_WARNING_FRACTION}.
+ */
+export function serversHealthSummary(
+  servers: Pick<MCPServer, 'getState'>[],
+): ServersHealthSummary {
+  const total = servers.length;
+  const healthy = servers.filter(
+    s => mcpServerStateSeverity(s.getState()) === 'ok',
+  ).length;
+  const unhealthyFraction = total === 0 ? 0 : (total - healthy) / total;
+  return {
+    healthy,
+    total,
+    tone:
+      unhealthyFraction > SERVERS_HEALTH_WARNING_FRACTION ? 'warning' : 'ok',
+  };
+}

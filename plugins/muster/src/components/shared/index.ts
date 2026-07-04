@@ -12,6 +12,8 @@ export { ToolList } from './ToolList';
 export type { ToolListItem, ToolListProps } from './ToolList';
 export { Gate } from './Gate';
 export type { GateProps } from './Gate';
+export { FreshnessIndicator } from './FreshnessIndicator';
+export type { FreshnessIndicatorProps } from './FreshnessIndicator';
 export { InstallationHealthPill } from './InstallationHealthPill';
 export type { InstallationHealthPillProps } from './InstallationHealthPill';
 export { toneColors, severityTone, VIOLET } from './tones';

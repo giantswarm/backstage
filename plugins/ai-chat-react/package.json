@@ -26,6 +26,7 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
+    "@backstage/ui": "backstage:^",
     "@material-ui/core": "^4.9.13",
     "classnames": "^2.5.1"
   },

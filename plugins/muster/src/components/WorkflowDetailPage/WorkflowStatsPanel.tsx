@@ -1,7 +1,6 @@
 import {
   Box,
   Paper,
-  Tooltip,
   Typography,
   makeStyles,
   useTheme,
@@ -10,9 +9,90 @@ import {
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
+import type { WorkflowStatsPerDay } from '../../apis';
 import { formatDuration } from '../../lib/formatDuration';
 import { Stat } from '../shared';
+
+/** Minimum number of days the runs-per-day chart always spans. */
+const MIN_CHART_DAYS = 30;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Parse a `YYYY-MM-DD` date to a UTC-midnight epoch (timezone-stable). */
+function parseDay(date: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+/** Format a UTC-midnight epoch back to `YYYY-MM-DD`. */
+function formatDay(epoch: number): string {
+  return new Date(epoch).toISOString().slice(0, 10);
+}
+
+/** Today's UTC-midnight epoch, matching the backend's `YYYY-MM-DD` days. */
+function todayEpoch(): number {
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+}
+
+/**
+ * Expand the backend's sparse per-day series into a contiguous range that spans
+ * at least `MIN_CHART_DAYS` days, filling absent days with zero-run entries so
+ * the chart always reads as a full window even when only a single day has data.
+ * Days that already carry data are preserved; the window always ends today so
+ * the chart's right edge reads as "now" even when the most recent run was days
+ * ago.
+ */
+function padPerDay(perDay: WorkflowStatsPerDay[]): WorkflowStatsPerDay[] {
+  if (perDay.length === 0) {
+    return perDay;
+  }
+
+  const byDate = new Map(perDay.map(day => [day.date, day]));
+  // Drop any unparseable dates so a single malformed key can't turn `end`/`start`
+  // into NaN and collapse the whole chart to an empty range.
+  const epochs = perDay
+    .map(day => parseDay(day.date))
+    .filter(epoch => !Number.isNaN(epoch));
+  if (epochs.length === 0) {
+    return perDay;
+  }
+  // Anchor the right edge to today, but never truncate data that (somehow)
+  // carries a later date.
+  const end = Math.max(...epochs, todayEpoch());
+  const earliest = Math.min(...epochs);
+  // Reach back far enough to cover MIN_CHART_DAYS, or further if data already
+  // spans a longer window.
+  const start = Math.min(earliest, end - (MIN_CHART_DAYS - 1) * DAY_MS);
+
+  const result: WorkflowStatsPerDay[] = [];
+  for (let epoch = start; epoch <= end; epoch += DAY_MS) {
+    const date = formatDay(epoch);
+    result.push(byDate.get(date) ?? { date, completed: 0, failed: 0 });
+  }
+  return result;
+}
+
+/** Short x-axis tick, e.g. `Jun 30`. Formatted in UTC to match the day keys. */
+function formatAxisDate(date: string): string {
+  return new Date(parseDay(date)).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/** Fuller tooltip heading, e.g. `Mon, Jun 30`. */
+function formatTooltipDate(date: string): string {
+  return new Date(parseDay(date)).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
 
 const useStyles = makeStyles((theme: Theme) => ({
   statRow: {
@@ -56,20 +136,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontWeight: 500,
     color: theme.palette.text.secondary,
   },
-  chart: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    gap: 2,
-    height: 160,
-  },
-  barColumn: {
-    flex: '1 1 0',
-    minWidth: 3,
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-end',
-    height: '100%',
-  },
   note: {
     display: 'block',
     marginTop: theme.spacing(1.5),
@@ -86,13 +152,12 @@ export interface WorkflowStatsPanelProps {
  * Run statistics for a workflow, sourced from the muster-backend's derived
  * `/workflows/:name/stats` (computed over a bounded execution sample). Renders
  * the mockup's Statistics block: a Stat row, a completed/failed outcome
- * breakdown, and a dependency-free CSS stacked bar of runs per day.
+ * breakdown, and a recharts stacked bar of runs per day (via the shared
+ * `StackedBarChart` from ui-react).
  *
- * ponytail: the per-day bar is a hand-rolled CSS chart, not a charting library,
- * and the breakdown is two-way (completed/failed) -- muster's execution
+ * ponytail: the breakdown is two-way (completed/failed) -- muster's execution
  * summaries do not carry the mockup's tolerated-step-failure dimension. Upgrade
- * path: a richer summary from the backend plus a chart lib if interaction is
- * needed.
+ * path: a richer summary from the backend to add that third dimension.
  */
 export function WorkflowStatsPanel({
   name,
@@ -121,7 +186,8 @@ export function WorkflowStatsPanel({
   if (!data || data.runs === 0) {
     return (
       <Typography variant="body2" color="textSecondary">
-        No executions recorded for this workflow yet.
+        No engine- or agent-driven executions recorded for this workflow yet.
+        Runs launched from the tool explorer are not recorded here.
       </Typography>
     );
   }
@@ -138,10 +204,7 @@ export function WorkflowStatsPanel({
   const max =
     data.max_duration_ms !== null ? formatDuration(data.max_duration_ms) : '—';
 
-  const maxPerDay = data.per_day.reduce(
-    (acc, day) => Math.max(acc, day.completed + day.failed),
-    0,
-  );
+  const perDay = padPerDay(data.per_day);
 
   const completedColor = theme.palette.success.main;
   const failedColor = theme.palette.error.main;
@@ -178,49 +241,25 @@ export function WorkflowStatsPanel({
         </span>
       </Box>
 
-      {data.per_day.length > 0 && maxPerDay > 0 && (
+      {perDay.length > 0 && (
         <Paper variant="outlined" className={classes.chartCard}>
           <Typography component="div" className={classes.chartTitle}>
             Runs per day
           </Typography>
-          <Box className={classes.chart}>
-            {data.per_day.map(day => {
-              const total = day.completed + day.failed;
-              const heightPct = (total / maxPerDay) * 100;
-              const completedShare = total > 0 ? day.completed / total : 0;
-              return (
-                <Tooltip
-                  key={day.date}
-                  arrow
-                  title={`${day.date}: ${day.completed} completed, ${day.failed} failed`}
-                >
-                  <div className={classes.barColumn}>
-                    <div
-                      style={{
-                        height: `${heightPct}%`,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'flex-end',
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: `${(1 - completedShare) * 100}%`,
-                          backgroundColor: failedColor,
-                        }}
-                      />
-                      <div
-                        style={{
-                          height: `${completedShare * 100}%`,
-                          backgroundColor: completedColor,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </Tooltip>
-              );
-            })}
-          </Box>
+          <StackedBarChart
+            data={perDay}
+            xAxisKey="date"
+            series={[
+              {
+                dataKey: 'completed',
+                name: 'completed',
+                color: completedColor,
+              },
+              { dataKey: 'failed', name: 'failed', color: failedColor },
+            ]}
+            formatXAxisTick={formatAxisDate}
+            formatTooltipLabel={formatTooltipDate}
+          />
         </Paper>
       )}
 

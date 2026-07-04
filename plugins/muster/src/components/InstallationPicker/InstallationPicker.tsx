@@ -9,7 +9,18 @@ import { useMusterInstance } from '../MusterInstanceProvider';
  * never appear here. Switching the picker re-scopes the whole muster section to
  * the chosen instance.
  */
-export const InstallationPicker = () => {
+export type InstallationPickerProps = {
+  /**
+   * Stretch to the container width instead of the default 320px page-header
+   * cap. Used in the Workflows facet column so it lines up with the other
+   * filter widgets.
+   */
+  fullWidth?: boolean;
+};
+
+export const InstallationPicker = ({
+  fullWidth = false,
+}: InstallationPickerProps) => {
   const {
     installations,
     activeInstallation,
@@ -24,7 +35,7 @@ export const InstallationPicker = () => {
   const items = installations.map(name => ({ label: name, value: name }));
 
   return (
-    <Box py={1} maxWidth={320}>
+    <Box py={1} maxWidth={fullWidth ? undefined : 320}>
       <Autocomplete
         label="Installation"
         items={items}
