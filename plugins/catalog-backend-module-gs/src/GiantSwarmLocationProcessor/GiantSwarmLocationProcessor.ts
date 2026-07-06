@@ -7,7 +7,7 @@ import type {
 } from '@backstage/plugin-catalog-node';
 import { processingResult } from '@backstage/plugin-catalog-node';
 import type { LocationSpec } from '@backstage/plugin-catalog-common';
-import yaml from 'js-yaml';
+import { loadAll } from 'js-yaml';
 
 const LOCATION_TYPE = 'giantswarm';
 const NAMESPACE = 'giantswarm';
@@ -94,7 +94,7 @@ export class GiantSwarmLocationProcessor implements CatalogProcessor {
   }
 
   private parseYaml(content: string): Entity[] {
-    const documents = yaml.loadAll(content) as unknown[];
+    const documents = loadAll(content) as unknown[];
     return documents.filter(
       (doc): doc is Entity =>
         doc !== null &&

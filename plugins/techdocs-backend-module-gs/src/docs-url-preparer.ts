@@ -1,7 +1,7 @@
 import fs from 'fs';
 import fse from 'fs-extra';
 import path from 'path';
-import yaml from 'js-yaml';
+import { dump } from 'js-yaml';
 import {
   PreparerBase,
   PreparerConfig,
@@ -131,7 +131,7 @@ export class DocsUrlPreparer implements PreparerBase {
         } else {
           fs.writeFileSync(
             `${docsComponentPath}/mkdocs.yaml`,
-            yaml.dump({ site_name: 'docs' }),
+            dump({ site_name: 'docs' }),
           );
           options?.logger?.info(
             `Wrote standard mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`,
@@ -167,7 +167,7 @@ export class DocsUrlPreparer implements PreparerBase {
         plugins: ['monorepo'],
       };
 
-      fs.writeFileSync(`${root}/mkdocs.yaml`, yaml.dump(mkdocs));
+      fs.writeFileSync(`${root}/mkdocs.yaml`, dump(mkdocs));
       options?.logger?.info(
         `Wrote mkdocs.yaml with navigation into ${root}/mkdocs.yaml`,
       );

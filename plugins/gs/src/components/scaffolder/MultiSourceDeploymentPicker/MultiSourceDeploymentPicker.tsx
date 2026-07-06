@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import * as yaml from 'js-yaml';
+import { dump } from 'js-yaml';
 import { Box, CircularProgress, Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import WarningIcon from '@material-ui/icons/Warning';
@@ -116,7 +116,7 @@ export const MultiSourceDeploymentPicker = ({
     const values = helmRelease.getValues();
     if (!values || Object.keys(values).length === 0) return '';
     try {
-      return yaml.dump(values, { lineWidth: -1 }).trimEnd();
+      return dump(values, { lineWidth: -1 }).trimEnd();
     } catch {
       return '';
     }

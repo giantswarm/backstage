@@ -1,6 +1,6 @@
 import type { FieldValidation } from '@rjsf/utils';
 import { YamlValuesEditorValue } from './schema';
-import * as yaml from 'js-yaml';
+import { loadYamlDocument } from '../utils';
 
 function formatErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -20,7 +20,7 @@ export const yamlValuesEditorValidation = (
   // Parse values YAML
   if (value) {
     try {
-      valuesObj = yaml.load(value) || {};
+      valuesObj = loadYamlDocument(value) || {};
       if (typeof valuesObj !== 'object' || Array.isArray(valuesObj)) {
         errors.push('must be a valid YAML object');
       }

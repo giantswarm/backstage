@@ -33,13 +33,12 @@
     "@backstage/plugin-catalog-node": "backstage:^",
     "@giantswarm/backstage-plugin-gs-common": "^0.21.1",
     "@giantswarm/backstage-plugin-gs-node": "^0.3.0",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^5.0.0",
     "semver": "^7.7.3"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
-    "@types/js-yaml": "^4",
     "@types/semver": "^7"
   },
   "files": [
