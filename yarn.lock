@@ -177,14 +177,14 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/openai@npm:^3.0.63":
-  version: 3.0.73
-  resolution: "@ai-sdk/openai@npm:3.0.73"
+  version: 3.0.80
+  resolution: "@ai-sdk/openai@npm:3.0.80"
   dependencies:
-    "@ai-sdk/provider": "npm:3.0.10"
-    "@ai-sdk/provider-utils": "npm:4.0.30"
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@ai-sdk/provider-utils": "npm:4.0.35"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/4f547054252f48a96b7871da559e558d9a7e4828bd0a42e6181b7213060ec4a5dbdc0548170509c861342f25f04d315c3652332ddb0d8f21178092972d39d419
+  checksum: 10c0/19374288e08868f98e36cac8ddf3ad10dc899f0a4d2f13d85dff99e688f3c20b11ca40a2cc64471782777021833307ad1f37c1a5fe347b1870580fcd2e442299
   languageName: node
   linkType: hard
 
@@ -224,6 +224,19 @@ __metadata:
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
   checksum: 10c0/ec09f1d9d70c29b3b778c7ea08f286a75f4dc3b2407ca59d2e3ffbe827ec617b734e4d63a54ca9649ad45923e76c71159f93d58475445d87656e8761efe54e31
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:4.0.35":
+  version: 4.0.35
+  resolution: "@ai-sdk/provider-utils@npm:4.0.35"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.8"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/43b7564353fafa0a3baba40714bbed89ca562537aed467f9c170d2c15b0fd8eb3b7ac0a2801030dfa15a4d208bd238d57bf1f67e539bf7de7afbb994006a6678
   languageName: node
   linkType: hard
 
