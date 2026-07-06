@@ -1,6 +1,6 @@
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { GithubCredentialsProvider } from '@backstage/integration';
-import yaml from 'js-yaml';
+import { loadAll } from 'js-yaml';
 import type { KlausSourceConfig } from './config';
 import {
   type GithubContentEntry,
@@ -56,7 +56,9 @@ export async function discoverPersonalities(options: {
         fetchImpl,
         logger,
       });
-      const parsed = (yaml.load(yamlText) ?? {}) as PersonalityYaml;
+      // loadAll tolerates empty/comment-only files (js-yaml v5's load() throws
+      // on those); take the first document, defaulting to an empty personality.
+      const parsed = (loadAll(yamlText)[0] ?? {}) as PersonalityYaml;
       results.push({
         name: dir,
         source,

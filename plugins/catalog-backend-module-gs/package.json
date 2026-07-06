@@ -39,7 +39,6 @@
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
-    "@types/js-yaml": "^4",
     "@types/semver": "^7"
   },
   "files": [

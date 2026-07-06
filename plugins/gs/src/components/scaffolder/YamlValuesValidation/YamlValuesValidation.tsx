@@ -3,14 +3,13 @@ import { Box, FormHelperText, FormLabel, Typography } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import WarningIcon from '@material-ui/icons/Warning';
-import * as yaml from 'js-yaml';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import type { YamlValuesValidationProps } from './schema';
 import { useHelmChartValuesSchema, useHelmValuesValidation } from '../../hooks';
 import { get } from 'lodash';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import classNames from 'classnames';
-import { helmMerge } from '../utils/helmMerge';
+import { helmMerge, loadYamlDocument } from '../utils';
 
 const useStyles = makeStyles(theme => ({
   container: {
@@ -168,7 +167,7 @@ export const YamlValuesValidation = ({
 
             if (yamlString && yamlString !== '***REDACTED***') {
               try {
-                const valuesObj = yaml.load(yamlString) || {};
+                const valuesObj = loadYamlDocument(yamlString) || {};
                 allValues = helmMerge(allValues, valuesObj);
               } catch {
                 // eslint-disable-next-line no-console
@@ -179,7 +178,7 @@ export const YamlValuesValidation = ({
         } else if (typeof fieldValue === 'string' && fieldValue) {
           // Plain YAML string (e.g. from GSYamlValuesEditor)
           try {
-            const valuesObj = yaml.load(fieldValue) || {};
+            const valuesObj = loadYamlDocument(fieldValue) || {};
             allValues = helmMerge(allValues, valuesObj);
           } catch {
             // eslint-disable-next-line no-console
@@ -209,7 +208,7 @@ export const YamlValuesValidation = ({
         }
 
         try {
-          const valuesObj = yaml.load(secretValue) || {};
+          const valuesObj = loadYamlDocument(secretValue) || {};
           allValues = helmMerge(allValues, valuesObj);
         } catch {
           // eslint-disable-next-line no-console

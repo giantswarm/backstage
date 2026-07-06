@@ -32,8 +32,7 @@
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
-    "@backstage/cli": "backstage:^",
-    "@types/js-yaml": "^4"
+    "@backstage/cli": "backstage:^"
   },
   "files": [
     "dist"

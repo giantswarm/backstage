@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import yaml from 'js-yaml';
+import { dump, load } from 'js-yaml';
 import {
   Box,
   Button,
@@ -265,10 +265,10 @@ export function AdHocWorkflowDialog({
   // Seed the editor when the dialog opens.
   const seed = () => {
     setValue(
-      yaml.dump(
-        workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE,
-        { lineWidth: 120, noRefs: true },
-      ),
+      dump(workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE, {
+        lineWidth: 120,
+        noRefs: true,
+      }),
     );
     setError(undefined);
     setMessage(undefined);
@@ -277,14 +277,16 @@ export function AdHocWorkflowDialog({
   const parsed = (): Record<string, unknown> | undefined => {
     let obj: unknown;
     try {
-      obj = yaml.load(value);
+      obj = load(value);
     } catch (e) {
+      // js-yaml v5 throws on empty/comment-only input (v4 returned undefined),
+      // so those land here and are reported as invalid YAML.
       setError(`Invalid YAML: ${(e as Error).message}`);
       return undefined;
     }
-    // yaml.load returns undefined for empty/comment-only input and a scalar or
-    // array for non-mapping documents -- none of which is a valid workflow
-    // definition. Reject them explicitly so the editor doesn't silently no-op.
+    // A scalar or array is a valid YAML document but not a valid workflow
+    // definition. Reject non-mappings explicitly so the editor doesn't silently
+    // no-op.
     if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
       setError('Workflow definition must be a YAML mapping.');
       return undefined;
