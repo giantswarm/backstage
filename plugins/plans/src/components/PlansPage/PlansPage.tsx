@@ -92,23 +92,23 @@ export function PlansPage() {
           <Tab label="Proposed" value="proposed" />
           <Tab label="Merged" value="merged" />
         </Tabs>
-        {repositories.length > 1 && (
-          <TextField
-            className={classes.repoPicker}
-            select
-            size="small"
-            variant="outlined"
-            label="Repository"
-            value={activeRepo}
-            onChange={event => setRepo(event.target.value)}
-          >
-            {repositories.map(repository => (
-              <MenuItem key={repository} value={repository}>
-                {repository}
-              </MenuItem>
-            ))}
-          </TextField>
-        )}
+        {/* Always visible, even with a single repository: the repo name is
+            what tells the user whose plans they are looking at. */}
+        <TextField
+          className={classes.repoPicker}
+          select
+          size="small"
+          variant="outlined"
+          label="Repository"
+          value={activeRepo}
+          onChange={event => setRepo(event.target.value)}
+        >
+          {repositories.map(repository => (
+            <MenuItem key={repository} value={repository}>
+              {repository}
+            </MenuItem>
+          ))}
+        </TextField>
       </Box>
       <Box className={classes.tabBody}>
         {tab === 'proposed' ? (
