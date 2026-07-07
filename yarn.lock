@@ -11780,6 +11780,26 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-plans-backend@workspace:plugins/plans-backend":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-plans-backend@workspace:plugins/plans-backend"
+  dependencies:
+    "@backstage/backend-defaults": "backstage:^"
+    "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^"
+    "@backstage/cli": "backstage:^"
+    "@backstage/config": "backstage:^"
+    "@backstage/errors": "backstage:^"
+    "@backstage/integration": "backstage:^"
+    "@backstage/types": "backstage:^"
+    "@types/express": "npm:^5.0.0"
+    "@types/supertest": "npm:^7.0.0"
+    express: "npm:^5.0.0"
+    express-promise-router: "npm:^4.1.0"
+    supertest: "npm:^7.0.0"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-scaffolder-backend-module-gs@npm:^0.12.0, @giantswarm/backstage-plugin-scaffolder-backend-module-gs@workspace:plugins/scaffolder-backend-module-gs":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-scaffolder-backend-module-gs@workspace:plugins/scaffolder-backend-module-gs"
