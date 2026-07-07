@@ -60,6 +60,7 @@
     "@giantswarm/backstage-plugin-gs": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-muster": "workspace:^",
+    "@giantswarm/backstage-plugin-plans": "workspace:^",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "@pagerduty/backstage-plugin": "^0.20.0",

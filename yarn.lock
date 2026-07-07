@@ -11780,7 +11780,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-plans-backend@workspace:plugins/plans-backend":
+"@giantswarm/backstage-plugin-plans-backend@workspace:^, @giantswarm/backstage-plugin-plans-backend@workspace:plugins/plans-backend":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-plans-backend@workspace:plugins/plans-backend"
   dependencies:
@@ -11800,7 +11800,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/backstage-plugin-plans@workspace:plugins/plans":
+"@giantswarm/backstage-plugin-plans@workspace:^, @giantswarm/backstage-plugin-plans@workspace:plugins/plans":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-plans@workspace:plugins/plans"
   dependencies:
@@ -26409,6 +26409,7 @@ __metadata:
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-muster": "workspace:^"
+    "@giantswarm/backstage-plugin-plans": "workspace:^"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@pagerduty/backstage-plugin": "npm:^0.20.0"
@@ -27162,6 +27163,7 @@ __metadata:
     "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.6.1"
     "@giantswarm/backstage-plugin-gs-backend": "npm:^0.10.2"
     "@giantswarm/backstage-plugin-muster-backend": "workspace:^"
+    "@giantswarm/backstage-plugin-plans-backend": "workspace:^"
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "npm:^0.12.0"
     "@giantswarm/backstage-plugin-techdocs-backend-module-gs": "npm:^0.10.0"
     "@internal/backend-common": "workspace:^"
