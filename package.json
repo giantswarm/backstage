@@ -27,6 +27,7 @@
     "ci:verify": "concurrently --names tsc,lint,test -c blue,magenta,green \"NODE_OPTIONS='--max-old-space-size=6144' yarn run tsc --noEmit\" \"yarn run ci:lint\" \"yarn run test:all\"",
     "ci:build": "touch github-app-credentials.yaml && NODE_ENV=production yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml && NODE_ENV=production yarn run build:backend-headless-service --config ../../app-config.yaml --config ../../app-config.production.yaml",
     "new": "backstage-cli new",
+    "release:plugins": "yarn build:all && changeset publish",
     "postinstall": "yarn patch-package",
     "prepare": "husky"
   },

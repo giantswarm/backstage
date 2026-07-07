@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-kubernetes-react",
   "version": "0.16.0",
   "license": "Apache-2.0",
-  "private": true,
   "description": "Web library for the GS Kubernetes plugin",
   "main": "src/index.ts",
   "types": "src/index.ts",
