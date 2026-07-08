@@ -8,22 +8,27 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(0.75),
   },
+  // Matches the bui TextField input (filled, no border) using bui tokens, so
+  // these textareas are visually consistent with the Name/Slug fields. bui has
+  // no multiline/textarea component, so this is a hand-rolled equivalent.
   textarea: {
     width: '100%',
     boxSizing: 'border-box',
     resize: 'vertical',
-    padding: theme.spacing(1, 1.25),
+    padding: theme.spacing(1, 1.5),
     fontFamily: 'inherit',
     fontSize: '0.875rem',
     lineHeight: 1.5,
     borderRadius: theme.shape.borderRadius,
-    border: `1px solid ${theme.palette.divider}`,
-    background: theme.palette.background.paper,
+    border: 'none',
+    background: 'var(--bui-bg-neutral-2)',
     color: theme.palette.text.primary,
     '&:focus': {
-      outline: `2px solid ${theme.palette.primary.main}`,
+      outline: '2px solid var(--bui-accent-bg)',
       outlineOffset: -1,
-      borderColor: 'transparent',
+    },
+    '&::placeholder': {
+      color: theme.palette.text.secondary,
     },
   },
   mono: {
