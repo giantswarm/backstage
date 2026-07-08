@@ -1,4 +1,5 @@
 import { Alert, Flex, Select, Text } from '@backstage/ui';
+import { CircularProgress } from '@material-ui/core';
 
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
@@ -22,6 +23,7 @@ export function InstallationSelect() {
           description={description}
           isRequired
           isDisabled
+          icon={<CircularProgress size={16} color="inherit" />}
           options={[]}
           placeholder="Finding installations with models…"
         />
