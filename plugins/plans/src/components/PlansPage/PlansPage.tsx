@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   MenuItem,
@@ -43,7 +44,17 @@ export function PlansPage() {
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
   const [tab, setTab] = useState<'proposed' | 'merged'>('proposed');
-  const [repo, setRepo] = useState<string | undefined>(undefined);
+  // The selected repository lives in `?repo=` (the same param the review
+  // page uses), so it survives navigating into a PR and back and the list
+  // URL is shareable.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const repo = searchParams.get('repo') ?? undefined;
+
+  const selectRepo = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('repo', next);
+    setSearchParams(params, { replace: true });
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['plans', 'repos'],
@@ -101,7 +112,7 @@ export function PlansPage() {
           variant="outlined"
           label="Repository"
           value={activeRepo}
-          onChange={event => setRepo(event.target.value)}
+          onChange={event => selectRepo(event.target.value)}
         >
           {repositories.map(repository => (
             <MenuItem key={repository} value={repository}>

@@ -324,9 +324,6 @@ export function PullReviewPage() {
   const plansApi = useApi(plansApiRef);
   const queryClient = useQueryClient();
   const rootLink = useRouteRef(rootRouteRef);
-  // The review page is always mounted under the plans root route, so the
-  // relative fallback only fires while the route ref is not yet resolvable.
-  const plansPath = rootLink ? rootLink() : '..';
   const { number } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -341,6 +338,13 @@ export function PullReviewPage() {
   const repositories = reposQuery.data?.repositories ?? [];
   const repo =
     repoParam && repositories.includes(repoParam) ? repoParam : repositories[0];
+
+  // The review page is always mounted under the plans root route, so the
+  // relative fallback only fires while the route ref is not yet resolvable.
+  // Carry `?repo=` back to the list so the picker keeps its selection.
+  const plansPath = `${rootLink ? rootLink() : '..'}${
+    repo ? `?repo=${encodeURIComponent(repo)}` : ''
+  }`;
 
   const pullsQuery = useQuery({
     queryKey: ['plans', 'pulls', repo],
