@@ -120,9 +120,7 @@ describe('threadsForBlock', () => {
 
   it('returns threads whose root line falls in the inclusive range', () => {
     expect(threadsForBlock(threads, 5, 9).map(t => t.root.id)).toEqual([1]);
-    expect(threadsForBlock(threads, 5, 10).map(t => t.root.id)).toEqual([
-      1, 2,
-    ]);
+    expect(threadsForBlock(threads, 5, 10).map(t => t.root.id)).toEqual([1, 2]);
     expect(threadsForBlock(threads, 6, 9)).toEqual([]);
   });
 

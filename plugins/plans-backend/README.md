@@ -16,12 +16,12 @@ All routes except `/repos` take `?repo=<owner/repo>`, which must be one of the
 configured repositories. When exactly one repository is configured, the
 parameter can be omitted.
 
-| Route                                            | Purpose                                              |
-| ------------------------------------------------ | ---------------------------------------------------- |
-| `GET /api/plans/repos`                           | Configured plan repositories                         |
-| `GET /api/plans/pulls`                           | Open PRs (number, title, author, draft, branch, ...) |
-| `GET /api/plans/pulls/:number/files`             | Changed files of a PR, with the GitHub `patch` text  |
-| `GET /api/plans/tree?ref=<branch>`               | Recursive git tree of a branch (defaults to `HEAD`)  |
+| Route                                             | Purpose                                              |
+| ------------------------------------------------- | ---------------------------------------------------- |
+| `GET /api/plans/repos`                            | Configured plan repositories                         |
+| `GET /api/plans/pulls`                            | Open PRs (number, title, author, draft, branch, ...) |
+| `GET /api/plans/pulls/:number/files`              | Changed files of a PR, with the GitHub `patch` text  |
+| `GET /api/plans/tree?ref=<branch>`                | Recursive git tree of a branch (defaults to `HEAD`)  |
 | `GET /api/plans/content?ref=<branch>&path=<file>` | File content, base64-decoded                         |
 
 ## Configuration

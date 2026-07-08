@@ -23,9 +23,7 @@ describe('AnnotatedMarkdown', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('heading', { name: 'Title' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Title' })).toBeInTheDocument();
     expect(screen.getByText('First paragraph.')).toBeInTheDocument();
     // Heading (line 1), first paragraph (line 3), second paragraph (line 5).
     expect(screen.getByLabelText('Comment on line 1')).toBeInTheDocument();
@@ -115,8 +113,12 @@ describe('AnnotatedMarkdown', () => {
     );
 
     expect(screen.getByLabelText('Comment on line 5')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Comment on line 1')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Comment on line 3')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Comment on line 1'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Comment on line 3'),
+    ).not.toBeInTheDocument();
   });
 
   it('anchors list items on the item line, not the surrounding list', () => {

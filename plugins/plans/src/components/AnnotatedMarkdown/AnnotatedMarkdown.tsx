@@ -304,8 +304,7 @@ export function AnnotatedMarkdown(props: {
   const offset = frontmatterOffset(content);
   const commentable = useMemo(() => commentableLines(file), [file]);
   const threads = useMemo(
-    () =>
-      groupThreads(comments.filter(({ path }) => path === file.filename)),
+    () => groupThreads(comments.filter(({ path }) => path === file.filename)),
     [comments, file.filename],
   );
 

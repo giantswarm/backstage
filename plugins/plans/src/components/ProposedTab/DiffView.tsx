@@ -1,10 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import {
-  Box,
-  IconButton,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
+import { Box, IconButton, makeStyles, Theme } from '@material-ui/core';
 import AddCommentIcon from '@material-ui/icons/AddComment';
 import { NewReviewComment, PlanReviewComment } from '../../apis';
 import { DiffLine, parsePatch } from '../../lib/diff';
@@ -83,9 +78,7 @@ interface Thread {
 }
 
 /** Group inline comments into threads keyed by new-file line number. */
-function threadsByLine(
-  comments: PlanReviewComment[],
-): Map<number, Thread[]> {
+function threadsByLine(comments: PlanReviewComment[]): Map<number, Thread[]> {
   const roots = new Map<number, Thread>();
   for (const comment of comments) {
     if (comment.inReplyTo === undefined) {
@@ -162,14 +155,15 @@ export function DiffView(props: {
           }
 
           const lineThreads =
-            line.newLine !== undefined ? threads.get(line.newLine) ?? [] : [];
+            line.newLine !== undefined ? (threads.get(line.newLine) ?? []) : [];
           const commentable = line.newLine !== undefined;
-          const commenting =
-            commentable && commentingLine === line.newLine;
+          const commenting = commentable && commentingLine === line.newLine;
 
           return (
             <Fragment key={index}>
-              <tr className={`${classes.row} ${lineClass(classes, line.type) ?? ''}`}>
+              <tr
+                className={`${classes.row} ${lineClass(classes, line.type) ?? ''}`}
+              >
                 <td className={classes.lineNumber}>{line.oldLine ?? ''}</td>
                 <td className={classes.lineNumber}>{line.newLine ?? ''}</td>
                 <td className={classes.gutter}>

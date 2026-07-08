@@ -237,7 +237,8 @@ function DocumentPanel(props: {
   const html = isHtmlFile(file.filename);
   // Rendered view needs head-branch content, so it requires the branch and
   // a file that still exists there.
-  const renderable = file.status !== 'removed' && !!branch && (markdown || html);
+  const renderable =
+    file.status !== 'removed' && !!branch && (markdown || html);
 
   const [view, setView] = useState<'rendered' | 'diff'>(
     renderable ? 'rendered' : 'diff',
@@ -353,9 +354,7 @@ export function PullReviewPage() {
   });
   const repositories = reposQuery.data?.repositories ?? [];
   const repo =
-    repoParam && repositories.includes(repoParam)
-      ? repoParam
-      : repositories[0];
+    repoParam && repositories.includes(repoParam) ? repoParam : repositories[0];
 
   const pullsQuery = useQuery({
     queryKey: ['plans', 'pulls', repo],
@@ -369,10 +368,7 @@ export function PullReviewPage() {
     queryFn: () => plansApi.listPullFiles(pullNumber, repo),
     enabled: !!repo,
   });
-  const files = useMemo(
-    () => filesQuery.data?.files ?? [],
-    [filesQuery.data],
-  );
+  const files = useMemo(() => filesQuery.data?.files ?? [], [filesQuery.data]);
 
   const reviewCommentsQueryKey = ['plans', 'review-comments', repo, pullNumber];
   const { data: reviewComments } = useQuery({

@@ -69,9 +69,9 @@ describe('PlansApiClient', () => {
     const payload = { path: 'plans/index.md', ref: 'main', content: '# Plan' };
     fetchMock.mockResolvedValue(jsonResponse(payload));
 
-    await expect(
-      client.getContent('plans/index.md', 'main'),
-    ).resolves.toEqual(payload);
+    await expect(client.getContent('plans/index.md', 'main')).resolves.toEqual(
+      payload,
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE_URL}/content?path=plans%2Findex.md&ref=main`,
     );
