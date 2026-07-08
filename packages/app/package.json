@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@backstage-community/plugin-github-actions": "^1.0.0",
-    "@backstage-community/plugin-grafana": "^0.20.0",
+    "@backstage-community/plugin-grafana": "^0.21.0",
     "@backstage/app-defaults": "backstage:^",
     "@backstage/catalog-model": "backstage:^",
     "@backstage/cli": "backstage:^",

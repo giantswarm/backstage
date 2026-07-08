@@ -3668,15 +3668,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage-community/plugin-grafana@npm:^0.20.0":
-  version: 0.20.0
-  resolution: "@backstage-community/plugin-grafana@npm:0.20.0"
+"@backstage-community/plugin-grafana@npm:^0.21.0":
+  version: 0.21.0
+  resolution: "@backstage-community/plugin-grafana@npm:0.21.0"
   dependencies:
     "@backstage/catalog-model": "npm:^1.9.0"
-    "@backstage/core-components": "npm:^0.18.10"
-    "@backstage/core-plugin-api": "npm:^1.12.6"
-    "@backstage/frontend-plugin-api": "npm:^0.17.1"
-    "@backstage/plugin-catalog-react": "npm:^3.0.0"
+    "@backstage/core-components": "npm:^0.18.11"
+    "@backstage/core-plugin-api": "npm:^1.12.7"
+    "@backstage/frontend-plugin-api": "npm:^0.17.2"
+    "@backstage/plugin-catalog-react": "npm:^3.1.0"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/lab": "npm:4.0.0-alpha.61"
     cross-fetch: "npm:^4.0.0"
@@ -3686,7 +3686,7 @@ __metadata:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: 6.0.0-beta.0 || ^6.3.0
-  checksum: 10c0/128df34fe4e35d3bab92f3d0655c518ec6c8ed627e4d72e84fd0ece59f41f37ecbd7cc80cdcc57b11db2054f853aa421209c7c312c9ec6dff6b476177d974bc6
+  checksum: 10c0/edcd4fc9abf2aa4a2d4095543730212135af522f717aeb658075c663e88f78c7ee11346dc94c5bdad5ca4854e50200b156d1b6204423f541d0bf052852d02a5b
   languageName: node
   linkType: hard
 
@@ -26390,7 +26390,7 @@ __metadata:
   resolution: "app@workspace:packages/app"
   dependencies:
     "@backstage-community/plugin-github-actions": "npm:^1.0.0"
-    "@backstage-community/plugin-grafana": "npm:^0.20.0"
+    "@backstage-community/plugin-grafana": "npm:^0.21.0"
     "@backstage/app-defaults": "backstage:^"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
