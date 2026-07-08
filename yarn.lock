@@ -63,14 +63,14 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/anthropic@npm:^3.0.76":
-  version: 3.0.85
-  resolution: "@ai-sdk/anthropic@npm:3.0.85"
+  version: 3.0.94
+  resolution: "@ai-sdk/anthropic@npm:3.0.94"
   dependencies:
-    "@ai-sdk/provider": "npm:3.0.10"
-    "@ai-sdk/provider-utils": "npm:4.0.30"
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@ai-sdk/provider-utils": "npm:4.0.36"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/fd6569e141965c3e96875af91bf3d708a31c7b00a5343441db1ca5c532b6e12a3d37fb7ae16f48cf826cfeeabdb74cec2508bedd74390cf8edea5e8546dd74c4
+  checksum: 10c0/ec67f826be61fc2491c47c8ae4ebd02f2152f5f8dbcd0d2793d2f332b9718575cd4ae98d9fdf81a40c39ffbc0ec0f7fab4a13787559466811ced3c9a5055e43b
   languageName: node
   linkType: hard
 
@@ -237,6 +237,19 @@ __metadata:
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
   checksum: 10c0/43b7564353fafa0a3baba40714bbed89ca562537aed467f9c170d2c15b0fd8eb3b7ac0a2801030dfa15a4d208bd238d57bf1f67e539bf7de7afbb994006a6678
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:4.0.36":
+  version: 4.0.36
+  resolution: "@ai-sdk/provider-utils@npm:4.0.36"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.8"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/d6c24a75e686c0de32fc735459ccacd7a67809200d6270083dff9e2ba17074466c8daa2ddc3464135e144595506acbc7ee230d5df4028278e0d1e8489af7942e
   languageName: node
   linkType: hard
 
