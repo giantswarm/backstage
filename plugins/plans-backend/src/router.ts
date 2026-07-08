@@ -1,6 +1,7 @@
 import {
   HttpAuthService,
   LoggerService,
+  UserInfoService,
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import {
@@ -21,6 +22,7 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   httpAuth: HttpAuthService;
+  userInfo: UserInfoService;
   credentialsProvider: GithubCredentialsProvider;
   /** Overridable for tests; defaults to the global fetch. */
   fetchFn?: typeof fetch;
@@ -36,10 +38,45 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
   return value;
 }
 
+/** GitHub issue-comment / review-comment shape (the fields we map). */
+interface GithubComment {
+  id: number;
+  user?: { login?: string } | null;
+  body?: string;
+  created_at?: string;
+  html_url?: string;
+  path?: string;
+  line?: number | null;
+  original_line?: number | null;
+  side?: string;
+  in_reply_to_id?: number;
+}
+
+function mapComment(comment: GithubComment) {
+  return {
+    id: comment.id,
+    author: comment.user?.login,
+    body: comment.body ?? '',
+    createdAt: comment.created_at,
+    htmlUrl: comment.html_url,
+  };
+}
+
+function mapReviewComment(comment: GithubComment) {
+  return {
+    ...mapComment(comment),
+    path: comment.path,
+    // `line` is null when the diff moved on; fall back to the original line.
+    line: comment.line ?? comment.original_line ?? undefined,
+    side: comment.side,
+    inReplyTo: comment.in_reply_to_id,
+  };
+}
+
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { logger, config, httpAuth, credentialsProvider } = options;
+  const { logger, config, httpAuth, userInfo, credentialsProvider } = options;
   const fetchFn = options.fetchFn ?? fetch;
 
   const repositories = (
@@ -88,8 +125,12 @@ export async function createRouter(
     return requested;
   };
 
-  /** GET a GitHub REST API path with the integration's App credentials. */
-  const githubGet = async (repo: string, path: string): Promise<unknown> => {
+  /** Call a GitHub REST API path with the integration's App credentials. */
+  const githubRequest = async (
+    repo: string,
+    path: string,
+    init?: { method: 'POST'; body: unknown },
+  ): Promise<unknown> => {
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
@@ -107,7 +148,13 @@ export async function createRouter(
     }
 
     const response = await fetchFn(`${GITHUB_API_BASE_URL}${path}`, {
-      headers,
+      headers: init
+        ? { ...headers, 'Content-Type': 'application/json' }
+        : headers,
+      ...(init && {
+        method: init.method,
+        body: JSON.stringify(init.body),
+      }),
     });
     if (response.status === 404) {
       throw new NotFoundError(`GitHub responded with 404 for ${path}`);
@@ -116,6 +163,39 @@ export async function createRouter(
       throw new Error(`GitHub responded with ${response.status} for ${path}`);
     }
     return response.json();
+  };
+  const githubGet = (repo: string, path: string) => githubRequest(repo, path);
+
+  const parsePullNumber = (raw: string): number => {
+    const pullNumber = parseInt(raw, 10);
+    if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+      throw new InputError('number must be a positive integer');
+    }
+    return pullNumber;
+  };
+
+  /**
+   * Comments are written with the GitHub App token, so GitHub attributes
+   * them to the app's bot account. Prefix the body with the Backstage user
+   * so authorship survives on GitHub itself.
+   */
+  const attributedBody = async (
+    req: express.Request,
+    body: string,
+  ): Promise<string> => {
+    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    const info = await userInfo.getUserInfo(credentials);
+    // 'user:default/jdoe' -> 'jdoe'
+    const name = info.userEntityRef.split('/').pop() ?? info.userEntityRef;
+    return `**${name}** (via Dev Portal):\n\n${body}`;
+  };
+
+  const requireBody = (req: express.Request): string => {
+    const body = req.body?.body;
+    if (typeof body !== 'string' || body.trim() === '') {
+      throw new InputError('body must be a non-empty string');
+    }
+    return body;
   };
 
   const router = Router();
@@ -161,10 +241,7 @@ export async function createRouter(
 
   router.get('/pulls/:number/files', async (req, res) => {
     const repo = resolveRepo(req);
-    const pullNumber = parseInt(req.params.number, 10);
-    if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
-      throw new InputError('number must be a positive integer');
-    }
+    const pullNumber = parsePullNumber(req.params.number);
     const files = (await githubGet(
       repo,
       `/repos/${repo}/pulls/${pullNumber}/files?per_page=100`,
@@ -187,6 +264,89 @@ export async function createRouter(
         previousFilename: file.previous_filename,
       })),
     });
+  });
+
+  // General PR discussion (GitHub issue comments).
+  router.get('/pulls/:number/comments', async (req, res) => {
+    const repo = resolveRepo(req);
+    const pullNumber = parsePullNumber(req.params.number);
+    const comments = (await githubGet(
+      repo,
+      `/repos/${repo}/issues/${pullNumber}/comments?per_page=100`,
+    )) as GithubComment[];
+
+    res.json({ comments: comments.map(mapComment) });
+  });
+
+  router.post('/pulls/:number/comments', async (req, res) => {
+    const repo = resolveRepo(req);
+    const pullNumber = parsePullNumber(req.params.number);
+    const body = await attributedBody(req, requireBody(req));
+    const created = (await githubRequest(
+      repo,
+      `/repos/${repo}/issues/${pullNumber}/comments`,
+      { method: 'POST', body: { body } },
+    )) as GithubComment;
+
+    res.status(201).json({ comment: mapComment(created) });
+  });
+
+  // Inline review comments on changed lines (GitHub pull review comments).
+  router.get('/pulls/:number/review-comments', async (req, res) => {
+    const repo = resolveRepo(req);
+    const pullNumber = parsePullNumber(req.params.number);
+    const comments = (await githubGet(
+      repo,
+      `/repos/${repo}/pulls/${pullNumber}/comments?per_page=100`,
+    )) as GithubComment[];
+
+    res.json({ comments: comments.map(mapReviewComment) });
+  });
+
+  router.post('/pulls/:number/review-comments', async (req, res) => {
+    const repo = resolveRepo(req);
+    const pullNumber = parsePullNumber(req.params.number);
+    const body = await attributedBody(req, requireBody(req));
+
+    const { path, line, inReplyTo } = req.body ?? {};
+
+    let payload: Record<string, unknown>;
+    if (inReplyTo !== undefined) {
+      if (!Number.isInteger(inReplyTo) || inReplyTo <= 0) {
+        throw new InputError('inReplyTo must be a positive integer');
+      }
+      payload = { body, in_reply_to: inReplyTo };
+    } else {
+      if (typeof path !== 'string' || path === '') {
+        throw new InputError('path must be a non-empty string');
+      }
+      if (!Number.isInteger(line) || line <= 0) {
+        throw new InputError('line must be a positive integer');
+      }
+      // New threads need the PR head commit id.
+      const pull = (await githubGet(
+        repo,
+        `/repos/${repo}/pulls/${pullNumber}`,
+      )) as { head?: { sha?: string } | null };
+      if (!pull.head?.sha) {
+        throw new Error(`Could not resolve head commit of PR #${pullNumber}`);
+      }
+      payload = {
+        body,
+        commit_id: pull.head.sha,
+        path,
+        line,
+        side: 'RIGHT',
+      };
+    }
+
+    const created = (await githubRequest(
+      repo,
+      `/repos/${repo}/pulls/${pullNumber}/comments`,
+      { method: 'POST', body: payload },
+    )) as GithubComment;
+
+    res.status(201).json({ comment: mapReviewComment(created) });
   });
 
   router.get('/tree', async (req, res) => {

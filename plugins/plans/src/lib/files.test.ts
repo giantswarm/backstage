@@ -1,8 +1,10 @@
 import {
   compareDisplayPaths,
+  firstHeading,
   isHtmlFile,
   isMarkdownFile,
   isRenderableFile,
+  splitFrontmatter,
 } from './files';
 
 describe('file type helpers', () => {
@@ -23,6 +25,40 @@ describe('file type helpers', () => {
     expect(isRenderableFile('plan/README.md')).toBe(true);
     expect(isRenderableFile('plan/index.html')).toBe(true);
     expect(isRenderableFile('plan/data.json')).toBe(false);
+  });
+});
+
+describe('splitFrontmatter', () => {
+  it('splits a leading YAML frontmatter block off the body', () => {
+    const markdown = '---\nname: contrarian\ndescription: x\n---\n# Title\n';
+    expect(splitFrontmatter(markdown)).toEqual({
+      frontmatter: 'name: contrarian\ndescription: x',
+      body: '# Title\n',
+    });
+  });
+
+  it('leaves documents without frontmatter untouched', () => {
+    expect(splitFrontmatter('# Title\n')).toEqual({ body: '# Title\n' });
+    // A thematic break later in the document is not frontmatter.
+    const later = '# Title\n\n---\ntext\n---\n';
+    expect(splitFrontmatter(later)).toEqual({ body: later });
+  });
+});
+
+describe('firstHeading', () => {
+  it('returns the first ATX heading text', () => {
+    expect(firstHeading('intro\n\n# My Plan\n\n## Detail\n')).toBe('My Plan');
+    expect(firstHeading('## Only Subheading\ntext\n')).toBe('Only Subheading');
+  });
+
+  it('skips frontmatter and trims closing hashes', () => {
+    expect(firstHeading('---\ntitle: x\n---\n# Real Title ##\n')).toBe(
+      'Real Title',
+    );
+  });
+
+  it('returns undefined without a heading', () => {
+    expect(firstHeading('just text\nno heading\n')).toBeUndefined();
   });
 });
 

@@ -77,6 +77,65 @@ describe('PlansApiClient', () => {
     );
   });
 
+  it('lists discussion comments for a pull', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ comments: [] }));
+
+    await client.listPullComments(7, 'giantswarm/bumblebee-plans');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/pulls/7/comments?repo=giantswarm%2Fbumblebee-plans`,
+    );
+  });
+
+  it('creates a discussion comment', async () => {
+    const comment = { id: 1, body: 'A remark' };
+    fetchMock.mockResolvedValue(jsonResponse({ comment }, 201));
+
+    await expect(client.createPullComment(7, 'A remark')).resolves.toEqual(
+      comment,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/pulls/7/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: 'A remark' }),
+    });
+  });
+
+  it('lists review comments for a pull', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ comments: [] }));
+
+    await client.listReviewComments(7);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/pulls/7/review-comments`,
+    );
+  });
+
+  it('creates an inline review comment', async () => {
+    const comment = { id: 2, body: 'On this line' };
+    fetchMock.mockResolvedValue(jsonResponse({ comment }, 201));
+
+    await expect(
+      client.createReviewComment(7, {
+        body: 'On this line',
+        path: 'plans/index.md',
+        line: 3,
+      }),
+    ).resolves.toEqual(comment);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/pulls/7/review-comments`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          body: 'On this line',
+          path: 'plans/index.md',
+          line: 3,
+        }),
+      },
+    );
+  });
+
   it('surfaces the backend error message', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(

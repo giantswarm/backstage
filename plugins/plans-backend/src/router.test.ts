@@ -39,6 +39,7 @@ describe('createRouter', () => {
       logger,
       config,
       httpAuth: mockServices.httpAuth(),
+      userInfo: mockServices.userInfo(),
       credentialsProvider,
       fetchFn,
       ...options,
@@ -271,6 +272,180 @@ describe('createRouter', () => {
 
     it('rejects a non-numeric pull number', async () => {
       const response = await request(app).get('/pulls/abc/files');
+
+      expect(response.status).toBe(400);
+      expect(fetchFn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('/pulls/:number/comments', () => {
+    it('maps discussion comments', async () => {
+      fetchFn.mockResolvedValue(
+        jsonResponse([
+          {
+            id: 1,
+            user: { login: 'teemow' },
+            body: 'Looks good',
+            created_at: '2026-07-07T10:00:00Z',
+            html_url: `https://github.com/${REPO}/pull/7#issuecomment-1`,
+          },
+        ]),
+      );
+
+      const response = await request(app).get('/pulls/7/comments');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        comments: [
+          {
+            id: 1,
+            author: 'teemow',
+            body: 'Looks good',
+            createdAt: '2026-07-07T10:00:00Z',
+            htmlUrl: `https://github.com/${REPO}/pull/7#issuecomment-1`,
+          },
+        ],
+      });
+      expect(fetchFn).toHaveBeenCalledWith(
+        `https://api.github.com/repos/${REPO}/issues/7/comments?per_page=100`,
+        expect.anything(),
+      );
+    });
+
+    it('creates a comment attributed to the Backstage user', async () => {
+      fetchFn.mockResolvedValue(
+        jsonResponse({ id: 2, user: { login: 'plans-app[bot]' } }, 201),
+      );
+
+      const response = await request(app)
+        .post('/pulls/7/comments')
+        .send({ body: 'A remark' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.comment.id).toBe(2);
+      expect(fetchFn).toHaveBeenCalledWith(
+        `https://api.github.com/repos/${REPO}/issues/7/comments`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            body: '**mock** (via Dev Portal):\n\nA remark',
+          }),
+        }),
+      );
+    });
+
+    it('rejects an empty body', async () => {
+      const response = await request(app)
+        .post('/pulls/7/comments')
+        .send({ body: '  ' });
+
+      expect(response.status).toBe(400);
+      expect(fetchFn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('/pulls/:number/review-comments', () => {
+    it('maps inline comments including line position', async () => {
+      fetchFn.mockResolvedValue(
+        jsonResponse([
+          {
+            id: 10,
+            user: { login: 'teemow' },
+            body: 'Inline remark',
+            created_at: '2026-07-07T10:00:00Z',
+            path: 'plans/mvp/index.md',
+            line: 12,
+            side: 'RIGHT',
+          },
+          {
+            id: 11,
+            body: 'Reply',
+            path: 'plans/mvp/index.md',
+            line: null,
+            original_line: 12,
+            in_reply_to_id: 10,
+          },
+        ]),
+      );
+
+      const response = await request(app).get('/pulls/7/review-comments');
+
+      expect(response.status).toBe(200);
+      expect(response.body.comments).toEqual([
+        expect.objectContaining({
+          id: 10,
+          author: 'teemow',
+          path: 'plans/mvp/index.md',
+          line: 12,
+          side: 'RIGHT',
+        }),
+        expect.objectContaining({ id: 11, line: 12, inReplyTo: 10 }),
+      ]);
+      expect(fetchFn).toHaveBeenCalledWith(
+        `https://api.github.com/repos/${REPO}/pulls/7/comments?per_page=100`,
+        expect.anything(),
+      );
+    });
+
+    it('creates an inline comment on the PR head commit', async () => {
+      fetchFn
+        .mockResolvedValueOnce(jsonResponse({ head: { sha: 'abc123' } }))
+        .mockResolvedValueOnce(
+          jsonResponse({ id: 12, path: 'plans/mvp/index.md', line: 3 }, 201),
+        );
+
+      const response = await request(app)
+        .post('/pulls/7/review-comments')
+        .send({ body: 'On this line', path: 'plans/mvp/index.md', line: 3 });
+
+      expect(response.status).toBe(201);
+      expect(response.body.comment.id).toBe(12);
+      expect(fetchFn).toHaveBeenNthCalledWith(
+        1,
+        `https://api.github.com/repos/${REPO}/pulls/7`,
+        expect.anything(),
+      );
+      expect(fetchFn).toHaveBeenNthCalledWith(
+        2,
+        `https://api.github.com/repos/${REPO}/pulls/7/comments`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            body: '**mock** (via Dev Portal):\n\nOn this line',
+            commit_id: 'abc123',
+            path: 'plans/mvp/index.md',
+            line: 3,
+            side: 'RIGHT',
+          }),
+        }),
+      );
+    });
+
+    it('creates a reply without needing path or line', async () => {
+      fetchFn.mockResolvedValue(jsonResponse({ id: 13 }, 201));
+
+      const response = await request(app)
+        .post('/pulls/7/review-comments')
+        .send({ body: 'A reply', inReplyTo: 10 });
+
+      expect(response.status).toBe(201);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(fetchFn).toHaveBeenCalledWith(
+        `https://api.github.com/repos/${REPO}/pulls/7/comments`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            body: '**mock** (via Dev Portal):\n\nA reply',
+            in_reply_to: 10,
+          }),
+        }),
+      );
+    });
+
+    it('rejects a new thread without path and line', async () => {
+      const response = await request(app)
+        .post('/pulls/7/review-comments')
+        .send({ body: 'Missing position' });
 
       expect(response.status).toBe(400);
       expect(fetchFn).not.toHaveBeenCalled();

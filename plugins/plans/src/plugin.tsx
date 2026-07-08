@@ -8,7 +8,7 @@ import {
 import AssignmentIcon from '@material-ui/icons/Assignment';
 
 import { plansApiRef, PlansApiClient } from './apis';
-import { rootRouteRef } from './routes';
+import { pullRouteRef, rootRouteRef } from './routes';
 
 // Disabled by default: the plans page serves internal planning documents and
 // must not appear in customer portals. Deployments opt in via app-config
@@ -23,10 +23,10 @@ const plansPage = PageBlueprint.make({
     routeRef: rootRouteRef,
     loader: async () => {
       const { PlansProviders } = await import('./components/PlansProviders');
-      const { PlansPage } = await import('./components/PlansPage');
+      const { PlansRouter } = await import('./components/PlansRouter');
       return (
         <PlansProviders>
-          <PlansPage />
+          <PlansRouter />
         </PlansProviders>
       );
     },
@@ -53,5 +53,6 @@ export const plansPlugin = createFrontendPlugin({
   extensions: [plansPage, plansApi],
   routes: {
     root: rootRouteRef,
+    pull: pullRouteRef,
   },
 });

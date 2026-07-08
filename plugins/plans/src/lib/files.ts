@@ -2,6 +2,36 @@ export function isMarkdownFile(path: string): boolean {
   return /\.(md|mdx)$/i.test(path);
 }
 
+/**
+ * Split a leading YAML frontmatter block off a markdown document. Rendering
+ * frontmatter as markdown garbles the document -- `text` followed by `---`
+ * parses as a giant setext heading -- so it is shown separately.
+ */
+export function splitFrontmatter(markdown: string): {
+  frontmatter?: string;
+  body: string;
+} {
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) {
+    return { body: markdown };
+  }
+  return { frontmatter: match[1], body: markdown.slice(match[0].length) };
+}
+
+/**
+ * Text of the first ATX heading in a markdown document (frontmatter
+ * ignored), used as a pretty display title. Undefined when the document has
+ * no heading.
+ */
+export function firstHeading(markdown: string): string | undefined {
+  const { body } = splitFrontmatter(markdown);
+  // ponytail: a `#` line inside a fenced code block would match too; plan
+  // documents start with a real heading, so full markdown parsing is not
+  // worth it here.
+  const match = body.match(/^#{1,6}\s+(.+?)\s*#*\s*$/m);
+  return match?.[1];
+}
+
 export function isHtmlFile(path: string): boolean {
   return /\.html?$/i.test(path);
 }

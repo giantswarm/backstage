@@ -13,8 +13,9 @@ import { createRouter } from './router';
  *
  * Thin REST proxy over the GitHub API for plan repositories (e.g.
  * giantswarm/bumblebee-plans), consumed by the plans frontend plugin to
- * render proposed (open PR) and merged plan documents. GitHub access uses
- * the deployed GitHub App credentials via the standard integrations config.
+ * render proposed (open PR) and merged plan documents and to read/write PR
+ * discussion and inline review comments. GitHub access uses the deployed
+ * GitHub App credentials via the standard integrations config.
  *
  * @public
  */
@@ -27,8 +28,9 @@ export const plansPlugin = createBackendPlugin({
         logger: coreServices.logger,
         config: coreServices.rootConfig,
         httpAuth: coreServices.httpAuth,
+        userInfo: coreServices.userInfo,
       },
-      async init({ httpRouter, logger, config, httpAuth }) {
+      async init({ httpRouter, logger, config, httpAuth, userInfo }) {
         const integrations = ScmIntegrations.fromConfig(config);
         const credentialsProvider =
           DefaultGithubCredentialsProvider.fromIntegrations(integrations);
@@ -38,6 +40,7 @@ export const plansPlugin = createBackendPlugin({
             logger,
             config,
             httpAuth,
+            userInfo,
             credentialsProvider,
           }),
         );

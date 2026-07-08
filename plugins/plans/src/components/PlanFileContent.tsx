@@ -4,13 +4,24 @@ import { MarkdownContent, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../apis';
-import { isHtmlFile } from '../lib/files';
+import { isHtmlFile, splitFrontmatter } from '../lib/files';
 
 const useStyles = makeStyles((theme: Theme) => ({
   markdown: {
     '& img': {
       maxWidth: '100%',
     },
+  },
+  frontmatter: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    whiteSpace: 'pre-wrap',
+    color: theme.palette.text.secondary,
+    backgroundColor: theme.palette.action.hover,
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: theme.shape.borderRadius,
+    padding: theme.spacing(1, 1.5),
+    marginBottom: theme.spacing(2),
   },
   htmlFrame: {
     width: '100%',
@@ -63,9 +74,12 @@ export function PlanFileContent(props: {
     );
   }
 
+  const { frontmatter, body } = splitFrontmatter(data.content);
+
   return (
     <Box className={classes.markdown}>
-      <MarkdownContent content={data.content} dialect="gfm" />
+      {frontmatter && <Box className={classes.frontmatter}>{frontmatter}</Box>}
+      <MarkdownContent content={body} dialect="gfm" />
     </Box>
   );
 }
