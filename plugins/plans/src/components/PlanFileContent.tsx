@@ -4,7 +4,9 @@ import { MarkdownContent, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../apis';
+import { findEpicLink } from '../lib/epicLink';
 import { isHtmlFile, splitFrontmatter } from '../lib/files';
+import { EpicChip } from './EpicChip';
 
 const useStyles = makeStyles((theme: Theme) => ({
   markdown: {
@@ -75,10 +77,12 @@ export function PlanFileContent(props: {
   }
 
   const { frontmatter, body } = splitFrontmatter(data.content);
+  const epic = findEpicLink(body);
 
   return (
     <Box className={classes.markdown}>
       {frontmatter && <Box className={classes.frontmatter}>{frontmatter}</Box>}
+      {epic && <EpicChip epic={epic} />}
       <MarkdownContent content={body} dialect="gfm" />
     </Box>
   );

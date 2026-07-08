@@ -26,8 +26,25 @@ jobs:
   # jobs.node-build; scalars from custom.yml win, so `docker`/`steps` stay as
   # generated and only the executor size changes. Bumped from large (4 vCPU /
   # 8 GB) to xlarge (8 vCPU / 16 GB) to speed up install/verify/build.
+  #
+  # The appended `steps` entry (lists append in the yq `*+` merge, so this
+  # runs after the generated steps) persists the resolved @giantswarm/pro
+  # archive from the yarn cache into the workspace. giantswarm/pro is a
+  # PRIVATE repo consumed as a git dependency (github:giantswarm/pro#vX.Y.Z)
+  # by plugins/roadmap-backend; the Docker image build runs
+  # `yarn workspaces focus --all --production` without git credentials, so it
+  # can only resolve the dependency offline from .yarn/cache. The image jobs
+  # attach this workspace into the build context and the Dockerfile's
+  # `COPY .yarn ./.yarn` picks the archive up. Interim measure until
+  # @giantswarm/pro is published to npm (blocked on NPM_TOKEN provisioning,
+  # same as PR #1799).
   node-build:
     resource_class: xlarge
+    steps:
+    - persist_to_workspace:
+        root: .
+        paths:
+        - .yarn/cache/@giantswarm-pro-*
 
 workflows:
   build:
