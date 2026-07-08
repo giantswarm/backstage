@@ -13,6 +13,7 @@ import { EmptyState, Progress } from '@backstage/core-components';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
+import { formatDate } from '../../lib/dates';
 import { pullRouteRef } from '../../routes';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -23,21 +24,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginLeft: theme.spacing(1),
   },
 }));
-
-function formatUpdatedAt(updatedAt?: string): string | undefined {
-  if (!updatedAt) {
-    return undefined;
-  }
-  const date = new Date(updatedAt);
-  if (isNaN(date.getTime())) {
-    return undefined;
-  }
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 /**
  * Open pull requests against the plan repository -- plans proposed for team
@@ -88,7 +74,7 @@ export function ProposedTab({ repo }: { repo: string }) {
       <List disablePadding>
         {pulls.map((pull, index) => {
           const fileCount = fileQueries[index]?.data?.files.length;
-          const updated = formatUpdatedAt(pull.updatedAt);
+          const updated = formatDate(pull.updatedAt);
           const secondary = [
             `#${pull.number}`,
             pull.author,

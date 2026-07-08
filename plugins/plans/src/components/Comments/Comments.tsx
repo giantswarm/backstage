@@ -9,7 +9,9 @@ import {
 } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 import { MarkdownContent } from '@backstage/core-components';
-import { PlanComment } from '../../apis';
+import { NewReviewComment, PlanComment } from '../../apis';
+import { ReviewThread } from '../../lib/annotations';
+import { formatDate } from '../../lib/dates';
 
 const useStyles = makeStyles((theme: Theme) => ({
   comment: {
@@ -32,23 +34,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-function formatCreatedAt(createdAt?: string): string | undefined {
-  if (!createdAt) {
-    return undefined;
-  }
-  const date = new Date(createdAt);
-  if (isNaN(date.getTime())) {
-    return undefined;
-  }
-  return date.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 /**
  * One comment: author and timestamp, then the markdown body. Comments
  * written through the portal already carry the Backstage user in the body
@@ -56,7 +41,7 @@ function formatCreatedAt(createdAt?: string): string | undefined {
  */
 export function CommentItem({ comment }: { comment: PlanComment }) {
   const classes = useStyles();
-  const created = formatCreatedAt(comment.createdAt);
+  const created = formatDate(comment.createdAt, { time: true });
 
   return (
     <Box className={classes.comment}>
@@ -66,6 +51,29 @@ export function CommentItem({ comment }: { comment: PlanComment }) {
       </Typography>
       <MarkdownContent content={comment.body} dialect="gfm" />
     </Box>
+  );
+}
+
+/**
+ * One review thread: the root comment, its replies, and a reply form.
+ * Shared by the rendered (AnnotatedMarkdown) and diff (DiffView) views.
+ */
+export function CommentThread(props: {
+  thread: ReviewThread;
+  onCreate: (comment: NewReviewComment) => Promise<unknown>;
+}) {
+  const { thread, onCreate } = props;
+  return (
+    <>
+      <CommentItem comment={thread.root} />
+      {thread.replies.map(reply => (
+        <CommentItem key={reply.id} comment={reply} />
+      ))}
+      <CommentForm
+        placeholder="Reply"
+        onSubmit={body => onCreate({ body, inReplyTo: thread.root.id })}
+      />
+    </>
   );
 }
 

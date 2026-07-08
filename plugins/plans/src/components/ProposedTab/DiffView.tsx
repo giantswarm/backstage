@@ -2,8 +2,9 @@ import { Fragment, useMemo, useState } from 'react';
 import { Box, IconButton, makeStyles, Theme } from '@material-ui/core';
 import AddCommentIcon from '@material-ui/icons/AddComment';
 import { NewReviewComment, PlanReviewComment } from '../../apis';
+import { ReviewThread, groupThreads } from '../../lib/annotations';
 import { DiffLine, parsePatch } from '../../lib/diff';
-import { CommentForm, CommentItem } from '../Comments';
+import { CommentForm, CommentThread } from '../Comments';
 
 const useStyles = makeStyles((theme: Theme) => ({
   table: {
@@ -72,26 +73,12 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-interface Thread {
-  root: PlanReviewComment;
-  replies: PlanReviewComment[];
-}
-
 /** Group inline comments into threads keyed by new-file line number. */
-function threadsByLine(comments: PlanReviewComment[]): Map<number, Thread[]> {
-  const roots = new Map<number, Thread>();
-  for (const comment of comments) {
-    if (comment.inReplyTo === undefined) {
-      roots.set(comment.id, { root: comment, replies: [] });
-    }
-  }
-  for (const comment of comments) {
-    if (comment.inReplyTo !== undefined) {
-      roots.get(comment.inReplyTo)?.replies.push(comment);
-    }
-  }
-  const byLine = new Map<number, Thread[]>();
-  for (const thread of roots.values()) {
+function threadsByLine(
+  comments: PlanReviewComment[],
+): Map<number, ReviewThread[]> {
+  const byLine = new Map<number, ReviewThread[]>();
+  for (const thread of groupThreads(comments)) {
     // ponytail: LEFT-side (deleted-line) threads are grouped by the same
     // line number; a dedicated LEFT anchor would need old/new-side tracking.
     if (thread.root.line === undefined) {
@@ -188,16 +175,7 @@ export function DiffView(props: {
                   <td className={classes.threadCell} colSpan={4}>
                     {lineThreads.map(thread => (
                       <Box key={thread.root.id} className={classes.thread}>
-                        <CommentItem comment={thread.root} />
-                        {thread.replies.map(reply => (
-                          <CommentItem key={reply.id} comment={reply} />
-                        ))}
-                        <CommentForm
-                          placeholder="Reply"
-                          onSubmit={body =>
-                            onCreate({ body, inReplyTo: thread.root.id })
-                          }
-                        />
+                        <CommentThread thread={thread} onCreate={onCreate} />
                       </Box>
                     ))}
                     {commenting && (

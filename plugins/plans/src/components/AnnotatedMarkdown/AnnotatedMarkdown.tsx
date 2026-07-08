@@ -15,7 +15,7 @@ import {
   threadsForBlock,
 } from '../../lib/annotations';
 import { splitFrontmatter } from '../../lib/files';
-import { CommentForm, CommentItem } from '../Comments';
+import { CommentForm, CommentThread } from '../Comments';
 
 const GUTTER = 34;
 
@@ -229,14 +229,7 @@ function renderBlock(Tag: ElementType, ctx: BlockContext) {
       <Box className={classes.threads}>
         {blockThreads.map(thread => (
           <Box key={thread.root.id} className={classes.thread}>
-            <CommentItem comment={thread.root} />
-            {thread.replies.map(reply => (
-              <CommentItem key={reply.id} comment={reply} />
-            ))}
-            <CommentForm
-              placeholder="Reply"
-              onSubmit={body => onCreate({ body, inReplyTo: thread.root.id })}
-            />
+            <CommentThread thread={thread} onCreate={onCreate} />
           </Box>
         ))}
         {composing && (

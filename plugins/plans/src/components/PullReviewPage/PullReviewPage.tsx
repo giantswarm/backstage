@@ -34,6 +34,7 @@ import {
   PlanReviewComment,
   plansApiRef,
 } from '../../apis';
+import { formatDate } from '../../lib/dates';
 import { firstHeading, isHtmlFile, isMarkdownFile } from '../../lib/files';
 import { rootRouteRef } from '../../routes';
 import { AnnotatedMarkdown } from '../AnnotatedMarkdown';
@@ -146,21 +147,6 @@ const useStyles = makeStyles((theme: Theme) => ({
 }));
 
 const OVERVIEW = 'overview';
-
-function formatUpdatedAt(updatedAt?: string): string | undefined {
-  if (!updatedAt) {
-    return undefined;
-  }
-  const date = new Date(updatedAt);
-  if (isNaN(date.getTime())) {
-    return undefined;
-  }
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 function basename(path: string): string {
   return path.split('/').pop() ?? path;
@@ -467,7 +453,7 @@ export function PullReviewPage() {
   };
 
   const selectedFile = files.find(file => file.filename === doc);
-  const updated = formatUpdatedAt(pull.updatedAt);
+  const updated = formatDate(pull.updatedAt);
   const discussionCount = discussionComments?.comments.length;
 
   const countChip = (count: number | undefined) =>

@@ -1,1 +1,1 @@
-export { CommentForm, CommentItem } from './Comments';
+export { CommentForm, CommentItem, CommentThread } from './Comments';
