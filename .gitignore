@@ -25,6 +25,16 @@ node_modules/
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+# Offline mirror for the @giantswarm/pro git dependency: giantswarm/pro is a
+# private repo, and neither CircleCI's repo-scoped checkout key nor the Docker
+# image build can clone it. Committing the resolved archive lets
+# `yarn install --immutable` and `yarn workspaces focus` resolve it from the
+# cache without git access. Interim until @giantswarm/pro is published to npm
+# (blocked on NPM_TOKEN provisioning); replace the git dependency and drop
+# this exception then.
+!.yarn/cache
+.yarn/cache/*
+!.yarn/cache/@giantswarm-pro-*
 
 # Node version directives
 .nvmrc
