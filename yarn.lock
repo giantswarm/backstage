@@ -11383,6 +11383,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@giantswarm/backstage-plugin-agent-platform@workspace:^, @giantswarm/backstage-plugin-agent-platform@workspace:plugins/agent-platform":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-agent-platform@workspace:plugins/agent-platform"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/core-app-api": "backstage:^"
+    "@backstage/core-components": "backstage:^"
+    "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/dev-utils": "backstage:^"
+    "@backstage/frontend-plugin-api": "backstage:^"
+    "@backstage/plugin-scaffolder-react": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
+    "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
+    "@giantswarm/backstage-plugin-ui-react": "workspace:^"
+    "@material-ui/core": "npm:^4.12.4"
+    "@material-ui/icons": "npm:^4.11.3"
+    "@tanstack/react-query": "npm:^5.82.0"
+    "@testing-library/jest-dom": "npm:^6.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    "@testing-library/user-event": "npm:^14.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+    react-router-dom: "*"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-ai-chat-backend@npm:^0.17.2, @giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-ai-chat-backend@workspace:plugins/ai-chat-backend"
@@ -26384,6 +26412,7 @@ __metadata:
     "@backstage/plugin-user-settings": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-agent-platform": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"

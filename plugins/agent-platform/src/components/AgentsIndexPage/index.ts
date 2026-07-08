@@ -1,0 +1,1 @@
+export { AgentsIndexPage } from './AgentsIndexPage';
