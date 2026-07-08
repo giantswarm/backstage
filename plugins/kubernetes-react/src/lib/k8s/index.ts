@@ -6,6 +6,7 @@ export * from './versionUtils';
 export * from './CustomResourceMatcher';
 export * from './errorMessages';
 
+export { Agent } from './Agent';
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
 export { ConfigMap } from './ConfigMap';
@@ -19,6 +20,7 @@ export { ImagePolicy } from './ImagePolicy';
 export { ImageRepository } from './ImageRepository';
 export { ImageUpdateAutomation } from './ImageUpdateAutomation';
 export { Kustomization } from './Kustomization';
+export { ModelConfig } from './ModelConfig';
 export { OCIRepository } from './OCIRepository';
 export { Organization } from './Organization';
 export { ProviderConfig } from './ProviderConfig';
