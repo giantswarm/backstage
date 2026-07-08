@@ -74,7 +74,12 @@ export function ModelConfigPicker() {
     <Flex direction="column" gap="2">
       {label}
 
-      {isLoading && <Text color="secondary">Loading models…</Text>}
+      {/* isLoading is fleet-wide, so only treat it as "loading" here while this
+          installation has no models yet — otherwise the label lingers next to
+          already-loaded models. */}
+      {isLoading && modelConfigs.length === 0 && (
+        <Text color="secondary">Loading models…</Text>
+      )}
 
       {!isLoading && modelConfigs.length === 0 && (
         <Alert
