@@ -63,14 +63,14 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/anthropic@npm:^3.0.76":
-  version: 3.0.85
-  resolution: "@ai-sdk/anthropic@npm:3.0.85"
+  version: 3.0.94
+  resolution: "@ai-sdk/anthropic@npm:3.0.94"
   dependencies:
-    "@ai-sdk/provider": "npm:3.0.10"
-    "@ai-sdk/provider-utils": "npm:4.0.30"
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@ai-sdk/provider-utils": "npm:4.0.36"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/fd6569e141965c3e96875af91bf3d708a31c7b00a5343441db1ca5c532b6e12a3d37fb7ae16f48cf826cfeeabdb74cec2508bedd74390cf8edea5e8546dd74c4
+  checksum: 10c0/ec67f826be61fc2491c47c8ae4ebd02f2152f5f8dbcd0d2793d2f332b9718575cd4ae98d9fdf81a40c39ffbc0ec0f7fab4a13787559466811ced3c9a5055e43b
   languageName: node
   linkType: hard
 
@@ -100,16 +100,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/gateway@npm:3.0.133":
-  version: 3.0.133
-  resolution: "@ai-sdk/gateway@npm:3.0.133"
+"@ai-sdk/gateway@npm:3.0.134":
+  version: 3.0.134
+  resolution: "@ai-sdk/gateway@npm:3.0.134"
   dependencies:
     "@ai-sdk/provider": "npm:3.0.10"
     "@ai-sdk/provider-utils": "npm:4.0.30"
     "@vercel/oidc": "npm:3.2.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/a6e2f9d5a5e53c2f31dadaa903973cce8bff79f8efaf65b4daf61c2644fe9487399e8aa2cc63a338bad219f524fa51feeeb211a62a313102699a958fc0bbd0ae
+  checksum: 10c0/9f4ef4d43aab397c96a10d02ccc94a527f5f3b476e05a9f9de8b963d57cd052eb54c1acef2329c4812f8534ac73f5700f5eef73b0725ff67dfae42b0d01272dc
   languageName: node
   linkType: hard
 
@@ -177,14 +177,14 @@ __metadata:
   linkType: hard
 
 "@ai-sdk/openai@npm:^3.0.63":
-  version: 3.0.73
-  resolution: "@ai-sdk/openai@npm:3.0.73"
+  version: 3.0.80
+  resolution: "@ai-sdk/openai@npm:3.0.80"
   dependencies:
-    "@ai-sdk/provider": "npm:3.0.10"
-    "@ai-sdk/provider-utils": "npm:4.0.30"
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@ai-sdk/provider-utils": "npm:4.0.35"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/4f547054252f48a96b7871da559e558d9a7e4828bd0a42e6181b7213060ec4a5dbdc0548170509c861342f25f04d315c3652332ddb0d8f21178092972d39d419
+  checksum: 10c0/19374288e08868f98e36cac8ddf3ad10dc899f0a4d2f13d85dff99e688f3c20b11ca40a2cc64471782777021833307ad1f37c1a5fe347b1870580fcd2e442299
   languageName: node
   linkType: hard
 
@@ -224,6 +224,32 @@ __metadata:
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
   checksum: 10c0/ec09f1d9d70c29b3b778c7ea08f286a75f4dc3b2407ca59d2e3ffbe827ec617b734e4d63a54ca9649ad45923e76c71159f93d58475445d87656e8761efe54e31
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:4.0.35":
+  version: 4.0.35
+  resolution: "@ai-sdk/provider-utils@npm:4.0.35"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.8"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/43b7564353fafa0a3baba40714bbed89ca562537aed467f9c170d2c15b0fd8eb3b7ac0a2801030dfa15a4d208bd238d57bf1f67e539bf7de7afbb994006a6678
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:4.0.36":
+  version: 4.0.36
+  resolution: "@ai-sdk/provider-utils@npm:4.0.36"
+  dependencies:
+    "@ai-sdk/provider": "npm:3.0.13"
+    "@standard-schema/spec": "npm:^1.1.0"
+    eventsource-parser: "npm:^3.0.8"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/d6c24a75e686c0de32fc735459ccacd7a67809200d6270083dff9e2ba17074466c8daa2ddc3464135e144595506acbc7ee230d5df4028278e0d1e8489af7942e
   languageName: node
   linkType: hard
 
@@ -10385,15 +10411,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codemirror/commands@npm:6.10.3":
-  version: 6.10.3
-  resolution: "@codemirror/commands@npm:6.10.3"
+"@codemirror/commands@npm:6.10.4":
+  version: 6.10.4
+  resolution: "@codemirror/commands@npm:6.10.4"
   dependencies:
     "@codemirror/language": "npm:^6.0.0"
-    "@codemirror/state": "npm:^6.6.0"
+    "@codemirror/state": "npm:^6.7.0"
     "@codemirror/view": "npm:^6.27.0"
     "@lezer/common": "npm:^1.1.0"
-  checksum: 10c0/43db9eb5a2aeb09c9714e107a3a4960d16b56879b5dbdbd382a2b0a12bb79cd46c70ff933cea763aeb9b9d218d21e8faa6989d9bd247dfd949f6c373f6847261
+  checksum: 10c0/ae47b633afc68b6854111d9749d5f8dde16a13e5053ec72b4a0c5fe0cc553c490040b05c6d8e5d1670e1a2612cc6ef406b9e51578593d030c7f44a0ad46e6f94
   languageName: node
   linkType: hard
 
@@ -10467,12 +10493,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codemirror/state@npm:6.6.0":
-  version: 6.6.0
-  resolution: "@codemirror/state@npm:6.6.0"
+"@codemirror/state@npm:6.7.0":
+  version: 6.7.0
+  resolution: "@codemirror/state@npm:6.7.0"
   dependencies:
     "@marijn/find-cluster-break": "npm:^1.0.0"
-  checksum: 10c0/4e5d6ddd28fc642e8d749fe80a7dd278afd547e4d93c562eaab6f23bdf25bb12a94226db3efab6321d458c531eb6d357184809f3704aee419fe3230d53f16e24
+  checksum: 10c0/132ad67850daba80e11af820f2e44bb0696ed4ca68e7cfd6fa5092bd78280ba5cbb6f92e83eb6ac68d3a98ccd3e7e46f7081c35ac327b830c5567760796c3600
   languageName: node
   linkType: hard
 
@@ -10488,15 +10514,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codemirror/view@npm:6.43.1":
-  version: 6.43.1
-  resolution: "@codemirror/view@npm:6.43.1"
+"@codemirror/view@npm:6.43.2":
+  version: 6.43.2
+  resolution: "@codemirror/view@npm:6.43.2"
   dependencies:
-    "@codemirror/state": "npm:^6.6.0"
+    "@codemirror/state": "npm:^6.7.0"
     crelt: "npm:^1.0.6"
     style-mod: "npm:^4.1.0"
     w3c-keyname: "npm:^2.2.4"
-  checksum: 10c0/1ef96bfc756703f6675957793a3ea0f9aef8b2014172c15fc4063b58cefd6974688148eb25c1f2277d6b59d7ca9cb7f66d05e7b6e8c15d68bf050795c902fc18
+  checksum: 10c0/7e735a96bc61f774699a4fbba94c8e50b1c54d03df27fd8629fef0cb17cdf53db4320f38b2b367f8d0553b818d3eb157e55dac9c82dd9b1c78fe43062559bef7
   languageName: node
   linkType: hard
 
@@ -11707,7 +11733,7 @@ __metadata:
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
-    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.5.0"
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.6.0"
     "@material-ui/core": "npm:^4.9.13"
     "@material-ui/icons": "npm:^4.11.3"
     "@testing-library/jest-dom": "npm:^6.0.0"
@@ -11898,10 +11924,10 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/k8s-types@github:giantswarm/k8s-typescript-types#v0.5.0":
+"@giantswarm/k8s-types@github:giantswarm/k8s-typescript-types#v0.6.0":
   version: 0.1.0
-  resolution: "@giantswarm/k8s-types@https://github.com/giantswarm/k8s-typescript-types.git#commit=c2d929f63e986c9f386c4f521e688283681caa00"
-  checksum: 10c0/042dc4f63fd61adf0b2e6ab4da2bccbe65a3043f3a7477fb4fd9934276143d8db6cad9846d96032ca0ac710918fbb2f388c3acfbf8fbfea1367f0180ffcec798
+  resolution: "@giantswarm/k8s-types@https://github.com/giantswarm/k8s-typescript-types.git#commit=8675562f176285888ed06fc54039acddbc6328d7"
+  checksum: 10c0/5d661f970a6862f9674fa1d2acc17aa59008430be997628ec3963d0172d68ded0d1ff79cef123251fabf30523019019e1ade99ba039bab3bbf93880eca2a7b4f
   languageName: node
   linkType: hard
 
@@ -23566,51 +23592,51 @@ __metadata:
   linkType: hard
 
 "@tanstack/query-async-storage-persister@npm:^5.86.0":
-  version: 5.101.0
-  resolution: "@tanstack/query-async-storage-persister@npm:5.101.0"
+  version: 5.101.2
+  resolution: "@tanstack/query-async-storage-persister@npm:5.101.2"
   dependencies:
-    "@tanstack/query-core": "npm:5.101.0"
-    "@tanstack/query-persist-client-core": "npm:5.101.0"
-  checksum: 10c0/e6f5278051c206614f7bb6494d60d175932330ae4640166cc34702183aaad5f7481a6ce6af1f4265dfb4e02659e06c77b6d3c24246c79b8eaab66b790a742fbd
+    "@tanstack/query-core": "npm:5.101.2"
+    "@tanstack/query-persist-client-core": "npm:5.101.2"
+  checksum: 10c0/6af6efdcddb4481855e10dbdef0211e20c4f7539750d8b1501965d222286991da0a8c6bac0e30496218f9629a0287f2be26a89e7fd6e9a3596dc6c17e044fbb7
   languageName: node
   linkType: hard
 
-"@tanstack/query-core@npm:5.101.0":
-  version: 5.101.0
-  resolution: "@tanstack/query-core@npm:5.101.0"
-  checksum: 10c0/e3aacbb762887214b71d8f959930644594e2321b0cdca8eac098f894cbb75d1e32d45dc34a4b818fb8c68b344398905cf30f17c69cd87283adf73e64457e9320
+"@tanstack/query-core@npm:5.101.2":
+  version: 5.101.2
+  resolution: "@tanstack/query-core@npm:5.101.2"
+  checksum: 10c0/c3288757bfd563ca35cee21bf6ed0edb2f4425a8c92f75d84dcb36a0580a59e48bd97fcdbbc7c8d8e95a4c40376edfc5772b14665b85d183079a0ba7e17793b2
   languageName: node
   linkType: hard
 
-"@tanstack/query-persist-client-core@npm:5.101.0":
-  version: 5.101.0
-  resolution: "@tanstack/query-persist-client-core@npm:5.101.0"
+"@tanstack/query-persist-client-core@npm:5.101.2":
+  version: 5.101.2
+  resolution: "@tanstack/query-persist-client-core@npm:5.101.2"
   dependencies:
-    "@tanstack/query-core": "npm:5.101.0"
-  checksum: 10c0/08da24210aed18090a5cede03449f046e2aeae955518d8bfab01121237e41f6a311c635cedcd6bcc66b729ac560d49405527ced2612c8bc88fbbeaaee18ab92d
+    "@tanstack/query-core": "npm:5.101.2"
+  checksum: 10c0/a57f9046a19cebc21ce30c367eca679b5063e6a357f2395bb06e5858c8e6e1df68cae33a148a16b6d33e037a30e9bb0b13eae3d9e0b8d484de8221d3a3189437
   languageName: node
   linkType: hard
 
 "@tanstack/react-query-persist-client@npm:^5.86.0":
-  version: 5.101.0
-  resolution: "@tanstack/react-query-persist-client@npm:5.101.0"
+  version: 5.101.2
+  resolution: "@tanstack/react-query-persist-client@npm:5.101.2"
   dependencies:
-    "@tanstack/query-persist-client-core": "npm:5.101.0"
+    "@tanstack/query-persist-client-core": "npm:5.101.2"
   peerDependencies:
-    "@tanstack/react-query": ^5.101.0
+    "@tanstack/react-query": ^5.101.2
     react: ^18 || ^19
-  checksum: 10c0/4a25223d0d21760c72b5988b9cacb5873bf825603aa5aecfd8662fbe8b97c651dfb971429ba23c1aeab83a22767ecbf06babf4bb165b4fca03f0685e3118543e
+  checksum: 10c0/3b33ab25c8a38126aa7f9820a6b24513052f5499ee29aa05b09fb5a95f3f1887a8d30214e6a8ada59a25092729e07319edb3ffecaa1056cac303661906f2ce22
   languageName: node
   linkType: hard
 
 "@tanstack/react-query@npm:^5.40.1, @tanstack/react-query@npm:^5.82.0":
-  version: 5.101.0
-  resolution: "@tanstack/react-query@npm:5.101.0"
+  version: 5.101.2
+  resolution: "@tanstack/react-query@npm:5.101.2"
   dependencies:
-    "@tanstack/query-core": "npm:5.101.0"
+    "@tanstack/query-core": "npm:5.101.2"
   peerDependencies:
     react: ^18 || ^19
-  checksum: 10c0/a86add4402c23e26cf4a8c7dade5b0198a7abfb51720b91e83cfe5db8b5ed89acb027b3d5b67882098d0c83cf50099175f8310a41fd5c4b55f6c343779c3dfb6
+  checksum: 10c0/076b2db0d85a6dc96d461789715ae0df2e439d9a20a41e629446275f8177a856c3b89d242ad3d31eadaf421f080b9834bcd9f94e5143f4cd7f947a10af9e42b3
   languageName: node
   linkType: hard
 
@@ -26091,17 +26117,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:6.0.208":
-  version: 6.0.208
-  resolution: "ai@npm:6.0.208"
+"ai@npm:6.0.209":
+  version: 6.0.209
+  resolution: "ai@npm:6.0.209"
   dependencies:
-    "@ai-sdk/gateway": "npm:3.0.133"
+    "@ai-sdk/gateway": "npm:3.0.134"
     "@ai-sdk/provider": "npm:3.0.10"
     "@ai-sdk/provider-utils": "npm:4.0.30"
     "@opentelemetry/api": "npm:^1.9.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/1f32d2e7dfb40410b3a0e389529e2469dd79519865563d29bd5f12d00fa5c457bad950a57ff3eebff20ccfdf0ab6e3cdf5f5b5a21bd9229ead19fcedfc5ca832
+  checksum: 10c0/b3ed9a57a84ff5d6f2a8177382637cd788f74be61bfc6419d56345a5943b98c5e98c4e1348e2be7cb054292b7b09888e18b813ec407af56e4df2000caecb2ce2
   languageName: node
   linkType: hard
 
@@ -42978,12 +43004,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"protobufjs@npm:8.6.4":
-  version: 8.6.4
-  resolution: "protobufjs@npm:8.6.4"
+"protobufjs@npm:8.6.5":
+  version: 8.6.5
+  resolution: "protobufjs@npm:8.6.5"
   dependencies:
     long: "npm:^5.3.2"
-  checksum: 10c0/fafe74f62961d0cd17106002b183989079731baf0db2dd622ec43f600d36a1864849ef88c62d9c7a385a7b7cf2ed3a6e6d7d35652473e8255a3df11acd2c3d3d
+  checksum: 10c0/ccf3d07c567c1b1be9114165093bba658dac252bd9c99c5705d4a0e2e207c772f9996bb3826c27a6cc1c67943767ecdfbf5525bb4f83fecfd186d6dbd300147e
   languageName: node
   linkType: hard
 
