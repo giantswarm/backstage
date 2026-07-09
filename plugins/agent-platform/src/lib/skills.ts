@@ -20,3 +20,8 @@ export function skillId(
 ): string {
   return `${skill.repoUrl}#${skill.path}`;
 }
+
+/** `owner/repo` for display, derived from the canonical repo URL. */
+export function repoSlug(repoUrl: string): string {
+  return repoUrl.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
+}

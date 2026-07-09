@@ -5,7 +5,7 @@ import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank';
 
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
-import { skillId } from '../../lib/skills';
+import { repoSlug, skillId } from '../../lib/skills';
 
 const useStyles = makeStyles(theme => ({
   grid: {
@@ -122,6 +122,12 @@ export function SkillPicker() {
             const Indicator = isSelected
               ? CheckBoxIcon
               : CheckBoxOutlineBlankIcon;
+            // Show the source repo; append the path only when it adds
+            // information (nested skill, or the directory differs from the
+            // displayed name) — otherwise it just echoes the title.
+            const showPath =
+              skill.path !== '' &&
+              (skill.path.includes('/') || skill.path !== skill.name);
 
             return (
               <button
@@ -144,7 +150,13 @@ export function SkillPicker() {
                       </Text>
                     )}
                     <Text variant="body-x-small" color="secondary">
-                      <span className={classes.code}>{skill.path || '/'}</span>
+                      {repoSlug(skill.repoUrl)}
+                      {showPath && (
+                        <>
+                          {' · '}
+                          <span className={classes.code}>{skill.path}</span>
+                        </>
+                      )}
                     </Text>
                   </Flex>
                   <Indicator
