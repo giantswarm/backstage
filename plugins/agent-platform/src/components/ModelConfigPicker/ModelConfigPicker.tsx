@@ -1,5 +1,7 @@
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
@@ -38,6 +40,16 @@ const useStyles = makeStyles(theme => ({
   },
   code: {
     fontFamily: 'monospace',
+  },
+  indicator: {
+    flexShrink: 0,
+  },
+  indicatorUnselected: {
+    color: theme.palette.text.secondary,
+    opacity: 0.5,
+  },
+  indicatorSelected: {
+    color: theme.palette.primary.main,
   },
 }));
 
@@ -111,18 +123,33 @@ export function ModelConfigPicker() {
                   isSelected ? classes.selected : ''
                 }`}
               >
-                <Flex direction="column" gap="1">
-                  <Text weight="bold">{mc.getDisplayName()}</Text>
-                  <Text variant="body-small" color="secondary">
-                    <span className={classes.code}>{mc.getModel()}</span>
-                    {provider ? ` · ${provider}` : ''}
-                  </Text>
-                  <Text variant="body-x-small" color="secondary">
-                    ModelConfig{' '}
-                    <span className={classes.code}>
-                      {namespace}/{name}
-                    </span>
-                  </Text>
+                <Flex align="start" justify="between" gap="2">
+                  <Flex direction="column" gap="1">
+                    <Text weight="bold">{mc.getDisplayName()}</Text>
+                    <Text variant="body-small" color="secondary">
+                      <span className={classes.code}>{mc.getModel()}</span>
+                      {provider ? ` · ${provider}` : ''}
+                    </Text>
+                    <Text variant="body-x-small" color="secondary">
+                      ModelConfig{' '}
+                      <span className={classes.code}>
+                        {namespace}/{name}
+                      </span>
+                    </Text>
+                  </Flex>
+                  {isSelected ? (
+                    <CheckCircleIcon
+                      fontSize="small"
+                      aria-hidden
+                      className={`${classes.indicator} ${classes.indicatorSelected}`}
+                    />
+                  ) : (
+                    <RadioButtonUncheckedIcon
+                      fontSize="small"
+                      aria-hidden
+                      className={`${classes.indicator} ${classes.indicatorUnselected}`}
+                    />
+                  )}
                 </Flex>
               </button>
             );
