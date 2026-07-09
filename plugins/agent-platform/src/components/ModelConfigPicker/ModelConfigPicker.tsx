@@ -56,7 +56,8 @@ const useStyles = makeStyles(theme => ({
 export function ModelConfigPicker() {
   const classes = useStyles();
   const { state, selectModelConfig } = useNewAgentForm();
-  const { isLoading, modelConfigsFor } = useModelConfigs();
+  const { isLoading, modelConfigsFor, unreachableInstallations } =
+    useModelConfigs();
   const installation = state.installation;
 
   const label = (
@@ -81,6 +82,7 @@ export function ModelConfigPicker() {
   }
 
   const modelConfigs = modelConfigsFor(installation);
+  const hasError = unreachableInstallations.includes(installation);
 
   return (
     <Flex direction="column" gap="2">
@@ -93,7 +95,15 @@ export function ModelConfigPicker() {
         <Text color="secondary">Loading models…</Text>
       )}
 
-      {!isLoading && modelConfigs.length === 0 && (
+      {!isLoading && modelConfigs.length === 0 && hasError && (
+        <Alert
+          status="warning"
+          title="Couldn't read models"
+          description={`The kagent resources on ${installation} couldn't be read. It may be unreachable, or you may not have permission to list ModelConfigs there.`}
+        />
+      )}
+
+      {!isLoading && modelConfigs.length === 0 && !hasError && (
         <Alert
           status="info"
           title="No models found"

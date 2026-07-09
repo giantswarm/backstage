@@ -31,6 +31,27 @@ bui's Card button variant is currently broken). The installation dropdown
 (`InstallationSelect`) only offers installations that are known to have at least
 one `ModelConfig`, resolving them incrementally as the fleet-wide query returns.
 
+`ModelConfigsProvider` owns that fleet-wide query and keeps it cheap:
+
+- **Only reachable installations are queried.** `useReachableInstallations`
+  narrows the configured installations to those the app currently considers
+  reachable, reading the shared cluster-access status the sidebar warm-up
+  maintains (`clusterAccessStatusApiRef` from the `gs` plugin —
+  `healthy`/`connecting` are kept, `degraded`/`session-expired`/absent are
+  skipped). This stops the query fanning out to unreachable/forbidden clusters,
+  each of which otherwise hangs for the full proxy timeout and retries before
+  settling. Until any status is known it falls back to all installations. (This
+  is the one place agent-platform imports from `gs`; the reachability signal has
+  no lighter shared home yet.)
+- **API-version discovery is skipped** (`enableDiscovery: false`): we type
+  against a single `ModelConfig` version (`v1alpha2`), so the two extra
+  discovery round-trips per cluster (and their retry storm) are pure overhead.
+- **Failures are surfaced, not swallowed.** Installations that error (unreachable
+  or a `403` — listing across all namespaces is admin-only) are exposed as
+  `unreachableInstallations` and shown as a warning, so an empty result is
+  distinguishable from a failed one. The "No installations with models" message
+  only appears when reads actually succeeded and found nothing.
+
 ### Manifest composition
 
 `src/lib/composeManifests.ts` turns the form into:
@@ -127,17 +148,21 @@ The `general-purpose-agent` chart **does not exist yet**. Consequently:
 
 ### Installation / ModelConfig querying
 
-- **Slow.** The fleet-wide `ModelConfig` query is slow even in the success case,
-  and **sometimes does not return all valid installations** (transient per-cluster
-  query errors cause an installation to be silently dropped, because an
-  installation is only offered once its query succeeds).
-- **Query strategy needs review.** We currently list resources **across all
-  namespaces**, which is **only permitted for admins**. Non-admin users will not
-  get correct results with this strategy. The querying approach (which namespaces,
-  which verbs, how many round-trips) needs to be reworked.
+The worst of the original slowness/silent-drop behaviour is addressed (query only
+reachable installations, skip version discovery, surface failures instead of
+dropping them — see "Model selection" above). What remains:
+
+- **Cluster-scoped list is admin-only.** We still list `ModelConfig` **across all
+  namespaces** (`GET …/modelconfigs`), which is **only permitted for admins**. A
+  non-admin now gets a clear "couldn't read / no permission" warning instead of a
+  misleading empty state, but still can't _use_ the flow. A namespace-scoped
+  strategy (list only namespaces the user can read) is the real fix.
 - **RBAC for non-admins.** The Kubernetes RBAC permissions a non-admin user needs
   in order to discover `ModelConfig`/`Agent` resources must be defined **outside
   Backstage** (platform/RBAC side), then the query strategy aligned to it.
+- **Reachability coupling.** Reachability filtering reads `gs`'s
+  `clusterAccessStatusApiRef` directly (a cross-plugin import). If more plugins
+  need it, the apiRef + types should move to a shared package.
 
 ### Deployment
 

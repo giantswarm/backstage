@@ -4,6 +4,7 @@ import {
   ModelConfig,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 
 export type ModelConfigsContextValue = {
   /** Discovery/list still in flight across the fleet. */
@@ -15,6 +16,12 @@ export type ModelConfigsContextValue = {
    * i.e. the ones where creating an agent is actually possible.
    */
   availableInstallations: string[];
+  /**
+   * Installations we queried but couldn't read (unreachable, or the user lacks
+   * permission to list ModelConfigs there). Surfaced instead of silently
+   * dropped so an empty result is distinguishable from a failed one.
+   */
+  unreachableInstallations: string[];
   /** ModelConfigs found on a given installation. */
   modelConfigsFor: (installation: string) => ModelConfig[];
 };
@@ -24,7 +31,7 @@ const ModelConfigsContext = createContext<ModelConfigsContextValue | undefined>(
 );
 
 /**
- * Queries kagent ModelConfigs across every configured installation once, and
+ * Queries kagent ModelConfigs across every reachable installation once, and
  * exposes which installations actually have models. Shared by the installation
  * select (to only offer usable installations) and the model picker (to list a
  * selected installation's models) so the fleet is only queried once.
@@ -34,24 +41,55 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const allInstallations =
     configApi.getOptionalConfig('gs.installations')?.keys() ?? [];
 
-  const { resources, isLoading } = useResources(allInstallations, ModelConfig);
+  // Only query installations the app currently considers reachable, so the
+  // fleet-wide query doesn't fan out to unreachable/forbidden clusters (each of
+  // which otherwise hangs for the full proxy timeout and retries before
+  // settling, dominating the tail).
+  const { installations: reachableInstallations, isProbing } =
+    useReachableInstallations(allInstallations);
+
+  // We type against a single ModelConfig version (v1alpha2), so skip API
+  // version discovery: it adds two round-trips per cluster plus its own retry
+  // storm for no benefit here.
+  const { resources, isLoading, errors } = useResources(
+    reachableInstallations,
+    ModelConfig,
+    {},
+    { enableDiscovery: false },
+  );
+
+  const allInstallationsKey = allInstallations.join(',');
+  const reachableInstallationsKey = reachableInstallations.join(',');
 
   const value = useMemo<ModelConfigsContextValue>(() => {
     const withModels = new Set(resources.map(mc => mc.cluster));
 
+    // Distinct installations whose query errored and produced no models.
+    const unreachableInstallations = Array.from(
+      new Set(errors.map(e => e.cluster)),
+    ).filter(name => !withModels.has(name));
+
     return {
-      isLoading,
+      isLoading: isProbing || isLoading,
       hasInstallations: allInstallations.length > 0,
-      availableInstallations: allInstallations.filter(name =>
+      availableInstallations: reachableInstallations.filter(name =>
         withModels.has(name),
       ),
+      unreachableInstallations,
       modelConfigsFor: (installation: string) =>
         resources.filter(mc => mc.cluster === installation),
     };
-    // allInstallations is derived fresh each render from config; key on its
-    // contents rather than identity.
+    // allInstallations/reachableInstallations are derived fresh each render;
+    // key on their contents (…Key) rather than identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resources, isLoading, allInstallations.join(',')]);
+  }, [
+    resources,
+    errors,
+    isLoading,
+    isProbing,
+    allInstallationsKey,
+    reachableInstallationsKey,
+  ]);
 
   return (
     <ModelConfigsContext.Provider value={value}>
