@@ -148,17 +148,16 @@ The `general-purpose-agent` chart **does not exist yet**. Consequently:
 
 ### Installation / ModelConfig querying
 
-The worst of the original slowness/silent-drop behaviour is addressed (query only
-reachable installations, skip version discovery, surface failures instead of
-dropping them — see "Model selection" above). What remains:
+The original slowness and silent-drop behaviour is fixed (query only reachable
+installations, skip version discovery, surface failures — see "Model selection"
+above). What remains is a separate, deeper concern:
 
-- **Cluster-scoped list is admin-only.** We still list `ModelConfig` **across all
+- **Cluster-scoped list is admin-only.** We list `ModelConfig` **across all
   namespaces** (`GET …/modelconfigs`), which is **only permitted for admins**. A
   non-admin now gets a clear "couldn't read / no permission" warning instead of a
   misleading empty state, but still can't _use_ the flow. A namespace-scoped
-  strategy (list only namespaces the user can read) is the real fix.
-- **RBAC for non-admins.** The Kubernetes RBAC permissions a non-admin user needs
-  in order to discover `ModelConfig`/`Agent` resources must be defined **outside
+  strategy (list only namespaces the user can read) is the real fix, and the
+  Kubernetes RBAC permissions a non-admin needs must be defined **outside
   Backstage** (platform/RBAC side), then the query strategy aligned to it.
 - **Reachability coupling.** Reachability filtering reads `gs`'s
   `clusterAccessStatusApiRef` directly (a cross-plugin import). If more plugins
