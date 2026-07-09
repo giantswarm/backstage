@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { Content } from '@backstage/core-components';
@@ -14,15 +15,18 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import AndroidIcon from '@material-ui/icons/Android';
-import GitHubIcon from '@material-ui/icons/GitHub';
 
 import { CHART_DEFAULTS } from '../../lib/agentDefaults';
 import { composeManifests } from '../../lib/composeManifests';
+import { useDeployAgent } from '../../hooks/useDeployAgent';
 import { newAgentRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CodeBlock } from '../CodeBlock';
 
 const CHART_NAME = 'general-purpose-agent';
+
+// Standard scaffolder task route in this app (scaffolder mounts at /create).
+const taskPath = (taskId: string) => `/create/tasks/${taskId}`;
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -103,15 +107,15 @@ export function NewAgentReviewPage() {
   const configApi = useApi(configApiRef);
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const { state, isComplete } = useNewAgentForm();
+  const { deploy, status } = useDeployAgent();
+  const [deployError, setDeployError] = useState<string | undefined>();
 
   const ap = configApi.getOptionalConfig('agentPlatform');
-  const namespace =
-    ap?.getOptionalString('namespace') ?? CHART_DEFAULTS.namespace;
   const chartOciUrl =
     ap?.getOptionalString('chart.ociUrl') ?? CHART_DEFAULTS.ociUrl;
   const chartVersion =
     ap?.getOptionalString('chart.version') ?? CHART_DEFAULTS.version;
-  const prTargetRepo = ap?.getOptionalString('prTargetRepo');
+  const serviceAccountName = ap?.getOptionalString('fluxServiceAccountName');
 
   // Reaching review with an incomplete form means a deep link or a reset —
   // send the user back to fill it in.
@@ -119,39 +123,65 @@ export function NewAgentReviewPage() {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
   }
 
-  const { files, valuesYaml, helmInstallCommand } = composeManifests(
-    {
-      name: state.name,
-      slug: state.slug,
-      description: state.description,
-      modelConfigName: state.modelConfigName!,
-      modelConfigNamespace: state.modelConfigNamespace!,
-      systemMessage: state.systemMessage,
-      skillRefs: [],
-    },
-    {
-      installation: state.installation!,
-      namespace,
-      chartOciUrl,
-      chartVersion,
-    },
-  );
+  // The agent's resources are applied alongside the ModelConfig it uses — that
+  // namespace already exists and is where kagent watches.
+  const namespace = state.modelConfigNamespace!;
+
+  const { files, combinedManifest, valuesYaml, helmInstallCommand } =
+    composeManifests(
+      {
+        name: state.name,
+        slug: state.slug,
+        description: state.description,
+        modelConfigName: state.modelConfigName!,
+        modelConfigNamespace: state.modelConfigNamespace!,
+        systemMessage: state.systemMessage,
+        skillRefs: [],
+      },
+      {
+        installation: state.installation!,
+        namespace,
+        chartOciUrl,
+        chartVersion,
+        serviceAccountName,
+      },
+    );
+
+  const isDeploying =
+    status.phase === 'authenticating' || status.phase === 'submitting';
+
+  const onDeploy = async () => {
+    setDeployError(undefined);
+    try {
+      const taskId = await deploy({
+        installation: state.installation!,
+        manifest: combinedManifest,
+        releaseName: state.slug,
+        namespace,
+      });
+      navigate(taskPath(taskId));
+    } catch (e) {
+      setDeployError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const deployLabelByPhase: Record<string, string> = {
+    authenticating: 'Authenticating…',
+    submitting: 'Deploying…',
+  };
+  const deployLabel = deployLabelByPhase[status.phase] ?? 'Deploy agent';
 
   const actions = (
     <Flex gap="2">
       <Button
         variant="tertiary"
+        isDisabled={isDeploying}
         onPress={() => navigate(newAgentLink ? newAgentLink() : '..')}
       >
         Back to edit
       </Button>
-      <Button
-        variant="primary"
-        iconStart={<GitHubIcon />}
-        isDisabled
-        onPress={() => undefined}
-      >
-        Open pull request
+      <Button variant="primary" isDisabled={isDeploying} onPress={onDeploy}>
+        {deployLabel}
       </Button>
     </Flex>
   );
@@ -174,9 +204,11 @@ export function NewAgentReviewPage() {
             Create an agent: review and deploy
           </Text>
           <Text as="p" color="secondary" className={classes.intro}>
-            Your configuration is composed into Helm values plus the Flux
-            manifests that deploy it. Nothing is live yet — review the change,
-            then open a pull request against your GitOps repository.
+            Your configuration is composed into a Flux{' '}
+            <span className={classes.code}>HelmRelease</span> and{' '}
+            <span className={classes.code}>OCIRepository</span>. Deploying
+            applies them directly to <strong>{state.installation}</strong> —
+            Flux then reconciles the agent onto the cluster.
           </Text>
 
           <div className={classes.summary}>
@@ -203,25 +235,26 @@ export function NewAgentReviewPage() {
               weight="bold"
               className={classes.sectionTitle}
             >
-              Generated changes
+              Resources to apply
             </Text>
             <Text
               as="p"
               color="secondary"
               className={classes.sectionDescription}
             >
-              These files land in your GitOps repo: the Flux{' '}
-              <span className={classes.code}>HelmRelease</span> that installs
-              the agent (with its values inlined) and the{' '}
+              These are applied to{' '}
+              <span className={classes.code}>{state.installation}</span> exactly
+              as shown: the Flux{' '}
               <span className={classes.code}>OCIRepository</span> that sources
-              the chart.
+              the chart and the{' '}
+              <span className={classes.code}>HelmRelease</span> that installs
+              the agent (with its values inlined).
             </Text>
             <div className={classes.files}>
               {files.map(file => (
                 <CodeBlock
                   key={file.path}
                   filename={file.filename}
-                  path={file.path}
                   content={file.content}
                   language="yaml"
                 />
@@ -243,44 +276,42 @@ export function NewAgentReviewPage() {
               color="secondary"
               className={classes.sectionDescription}
             >
-              The recommended path is a pull request — Flux reconciles it onto
-              the cluster once merged, and the change is reviewable and
-              reversible in Git.
+              Applies the resources to{' '}
+              <span className={classes.code}>{state.installation}</span> using
+              your own cluster access. You can follow the apply logs on the next
+              screen.
             </Text>
 
             <Card>
               <CardBody>
                 <Flex justify="between" align="center" gap="4">
                   <Flex direction="column" gap="1">
-                    <Text weight="bold">Open a pull request</Text>
+                    <Text weight="bold">Deploy to {state.installation}</Text>
                     <Text variant="body-small" color="secondary">
-                      Commits the files to a new branch on your GitOps repo and
-                      opens a PR. Merging triggers the Flux reconciliation.
+                      Creates the OCIRepository and HelmRelease directly on the
+                      installation. Flux reconciles the agent from there.
                     </Text>
                   </Flex>
                   <Button
                     variant="primary"
-                    iconStart={<GitHubIcon />}
-                    isDisabled
-                    onPress={() => undefined}
+                    isDisabled={isDeploying}
+                    onPress={onDeploy}
                   >
-                    Open pull request
+                    {deployLabel}
                   </Button>
                 </Flex>
               </CardBody>
             </Card>
 
-            <Box mt="3">
-              <Alert
-                status="info"
-                title="Opening a PR from here isn't wired up yet"
-                description={
-                  prTargetRepo
-                    ? `The GitOps target (${prTargetRepo}) is configured, but the pull-request action is still being built. For now, copy the manifests above or install manually below.`
-                    : 'No GitOps target is configured (agentPlatform.prTargetRepo) and the pull-request action is still being built. For now, copy the manifests above or install manually below.'
-                }
-              />
-            </Box>
+            {deployError && (
+              <Box mt="3">
+                <Alert
+                  status="danger"
+                  title="Deploy failed"
+                  description={deployError}
+                />
+              </Box>
+            )}
 
             <details className={classes.details}>
               <summary className={classes.summaryLine}>
@@ -288,8 +319,9 @@ export function NewAgentReviewPage() {
               </summary>
               <div className={classes.detailsBody}>
                 <Text variant="body-small" color="secondary">
-                  No GitOps pipeline? Save the values below and run the command
-                  once against the cluster.
+                  Prefer to keep this in your own GitOps repo, or apply it
+                  yourself? Copy the resources above, or save the values below
+                  and run the command once against the cluster.
                 </Text>
                 <CodeBlock
                   filename={`${state.slug}-values.yaml`}
@@ -300,11 +332,21 @@ export function NewAgentReviewPage() {
               </div>
             </details>
 
+            {!serviceAccountName && (
+              <Box mt="3">
+                <Alert
+                  status="warning"
+                  title="No deploy ServiceAccount configured"
+                  description="Deploying into a tenant namespace requires agentPlatform.fluxServiceAccountName (GS Flux multi-tenancy). Without it the apply is rejected by admission policy — set it in app-config, or use the manual install below."
+                />
+              </Box>
+            )}
+
             <Box mt="3">
               <Alert
                 status="warning"
-                title="Flux is assumed for the GitOps path"
-                description="Installations that run a different pipeline (e.g. Argo CD or a bespoke delivery flow) will need a matching set of manifests. That path isn't generated yet. The general-purpose-agent chart itself is also still in progress — treat the chart URL, version, and values shape as provisional."
+                title="The general-purpose-agent chart is still provisional"
+                description="The chart itself doesn't exist yet, so treat the chart URL, version, values shape, and the deploy ServiceAccount as placeholders — deploying now will not produce a working agent until the chart is published."
               />
             </Box>
           </div>

@@ -11393,6 +11393,7 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/dev-utils": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
+    "@backstage/plugin-kubernetes-react": "backstage:^"
     "@backstage/plugin-scaffolder-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"

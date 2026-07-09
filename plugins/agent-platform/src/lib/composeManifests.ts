@@ -1,14 +1,18 @@
-// Composes the GitOps artifacts for a new agent from the create-form model.
+// Composes the manifests for a new agent from the create-form model.
 //
-// The prototype models three files (a standalone values.yaml diffed against
-// chart defaults, a HelmRelease referencing a ConfigMap, and an OCIRepository).
-// We deviate deliberately: the `general-purpose-agent` chart does not exist yet
-// and the prototype's HelmRelease referenced a ConfigMap that was never
-// generated. Inlining the agent values into `HelmRelease.spec.values` is the
-// common, self-contained Flux pattern and avoids that dangling reference. The
-// committed set is therefore two files (HelmRelease + OCIRepository); the
-// standalone values block is still produced for the manual `helm install`
-// fallback. All of this is expected to change once the real chart lands.
+// The default deploy path applies these resources directly to the selected
+// installation via the `kube:apply` scaffolder action, so `combinedManifest` is
+// the source of truth: a single multi-document YAML (Namespace + OCIRepository +
+// HelmRelease) that is both previewed on the review page and applied verbatim —
+// what you see is what gets applied. The same resources are also exposed as
+// individual `files` (for the review cards) and as a standalone values block +
+// `helm install` command for the manual fallback.
+//
+// We inline the agent values into `HelmRelease.spec.values` rather than
+// referencing a ConfigMap (the prototype's dangling reference), which is the
+// common self-contained Flux pattern. The `general-purpose-agent` chart does
+// not exist yet, so the chart URL/version/values shape are provisional and
+// expected to change once the real chart lands.
 
 export type AgentModel = {
   /** Display name (agent.displayName). */
@@ -27,14 +31,25 @@ export type AgentModel = {
 };
 
 export type DeployContext = {
-  /** Installation / management cluster name (used in the GitOps file path). */
+  /** Installation / management cluster name (applied to; used in file paths). */
   installation: string;
-  /** Namespace the HelmRelease/OCIRepository are placed in. */
+  /**
+   * Namespace the HelmRelease/OCIRepository are placed in. Derived from the
+   * selected ModelConfig's namespace so the agent is co-located with it (and
+   * where kagent watches). With `targetNamespace` unset, Flux also deploys the
+   * chart's output here.
+   */
   namespace: string;
   /** Chart OCI URL without a tag. */
   chartOciUrl: string;
   /** Chart version to pin. */
   chartVersion: string;
+  /**
+   * ServiceAccount the HelmRelease runs as. Required by GS's Flux
+   * multi-tenancy admission policy for HelmReleases in tenant namespaces
+   * (which the ModelConfig namespace is). Omitted from the manifest when unset.
+   */
+  serviceAccountName?: string;
 };
 
 export type ComposedFile = {
@@ -47,6 +62,11 @@ export type ComposedFile = {
 
 export type ComposedManifests = {
   files: ComposedFile[];
+  /**
+   * Single multi-document YAML (OCIRepository + HelmRelease) applied verbatim by
+   * the direct-apply path. This is what the review page previews.
+   */
+  combinedManifest: string;
   /** Standalone agent values (for the manual `helm install --values` path). */
   valuesYaml: string;
   helmInstallCommand: string;
@@ -105,6 +125,10 @@ function buildHelmRelease(
   ctx: DeployContext,
   agentValues: string,
 ): string {
+  // Required by the flux-multi-tenancy admission policy in tenant namespaces.
+  const serviceAccountLine = ctx.serviceAccountName
+    ? `  serviceAccountName: ${ctx.serviceAccountName}\n`
+    : '';
   return `apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -112,7 +136,7 @@ metadata:
   namespace: ${ctx.namespace}
 spec:
   interval: 10m
-  chartRef:
+${serviceAccountLine}  chartRef:
     kind: OCIRepository
     name: ${CHART_NAME}
     namespace: ${ctx.namespace}
@@ -140,6 +164,7 @@ function buildHelmInstall(model: AgentModel, ctx: DeployContext): string {
   ${ctx.chartOciUrl} \\
   --version ${ctx.chartVersion} \\
   --namespace ${ctx.namespace} \\
+  --create-namespace \\
   --values ${model.slug}-values.yaml`;
 }
 
@@ -162,8 +187,17 @@ export function composeManifests(
     content: buildOCIRepository(ctx),
   };
 
+  // Multi-document YAML for the direct-apply path. OCIRepository first so the
+  // chart source exists before the HelmRelease references it (Flux reconciles
+  // asynchronously regardless, but this reads cleanly and applies cleanly).
+  const combinedManifest = `${[
+    ociRepositoryFile.content.trimEnd(),
+    helmReleaseFile.content.trimEnd(),
+  ].join('\n---\n')}\n`;
+
   return {
     files: [helmReleaseFile, ociRepositoryFile],
+    combinedManifest,
     valuesYaml,
     helmInstallCommand: buildHelmInstall(model, ctx),
   };

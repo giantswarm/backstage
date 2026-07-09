@@ -103,3 +103,8 @@ catalog:
       target: https://github.com/giantswarm/backstage-catalogs/tree/main/catalogs/*.yaml
     # - type: file
     #   target: ../../catalog/*.yaml
+    # Hidden template the Agent Platform create flow (/agents/new) applies via
+    # kube:apply. In real deployments it is registered from the
+    # giantswarm/backstage-catalogs repo; uncomment to work on it locally.
+    # - type: file
+    #   target: ../../catalog/templates/agent-deployment/template.yaml

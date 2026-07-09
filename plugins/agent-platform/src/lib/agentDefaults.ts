@@ -12,10 +12,11 @@ export const DEFAULT_SYSTEM_PROMPT = `You are a capable, general-purpose agent o
 
 // Assumptions about the general-purpose-agent chart. The chart repo does NOT
 // exist yet, so these are placeholders surfaced through app-config
-// (`agentPlatform.chart.*` / `agentPlatform.namespace`) — override them there
-// once the chart is published. These are the fallbacks when config is absent.
+// (`agentPlatform.chart.*`) — override them there once the chart is published.
+// These are the fallbacks when config is absent. The namespace is not here: it
+// is derived from the selected ModelConfig's namespace (the agent is applied
+// alongside the ModelConfig it uses, where kagent watches).
 export const CHART_DEFAULTS = {
   ociUrl: 'oci://gsoci.azurecr.io/giantswarm/charts/general-purpose-agent',
   version: '0.1.0',
-  namespace: 'shared-agents',
 } as const;

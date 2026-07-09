@@ -206,9 +206,8 @@ function NewAgentPageContent() {
             <Card>
               <CardBody>
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  The next step composes the Helm values and manifests, and
-                  opens them as a pull request for review before anything is
-                  deployed.
+                  The next step composes the Helm values and manifests so you
+                  can review them before the agent is deployed.
                 </Text>
                 {actions}
               </CardBody>
