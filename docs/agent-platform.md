@@ -160,6 +160,11 @@ The `general-purpose-agent` chart **does not exist yet**. Consequently:
   soon" note and new agents start with no skills. Skills do exist in the kagent
   API (`spec.skills.refs`), so this is a UI/backend gap, not an API gap.
 - **Agent list / management view.** Only the create flow exists so far.
+- **Main menu entry + landing page.** The plugin is not yet surfaced in the main
+  sidebar menu. Adding it requires deciding **what page the entry leads to** —
+  there is no landing page yet (only the create flow and a minimal index). The
+  natural target is the agent list/management view above; until that exists the
+  entry could point straight at the create flow. Decision needed.
 
 ### UX
 
