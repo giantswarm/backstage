@@ -91,6 +91,9 @@ backend.add(import('@giantswarm/backstage-plugin-muster-backend'));
 // plans plugin (planning-document viewer)
 backend.add(import('@giantswarm/backstage-plugin-plans-backend'));
 
+// roadmap plugin (GitHub Projects roadmap board)
+backend.add(import('@giantswarm/backstage-plugin-roadmap-backend'));
+
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
