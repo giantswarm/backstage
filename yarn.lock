@@ -11886,6 +11886,29 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-roadmap@workspace:^, @giantswarm/backstage-plugin-roadmap@workspace:plugins/roadmap":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-roadmap@workspace:plugins/roadmap"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/core-components": "backstage:^"
+    "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/frontend-plugin-api": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
+    "@material-ui/core": "npm:^4.12.4"
+    "@material-ui/icons": "npm:^4.11.3"
+    "@material-ui/lab": "npm:^4.0.0-alpha.61"
+    "@tanstack/react-query": "npm:^5.82.0"
+    "@testing-library/jest-dom": "npm:^6.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    "@testing-library/user-event": "npm:^14.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+    react-router-dom: "*"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-scaffolder-backend-module-gs@npm:^0.12.0, @giantswarm/backstage-plugin-scaffolder-backend-module-gs@workspace:plugins/scaffolder-backend-module-gs":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-scaffolder-backend-module-gs@workspace:plugins/scaffolder-backend-module-gs"
@@ -26591,6 +26614,7 @@ __metadata:
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-muster": "workspace:^"
     "@giantswarm/backstage-plugin-plans": "workspace:^"
+    "@giantswarm/backstage-plugin-roadmap": "workspace:^"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@pagerduty/backstage-plugin": "npm:^0.20.0"
