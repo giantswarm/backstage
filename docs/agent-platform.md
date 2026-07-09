@@ -179,6 +179,14 @@ above). What remains is a separate, deeper concern:
 
 ### Features
 
+- **Name-conflict pre-check.** The create form does not yet check whether the
+  chosen name is already taken on the target installation. kagent `Agent` names
+  are unique per namespace (e.g. `sre-agent` already exists on gazelle), so a
+  duplicate `Agent` — and likewise a colliding `OCIRepository` or `HelmRelease`
+  of the same name — makes the deploy fail late, at apply time. We should catch
+  this early: validate the slug against the existing `Agent`/`OCIRepository`/
+  `HelmRelease` resources in the target namespace and block "next"/"deploy" with
+  an inline error before the user reaches the review page.
 - **Skills.** Discovery and selection of agent skills is not implemented. There is
   no OCI skill-catalog backend to browse yet; the create form shows a "coming
   soon" note and new agents start with no skills. Skills do exist in the kagent
