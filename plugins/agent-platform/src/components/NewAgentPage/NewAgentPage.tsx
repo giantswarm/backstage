@@ -184,8 +184,6 @@ function NewAgentPageContent() {
                   description="What powers the agent and shapes how it behaves: where it runs, which model it uses, its system prompt, and its skills."
                 />
                 <Flex direction="column" gap="5">
-                  <InstallationSelect />
-                  <ModelConfigPicker />
                   <TextAreaField
                     label="System prompt"
                     value={state.systemMessage}
@@ -194,6 +192,8 @@ function NewAgentPageContent() {
                     mono
                     description="The agent's system message. Starts from the general-purpose default — edit it to fit the role."
                   />
+                  <InstallationSelect />
+                  <ModelConfigPicker />
                   <SkillPicker />
                 </Flex>
               </CardBody>
