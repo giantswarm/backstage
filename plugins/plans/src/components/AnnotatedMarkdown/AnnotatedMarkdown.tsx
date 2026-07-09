@@ -109,11 +109,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     margin: theme.spacing(1, 0, 2),
   },
   thread: {
-    border: `1px solid ${theme.palette.divider}`,
+    border: `1px solid ${theme.palette.primary.main}`,
+    borderLeft: `4px solid ${theme.palette.primary.main}`,
     borderRadius: theme.shape.borderRadius,
     padding: theme.spacing(1, 2),
     marginBottom: theme.spacing(1),
-    backgroundColor: theme.palette.background.paper,
+    backgroundColor: theme.palette.action.hover,
   },
 }));
 

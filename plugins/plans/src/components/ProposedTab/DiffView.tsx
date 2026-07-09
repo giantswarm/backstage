@@ -69,7 +69,12 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   thread: {
     maxWidth: 720,
-    padding: theme.spacing(1, 0),
+    padding: theme.spacing(1, 2),
+    marginBottom: theme.spacing(1),
+    border: `1px solid ${theme.palette.primary.main}`,
+    borderLeft: `4px solid ${theme.palette.primary.main}`,
+    borderRadius: theme.shape.borderRadius,
+    backgroundColor: theme.palette.action.hover,
   },
 }));
 

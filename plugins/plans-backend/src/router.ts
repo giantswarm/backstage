@@ -6,6 +6,7 @@ import {
 import { Config } from '@backstage/config';
 import {
   InputError,
+  NotAllowedError,
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
@@ -160,7 +161,21 @@ export async function createRouter(
       throw new NotFoundError(`GitHub responded with 404 for ${path}`);
     }
     if (!response.ok) {
-      throw new Error(`GitHub responded with ${response.status} for ${path}`);
+      // Surface GitHub's own explanation (e.g. "Resource not accessible by
+      // integration", which is what a missing GitHub App write permission
+      // looks like) instead of an opaque status code.
+      const detail = await response.text().catch(() => '');
+      const message = `GitHub responded with ${response.status} for ${path}${
+        detail ? `: ${detail}` : ''
+      }`;
+      // A 403 is an authorization failure -- almost always the GitHub App
+      // lacking a permission (Pull requests / Issues: write) -- not a fault on
+      // our side. Map it to a real 403 so the client sees an actionable error
+      // rather than a 500, and so it does not page us through Sentry.
+      if (response.status === 403) {
+        throw new NotAllowedError(message);
+      }
+      throw new Error(message);
     }
     return response.json();
   };

@@ -137,6 +137,15 @@ const useStyles = makeStyles((theme: Theme) => ({
     paddingTop: theme.spacing(2),
     borderTop: `1px solid ${theme.palette.divider}`,
   },
+  // Colored box around the whole discussion, matching the review-thread box.
+  discussion: {
+    padding: theme.spacing(0.5, 1.5),
+    marginTop: theme.spacing(1),
+    borderRadius: theme.shape.borderRadius,
+    border: `1px solid ${theme.palette.primary.main}`,
+    borderLeft: `4px solid ${theme.palette.primary.main}`,
+    backgroundColor: theme.palette.action.hover,
+  },
   htmlFrame: {
     width: '100%',
     height: '75vh',
@@ -193,9 +202,13 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
           No comments yet. Start the discussion below.
         </Typography>
       )}
-      {data?.comments.map(comment => (
-        <CommentItem key={comment.id} comment={comment} />
-      ))}
+      {data?.comments.length ? (
+        <Box className={classes.discussion}>
+          {data.comments.map(comment => (
+            <CommentItem key={comment.id} comment={comment} />
+          ))}
+        </Box>
+      ) : null}
       <CommentForm onSubmit={body => createComment.mutateAsync(body)} />
     </>
   );
