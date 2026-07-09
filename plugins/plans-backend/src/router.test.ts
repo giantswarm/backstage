@@ -14,6 +14,7 @@ function jsonResponse(body: unknown, status = 200) {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
+    text: async () => JSON.stringify(body),
   } as Response;
 }
 
@@ -175,6 +176,23 @@ describe('createRouter', () => {
       const response = await request(app).get('/pulls');
 
       expect(response.status).toBe(500);
+    });
+
+    it('maps a GitHub 403 to NotAllowedError and surfaces its message', async () => {
+      fetchFn.mockResolvedValue(
+        jsonResponse(
+          { message: 'Resource not accessible by integration' },
+          403,
+        ),
+      );
+
+      const response = await request(app).get('/pulls');
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.name).toBe('NotAllowedError');
+      expect(response.body.error.message).toContain(
+        'Resource not accessible by integration',
+      );
     });
   });
 
