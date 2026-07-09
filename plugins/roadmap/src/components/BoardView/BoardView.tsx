@@ -143,9 +143,7 @@ export function BoardView(props: {
                 }
               }}
               onDragLeave={() =>
-                setDropColumn(current =>
-                  current === column ? null : current,
-                )
+                setDropColumn(current => (current === column ? null : current))
               }
               onDrop={event => onDrop(event, column)}
             >

@@ -17,11 +17,7 @@ import { Alert } from '@material-ui/lab';
 import LinkOffIcon from '@material-ui/icons/LinkOff';
 import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { roadmapApiRef } from '../../apis';
 
 const useStyles = makeStyles((theme: Theme) => ({

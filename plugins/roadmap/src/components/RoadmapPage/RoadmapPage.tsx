@@ -159,9 +159,7 @@ export function RoadmapPage() {
                 value={filters[param] ?? ALL}
                 onChange={event => setParam(param, event.target.value)}
               >
-                <MenuItem value={ALL}>
-                  All {field.toLowerCase()}s
-                </MenuItem>
+                <MenuItem value={ALL}>All {field.toLowerCase()}s</MenuItem>
                 {values.map(value => (
                   <MenuItem key={value} value={value}>
                     {value}

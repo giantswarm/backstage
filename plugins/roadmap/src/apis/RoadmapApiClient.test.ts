@@ -63,9 +63,7 @@ describe('RoadmapApiClient', () => {
 
     await client.getItem('PVTI_abc/123');
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE_URL}/items/PVTI_abc%2F123`,
-    );
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/items/PVTI_abc%2F123`);
   });
 
   it('fetches the overview with a team filter', async () => {

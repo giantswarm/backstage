@@ -65,9 +65,7 @@ function isActive(item: RoadmapItem): boolean {
   const status = item.fields[STATUS_FIELD];
   return (
     !!status &&
-    ACTIVE_STATUS_KEYWORDS.some(keyword =>
-      findStatusOption([status], keyword),
-    )
+    ACTIVE_STATUS_KEYWORDS.some(keyword => findStatusOption([status], keyword))
   );
 }
 
@@ -213,9 +211,7 @@ export function TeamActivityView(props: { filters: RoadmapItemFilters }) {
         </Box>
         {recentItems.isLoading && <Progress />}
         {recentItems.error ? (
-          <Alert severity="error">
-            {(recentItems.error as Error).message}
-          </Alert>
+          <Alert severity="error">{(recentItems.error as Error).message}</Alert>
         ) : null}
         {!recentItems.isLoading && recent.length === 0 && (
           <Typography variant="body2" color="textSecondary">

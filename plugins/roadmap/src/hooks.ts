@@ -1,9 +1,5 @@
 import { useApi } from '@backstage/frontend-plugin-api';
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   roadmapApiRef,
   RoadmapItemFilters,
@@ -64,8 +60,7 @@ export function useUpdateItemField() {
           },
       );
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: ['roadmap'] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['roadmap'] }),
   });
 }
 

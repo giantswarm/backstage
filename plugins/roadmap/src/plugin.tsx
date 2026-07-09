@@ -22,9 +22,8 @@ const roadmapPage = PageBlueprint.make({
     path: '/roadmap',
     routeRef: rootRouteRef,
     loader: async () => {
-      const { RoadmapProviders } = await import(
-        './components/RoadmapProviders'
-      );
+      const { RoadmapProviders } =
+        await import('./components/RoadmapProviders');
       const { RoadmapRouter } = await import('./components/RoadmapRouter');
       return (
         <RoadmapProviders>
