@@ -14,8 +14,8 @@ Two custom in-context pages, built with **bui** (`@backstage/ui`), driving the
 scaffolder engine underneath ("Hybrid C"):
 
 1. **`/agents/new`** — the form (`NewAgentPage`). Identity (name, auto-derived
-   slug, description) and configuration (installation, model, system prompt).
-   Skills are deferred (a "coming soon" note).
+   slug, description) and configuration (installation, model, system prompt,
+   skills).
 2. **`/agents/new/review`** — review and deploy (`NewAgentReviewPage`). Shows the
    composed manifests, deploys them directly, and offers a manual-install
    fallback.
@@ -51,6 +51,27 @@ one `ModelConfig`, resolving them incrementally as the fleet-wide query returns.
   `unreachableInstallations` and shown as a warning, so an empty result is
   distinguishable from a failed one. The "No installations with models" message
   only appears when reads actually succeeded and found nothing.
+
+### Skill discovery
+
+Skills are discovered from the GitHub repositories configured in
+`agentPlatform.skills.repositories`. A skill is any directory containing a
+`SKILL.md` file; its YAML frontmatter (`name`, `description`) drives the picker.
+
+Discovery runs **backend-side** in `gs-backend` (`GET /agent-skills?repoUrl=…`,
+`src/agentSkills/discoverAgentSkills.ts`): it walks the repo's git tree
+(recursive), finds every `SKILL.md`, and parses the frontmatter, authenticating
+with the configured GitHub integration (public repos also work
+unauthenticated). The frontend `useSkillCatalog` hook aggregates results across
+all configured repositories (one failing repo doesn't fail the rest), and
+`SkillPicker` renders them as multi-select cards.
+
+A selected skill maps to a kagent **`spec.skills.gitRefs`** entry — `{ url: repo,
+path: <skill dir>, ref: <branch>, name }` — which is what `composeManifests`
+inlines into the chart values. (This is the real kagent v1alpha2 shape; there is
+no OCI/image skill source in that schema, despite a stale doc comment on the
+CRD.) Repo-root skills omit `path`; agents with no skills selected omit the
+`skills` block entirely (kagent's `gitRefs` requires ≥1 entry).
 
 ### Manifest composition
 
@@ -127,6 +148,7 @@ All under `agentPlatform` (see `plugins/agent-platform/config.d.ts`):
 | `chart.version`          | Chart version the manifests pin to. Provisional.                                                     |
 | `fluxServiceAccountName` | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional. |
 | `deployTemplateRef`      | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                  |
+| `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                               |
 
 The plugin's page and nav item are enabled via `app.extensions` in
 `app-config.yaml`.
@@ -187,10 +209,13 @@ above). What remains is a separate, deeper concern:
   this early: validate the slug against the existing `Agent`/`OCIRepository`/
   `HelmRelease` resources in the target namespace and block "next"/"deploy" with
   an inline error before the user reaches the review page.
-- **Skills.** Discovery and selection of agent skills is not implemented. There is
-  no OCI skill-catalog backend to browse yet; the create form shows a "coming
-  soon" note and new agents start with no skills. Skills do exist in the kagent
-  API (`spec.skills.refs`), so this is a UI/backend gap, not an API gap.
+- **Skills — remaining work.** Discovery and selection are implemented (see
+  "Skill discovery" above). Still open: (1) the **chart values shape** for
+  `agent.skills.gitRefs` is an assumption until the `general-purpose-agent` chart
+  exists and defines how it maps values onto the CR; (2) **private skill repos**
+  need `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD but the
+  create flow doesn't set it); (3) discovery reads a repo's **default branch** and
+  doesn't expose per-skill version/`ref` selection in the UI.
 - **Agent list / management view.** Only the create flow exists so far.
 - **Main menu entry + landing page.** The plugin is not yet surfaced in the main
   sidebar menu. Adding it requires deciding **what page the entry leads to** —

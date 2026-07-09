@@ -4,6 +4,7 @@ import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
 import { fetchGitHubRawContent } from './githubRawContent';
+import { discoverAgentSkills } from './agentSkills/discoverAgentSkills';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 
@@ -152,6 +153,46 @@ export async function createRouter({
     res.setHeader('Content-Type', contentType);
     const body = await response.text();
     res.send(body);
+  });
+
+  /**
+   * GET /agent-skills
+   *
+   * Discovers kagent agent skills in a GitHub repository by finding every
+   * `SKILL.md` file and reading its `name`/`description` frontmatter. Each
+   * skill maps to a `spec.skills.gitRefs` entry (repo url + subdirectory path).
+   *
+   * Query parameters:
+   * - repoUrl: The github.com repository URL (https://github.com/<owner>/<repo>)
+   * - ref: Optional git ref (branch/tag/SHA); defaults to the default branch
+   *
+   * Returns:
+   * - skills: Array of { name, description, repoUrl, path, ref }
+   */
+  router.get('/agent-skills', async (req, res) => {
+    const schema = z.object({
+      repoUrl: z
+        .string()
+        .url()
+        .refine(u => u.startsWith('https://github.com/'), {
+          message: 'Only github.com repository URLs are allowed',
+        }),
+      ref: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new InputError(parsed.error.toString());
+    }
+
+    const { repoUrl, ref } = parsed.data;
+
+    const skills = await discoverAgentSkills({
+      repoUrl,
+      ref,
+      githubCredentialsProvider,
+    });
+
+    res.json({ skills });
   });
 
   return router;

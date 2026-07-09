@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
-  Alert,
   Button,
   Card,
   CardBody,
@@ -21,6 +20,7 @@ import { useNewAgentForm } from '../NewAgentFormProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
+import { SkillPicker } from '../SkillPicker';
 import { TextAreaField } from './TextAreaField';
 
 const useStyles = makeStyles(theme => ({
@@ -181,7 +181,7 @@ function NewAgentPageContent() {
               <CardBody>
                 <SectionHeader
                   title="Configuration"
-                  description="What powers the agent and shapes how it behaves: where it runs, which model it uses, its system prompt, and (soon) its skills."
+                  description="What powers the agent and shapes how it behaves: where it runs, which model it uses, its system prompt, and its skills."
                 />
                 <Flex direction="column" gap="5">
                   <InstallationSelect />
@@ -194,11 +194,7 @@ function NewAgentPageContent() {
                     mono
                     description="The agent's system message. Starts from the general-purpose default — edit it to fit the role."
                   />
-                  <Alert
-                    status="info"
-                    title="Skills — coming soon"
-                    description="Skills let an agent reuse packaged instructions for specific kinds of tasks. You'll be able to add them here in a later release; new agents start without any."
-                  />
+                  <SkillPicker />
                 </Flex>
               </CardBody>
             </Card>

@@ -11644,6 +11644,7 @@ __metadata:
     "@types/supertest": "npm:^7.0.0"
     express: "npm:^5.0.0"
     express-promise-router: "npm:^4.1.0"
+    js-yaml: "npm:^5.0.0"
     node-fetch: "npm:^3.3.2"
     supertest: "npm:^7.0.0"
     zod: "npm:^4.4.3"

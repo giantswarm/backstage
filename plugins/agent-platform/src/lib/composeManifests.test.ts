@@ -7,7 +7,12 @@ const model = {
   modelConfigName: 'opus-4-7',
   modelConfigNamespace: 'kagent',
   systemMessage: 'You review pull requests.\nRead for intent first.',
-  skillRefs: [] as string[],
+  skills: [] as {
+    url: string;
+    path: string;
+    ref: string;
+    name: string;
+  }[],
 };
 
 // The namespace is derived from the selected ModelConfig's namespace by the
@@ -61,8 +66,9 @@ describe('composeManifests', () => {
     expect(helmRelease).toContain('        namespace: "kagent"');
     expect(helmRelease).toContain('      systemMessage: |-');
     expect(helmRelease).toContain('        You review pull requests.');
-    expect(helmRelease).toContain('      skills:');
-    expect(helmRelease).toContain('        refs: []');
+    // No skills selected → the skills block is omitted entirely (kagent's
+    // gitRefs requires at least one entry).
+    expect(helmRelease).not.toContain('skills:');
   });
 
   it('combines both resources into one multi-document manifest for direct apply', () => {
@@ -76,20 +82,50 @@ describe('composeManifests', () => {
     expect(combinedManifest).toContain('\n---\n');
   });
 
-  it('renders skill refs as a YAML list when present', () => {
+  it('renders selected skills as spec.skills.gitRefs when present', () => {
     const { valuesYaml } = composeManifests(
       {
         ...model,
-        skillRefs: ['gsoci.azurecr.io/giantswarm/skills/pr-review:2.0.0'],
+        skills: [
+          {
+            url: 'https://github.com/giantswarm/agent-skills',
+            path: 'demo',
+            ref: 'main',
+            name: 'demo',
+          },
+        ],
       },
       ctx,
     );
 
     expect(valuesYaml).toContain('  skills:');
-    expect(valuesYaml).toContain('    refs:');
+    expect(valuesYaml).toContain('    gitRefs:');
     expect(valuesYaml).toContain(
-      '      - "gsoci.azurecr.io/giantswarm/skills/pr-review:2.0.0"',
+      '      - url: "https://github.com/giantswarm/agent-skills"',
     );
+    expect(valuesYaml).toContain('        path: "demo"');
+    expect(valuesYaml).toContain('        ref: "main"');
+    expect(valuesYaml).toContain('        name: "demo"');
+  });
+
+  it('omits path for a repo-root skill', () => {
+    const { valuesYaml } = composeManifests(
+      {
+        ...model,
+        skills: [
+          {
+            url: 'https://github.com/giantswarm/agent-skills',
+            path: '',
+            ref: 'main',
+            name: 'agent-skills',
+          },
+        ],
+      },
+      ctx,
+    );
+
+    expect(valuesYaml).toContain('    gitRefs:');
+    expect(valuesYaml).not.toContain('        path:');
   });
 
   it('builds a helm install command that creates the namespace', () => {

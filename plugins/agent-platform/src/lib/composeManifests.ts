@@ -26,8 +26,24 @@ export type AgentModel = {
   modelConfigNamespace: string;
   /** System message (agent.systemMessage). */
   systemMessage: string;
-  /** OCI skill artifact refs (agent.skills.refs). Deferred in v1 → empty. */
-  skillRefs: string[];
+  /** Selected skills → agent.skills.gitRefs. Empty → the block is omitted. */
+  skills: AgentSkillRef[];
+};
+
+/**
+ * A kagent `spec.skills.gitRefs` entry: a git repo + subdirectory to materialize
+ * as a skill under `/skills`. Emitted into the chart values as
+ * `agent.skills.gitRefs`.
+ */
+export type AgentSkillRef = {
+  /** Git repository URL. */
+  url: string;
+  /** Subdirectory within the repo (skill root); omitted from YAML when ''. */
+  path: string;
+  /** Git ref (branch/tag/SHA); omitted from YAML when ''. */
+  ref: string;
+  /** Skill directory name under /skills. */
+  name: string;
 };
 
 export type DeployContext = {
@@ -108,13 +124,20 @@ function buildAgentValues(model: AgentModel): string {
   lines.push(`    namespace: ${quote(model.modelConfigNamespace)}`);
   lines.push('  systemMessage: |-');
   lines.push(blockScalarBody(model.systemMessage, 4));
-  lines.push('  skills:');
-  if (model.skillRefs.length === 0) {
-    lines.push('    refs: []');
-  } else {
-    lines.push('    refs:');
-    for (const ref of model.skillRefs) {
-      lines.push(`      - ${quote(ref)}`);
+  // kagent's spec.skills is optional and gitRefs requires ≥1 entry, so the
+  // whole block is omitted when no skills are selected.
+  if (model.skills.length > 0) {
+    lines.push('  skills:');
+    lines.push('    gitRefs:');
+    for (const skill of model.skills) {
+      lines.push(`      - url: ${quote(skill.url)}`);
+      if (skill.path) {
+        lines.push(`        path: ${quote(skill.path)}`);
+      }
+      if (skill.ref) {
+        lines.push(`        ref: ${quote(skill.ref)}`);
+      }
+      lines.push(`        name: ${quote(skill.name)}`);
     }
   }
   return `${lines.join('\n')}\n`;

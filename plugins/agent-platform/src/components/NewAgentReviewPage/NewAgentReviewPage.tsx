@@ -136,7 +136,12 @@ export function NewAgentReviewPage() {
         modelConfigName: state.modelConfigName!,
         modelConfigNamespace: state.modelConfigNamespace!,
         systemMessage: state.systemMessage,
-        skillRefs: [],
+        skills: state.selectedSkills.map(skill => ({
+          url: skill.repoUrl,
+          path: skill.path,
+          ref: skill.ref,
+          name: skill.name,
+        })),
       },
       {
         installation: state.installation!,

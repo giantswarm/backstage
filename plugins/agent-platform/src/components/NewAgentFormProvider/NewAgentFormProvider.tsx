@@ -8,6 +8,7 @@ import {
 
 import { DEFAULT_SYSTEM_PROMPT } from '../../lib/agentDefaults';
 import { slugify } from '../../lib/slugify';
+import { DiscoveredSkill, skillId } from '../../lib/skills';
 
 export type NewAgentFormState = {
   name: string;
@@ -17,6 +18,8 @@ export type NewAgentFormState = {
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   systemMessage: string;
+  /** Skills the user picked, in selection order. Optional — may be empty. */
+  selectedSkills: DiscoveredSkill[];
 };
 
 export type NewAgentFormContextValue = {
@@ -27,6 +30,8 @@ export type NewAgentFormContextValue = {
   setInstallation: (installation: string | undefined) => void;
   selectModelConfig: (name: string, namespace: string) => void;
   setSystemMessage: (systemMessage: string) => void;
+  /** Adds the skill if not selected, removes it if already selected. */
+  toggleSkill: (skill: DiscoveredSkill) => void;
   reset: () => void;
   /** True when every required field the review step needs is populated. */
   isComplete: boolean;
@@ -40,6 +45,7 @@ const initialState: NewAgentFormState = {
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
   systemMessage: DEFAULT_SYSTEM_PROMPT,
+  selectedSkills: [],
 };
 
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
@@ -92,6 +98,17 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         })),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
+      toggleSkill: skill =>
+        setState(prev => {
+          const id = skillId(skill);
+          const isSelected = prev.selectedSkills.some(s => skillId(s) === id);
+          return {
+            ...prev,
+            selectedSkills: isSelected
+              ? prev.selectedSkills.filter(s => skillId(s) !== id)
+              : [...prev.selectedSkills, skill],
+          };
+        }),
       reset: () => {
         setSlugEdited(false);
         setState(initialState);

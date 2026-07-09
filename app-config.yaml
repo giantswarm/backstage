@@ -373,3 +373,13 @@ aiChat:
 #       url: https://muster.<mc>.<domain>/mcp
 #       authProvider: oidc-main
 #       # allowMutations: false   # read-only default; opt in per installation
+
+# Agent platform (plugins/agent-platform). The create flow is disabled by
+# default and enabled per environment via `app.extensions`.
+agentPlatform:
+  skills:
+    # GitHub repositories to discover agent skills from. Every SKILL.md file
+    # defines one skill (its directory is the skill root); a selected skill
+    # becomes a kagent spec.skills.gitRefs entry.
+    repositories:
+      - https://github.com/giantswarm/agent-skills
