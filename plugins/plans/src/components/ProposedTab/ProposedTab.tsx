@@ -2,6 +2,7 @@ import {
   Chip,
   List,
   ListItem,
+  ListItemSecondaryAction,
   ListItemText,
   Paper,
   makeStyles,
@@ -15,6 +16,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { formatDate } from '../../lib/dates';
 import { pullRouteRef } from '../../routes';
+import { EpicChip } from '../EpicChip';
 
 const useStyles = makeStyles((theme: Theme) => ({
   listPanel: {
@@ -42,6 +44,17 @@ export function ProposedTab({ repo }: { repo: string }) {
   });
 
   const pulls = data?.pulls ?? [];
+
+  // Epic references per open PR, for the cross-link chips. Failure just
+  // means no chips.
+  const { data: epicsData } = useQuery({
+    queryKey: ['plans', 'epics', repo],
+    queryFn: () => plansApi.listEpics(repo),
+    retry: false,
+  });
+  const epicByPull = new Map(
+    (epicsData?.pulls ?? []).map(entry => [entry.number, entry]),
+  );
 
   // Changed-file counts for the list. Same query keys as the review page,
   // so opening a PR reuses these cache entries instead of refetching.
@@ -110,6 +123,11 @@ export function ProposedTab({ repo }: { repo: string }) {
                 }
                 secondary={secondary}
               />
+              {epicByPull.has(pull.number) && (
+                <ListItemSecondaryAction>
+                  <EpicChip epic={epicByPull.get(pull.number)!.epic} />
+                </ListItemSecondaryAction>
+              )}
             </ListItem>
           );
         })}

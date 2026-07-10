@@ -8,7 +8,11 @@ import {
 import AssignmentIcon from '@material-ui/icons/Assignment';
 
 import { plansApiRef, PlansApiClient } from './apis';
-import { pullRouteRef, rootRouteRef } from './routes';
+import {
+  pullRouteRef,
+  roadmapItemExternalRouteRef,
+  rootRouteRef,
+} from './routes';
 
 // Disabled by default: the plans page serves internal planning documents and
 // must not appear in customer portals. Deployments opt in via app-config
@@ -54,5 +58,8 @@ export const plansPlugin = createFrontendPlugin({
   routes: {
     root: rootRouteRef,
     pull: pullRouteRef,
+  },
+  externalRoutes: {
+    roadmapItem: roadmapItemExternalRouteRef,
   },
 });

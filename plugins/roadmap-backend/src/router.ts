@@ -263,6 +263,27 @@ export async function createRouter(
     res.json({ total: items.length, byStatus, byRepo });
   });
 
+  /**
+   * Resolve a GitHub issue reference to its board item. Plan documents
+   * reference epics as `owner/repo#N`, but the detail route needs the
+   * Projects v2 item node id -- this is the bridge for cross-links from
+   * the plans plugin.
+   */
+  router.get('/items/by-issue/:owner/:repo/:number', async (req, res) => {
+    const number = parsePositiveInt(req.params.number, 'number');
+    const repoSlug = `${req.params.owner}/${req.params.repo}`;
+    const items = await listItemsCached({ filters: {} });
+    const item = items.find(
+      boardItem => boardItem.repo === repoSlug && boardItem.number === number,
+    );
+    if (!item) {
+      throw new NotFoundError(
+        `No board item found for issue ${repoSlug}#${number}`,
+      );
+    }
+    res.json({ item });
+  });
+
   router.get('/items/:id', async (req, res) => {
     const item = await cached(`item:${req.params.id}`, ITEMS_TTL_MS, () =>
       mapGithubError(async () =>

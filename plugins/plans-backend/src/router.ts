@@ -19,6 +19,72 @@ const GITHUB_API_BASE_URL = 'https://api.github.com';
 /** `owner/repo` slug, e.g. `giantswarm/bumblebee-plans`. */
 const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 
+/**
+ * Scanning a repo for Epic headers is one GitHub call per plan document;
+ * cache the result so the plans page and the roadmap epic view don't
+ * re-crawl on every render.
+ */
+const EPICS_TTL_MS = 5 * 60_000;
+
+/** Roadmap epic referenced by a plan's `**Epic:** [owner/repo#N](url)` header. */
+interface EpicRef {
+  owner: string;
+  repo: string;
+  number: number;
+  url: string;
+}
+
+/**
+ * Parse the Epic header convention out of plan markdown: a line like
+ * `**Epic:** [giantswarm/giantswarm#36625](https://github.com/...)`.
+ * Accepts an `owner/repo#N` reference or a GitHub issue URL anywhere on
+ * that line; the first Epic line wins.
+ */
+export function parseEpicRef(markdown: string): EpicRef | null {
+  const line = markdown.match(/^[ \t]*\*\*Epic:?\*\*:?(.*)$/im)?.[1];
+  if (!line) {
+    return null;
+  }
+  const ref = line.match(/([\w.-]+)\/([\w.-]+)#(\d+)/);
+  if (ref) {
+    const [, owner, repo, number] = ref;
+    return {
+      owner,
+      repo,
+      number: parseInt(number, 10),
+      url:
+        line.match(/\((https?:\/\/[^)\s]+)\)/)?.[1] ??
+        `https://github.com/${owner}/${repo}/issues/${number}`,
+    };
+  }
+  const url = line.match(/github\.com\/([\w.-]+)\/([\w.-]+)\/issues\/(\d+)/);
+  if (url) {
+    const [, owner, repo, number] = url;
+    return {
+      owner,
+      repo,
+      number: parseInt(number, 10),
+      url: `https://github.com/${owner}/${repo}/issues/${number}`,
+    };
+  }
+  return null;
+}
+
+/**
+ * A plan document eligible for Epic parsing: a direct child of a top-level
+ * plan folder (one folder per plan by convention, same as the frontend's
+ * grouping).
+ */
+const isPlanDoc = (path: string) => /^[^/]+\/[^/]+\.md$/i.test(path);
+
+/** The added lines of a unified diff, for parsing headers out of PR patches. */
+const patchAdditions = (patch: string) =>
+  patch
+    .split('\n')
+    .filter(diffLine => diffLine.startsWith('+'))
+    .map(diffLine => diffLine.slice(1))
+    .join('\n');
+
 export interface RouterOptions {
   logger: LoggerService;
   config: Config;
@@ -180,6 +246,33 @@ export async function createRouter(
     return response.json();
   };
   const githubGet = (repo: string, path: string) => githubRequest(repo, path);
+
+  /** Fetch a file's decoded UTF-8 content via the GitHub contents API. */
+  const getFileContent = async (
+    repo: string,
+    path: string,
+    ref: string,
+  ): Promise<string> => {
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const result = (await githubGet(
+      repo,
+      `/repos/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+    )) as {
+      type?: string;
+      content?: string;
+      encoding?: string;
+    };
+
+    if (Array.isArray(result) || result.type !== 'file') {
+      throw new InputError(`'${path}' is not a file`);
+    }
+    if (result.encoding !== 'base64' || typeof result.content !== 'string') {
+      throw new Error(
+        `Unexpected content encoding '${result.encoding}' for ${path}`,
+      );
+    }
+    return Buffer.from(result.content, 'base64').toString('utf8');
+  };
 
   const parsePullNumber = (raw: string): number => {
     const pullNumber = parseInt(raw, 10);
@@ -393,30 +486,93 @@ export async function createRouter(
     if (!path) {
       throw new InputError('path query parameter is required');
     }
-    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-    const result = (await githubGet(
+    res.json({ path, ref, content: await getFileContent(repo, path, ref) });
+  });
+
+  const epicsCache = new Map<string, { expires: number; data: unknown }>();
+
+  /**
+   * The epic each plan references, for cross-linking plans with the roadmap
+   * board: merged plans scanned on the default branch, proposed plans parsed
+   * from their PR diffs.
+   */
+  router.get('/epics', async (req, res) => {
+    const repo = resolveRepo(req);
+    const hit = epicsCache.get(repo);
+    if (hit && hit.expires > Date.now()) {
+      res.json(hit.data);
+      return;
+    }
+
+    // Merged plans: scan each plan folder's direct-child markdown files
+    // (PRD.md first) until one carries an Epic header.
+    const treeResult = (await githubGet(
       repo,
-      `/repos/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+      `/repos/${repo}/git/trees/HEAD?recursive=1`,
     )) as {
-      type?: string;
-      content?: string;
-      encoding?: string;
+      tree?: Array<{ path?: string; type?: string }> | null;
     };
-
-    if (Array.isArray(result) || result.type !== 'file') {
-      throw new InputError(`'${path}' is not a file`);
+    const byFolder = new Map<string, string[]>();
+    for (const entry of treeResult.tree ?? []) {
+      if (entry.type !== 'blob' || !entry.path || !isPlanDoc(entry.path)) {
+        continue;
+      }
+      const folder = entry.path.slice(0, entry.path.indexOf('/'));
+      byFolder.set(folder, [...(byFolder.get(folder) ?? []), entry.path]);
     }
-    if (result.encoding !== 'base64' || typeof result.content !== 'string') {
-      throw new Error(
-        `Unexpected content encoding '${result.encoding}' for ${path}`,
-      );
-    }
+    const docRank = (path: string) =>
+      path.toLowerCase().endsWith('/prd.md') ? 0 : 1;
+    const merged = (
+      await Promise.all(
+        [...byFolder.entries()].map(async ([folder, files]) => {
+          const candidates = [...files].sort(
+            (a, b) => docRank(a) - docRank(b) || a.localeCompare(b),
+          );
+          for (const path of candidates) {
+            const epic = parseEpicRef(
+              await getFileContent(repo, path, 'HEAD').catch(() => ''),
+            );
+            if (epic) {
+              return { folder, path, epic };
+            }
+          }
+          return null;
+        }),
+      )
+    ).filter(entry => entry !== null);
 
-    res.json({
-      path,
-      ref,
-      content: Buffer.from(result.content, 'base64').toString('utf8'),
-    });
+    // Proposed plans: the Epic header of a new plan document shows up in
+    // the added lines of the PR diff.
+    // ponytail: patch-only parse -- misses a PRD whose patch GitHub omits
+    // (oversized file); fetch content at the head branch if that ever happens.
+    const openPulls = (await githubGet(
+      repo,
+      `/repos/${repo}/pulls?state=open&per_page=100`,
+    )) as Array<{ number: number; title: string }>;
+    const pulls = (
+      await Promise.all(
+        openPulls.map(async pull => {
+          const files = (await githubGet(
+            repo,
+            `/repos/${repo}/pulls/${pull.number}/files?per_page=100`,
+          )) as Array<{ filename?: string; patch?: string }>;
+          for (const file of files) {
+            if (!file.filename || !isPlanDoc(file.filename) || !file.patch) {
+              continue;
+            }
+            const epic = parseEpicRef(patchAdditions(file.patch));
+            if (epic) {
+              return { number: pull.number, title: pull.title, epic };
+            }
+          }
+          return null;
+        }),
+      )
+    ).filter(entry => entry !== null);
+
+    const data = { merged, pulls };
+    epicsCache.set(repo, { expires: Date.now() + EPICS_TTL_MS, data });
+    res.json(data);
   });
 
   return router;
