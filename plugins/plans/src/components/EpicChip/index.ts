@@ -1,0 +1,1 @@
+export { EpicChip } from './EpicChip';

@@ -10,6 +10,7 @@ import {
   PlansApi,
   PlansCommentsResponse,
   PlansContentResponse,
+  PlansEpicsResponse,
   PlansPullFilesResponse,
   PlansPullsResponse,
   PlansReposResponse,
@@ -49,6 +50,10 @@ export class PlansApiClient implements PlansApi {
 
   async getTree(ref?: string, repo?: string): Promise<PlansTreeResponse> {
     return this.get<PlansTreeResponse>('/tree', { ref, repo });
+  }
+
+  async listEpics(repo?: string): Promise<PlansEpicsResponse> {
+    return this.get<PlansEpicsResponse>('/epics', { repo });
   }
 
   async getContent(

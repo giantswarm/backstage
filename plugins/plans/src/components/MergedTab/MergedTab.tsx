@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
   Grid,
   List,
   ListItem,
+  ListItemSecondaryAction,
   ListItemText,
   Paper,
   Typography,
@@ -16,6 +18,7 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { compareDisplayPaths, isRenderableFile } from '../../lib/files';
+import { EpicChip } from '../EpicChip';
 import { PlanFileContent } from '../PlanFileContent';
 
 const ROOT_GROUP = '(repository root)';
@@ -54,12 +57,33 @@ interface PlanGroup {
 export function MergedTab({ repo }: { repo: string }) {
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
-  const [selected, setSelected] = useState<string | undefined>(undefined);
+  // The selected plan lives in `?plan=` so the roadmap epic view (and
+  // anyone with the URL) can deep-link a specific plan.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selected = searchParams.get('plan') ?? undefined;
+  const selectPlan = (name: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('plan', name);
+    setSearchParams(params, { replace: true });
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['plans', 'tree', repo],
     queryFn: () => plansApi.getTree(undefined, repo),
   });
+
+  // Epic references per plan folder, for the cross-link chips. Failure just
+  // means no chips (e.g. the backend still rolling out).
+  const { data: epicsData } = useQuery({
+    queryKey: ['plans', 'epics', repo],
+    queryFn: () => plansApi.listEpics(repo),
+    retry: false,
+  });
+  const epicByFolder = useMemo(
+    () =>
+      new Map((epicsData?.merged ?? []).map(entry => [entry.folder, entry])),
+    [epicsData],
+  );
 
   const groups = useMemo<PlanGroup[]>(() => {
     const byFolder = new Map<string, string[]>();
@@ -116,7 +140,7 @@ export function MergedTab({ repo }: { repo: string }) {
                 button
                 divider
                 selected={group.name === selectedGroup.name}
-                onClick={() => setSelected(group.name)}
+                onClick={() => selectPlan(group.name)}
               >
                 <ListItemText
                   primary={group.name}
@@ -124,6 +148,11 @@ export function MergedTab({ repo }: { repo: string }) {
                     group.files.length === 1 ? '' : 's'
                   }`}
                 />
+                {epicByFolder.has(group.name) && (
+                  <ListItemSecondaryAction>
+                    <EpicChip epic={epicByFolder.get(group.name)!.epic} />
+                  </ListItemSecondaryAction>
+                )}
               </ListItem>
             ))}
           </List>

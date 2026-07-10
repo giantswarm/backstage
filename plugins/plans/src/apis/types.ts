@@ -87,6 +87,33 @@ export interface NewReviewComment {
   inReplyTo?: number;
 }
 
+/** Roadmap epic referenced by a plan's `**Epic:** [owner/repo#N](url)` header. */
+export interface EpicRef {
+  owner: string;
+  repo: string;
+  number: number;
+  url: string;
+}
+
+/** A merged plan folder that references an epic. */
+export interface PlanEpic {
+  folder: string;
+  path: string;
+  epic: EpicRef;
+}
+
+/** An open plan PR that references an epic. */
+export interface PullEpic {
+  number: number;
+  title: string;
+  epic: EpicRef;
+}
+
+export interface PlansEpicsResponse {
+  merged: PlanEpic[];
+  pulls: PullEpic[];
+}
+
 export interface PlansApi {
   listRepos(): Promise<PlansReposResponse>;
   listPulls(repo?: string): Promise<PlansPullsResponse>;
@@ -95,6 +122,7 @@ export interface PlansApi {
     repo?: string,
   ): Promise<PlansPullFilesResponse>;
   getTree(ref?: string, repo?: string): Promise<PlansTreeResponse>;
+  listEpics(repo?: string): Promise<PlansEpicsResponse>;
   getContent(
     path: string,
     ref?: string,

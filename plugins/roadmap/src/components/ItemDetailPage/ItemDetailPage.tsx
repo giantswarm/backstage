@@ -25,6 +25,7 @@ import { issueRefOf } from '../../lib/board';
 import { formatDate } from '../../lib/dates';
 import { rootRouteRef } from '../../routes';
 import { FieldEditor } from './FieldEditor';
+import { PlanPanel } from './PlanPanel';
 import { SubIssuesPanel } from './SubIssuesPanel';
 
 const SIDEBAR_WIDTH = 300;
@@ -262,6 +263,13 @@ export function ItemDetailPage() {
                 ))}
               </Box>
             </>
+          )}
+          {issueRef && (
+            <PlanPanel
+              owner={issueRef.owner}
+              repo={issueRef.repo}
+              issueNumber={issueRef.number}
+            />
           )}
           <Divider className={classes.sidebarDivider} />
           <Typography className={classes.sidebarTitle} variant="subtitle1">

@@ -43,12 +43,16 @@ const useStyles = makeStyles((theme: Theme) => ({
 export function PlansPage() {
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
-  const [tab, setTab] = useState<'proposed' | 'merged'>('proposed');
   // The selected repository lives in `?repo=` (the same param the review
   // page uses), so it survives navigating into a PR and back and the list
   // URL is shareable.
   const [searchParams, setSearchParams] = useSearchParams();
   const repo = searchParams.get('repo') ?? undefined;
+  // Deep links to a merged plan (`?plan=`, e.g. from the roadmap epic view)
+  // land on the merged tab directly.
+  const [tab, setTab] = useState<'proposed' | 'merged'>(
+    searchParams.has('plan') ? 'merged' : 'proposed',
+  );
 
   const selectRepo = (next: string) => {
     const params = new URLSearchParams(searchParams);
