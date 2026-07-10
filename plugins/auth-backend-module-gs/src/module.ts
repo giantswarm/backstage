@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import {
   coreServices,
   createBackendModule,
@@ -17,6 +16,7 @@ import {
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
 import { createClusterTokenRouter } from './clusterToken/router';
+import { waitForIssuerMetadata } from './oidc/issuerMetadata';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -117,31 +117,27 @@ export const authModuleGsProviders = createBackendModule({
             provider === mainAuthProvider,
         );
         for (const providerName of customOIDCProviders) {
-          try {
-            logger.info(`Configuring auth provider: ${providerName}`);
+          logger.info(`Configuring auth provider: ${providerName}`);
 
-            const providerConfig = providersConfig
-              .getConfig(providerName)
-              .getConfig(config.getString('auth.environment'));
-            const metadataUrl = providerConfig.getString('metadataUrl');
-            const response = await fetch(new URL(metadataUrl));
-            if (!response.ok) {
-              throw new Error(response.statusText);
-            }
+          const providerConfig = providersConfig
+            .getConfig(providerName)
+            .getConfig(config.getString('auth.environment'));
+          const metadataUrl = providerConfig.getString('metadataUrl');
 
-            providersExtensionPoint.registerProvider({
-              providerId: providerName,
-              factory: createOAuthProviderFactory({
-                authenticator: oidcAuthenticator,
-                signInResolver: customSignInResolver,
-              }),
-            });
-          } catch (err) {
-            logger.error(
-              `Failed to fetch issuer metadata for ${providerName} auth provider`,
-            );
-            logger.error((err as Error).toString());
-          }
+          // The main login provider is required: a portal without login is
+          // unusable, and skipping registration here would serve 404s on
+          // every login until the pod is manually restarted. Retry to absorb
+          // transient Dex unavailability, then let the error fail startup so
+          // the orchestrator restarts the backend until Dex is reachable.
+          await waitForIssuerMetadata(providerName, metadataUrl, logger);
+
+          providersExtensionPoint.registerProvider({
+            providerId: providerName,
+            factory: createOAuthProviderFactory({
+              authenticator: oidcAuthenticator,
+              signInResolver: customSignInResolver,
+            }),
+          });
         }
 
         const customMCPProviders = configuredProviders.filter(provider =>
