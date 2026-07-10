@@ -278,6 +278,40 @@ describe('createRouter', () => {
     });
   });
 
+  describe('/items/by-issue/:owner/:repo/:number', () => {
+    it('resolves an issue reference to its board item', async () => {
+      const response = await request(app).get(
+        '/items/by-issue/giantswarm/giantswarm/42',
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ item: ITEM });
+      expect(pro.listItems).toHaveBeenCalledWith({
+        boardId: BOARD_ID,
+        filters: {},
+        token: APP_TOKEN,
+      });
+    });
+
+    it('returns 404 for an issue that is not on the board', async () => {
+      const response = await request(app).get(
+        '/items/by-issue/giantswarm/giantswarm/999',
+      );
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.name).toBe('NotFoundError');
+    });
+
+    it('rejects a non-numeric issue number', async () => {
+      const response = await request(app).get(
+        '/items/by-issue/giantswarm/giantswarm/abc',
+      );
+
+      expect(response.status).toBe(400);
+      expect(pro.listItems).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET /issues/:owner/:repo/:number/sub-issues', () => {
     it('returns the mapped sub-issue tree and parent', async () => {
       pro.getParentIssue.mockResolvedValue({

@@ -562,4 +562,115 @@ describe('createRouter', () => {
       expect(response.status).toBe(500);
     });
   });
+
+  describe('/epics', () => {
+    const contentResponse = (markdown: string) =>
+      jsonResponse({
+        type: 'file',
+        encoding: 'base64',
+        content: Buffer.from(markdown, 'utf8').toString('base64'),
+      });
+
+    /** Route the mocked fetch by URL suffix, like the real GitHub API. */
+    function mockGithub(routes: Record<string, Response>) {
+      fetchFn.mockImplementation(async url => {
+        for (const [suffix, response] of Object.entries(routes)) {
+          if (String(url).endsWith(suffix)) {
+            return response;
+          }
+        }
+        return jsonResponse({ message: 'Not Found' }, 404);
+      });
+    }
+
+    it('parses Epic headers from merged plans and open PRs', async () => {
+      mockGithub({
+        '/git/trees/HEAD?recursive=1': jsonResponse({
+          tree: [
+            { path: 'agent-platform-mvp/PRD.md', type: 'blob' },
+            { path: 'agent-platform-mvp/index.html', type: 'blob' },
+            { path: 'no-epic-plan/index.md', type: 'blob' },
+            { path: 'README.md', type: 'blob' },
+            { path: 'deep/nested/doc.md', type: 'blob' },
+          ],
+        }),
+        '/contents/agent-platform-mvp/PRD.md?ref=HEAD': contentResponse(
+          '# PRD: Agent Platform MVP\n\n' +
+            '**Epic:** [giantswarm/giantswarm#36625](https://github.com/giantswarm/giantswarm/issues/36625)\n',
+        ),
+        '/contents/no-epic-plan/index.md?ref=HEAD':
+          contentResponse('# No epic here\n'),
+        '/pulls?state=open&per_page=100': jsonResponse([
+          { number: 9, title: 'Add obo plan' },
+          { number: 3, title: 'No plan doc' },
+        ]),
+        '/pulls/9/files?per_page=100': jsonResponse([
+          {
+            filename: 'slack-to-github-obo/PRD.md',
+            patch:
+              '@@ -0,0 +1,3 @@\n+# PRD\n+\n+**Epic**: https://github.com/giantswarm/giantswarm/issues/36700\n',
+          },
+        ]),
+        '/pulls/3/files?per_page=100': jsonResponse([
+          { filename: 'README.md', patch: '' },
+        ]),
+      });
+
+      const response = await request(app).get('/epics');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        merged: [
+          {
+            folder: 'agent-platform-mvp',
+            path: 'agent-platform-mvp/PRD.md',
+            epic: {
+              owner: 'giantswarm',
+              repo: 'giantswarm',
+              number: 36625,
+              url: 'https://github.com/giantswarm/giantswarm/issues/36625',
+            },
+          },
+        ],
+        pulls: [
+          {
+            number: 9,
+            title: 'Add obo plan',
+            epic: {
+              owner: 'giantswarm',
+              repo: 'giantswarm',
+              number: 36700,
+              url: 'https://github.com/giantswarm/giantswarm/issues/36700',
+            },
+          },
+        ],
+      });
+    });
+
+    it('caches the scan between requests', async () => {
+      mockGithub({
+        '/git/trees/HEAD?recursive=1': jsonResponse({ tree: [] }),
+        '/pulls?state=open&per_page=100': jsonResponse([]),
+      });
+
+      await request(app).get('/epics');
+      await request(app).get('/epics');
+
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips plans whose documents cannot be read', async () => {
+      mockGithub({
+        '/git/trees/HEAD?recursive=1': jsonResponse({
+          tree: [{ path: 'broken-plan/PRD.md', type: 'blob' }],
+        }),
+        '/pulls?state=open&per_page=100': jsonResponse([]),
+      });
+
+      const response = await request(app).get('/epics');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ merged: [], pulls: [] });
+    });
+  });
 });

@@ -405,33 +405,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/core@npm:^0.2.19":
-  version: 0.2.19
-  resolution: "@assistant-ui/core@npm:0.2.19"
-  dependencies:
-    assistant-stream: "npm:^0.3.24"
-    nanoid: "npm:^5.1.15"
-  peerDependencies:
-    "@assistant-ui/store": ^0.2.13
-    "@assistant-ui/tap": ^0.9.0
-    "@types/react": "*"
-    assistant-cloud: ^0.1.31
-    react: ^18 || ^19
-    zustand: ^5.0.11
-  peerDependenciesMeta:
-    "@types/react":
-      optional: true
-    assistant-cloud:
-      optional: true
-    react:
-      optional: true
-    zustand:
-      optional: true
-  checksum: 10c0/4889b33df4e412f80e105acde9270c3e806e00329f3966c1074a0e92f6bca60edfd9522f3f4a233b46a97274a8e6d0a5c91adb9beaddedb76f9da4022d8fbde3
-  languageName: node
-  linkType: hard
-
-"@assistant-ui/core@npm:^0.2.20":
+"@assistant-ui/core@npm:0.2.20":
   version: 0.2.20
   resolution: "@assistant-ui/core@npm:0.2.20"
   dependencies:
@@ -26960,26 +26934,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"assistant-stream@npm:^0.3.24, assistant-stream@npm:^0.3.6":
-  version: 0.3.24
-  resolution: "assistant-stream@npm:0.3.24"
-  dependencies:
-    "@standard-schema/spec": "npm:^1.1.0"
-    nanoid: "npm:^5.1.15"
-    secure-json-parse: "npm:^4.1.0"
-  peerDependencies:
-    ioredis: ^5.10.1
-    redis: ^5.12.1
-  peerDependenciesMeta:
-    ioredis:
-      optional: true
-    redis:
-      optional: true
-  checksum: 10c0/b482f167698bc6adb4c26a17bbf8ceba60c6a83a5680e989a4dc73b2d3c9695a126be7028a50be184f745c8e8b1e03f71ea93fd656dc2a0a8a9a572a62adbf2e
-  languageName: node
-  linkType: hard
-
-"assistant-stream@npm:^0.3.25":
+"assistant-stream@npm:0.3.25":
   version: 0.3.25
   resolution: "assistant-stream@npm:0.3.25"
   dependencies:

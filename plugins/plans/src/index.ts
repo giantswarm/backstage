@@ -8,6 +8,9 @@ export type {
   PlanComment,
   PlanReviewComment,
   NewReviewComment,
+  EpicRef,
+  PlanEpic,
+  PullEpic,
   PlansReposResponse,
   PlansPullsResponse,
   PlansPullFilesResponse,
@@ -15,4 +18,5 @@ export type {
   PlansContentResponse,
   PlansCommentsResponse,
   PlansReviewCommentsResponse,
+  PlansEpicsResponse,
 } from './apis';

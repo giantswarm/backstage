@@ -9,7 +9,12 @@ import {
 import TimelineIcon from '@material-ui/icons/Timeline';
 
 import { roadmapApiRef, RoadmapApiClient } from './apis';
-import { itemRouteRef, rootRouteRef } from './routes';
+import {
+  itemRouteRef,
+  plansPullExternalRouteRef,
+  plansRootExternalRouteRef,
+  rootRouteRef,
+} from './routes';
 
 // Disabled by default: the roadmap board is internal and must not appear in
 // customer portals. Deployments opt in via app.extensions (and configure
@@ -55,5 +60,9 @@ export const roadmapPlugin = createFrontendPlugin({
   routes: {
     root: rootRouteRef,
     item: itemRouteRef,
+  },
+  externalRoutes: {
+    plansRoot: plansRootExternalRouteRef,
+    plansPull: plansPullExternalRouteRef,
   },
 });
