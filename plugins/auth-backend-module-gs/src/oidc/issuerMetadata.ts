@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+import { Issuer } from 'openid-client';
 import { LoggerService } from '@backstage/backend-plugin-api';
 
 const DEFAULT_ATTEMPTS = 5;
@@ -11,14 +11,19 @@ export type WaitForIssuerMetadataOptions = {
 };
 
 /**
- * Checks that an OIDC issuer's metadata endpoint is reachable, retrying with
+ * Checks that an OIDC issuer serves a valid metadata document, retrying with
  * exponential backoff. Throws once all attempts are exhausted.
  *
- * The upstream oidc authenticator performs issuer discovery only once and
- * caches a rejected discovery permanently, so registering a provider whose
- * issuer is unreachable produces a provider that fails every request until
- * the process restarts. Callers use this check to decide whether registering
- * is safe, and to fail startup otherwise.
+ * Discovery goes through openid-client's Issuer.discover — the same code path
+ * and validation the oidc authenticator uses — so anything that would break
+ * the authenticator's own discovery (unreachable issuer, but also an ingress
+ * answering 200 with an HTML error page, or truncated JSON) fails this check
+ * too. Each attempt is bounded by openid-client's built-in HTTP timeout, so a
+ * hanging connection cannot stall backend startup indefinitely.
+ *
+ * Callers use this check to fail startup while the issuer is unavailable at
+ * boot: a crash-looping pod is visible and alertable, unlike a portal that
+ * comes up healthy without a login provider.
  */
 export async function waitForIssuerMetadata(
   providerName: string,
@@ -32,13 +37,14 @@ export async function waitForIssuerMetadata(
     options.sleep ??
     ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
 
+  // A malformed metadataUrl is a config error that no amount of retrying can
+  // fix — fail immediately instead of burning the retry budget on it.
+  const validatedUrl = new URL(metadataUrl).toString();
+
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const response = await fetch(new URL(metadataUrl));
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
+      await Issuer.discover(validatedUrl);
       return;
     } catch (err) {
       lastError = err as Error;
