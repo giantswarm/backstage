@@ -15,8 +15,46 @@ import type { ProField, ProListItem, ProRestIssue } from '@giantswarm-io/pro';
 
 const GITHUB_ORG_URL = 'https://github.com/giantswarm';
 
-/** Board items and sub-issue trees change often; keep reads fresh. */
-const ITEMS_TTL_MS = 60_000;
+/**
+ * Targeted lookup for one issue's board item -- the single-select and
+ * iteration field values are all the cross-link chip needs.
+ */
+const ISSUE_PROJECT_ITEM_QUERY = `
+  query IssueProjectItem($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        title
+        url
+        state
+        projectItems(first: 20, includeArchived: false) {
+          nodes {
+            id
+            project { id }
+            fieldValues(first: 30) {
+              nodes {
+                ... on ProjectV2ItemFieldSingleSelectValue {
+                  name
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+                ... on ProjectV2ItemFieldIterationValue {
+                  title
+                  field { ... on ProjectV2FieldCommon { name } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Board items and sub-issue trees: five minutes is fresh enough for other
+ * people's changes (the caller's own writes patch the cache immediately),
+ * and the cache is served stale-while-revalidate anyway.
+ */
+const ITEMS_TTL_MS = 5 * 60_000;
 /** The board schema (fields/options) rarely changes. */
 const SCHEMA_TTL_MS = 10 * 60_000;
 
@@ -31,6 +69,8 @@ export interface RouterOptions {
    * the plugin init loads it with a dynamic import. Also the seam for tests.
    */
   pro: typeof ProModule;
+  /** Disable the startup/interval cache warming (tests only). */
+  warmCache?: boolean;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -153,10 +193,12 @@ export async function createRouter(
     return token;
   };
 
-  // Board reads paginate the full project, so identical requests within the
-  // TTL share one result. Writes clear the cache so their effect is visible
-  // immediately.
+  // Board reads paginate the full project (~430 items for one team is five
+  // sequential GraphQL pages, >10s), so the cache is stale-while-revalidate:
+  // an expired entry is served immediately while one background refresh per
+  // key brings it up to date. Only a cold key ever blocks on GitHub.
   const cache = new Map<string, { expires: number; data: unknown }>();
+  const inflight = new Map<string, Promise<unknown>>();
   const cached = async <T>(
     key: string,
     ttlMs: number,
@@ -166,19 +208,48 @@ export async function createRouter(
     if (hit && hit.expires > Date.now()) {
       return hit.data as T;
     }
-    const data = await load();
-    cache.set(key, { expires: Date.now() + ttlMs, data });
-    return data;
+    let refresh = inflight.get(key) as Promise<T> | undefined;
+    if (!refresh) {
+      refresh = load().then(
+        data => {
+          cache.set(key, { expires: Date.now() + ttlMs, data });
+          inflight.delete(key);
+          return data;
+        },
+        error => {
+          inflight.delete(key);
+          throw error;
+        },
+      );
+      inflight.set(key, refresh);
+    }
+    if (hit) {
+      // Serve stale, let the refresh land in the background.
+      refresh.catch(() => {});
+      return hit.data as T;
+    }
+    return refresh;
   };
 
-  const listItemsCached = async (listOptions: {
-    filters: Record<string, string>;
-    assignee?: string | null;
-    state?: string | null;
-    updated?: string | null;
-    repository?: string | null;
-    keyword?: string | null;
-  }): Promise<ProListItem[]> => {
+  const itemsListOptions = (
+    filters: Record<string, string>,
+    query: Partial<
+      Record<'assignee' | 'state' | 'updated' | 'keyword', string>
+    > & {
+      repository?: string;
+    } = {},
+  ) => ({
+    filters,
+    assignee: query.assignee ?? null,
+    state: query.state ?? null,
+    updated: query.updated ?? null,
+    repository: query.repository ?? null,
+    keyword: query.keyword ?? null,
+  });
+
+  const listItemsCached = async (
+    listOptions: ReturnType<typeof itemsListOptions>,
+  ): Promise<ProListItem[]> => {
     const cacheKey = `items:${JSON.stringify(listOptions)}`;
     const result = await cached(cacheKey, ITEMS_TTL_MS, async () =>
       pro.listItems({ boardId, ...listOptions, token: await appToken() }),
@@ -189,6 +260,50 @@ export async function createRouter(
     }
     return result.data ?? [];
   };
+
+  /**
+   * After a successful field write, update the item inside every cached
+   * list and drop its cached detail -- instead of clearing the cache, which
+   * would force the next board load into a full multi-page rescan.
+   */
+  const patchCachedItem = (itemId: string, name: string, value: string) => {
+    for (const [key, entry] of cache) {
+      if (key.startsWith('items:')) {
+        const result = entry.data as { data?: ProListItem[] };
+        for (const item of result.data ?? []) {
+          if (item.id === itemId) {
+            item.fields = { ...item.fields, [name]: value };
+          }
+        }
+      }
+    }
+    cache.delete(`item:${itemId}`);
+  };
+
+  const dropSubIssueCaches = () => {
+    for (const key of cache.keys()) {
+      if (key.startsWith('sub-issues:')) {
+        cache.delete(key);
+      }
+    }
+  };
+
+  // Warm the default board view (and keep it warm) so the first visitor
+  // after a pod restart -- deploys are frequent -- doesn't pay the cold
+  // multi-page scan. With stale-while-revalidate above, this makes board
+  // loads effectively instant for everyone.
+  if (enabled && (options.warmCache ?? true)) {
+    const warm = () => {
+      const filters: Record<string, string> = defaultTeams[0]
+        ? { team: defaultTeams[0] }
+        : {};
+      listItemsCached(itemsListOptions(filters)).catch(error =>
+        logger.warn(`Roadmap cache warming failed: ${error}`),
+      );
+    };
+    warm();
+    setInterval(warm, ITEMS_TTL_MS).unref();
+  }
 
   const router = Router();
   router.use(express.json());
@@ -233,14 +348,15 @@ export async function createRouter(
       keywordTerms.push(keyword);
     }
 
-    const items = await listItemsCached({
-      filters,
-      assignee: singleQueryValue(req.query.assignee, 'assignee') ?? null,
-      state: singleQueryValue(req.query.state, 'state') ?? null,
-      updated: singleQueryValue(req.query.updated, 'updated') ?? null,
-      repository: singleQueryValue(req.query.repository, 'repository') ?? null,
-      keyword: keywordTerms.length > 0 ? keywordTerms.join(' ') : null,
-    });
+    const items = await listItemsCached(
+      itemsListOptions(filters, {
+        assignee: singleQueryValue(req.query.assignee, 'assignee'),
+        state: singleQueryValue(req.query.state, 'state'),
+        updated: singleQueryValue(req.query.updated, 'updated'),
+        repository: singleQueryValue(req.query.repository, 'repository'),
+        keyword: keywordTerms.length > 0 ? keywordTerms.join(' ') : undefined,
+      }),
+    );
     res.json({ items });
   });
 
@@ -250,7 +366,7 @@ export async function createRouter(
     if (team) {
       filters.team = team;
     }
-    const items = await listItemsCached({ filters });
+    const items = await listItemsCached(itemsListOptions(filters));
 
     const byStatus: Record<string, number> = {};
     const byRepo: Record<string, number> = {};
@@ -267,18 +383,71 @@ export async function createRouter(
    * Resolve a GitHub issue reference to its board item. Plan documents
    * reference epics as `owner/repo#N`, but the detail route needs the
    * Projects v2 item node id -- this is the bridge for cross-links from
-   * the plans plugin.
+   * the plans plugin. A targeted issue->projectItems query: one GraphQL
+   * call instead of paginating the whole board (~2000 items, ~1min).
    */
   router.get('/items/by-issue/:owner/:repo/:number', async (req, res) => {
     const number = parsePositiveInt(req.params.number, 'number');
-    const repoSlug = `${req.params.owner}/${req.params.repo}`;
-    const items = await listItemsCached({ filters: {} });
-    const item = items.find(
-      boardItem => boardItem.repo === repoSlug && boardItem.number === number,
+    const { owner, repo } = req.params;
+    const item = await cached(
+      `by-issue:${owner}/${repo}#${number}`,
+      ITEMS_TTL_MS,
+      () =>
+        mapGithubError(async () => {
+          const result = await pro.graphQLWithAuth<{
+            repository?: {
+              issue?: {
+                title: string;
+                url: string;
+                state: string;
+                projectItems?: {
+                  nodes?: Array<{
+                    id: string;
+                    project?: { id: string };
+                    fieldValues?: {
+                      nodes?: Array<{
+                        name?: string;
+                        title?: string;
+                        field?: { name?: string };
+                      }>;
+                    };
+                  } | null>;
+                };
+              } | null;
+            } | null;
+          }>(
+            ISSUE_PROJECT_ITEM_QUERY,
+            { owner, repo, number },
+            await appToken(),
+          );
+          const issue = result.repository?.issue;
+          const node = issue?.projectItems?.nodes?.find(
+            projectItem => projectItem?.project?.id === boardId,
+          );
+          if (!issue || !node) {
+            return null;
+          }
+          const fields: Record<string, string> = {};
+          for (const fieldValue of node.fieldValues?.nodes ?? []) {
+            const value = fieldValue?.name ?? fieldValue?.title;
+            if (fieldValue?.field?.name && value) {
+              fields[fieldValue.field.name] = value;
+            }
+          }
+          return {
+            id: node.id,
+            title: issue.title,
+            number,
+            url: issue.url,
+            repo: `${owner}/${repo}`,
+            state: issue.state,
+            fields,
+          };
+        }),
     );
     if (!item) {
       throw new NotFoundError(
-        `No board item found for issue ${repoSlug}#${number}`,
+        `No board item found for issue ${owner}/${repo}#${number}`,
       );
     }
     res.json({ item });
@@ -340,6 +509,7 @@ export async function createRouter(
     }
 
     let mutationValue: Record<string, string>;
+    let canonicalValue = value;
     if (field.__typename === 'ProjectV2SingleSelectField') {
       const option = pro.findMatchingOption(field.options ?? [], value);
       if (!option) {
@@ -351,6 +521,7 @@ export async function createRouter(
         );
       }
       mutationValue = { singleSelectOptionId: option.id };
+      canonicalValue = option.name;
     } else if (field.__typename === 'ProjectV2IterationField') {
       const iteration = pro.findMatchingIteration(field, value);
       if (!iteration) {
@@ -362,6 +533,7 @@ export async function createRouter(
         );
       }
       mutationValue = { iterationId: iteration.id };
+      canonicalValue = iteration.title;
     } else if (field.dataType === 'DATE') {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
         throw new InputError(
@@ -384,7 +556,7 @@ export async function createRouter(
         token,
       ),
     );
-    cache.clear();
+    patchCachedItem(req.params.id, field.name, canonicalValue);
     logger.info(`Updated field '${field.name}' on item ${req.params.id}`);
     res.json({ status: 'ok' });
   });
@@ -410,7 +582,7 @@ export async function createRouter(
     const parent = await mapGithubError(() =>
       pro.addSubIssue({ ...target, subIssueId: resolved.id }, token),
     );
-    cache.clear();
+    dropSubIssueCaches();
     logger.info(
       `Linked ${child} as sub-issue of ${target.owner}/${target.repo}#${target.issue_number}`,
     );
@@ -428,7 +600,7 @@ export async function createRouter(
         subIssueId: parsePositiveInt(req.params.subIssueId, 'subIssueId'),
       };
       await mapGithubError(() => pro.removeSubIssue(target, token));
-      cache.clear();
+      dropSubIssueCaches();
       logger.info(
         `Unlinked sub-issue ${target.subIssueId} from ${target.owner}/${target.repo}#${target.issue_number}`,
       );

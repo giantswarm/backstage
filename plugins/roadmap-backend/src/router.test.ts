@@ -79,6 +79,30 @@ function buildProMock() {
         ) ?? null,
     ),
     updateItemField: jest.fn().mockResolvedValue({}),
+    graphQLWithAuth: jest.fn().mockResolvedValue({
+      repository: {
+        issue: {
+          title: ITEM.title,
+          url: ITEM.url,
+          state: 'OPEN',
+          projectItems: {
+            nodes: [
+              {
+                id: ITEM.id,
+                project: { id: BOARD_ID },
+                fieldValues: {
+                  nodes: [
+                    { name: 'In Progress ⛏️', field: { name: 'Status' } },
+                    { title: 'Q3 2026', field: { name: 'Quarter' } },
+                  ],
+                },
+              },
+              { id: 'PVTI_other', project: { id: 'PVT_other' } },
+            ],
+          },
+        },
+      },
+    }),
     listSubIssues: jest.fn().mockResolvedValue([REST_ISSUE]),
     getParentIssue: jest.fn().mockResolvedValue(null),
     addSubIssue: jest.fn().mockResolvedValue(REST_ISSUE),
@@ -113,6 +137,9 @@ describe('createRouter', () => {
       httpAuth: mockServices.httpAuth(),
       credentialsProvider,
       pro: pro as unknown as RouterOptions['pro'],
+      // Warming fires an untracked background listItems call that would
+      // race the per-test call-count assertions; covered by its own test.
+      warmCache: false,
       ...options,
     });
     const builtApp = express();
@@ -278,22 +305,62 @@ describe('createRouter', () => {
     });
   });
 
+  it('warms the default team view on startup', async () => {
+    await buildApp(
+      { roadmap: { board: 'roadmap', teams: ['Bumblebee🐝'] } },
+      { warmCache: true },
+    );
+    // Let the fire-and-forget warm call settle.
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(pro.listItems).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: { team: 'Bumblebee🐝' },
+        token: APP_TOKEN,
+      }),
+    );
+  });
+
   describe('/items/by-issue/:owner/:repo/:number', () => {
-    it('resolves an issue reference to its board item', async () => {
+    it('resolves an issue reference via a targeted query, not a board scan', async () => {
       const response = await request(app).get(
         '/items/by-issue/giantswarm/giantswarm/42',
       );
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ item: ITEM });
-      expect(pro.listItems).toHaveBeenCalledWith({
-        boardId: BOARD_ID,
-        filters: {},
-        token: APP_TOKEN,
+      expect(response.body).toEqual({
+        item: {
+          id: ITEM.id,
+          title: ITEM.title,
+          number: 42,
+          url: ITEM.url,
+          repo: 'giantswarm/giantswarm',
+          state: 'OPEN',
+          fields: { Status: 'In Progress ⛏️', Quarter: 'Q3 2026' },
+        },
       });
+      expect(pro.graphQLWithAuth).toHaveBeenCalledWith(
+        expect.stringContaining('projectItems'),
+        { owner: 'giantswarm', repo: 'giantswarm', number: 42 },
+        APP_TOKEN,
+      );
+      expect(pro.listItems).not.toHaveBeenCalled();
     });
 
     it('returns 404 for an issue that is not on the board', async () => {
+      pro.graphQLWithAuth.mockResolvedValue({
+        repository: {
+          issue: {
+            title: 'Off-board issue',
+            url: 'https://github.com/giantswarm/giantswarm/issues/999',
+            state: 'OPEN',
+            projectItems: {
+              nodes: [{ id: 'PVTI_other', project: { id: 'PVT_other' } }],
+            },
+          },
+        },
+      });
+
       const response = await request(app).get(
         '/items/by-issue/giantswarm/giantswarm/999',
       );
@@ -308,7 +375,7 @@ describe('createRouter', () => {
       );
 
       expect(response.status).toBe(400);
-      expect(pro.listItems).not.toHaveBeenCalled();
+      expect(pro.graphQLWithAuth).not.toHaveBeenCalled();
     });
   });
 
@@ -456,15 +523,28 @@ describe('createRouter', () => {
       expect(response.status).toBe(403);
     });
 
-    it('invalidates the read cache after a write', async () => {
+    it('patches cached lists in place after a write instead of rescanning', async () => {
       await request(app).get('/items');
       await request(app)
         .patch('/items/PVTI_1/field')
         .set('X-GitHub-Token', USER_TOKEN)
         .send({ name: 'Status', value: 'Done ✅' });
-      await request(app).get('/items');
+      const response = await request(app).get('/items');
 
-      expect(pro.listItems).toHaveBeenCalledTimes(2);
+      // No second board scan -- the cached list already carries the update.
+      expect(pro.listItems).toHaveBeenCalledTimes(1);
+      expect(response.body.items[0].fields.Status).toBe('Done ✅');
+    });
+
+    it('drops the cached item detail after a write', async () => {
+      await request(app).get('/items/PVTI_1');
+      await request(app)
+        .patch('/items/PVTI_1/field')
+        .set('X-GitHub-Token', USER_TOKEN)
+        .send({ name: 'Status', value: 'Done ✅' });
+      await request(app).get('/items/PVTI_1');
+
+      expect(pro.getItemByID).toHaveBeenCalledTimes(2);
     });
   });
 
