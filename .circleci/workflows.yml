@@ -40,11 +40,27 @@ jobs:
         paths:
         - .yarn/cache
     - run:
-        # The repo composes typecheck/lint/format/test into this one script
-        # (the make-target interface), so CI and local runs share a command.
+        # ci:verify -- the node analogue of `make test`. The repo composes its
+        # ENTIRE correctness gate into this one script: tsc --noEmit + lint +
+        # prettier --check + unit tests, in one process. Lint and format live
+        # HERE and nowhere else in CI (verify-canonical: the CI pre-commit job
+        # carries no JS/TS hook), so the build step must not redo them. The
+        # default testTarget `test` is only a FLOOR -- a bare `test` script
+        # gates tests alone; repos define an explicit composed ci:verify
+        # (backstage is the reference). The script must NOT run its own install
+        # -- the job already did, once. See the node-ci-verify-build-single-pass
+        # ADR for the full single-pass contract.
         name: Verify
         command: yarn run ci:verify
     - run:
+        # ci:build -- the node analogue of `make build`. Bundle/emit ONLY: it
+        # produces the shippable artifact and does NOTHING ci:verify already did
+        # (no second typecheck, no re-lint, no re-test, no re-install). Framework
+        # builds redo checks by default (`next build` runs eslint + tsc; webpack
+        # eslint-loader re-lints; a `tsc` build emits *and* typechecks) -- disable
+        # the redundant check in the build config so this stays bundle-only, or
+        # for a pure-`tsc` library make the single emitting `tsc` the testTarget
+        # and leave buildTarget empty.
         name: Build
         command: yarn run ci:build
     # Save the build-output cache *after* verify/build so it captures both the
