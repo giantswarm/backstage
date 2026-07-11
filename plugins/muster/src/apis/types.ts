@@ -62,10 +62,7 @@ export interface WorkflowGetResponse {
 
 /** Execution status reported by muster; steps additionally use `skipped`. */
 export type WorkflowExecutionStatus =
-  | 'inprogress'
-  | 'completed'
-  | 'failed'
-  | 'skipped';
+  'inprogress' | 'completed' | 'failed' | 'skipped';
 
 export interface WorkflowExecutionStep {
   step_id: string;

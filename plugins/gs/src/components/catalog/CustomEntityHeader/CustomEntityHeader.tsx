@@ -334,11 +334,8 @@ export function CustomEntityHeader() {
             entity={entity}
             initialTab={
               (selectedInspectEntityDialogTab as
-                | 'overview'
-                | 'ancestry'
-                | 'colocated'
-                | 'json'
-                | 'yaml') || undefined
+                'overview' | 'ancestry' | 'colocated' | 'json' | 'yaml') ||
+              undefined
             }
             open={inspectDialogOpen}
             onClose={closeInspectEntityDialog}

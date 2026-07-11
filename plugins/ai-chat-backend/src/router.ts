@@ -292,8 +292,7 @@ export async function createRouter(
     const credentials = await httpAuth.credentials(req, { allow: ['user'] });
     const userRef = credentials.principal.userEntityRef;
     const rawConversationId = req.headers['x-conversation-id'] as
-      | string
-      | undefined;
+      string | undefined;
     const conversationId =
       rawConversationId && rawConversationId.length <= 64
         ? rawConversationId
