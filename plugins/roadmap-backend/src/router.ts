@@ -137,6 +137,16 @@ async function mapGithubError<T>(operation: () => Promise<T>): Promise<T> {
   } catch (error) {
     const status = (error as { status?: number }).status;
     const message = (error as Error).message ?? String(error);
+    // User tokens are GitHub App user-to-server tokens, so they are capped
+    // by the auth App's own permissions -- this error means the App itself
+    // lacks org Projects write, not that the user does.
+    if (/Resource not accessible by integration/i.test(message)) {
+      throw new NotAllowedError(
+        `GitHub rejected the request: ${message}. The portal's GitHub auth ` +
+          'App is missing the "Projects: Read and write" organization ' +
+          'permission; it must be granted on the App and approved for the org.',
+      );
+    }
     if (status === 401 || status === 403 || /FORBIDDEN/.test(message)) {
       throw new NotAllowedError(`GitHub rejected the request: ${message}`);
     }
