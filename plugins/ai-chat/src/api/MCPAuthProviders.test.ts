@@ -65,4 +65,47 @@ describe('MCPAuthProviders', () => {
 
     await expect(providers.getCredentials('mcp-muster')).resolves.toEqual({});
   });
+
+  it('mints a muster token instead of forwarding the raw ID token when configured', async () => {
+    const main = oidcApi('main-id-token');
+    const musterTokenProvider = jest.fn().mockResolvedValue('muster-token');
+    const providers = new MCPAuthProviders({}, main, musterTokenProvider);
+
+    await expect(providers.getCredentials('mcp-muster')).resolves.toEqual({
+      token: 'muster-token',
+    });
+    // The raw main ID token must not be forwarded once minting is configured.
+    expect(main.getIdToken).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when minting fails, without falling back to the raw ID token', async () => {
+    const main = oidcApi('main-id-token');
+    const musterTokenProvider = jest.fn().mockRejectedValue(new Error('boom'));
+    const providers = new MCPAuthProviders({}, main, musterTokenProvider);
+
+    await expect(providers.getCredentials('mcp-muster')).resolves.toEqual({});
+    expect(main.getIdToken).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when minting yields no token', async () => {
+    const main = oidcApi('main-id-token');
+    const musterTokenProvider = jest.fn().mockResolvedValue(undefined);
+    const providers = new MCPAuthProviders({}, main, musterTokenProvider);
+
+    await expect(providers.getCredentials('mcp-muster')).resolves.toEqual({});
+  });
+
+  it('still prefers a dedicated provider over minting', async () => {
+    const musterTokenProvider = jest.fn().mockResolvedValue('muster-token');
+    const providers = new MCPAuthProviders(
+      { 'mcp-muster': oauthApi('access-token') },
+      undefined,
+      musterTokenProvider,
+    );
+
+    await expect(providers.getCredentials('mcp-muster')).resolves.toEqual({
+      token: 'access-token',
+    });
+    expect(musterTokenProvider).not.toHaveBeenCalled();
+  });
 });

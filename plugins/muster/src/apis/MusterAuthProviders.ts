@@ -17,6 +17,7 @@ export const musterAuthProvidersApiRef = createApiRef<MusterAuthProvidersApi>({
 export class MusterAuthProviders implements MusterAuthProvidersApi {
   private readonly authProviders: { [providerName: string]: OAuthApi };
   private readonly mainAuthApi?: OpenIdConnectApi;
+  private readonly musterTokenProvider?: () => Promise<string | undefined>;
 
   /**
    * @param authProviders - Dedicated OAuth providers, keyed by `authProvider`
@@ -24,13 +25,22 @@ export class MusterAuthProviders implements MusterAuthProvidersApi {
    * @param mainAuthApi - Optional fallback for provider names without a
    *   dedicated entry: the user's main identity provider, whose ID token is
    *   forwarded as the bearer token (single sign-on, no separate login).
+   * @param musterTokenProvider - Optional minter of a muster-signed session
+   *   token from the main Dex ID token. When set (`gs.musterToken.tokenUrl`
+   *   configured), a provider name without a dedicated entry gets the
+   *   muster-signed token instead of the raw main Dex ID token, so muster's
+   *   outbound exchange accepts it. Minting failure is fail-closed (no token),
+   *   not a fall back to the raw token. The token targets the local muster;
+   *   remote installations in the management UI keep failing on their own Dex.
    */
   constructor(
     authProviders: { [providerName: string]: OAuthApi } = {},
     mainAuthApi?: OpenIdConnectApi,
+    musterTokenProvider?: () => Promise<string | undefined>,
   ) {
     this.authProviders = authProviders;
     this.mainAuthApi = mainAuthApi;
+    this.musterTokenProvider = musterTokenProvider;
   }
 
   async getCredentials(authProvider: string): Promise<MusterAuthCredentials> {
@@ -48,6 +58,15 @@ export class MusterAuthProviders implements MusterAuthProvidersApi {
   }
 
   private async getMainCredentials(): Promise<MusterAuthCredentials> {
+    if (this.musterTokenProvider) {
+      try {
+        const token = await this.musterTokenProvider();
+        return token ? { token } : {};
+      } catch {
+        return {};
+      }
+    }
+
     if (!this.mainAuthApi) {
       return {};
     }

@@ -36,6 +36,30 @@ export interface Config {
       scope?: string;
     };
 
+    /**
+     * Muster's self-issued token endpoint. When set, MCP servers without a
+     * dedicated auth provider (AI chat, muster management UI) present a
+     * muster-signed session token as their bearer instead of the raw main Dex
+     * ID token: the backend exchanges the user's main Dex ID token for a
+     * muster-signed token (RFC 8693, no audience, no client authentication) so
+     * muster's outbound exchange, which only accepts a muster-signed subject,
+     * succeeds. Points at the deployment's local muster.
+     */
+    musterToken?: {
+      /**
+       * OAuth token endpoint of the local muster, e.g.
+       * https://muster.example.com/oauth/token. Its presence enables minting
+       * in the frontend.
+       * @visibility frontend
+       */
+      tokenUrl: string;
+      /**
+       * Optional scope sent with the RFC 8693 exchange request. Usually unset.
+       * @visibility backend
+       */
+      scope?: string;
+    };
+
     /** @deepVisibility frontend */
     clusterDetails?: {
       resources?: {

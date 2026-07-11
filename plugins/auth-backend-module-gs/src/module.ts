@@ -13,6 +13,7 @@ import { OidcAuthResult } from '@backstage/plugin-auth-backend-module-oidc-provi
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
 import { createClusterTokenRouter } from './clusterToken/router';
+import { createMusterTokenRouter } from './musterToken/router';
 import { gsOidcAuthenticator } from './oidc/authenticator';
 import { waitForIssuerMetadata } from './oidc/issuerMetadata';
 
@@ -182,6 +183,18 @@ export const authModuleGsProviders = createBackendModule({
             'Cluster token broker is configured, registering cluster token route',
           );
           httpRouter.use(clusterTokenRouter);
+        }
+
+        const musterTokenRouter = createMusterTokenRouter({
+          config,
+          logger,
+          httpAuth,
+        });
+        if (musterTokenRouter) {
+          logger.info(
+            'Muster token endpoint is configured, registering muster token route',
+          );
+          httpRouter.use(musterTokenRouter);
         }
       },
     });

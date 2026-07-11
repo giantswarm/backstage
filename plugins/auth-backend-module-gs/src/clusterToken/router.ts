@@ -6,48 +6,16 @@ import {
   RootConfigService,
 } from '@backstage/backend-plugin-api';
 import { InputError, NotFoundError } from '@backstage/errors';
+import {
+  DEFAULT_EXPIRES_IN_SECONDS,
+  ID_TOKEN_TYPE,
+  parseOAuthError,
+  SUBJECT_TOKEN_HEADER,
+  TOKEN_EXCHANGE_GRANT_TYPE,
+  TokenExchangeCache,
+} from '../tokenExchange/tokenExchange';
 
-/**
- * Header used by the frontend to forward the user's main Dex ID token, which
- * the broker exchanges for a per-management-cluster token. Backstage does not
- * expose provider sessions server-side, so the token travels alongside the
- * regular Backstage credentials (same pattern the AI chat uses for MCP auth).
- */
-export const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
-
-const TOKEN_EXCHANGE_GRANT_TYPE =
-  'urn:ietf:params:oauth:grant-type:token-exchange';
-const ID_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:id_token';
-
-/**
- * Minimum remaining lifetime before a cached token is re-exchanged. Must be
- * larger than the frontend's session refresh margin (3 minutes in OAuth2's
- * sessionShouldRefresh), so a refresh-triggering request never gets a token
- * that immediately triggers another refresh.
- */
-const EXPIRY_SKEW_SECONDS = 240;
-
-/** Fallback lifetime when the broker response carries no expires_in. */
-const DEFAULT_EXPIRES_IN_SECONDS = 300;
-
-type CachedToken = {
-  token: string;
-  expiresAt: number;
-};
-
-/**
- * Extracts the OAuth 2.0 `error` code (RFC 6749 section 5.2) from a broker
- * error response body. Returns undefined for non-JSON bodies (e.g. an HTML
- * error page from a proxy sitting in front of the broker).
- */
-function parseOAuthError(body: string): string | undefined {
-  try {
-    const parsed = JSON.parse(body) as { error?: unknown };
-    return typeof parsed.error === 'string' ? parsed.error : undefined;
-  } catch {
-    return undefined;
-  }
-}
+export { SUBJECT_TOKEN_HEADER } from '../tokenExchange/tokenExchange';
 
 export interface ClusterTokenRouterOptions {
   config: RootConfigService;
@@ -83,15 +51,7 @@ export function createClusterTokenRouter(
   const clientSecret = brokerConfig.getString('clientSecret');
   const scope = brokerConfig.getOptionalString('scope');
 
-  const tokenCache = new Map<string, CachedToken>();
-
-  const pruneExpired = (now: number) => {
-    for (const [key, value] of tokenCache) {
-      if (value.expiresAt <= now) {
-        tokenCache.delete(key);
-      }
-    }
-  };
+  const tokenCache = new TokenExchangeCache();
 
   const router = Router();
 
@@ -122,15 +82,10 @@ export function createClusterTokenRouter(
       res.setHeader('Cache-Control', 'no-store');
 
       const now = Date.now();
-      pruneExpired(now);
-
       const cacheKey = `${userEntityRef}:${installation}`;
-      const cached = tokenCache.get(cacheKey);
-      if (cached && cached.expiresAt - now > EXPIRY_SKEW_SECONDS * 1000) {
-        res.json({
-          token: cached.token,
-          expiresInSeconds: Math.floor((cached.expiresAt - now) / 1000),
-        });
+      const cached = tokenCache.getFresh(cacheKey, now);
+      if (cached) {
+        res.json(cached);
         return;
       }
 
@@ -266,10 +221,12 @@ export function createClusterTokenRouter(
 
       const expiresInSeconds =
         tokenResponse.expires_in ?? DEFAULT_EXPIRES_IN_SECONDS;
-      tokenCache.set(cacheKey, {
-        token: tokenResponse.access_token,
-        expiresAt: now + expiresInSeconds * 1000,
-      });
+      tokenCache.set(
+        cacheKey,
+        tokenResponse.access_token,
+        expiresInSeconds,
+        now,
+      );
 
       logger.debug(
         `Minted cluster token for ${userEntityRef} on installation "${installation}" (audience "${audience}", expires in ${expiresInSeconds}s)`,
