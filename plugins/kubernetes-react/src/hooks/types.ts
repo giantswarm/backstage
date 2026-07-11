@@ -9,9 +9,7 @@ export type Options = {
 export type QueryOptions<T> = {
   enabled?: boolean;
   refetchInterval?:
-    | number
-    | false
-    | ((query: Query<T>) => number | false | undefined);
+    number | false | ((query: Query<T>) => number | false | undefined);
   staleTime?: number;
   gcTime?: number;
 };

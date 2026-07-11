@@ -146,10 +146,7 @@ export function resolveHostnameCert(
 
       const activeReady = readySeries.find(s => s.value?.[1] === '1');
       const readyCondition = activeReady?.metric.condition as
-        | 'True'
-        | 'False'
-        | 'Unknown'
-        | undefined;
+        'True' | 'False' | 'Unknown' | undefined;
 
       const expirationSeconds = expiration?.value?.[1]
         ? Number(expiration.value[1])

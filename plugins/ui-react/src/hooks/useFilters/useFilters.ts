@@ -71,8 +71,7 @@ export function useFilters<Filters extends DefaultFilters = DefaultFilters>(
       const filtersQueryParams = Object.keys(requestedFilters).reduce(
         (params, key) => {
           const filter = requestedFilters[key as keyof Filters] as
-            | FacetFilter
-            | undefined;
+            FacetFilter | undefined;
           if (filter?.toQueryValue) {
             const queryValue = filter.toQueryValue();
             if (
