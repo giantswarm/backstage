@@ -20,13 +20,54 @@ export interface DiscoveredSkill {
   ref: string;
 }
 
+/** Result of a discovery run. `truncated` is true when GitHub capped the git
+ * tree and some skills may be missing from `skills`. */
+export interface DiscoverAgentSkillsResult {
+  skills: DiscoveredSkill[];
+  truncated: boolean;
+}
+
+/**
+ * A non-2xx response from the GitHub API, carrying the upstream status so the
+ * route can forward it (a 404 repo or 403/429 rate limit is an expected
+ * outcome, not an internal error).
+ */
+export class GitHubApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'GitHubApiError';
+  }
+}
+
 const REPO_URL_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
 
 const SKILL_FILE = 'SKILL.md';
 
+// Cap simultaneous GitHub content requests so a skill-heavy repo doesn't trip
+// GitHub's secondary (abuse) rate limits or exhaust the anonymous quota.
+const CONTENT_FETCH_CONCURRENCY = 5;
+
 interface TreeEntry {
   path: string;
   type: string;
+}
+
+/** Runs `fn` over `items` with at most `limit` in flight, collecting settled
+ * results so one rejection doesn't fail the whole batch. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const batch = items.slice(i, i + limit);
+    results.push(...(await Promise.allSettled(batch.map(fn))));
+  }
+  return results;
 }
 
 /** Splits a `https://github.com/{owner}/{repo}` URL into its parts. */
@@ -64,7 +105,8 @@ async function githubApiFetch(
 
   const response = await fetch(url, { headers });
   if (!response.ok) {
-    throw new Error(
+    throw new GitHubApiError(
+      response.status,
       `GitHub API ${url} returned ${response.status}: ${response.statusText}`,
     );
   }
@@ -113,7 +155,7 @@ export async function discoverAgentSkills(options: {
   githubCredentialsProvider: GithubCredentialsProvider;
   /** Git ref to read; defaults to the repo's default branch. */
   ref?: string;
-}): Promise<DiscoveredSkill[]> {
+}): Promise<DiscoverAgentSkillsResult> {
   const { repoUrl, githubCredentialsProvider, ref } = options;
   const { owner, repo } = parseRepoUrl(repoUrl);
   const canonicalRepoUrl = `https://github.com/${owner}/${repo}`;
@@ -144,8 +186,13 @@ export async function discoverAgentSkills(options: {
     entry => entry.type === 'blob' && isSkillFile(entry.path),
   );
 
-  const skills = await Promise.all(
-    skillFiles.map(async (file): Promise<DiscoveredSkill> => {
+  // Fetch each SKILL.md with bounded concurrency; a single failed read (e.g. a
+  // transient rate limit) drops that one skill rather than failing the whole
+  // discovery.
+  const settled = await mapWithConcurrency(
+    skillFiles,
+    CONTENT_FETCH_CONCURRENCY,
+    async (file): Promise<DiscoveredSkill> => {
       const dir = skillDir(file.path);
       const content = await fetchRawContent(
         owner,
@@ -162,11 +209,25 @@ export async function discoverAgentSkills(options: {
         path: dir,
         ref: branch,
       };
-    }),
+    },
   );
 
-  // Stable order for the picker; also groups nested skills by directory.
-  return skills.sort(
-    (a, b) => a.path.localeCompare(b.path) || a.name.localeCompare(b.name),
-  );
+  const skills = settled
+    .filter(
+      (r): r is PromiseFulfilledResult<DiscoveredSkill> =>
+        r.status === 'fulfilled',
+    )
+    .map(r => r.value)
+    // Stable order for the picker; also groups nested skills by directory.
+    .sort(
+      (a, b) => a.path.localeCompare(b.path) || a.name.localeCompare(b.name),
+    );
+
+  return {
+    skills,
+    // GitHub caps the recursive tree (~100k entries / 7MB); past that some
+    // SKILL.md files are missing, or a content read failed above.
+    truncated:
+      Boolean(tree.truncated) || settled.some(r => r.status === 'rejected'),
+  };
 }

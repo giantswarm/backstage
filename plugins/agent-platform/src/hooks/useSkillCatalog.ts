@@ -15,6 +15,8 @@ export type SkillCatalog = {
   hasRepositories: boolean;
   /** Configured repositories whose discovery failed (surfaced as a warning). */
   failedRepositories: string[];
+  /** True when a repo's listing was capped, so some skills may be missing. */
+  truncated: boolean;
 };
 
 /**
@@ -48,22 +50,27 @@ export function useSkillCatalog(): SkillCatalog {
               `Failed to discover skills in ${repoUrl}: HTTP ${response.status}`,
             );
           }
-          const body = (await response.json()) as { skills: DiscoveredSkill[] };
-          return body.skills;
+          const body = (await response.json()) as {
+            skills: DiscoveredSkill[];
+            truncated?: boolean;
+          };
+          return body;
         }),
       );
 
       const skills: DiscoveredSkill[] = [];
       const failedRepositories: string[] = [];
+      let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
-          skills.push(...result.value);
+          skills.push(...result.value.skills);
+          truncated = truncated || Boolean(result.value.truncated);
         } else {
           failedRepositories.push(repositories[index]);
         }
       });
 
-      return { skills, failedRepositories };
+      return { skills, failedRepositories, truncated };
     },
   });
 
@@ -73,5 +80,6 @@ export function useSkillCatalog(): SkillCatalog {
     error: (error as Error) ?? null,
     hasRepositories: repositories.length > 0,
     failedRepositories: data?.failedRepositories ?? [],
+    truncated: data?.truncated ?? false,
   };
 }

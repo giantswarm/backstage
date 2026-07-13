@@ -4,7 +4,10 @@ import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
 import { fetchGitHubRawContent } from './githubRawContent';
-import { discoverAgentSkills } from './agentSkills/discoverAgentSkills';
+import {
+  discoverAgentSkills,
+  GitHubApiError,
+} from './agentSkills/discoverAgentSkills';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 
@@ -168,6 +171,8 @@ export async function createRouter({
    *
    * Returns:
    * - skills: Array of { name, description, repoUrl, path, ref }
+   * - truncated: true when some skills may be missing (repo too large / a read
+   *   failed)
    */
   router.get('/agent-skills', async (req, res) => {
     const schema = z.object({
@@ -186,13 +191,26 @@ export async function createRouter({
 
     const { repoUrl, ref } = parsed.data;
 
-    const skills = await discoverAgentSkills({
-      repoUrl,
-      ref,
-      githubCredentialsProvider,
-    });
-
-    res.json({ skills });
+    try {
+      const result = await discoverAgentSkills({
+        repoUrl,
+        ref,
+        githubCredentialsProvider,
+      });
+      res.json(result);
+    } catch (error) {
+      // Forward the upstream GitHub status (repo not found → 404, rate limit →
+      // 403/429) rather than letting it surface as a 500 (which the sibling
+      // /github/raw-content route also avoids, keeping Sentry quiet for these
+      // expected outcomes).
+      if (error instanceof GitHubApiError) {
+        res.status(error.status).json({
+          error: { message: `Failed to discover skills: ${error.message}` },
+        });
+        return;
+      }
+      throw error;
+    }
   });
 
   return router;
