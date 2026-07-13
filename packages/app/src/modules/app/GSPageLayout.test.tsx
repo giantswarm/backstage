@@ -35,6 +35,21 @@ describe('GSPageLayout', () => {
     );
   });
 
+  it('resolves absolute hrefs when the sub-route contains encoded characters', async () => {
+    // `location.pathname` stays percent-encoded while the splat param is
+    // decoded; the base path must still resolve to `/flux`, not the deep path.
+    await renderAt('/flux/tree/some%20nested%20id');
+
+    expect(screen.getByRole('tab', { name: 'List view' })).toHaveAttribute(
+      'href',
+      '/flux/list',
+    );
+    expect(screen.getByRole('tab', { name: 'Tree view' })).toHaveAttribute(
+      'href',
+      '/flux/tree',
+    );
+  });
+
   it('marks the tab for the current sub-route as active', async () => {
     await renderAt('/flux/tree');
 

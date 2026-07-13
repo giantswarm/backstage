@@ -24,15 +24,22 @@ export function GSPageLayout(props: PageLayoutProps) {
   const { pathname } = useLocation();
   const params = useParams();
 
+  // Pages that render their own header (clusters/deployments/ai-chat/home)
+  // opt out; skip the tab/base-path work entirely for them.
+  if (noHeader) {
+    return <>{children}</>;
+  }
+
   // The page is mounted at a splat route (e.g. `/flux/*`), so the base path is
-  // the current pathname with the matched remainder removed. Sub-page tab paths
-  // (`list`, `tree`) are relative to that base.
-  const splat = params['*'] ?? '';
-  let basePath =
-    splat && pathname.endsWith(splat)
-      ? pathname.slice(0, pathname.length - splat.length)
-      : pathname;
-  basePath = basePath.replace(/\/+$/, '');
+  // the current pathname with the matched remainder removed. Work by path
+  // *segment* rather than string length: `location.pathname` stays
+  // percent-encoded while `useParams()['*']` is decoded, so comparing lengths
+  // would break on encoded chars — but the `/` separator count is unaffected.
+  const splatSegments = (params['*'] ?? '').split('/').filter(Boolean).length;
+  const segments = pathname.split('/').filter(Boolean);
+  const basePath = `/${segments
+    .slice(0, Math.max(0, segments.length - splatSegments))
+    .join('/')}`;
 
   const headerTabs: HeaderTab[] | undefined = tabs?.map(tab => {
     const cleanPath = tab.href.replace(/^\//, '');
@@ -45,10 +52,6 @@ export function GSPageLayout(props: PageLayoutProps) {
       matchStrategy: 'prefix',
     };
   });
-
-  if (noHeader) {
-    return <>{children}</>;
-  }
 
   return (
     <>
