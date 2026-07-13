@@ -1,18 +1,11 @@
-import {
-  configApiRef,
-  discoveryApiRef,
-  fetchApiRef,
-  useApi,
-} from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import { useApi, configApiRef } from '@backstage/core-plugin-api';
+import { useMemo } from 'react';
 import { load } from 'js-yaml';
+import {
+  useHelmChartTags,
+  useHelmChartValuesYaml,
+} from '@giantswarm/backstage-plugin-gs';
 import { CHART_DEFAULTS } from '../lib/agentDefaults';
-
-// The chart publishes a link to its values.schema.json as an OCI annotation;
-// values.yaml sits next to it. Same annotations the App Deployment flow reads.
-const VALUES_SCHEMA_ANNOTATION = 'io.giantswarm.application.values-schema';
-const DEPRECATED_VALUES_SCHEMA_ANNOTATION =
-  'application.giantswarm.io/values-schema';
 
 export type AgentChart = {
   /** Version to deploy: the latest stable published tag, else the config floor. */
@@ -23,33 +16,21 @@ export type AgentChart = {
   error: Error | null;
 };
 
-/** Splits an `oci://registry/repo/path` URL into registry + repository. */
-function parseOciRef(ociUrl: string): { registry: string; repository: string } {
-  const ref = ociUrl.replace(/^oci:\/\//, '');
-  const slash = ref.indexOf('/');
-  return {
-    registry: ref.slice(0, slash),
-    repository: ref.slice(slash + 1),
-  };
-}
-
 /**
  * Resolves the `agent` chart's deploy version and default system prompt from the
  * OCI registry at runtime, so the create flow tracks the published chart rather
- * than hardcoded values. Reuses the gs-backend container-registry and
- * github/raw-content endpoints (the same logic the App Deployment scaffolder
- * fields use):
+ * than hardcoded values.
  *
- *   tags → latest stable version → tag manifest → values-schema annotation →
- *   values.yaml → agent.systemMessage
+ * Reuses the gs Helm-chart hooks (the same ones behind the App Deployment
+ * scaffolder fields), which own the container-registry + github/raw-content
+ * plumbing and its error handling: `useHelmChartTags` → latest stable tag →
+ * `useHelmChartValuesYaml` → the chart's values.yaml → `agent.systemMessage`.
  *
- * Every step degrades gracefully: the version falls back to the configured
- * floor and the prompt to '' (the user then types their own).
+ * Everything degrades gracefully: the version falls back to the configured
+ * floor and the prompt to '' (the user then keeps the chart's own default).
  */
 export function useAgentChart(): AgentChart {
   const configApi = useApi(configApiRef);
-  const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
 
   const ociUrl =
     configApi.getOptionalString('agentPlatform.chart.ociUrl') ??
@@ -58,87 +39,43 @@ export function useAgentChart(): AgentChart {
     configApi.getOptionalString('agentPlatform.chart.version') ??
     CHART_DEFAULTS.version;
 
-  const { registry, repository } = parseOciRef(ociUrl);
+  // The gs hooks parse the ref themselves (parseChartRef); they expect it
+  // without the oci:// scheme.
+  const chartRef = ociUrl.replace(/^oci:\/\//, '');
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['agent-platform', 'chart', registry, repository],
-    queryFn: async () => {
-      const baseUrl = await discoveryApi.getBaseUrl('gs');
+  const {
+    latestStableVersion,
+    isLoading: tagsLoading,
+    error: tagsError,
+  } = useHelmChartTags(chartRef);
 
-      // 1. Latest stable published tag (fall back to the configured floor).
-      let version = configVersion;
-      const tagsRes = await fetchApi.fetch(
-        `${baseUrl}/container-registry/tags?${new URLSearchParams({
-          registry,
-          repository,
-        })}`,
-      );
-      if (tagsRes.ok) {
-        const tags = (await tagsRes.json()) as {
-          latestStableVersion: string | null;
-        };
-        if (tags.latestStableVersion) {
-          version = tags.latestStableVersion;
-        }
-      }
+  const version = latestStableVersion ?? configVersion;
 
-      // 2. Tag manifest → values-schema annotation → values.yaml URL.
-      const manifestRes = await fetchApi.fetch(
-        `${baseUrl}/container-registry/tag-manifest?${new URLSearchParams({
-          registry,
-          repository,
-          tag: version,
-        })}`,
-      );
-      let defaultSystemMessage = '';
-      if (manifestRes.ok) {
-        const manifest = (await manifestRes.json()) as {
-          annotations: Record<string, string>;
-        };
-        const schemaUrl =
-          manifest.annotations[VALUES_SCHEMA_ANNOTATION] ??
-          manifest.annotations[DEPRECATED_VALUES_SCHEMA_ANNOTATION];
-        const valuesUrl = schemaUrl?.replace(
-          'values.schema.json',
-          'values.yaml',
-        );
+  const {
+    valuesYaml,
+    isLoading: valuesLoading,
+    error: valuesError,
+  } = useHelmChartValuesYaml(chartRef, version);
 
-        // 3. Fetch values.yaml (via the GitHub proxy for private-repo auth when
-        // it lives on raw.githubusercontent.com) and read agent.systemMessage.
-        if (valuesUrl) {
-          const valuesText = await fetchValues(baseUrl, fetchApi, valuesUrl);
-          if (valuesText) {
-            const parsed = load(valuesText) as
-              { agent?: { systemMessage?: string } } | undefined;
-            defaultSystemMessage =
-              parsed?.agent?.systemMessage?.trimEnd() ?? '';
-          }
-        }
-      }
-
-      return { version, defaultSystemMessage };
-    },
-  });
+  const defaultSystemMessage = useMemo(() => {
+    if (!valuesYaml) {
+      return '';
+    }
+    try {
+      const parsed = load(valuesYaml) as
+        { agent?: { systemMessage?: string } } | undefined;
+      return parsed?.agent?.systemMessage?.trimEnd() ?? '';
+    } catch {
+      // A malformed values.yaml shouldn't fail the whole resolution — the
+      // version is still valid and the user can write their own prompt.
+      return '';
+    }
+  }, [valuesYaml]);
 
   return {
-    version: data?.version ?? configVersion,
-    defaultSystemMessage: data?.defaultSystemMessage ?? '',
-    isLoading,
-    error: (error as Error) ?? null,
+    version,
+    defaultSystemMessage,
+    isLoading: tagsLoading || valuesLoading,
+    error: (tagsError as Error) ?? (valuesError as Error) ?? null,
   };
-}
-
-async function fetchValues(
-  baseUrl: string,
-  fetchApi: { fetch: typeof fetch },
-  url: string,
-): Promise<string | null> {
-  if (url.startsWith('https://raw.githubusercontent.com/')) {
-    const res = await fetchApi.fetch(
-      `${baseUrl}/github/raw-content?${new URLSearchParams({ url })}`,
-    );
-    return res.ok ? res.text() : null;
-  }
-  const res = await fetch(url);
-  return res.ok ? res.text() : null;
 }

@@ -25,3 +25,7 @@ export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/C
 export { ResourcesCard as GSHomePageResources } from './components/home/ResourcesCard';
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
 export { useDisabledInstallations } from './components/hooks/useDisabledInstallations';
+// Helm chart OCI resolution (tags + default values from the values-schema
+// annotation), reused by the agent-platform create flow.
+export { useHelmChartTags } from './components/hooks/useHelmChartTags';
+export { useHelmChartValuesYaml } from './components/hooks/useHelmChartValuesYaml';

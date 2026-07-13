@@ -1,56 +1,25 @@
 import { PropsWithChildren } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  configApiRef,
-  discoveryApiRef,
-  fetchApiRef,
-} from '@backstage/core-plugin-api';
+import { renderHook } from '@testing-library/react';
+import { configApiRef } from '@backstage/core-plugin-api';
 import { ConfigReader } from '@backstage/config';
 import { TestApiProvider } from '@backstage/test-utils';
+import {
+  useHelmChartTags,
+  useHelmChartValuesYaml,
+} from '@giantswarm/backstage-plugin-gs';
 import { useAgentChart } from './useAgentChart';
 
-const SCHEMA_URL =
-  'https://raw.githubusercontent.com/giantswarm/agent/v0.2.0/helm/agent/values.schema.json';
+// useAgentChart composes the gs Helm-chart hooks; mock them so the test drives
+// the composition (version fallback + prompt parsing) directly.
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  useHelmChartTags: jest.fn(),
+  useHelmChartValuesYaml: jest.fn(),
+}));
 
-function makeFetch(overrides?: { latestStableVersion?: string | null }) {
-  return jest.fn(async (url: string) => {
-    if (url.includes('/container-registry/tags')) {
-      return {
-        ok: true,
-        json: async () => ({
-          tags: [],
-          latestStableVersion:
-            overrides?.latestStableVersion === undefined
-              ? '0.2.0'
-              : overrides.latestStableVersion,
-        }),
-      } as Response;
-    }
-    if (url.includes('/container-registry/tag-manifest')) {
-      return {
-        ok: true,
-        json: async () => ({
-          annotations: {
-            'io.giantswarm.application.values-schema': SCHEMA_URL,
-          },
-        }),
-      } as Response;
-    }
-    if (url.includes('/github/raw-content')) {
-      // The values.yaml URL is derived from the schema URL.
-      expect(decodeURIComponent(url)).toContain('helm/agent/values.yaml');
-      return {
-        ok: true,
-        text: async () =>
-          'agent:\n  systemMessage: |\n    You are a helpful agent.\n',
-      } as Response;
-    }
-    throw new Error(`unexpected url ${url}`);
-  });
-}
+const mockTags = useHelmChartTags as jest.Mock;
+const mockValues = useHelmChartValuesYaml as jest.Mock;
 
-function renderWith(fetchFn: jest.Mock) {
+function renderWith() {
   const configApi = new ConfigReader({
     agentPlatform: {
       chart: {
@@ -59,49 +28,79 @@ function renderWith(fetchFn: jest.Mock) {
       },
     },
   });
-  const discoveryApi = {
-    getBaseUrl: async () => 'http://backend/api/gs',
-  };
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <QueryClientProvider client={queryClient}>
-      <TestApiProvider
-        apis={[
-          [configApiRef, configApi],
-          [discoveryApiRef, discoveryApi],
-          [fetchApiRef, { fetch: fetchFn }],
-        ]}
-      >
-        {children}
-      </TestApiProvider>
-    </QueryClientProvider>
+    <TestApiProvider apis={[[configApiRef, configApi]]}>
+      {children}
+    </TestApiProvider>
   );
   return renderHook(() => useAgentChart(), { wrapper });
 }
 
-describe('useAgentChart', () => {
-  it('resolves the latest tag and the chart default system prompt', async () => {
-    const { result } = renderWith(makeFetch());
+beforeEach(() => {
+  mockTags.mockReset();
+  mockValues.mockReset();
+});
 
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+describe('useAgentChart', () => {
+  it('resolves the latest tag and the chart default system prompt', () => {
+    mockTags.mockReturnValue({
+      latestStableVersion: '0.2.0',
+      isLoading: false,
+      error: null,
+    });
+    mockValues.mockReturnValue({
+      valuesYaml: 'agent:\n  systemMessage: |\n    You are a helpful agent.\n',
+      isLoading: false,
+      error: null,
+    });
+
+    const { result } = renderWith();
 
     expect(result.current.version).toBe('0.2.0');
     expect(result.current.defaultSystemMessage).toBe(
       'You are a helpful agent.',
     );
-    expect(result.current.error).toBeNull();
+    // The values hook is asked for the resolved version.
+    expect(mockValues).toHaveBeenCalledWith(
+      'gsoci.azurecr.io/charts/giantswarm/agent',
+      '0.2.0',
+    );
   });
 
-  it('falls back to the configured version when no stable tag is published', async () => {
-    const { result } = renderWith(makeFetch({ latestStableVersion: null }));
+  it('falls back to the configured version when no stable tag is published', () => {
+    mockTags.mockReturnValue({
+      latestStableVersion: null,
+      isLoading: false,
+      error: null,
+    });
+    mockValues.mockReturnValue({
+      valuesYaml: null,
+      isLoading: false,
+      error: null,
+    });
 
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    const { result } = renderWith();
 
     expect(result.current.version).toBe('0.1.0');
-    expect(result.current.defaultSystemMessage).toBe(
-      'You are a helpful agent.',
-    );
+    expect(result.current.defaultSystemMessage).toBe('');
+  });
+
+  it('returns an empty prompt (not an error) when values.yaml is malformed', () => {
+    mockTags.mockReturnValue({
+      latestStableVersion: '0.2.0',
+      isLoading: false,
+      error: null,
+    });
+    mockValues.mockReturnValue({
+      valuesYaml: 'agent: [unclosed',
+      isLoading: false,
+      error: null,
+    });
+
+    const { result } = renderWith();
+
+    // The bad prompt lookup must not drop the already-resolved version.
+    expect(result.current.version).toBe('0.2.0');
+    expect(result.current.defaultSystemMessage).toBe('');
   });
 });
