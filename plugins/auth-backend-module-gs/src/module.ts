@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import {
   coreServices,
   createBackendModule,
@@ -10,13 +9,12 @@ import {
   OAuthAuthenticatorResult,
   SignInResolver,
 } from '@backstage/plugin-auth-node';
-import {
-  oidcAuthenticator,
-  OidcAuthResult,
-} from '@backstage/plugin-auth-backend-module-oidc-provider';
+import { OidcAuthResult } from '@backstage/plugin-auth-backend-module-oidc-provider';
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
 import { createClusterTokenRouter } from './clusterToken/router';
+import { gsOidcAuthenticator } from './oidc/authenticator';
+import { waitForIssuerMetadata } from './oidc/issuerMetadata';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -107,41 +105,40 @@ export const authModuleGsProviders = createBackendModule({
         // Broker-only cluster auth (giantswarm#36902): per-cluster oidc-<mc>
         // providers are no longer used for cluster access -- the frontend mints
         // those tokens via the muster cluster-token broker. Only the main SSO
-        // login provider (gs.authProvider) is registered here. Restricting the
-        // loop to it also prevents a stray oidc-<mc> block from stalling startup
-        // on an unreachable Dex's metadata discovery.
+        // login provider (gs.authProvider) is registered here, so a stray
+        // oidc-<mc> block cannot stall startup on an unreachable Dex's
+        // metadata discovery.
         const mainAuthProvider = config.getOptionalString('gs.authProvider');
-        const customOIDCProviders = configuredProviders.filter(
-          provider =>
-            provider.startsWith(OIDC_PROVIDER_NAME_PREFIX) &&
-            provider === mainAuthProvider,
-        );
-        for (const providerName of customOIDCProviders) {
-          try {
-            logger.info(`Configuring auth provider: ${providerName}`);
+        if (
+          mainAuthProvider &&
+          mainAuthProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX) &&
+          configuredProviders.includes(mainAuthProvider)
+        ) {
+          logger.info(`Configuring auth provider: ${mainAuthProvider}`);
 
-            const providerConfig = providersConfig
-              .getConfig(providerName)
-              .getConfig(config.getString('auth.environment'));
-            const metadataUrl = providerConfig.getString('metadataUrl');
-            const response = await fetch(new URL(metadataUrl));
-            if (!response.ok) {
-              throw new Error(response.statusText);
-            }
+          const providerConfig = providersConfig
+            .getConfig(mainAuthProvider)
+            .getConfig(config.getString('auth.environment'));
+          const metadataUrl = providerConfig.getString('metadataUrl');
 
-            providersExtensionPoint.registerProvider({
-              providerId: providerName,
-              factory: createOAuthProviderFactory({
-                authenticator: oidcAuthenticator,
-                signInResolver: customSignInResolver,
-              }),
-            });
-          } catch (err) {
-            logger.error(
-              `Failed to fetch issuer metadata for ${providerName} auth provider`,
-            );
-            logger.error((err as Error).toString());
-          }
+          // The main login provider is required: a portal without login is
+          // unusable, and skipping registration here would serve 404s on
+          // every login until the pod is manually restarted. Retry to absorb
+          // transient Dex unavailability, then let the error fail startup so
+          // the orchestrator restarts the backend until Dex is reachable.
+          await waitForIssuerMetadata(mainAuthProvider, metadataUrl, logger);
+
+          providersExtensionPoint.registerProvider({
+            providerId: mainAuthProvider,
+            factory: createOAuthProviderFactory({
+              // gsOidcAuthenticator wraps the upstream oidc authenticator so
+              // that a discovery failure after this point (e.g. Dex flapping
+              // between the check above and the first login) is retried per
+              // request instead of being cached for the process lifetime.
+              authenticator: gsOidcAuthenticator,
+              signInResolver: customSignInResolver,
+            }),
+          });
         }
 
         const customMCPProviders = configuredProviders.filter(provider =>

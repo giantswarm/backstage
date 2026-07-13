@@ -1,8 +1,5 @@
 export type AutoUpgradeMode =
-  | 'no-upgrades'
-  | 'patch-upgrades'
-  | 'minor-upgrades'
-  | 'major-upgrades';
+  'no-upgrades' | 'patch-upgrades' | 'minor-upgrades' | 'major-upgrades';
 
 const autoUpgradeLabels: Record<AutoUpgradeMode, string> = {
   'no-upgrades': 'None',

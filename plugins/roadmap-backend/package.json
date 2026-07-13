@@ -1,0 +1,49 @@
+{
+  "name": "@giantswarm/backstage-plugin-roadmap-backend",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "publishConfig": {
+    "access": "public",
+    "main": "dist/index.cjs.js",
+    "types": "dist/index.d.ts"
+  },
+  "configSchema": "config.d.ts",
+  "backstage": {
+    "role": "backend-plugin",
+    "pluginId": "roadmap"
+  },
+  "scripts": {
+    "start": "backstage-cli package start",
+    "build": "backstage-cli package build",
+    "lint": "backstage-cli package lint",
+    "test": "backstage-cli package test --watchAll=false",
+    "clean": "backstage-cli package clean",
+    "prepack": "backstage-cli package prepack",
+    "postpack": "backstage-cli package postpack"
+  },
+  "dependencies": {
+    "@backstage/backend-plugin-api": "backstage:^",
+    "@backstage/config": "backstage:^",
+    "@backstage/errors": "backstage:^",
+    "@backstage/integration": "backstage:^",
+    "@giantswarm-io/pro": "^1.7.0",
+    "express": "^5.0.0",
+    "express-promise-router": "^4.1.0"
+  },
+  "devDependencies": {
+    "@backstage/backend-defaults": "backstage:^",
+    "@backstage/backend-test-utils": "backstage:^",
+    "@backstage/cli": "backstage:^",
+    "@backstage/types": "backstage:^",
+    "@types/express": "^5.0.0",
+    "@types/supertest": "^7.0.0",
+    "supertest": "^7.0.0"
+  },
+  "files": [
+    "dist",
+    "config.d.ts"
+  ]
+}

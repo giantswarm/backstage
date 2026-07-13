@@ -1,0 +1,1 @@
+export { MergedTab } from './MergedTab';

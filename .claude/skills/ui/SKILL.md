@@ -42,7 +42,10 @@ Common primitives already in the codebase (import from `@backstage/ui`):
 - **Overlay/menu**: `Tooltip`, `TooltipTrigger`, `MenuTrigger`, `Menu`, `MenuItem`
 - **Data display**: `Table` + `Cell` / `CellText` / `ColumnConfig`, `List`, `ListRow`, `Avatar`
 - **Page chrome**: `PluginHeader`, `Header` (the two-tier header pattern — plugin-level
-  `PluginHeader` above an entity-level `Header`)
+  `PluginHeader` above an entity-level `Header`). NFS page headers and
+  `SubPageBlueprint` tabs are rendered by the custom `GSPageLayout` swappable
+  component, not directly — see "Page headers and tabs" in `docs/ui.md` before
+  building a tabbed page.
 
 ### Cards: use the shared `InfoCard` wrapper
 

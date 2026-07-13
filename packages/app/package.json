@@ -61,6 +61,8 @@
     "@giantswarm/backstage-plugin-gs": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-muster": "workspace:^",
+    "@giantswarm/backstage-plugin-plans": "workspace:^",
+    "@giantswarm/backstage-plugin-roadmap": "workspace:^",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "@pagerduty/backstage-plugin": "^0.20.0",
@@ -73,7 +75,7 @@
     "history": "^5.0.0",
     "react": "^18.0.2",
     "react-dom": "^18.0.2",
-    "react-router-dom": "^6.3.0",
+    "react-router-dom": "^7.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

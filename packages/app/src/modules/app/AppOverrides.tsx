@@ -10,10 +10,12 @@ import {
   analyticsApiRef,
   ApiBlueprint,
   AppRootElementBlueprint,
+  PageLayout,
 } from '@backstage/frontend-plugin-api';
 import {
   IconBundleBlueprint,
   SignInPageBlueprint,
+  SwappableComponentBlueprint,
   ThemeBlueprint,
 } from '@backstage/plugin-app-react';
 import DarkIcon from '@material-ui/icons/Brightness2';
@@ -53,6 +55,7 @@ import {
 } from '../../assets/icons/CustomIcons';
 import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
+import { GSPageLayout } from './GSPageLayout';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -180,6 +183,21 @@ export const appOverrides = createFrontendModule({
       params: {
         element: <BrandingFavicon />,
       },
+    }),
+    /**
+     * Override the NFS `PageLayout` swappable component so every page header —
+     * and, crucially, the sub-page tabs rendered by `PageBlueprint` (flux
+     * list/tree, muster, …) — uses the bui `PluginHeader` with absolute tab
+     * links and active-state highlighting, instead of the upstream stub whose
+     * relative `<a href>` tabs break navigation.
+     */
+    SwappableComponentBlueprint.make({
+      name: 'page-layout',
+      params: define =>
+        define({
+          component: PageLayout,
+          loader: () => GSPageLayout,
+        }),
     }),
     /**
      * Override the built-in `theme:app/light` and `theme:app/dark` extensions

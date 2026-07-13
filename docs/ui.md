@@ -21,6 +21,38 @@ There are three UI layers in this repo, in order of preference for new work:
 Mixing all three in one file is normal during the migration. Reach for bui
 first and fall back only when a piece is missing.
 
+## Page headers and tabs (New Frontend System)
+
+Every NFS page header is rendered by a **custom `PageLayout` swappable
+component**, `GSPageLayout`
+(`packages/app/src/modules/app/GSPageLayout.tsx`), registered in
+`AppOverrides.tsx` via `SwappableComponentBlueprint`. It wraps the bui
+`PluginHeader`, so page titles and tabs get the bui look plus active-tab
+highlighting.
+
+`PageBlueprint` uses this component for the header of **every** page, and — when
+a page has `SubPageBlueprint` sub-pages — to render those sub-pages as **tabs**
+(e.g. the flux `list`/`tree` tabs, the muster section). Backstage ships only a
+stub default for `PageLayout`; **if `GSPageLayout` is removed the app falls back
+to that stub, whose tabs are plain relative `<a href="list">` anchors with no
+active state.** That regresses tabbed pages: from `/flux/list`, clicking a tab
+appends (`/flux/list/tree`) instead of switching, and no tab is highlighted.
+`GSPageLayout` fixes this by turning each sub-page's relative `path` into an
+absolute href.
+
+Guidelines when building pages:
+
+- **Tabbed pages** — declare a `PageBlueprint` (no loader) plus one
+  `SubPageBlueprint` per tab, each with a **relative** `path` (`list`, `tree`).
+  Keep the paths relative; `GSPageLayout` resolves them. See
+  `plugins/flux/src/plugin.tsx` and `plugins/muster/src/plugin.tsx`.
+- **Pages that render their own bui `PluginHeader`** (e.g. the clusters and
+  deployments sections, which use the `useLayoutTabs` hook in `plugins/gs`)
+  must pass `noHeader: true` to `PageBlueprint` so `GSPageLayout` skips its
+  header and just renders the content — otherwise you get a double header.
+- Do **not** reintroduce a classic `<Page>`/`<Header>` scaffold on an NFS page;
+  it causes a double scrollbar and duplicate header under the app shell.
+
 ## Storybook
 
 The [Backstage Storybook](https://backstage.io/storybook/) allows to explore the

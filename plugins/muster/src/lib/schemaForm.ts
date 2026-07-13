@@ -25,12 +25,7 @@ export interface SchemaField {
 
 /** The kind of widget a field renders as. */
 export type FieldKind =
-  | 'boolean'
-  | 'enum'
-  | 'json'
-  | 'number'
-  | 'array'
-  | 'text';
+  'boolean' | 'enum' | 'json' | 'number' | 'array' | 'text';
 
 /** A form value: scalar text/boolean, or a list of row strings for arrays. */
 export type FormValue = string | boolean | string[];

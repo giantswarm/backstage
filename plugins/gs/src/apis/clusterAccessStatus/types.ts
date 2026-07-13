@@ -9,10 +9,7 @@ import { createApiRef } from '@backstage/core-plugin-api';
  * list every covered installation immediately instead of waiting for a result.
  */
 export type ClusterAccessState =
-  | 'connecting'
-  | 'healthy'
-  | 'degraded'
-  | 'session-expired';
+  'connecting' | 'healthy' | 'degraded' | 'session-expired';
 
 export type ClusterAccessStatusEntry = {
   installation: string;
