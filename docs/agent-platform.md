@@ -130,6 +130,30 @@ is no pull request. The path:
 4. On success the user is sent to the scaffolder task page for the live apply
    logs.
 
+### Shared OCIRepository per namespace
+
+The `OCIRepository` is named after the chart (`agent`), **not** the agent — so
+every agent deployed into a namespace generates the same one, while each agent
+gets its own `HelmRelease` (named after the slug). The model is therefore **one
+shared `OCIRepository/agent` per namespace, many HelmReleases**.
+
+This is safe on re-deploy: `kube:apply` reads each resource and patches it if it
+exists (else creates it), so a second agent's deploy re-applies an identical
+`OCIRepository/agent` as a no-op patch — no `AlreadyExists` error, no duplicate.
+It works because all agents pin the same chart source and `semver: "x.x.x"`
+range, so the shared source is uniform.
+
+Two consequences to keep in mind:
+
+- **Deletion must not remove the shared OCIRepository.** A future "delete agent"
+  flow should only delete that agent's `HelmRelease`; `OCIRepository/agent` is
+  still referenced by any other agents in the namespace. Remove it only when the
+  last agent in the namespace is gone (or leave it).
+- **Per-agent chart versions aren't expressible.** The sharing relies on every
+  agent tracking the same range. If a specific agent ever needed a different
+  chart version, it would need its own OCIRepository (e.g. named after the slug).
+  Not a concern under the current always-latest approach.
+
 ### The `agent-deployment` template
 
 `catalog/templates/agent-deployment/template.yaml` is a thin wrapper around
@@ -247,7 +271,9 @@ above). What remains is a separate, deeper concern:
   `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD/chart but the
   create flow doesn't set it); (2) discovery reads a repo's **default branch** and
   doesn't expose per-skill version/`ref` selection in the UI.
-- **Agent list / management view.** Only the create flow exists so far.
+- **Agent list / management view.** Only the create flow exists so far. A delete
+  action must respect the shared `OCIRepository/agent` (see "Shared OCIRepository
+  per namespace") — delete only the agent's `HelmRelease`, not the shared source.
 - **Main menu entry + landing page.** The plugin is not yet surfaced in the main
   sidebar menu. Adding it requires deciding **what page the entry leads to** —
   there is no landing page yet (only the create flow and a minimal index). The
