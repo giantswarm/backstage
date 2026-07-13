@@ -340,21 +340,11 @@ export function NewAgentReviewPage() {
               </div>
             </details>
 
-            {!serviceAccountName && (
-              <Box mt="3">
-                <Alert
-                  status="warning"
-                  title="No deploy ServiceAccount configured"
-                  description="Deploying into a tenant namespace requires agentPlatform.fluxServiceAccountName (GS Flux multi-tenancy). Without it the apply is rejected by admission policy — set it in app-config, or use the manual install below."
-                />
-              </Box>
-            )}
-
             <Box mt="3">
               <Alert
                 status="warning"
-                title="Deploying is not fully wired up yet"
-                description="The agent chart is published and auto-upgrades via a semver range, but reconcile still depends on the deploy ServiceAccount having install RBAC in the target namespace (the canonical identity is an open decision) and on the chart's default muster gateway wiring. A deploy may create the resources without producing a running agent yet."
+                title="The muster gateway isn't fully configured yet"
+                description="The chart wires the shared muster gateway by default, but the create flow doesn't set the per-installation muster.stsWellKnownUri, so a freshly deployed agent may not reach its tools until that's provided."
               />
             </Box>
           </div>
