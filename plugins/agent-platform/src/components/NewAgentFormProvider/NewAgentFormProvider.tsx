@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from 'react';
 
-import { DEFAULT_SYSTEM_PROMPT } from '../../lib/agentDefaults';
 import { slugify } from '../../lib/slugify';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 
@@ -30,6 +29,12 @@ export type NewAgentFormContextValue = {
   setInstallation: (installation: string | undefined) => void;
   selectModelConfig: (name: string, namespace: string) => void;
   setSystemMessage: (systemMessage: string) => void;
+  /**
+   * Seeds the system prompt from the chart's default, but only while the user
+   * hasn't edited it — so the resolved chart default fills the field without
+   * clobbering a prompt the user has started writing.
+   */
+  applyDefaultSystemMessage: (systemMessage: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
   reset: () => void;
@@ -44,7 +49,8 @@ const initialState: NewAgentFormState = {
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
-  systemMessage: DEFAULT_SYSTEM_PROMPT,
+  // Seeded from the chart's default at runtime (see applyDefaultSystemMessage).
+  systemMessage: '',
   selectedSkills: [],
 };
 
@@ -56,6 +62,8 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<NewAgentFormState>(initialState);
   // The slug auto-derives from the name until the user edits it by hand.
   const [slugEdited, setSlugEdited] = useState(false);
+  // The system prompt seeds from the chart default until the user edits it.
+  const [systemMessageEdited, setSystemMessageEdited] = useState(false);
 
   const value = useMemo<NewAgentFormContextValue>(() => {
     const isComplete = Boolean(
@@ -96,8 +104,14 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
           modelConfigName: name,
           modelConfigNamespace: namespace,
         })),
-      setSystemMessage: systemMessage =>
-        setState(prev => ({ ...prev, systemMessage })),
+      setSystemMessage: systemMessage => {
+        setSystemMessageEdited(true);
+        setState(prev => ({ ...prev, systemMessage }));
+      },
+      applyDefaultSystemMessage: systemMessage =>
+        setState(prev =>
+          systemMessageEdited ? prev : { ...prev, systemMessage },
+        ),
       toggleSkill: skill =>
         setState(prev => {
           const id = skillId(skill);
@@ -111,11 +125,12 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         }),
       reset: () => {
         setSlugEdited(false);
+        setSystemMessageEdited(false);
         setState(initialState);
       },
       isComplete,
     };
-  }, [state, slugEdited]);
+  }, [state, slugEdited, systemMessageEdited]);
 
   return (
     <NewAgentFormContext.Provider value={value}>

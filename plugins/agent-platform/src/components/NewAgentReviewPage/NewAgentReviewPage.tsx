@@ -18,6 +18,7 @@ import AndroidIcon from '@material-ui/icons/Android';
 
 import { CHART_DEFAULTS } from '../../lib/agentDefaults';
 import { composeManifests } from '../../lib/composeManifests';
+import { useAgentChart } from '../../hooks/useAgentChart';
 import { useDeployAgent } from '../../hooks/useDeployAgent';
 import { newAgentRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
@@ -113,9 +114,12 @@ export function NewAgentReviewPage() {
   const ap = configApi.getOptionalConfig('agentPlatform');
   const chartOciUrl =
     ap?.getOptionalString('chart.ociUrl') ?? CHART_DEFAULTS.ociUrl;
-  const chartVersion =
-    ap?.getOptionalString('chart.version') ?? CHART_DEFAULTS.version;
   const serviceAccountName = ap?.getOptionalString('fluxServiceAccountName');
+
+  // Deploy the latest published chart version (resolved from the registry;
+  // falls back to the configured floor). Shares useAgentChart's query cache
+  // with the create form.
+  const { version: chartVersion } = useAgentChart();
 
   // Reaching review with an incomplete form means a deep link or a reset —
   // send the user back to fill it in.

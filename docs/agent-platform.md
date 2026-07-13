@@ -87,6 +87,23 @@ We deliberately deviate from the prototype's 3-file/ConfigMap model: the
 prototype's `HelmRelease` referenced a `ConfigMap` that was never generated, so
 we inline the values instead (the common self-contained Flux pattern).
 
+### Chart resolution
+
+Rather than hardcoding a chart version or a default system prompt, `useAgentChart`
+resolves both from the published `agent` chart at runtime — reusing the same
+gs-backend endpoints the App Deployment scaffolder fields use:
+
+1. `container-registry/tags` → the **latest stable tag**, which is what the
+   deploy pins (falling back to the configured `chart.version` floor).
+2. `container-registry/tag-manifest` → the `io.giantswarm.application.values-schema`
+   annotation → the chart's `values.yaml` (fetched via `github/raw-content`) →
+   its `agent.systemMessage`, which **seeds the form's system-prompt default**
+   (until the user edits it). The chart's default is deliberately minimal today
+   but can grow without a UI change.
+
+Each step degrades gracefully: the version falls back to config and the prompt
+to empty (the user then writes their own).
+
 ## Direct apply via scaffolder
 
 Deploying **applies the resources directly** to the selected installation — there
@@ -144,8 +161,8 @@ All under `agentPlatform` (see `plugins/agent-platform/config.d.ts`):
 
 | Key                      | Purpose                                                                                              |
 | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `chart.ociUrl`           | OCI URL of the agent chart (no tag). Provisional.                                                    |
-| `chart.version`          | Chart version the manifests pin to. Provisional.                                                     |
+| `chart.ociUrl`           | OCI URL of the agent chart (no tag).                                                                 |
+| `chart.version`          | Version floor / fallback. The deploy pins the latest published tag resolved at runtime.              |
 | `fluxServiceAccountName` | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional. |
 | `deployTemplateRef`      | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                  |
 | `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                               |
@@ -156,15 +173,14 @@ The plugin's page and nav item are enabled via `app.extensions` in
 ## Provisional / placeholder aspects
 
 The manifests target the **`agent` chart** (`github.com/giantswarm/agent`,
-`helm/agent`). Its values schema is settled and the generated values follow it —
-`agent` (name/displayName/description/systemMessage), top-level `modelConfig.name`
+`helm/agent`, published at `oci://gsoci.azurecr.io/charts/giantswarm/agent`). Its
+values schema is settled and the generated values follow it — `agent`
+(name/displayName/description/systemMessage), top-level `modelConfig.name`
 (resolved in the agent's own namespace, so no namespace is passed), and top-level
-`skills.gitRefs`. What is still provisional:
+`skills.gitRefs`. The deploy version and default system prompt are resolved from
+the published chart at runtime (see "Chart resolution"). What is still
+provisional:
 
-- **Not released to the OCI registry yet** (chart version is `0.0.0-dev`, no
-  tags). So the OCI URL is real but the pinned **version** is a placeholder, and
-  a deploy will pass admission and create both resources but the `HelmRelease`
-  will **not reconcile** until the chart is published.
 - The chart enables the **muster gateway by default** (`muster.enabled: true`),
   which references a `RemoteMCPServer` named `muster` in `agentic-platform` and
   expects a per-installation `muster.stsWellKnownUri`. The create flow does not
@@ -202,10 +218,6 @@ above). What remains is a separate, deeper concern:
   ServiceAccount and its RBAC** — provisioned per target namespace so Flux can
   actually install agent charts — is an open platform decision. Until then,
   reconciliation cannot succeed even with a real chart.
-- **`agent` chart release.** The chart (`giantswarm/agent`) exists and its values
-  schema is settled, but it is not published to the OCI registry yet
-  (`0.0.0-dev`, no tags). The deploy cannot reconcile until it is released and a
-  real version is pinned via `agentPlatform.chart.version`.
 - **muster defaults.** The chart wires the muster gateway by default; the create
   flow doesn't set the per-installation `muster.stsWellKnownUri` (or opt out via
   `extraAgentSpec`/config), so this needs revisiting once agents actually run.

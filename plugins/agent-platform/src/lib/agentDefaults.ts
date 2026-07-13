@@ -1,14 +1,6 @@
-// The system message a freshly-created agent starts from, taken verbatim from
-// the general-purpose-agent chart default (mirrors the APUI prototype's
-// DEFAULT_SYSTEM_PROMPT). Users edit it to fit the agent's role.
-export const DEFAULT_SYSTEM_PROMPT = `You are a capable, general-purpose agent operating inside Giant Swarm's platform.
-
-- Read the request carefully and restate the goal before acting.
-- Reach for the simplest approach that fits; add structure only when the task earns it.
-- Prefer primary/official sources and cite what you relied on.
-- Ask a clarifying question when the prompt is genuinely ambiguous rather than guessing.
-- You reach external systems through the Muster gateway — discover the right tool before assuming one exists.
-- Stop and report when you are blocked or the next step is destructive.`;
+// The system prompt a freshly-created agent starts from is not hardcoded here:
+// it is pulled from the chart's default `agent.systemMessage` at runtime (see
+// useAgentChart), so the create flow tracks the published chart.
 
 // The `agent` chart (github.com/giantswarm/agent), published at
 // oci://gsoci.azurecr.io/charts/giantswarm/agent. These are the fallbacks when

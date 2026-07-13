@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -14,8 +15,8 @@ import {
 import { makeStyles } from '@material-ui/core';
 import AndroidIcon from '@material-ui/icons/Android';
 
-import { DEFAULT_SYSTEM_PROMPT } from '../../lib/agentDefaults';
 import { newAgentReviewRouteRef, rootRouteRef } from '../../routes';
+import { useAgentChart } from '../../hooks/useAgentChart';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
@@ -91,8 +92,18 @@ function NewAgentPageContent() {
     setSlug,
     setDescription,
     setSystemMessage,
+    applyDefaultSystemMessage,
     isComplete,
   } = useNewAgentForm();
+
+  // Seed the system prompt from the chart's default once it resolves (unless
+  // the user has already started editing — applyDefaultSystemMessage guards it).
+  const { defaultSystemMessage, isLoading: isChartLoading } = useAgentChart();
+  useEffect(() => {
+    if (defaultSystemMessage) {
+      applyDefaultSystemMessage(defaultSystemMessage);
+    }
+  }, [defaultSystemMessage, applyDefaultSystemMessage]);
 
   const actions = (
     <Flex gap="2">
@@ -190,7 +201,10 @@ function NewAgentPageContent() {
                     onChange={setSystemMessage}
                     rows={10}
                     mono
-                    description="The agent's system message. Starts from the general-purpose default — edit it to fit the role."
+                    placeholder={
+                      isChartLoading ? 'Loading the chart default…' : undefined
+                    }
+                    description="The agent's system message. Starts from the chart's default — edit it to fit the role."
                   />
                   <InstallationSelect />
                   <ModelConfigPicker />
@@ -214,6 +228,3 @@ function NewAgentPageContent() {
     </>
   );
 }
-
-// Re-exported for convenience in tests / stories.
-export { DEFAULT_SYSTEM_PROMPT };
