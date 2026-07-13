@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -93,27 +93,34 @@ function NewAgentPageContent() {
     setSlug,
     setDescription,
     setSystemMessage,
-    applyDefaultSystemMessage,
-    missingRequired,
+    validationErrors,
   } = useNewAgentForm();
 
   // Show validation feedback only once the user has tried to proceed, so the
   // form doesn't shout about empty fields before they've done anything.
   const [showValidation, setShowValidation] = useState(false);
 
-  // Seed the system prompt from the chart's default once it resolves (unless
-  // the user has already started editing — applyDefaultSystemMessage guards it).
+  // Seed the system prompt from the chart's default the first time it resolves,
+  // and only while the field is still untouched — a ref makes this a one-shot so
+  // it never fights the user's edits or loops.
   const { defaultSystemMessage, isLoading: isChartLoading } = useAgentChart();
+  const seededPrompt = useRef(false);
   useEffect(() => {
-    if (defaultSystemMessage) {
-      applyDefaultSystemMessage(defaultSystemMessage);
+    if (!seededPrompt.current && defaultSystemMessage) {
+      seededPrompt.current = true;
+      if (!state.systemMessage) {
+        setSystemMessage(defaultSystemMessage);
+      }
     }
-  }, [defaultSystemMessage, applyDefaultSystemMessage]);
+    // Runs once when defaultSystemMessage first becomes available; the ref guards
+    // re-entry, so state.systemMessage is intentionally read but not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultSystemMessage]);
 
-  // The submit button stays enabled: clicking it with missing fields surfaces
+  // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
   const onReview = () => {
-    if (missingRequired.length > 0) {
+    if (validationErrors.length > 0) {
       setShowValidation(true);
       return;
     }
@@ -236,13 +243,11 @@ function NewAgentPageContent() {
                     The next step composes the Helm values and manifests so you
                     can review them before the agent is deployed.
                   </Text>
-                  {showValidation && missingRequired.length > 0 && (
+                  {showValidation && validationErrors.length > 0 && (
                     <Alert
                       status="danger"
-                      title="Some required fields are missing"
-                      description={`Fill these in before continuing: ${missingRequired.join(
-                        ', ',
-                      )}.`}
+                      title="Please fix the following before continuing"
+                      description={validationErrors.join('. ')}
                     />
                   )}
                   {actions}

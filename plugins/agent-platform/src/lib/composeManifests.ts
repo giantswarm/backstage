@@ -12,9 +12,14 @@
 // referencing a ConfigMap (the prototype's dangling reference), which is the
 // common self-contained Flux pattern. The values follow the `agent` chart's
 // schema (github.com/giantswarm/agent, helm/agent): `agent`, `modelConfig` and
-// `skills` are top-level keys. The chart isn't released to the OCI registry
-// yet, so the URL/version are provisional even though the values shape is now
-// authoritative.
+// `skills` are top-level keys.
+//
+// Manifests are built as plain objects and serialized with `yaml.dump`, never
+// by string concatenation — js-yaml handles quoting, escaping and (critically)
+// block-scalar indentation, so arbitrary system prompts can't produce invalid
+// YAML.
+
+import { dump } from 'js-yaml';
 
 export type AgentModel = {
   /** Display name (agent.displayName). */
@@ -104,106 +109,94 @@ export const CHART_NAME = 'agent';
 // (GS "major upgrades" convention: every position is a wildcard).
 const CHART_SEMVER_RANGE = 'x.x.x';
 
-/** Double-quoted YAML scalar with JSON-compatible escaping. */
-function quote(value: string): string {
-  return JSON.stringify(value);
-}
-
-/** Indent every non-empty line of a block by `spaces`. */
-function indent(block: string, spaces: number): string {
-  const pad = ' '.repeat(spaces);
-  return block
-    .split('\n')
-    .map(line => (line.length ? pad + line : line))
-    .join('\n');
-}
-
-/** Renders a multi-line string as a `|-` block scalar body, indented. */
-function blockScalarBody(value: string, spaces: number): string {
-  const pad = ' '.repeat(spaces);
-  return value
-    .split('\n')
-    .map(line => (line.length ? pad + line : ''))
-    .join('\n');
-}
+// lineWidth: -1 disables line wrapping so URLs/prompts aren't folded; noRefs
+// avoids YAML anchors for repeated values.
+const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 
 /**
- * The chart values, starting at column 0. Follows the `agent` chart's schema:
- * `agent`, `modelConfig` and `skills` are top-level (each forbids extra keys).
+ * The chart values object. Follows the `agent` chart's schema: `agent`,
+ * `modelConfig` and `skills` are top-level (each forbids extra keys).
  */
-function buildAgentValues(model: AgentModel): string {
-  const lines: string[] = [];
-  lines.push('agent:');
-  // Pin the technical (CR) name to the slug so it doesn't depend on Flux's
-  // release-name derivation; the chart would otherwise default it.
-  lines.push(`  name: ${quote(model.slug)}`);
-  lines.push(`  displayName: ${quote(model.name)}`);
-  lines.push(`  description: ${quote(model.description)}`);
+function buildValues(model: AgentModel): Record<string, unknown> {
+  const agent: Record<string, unknown> = {
+    // Pin the technical (CR) name to the slug so it doesn't depend on Flux's
+    // release-name derivation; the chart would otherwise default it.
+    name: model.slug,
+    displayName: model.name,
+  };
+  if (model.description.trim()) {
+    agent.description = model.description;
+  }
   // Only override the prompt when the user provided one; an empty field means
   // "use the chart's default agent.systemMessage" (and the chart requires a
   // non-empty value, so we must not emit an empty one).
   if (model.systemMessage.trim()) {
-    lines.push('  systemMessage: |-');
-    lines.push(blockScalarBody(model.systemMessage, 4));
+    agent.systemMessage = model.systemMessage;
   }
-  lines.push('modelConfig:');
-  lines.push(`  name: ${quote(model.modelConfigName)}`);
+
+  const values: Record<string, unknown> = {
+    agent,
+    modelConfig: { name: model.modelConfigName },
+  };
+
   // skills is optional and gitRefs requires ≥1 entry, so the whole block is
   // omitted when no skills are selected.
   if (model.skills.length > 0) {
-    lines.push('skills:');
-    lines.push('  gitRefs:');
-    for (const skill of model.skills) {
-      lines.push(`    - url: ${quote(skill.url)}`);
-      if (skill.path) {
-        lines.push(`      path: ${quote(skill.path)}`);
-      }
-      if (skill.ref) {
-        lines.push(`      ref: ${quote(skill.ref)}`);
-      }
-      lines.push(`      name: ${quote(skill.name)}`);
-    }
+    values.skills = {
+      gitRefs: model.skills.map(skill => ({
+        url: skill.url,
+        ...(skill.path ? { path: skill.path } : {}),
+        ...(skill.ref ? { ref: skill.ref } : {}),
+        name: skill.name,
+      })),
+    };
   }
-  return `${lines.join('\n')}\n`;
+
+  return values;
 }
 
 function buildHelmRelease(
   model: AgentModel,
   ctx: DeployContext,
-  agentValues: string,
+  values: Record<string, unknown>,
 ): string {
+  const spec: Record<string, unknown> = { interval: '10m' };
   // Required by the flux-multi-tenancy admission policy in tenant namespaces.
-  const serviceAccountLine = ctx.serviceAccountName
-    ? `  serviceAccountName: ${ctx.serviceAccountName}\n`
-    : '';
-  return `apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: ${model.slug}
-  namespace: ${ctx.namespace}
-spec:
-  interval: 10m
-${serviceAccountLine}  chartRef:
-    kind: OCIRepository
-    name: ${CHART_NAME}
-    namespace: ${ctx.namespace}
-  values:
-${indent(agentValues.trimEnd(), 4)}
-`;
+  if (ctx.serviceAccountName) {
+    spec.serviceAccountName = ctx.serviceAccountName;
+  }
+  spec.chartRef = {
+    kind: 'OCIRepository',
+    name: CHART_NAME,
+    namespace: ctx.namespace,
+  };
+  spec.values = values;
+
+  return dump(
+    {
+      apiVersion: 'helm.toolkit.fluxcd.io/v2',
+      kind: 'HelmRelease',
+      metadata: { name: model.slug, namespace: ctx.namespace },
+      spec,
+    },
+    YAML_OPTS,
+  );
 }
 
 function buildOCIRepository(ctx: DeployContext): string {
-  return `apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: ${CHART_NAME}
-  namespace: ${ctx.namespace}
-spec:
-  interval: 30m
-  url: ${ctx.chartOciUrl}
-  ref:
-    semver: "${CHART_SEMVER_RANGE}"
-`;
+  return dump(
+    {
+      apiVersion: 'source.toolkit.fluxcd.io/v1',
+      kind: 'OCIRepository',
+      metadata: { name: CHART_NAME, namespace: ctx.namespace },
+      spec: {
+        interval: '30m',
+        url: ctx.chartOciUrl,
+        ref: { semver: CHART_SEMVER_RANGE },
+      },
+    },
+    YAML_OPTS,
+  );
 }
 
 function buildHelmInstall(model: AgentModel, ctx: DeployContext): string {
@@ -219,13 +212,14 @@ export function composeManifests(
   model: AgentModel,
   ctx: DeployContext,
 ): ComposedManifests {
-  const valuesYaml = buildAgentValues(model);
+  const values = buildValues(model);
+  const valuesYaml = dump(values, YAML_OPTS);
   const dir = `clusters/${ctx.installation}/${ctx.namespace}`;
 
   const helmReleaseFile: ComposedFile = {
     path: `${dir}/${model.slug}.yaml`,
     filename: `${model.slug}.yaml`,
-    content: buildHelmRelease(model, ctx, valuesYaml),
+    content: buildHelmRelease(model, ctx, values),
   };
 
   const ociRepositoryFile: ComposedFile = {
@@ -237,10 +231,11 @@ export function composeManifests(
   // Multi-document YAML for the direct-apply path. OCIRepository first so the
   // chart source exists before the HelmRelease references it (Flux reconciles
   // asynchronously regardless, but this reads cleanly and applies cleanly).
-  const combinedManifest = `${[
-    ociRepositoryFile.content.trimEnd(),
-    helmReleaseFile.content.trimEnd(),
-  ].join('\n---\n')}\n`;
+  // Each dump() output already ends with a newline.
+  const combinedManifest = [
+    ociRepositoryFile.content,
+    helmReleaseFile.content,
+  ].join('---\n');
 
   return {
     files: [helmReleaseFile, ociRepositoryFile],

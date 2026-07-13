@@ -1,3 +1,4 @@
+import { load, loadAll } from 'js-yaml';
 import { composeManifests } from './composeManifests';
 
 const model = {
@@ -23,6 +24,11 @@ const ctx = {
   chartVersion: '1.4.2',
 };
 
+/** Parses a single-document manifest string into an object. */
+function parse(content: string): any {
+  return load(content);
+}
+
 describe('composeManifests', () => {
   it('emits a HelmRelease and an OCIRepository in the target namespace', () => {
     const { files } = composeManifests(model, ctx);
@@ -31,77 +37,84 @@ describe('composeManifests', () => {
     const [helmRelease, ociRepository] = files;
 
     expect(helmRelease.filename).toBe('go-service-reviewer.yaml');
-    expect(helmRelease.content).toContain('kind: HelmRelease');
-    expect(helmRelease.content).toContain('name: go-service-reviewer');
-    expect(helmRelease.content).toContain('namespace: kagent');
+    const hr = parse(helmRelease.content);
+    expect(hr.kind).toBe('HelmRelease');
+    expect(hr.metadata.name).toBe('go-service-reviewer');
+    expect(hr.metadata.namespace).toBe('kagent');
 
     expect(ociRepository.filename).toBe('agent.yaml');
-    expect(ociRepository.content).toContain('kind: OCIRepository');
-    expect(ociRepository.content).toContain('name: agent');
-    expect(ociRepository.content).toContain(
-      'url: oci://gsoci.azurecr.io/charts/giantswarm/agent',
-    );
+    const oci = parse(ociRepository.content);
+    expect(oci.kind).toBe('OCIRepository');
+    expect(oci.metadata.name).toBe('agent');
+    expect(oci.spec.url).toBe('oci://gsoci.azurecr.io/charts/giantswarm/agent');
     // Tracks a semver range for auto-upgrade, not a pinned tag.
-    expect(ociRepository.content).toContain('semver: "x.x.x"');
-    expect(ociRepository.content).not.toContain('tag:');
+    expect(oci.spec.ref).toEqual({ semver: 'x.x.x' });
+    expect(oci.spec.ref.tag).toBeUndefined();
   });
 
   it('sets spec.serviceAccountName on the HelmRelease only when provided', () => {
-    const without = composeManifests(model, ctx).files[0].content;
-    expect(without).not.toContain('serviceAccountName');
+    const without = parse(composeManifests(model, ctx).files[0].content);
+    expect(without.spec.serviceAccountName).toBeUndefined();
 
-    const withSa = composeManifests(model, {
-      ...ctx,
-      serviceAccountName: 'kagent-controller',
-    }).files[0].content;
-    expect(withSa).toContain('serviceAccountName: kagent-controller');
-    // Sits at the spec level (2-space indent), not inside values.
-    expect(withSa).toContain('\n  serviceAccountName: kagent-controller\n');
+    const withSa = parse(
+      composeManifests(model, {
+        ...ctx,
+        serviceAccountName: 'kagent-controller',
+      }).files[0].content,
+    );
+    expect(withSa.spec.serviceAccountName).toBe('kagent-controller');
   });
 
-  it('inlines the agent values into the HelmRelease, with a block-scalar prompt', () => {
-    const { files } = composeManifests(model, ctx);
-    const helmRelease = files[0].content;
+  it('inlines the agent values into the HelmRelease at spec.values', () => {
+    const hr = parse(composeManifests(model, ctx).files[0].content);
+    const values = hr.spec.values;
 
-    expect(helmRelease).toContain('  values:');
-    // agent block (inlined at spec.values, +4 indent).
-    expect(helmRelease).toContain('    agent:');
-    expect(helmRelease).toContain('      name: "go-service-reviewer"');
-    expect(helmRelease).toContain('      displayName: "Go service reviewer"');
-    expect(helmRelease).toContain('      systemMessage: |-');
-    expect(helmRelease).toContain('        You review pull requests.');
-    // modelConfig is a top-level values key (name only — no namespace), not
-    // nested under agent.
-    expect(helmRelease).toContain('    modelConfig:');
-    expect(helmRelease).toContain('      name: "opus-4-7"');
-    expect(helmRelease).not.toContain('      modelConfig:');
-    expect(helmRelease).not.toContain('namespace: "kagent"');
-    // No skills selected → the skills block is omitted entirely (gitRefs
-    // requires at least one entry).
-    expect(helmRelease).not.toContain('skills:');
+    expect(values.agent.name).toBe('go-service-reviewer');
+    expect(values.agent.displayName).toBe('Go service reviewer');
+    expect(values.agent.systemMessage).toBe(
+      'You review pull requests.\nRead for intent first.',
+    );
+    // modelConfig is a top-level values key (name only — no namespace).
+    expect(values.modelConfig).toEqual({ name: 'opus-4-7' });
+    expect(values.agent.modelConfig).toBeUndefined();
+    // No skills selected → the skills block is omitted (gitRefs requires ≥1).
+    expect(values.skills).toBeUndefined();
   });
 
   it('omits agent.systemMessage when the prompt is empty (chart default applies)', () => {
-    const helmRelease = composeManifests(
-      { ...model, systemMessage: '   ' },
-      ctx,
-    ).files[0].content;
+    const hr = parse(
+      composeManifests({ ...model, systemMessage: '   ' }, ctx).files[0]
+        .content,
+    );
+    expect(hr.spec.values.agent.systemMessage).toBeUndefined();
+    expect(hr.spec.values.agent.displayName).toBe('Go service reviewer');
+    expect(hr.spec.values.modelConfig.name).toBe('opus-4-7');
+  });
 
-    expect(helmRelease).not.toContain('systemMessage');
-    // The rest of the agent block is still emitted.
-    expect(helmRelease).toContain('      displayName: "Go service reviewer"');
-    expect(helmRelease).toContain('    modelConfig:');
+  it('produces valid YAML even when the prompt has irregular indentation', () => {
+    // A prompt whose first content line is more indented than a later line used
+    // to break the hand-rolled block scalar (invalid YAML). yaml.dump handles it.
+    const trickyPrompt = '  Indented intro line\nLess indented instruction';
+    const { files, combinedManifest } = composeManifests(
+      { ...model, systemMessage: trickyPrompt },
+      ctx,
+    );
+
+    // Round-trips cleanly and preserves the prompt verbatim.
+    const hr = parse(files[0].content);
+    expect(hr.spec.values.agent.systemMessage).toBe(trickyPrompt);
+    // The combined multi-doc manifest also parses (what kube:apply loads).
+    expect(() => loadAll(combinedManifest)).not.toThrow();
   });
 
   it('combines both resources into one multi-document manifest for direct apply', () => {
     const { combinedManifest } = composeManifests(model, ctx);
 
-    // OCIRepository first, then the HelmRelease, separated by a YAML doc marker.
-    const ociIndex = combinedManifest.indexOf('kind: OCIRepository');
-    const hrIndex = combinedManifest.indexOf('kind: HelmRelease');
-    expect(ociIndex).toBeGreaterThanOrEqual(0);
-    expect(hrIndex).toBeGreaterThan(ociIndex);
-    expect(combinedManifest).toContain('\n---\n');
+    const docs = loadAll(combinedManifest) as any[];
+    expect(docs).toHaveLength(2);
+    // OCIRepository first, then the HelmRelease.
+    expect(docs[0].kind).toBe('OCIRepository');
+    expect(docs[1].kind).toBe('HelmRelease');
   });
 
   it('renders selected skills as spec.skills.gitRefs when present', () => {
@@ -120,15 +133,15 @@ describe('composeManifests', () => {
       ctx,
     );
 
-    // skills is a top-level values key (not under agent).
-    expect(valuesYaml).toContain('skills:');
-    expect(valuesYaml).toContain('  gitRefs:');
-    expect(valuesYaml).toContain(
-      '    - url: "https://github.com/giantswarm/agent-skills"',
-    );
-    expect(valuesYaml).toContain('      path: "demo"');
-    expect(valuesYaml).toContain('      ref: "main"');
-    expect(valuesYaml).toContain('      name: "demo"');
+    const values = parse(valuesYaml);
+    expect(values.skills.gitRefs).toEqual([
+      {
+        url: 'https://github.com/giantswarm/agent-skills',
+        path: 'demo',
+        ref: 'main',
+        name: 'demo',
+      },
+    ]);
   });
 
   it('omits path for a repo-root skill', () => {
@@ -147,8 +160,13 @@ describe('composeManifests', () => {
       ctx,
     );
 
-    expect(valuesYaml).toContain('  gitRefs:');
-    expect(valuesYaml).not.toContain('path:');
+    const [skill] = parse(valuesYaml).skills.gitRefs;
+    expect(skill.path).toBeUndefined();
+    expect(skill).toEqual({
+      url: 'https://github.com/giantswarm/agent-skills',
+      ref: 'main',
+      name: 'agent-skills',
+    });
   });
 
   it('builds a helm install command that creates the namespace', () => {

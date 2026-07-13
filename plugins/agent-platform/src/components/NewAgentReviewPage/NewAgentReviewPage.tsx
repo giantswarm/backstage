@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { Content } from '@backstage/core-components';
@@ -119,39 +119,59 @@ export function NewAgentReviewPage() {
   // with the create form.
   const { version: chartVersion } = useAgentChart();
 
+  // The agent's resources are applied alongside the ModelConfig it uses — that
+  // namespace already exists and is where kagent watches.
+  const namespace = state.modelConfigNamespace ?? '';
+
+  // Memoized so the YAML isn't recomposed (and the CodeMirror editors re-seeded)
+  // on every re-render — this page re-renders as useAgentChart resolves and as
+  // the deploy status advances. Computed before the completeness guard below so
+  // the hook order stays stable (its result is only rendered when complete).
+  const { files, combinedManifest, valuesYaml, helmInstallCommand } = useMemo(
+    () =>
+      composeManifests(
+        {
+          name: state.name,
+          slug: state.slug,
+          description: state.description,
+          modelConfigName: state.modelConfigName ?? '',
+          systemMessage: state.systemMessage,
+          skills: state.selectedSkills.map(skill => ({
+            url: skill.repoUrl,
+            path: skill.path,
+            ref: skill.ref,
+            name: skill.name,
+          })),
+        },
+        {
+          installation: state.installation ?? '',
+          namespace,
+          chartOciUrl,
+          chartVersion,
+          serviceAccountName,
+        },
+      ),
+    [
+      state.name,
+      state.slug,
+      state.description,
+      state.modelConfigName,
+      state.systemMessage,
+      state.selectedSkills,
+      state.installation,
+      namespace,
+      chartOciUrl,
+      chartVersion,
+      serviceAccountName,
+    ],
+  );
+
   // Reaching review with an incomplete form means a deep link or a reset —
-  // send the user back to fill it in.
+  // send the user back to fill it in. (After all hooks, to keep their order
+  // stable across renders.)
   if (!isComplete) {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
   }
-
-  // The agent's resources are applied alongside the ModelConfig it uses — that
-  // namespace already exists and is where kagent watches.
-  const namespace = state.modelConfigNamespace!;
-
-  const { files, combinedManifest, valuesYaml, helmInstallCommand } =
-    composeManifests(
-      {
-        name: state.name,
-        slug: state.slug,
-        description: state.description,
-        modelConfigName: state.modelConfigName!,
-        systemMessage: state.systemMessage,
-        skills: state.selectedSkills.map(skill => ({
-          url: skill.repoUrl,
-          path: skill.path,
-          ref: skill.ref,
-          name: skill.name,
-        })),
-      },
-      {
-        installation: state.installation!,
-        namespace,
-        chartOciUrl,
-        chartVersion,
-        serviceAccountName,
-      },
-    );
 
   const isDeploying =
     status.phase === 'authenticating' || status.phase === 'submitting';

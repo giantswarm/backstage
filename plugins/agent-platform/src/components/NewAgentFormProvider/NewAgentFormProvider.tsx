@@ -29,22 +29,16 @@ export type NewAgentFormContextValue = {
   setInstallation: (installation: string | undefined) => void;
   selectModelConfig: (name: string, namespace: string) => void;
   setSystemMessage: (systemMessage: string) => void;
-  /**
-   * Seeds the system prompt from the chart's default, but only while the user
-   * hasn't edited it — so the resolved chart default fills the field without
-   * clobbering a prompt the user has started writing.
-   */
-  applyDefaultSystemMessage: (systemMessage: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
   reset: () => void;
-  /** True when every required field the review step needs is populated. */
+  /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
-   * Human-readable labels of the required fields still missing, in form order.
-   * Empty when the form is complete. Drives the submit-time validation feedback.
+   * Human-readable validation problems, in form order. Empty when the form is
+   * valid. Drives the submit-time feedback.
    */
-  missingRequired: string[];
+  validationErrors: string[];
 };
 
 const initialState: NewAgentFormState = {
@@ -54,10 +48,20 @@ const initialState: NewAgentFormState = {
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
-  // Seeded from the chart's default at runtime (see applyDefaultSystemMessage).
+  // Seeded from the chart's default at runtime by NewAgentPage; empty means
+  // "use the chart default" (composeManifests omits it).
   systemMessage: '',
   selectedSkills: [],
 };
+
+// RFC1123 DNS label: the slug becomes the Agent CR name and the
+// HelmRelease/OCIRepository release name, so it must be a valid k8s object name
+// (lowercase alphanumerics and hyphens, no leading/trailing hyphen, ≤63 chars).
+const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+
+function isValidSlug(slug: string): boolean {
+  return slug.length <= 63 && DNS_LABEL_PATTERN.test(slug);
+}
 
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
@@ -67,27 +71,34 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<NewAgentFormState>(initialState);
   // The slug auto-derives from the name until the user edits it by hand.
   const [slugEdited, setSlugEdited] = useState(false);
-  // The system prompt seeds from the chart default until the user edits it.
-  const [systemMessageEdited, setSystemMessageEdited] = useState(false);
 
   const value = useMemo<NewAgentFormContextValue>(() => {
-    // The system prompt is intentionally NOT required: the chart ships a default
-    // agent.systemMessage, so an empty field just means "use the chart default"
-    // (composeManifests omits it). Requiring it would wedge the form whenever the
-    // chart's default couldn't be fetched to pre-fill the field.
-    const missingRequired: string[] = [];
+    // The system prompt is intentionally NOT validated: the chart ships a
+    // default agent.systemMessage, so an empty field just means "use the chart
+    // default" (composeManifests omits it).
+    const validationErrors: string[] = [];
     if (!state.name.trim()) {
-      missingRequired.push('Name');
-    } else if (!state.slug.trim()) {
-      missingRequired.push('Slug');
+      validationErrors.push('Name is required');
+    }
+    if (state.slug.trim()) {
+      // The slug is emitted verbatim as a k8s object name — reject anything that
+      // isn't a valid DNS-1123 label so the deploy can't fail late at apply time.
+      if (!isValidSlug(state.slug)) {
+        validationErrors.push(
+          'Slug must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-agent',
+        );
+      }
+    } else if (state.name.trim()) {
+      // Only flag a missing slug once there's a name (it derives from the name).
+      validationErrors.push('Slug is required');
     }
     if (!state.installation) {
-      missingRequired.push('Installation');
+      validationErrors.push('Select an installation');
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
-      missingRequired.push('Model');
+      validationErrors.push('Select a model');
     }
-    const isComplete = missingRequired.length === 0;
+    const isComplete = validationErrors.length === 0;
 
     return {
       state,
@@ -118,21 +129,8 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
           modelConfigName: name,
           modelConfigNamespace: namespace,
         })),
-      setSystemMessage: systemMessage => {
-        setSystemMessageEdited(true);
-        setState(prev => ({ ...prev, systemMessage }));
-      },
-      applyDefaultSystemMessage: systemMessage =>
-        setState(prev => {
-          // Return the SAME state reference when nothing changes, so this never
-          // triggers a re-render. Otherwise, since the caller re-runs it from an
-          // effect on every render, a fresh object each time would loop forever
-          // ("Maximum update depth exceeded").
-          if (systemMessageEdited || prev.systemMessage === systemMessage) {
-            return prev;
-          }
-          return { ...prev, systemMessage };
-        }),
+      setSystemMessage: systemMessage =>
+        setState(prev => ({ ...prev, systemMessage })),
       toggleSkill: skill =>
         setState(prev => {
           const id = skillId(skill);
@@ -146,13 +144,12 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         }),
       reset: () => {
         setSlugEdited(false);
-        setSystemMessageEdited(false);
         setState(initialState);
       },
       isComplete,
-      missingRequired,
+      validationErrors,
     };
-  }, [state, slugEdited, systemMessageEdited]);
+  }, [state, slugEdited]);
 
   return (
     <NewAgentFormContext.Provider value={value}>
