@@ -123,9 +123,16 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         setState(prev => ({ ...prev, systemMessage }));
       },
       applyDefaultSystemMessage: systemMessage =>
-        setState(prev =>
-          systemMessageEdited ? prev : { ...prev, systemMessage },
-        ),
+        setState(prev => {
+          // Return the SAME state reference when nothing changes, so this never
+          // triggers a re-render. Otherwise, since the caller re-runs it from an
+          // effect on every render, a fresh object each time would loop forever
+          // ("Maximum update depth exceeded").
+          if (systemMessageEdited || prev.systemMessage === systemMessage) {
+            return prev;
+          }
+          return { ...prev, systemMessage };
+        }),
       toggleSkill: skill =>
         setState(prev => {
           const id = skillId(skill);
