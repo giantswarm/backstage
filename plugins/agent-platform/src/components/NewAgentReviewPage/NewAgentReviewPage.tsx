@@ -17,14 +17,12 @@ import { makeStyles } from '@material-ui/core';
 import AndroidIcon from '@material-ui/icons/Android';
 
 import { CHART_DEFAULTS } from '../../lib/agentDefaults';
-import { composeManifests } from '../../lib/composeManifests';
+import { CHART_NAME, composeManifests } from '../../lib/composeManifests';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useDeployAgent } from '../../hooks/useDeployAgent';
 import { newAgentRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CodeBlock } from '../CodeBlock';
-
-const CHART_NAME = 'general-purpose-agent';
 
 // Standard scaffolder task route in this app (scaffolder mounts at /create).
 const taskPath = (taskId: string) => `/create/tasks/${taskId}`;

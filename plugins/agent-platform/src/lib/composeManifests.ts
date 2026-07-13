@@ -97,7 +97,7 @@ export type ComposedManifests = {
   helmInstallCommand: string;
 };
 
-const CHART_NAME = 'agent';
+export const CHART_NAME = 'agent';
 
 // The OCIRepository tracks the chart by semver range rather than a pinned tag,
 // so Flux automatically upgrades the agent to the latest published release
