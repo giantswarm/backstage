@@ -19,7 +19,7 @@ const model = {
 const ctx = {
   installation: 'gazelle',
   namespace: 'kagent',
-  chartOciUrl: 'oci://gsoci.azurecr.io/giantswarm/charts/agent',
+  chartOciUrl: 'oci://gsoci.azurecr.io/charts/giantswarm/agent',
   chartVersion: '1.4.2',
 };
 
@@ -39,7 +39,7 @@ describe('composeManifests', () => {
     expect(ociRepository.content).toContain('kind: OCIRepository');
     expect(ociRepository.content).toContain('name: agent');
     expect(ociRepository.content).toContain(
-      'url: oci://gsoci.azurecr.io/giantswarm/charts/agent',
+      'url: oci://gsoci.azurecr.io/charts/giantswarm/agent',
     );
     expect(ociRepository.content).toContain('tag: 1.4.2');
   });

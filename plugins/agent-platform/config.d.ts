@@ -3,14 +3,13 @@ export interface Config {
   agentPlatform?: {
     /**
      * Chart the create flow adapts (the `agent` chart,
-     * github.com/giantswarm/agent). Its values schema is settled, but it is
-     * not published to the OCI registry yet, so the version is provisional —
-     * override it here once the chart is released.
+     * github.com/giantswarm/agent), published at
+     * `oci://gsoci.azurecr.io/charts/giantswarm/agent`.
      */
     chart?: {
       /**
        * OCI URL of the chart, without a tag
-       * (e.g. `oci://gsoci.azurecr.io/giantswarm/charts/agent`).
+       * (e.g. `oci://gsoci.azurecr.io/charts/giantswarm/agent`).
        * @visibility frontend
        */
       ociUrl?: string;
