@@ -40,6 +40,11 @@ export type NewAgentFormContextValue = {
   reset: () => void;
   /** True when every required field the review step needs is populated. */
   isComplete: boolean;
+  /**
+   * Human-readable labels of the required fields still missing, in form order.
+   * Empty when the form is complete. Drives the submit-time validation feedback.
+   */
+  missingRequired: string[];
 };
 
 const initialState: NewAgentFormState = {
@@ -70,13 +75,19 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
     // agent.systemMessage, so an empty field just means "use the chart default"
     // (composeManifests omits it). Requiring it would wedge the form whenever the
     // chart's default couldn't be fetched to pre-fill the field.
-    const isComplete = Boolean(
-      state.name.trim() &&
-      state.slug.trim() &&
-      state.installation &&
-      state.modelConfigName &&
-      state.modelConfigNamespace,
-    );
+    const missingRequired: string[] = [];
+    if (!state.name.trim()) {
+      missingRequired.push('Name');
+    } else if (!state.slug.trim()) {
+      missingRequired.push('Slug');
+    }
+    if (!state.installation) {
+      missingRequired.push('Installation');
+    }
+    if (!state.modelConfigName || !state.modelConfigNamespace) {
+      missingRequired.push('Model');
+    }
+    const isComplete = missingRequired.length === 0;
 
     return {
       state,
@@ -132,6 +143,7 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         setState(initialState);
       },
       isComplete,
+      missingRequired,
     };
   }, [state, slugEdited, systemMessageEdited]);
 

@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
+  Alert,
   Button,
   Card,
   CardBody,
@@ -93,8 +94,12 @@ function NewAgentPageContent() {
     setDescription,
     setSystemMessage,
     applyDefaultSystemMessage,
-    isComplete,
+    missingRequired,
   } = useNewAgentForm();
+
+  // Show validation feedback only once the user has tried to proceed, so the
+  // form doesn't shout about empty fields before they've done anything.
+  const [showValidation, setShowValidation] = useState(false);
 
   // Seed the system prompt from the chart's default once it resolves (unless
   // the user has already started editing — applyDefaultSystemMessage guards it).
@@ -105,6 +110,18 @@ function NewAgentPageContent() {
     }
   }, [defaultSystemMessage, applyDefaultSystemMessage]);
 
+  // The submit button stays enabled: clicking it with missing fields surfaces
+  // what's wrong (below) rather than silently doing nothing.
+  const onReview = () => {
+    if (missingRequired.length > 0) {
+      setShowValidation(true);
+      return;
+    }
+    if (reviewLink) {
+      navigate(reviewLink());
+    }
+  };
+
   const actions = (
     <Flex gap="2">
       <Button
@@ -113,11 +130,7 @@ function NewAgentPageContent() {
       >
         Cancel
       </Button>
-      <Button
-        variant="primary"
-        isDisabled={!isComplete}
-        onPress={() => reviewLink && navigate(reviewLink())}
-      >
+      <Button variant="primary" onPress={onReview}>
         Review & deploy
       </Button>
     </Flex>
@@ -218,11 +231,22 @@ function NewAgentPageContent() {
 
             <Card>
               <CardBody>
-                <Text as="p" color="secondary" className={classes.footerNote}>
-                  The next step composes the Helm values and manifests so you
-                  can review them before the agent is deployed.
-                </Text>
-                {actions}
+                <Flex direction="column" gap="3">
+                  <Text as="p" color="secondary" className={classes.footerNote}>
+                    The next step composes the Helm values and manifests so you
+                    can review them before the agent is deployed.
+                  </Text>
+                  {showValidation && missingRequired.length > 0 && (
+                    <Alert
+                      status="danger"
+                      title="Some required fields are missing"
+                      description={`Fill these in before continuing: ${missingRequired.join(
+                        ', ',
+                      )}.`}
+                    />
+                  )}
+                  {actions}
+                </Flex>
               </CardBody>
             </Card>
           </Flex>
