@@ -5,7 +5,6 @@ const model = {
   slug: 'go-service-reviewer',
   description: "Reviews pull requests on the platform team's Go services.",
   modelConfigName: 'opus-4-7',
-  modelConfigNamespace: 'kagent',
   systemMessage: 'You review pull requests.\nRead for intent first.',
   skills: [] as {
     url: string;
@@ -20,7 +19,7 @@ const model = {
 const ctx = {
   installation: 'gazelle',
   namespace: 'kagent',
-  chartOciUrl: 'oci://gsoci.azurecr.io/giantswarm/charts/general-purpose-agent',
+  chartOciUrl: 'oci://gsoci.azurecr.io/giantswarm/charts/agent',
   chartVersion: '1.4.2',
 };
 
@@ -36,8 +35,12 @@ describe('composeManifests', () => {
     expect(helmRelease.content).toContain('name: go-service-reviewer');
     expect(helmRelease.content).toContain('namespace: kagent');
 
-    expect(ociRepository.filename).toBe('general-purpose-agent.yaml');
+    expect(ociRepository.filename).toBe('agent.yaml');
     expect(ociRepository.content).toContain('kind: OCIRepository');
+    expect(ociRepository.content).toContain('name: agent');
+    expect(ociRepository.content).toContain(
+      'url: oci://gsoci.azurecr.io/giantswarm/charts/agent',
+    );
     expect(ociRepository.content).toContain('tag: 1.4.2');
   });
 
@@ -59,15 +62,20 @@ describe('composeManifests', () => {
     const helmRelease = files[0].content;
 
     expect(helmRelease).toContain('  values:');
+    // agent block (inlined at spec.values, +4 indent).
     expect(helmRelease).toContain('    agent:');
+    expect(helmRelease).toContain('      name: "go-service-reviewer"');
     expect(helmRelease).toContain('      displayName: "Go service reviewer"');
-    expect(helmRelease).toContain('      modelConfig:');
-    expect(helmRelease).toContain('        name: "opus-4-7"');
-    expect(helmRelease).toContain('        namespace: "kagent"');
     expect(helmRelease).toContain('      systemMessage: |-');
     expect(helmRelease).toContain('        You review pull requests.');
-    // No skills selected → the skills block is omitted entirely (kagent's
-    // gitRefs requires at least one entry).
+    // modelConfig is a top-level values key (name only — no namespace), not
+    // nested under agent.
+    expect(helmRelease).toContain('    modelConfig:');
+    expect(helmRelease).toContain('      name: "opus-4-7"');
+    expect(helmRelease).not.toContain('      modelConfig:');
+    expect(helmRelease).not.toContain('namespace: "kagent"');
+    // No skills selected → the skills block is omitted entirely (gitRefs
+    // requires at least one entry).
     expect(helmRelease).not.toContain('skills:');
   });
 
@@ -98,14 +106,15 @@ describe('composeManifests', () => {
       ctx,
     );
 
-    expect(valuesYaml).toContain('  skills:');
-    expect(valuesYaml).toContain('    gitRefs:');
+    // skills is a top-level values key (not under agent).
+    expect(valuesYaml).toContain('skills:');
+    expect(valuesYaml).toContain('  gitRefs:');
     expect(valuesYaml).toContain(
-      '      - url: "https://github.com/giantswarm/agent-skills"',
+      '    - url: "https://github.com/giantswarm/agent-skills"',
     );
-    expect(valuesYaml).toContain('        path: "demo"');
-    expect(valuesYaml).toContain('        ref: "main"');
-    expect(valuesYaml).toContain('        name: "demo"');
+    expect(valuesYaml).toContain('      path: "demo"');
+    expect(valuesYaml).toContain('      ref: "main"');
+    expect(valuesYaml).toContain('      name: "demo"');
   });
 
   it('omits path for a repo-root skill', () => {
@@ -124,8 +133,8 @@ describe('composeManifests', () => {
       ctx,
     );
 
-    expect(valuesYaml).toContain('    gitRefs:');
-    expect(valuesYaml).not.toContain('        path:');
+    expect(valuesYaml).toContain('  gitRefs:');
+    expect(valuesYaml).not.toContain('path:');
   });
 
   it('builds a helm install command that creates the namespace', () => {

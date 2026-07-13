@@ -2,14 +2,15 @@ export interface Config {
   /** Configuration for the agent-platform plugin. */
   agentPlatform?: {
     /**
-     * Chart the create flow adapts. The `general-purpose-agent` chart does not
-     * exist yet, so these are assumptions surfaced as config to make them easy
-     * to correct once the chart is published.
+     * Chart the create flow adapts (the `agent` chart,
+     * github.com/giantswarm/agent). Its values schema is settled, but it is
+     * not published to the OCI registry yet, so the version is provisional —
+     * override it here once the chart is released.
      */
     chart?: {
       /**
        * OCI URL of the chart, without a tag
-       * (e.g. `oci://gsoci.azurecr.io/giantswarm/charts/general-purpose-agent`).
+       * (e.g. `oci://gsoci.azurecr.io/giantswarm/charts/agent`).
        * @visibility frontend
        */
       ociUrl?: string;

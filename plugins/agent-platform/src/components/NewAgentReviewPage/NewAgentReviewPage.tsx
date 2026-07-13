@@ -134,7 +134,6 @@ export function NewAgentReviewPage() {
         slug: state.slug,
         description: state.description,
         modelConfigName: state.modelConfigName!,
-        modelConfigNamespace: state.modelConfigNamespace!,
         systemMessage: state.systemMessage,
         skills: state.selectedSkills.map(skill => ({
           url: skill.repoUrl,

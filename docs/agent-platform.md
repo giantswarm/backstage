@@ -155,14 +155,24 @@ The plugin's page and nav item are enabled via `app.extensions` in
 
 ## Provisional / placeholder aspects
 
-The `general-purpose-agent` chart **does not exist yet**. Consequently:
+The manifests target the **`agent` chart** (`github.com/giantswarm/agent`,
+`helm/agent`). Its values schema is settled and the generated values follow it —
+`agent` (name/displayName/description/systemMessage), top-level `modelConfig.name`
+(resolved in the agent's own namespace, so no namespace is passed), and top-level
+`skills.gitRefs`. What is still provisional:
 
-- The chart URL, version, and the shape of the inlined values are assumptions.
-- A deploy will pass admission and create both resources, but the `HelmRelease`
-  will **not reconcile** (Flux cannot pull the chart). This is expected until the
-  chart is published.
+- **Not released to the OCI registry yet** (chart version is `0.0.0-dev`, no
+  tags). So the OCI URL is real but the pinned **version** is a placeholder, and
+  a deploy will pass admission and create both resources but the `HelmRelease`
+  will **not reconcile** until the chart is published.
+- The chart enables the **muster gateway by default** (`muster.enabled: true`),
+  which references a `RemoteMCPServer` named `muster` in `agentic-platform` and
+  expects a per-installation `muster.stsWellKnownUri`. The create flow does not
+  set these, so it relies on the chart defaults — a reconcile-time dependency to
+  revisit.
 - `fluxServiceAccountName` is set to whatever clears admission (e.g.
-  `kagent-controller` in local dev), not the canonical deploy identity.
+  `kagent-controller` in local dev), not the canonical deploy identity (an
+  `automation`-style SA in the target namespace).
 
 ---
 
@@ -192,9 +202,13 @@ above). What remains is a separate, deeper concern:
   ServiceAccount and its RBAC** — provisioned per target namespace so Flux can
   actually install agent charts — is an open platform decision. Until then,
   reconciliation cannot succeed even with a real chart.
-- **`general-purpose-agent` chart.** Does not exist. The chart URL/version/values
-  shape are provisional and the deploy cannot produce a working agent until it is
-  published.
+- **`agent` chart release.** The chart (`giantswarm/agent`) exists and its values
+  schema is settled, but it is not published to the OCI registry yet
+  (`0.0.0-dev`, no tags). The deploy cannot reconcile until it is released and a
+  real version is pinned via `agentPlatform.chart.version`.
+- **muster defaults.** The chart wires the muster gateway by default; the create
+  flow doesn't set the per-installation `muster.stsWellKnownUri` (or opt out via
+  `extraAgentSpec`/config), so this needs revisiting once agents actually run.
 - **Production template registration.** The `agent-deployment` template must be
   added to `giantswarm/backstage-catalogs` for the deploy button to work outside
   local development.
@@ -210,11 +224,10 @@ above). What remains is a separate, deeper concern:
   `HelmRelease` resources in the target namespace and block "next"/"deploy" with
   an inline error before the user reaches the review page.
 - **Skills — remaining work.** Discovery and selection are implemented (see
-  "Skill discovery" above). Still open: (1) the **chart values shape** for
-  `agent.skills.gitRefs` is an assumption until the `general-purpose-agent` chart
-  exists and defines how it maps values onto the CR; (2) **private skill repos**
-  need `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD but the
-  create flow doesn't set it); (3) discovery reads a repo's **default branch** and
+  "Skill discovery" above), and the values now match the `agent` chart's
+  top-level `skills.gitRefs`. Still open: (1) **private skill repos** need
+  `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD/chart but the
+  create flow doesn't set it); (2) discovery reads a repo's **default branch** and
   doesn't expose per-skill version/`ref` selection in the UI.
 - **Agent list / management view.** Only the create flow exists so far.
 - **Main menu entry + landing page.** The plugin is not yet surfaced in the main

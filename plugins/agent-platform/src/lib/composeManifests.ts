@@ -10,9 +10,11 @@
 //
 // We inline the agent values into `HelmRelease.spec.values` rather than
 // referencing a ConfigMap (the prototype's dangling reference), which is the
-// common self-contained Flux pattern. The `general-purpose-agent` chart does
-// not exist yet, so the chart URL/version/values shape are provisional and
-// expected to change once the real chart lands.
+// common self-contained Flux pattern. The values follow the `agent` chart's
+// schema (github.com/giantswarm/agent, helm/agent): `agent`, `modelConfig` and
+// `skills` are top-level keys. The chart isn't released to the OCI registry
+// yet, so the URL/version are provisional even though the values shape is now
+// authoritative.
 
 export type AgentModel = {
   /** Display name (agent.displayName). */
@@ -20,10 +22,13 @@ export type AgentModel = {
   /** URL-friendly identifier; also the HelmRelease/release name. */
   slug: string;
   description: string;
-  /** ModelConfig CR name (agent.modelConfig.name). */
+  /**
+   * ModelConfig CR name (chart `modelConfig.name`). The chart resolves it in
+   * the agent's own namespace, so no namespace is passed in the values — the
+   * agent is deployed into the ModelConfig's namespace instead (see
+   * DeployContext.namespace).
+   */
   modelConfigName: string;
-  /** ModelConfig CR namespace (agent.modelConfig.namespace). */
-  modelConfigNamespace: string;
   /** System message (agent.systemMessage). */
   systemMessage: string;
   /** Selected skills → agent.skills.gitRefs. Empty → the block is omitted. */
@@ -88,7 +93,7 @@ export type ComposedManifests = {
   helmInstallCommand: string;
 };
 
-const CHART_NAME = 'general-purpose-agent';
+const CHART_NAME = 'agent';
 
 /** Double-quoted YAML scalar with JSON-compatible escaping. */
 function quote(value: string): string {
@@ -113,31 +118,36 @@ function blockScalarBody(value: string, spaces: number): string {
     .join('\n');
 }
 
-/** The `agent:` values block, starting at column 0. */
+/**
+ * The chart values, starting at column 0. Follows the `agent` chart's schema:
+ * `agent`, `modelConfig` and `skills` are top-level (each forbids extra keys).
+ */
 function buildAgentValues(model: AgentModel): string {
   const lines: string[] = [];
   lines.push('agent:');
+  // Pin the technical (CR) name to the slug so it doesn't depend on Flux's
+  // release-name derivation; the chart would otherwise default it.
+  lines.push(`  name: ${quote(model.slug)}`);
   lines.push(`  displayName: ${quote(model.name)}`);
   lines.push(`  description: ${quote(model.description)}`);
-  lines.push('  modelConfig:');
-  lines.push(`    name: ${quote(model.modelConfigName)}`);
-  lines.push(`    namespace: ${quote(model.modelConfigNamespace)}`);
   lines.push('  systemMessage: |-');
   lines.push(blockScalarBody(model.systemMessage, 4));
-  // kagent's spec.skills is optional and gitRefs requires ≥1 entry, so the
-  // whole block is omitted when no skills are selected.
+  lines.push('modelConfig:');
+  lines.push(`  name: ${quote(model.modelConfigName)}`);
+  // skills is optional and gitRefs requires ≥1 entry, so the whole block is
+  // omitted when no skills are selected.
   if (model.skills.length > 0) {
-    lines.push('  skills:');
-    lines.push('    gitRefs:');
+    lines.push('skills:');
+    lines.push('  gitRefs:');
     for (const skill of model.skills) {
-      lines.push(`      - url: ${quote(skill.url)}`);
+      lines.push(`    - url: ${quote(skill.url)}`);
       if (skill.path) {
-        lines.push(`        path: ${quote(skill.path)}`);
+        lines.push(`      path: ${quote(skill.path)}`);
       }
       if (skill.ref) {
-        lines.push(`        ref: ${quote(skill.ref)}`);
+        lines.push(`      ref: ${quote(skill.ref)}`);
       }
-      lines.push(`        name: ${quote(skill.name)}`);
+      lines.push(`      name: ${quote(skill.name)}`);
     }
   }
   return `${lines.join('\n')}\n`;
