@@ -139,8 +139,13 @@ function buildAgentValues(model: AgentModel): string {
   lines.push(`  name: ${quote(model.slug)}`);
   lines.push(`  displayName: ${quote(model.name)}`);
   lines.push(`  description: ${quote(model.description)}`);
-  lines.push('  systemMessage: |-');
-  lines.push(blockScalarBody(model.systemMessage, 4));
+  // Only override the prompt when the user provided one; an empty field means
+  // "use the chart's default agent.systemMessage" (and the chart requires a
+  // non-empty value, so we must not emit an empty one).
+  if (model.systemMessage.trim()) {
+    lines.push('  systemMessage: |-');
+    lines.push(blockScalarBody(model.systemMessage, 4));
+  }
   lines.push('modelConfig:');
   lines.push(`  name: ${quote(model.modelConfigName)}`);
   // skills is optional and gitRefs requires ≥1 entry, so the whole block is

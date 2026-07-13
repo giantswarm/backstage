@@ -197,14 +197,17 @@ function NewAgentPageContent() {
                 <Flex direction="column" gap="5">
                   <TextAreaField
                     label="System prompt"
+                    secondaryLabel="optional"
                     value={state.systemMessage}
                     onChange={setSystemMessage}
                     rows={10}
                     mono
                     placeholder={
-                      isChartLoading ? 'Loading the chart default…' : undefined
+                      isChartLoading
+                        ? 'Loading the chart default…'
+                        : "Leave empty to use the chart's default prompt."
                     }
-                    description="The agent's system message. Starts from the chart's default — edit it to fit the role."
+                    description="The agent's system message. Pre-filled from the chart's default — edit it to fit the role, or leave it empty to keep the default."
                   />
                   <InstallationSelect />
                   <ModelConfigPicker />

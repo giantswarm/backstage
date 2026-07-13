@@ -66,13 +66,16 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
   const [systemMessageEdited, setSystemMessageEdited] = useState(false);
 
   const value = useMemo<NewAgentFormContextValue>(() => {
+    // The system prompt is intentionally NOT required: the chart ships a default
+    // agent.systemMessage, so an empty field just means "use the chart default"
+    // (composeManifests omits it). Requiring it would wedge the form whenever the
+    // chart's default couldn't be fetched to pre-fill the field.
     const isComplete = Boolean(
       state.name.trim() &&
       state.slug.trim() &&
       state.installation &&
       state.modelConfigName &&
-      state.modelConfigNamespace &&
-      state.systemMessage.trim(),
+      state.modelConfigNamespace,
     );
 
     return {

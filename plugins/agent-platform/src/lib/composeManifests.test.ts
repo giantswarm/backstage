@@ -81,6 +81,18 @@ describe('composeManifests', () => {
     expect(helmRelease).not.toContain('skills:');
   });
 
+  it('omits agent.systemMessage when the prompt is empty (chart default applies)', () => {
+    const helmRelease = composeManifests(
+      { ...model, systemMessage: '   ' },
+      ctx,
+    ).files[0].content;
+
+    expect(helmRelease).not.toContain('systemMessage');
+    // The rest of the agent block is still emitted.
+    expect(helmRelease).toContain('      displayName: "Go service reviewer"');
+    expect(helmRelease).toContain('    modelConfig:');
+  });
+
   it('combines both resources into one multi-document manifest for direct apply', () => {
     const { combinedManifest } = composeManifests(model, ctx);
 
