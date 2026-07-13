@@ -63,7 +63,11 @@ export type DeployContext = {
   namespace: string;
   /** Chart OCI URL without a tag. */
   chartOciUrl: string;
-  /** Chart version to pin. */
+  /**
+   * Concrete latest chart version, used only for the manual `helm install`
+   * snapshot. The Flux OCIRepository does not pin it — it tracks a semver range
+   * and auto-upgrades to the latest published release.
+   */
   chartVersion: string;
   /**
    * ServiceAccount the HelmRelease runs as. Required by GS's Flux
@@ -94,6 +98,11 @@ export type ComposedManifests = {
 };
 
 const CHART_NAME = 'agent';
+
+// The OCIRepository tracks the chart by semver range rather than a pinned tag,
+// so Flux automatically upgrades the agent to the latest published release
+// (GS "major upgrades" convention: every position is a wildcard).
+const CHART_SEMVER_RANGE = 'x.x.x';
 
 /** Double-quoted YAML scalar with JSON-compatible escaping. */
 function quote(value: string): string {
@@ -188,7 +197,7 @@ spec:
   interval: 30m
   url: ${ctx.chartOciUrl}
   ref:
-    tag: ${ctx.chartVersion}
+    semver: "${CHART_SEMVER_RANGE}"
 `;
 }
 

@@ -353,8 +353,8 @@ export function NewAgentReviewPage() {
             <Box mt="3">
               <Alert
                 status="warning"
-                title="The general-purpose-agent chart is still provisional"
-                description="The chart itself doesn't exist yet, so treat the chart URL, version, values shape, and the deploy ServiceAccount as placeholders — deploying now will not produce a working agent until the chart is published."
+                title="Deploying is not fully wired up yet"
+                description="The agent chart is published and auto-upgrades via a semver range, but reconcile still depends on the deploy ServiceAccount having install RBAC in the target namespace (the canonical identity is an open decision) and on the chart's default muster gateway wiring. A deploy may create the resources without producing a running agent yet."
               />
             </Box>
           </div>

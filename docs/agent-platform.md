@@ -80,7 +80,10 @@ CRD.) Repo-root skills omit `path`; agents with no skills selected omit the
 - A Flux **`OCIRepository`** (sources the chart) and **`HelmRelease`** (installs
   the agent, with the agent values inlined into `spec.values`). These are joined
   into a single multi-document `combinedManifest` — the source of truth that is
-  both previewed on the review page and applied verbatim.
+  both previewed on the review page and applied verbatim. The `OCIRepository`
+  tracks a **semver range** (`ref.semver: "x.x.x"`) rather than a pinned tag, so
+  Flux auto-upgrades the agent to the latest published release (GS "major
+  upgrades" convention).
 - A standalone `values.yaml` + `helm install` command for the manual fallback.
 
 We deliberately deviate from the prototype's 3-file/ConfigMap model: the
@@ -93,8 +96,11 @@ Rather than hardcoding a chart version or a default system prompt, `useAgentChar
 resolves both from the published `agent` chart at runtime — reusing the same
 gs-backend endpoints the App Deployment scaffolder fields use:
 
-1. `container-registry/tags` → the **latest stable tag**, which is what the
-   deploy pins (falling back to the configured `chart.version` floor).
+1. `container-registry/tags` → the **latest stable tag** (highest semver
+   non-prerelease). Used for the manual `helm install` snapshot and to read the
+   default prompt below (the deployed `OCIRepository` itself auto-upgrades via
+   the semver range and isn't pinned). Falls back to the configured
+   `chart.version` floor.
 2. `container-registry/tag-manifest` → the `io.giantswarm.application.values-schema`
    annotation → the chart's `values.yaml` (fetched via `github/raw-content`) →
    its `agent.systemMessage`, which **seeds the form's system-prompt default**
@@ -159,13 +165,13 @@ the open TODOs.
 
 All under `agentPlatform` (see `plugins/agent-platform/config.d.ts`):
 
-| Key                      | Purpose                                                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `chart.ociUrl`           | OCI URL of the agent chart (no tag).                                                                 |
-| `chart.version`          | Version floor / fallback. The deploy pins the latest published tag resolved at runtime.              |
-| `fluxServiceAccountName` | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional. |
-| `deployTemplateRef`      | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                  |
-| `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                               |
+| Key                      | Purpose                                                                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `chart.ociUrl`           | OCI URL of the agent chart (no tag).                                                                                              |
+| `chart.version`          | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot. |
+| `fluxServiceAccountName` | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                              |
+| `deployTemplateRef`      | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                               |
+| `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                            |
 
 The plugin's page and nav item are enabled via `app.extensions` in
 `app-config.yaml`.

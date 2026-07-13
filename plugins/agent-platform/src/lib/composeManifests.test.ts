@@ -41,7 +41,9 @@ describe('composeManifests', () => {
     expect(ociRepository.content).toContain(
       'url: oci://gsoci.azurecr.io/charts/giantswarm/agent',
     );
-    expect(ociRepository.content).toContain('tag: 1.4.2');
+    // Tracks a semver range for auto-upgrade, not a pinned tag.
+    expect(ociRepository.content).toContain('semver: "x.x.x"');
+    expect(ociRepository.content).not.toContain('tag:');
   });
 
   it('sets spec.serviceAccountName on the HelmRelease only when provided', () => {
