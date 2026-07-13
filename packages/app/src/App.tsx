@@ -12,6 +12,7 @@ import aiChatPlugin from '@giantswarm/backstage-plugin-ai-chat';
 import { aiChatPluginOverrides } from './modules/ai-chat';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { musterPluginOverrides } from './modules/muster';
+import agentPlatformPlugin from '@giantswarm/backstage-plugin-agent-platform';
 import plansPlugin from '@giantswarm/backstage-plugin-plans';
 import roadmapPlugin from '@giantswarm/backstage-plugin-roadmap';
 
@@ -57,6 +58,7 @@ const app = createApp({
     aiChatPluginOverrides,
     musterPlugin,
     musterPluginOverrides,
+    agentPlatformPlugin,
     plansPlugin,
     roadmapPlugin,
 

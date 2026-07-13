@@ -1,0 +1,17 @@
+/*
+ * Local fixes for @backstage/ui (bui) rough edges, loaded after the bui
+ * stylesheet in index.tsx so these rules win.
+ *
+ * bui's Select popover has a border-radius but leaves `overflow: visible`, so
+ * the inner list and its row highlights bleed past the rounded corners (visible
+ * as broken/square corners when the dropdown is open). Clip the popover to its
+ * radius and let the list scroll within it so long lists still work.
+ */
+.bui-SelectPopover {
+  overflow: hidden;
+}
+
+.bui-SelectList {
+  overflow-y: auto;
+  max-height: min(320px, 60vh);
+}

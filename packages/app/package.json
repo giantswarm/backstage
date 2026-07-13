@@ -52,6 +52,7 @@
     "@backstage/plugin-user-settings": "backstage:^",
     "@backstage/theme": "backstage:^",
     "@backstage/ui": "backstage:^",
+    "@giantswarm/backstage-plugin-agent-platform": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^",

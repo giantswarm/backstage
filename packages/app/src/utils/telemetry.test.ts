@@ -328,6 +328,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/muster/workflows/my-workflow',
       '/muster/workflows/my-workflow/run',
       '/muster/tools',
+      '/agents',
+      '/agents/new',
+      '/agents/new/review',
       '/metrics',
       '/search',
     ];
