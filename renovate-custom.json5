@@ -35,6 +35,20 @@
       matchPackageNames: ['date-fns', 'date-fns-tz'],
     },
     {
+      // Opt Giant Swarm-owned npm packages out of the 14-day minimumReleaseAge
+      // supply-chain delay from renovate-presets default.json5. That gate
+      // guards against compromised/yanked third-party releases, which does not
+      // apply to our own first-party packages. It also inverts version ordering
+      // for github: deps whose source package.json version never bumps (it is
+      // stuck at 0.1.0 for every tag, e.g. @giantswarm/k8s-types): the two
+      // newest tags get filtered out as "too new" and Renovate proposes the
+      // highest still-eligible older tag, producing a spurious downgrade PR
+      // (see #1923). null unsets the inherited value.
+      matchManagers: ['npm'],
+      matchPackageNames: ['@giantswarm{/,}**'],
+      minimumReleaseAge: null,
+    },
+    {
       // @material-table/core v7 is a React 19 / MUI v5-era release: it
       // peer-requires react >=19.2.0, ships an exports map without a `types`
       // condition (TS2307 under moduleResolution "bundler"), and
