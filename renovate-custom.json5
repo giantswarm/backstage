@@ -35,6 +35,13 @@
       matchPackageNames: ['date-fns', 'date-fns-tz'],
     },
     {
+      // Opt Giant Swarm-owned npm packages out of the 14-day minimumReleaseAge
+      // supply-chain delay from renovate-presets default.json5.
+      matchManagers: ['npm'],
+      matchPackageNames: ['@giantswarm{/,}**'],
+      minimumReleaseAge: null,
+    },
+    {
       // @material-table/core v7 is a React 19 / MUI v5-era release: it
       // peer-requires react >=19.2.0, ships an exports map without a `types`
       // condition (TS2307 under moduleResolution "bundler"), and
