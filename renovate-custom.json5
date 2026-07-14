@@ -62,5 +62,22 @@
       matchPackageNames: ['global-agent'],
       allowedVersions: '<4',
     },
+    {
+      // Backstage core packages (v1.52) peer-require react "^17 || ^18" -- no
+      // React 19. A key blocker is MUI v4, still used by Backstage core, which
+      // doesn't support React 19 (upstream tracking:
+      // https://github.com/backstage/backstage/issues/28080). Bumping react to
+      // v19 would violate peer deps across all @backstage/* packages and risks
+      // runtime breakage. Hold on v18 until Backstage upstream moves to React 19
+      // / MUI v5 (see also the @material-table/core hold above). This still
+      // allows React 18.x minor/patch bumps.
+      matchPackageNames: [
+        'react',
+        'react-dom',
+        '@types/react',
+        '@types/react-dom',
+      ],
+      allowedVersions: '<19',
+    },
   ],
 }
