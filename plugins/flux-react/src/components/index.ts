@@ -1,6 +1,7 @@
 export { FluxResourcesTreeView } from './FluxResourcesTreeView';
 export { ResourceTypePicker as FluxResourcesTreeViewResourceTypePicker } from './FluxResourcesTreeView/filters/ResourceTypePicker';
 export { ClusterPicker as FluxResourcesTreeViewClusterPicker } from './FluxResourcesTreeView/filters/ClusterPicker';
+export { StatusPicker as FluxResourcesTreeViewStatusPicker } from './FluxResourcesTreeView/filters/StatusPicker';
 export { TreeSearch as FluxResourcesTreeViewTreeSearch } from './FluxResourcesTreeView/filters/TreeSearch';
 
 export { FluxResourcesListView } from './FluxResourcesListView';

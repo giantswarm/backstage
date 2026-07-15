@@ -34,7 +34,15 @@ export type KustomizationTreeNodeData = {
     | ImageUpdateAutomation;
   hasChildren: boolean;
   hasChildrenInCompactView: boolean;
+  isFailing: boolean;
+  hasFailingDescendants: boolean;
 };
+
+function isResourceFailing(
+  resource?: KustomizationTreeNodeData['resource'],
+): boolean {
+  return resource?.findReadyCondition()?.status === 'False';
+}
 
 export type KustomizationTreeNode = {
   id: string;
@@ -242,6 +250,8 @@ export class KustomizationTreeBuilder {
           resource: kustomization,
           hasChildren: false,
           hasChildrenInCompactView: false,
+          isFailing: isResourceFailing(kustomization),
+          hasFailingDescendants: false,
         },
         children: [],
         displayInCompactView: true,
@@ -352,6 +362,8 @@ export class KustomizationTreeBuilder {
               resource: policy,
               hasChildren: false,
               hasChildrenInCompactView: false,
+              isFailing: isResourceFailing(policy),
+              hasFailingDescendants: false,
             },
             children: [],
             displayInCompactView: true,
@@ -368,6 +380,10 @@ export class KustomizationTreeBuilder {
             targetCluster,
             hasChildren: imageRepositoryChildren.length > 0,
             hasChildrenInCompactView: imageRepositoryChildren.length > 0,
+            isFailing: isResourceFailing(childResource),
+            hasFailingDescendants: imageRepositoryChildren.some(
+              r => r.nodeData.isFailing || r.nodeData.hasFailingDescendants,
+            ),
           },
           children: imageRepositoryChildren,
           displayInCompactView: child.group.endsWith(COMPACT_GROUP),
@@ -391,6 +407,10 @@ export class KustomizationTreeBuilder {
         resource: kustomization,
         hasChildren: children.length > 0,
         hasChildrenInCompactView: children.some(r => r.displayInCompactView),
+        isFailing: isResourceFailing(kustomization),
+        hasFailingDescendants: children.some(
+          r => r.nodeData.isFailing || r.nodeData.hasFailingDescendants,
+        ),
       },
       children,
       displayInCompactView: true,

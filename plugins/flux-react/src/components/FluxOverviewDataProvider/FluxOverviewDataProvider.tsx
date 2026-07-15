@@ -16,8 +16,11 @@ import {
   KustomizationTreeBuilder,
   KustomizationTreeNode,
 } from '../FluxOverview/utils/KustomizationTreeBuilder/KustomizationTreeBuilder';
+import { filterTreeToFailingPaths } from '../FluxOverview/utils/filterTreeToFailingPaths';
 
 export type ResourceType = 'all' | 'flux';
+
+export type StatusFilter = 'all' | 'failing';
 
 export type FluxOverviewData = {
   kustomizations: Kustomization[];
@@ -33,6 +36,8 @@ export type FluxOverviewData = {
   setActiveCluster: (cluster: string | null) => void;
   resourceType: ResourceType;
   setResourceType: (resourceType: ResourceType) => void;
+  statusFilter: StatusFilter;
+  setStatusFilter: (statusFilter: StatusFilter) => void;
   treeBuilder?: KustomizationTreeBuilder;
   tree?: KustomizationTreeNode[];
   // Search state
@@ -70,6 +75,7 @@ export const FluxOverviewDataProvider = ({
 }: FluxOverviewDataProviderProps) => {
   const [activeCluster, setActiveCluster] = useState<string | null>(null);
   const [resourceType, setResourceType] = useState<ResourceType>('flux');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const {
     resources: {
@@ -117,6 +123,14 @@ export const FluxOverviewDataProvider = ({
     isLoading,
   ]);
 
+  const displayTree = useMemo(() => {
+    if (!tree || statusFilter !== 'failing') {
+      return tree;
+    }
+
+    return filterTreeToFailingPaths(tree);
+  }, [tree, statusFilter]);
+
   const compactView = resourceType === 'flux';
 
   const {
@@ -129,7 +143,7 @@ export const FluxOverviewDataProvider = ({
     navigateToNextMatch,
     navigateToPreviousMatch,
     totalMatches,
-  } = useTreeSearch({ tree, compactView });
+  } = useTreeSearch({ tree: displayTree, compactView });
 
   const contextValue: FluxOverviewData = useMemo(() => {
     return {
@@ -146,8 +160,10 @@ export const FluxOverviewDataProvider = ({
       setActiveCluster,
       resourceType,
       setResourceType,
+      statusFilter,
+      setStatusFilter,
       treeBuilder,
-      tree,
+      tree: displayTree,
       searchQuery,
       setSearchQuery,
       searchMatches,
@@ -170,8 +186,9 @@ export const FluxOverviewDataProvider = ({
     isLoading,
     activeCluster,
     resourceType,
+    statusFilter,
     treeBuilder,
-    tree,
+    displayTree,
     searchQuery,
     setSearchQuery,
     searchMatches,
