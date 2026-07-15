@@ -44,13 +44,15 @@ export function usePageHeaderActionsSlot(): ReactNode {
 }
 
 // Register header actions from routed content for as long as the calling
-// component is mounted; they are cleared automatically on unmount. Pass the
-// freshly-built element on every render — the setter is stable, so this does
-// not re-render the caller, and the header always reflects the latest closures.
+// component is mounted; they are cleared automatically on unmount. The effect
+// re-runs only when the `actions` element identity changes, so callers should
+// pass a memoized element (e.g. via `useMemo`) — otherwise a new element every
+// render would re-push (and re-render the header) on every render. The setter is
+// stable, so registering never re-renders the caller.
 export function useProvidePageHeaderActions(actions: ReactNode): void {
   const setActions = useContext(PageHeaderActionsSetContext);
   useEffect(() => {
     setActions(actions);
     return () => setActions(null);
-  });
+  }, [actions, setActions]);
 }

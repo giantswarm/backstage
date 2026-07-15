@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -118,28 +118,34 @@ function NewAgentPageContent() {
 
   // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
-  const onReview = () => {
-    if (validationErrors.length > 0) {
+  const errorCount = validationErrors.length;
+  const onReview = useCallback(() => {
+    if (errorCount > 0) {
       setShowValidation(true);
       return;
     }
     if (reviewLink) {
       navigate(reviewLink());
     }
-  };
+  }, [errorCount, reviewLink, navigate]);
 
-  const actions = (
-    <Flex gap="2">
-      <Button
-        variant="tertiary"
-        onPress={() => agentsLink && navigate(agentsLink())}
-      >
-        Cancel
-      </Button>
-      <Button variant="primary" onPress={onReview}>
-        Review & deploy
-      </Button>
-    </Flex>
+  // Memoized so the header actions slot only updates when the handlers actually
+  // change, not on every keystroke in the form (see useProvidePageHeaderActions).
+  const actions = useMemo(
+    () => (
+      <Flex gap="2">
+        <Button
+          variant="tertiary"
+          onPress={() => agentsLink && navigate(agentsLink())}
+        >
+          Cancel
+        </Button>
+        <Button variant="primary" onPress={onReview}>
+          Review & deploy
+        </Button>
+      </Flex>
+    ),
+    [agentsLink, navigate, onReview],
   );
 
   // Surface the actions in the section's single header (Agent Platform) rather

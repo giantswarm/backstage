@@ -1,11 +1,6 @@
-import {
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useParams,
-} from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { Box, Tab, TabList, Tabs } from '@backstage/ui';
+import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 
 import { MusterProviders } from '../MusterProviders';
 import { DashboardPage } from '../DashboardPage';
@@ -24,22 +19,6 @@ const VIEWS = [
   { path: 'tools', title: 'Tool explorer' },
 ] as const;
 
-// The section is mounted at a splat route (`/agent-platform/muster/*`), so the
-// base path is the current pathname with the matched remainder removed. Work by
-// path *segment* count rather than string length: `pathname` stays
-// percent-encoded while `useParams()['*']` is decoded, so length maths would
-// break on encoded chars — the `/` separator count is unaffected. (Same
-// approach as the app's GSPageLayout.)
-function useBasePath(): string {
-  const { pathname } = useLocation();
-  const params = useParams();
-  const splatSegments = (params['*'] ?? '').split('/').filter(Boolean).length;
-  const segments = pathname.split('/').filter(Boolean);
-  return `/${segments
-    .slice(0, Math.max(0, segments.length - splatSegments))
-    .join('/')}`;
-}
-
 // The "MCP Servers" tab of the Agent Platform page. Renders its own second-level
 // tab row (a plain bui Tabs strip — the section title comes from the Agent
 // Platform header above, so no PluginHeader here) plus the routed view. The tabs
@@ -48,14 +27,16 @@ function useBasePath(): string {
 // MusterProviders so all views share one muster instance + session, and the
 // providers don't remount as the user switches views.
 export const MusterSection = () => {
-  const basePath = useBasePath();
+  const basePath = useSplatBasePath();
 
   return (
     <MusterProviders>
-      {/* Inset the tab strip by the page gutter (bui space-5 = 20px) so it lines
-          up with the level-1 header tabs and the content below, which the
-          PluginHeader / Content apply automatically but this bare Tabs row does
-          not. */}
+      {/* Inset the tab strip by the page gutter so it lines up with the level-1
+          header tabs and the content below. NOTE: `px="5"` is hand-matched to
+          the horizontal padding the bui PluginHeader / Content apply
+          automatically (bui space-5 = 20px). bui does not expose that gutter as
+          a referenceable token, so if it ever changes this value must be updated
+          in lock-step or the level-2 tabs fall out of alignment. */}
       <Box px="5">
         <Tabs>
           <TabList>

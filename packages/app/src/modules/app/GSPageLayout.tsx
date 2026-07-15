@@ -1,10 +1,10 @@
-import { useLocation, useParams } from 'react-router-dom';
 import type { PageLayoutProps } from '@backstage/frontend-plugin-api';
 import { PluginHeader } from '@backstage/ui';
 import type { HeaderTab } from '@backstage/ui';
 import {
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
+  useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
@@ -44,23 +44,13 @@ export function GSPageLayout(props: PageLayoutProps) {
 function PageLayoutWithHeader(props: PageLayoutProps) {
   const { title, icon, titleLink, headerActions, tabs, children } = props;
 
-  const { pathname } = useLocation();
-  const params = useParams();
-
   // Actions injected by the active routed content (if any) take precedence over
   // the page's static header actions.
   const dynamicActions = usePageHeaderActionsSlot();
 
-  // The page is mounted at a splat route (e.g. `/flux/*`), so the base path is
-  // the current pathname with the matched remainder removed. Work by path
-  // *segment* rather than string length: `location.pathname` stays
-  // percent-encoded while `useParams()['*']` is decoded, so comparing lengths
-  // would break on encoded chars — but the `/` separator count is unaffected.
-  const splatSegments = (params['*'] ?? '').split('/').filter(Boolean).length;
-  const segments = pathname.split('/').filter(Boolean);
-  const basePath = `/${segments
-    .slice(0, Math.max(0, segments.length - splatSegments))
-    .join('/')}`;
+  // The page is mounted at a splat route (e.g. `/flux/*`); resolve its base path
+  // so the sub-page tab hrefs below are absolute.
+  const basePath = useSplatBasePath();
 
   const headerTabs: HeaderTab[] | undefined = tabs?.map(tab => {
     const cleanPath = tab.href.replace(/^\//, '');

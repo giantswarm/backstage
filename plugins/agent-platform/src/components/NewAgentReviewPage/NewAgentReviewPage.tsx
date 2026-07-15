@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { Content } from '@backstage/core-components';
@@ -160,7 +160,7 @@ export function NewAgentReviewPage() {
   const isDeploying =
     status.phase === 'authenticating' || status.phase === 'submitting';
 
-  const onDeploy = async () => {
+  const onDeploy = useCallback(async () => {
     setDeployError(undefined);
     try {
       const taskId = await deploy({
@@ -173,7 +173,14 @@ export function NewAgentReviewPage() {
     } catch (e) {
       setDeployError(e instanceof Error ? e.message : String(e));
     }
-  };
+  }, [
+    deploy,
+    state.installation,
+    state.slug,
+    combinedManifest,
+    namespace,
+    navigate,
+  ]);
 
   const deployLabelByPhase: Record<string, string> = {
     authenticating: 'Authenticating…',
@@ -181,19 +188,24 @@ export function NewAgentReviewPage() {
   };
   const deployLabel = deployLabelByPhase[status.phase] ?? 'Deploy agent';
 
-  const actions = (
-    <Flex gap="2">
-      <Button
-        variant="tertiary"
-        isDisabled={isDeploying}
-        onPress={() => navigate(newAgentLink ? newAgentLink() : '..')}
-      >
-        Back to edit
-      </Button>
-      <Button variant="primary" isDisabled={isDeploying} onPress={onDeploy}>
-        {deployLabel}
-      </Button>
-    </Flex>
+  // Memoized so the header actions slot only updates when the handlers/labels
+  // actually change (see useProvidePageHeaderActions).
+  const actions = useMemo(
+    () => (
+      <Flex gap="2">
+        <Button
+          variant="tertiary"
+          isDisabled={isDeploying}
+          onPress={() => navigate(newAgentLink ? newAgentLink() : '..')}
+        >
+          Back to edit
+        </Button>
+        <Button variant="primary" isDisabled={isDeploying} onPress={onDeploy}>
+          {deployLabel}
+        </Button>
+      </Flex>
+    ),
+    [isDeploying, newAgentLink, navigate, onDeploy, deployLabel],
   );
 
   // Surface the actions in the section's single header (Agent Platform) rather
