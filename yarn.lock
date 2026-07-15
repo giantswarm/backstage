@@ -100,16 +100,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/gateway@npm:3.0.141":
-  version: 3.0.141
-  resolution: "@ai-sdk/gateway@npm:3.0.141"
+"@ai-sdk/gateway@npm:4.0.7":
+  version: 4.0.7
+  resolution: "@ai-sdk/gateway@npm:4.0.7"
   dependencies:
-    "@ai-sdk/provider": "npm:3.0.13"
-    "@ai-sdk/provider-utils": "npm:4.0.34"
+    "@ai-sdk/provider": "npm:4.0.1"
+    "@ai-sdk/provider-utils": "npm:5.0.2"
     "@vercel/oidc": "npm:3.2.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/7e766e8a9354c9b46f9e237c1e0914fdd76aced97a0dc67e1684efbaea47ae51bf2641b00ad149bdfcf9508443e3ef598f1e372dabde69b6a209558ac18b207f
+  checksum: 10c0/1f476921f9a95dd60f1eb7944180fd0b29f9867fe97088e66b73546502f229d410c84ba31dd8c31f164048c00a7b038107afb3c4251457589213d651ef72f05e
   languageName: node
   linkType: hard
 
@@ -189,19 +189,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/provider-utils@npm:4.0.34":
-  version: 4.0.34
-  resolution: "@ai-sdk/provider-utils@npm:4.0.34"
-  dependencies:
-    "@ai-sdk/provider": "npm:3.0.13"
-    "@standard-schema/spec": "npm:^1.1.0"
-    eventsource-parser: "npm:^3.0.8"
-  peerDependencies:
-    zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/ec09f1d9d70c29b3b778c7ea08f286a75f4dc3b2407ca59d2e3ffbe827ec617b734e4d63a54ca9649ad45923e76c71159f93d58475445d87656e8761efe54e31
-  languageName: node
-  linkType: hard
-
 "@ai-sdk/provider-utils@npm:4.0.37":
   version: 4.0.37
   resolution: "@ai-sdk/provider-utils@npm:4.0.37"
@@ -212,6 +199,20 @@ __metadata:
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
   checksum: 10c0/ba8ec2e49a86097a6bb9f6892797ea211ec01ac9c56c1cd334c366209e3ba6561dec720915c20592b1d60d374ae97d93994418160a4ce5afa437e6db990af8aa
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider-utils@npm:5.0.2":
+  version: 5.0.2
+  resolution: "@ai-sdk/provider-utils@npm:5.0.2"
+  dependencies:
+    "@ai-sdk/provider": "npm:4.0.1"
+    "@standard-schema/spec": "npm:^1.1.0"
+    "@workflow/serde": "npm:4.1.0"
+    eventsource-parser: "npm:^3.0.8"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/fa90e50566673f693aee254efb22bd92bb8666a281b97067323511411b42a8f332e41107add4a4fc62fb464854b657506df30547827bd01e1f278acafd4568f9
   languageName: node
   linkType: hard
 
@@ -244,6 +245,15 @@ __metadata:
   dependencies:
     json-schema: "npm:^0.4.0"
   checksum: 10c0/65f7a0bc5de01561ed7c2007a96e3ecc077dd43af046c2d526d46930c061adb2159c04063ef05075dd059f61745a9597bca2f92871a22c0dcb6ba5c58c2f5d53
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/provider@npm:4.0.1":
+  version: 4.0.1
+  resolution: "@ai-sdk/provider@npm:4.0.1"
+  dependencies:
+    json-schema: "npm:^0.4.0"
+  checksum: 10c0/00584d568e7efd6d3c8cf6a64df26fbe7460134a2820be35e62aa28c95f5ca2a6e53a0b933ce51c55ef15f78cbcf07237cae89004e688ede5bc486541de68ffa
   languageName: node
   linkType: hard
 
@@ -11239,7 +11249,7 @@ __metadata:
     "@giantswarm/backstage-plugin-gs-node": "workspace:^"
     "@types/express": "npm:^5.0.0"
     "@types/supertest": "npm:^7.0.0"
-    ai: "npm:^6.0.176"
+    ai: "npm:^7.0.0"
     express: "npm:^5.0.0"
     express-promise-router: "npm:^4.1.0"
     knex: "npm:^3.1.0"
@@ -11298,7 +11308,7 @@ __metadata:
     "@testing-library/jest-dom": "npm:^6.0.0"
     "@testing-library/react": "npm:^16.0.0"
     "@testing-library/user-event": "npm:^14.0.0"
-    ai: "npm:^6.0.176"
+    ai: "npm:^7.0.0"
     classnames: "npm:^2.5.1"
     mermaid: "npm:^11.14.0"
     msw: "npm:^2.0.0"
@@ -26106,17 +26116,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:6.0.217":
-  version: 6.0.217
-  resolution: "ai@npm:6.0.217"
+"ai@npm:7.0.9":
+  version: 7.0.9
+  resolution: "ai@npm:7.0.9"
   dependencies:
-    "@ai-sdk/gateway": "npm:3.0.141"
-    "@ai-sdk/provider": "npm:3.0.13"
-    "@ai-sdk/provider-utils": "npm:4.0.34"
-    "@opentelemetry/api": "npm:^1.9.0"
+    "@ai-sdk/gateway": "npm:4.0.7"
+    "@ai-sdk/provider": "npm:4.0.1"
+    "@ai-sdk/provider-utils": "npm:5.0.2"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/9853a4cb3947a91e12c623a4770ae1636dd219c880f1a13b814a6a82a129c5a81e0cf9fe514d68e4145f00a1ec56a4a93298c0b0770494413e57b2b687324f42
+  checksum: 10c0/ad7600b20233590f642164e1fad2d234d968dbd47ce91426bfa3a9a4f65f23f9b9a4a6af6bcf81849251a190439c28c42925eab1270585a381d5222bc7a718bd
   languageName: node
   linkType: hard
 

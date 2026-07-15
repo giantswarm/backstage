@@ -35,7 +35,7 @@
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@giantswarm/backstage-plugin-gs-node": "workspace:^",
-    "ai": "^6.0.176",
+    "ai": "^7.0.0",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0",
     "knex": "^3.1.0",
