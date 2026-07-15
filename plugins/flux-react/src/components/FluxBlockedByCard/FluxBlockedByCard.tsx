@@ -18,11 +18,15 @@ import {
 import {
   BlockedAncestor,
   findBlockedAncestors,
+  selectBlockingRootCause,
 } from '../../utils/findKustomizationAncestors';
+import { isManagedByFlux } from '../../utils/isManagedByFlux';
 import {
   FLUX_RESOURCE_PANE_ID,
   FLUX_RESOURCE_PANE_PREFIX,
 } from '../FluxResourcesTreeView/constants';
+
+const KUSTOMIZATIONS_STALE_TIME_MS = 60_000;
 
 function formatKustomizationRef(kustomization: Kustomization) {
   return `${kustomization.getNamespace()}/${kustomization.getName()}`;
@@ -37,24 +41,33 @@ type FluxBlockedByCardProps = {
 /**
  * Warns when an ancestor Flux Kustomization of the given deployment is
  * suspended or failing and therefore blocking updates to the deployment.
- * Renders nothing while loading or when the whole chain is healthy.
+ * Renders nothing for deployments that are not managed by Flux, while
+ * loading, and when the whole chain is healthy.
  */
 export function FluxBlockedByCard({
   deployment,
   installationName,
   fluxOverviewRouteRef,
 }: FluxBlockedByCardProps) {
+  const isGitOpsManaged = isManagedByFlux(deployment);
+
   const {
     resources: kustomizations,
     errors,
     isLoading,
-  } = useResources(installationName, Kustomization);
+  } = useResources(
+    installationName,
+    Kustomization,
+    {},
+    { enabled: isGitOpsManaged, staleTime: KUSTOMIZATIONS_STALE_TIME_MS },
+  );
 
   useShowErrors(errors);
 
   const blockedAncestors = useMemo(
-    () => findBlockedAncestors(deployment, kustomizations),
-    [deployment, kustomizations],
+    () =>
+      isGitOpsManaged ? findBlockedAncestors(deployment, kustomizations) : [],
+    [isGitOpsManaged, deployment, kustomizations],
   );
 
   const fluxOverviewRoute = useRouteRef(fluxOverviewRouteRef);
@@ -62,24 +75,30 @@ export function FluxBlockedByCard({
     prefix: FLUX_RESOURCE_PANE_PREFIX,
   });
 
-  if (isLoading || blockedAncestors.length === 0) {
+  const rootCause = selectBlockingRootCause(blockedAncestors);
+  if (!isGitOpsManaged || isLoading || !rootCause) {
     return null;
   }
 
-  // The last entry is the topmost blocked ancestor and usually the root cause.
-  const rootCause = blockedAncestors[blockedAncestors.length - 1];
   const rootCauseKustomization = rootCause.kustomization;
 
-  const rootCauseUrl = fluxOverviewRoute
-    ? `${getRoute(fluxOverviewRoute(), {
-        cluster: installationName,
-        kind: Kustomization.kind.toLowerCase(),
-        name: rootCauseKustomization.getName(),
-        namespace: rootCauseKustomization.getNamespace(),
-      })}&cluster=${installationName}`
-    : null;
+  let rootCauseUrl: string | null = null;
+  if (fluxOverviewRoute) {
+    const paneRoute = getRoute(fluxOverviewRoute(), {
+      cluster: installationName,
+      kind: Kustomization.kind.toLowerCase(),
+      name: rootCauseKustomization.getName(),
+      namespace: rootCauseKustomization.getNamespace(),
+    });
+    // Add the cluster filter the tree page's cluster picker reads, reusing
+    // the query string getRoute produced so everything stays encoded.
+    const [panePath, paneQuery = ''] = paneRoute.split('?');
+    const params = new URLSearchParams(paneQuery);
+    params.set('cluster', installationName);
+    rootCauseUrl = `${panePath}?${params.toString()}`;
+  }
 
-  const alsoBlocked = blockedAncestors.slice(0, -1);
+  const alsoBlocked = blockedAncestors.filter(blocked => blocked !== rootCause);
 
   return (
     <Alert
@@ -92,7 +111,9 @@ export function FluxBlockedByCard({
             Kustomization {formatKustomizationRef(rootCauseKustomization)}{' '}
             {rootCause.reason === 'suspended'
               ? 'is suspended, so changes to this deployment are not applied.'
-              : 'is failing, so changes to this deployment are not applied:'}
+              : `is failing, so changes to this deployment are not applied${
+                  rootCause.message ? ':' : '.'
+                }`}
           </Typography>
           {rootCause.message ? (
             <Box mt={1}>

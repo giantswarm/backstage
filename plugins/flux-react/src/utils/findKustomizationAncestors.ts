@@ -68,22 +68,23 @@ export type BlockedAncestor = {
   kustomization: Kustomization;
   reason: 'not-ready' | 'suspended';
   message?: string;
+  /** Position in the full ancestor chain (0 = nearest parent). */
+  chainIndex: number;
 };
 
 /**
  * Returns the ancestor Kustomizations of the given resource that are blocking
  * reconciliation, either because they are suspended or because their Ready
- * condition is False. Ordered nearest parent first, root last — the last
- * entry is the topmost blocked ancestor and usually the root cause.
+ * condition is False. Ordered nearest parent first, root last.
  */
 export function findBlockedAncestors(
   resource: KubeObject,
   kustomizations: Kustomization[],
 ): BlockedAncestor[] {
   return findKustomizationAncestors(resource, kustomizations).flatMap(
-    (kustomization): BlockedAncestor[] => {
+    (kustomization, chainIndex): BlockedAncestor[] => {
       if (kustomization.isSuspended()) {
-        return [{ kustomization, reason: 'suspended' }];
+        return [{ kustomization, reason: 'suspended', chainIndex }];
       }
 
       const readyCondition = kustomization.findReadyCondition();
@@ -93,6 +94,7 @@ export function findBlockedAncestors(
             kustomization,
             reason: 'not-ready',
             message: readyCondition.message,
+            chainIndex,
           },
         ];
       }
@@ -100,4 +102,26 @@ export function findBlockedAncestors(
       return [];
     },
   );
+}
+
+/**
+ * Picks the blocked ancestor to present as the root cause: the topmost entry
+ * of the contiguous run of blocked ancestors that starts at the one nearest
+ * to the resource. In a failure cascade the whole chain is blocked and this
+ * yields the topmost ancestor, which is the actual root cause. When a healthy
+ * Kustomization sits between two blocked ones, the failure above it does not
+ * propagate down to the resource, so the nearer run wins.
+ */
+export function selectBlockingRootCause(
+  blockedAncestors: BlockedAncestor[],
+): BlockedAncestor | undefined {
+  let rootCause = blockedAncestors[0];
+  for (const candidate of blockedAncestors.slice(1)) {
+    if (candidate.chainIndex !== rootCause.chainIndex + 1) {
+      break;
+    }
+    rootCause = candidate;
+  }
+
+  return rootCause;
 }

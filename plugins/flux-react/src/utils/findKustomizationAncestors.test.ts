@@ -5,6 +5,7 @@ import {
 import {
   findBlockedAncestors,
   findKustomizationAncestors,
+  selectBlockingRootCause,
 } from './findKustomizationAncestors';
 
 function createMockKustomization(options: {
@@ -247,5 +248,65 @@ describe('findBlockedAncestors', () => {
     expect(blocked.map(({ kustomization }) => kustomization.getName())).toEqual(
       ['mid', 'root'],
     );
+    expect(blocked.map(({ chainIndex }) => chainIndex)).toEqual([0, 1]);
+  });
+});
+
+describe('selectBlockingRootCause', () => {
+  it('returns undefined when nothing is blocked', () => {
+    expect(selectBlockingRootCause([])).toBeUndefined();
+  });
+
+  it('returns the topmost blocked ancestor of a fully blocked chain', () => {
+    const root = createMockKustomization({
+      name: 'root',
+      readyCondition: { status: 'False', message: 'root failed' },
+    });
+    const mid = createMockKustomization({
+      name: 'mid',
+      managedBy: { name: 'root', namespace: 'flux-system' },
+      readyCondition: { status: 'False', message: 'dependency not ready' },
+    });
+    const helmRelease = createMockHelmRelease({
+      name: 'my-app',
+      managedBy: { name: 'mid', namespace: 'flux-system' },
+    });
+
+    const blocked = findBlockedAncestors(helmRelease, [root, mid]);
+    const rootCause = selectBlockingRootCause(blocked);
+
+    expect(rootCause?.kustomization.getName()).toEqual('root');
+  });
+
+  it('stops at a healthy Kustomization between two blocked ones', () => {
+    // deployment <- a (failing) <- b (healthy) <- c (failing): b reconciled
+    // successfully, so c's failure does not propagate down — a is the block
+    // that actually stops this deployment's updates.
+    const c = createMockKustomization({
+      name: 'c',
+      readyCondition: { status: 'False', message: 'c failed' },
+    });
+    const b = createMockKustomization({
+      name: 'b',
+      managedBy: { name: 'c', namespace: 'flux-system' },
+      readyCondition: { status: 'True' },
+    });
+    const a = createMockKustomization({
+      name: 'a',
+      managedBy: { name: 'b', namespace: 'flux-system' },
+      readyCondition: { status: 'False', message: 'a failed' },
+    });
+    const helmRelease = createMockHelmRelease({
+      name: 'my-app',
+      managedBy: { name: 'a', namespace: 'flux-system' },
+    });
+
+    const blocked = findBlockedAncestors(helmRelease, [a, b, c]);
+    const rootCause = selectBlockingRootCause(blocked);
+
+    expect(blocked.map(({ kustomization }) => kustomization.getName())).toEqual(
+      ['a', 'c'],
+    );
+    expect(rootCause?.kustomization.getName()).toEqual('a');
   });
 });
