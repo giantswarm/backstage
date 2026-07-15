@@ -9,3 +9,4 @@ export * from './api';
 export * from './assets/icons';
 export * from './components';
 export * from './routes';
+export * from './utils';

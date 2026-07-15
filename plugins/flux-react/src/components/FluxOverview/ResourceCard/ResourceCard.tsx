@@ -16,7 +16,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Box, Divider, makeStyles, Paper, PaperProps } from '@material-ui/core';
 import classNames from 'classnames';
-import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
+import {
+  AIChatButton,
+  buildExplainErrorMessage,
+} from '@giantswarm/backstage-plugin-ai-chat-react';
 import { CopyCommandMenu } from './CopyCommandMenu';
 import { ResourceMetadata } from './ResourceMetadata';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
@@ -152,6 +155,27 @@ export const ResourceCard = ({
 
   const inactive = isSuspended || isDependencyNotReady;
 
+  const failureMessage =
+    readyStatus === 'False'
+      ? resource?.findReadyCondition()?.message
+      : undefined;
+
+  let aiChatMessage: string;
+  if (readyStatus === 'False' && failureMessage) {
+    aiChatMessage = buildExplainErrorMessage({
+      kind,
+      name,
+      namespace,
+      cluster,
+      message: failureMessage,
+      reason: resource?.findReadyCondition()?.reason,
+    });
+  } else if (readyStatus === 'False') {
+    aiChatMessage = `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}' and help me understand why it is not in a Ready state.`;
+  } else {
+    aiChatMessage = `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}', and show me basic details, so that I can ask further questions about it.`;
+  }
+
   return (
     <ResourceWrapper
       highlighted={highlighted}
@@ -205,14 +229,7 @@ export const ResourceCard = ({
               <CopyCommandMenu resource={resource} />
               <AIChatButton
                 troubleshoot={readyStatus === 'False'}
-                items={[
-                  {
-                    message:
-                      readyStatus === 'False'
-                        ? `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}' and help me understand why it is not in a Ready state.`
-                        : `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}', and show me basic details, so that I can ask further questions about it.`,
-                  },
-                ]}
+                items={[{ message: aiChatMessage }]}
               />
             </Box>
           </>

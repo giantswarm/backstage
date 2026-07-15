@@ -22,6 +22,10 @@ import {
 } from '../../../../../UI';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  AIChatButton,
+  buildExplainErrorMessage,
+} from '@giantswarm/backstage-plugin-ai-chat-react';
 import { WorkloadReplicaStatus } from '../../../../../hooks/useMimirWorkloadStatus';
 import { WorkloadStatusSummary } from '../WorkloadStatusSummary';
 
@@ -55,6 +59,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 type ConditionCardProps = {
+  helmrelease: HelmRelease;
   condition: {
     lastTransitionTime: string;
     message: string;
@@ -66,6 +71,7 @@ type ConditionCardProps = {
 };
 
 const ConditionCard = ({
+  helmrelease,
   condition,
   defaultState = 'collapsed',
 }: ConditionCardProps) => {
@@ -80,6 +86,9 @@ const ConditionCard = ({
   if (condition.status === 'False') {
     conditionHeadline = `HelmRelease Not ${condition.type.toLowerCase()}`;
   }
+
+  const isFailing =
+    condition.status === 'False' || condition.type === 'Stalled';
 
   return (
     <Box>
@@ -129,6 +138,29 @@ const ConditionCard = ({
               </ScrollContainer>
             </Box>
           </Grid>
+          {isFailing && condition.message && (
+            <Grid item xs={12}>
+              <Box mt={1}>
+                <AIChatButton
+                  troubleshoot
+                  label="Explain this error"
+                  items={[
+                    {
+                      message: buildExplainErrorMessage({
+                        kind: 'HelmRelease',
+                        name: helmrelease.getName(),
+                        namespace: helmrelease.getNamespace(),
+                        cluster: helmrelease.cluster,
+                        message: condition.message,
+                        reason: condition.reason,
+                        revision: helmrelease.getLastAppliedRevision(),
+                      }),
+                    },
+                  ]}
+                />
+              </Box>
+            </Grid>
+          )}
         </Grid>
       </Collapse>
     </Box>
@@ -173,6 +205,7 @@ export const HelmReleaseConditions = ({
         {sortedConditions.map((condition, idx) => (
           <Grid item xs={12} key={condition.type}>
             <ConditionCard
+              helmrelease={helmrelease}
               condition={condition}
               defaultState={
                 idx === 0 &&
