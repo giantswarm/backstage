@@ -6,3 +6,8 @@ export {
   getKustomizationName,
   getKustomizationNamespace,
 } from './utils/isManagedByFlux';
+export {
+  findKustomizationAncestors,
+  findBlockedAncestors,
+} from './utils/findKustomizationAncestors';
+export type { BlockedAncestor } from './utils/findKustomizationAncestors';
