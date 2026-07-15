@@ -20,6 +20,7 @@ function createMockKustomization(options: {
   namespace?: string;
   inventory?: InventoryRef[];
   readyCondition?: { status: 'True' | 'False' | 'Unknown'; message?: string };
+  suspend?: boolean;
 }): Kustomization {
   const json = {
     apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
@@ -28,7 +29,9 @@ function createMockKustomization(options: {
       name: options.name,
       namespace: options.namespace ?? 'flux-system',
     },
-    spec: {},
+    spec: {
+      suspend: options.suspend,
+    },
     status: {
       inventory: options.inventory
         ? { entries: options.inventory.map(inventoryEntry) }
@@ -202,6 +205,42 @@ describe('KustomizationTreeBuilder', () => {
         expect(node?.nodeData.isFailing).toBe(false);
         expect(node?.nodeData.hasFailingDescendants).toBe(false);
       }
+    });
+
+    it('does not count suspended-while-failing resources as failing', () => {
+      // Suspended resources keep their last Ready condition frozen, so a
+      // resource suspended in a failing state must not light up ancestors.
+      const root = createMockKustomization({
+        name: 'root',
+        readyCondition: { status: 'True' },
+        inventory: [
+          {
+            namespace: 'flux-system',
+            name: 'suspended',
+            group: KUSTOMIZATION_GROUP,
+            kind: 'Kustomization',
+          },
+        ],
+      });
+      const suspended = createMockKustomization({
+        name: 'suspended',
+        suspend: true,
+        readyCondition: { status: 'False', message: 'was failing' },
+      });
+
+      const builder = new KustomizationTreeBuilder(
+        [root, suspended],
+        [],
+        [],
+        [],
+        [],
+      );
+      const tree = builder.buildTree();
+
+      expect(findNode(tree, 'suspended')?.nodeData.isFailing).toBe(false);
+      expect(findNode(tree, 'root')?.nodeData.hasFailingDescendants).toBe(
+        false,
+      );
     });
 
     it('terminates on circular inventories', () => {

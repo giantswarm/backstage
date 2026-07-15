@@ -41,6 +41,14 @@ export type KustomizationTreeNodeData = {
 function isResourceFailing(
   resource?: KustomizationTreeNodeData['resource'],
 ): boolean {
+  if (resource?.isSuspended()) {
+    // A suspended resource keeps its last Ready condition frozen, so a
+    // resource that was failing when it got suspended would otherwise still
+    // count as failing. Suspended resources are rendered as inactive, not
+    // failing (consistent with getAggregatedStatus).
+    return false;
+  }
+
   return resource?.findReadyCondition()?.status === 'False';
 }
 
