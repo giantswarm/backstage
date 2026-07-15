@@ -6,7 +6,7 @@ import {
 export const rootRouteRef = createRouteRef();
 
 export const mcpServersRouteRef = createSubRouteRef({
-  path: '/mcp-servers',
+  path: '/servers',
   parent: rootRouteRef,
 });
 

@@ -2,6 +2,10 @@ import { useLocation, useParams } from 'react-router-dom';
 import type { PageLayoutProps } from '@backstage/frontend-plugin-api';
 import { PluginHeader } from '@backstage/ui';
 import type { HeaderTab } from '@backstage/ui';
+import {
+  PageHeaderActionsProvider,
+  usePageHeaderActionsSlot,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Custom implementation of the NFS `PageLayout` swappable component, rendered
@@ -16,19 +20,36 @@ import type { HeaderTab } from '@backstage/ui';
  * `/flux/list/tree` (append) instead of `/flux/tree`, and no tab is ever
  * highlighted. Turning the relative sub-page paths into absolute hrefs here
  * fixes both.
+ *
+ * The layout also hosts a page-header-actions slot (`PageHeaderActionsProvider`
+ * + `useProvidePageHeaderActions`), so routed tab content can inject
+ * context-specific header buttons — e.g. the agent-platform create flow's
+ * Cancel / Review buttons — into this single header instead of rendering a
+ * second header of its own.
  */
 export function GSPageLayout(props: PageLayoutProps) {
-  const { title, icon, noHeader, titleLink, headerActions, tabs, children } =
-    props;
+  // Pages that render their own header (clusters/deployments/ai-chat/home)
+  // opt out; skip the header (and its actions slot) entirely for them.
+  if (props.noHeader) {
+    return <>{props.children}</>;
+  }
+
+  return (
+    <PageHeaderActionsProvider>
+      <PageLayoutWithHeader {...props} />
+    </PageHeaderActionsProvider>
+  );
+}
+
+function PageLayoutWithHeader(props: PageLayoutProps) {
+  const { title, icon, titleLink, headerActions, tabs, children } = props;
 
   const { pathname } = useLocation();
   const params = useParams();
 
-  // Pages that render their own header (clusters/deployments/ai-chat/home)
-  // opt out; skip the tab/base-path work entirely for them.
-  if (noHeader) {
-    return <>{children}</>;
-  }
+  // Actions injected by the active routed content (if any) take precedence over
+  // the page's static header actions.
+  const dynamicActions = usePageHeaderActionsSlot();
 
   // The page is mounted at a splat route (e.g. `/flux/*`), so the base path is
   // the current pathname with the matched remainder removed. Work by path
@@ -59,7 +80,7 @@ export function GSPageLayout(props: PageLayoutProps) {
         title={title}
         icon={icon}
         titleLink={titleLink}
-        customActions={headerActions}
+        customActions={dynamicActions ?? headerActions}
         tabs={headerTabs}
       />
       {children}

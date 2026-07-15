@@ -126,28 +126,28 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
-    case pathname === '/muster':
+    case pathname === '/agent-platform/muster':
       payload = { page: 'Muster index' };
       break;
 
-    case pathname.startsWith('/muster'): {
+    case pathname.startsWith('/agent-platform/muster'): {
       const parts = pathname.split('/');
       payload = {
         page: 'Muster',
-        view: parts[2],
+        view: parts[3],
       };
       break;
     }
 
-    case pathname === '/agents':
+    case pathname === '/agent-platform':
       payload = { page: 'Agents index' };
       break;
 
-    case pathname.startsWith('/agents'): {
+    case pathname.startsWith('/agent-platform'): {
       const parts = pathname.split('/');
       payload = {
         page: 'Agents',
-        view: parts[2],
+        view: parts.slice(2).join('/'),
       };
       break;
     }

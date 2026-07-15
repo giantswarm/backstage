@@ -56,9 +56,9 @@ const app = createApp({
     fluxPluginOverrides,
     aiChatPlugin,
     aiChatPluginOverrides,
+    agentPlatformPlugin,
     musterPlugin,
     musterPluginOverrides,
-    agentPlatformPlugin,
     plansPlugin,
     roadmapPlugin,
 

@@ -9,14 +9,13 @@ import {
   CardBody,
   Flex,
   Grid,
-  PluginHeader,
   Text,
   TextField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import AndroidIcon from '@material-ui/icons/Android';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newAgentReviewRouteRef, rootRouteRef } from '../../routes';
+import { agentsRouteRef, newAgentReviewRouteRef } from '../../routes';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
@@ -85,7 +84,7 @@ export function NewAgentPage() {
 function NewAgentPageContent() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const rootLink = useRouteRef(rootRouteRef);
+  const agentsLink = useRouteRef(agentsRouteRef);
   const reviewLink = useRouteRef(newAgentReviewRouteRef);
   const {
     state,
@@ -133,7 +132,7 @@ function NewAgentPageContent() {
     <Flex gap="2">
       <Button
         variant="tertiary"
-        onPress={() => rootLink && navigate(rootLink())}
+        onPress={() => agentsLink && navigate(agentsLink())}
       >
         Cancel
       </Button>
@@ -143,120 +142,117 @@ function NewAgentPageContent() {
     </Flex>
   );
 
+  // Surface the actions in the section's single header (Agent Platform) rather
+  // than a second header of our own.
+  useProvidePageHeaderActions(actions);
+
   return (
-    <>
-      <PluginHeader
-        icon={<AndroidIcon fontSize="inherit" />}
-        title="Agents"
-        customActions={actions}
-      />
-      <Content>
-        <div className={classes.column}>
-          <Text
-            as="h2"
-            variant="title-large"
-            weight="bold"
-            className={classes.pageTitle}
-          >
-            Create an agent
-          </Text>
-          <Text as="p" className={classes.intro}>
-            Create an agent for you and your team mates to re-use for certain
-            types of tasks.
-          </Text>
+    <Content>
+      <div className={classes.column}>
+        <Text
+          as="h2"
+          variant="title-large"
+          weight="bold"
+          className={classes.pageTitle}
+        >
+          Create an agent
+        </Text>
+        <Text as="p" className={classes.intro}>
+          Create an agent for you and your team mates to re-use for certain
+          types of tasks.
+        </Text>
 
-          <Flex direction="column" gap="4">
-            <Card>
-              <CardBody>
-                <SectionHeader
-                  title="Identity"
-                  description="How this agent appears across the platform."
-                />
-                <Flex direction="column" gap="4">
-                  <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
-                    <Grid.Item>
-                      <TextField
-                        label="Name"
-                        isRequired
-                        value={state.name}
-                        onChange={setName}
-                        placeholder="e.g. Go service reviewer"
-                        description="The user-friendly name humans will use to refer to this agent."
-                      />
-                    </Grid.Item>
-                    <Grid.Item>
-                      <TextField
-                        label="Slug"
-                        secondaryLabel="auto-derived"
-                        isRequired
-                        value={state.slug}
-                        onChange={setSlug}
-                        placeholder="go-service-reviewer"
-                        description="URL-friendly identifier used in links and resource names."
-                      />
-                    </Grid.Item>
-                  </Grid.Root>
-                  <TextAreaField
-                    label="Description"
-                    value={state.description}
-                    onChange={setDescription}
-                    rows={4}
-                    placeholder="What this agent is good at, what it's not for, example tasks…"
-                    description="Describe this agent so team mates know what to use it for."
-                  />
-                </Flex>
-              </CardBody>
-            </Card>
-
-            <Card>
-              <CardBody>
-                <SectionHeader
-                  title="Configuration"
-                  description="What powers the agent and shapes how it behaves: where it runs, which model it uses, its system prompt, and its skills."
-                />
-                <Flex direction="column" gap="5">
-                  <TextAreaField
-                    label="System prompt"
-                    secondaryLabel="optional"
-                    value={state.systemMessage}
-                    onChange={setSystemMessage}
-                    rows={10}
-                    mono
-                    placeholder={
-                      isChartLoading
-                        ? 'Loading the chart default…'
-                        : "Leave empty to use the chart's default prompt."
-                    }
-                    description="The agent's system message. Pre-filled from the chart's default — edit it to fit the role, or leave it empty to keep the default."
-                  />
-                  <InstallationSelect />
-                  <ModelConfigPicker />
-                  <SkillPicker />
-                </Flex>
-              </CardBody>
-            </Card>
-
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="3">
-                  <Text as="p" color="secondary" className={classes.footerNote}>
-                    The next step composes the Helm values and manifests so you
-                    can review them before the agent is deployed.
-                  </Text>
-                  {showValidation && validationErrors.length > 0 && (
-                    <Alert
-                      status="danger"
-                      title="Please fix the following before continuing"
-                      description={validationErrors.join('. ')}
+        <Flex direction="column" gap="4">
+          <Card>
+            <CardBody>
+              <SectionHeader
+                title="Identity"
+                description="How this agent appears across the platform."
+              />
+              <Flex direction="column" gap="4">
+                <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
+                  <Grid.Item>
+                    <TextField
+                      label="Name"
+                      isRequired
+                      value={state.name}
+                      onChange={setName}
+                      placeholder="e.g. Go service reviewer"
+                      description="The user-friendly name humans will use to refer to this agent."
                     />
-                  )}
-                  {actions}
-                </Flex>
-              </CardBody>
-            </Card>
-          </Flex>
-        </div>
-      </Content>
-    </>
+                  </Grid.Item>
+                  <Grid.Item>
+                    <TextField
+                      label="Slug"
+                      secondaryLabel="auto-derived"
+                      isRequired
+                      value={state.slug}
+                      onChange={setSlug}
+                      placeholder="go-service-reviewer"
+                      description="URL-friendly identifier used in links and resource names."
+                    />
+                  </Grid.Item>
+                </Grid.Root>
+                <TextAreaField
+                  label="Description"
+                  value={state.description}
+                  onChange={setDescription}
+                  rows={4}
+                  placeholder="What this agent is good at, what it's not for, example tasks…"
+                  description="Describe this agent so team mates know what to use it for."
+                />
+              </Flex>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody>
+              <SectionHeader
+                title="Configuration"
+                description="What powers the agent and shapes how it behaves: where it runs, which model it uses, its system prompt, and its skills."
+              />
+              <Flex direction="column" gap="5">
+                <TextAreaField
+                  label="System prompt"
+                  secondaryLabel="optional"
+                  value={state.systemMessage}
+                  onChange={setSystemMessage}
+                  rows={10}
+                  mono
+                  placeholder={
+                    isChartLoading
+                      ? 'Loading the chart default…'
+                      : "Leave empty to use the chart's default prompt."
+                  }
+                  description="The agent's system message. Pre-filled from the chart's default — edit it to fit the role, or leave it empty to keep the default."
+                />
+                <InstallationSelect />
+                <ModelConfigPicker />
+                <SkillPicker />
+              </Flex>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody>
+              <Flex direction="column" gap="3">
+                <Text as="p" color="secondary" className={classes.footerNote}>
+                  The next step composes the Helm values and manifests so you
+                  can review them before the agent is deployed.
+                </Text>
+                {showValidation && validationErrors.length > 0 && (
+                  <Alert
+                    status="danger"
+                    title="Please fix the following before continuing"
+                    description={validationErrors.join('. ')}
+                  />
+                )}
+                {actions}
+              </Flex>
+            </CardBody>
+          </Card>
+        </Flex>
+      </div>
+    </Content>
   );
 }

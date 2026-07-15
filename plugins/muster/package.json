@@ -28,6 +28,7 @@
     "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
     "@backstage/frontend-plugin-api": "backstage:^",
+    "@backstage/ui": "backstage:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-table/core": "^3.1.0",
