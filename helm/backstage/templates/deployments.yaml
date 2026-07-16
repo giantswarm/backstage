@@ -130,6 +130,12 @@ spec:
                   name: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-app
                   key: password
             {{- end }}
+            {{- if .Values.google.credentialsJson }}
+            - name: GOOGLE_CLOUD_PROJECT
+              value: {{ .Values.google.project | quote }}
+            - name: GOOGLE_CLOUD_LOCATION
+              value: {{ .Values.google.location | quote }}
+            {{- end }}
             {{- if .Values.backstage.extraEnvVars }}
             {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 12 }}
             {{- end }}
@@ -139,6 +145,12 @@ spec:
               readOnly: true
               mountPath: /app/github-app-credentials.yaml
               subPath: github-app-credentials.yaml
+            {{- end }}
+            {{- if .Values.google.credentialsJson }}
+            - name: google-credentials
+              readOnly: true
+              mountPath: /app/google/credentials.json
+              subPath: credentials.json
             {{- end }}
             {{- if .Values.backstage.appConfig }}
             - name: backstage-app-config
@@ -209,6 +221,11 @@ spec:
         - name: github-app-credentials
           secret:
             secretName: {{ .Values.name }}-github-app-credentials-secret
+        {{- end }}
+        {{- if .Values.google.credentialsJson }}
+        - name: google-credentials
+          secret:
+            secretName: {{ .Values.name }}-google-credentials-secret
         {{- end }}
         {{- if .Values.backstage.appConfig }}
         - name: backstage-app-config

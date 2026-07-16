@@ -82,6 +82,10 @@ Backstage app provided by Giant Swarm
 | anthropic.apiKey | string | `""` | Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var) |
 | openai | object | `{"apiKey":""}` | OpenAI provider settings |
 | openai.apiKey | string | `""` | OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var) |
+| google | object | `{"credentialsJson":"","location":"","project":""}` | Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model) |
+| google.project | string | `""` | GCP project ID for Vertex AI (exposed as GOOGLE_CLOUD_PROJECT env var) |
+| google.location | string | `""` | Vertex AI region, e.g. europe-west1 (exposed as GOOGLE_CLOUD_LOCATION env var) |
+| google.credentialsJson | string | `""` | Service-account JSON content for Vertex AI authentication. When set, mounted as a file at /app/google/credentials.json (SOPS-encrypted in gitops). google-auth-library uses it to mint and auto-refresh short-lived OAuth2 tokens |
 | pagerduty | object | `{"apiToken":""}` | PagerDuty integration settings |
 | pagerduty.apiToken | string | `""` | PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var) |
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
