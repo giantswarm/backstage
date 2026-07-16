@@ -228,46 +228,52 @@ describe('getTelemetryPageViewPayload', () => {
   });
 
   it('should return correct payload for muster index page', () => {
-    const result = getTelemetryPageViewPayload('/muster');
+    const result = getTelemetryPageViewPayload('/agent-platform/muster');
     expect(result).toEqual({
       page: 'Muster index',
-      path: '/muster',
+      path: '/agent-platform/muster',
     });
   });
 
-  it('should return correct payload for muster mcp-servers view', () => {
-    const result = getTelemetryPageViewPayload('/muster/mcp-servers');
+  it('should return correct payload for muster servers view', () => {
+    const result = getTelemetryPageViewPayload(
+      '/agent-platform/muster/servers',
+    );
     expect(result).toEqual({
       page: 'Muster',
-      view: 'mcp-servers',
-      path: '/muster/mcp-servers',
+      view: 'servers',
+      path: '/agent-platform/muster/servers',
     });
   });
 
   it('should return correct payload for muster workflows view', () => {
-    const result = getTelemetryPageViewPayload('/muster/workflows');
+    const result = getTelemetryPageViewPayload(
+      '/agent-platform/muster/workflows',
+    );
     expect(result).toEqual({
       page: 'Muster',
       view: 'workflows',
-      path: '/muster/workflows',
+      path: '/agent-platform/muster/workflows',
     });
   });
 
   it('should return correct payload for a muster workflow detail sub-route', () => {
-    const result = getTelemetryPageViewPayload('/muster/workflows/my-workflow');
+    const result = getTelemetryPageViewPayload(
+      '/agent-platform/muster/workflows/my-workflow',
+    );
     expect(result).toEqual({
       page: 'Muster',
       view: 'workflows',
-      path: '/muster/workflows/my-workflow',
+      path: '/agent-platform/muster/workflows/my-workflow',
     });
   });
 
   it('should return correct payload for muster tools view', () => {
-    const result = getTelemetryPageViewPayload('/muster/tools');
+    const result = getTelemetryPageViewPayload('/agent-platform/muster/tools');
     expect(result).toEqual({
       page: 'Muster',
       view: 'tools',
-      path: '/muster/tools',
+      path: '/agent-platform/muster/tools',
     });
   });
 
@@ -321,16 +327,16 @@ describe('getTelemetryPageViewPayload', () => {
       '/flux/tree',
       '/ai-chat',
       '/ai-chat/history',
-      '/muster',
-      '/muster/dashboard',
-      '/muster/mcp-servers',
-      '/muster/workflows',
-      '/muster/workflows/my-workflow',
-      '/muster/workflows/my-workflow/run',
-      '/muster/tools',
-      '/agents',
-      '/agents/new',
-      '/agents/new/review',
+      '/agent-platform/muster',
+      '/agent-platform/muster/dashboard',
+      '/agent-platform/muster/servers',
+      '/agent-platform/muster/workflows',
+      '/agent-platform/muster/workflows/my-workflow',
+      '/agent-platform/muster/workflows/my-workflow/run',
+      '/agent-platform/muster/tools',
+      '/agent-platform',
+      '/agent-platform/agents/new',
+      '/agent-platform/agents/new/review',
       '/metrics',
       '/search',
     ];

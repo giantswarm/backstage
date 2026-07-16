@@ -6,9 +6,9 @@ including execution history with live per-step status.
 
 ## Features
 
-- **Workflows list** (`/muster`): all workflows known to the connected
-  muster instance with description and availability.
-- **Workflow detail** (`/muster/workflows/:name`): the workflow definition
+- **Workflows list** (`/agent-platform/muster/workflows`): all workflows known
+  to the connected muster instance with description and availability.
+- **Workflow detail** (`/agent-platform/muster/workflows/:name`): the workflow definition
   rendered as a vertical flow diagram (one node per step, dashed side edges
   for `condition.from_step` dependencies) built on
   [`@xyflow/react`](https://reactflow.dev/).
