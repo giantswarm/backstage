@@ -6,7 +6,15 @@ export type SearchResult = {
 };
 
 function getFailureMessage(node: KustomizationTreeNode): string | undefined {
-  const readyCondition = node.nodeData.resource?.findReadyCondition();
+  const resource = node.nodeData.resource;
+  if (resource?.isSuspended()) {
+    // A suspended resource keeps its last Ready condition frozen, so its
+    // message may describe a stale failure. The rest of the UI tracks
+    // suspended resources as inactive, not failing.
+    return undefined;
+  }
+
+  const readyCondition = resource?.findReadyCondition();
   if (readyCondition?.status !== 'False') {
     // Only failure messages are searchable. Messages of healthy resources
     // (e.g. "Applied revision main@sha1:...") would match almost any query.
@@ -21,6 +29,12 @@ function getFailureMessage(node: KustomizationTreeNode): string | undefined {
  * resources, by the Ready condition message. The latter lets users find the
  * Kustomization that fails to apply a resource by searching for the resource's
  * name, which Flux includes in its build/apply error messages.
+ *
+ * Note: message matching is plain substring search over free-form error text,
+ * so short generic queries (e.g. "not", "run") match every failing resource
+ * whose message contains them. This is an accepted trade-off — failing
+ * resources are few, and scoping the match to the object-reference portion of
+ * the message would be fragile across Flux error formats.
  */
 export function findMatchingNodes(
   tree: KustomizationTreeNode[],

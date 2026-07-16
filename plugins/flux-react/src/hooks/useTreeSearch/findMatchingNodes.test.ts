@@ -1,10 +1,14 @@
-import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  HelmRelease,
+  Kustomization,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { KustomizationTreeNode } from '../../components/FluxOverview/utils/KustomizationTreeBuilder';
 import { findMatchingNodes } from './findMatchingNodes';
 
 function createMockKustomization(options: {
   name: string;
-  readyCondition?: { status: 'True' | 'False' | 'Unknown'; message: string };
+  readyCondition?: { status: 'True' | 'False' | 'Unknown'; message?: string };
+  suspend?: boolean;
 }): Kustomization {
   const json = {
     apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
@@ -13,7 +17,9 @@ function createMockKustomization(options: {
       name: options.name,
       namespace: 'flux-system',
     },
-    spec: {},
+    spec: {
+      suspend: options.suspend,
+    },
     status: options.readyCondition
       ? {
           conditions: [
@@ -33,9 +39,40 @@ function createMockKustomization(options: {
   return new Kustomization(json as any, 'test-installation');
 }
 
+function createMockHelmRelease(options: {
+  name: string;
+  readyCondition?: { status: 'True' | 'False' | 'Unknown'; message?: string };
+}): HelmRelease {
+  const json = {
+    apiVersion: 'helm.toolkit.fluxcd.io/v2',
+    kind: 'HelmRelease',
+    metadata: {
+      name: options.name,
+      namespace: 'default',
+    },
+    spec: {},
+    status: options.readyCondition
+      ? {
+          conditions: [
+            {
+              type: 'Ready',
+              status: options.readyCondition.status,
+              reason: 'InstallFailed',
+              message: options.readyCondition.message,
+              lastTransitionTime: '2026-01-01T00:00:00Z',
+            },
+          ],
+        }
+      : undefined,
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new HelmRelease(json as any, 'test-installation');
+}
+
 function createNode(options: {
   name: string;
-  resource?: Kustomization;
+  resource?: Kustomization | HelmRelease;
   children?: KustomizationTreeNode[];
   displayInCompactView?: boolean;
 }): KustomizationTreeNode {
@@ -92,6 +129,88 @@ describe('findMatchingNodes', () => {
     expect(result.matches).toEqual([
       'test-cluster-Kustomization-flux-system-apps',
     ]);
+  });
+
+  it('matches failing HelmReleases by their Ready condition message', () => {
+    const tree = [
+      createNode({
+        name: 'my-app',
+        resource: createMockHelmRelease({
+          name: 'my-app',
+          readyCondition: {
+            status: 'False',
+            message: 'install failed: MyService/default/my-new-service',
+          },
+        }),
+      }),
+    ];
+
+    const result = findMatchingNodes(tree, 'my-new-service', false);
+
+    expect(result.matches).toEqual([
+      'test-cluster-Kustomization-flux-system-my-app',
+    ]);
+  });
+
+  it('does not match messages of suspended resources', () => {
+    // Suspended resources keep their last Ready condition frozen, so a
+    // stale failure message must not be searchable.
+    const tree = [
+      createNode({
+        name: 'apps',
+        resource: createMockKustomization({
+          name: 'apps',
+          suspend: true,
+          readyCondition: {
+            status: 'False',
+            message: 'MyService/default/my-new-service dry-run failed',
+          },
+        }),
+      }),
+    ];
+
+    expect(findMatchingNodes(tree, 'my-new-service', false).matches).toEqual(
+      [],
+    );
+  });
+
+  it('does not match messages of reconciling resources', () => {
+    const tree = [
+      createNode({
+        name: 'apps',
+        resource: createMockKustomization({
+          name: 'apps',
+          readyCondition: {
+            status: 'Unknown',
+            message: 'reconciling MyService/default/my-new-service',
+          },
+        }),
+      }),
+    ];
+
+    expect(findMatchingNodes(tree, 'my-new-service', false).matches).toEqual(
+      [],
+    );
+  });
+
+  it('handles failing resources without a condition message', () => {
+    const tree = [
+      createNode({
+        name: 'apps',
+        resource: createMockKustomization({
+          name: 'apps',
+          readyCondition: { status: 'False' },
+        }),
+      }),
+    ];
+
+    // Still matches by name; the missing message must not crash the search.
+    expect(findMatchingNodes(tree, 'apps', false).matches).toEqual([
+      'test-cluster-Kustomization-flux-system-apps',
+    ]);
+    expect(findMatchingNodes(tree, 'my-new-service', false).matches).toEqual(
+      [],
+    );
   });
 
   it('does not match messages of healthy resources', () => {
