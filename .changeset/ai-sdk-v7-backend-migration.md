@@ -22,4 +22,8 @@ Migrate the AI chat backend from the `ai@6` generation of the Vercel AI SDK to
 The frontend (`ai-chat`) stays on `ai@6` because `@assistant-ui/react-ai-sdk`
 has no `ai@7` release yet. The UI-message-stream wire protocol is unchanged
 between v6 and v7, so the `ai@7` backend streams to the `ai@6` frontend
-unchanged. The two majors coexist via a scoped `resolutions` override.
+unchanged. Root `package.json` pins only the backend to 7.x via a scoped
+`resolutions` override (`.../ai-chat-backend/ai`); there is no unscoped `ai`
+resolution (an unscoped pin would override the scoped one in Yarn 4). The
+frontend stays on 6.x via its own `ai@^6` range, kept there by the Renovate
+`ai`/`@ai-sdk/*` major-hold.

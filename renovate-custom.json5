@@ -36,11 +36,15 @@
       // moved to ai@7 / provider@4 / @ai-sdk/mcp@2, but the FRONTEND
       // (plugins/ai-chat) is still on ai@6 because @assistant-ui/react-ai-sdk
       // has no ai@7 release yet (its latest still peer-requires ai@^6 /
-      // @ai-sdk/react@^3). The two `ai` majors coexist via a scoped
-      // `resolutions` override (backend pinned to 7.x; the unscoped `ai` pin
-      // keeps the frontend + assistant-ui on 6.x). The UI-message-stream wire
-      // protocol is unchanged between v6 and v7, so the ai@7 backend streams
-      // to the ai@6 frontend fine.
+      // @ai-sdk/react@^3). The two `ai` majors coexist because root
+      // package.json pins ONLY the backend to 7.x via a scoped `resolutions`
+      // override (`.../ai-chat-backend/ai`); there is deliberately no unscoped
+      // `ai` resolution, since an unscoped pin overrides scoped ones in Yarn 4
+      // and would drag the backend back down. The frontend + assistant-ui
+      // therefore stay on 6.x purely via their own `ai@^6` dependency ranges,
+      // and THIS major-hold is what keeps them from being bumped to 7. The
+      // UI-message-stream wire protocol is unchanged between v6 and v7, so the
+      // ai@7 backend streams to the ai@6 frontend fine.
       //
       // Keep this hold: the spec-lock rationale is permanent, and lifting it
       // while the stack is split across two majors would let Renovate propose
