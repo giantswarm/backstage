@@ -16,6 +16,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { formatDate } from '../../lib/dates';
 import { pullRouteRef } from '../../routes';
+import { EpicAssignees } from '../EpicAssignees';
 import { EpicChip } from '../EpicChip';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -24,6 +25,17 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   draftChip: {
     marginLeft: theme.spacing(1),
+  },
+  // Let the epic assignees wrap onto a full-width line below the row's main
+  // content and the EpicChip (which sits in the secondary-action slot).
+  planItem: {
+    flexWrap: 'wrap',
+  },
+  // The row is now multi-line, so anchor the chip to the top instead of
+  // letting it float at the vertical centre.
+  epicAction: {
+    top: theme.spacing(2),
+    transform: 'none',
   },
 }));
 
@@ -103,6 +115,7 @@ export function ProposedTab({ repo }: { repo: string }) {
           return (
             <ListItem
               key={pull.number}
+              className={classes.planItem}
               button
               divider
               component={RouterLink}
@@ -124,7 +137,10 @@ export function ProposedTab({ repo }: { repo: string }) {
                 secondary={secondary}
               />
               {epicByPull.has(pull.number) && (
-                <ListItemSecondaryAction>
+                <EpicAssignees epic={epicByPull.get(pull.number)!.epic} />
+              )}
+              {epicByPull.has(pull.number) && (
+                <ListItemSecondaryAction className={classes.epicAction}>
                   <EpicChip epic={epicByPull.get(pull.number)!.epic} />
                 </ListItemSecondaryAction>
               )}

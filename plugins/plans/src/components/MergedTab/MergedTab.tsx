@@ -18,6 +18,7 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { compareDisplayPaths, isRenderableFile } from '../../lib/files';
+import { EpicAssignees } from '../EpicAssignees';
 import { EpicChip } from '../EpicChip';
 import { EpicSubIssues } from '../EpicSubIssues';
 import { PlanFileContent } from '../PlanFileContent';
@@ -27,6 +28,17 @@ const ROOT_GROUP = '(repository root)';
 const useStyles = makeStyles((theme: Theme) => ({
   listPanel: {
     padding: 0,
+  },
+  // Let the epic assignees wrap onto a full-width line below the row's main
+  // content and the EpicChip (which sits in the secondary-action slot).
+  planItem: {
+    flexWrap: 'wrap',
+  },
+  // The row is now multi-line, so anchor the chip to the top instead of
+  // letting it float at the vertical centre.
+  epicAction: {
+    top: theme.spacing(2),
+    transform: 'none',
   },
   detailPanel: {
     padding: theme.spacing(2),
@@ -138,6 +150,7 @@ export function MergedTab({ repo }: { repo: string }) {
             {groups.map(group => (
               <ListItem
                 key={group.name}
+                className={classes.planItem}
                 button
                 divider
                 selected={group.name === selectedGroup.name}
@@ -150,7 +163,10 @@ export function MergedTab({ repo }: { repo: string }) {
                   }`}
                 />
                 {epicByFolder.has(group.name) && (
-                  <ListItemSecondaryAction>
+                  <EpicAssignees epic={epicByFolder.get(group.name)!.epic} />
+                )}
+                {epicByFolder.has(group.name) && (
+                  <ListItemSecondaryAction className={classes.epicAction}>
                     <EpicChip epic={epicByFolder.get(group.name)!.epic} />
                   </ListItemSecondaryAction>
                 )}
