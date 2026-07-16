@@ -1,5 +1,6 @@
 import { ClusterPicker } from './filters/ClusterPicker';
 import { ResourceTypePicker } from './filters/ResourceTypePicker';
+import { StatusPicker } from './filters/StatusPicker';
 import { TreeSearch } from './filters/TreeSearch';
 
 export const DefaultFilters = () => {
@@ -7,6 +8,7 @@ export const DefaultFilters = () => {
     <>
       <ClusterPicker />
       <ResourceTypePicker />
+      <StatusPicker />
       <TreeSearch />
     </>
   );

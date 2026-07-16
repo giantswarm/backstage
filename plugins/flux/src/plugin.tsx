@@ -20,6 +20,7 @@ import {
   listStatusPicker,
   treeClusterPicker,
   treeResourceTypePicker,
+  treeStatusPicker,
   treeSearch,
 } from './filters';
 
@@ -86,6 +87,7 @@ export const fluxPlugin = createFrontendPlugin({
     listStatusPicker,
     treeClusterPicker,
     treeResourceTypePicker,
+    treeStatusPicker,
     treeSearch,
   ],
   routes: {
