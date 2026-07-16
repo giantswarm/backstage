@@ -37,11 +37,12 @@ interface EpicRef {
 /**
  * Parse the Epic header convention out of plan markdown: a line like
  * `**Epic:** [giantswarm/giantswarm#36625](https://github.com/...)`.
- * Accepts an `owner/repo#N` reference or a GitHub issue URL anywhere on
- * that line; the first Epic line wins.
+ * The `Epic:` label may be bold or plain and may sit inside a blockquote
+ * (`> Epic: ...`). Accepts an `owner/repo#N` reference or a GitHub issue
+ * URL anywhere on that line; the first Epic line wins.
  */
 export function parseEpicRef(markdown: string): EpicRef | null {
-  const line = markdown.match(/^[ \t]*\*\*Epic:?\*\*:?(.*)$/im)?.[1];
+  const line = markdown.match(/^[ \t>]*(?:\*\*Epic:?\*\*:?|Epic:)(.*)$/im)?.[1];
   if (!line) {
     return null;
   }

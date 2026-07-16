@@ -19,6 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { compareDisplayPaths, isRenderableFile } from '../../lib/files';
 import { EpicChip } from '../EpicChip';
+import { EpicSubIssues } from '../EpicSubIssues';
 import { PlanFileContent } from '../PlanFileContent';
 
 const ROOT_GROUP = '(repository root)';
@@ -165,6 +166,9 @@ export function MergedTab({ repo }: { repo: string }) {
               The repository tree was truncated by GitHub; some documents may be
               missing.
             </Alert>
+          )}
+          {epicByFolder.has(selectedGroup.name) && (
+            <EpicSubIssues epic={epicByFolder.get(selectedGroup.name)!.epic} />
           )}
           {selectedGroup.files.map(path => (
             <Box key={path} className={classes.fileSection}>
