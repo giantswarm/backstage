@@ -1,46 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { KustomizationTreeNode } from '../../components/FluxOverview/utils/KustomizationTreeBuilder';
+import { findMatchingNodes, SearchResult } from './findMatchingNodes';
 
 const MIN_SEARCH_LENGTH = 3;
 const DEBOUNCE_MS = 300;
-
-type SearchResult = {
-  matches: string[];
-  pathsToExpand: Set<string>;
-};
-
-function findMatchingNodes(
-  tree: KustomizationTreeNode[],
-  query: string,
-  compactView: boolean,
-): SearchResult {
-  const matches: string[] = [];
-  const pathsToExpand = new Set<string>();
-  const normalizedQuery = query.toLowerCase();
-
-  function traverse(nodes: KustomizationTreeNode[], parentIds: string[]) {
-    for (const node of nodes) {
-      if (compactView && !node.displayInCompactView) {
-        continue;
-      }
-
-      const nodeName = node.nodeData.name.toLowerCase();
-      if (nodeName.includes(normalizedQuery)) {
-        matches.push(node.id);
-        // Mark all ancestors for expansion
-        parentIds.forEach(id => pathsToExpand.add(id));
-      }
-
-      if (node.children.length > 0) {
-        traverse(node.children, [...parentIds, node.id]);
-      }
-    }
-  }
-
-  traverse(tree, []);
-  return { matches, pathsToExpand };
-}
 
 export type UseTreeSearchOptions = {
   tree: KustomizationTreeNode[] | undefined;
