@@ -28,6 +28,12 @@ interface SubIssue {
   repo?: string;
 }
 
+interface SubIssuesResponse {
+  subIssues: SubIssue[];
+  /** The queried epic issue itself, for its own metadata (assignees, state). */
+  epic: SubIssue | null;
+}
+
 const useStyles = makeStyles((theme: Theme) => ({
   root: {
     marginBottom: theme.spacing(2),
@@ -39,28 +45,79 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
+    flexWrap: 'wrap',
+  },
+  assignees: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    flexWrap: 'wrap',
+  },
+  assigneeChip: {
+    height: 20,
+    fontSize: 11,
+  },
+  meta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flexWrap: 'wrap',
+    marginTop: theme.spacing(0.5),
   },
   issueRef: {
     fontFamily: 'monospace',
     fontSize: 13,
   },
+  unassigned: {
+    fontStyle: 'italic',
+  },
 }));
+
+/** Small `@login` chips, or an italic "Unassigned" when there are none. */
+function Assignees({ logins }: { logins: string[] }) {
+  const classes = useStyles();
+  if (logins.length === 0) {
+    return (
+      <Typography
+        component="span"
+        variant="caption"
+        color="textSecondary"
+        className={classes.unassigned}
+      >
+        Unassigned
+      </Typography>
+    );
+  }
+  return (
+    <span className={classes.assignees}>
+      {logins.map(login => (
+        <Chip
+          key={login}
+          className={classes.assigneeChip}
+          size="small"
+          variant="outlined"
+          label={`@${login}`}
+        />
+      ))}
+    </span>
+  );
+}
 
 /**
  * The implementation issues of the plan's epic, from GitHub's sub-issue
- * hierarchy. Like EpicChip, the roadmap plugin's backend is queried directly
- * (instead of through its frontend API) to avoid coupling the plugin
- * packages; portals without the roadmap plugin render nothing via the
- * failed query.
+ * hierarchy, with the assignees of the epic and each sub-issue. Like
+ * EpicChip, the roadmap plugin's backend is queried directly (instead of
+ * through its frontend API) to avoid coupling the plugin packages; portals
+ * without the roadmap plugin render nothing via the failed query.
  */
 export function EpicSubIssues({ epic }: { epic: EpicRef }) {
   const classes = useStyles();
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
 
-  const { data: subIssues } = useQuery({
+  const { data } = useQuery({
     queryKey: ['plans', 'epic-sub-issues', epic.owner, epic.repo, epic.number],
-    queryFn: async (): Promise<SubIssue[]> => {
+    queryFn: async (): Promise<SubIssuesResponse> => {
       const baseUrl = await discoveryApi.getBaseUrl('roadmap');
       const response = await fetchApi.fetch(
         `${baseUrl}/issues/${encodeURIComponent(epic.owner)}/${encodeURIComponent(epic.repo)}/${epic.number}/sub-issues`,
@@ -70,13 +127,14 @@ export function EpicSubIssues({ epic }: { epic: EpicRef }) {
           `Sub-issue lookup failed with status ${response.status}`,
         );
       }
-      return (await response.json()).subIssues;
+      return response.json();
     },
     retry: false,
     staleTime: 60_000,
   });
 
-  if (!subIssues?.length) {
+  const subIssues = data?.subIssues ?? [];
+  if (subIssues.length === 0) {
     return null;
   }
 
@@ -92,13 +150,22 @@ export function EpicSubIssues({ epic }: { epic: EpicRef }) {
           label={`${closed}/${subIssues.length} done`}
         />
       </Box>
+      {data?.epic && (
+        <Box className={classes.meta}>
+          <Typography variant="caption" color="textSecondary">
+            Epic assignees:
+          </Typography>
+          <Assignees logins={data.epic.assignees} />
+        </Box>
+      )}
       <List dense disablePadding>
         {subIssues.map(issue => (
           <ListItem key={issue.id} disableGutters>
             <ListItemText
+              disableTypography
               primary={<Link to={issue.htmlUrl}>{issue.title}</Link>}
               secondary={
-                <>
+                <span className={classes.meta}>
                   <Typography
                     component="span"
                     color="textSecondary"
@@ -106,10 +173,15 @@ export function EpicSubIssues({ epic }: { epic: EpicRef }) {
                   >
                     {issue.repo ?? `${epic.owner}/${epic.repo}`}#{issue.number}
                   </Typography>
-                  {` · ${issue.state}`}
-                  {issue.assignees.length > 0 &&
-                    ` · ${issue.assignees.join(', ')}`}
-                </>
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="textSecondary"
+                  >
+                    {issue.state}
+                  </Typography>
+                  <Assignees logins={issue.assignees} />
+                </span>
               }
             />
           </ListItem>

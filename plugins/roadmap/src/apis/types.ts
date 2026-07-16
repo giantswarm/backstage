@@ -86,7 +86,10 @@ export interface RoadmapIssue {
 
 export interface RoadmapSubIssuesResponse {
   subIssues: RoadmapIssue[];
+  /** The parent of the queried issue, if any (not the queried issue itself). */
   parent: RoadmapIssue | null;
+  /** The queried issue itself, for its own metadata (assignees, state). */
+  epic: RoadmapIssue | null;
 }
 
 export interface RoadmapItemFilters {

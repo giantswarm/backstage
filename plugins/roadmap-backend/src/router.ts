@@ -478,7 +478,7 @@ export async function createRouter(
       repo: req.params.repo,
       issue_number: parsePositiveInt(req.params.number, 'number'),
     };
-    const [subIssues, parent] = await cached(
+    const [subIssues, parent, epic] = await cached(
       `sub-issues:${target.owner}/${target.repo}#${target.issue_number}`,
       ITEMS_TTL_MS,
       () =>
@@ -486,13 +486,25 @@ export async function createRouter(
           const token = await appToken();
           return Promise.all([
             pro.listSubIssues({ ...target, per_page: 100 }, token),
+            // The parent of the epic itself (usually none for a top-level
+            // epic); distinct from `epic`, which is the queried issue.
             pro.getParentIssue(target, token),
+            // The queried issue itself, so callers can show the epic's own
+            // metadata (assignees, state) alongside its children.
+            pro
+              .getOctokit(token)
+              .request<ProRestIssue>(
+                'GET /repos/{owner}/{repo}/issues/{issue_number}',
+                target,
+              )
+              .then(response => response.data),
           ]);
         }),
     );
     res.json({
       subIssues: subIssues.map(mapRestIssue),
       parent: parent ? mapRestIssue(parent) : null,
+      epic: epic ? mapRestIssue(epic) : null,
     });
   });
 

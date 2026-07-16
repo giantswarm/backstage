@@ -108,6 +108,17 @@ function buildProMock() {
     addSubIssue: jest.fn().mockResolvedValue(REST_ISSUE),
     removeSubIssue: jest.fn().mockResolvedValue(undefined),
     resolveIssueId: jest.fn().mockResolvedValue({ id: 2002, number: 44 }),
+    getOctokit: jest.fn().mockReturnValue({
+      request: jest.fn().mockResolvedValue({
+        data: {
+          ...REST_ISSUE,
+          id: 900,
+          number: 42,
+          title: 'The epic',
+          assignees: [{ login: 'pau' }],
+        },
+      }),
+    }),
   };
 }
 
@@ -406,6 +417,11 @@ describe('createRouter', () => {
           },
         ],
         parent: expect.objectContaining({ id: 999, title: 'The epic' }),
+        epic: expect.objectContaining({
+          number: 42,
+          title: 'The epic',
+          assignees: ['pau'],
+        }),
       });
       expect(pro.listSubIssues).toHaveBeenCalledWith(
         {
@@ -416,6 +432,7 @@ describe('createRouter', () => {
         },
         APP_TOKEN,
       );
+      expect(pro.getOctokit).toHaveBeenCalledWith(APP_TOKEN);
     });
 
     it('rejects a non-numeric issue number', async () => {
