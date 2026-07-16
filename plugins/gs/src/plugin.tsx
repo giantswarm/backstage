@@ -8,7 +8,6 @@ import {
   EntityCardBlueprint,
   EntityContentBlueprint,
   EntityContentLayoutBlueprint,
-  EntityHeaderBlueprint,
 } from '@backstage/plugin-catalog-react/alpha';
 import {
   FormFieldBlueprint,
@@ -38,7 +37,6 @@ import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
   isEntityKlausPersonality,
-  isEntityWithIcon,
   isEntityWithOciRepository,
 } from './components/utils/entity';
 import {
@@ -341,19 +339,6 @@ const helmChartContentLayout = EntityContentLayoutBlueprint.make({
   },
 });
 
-// Custom entity header with icon for entities that have a GS icon annotation
-const iconEntityHeader = EntityHeaderBlueprint.make({
-  name: 'gs-icon',
-  params: {
-    filter: entity => (entity ? isEntityWithIcon(entity) : false),
-    loader: async () => {
-      const { CustomEntityHeader } =
-        await import('./components/catalog/CustomEntityHeader');
-      return <CustomEntityHeader />;
-    },
-  },
-});
-
 // Scaffolder form field extensions
 const chartPickerFormField = FormFieldBlueprint.make({
   name: 'chart-picker',
@@ -624,8 +609,6 @@ export const gsPlugin = createFrontendPlugin({
     helmChartVersionHistoryEntityContent,
     // Entity content layout
     helmChartContentLayout,
-    // Entity header with icon
-    iconEntityHeader,
     // Scaffolder form fields
     chartPickerFormField,
     chartTagPickerFormField,

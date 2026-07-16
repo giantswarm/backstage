@@ -1,1 +1,0 @@
-export { CustomEntityHeader } from './CustomEntityHeader';
