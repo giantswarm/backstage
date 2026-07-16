@@ -312,6 +312,25 @@
                 "null"
             ]
         },
+        "google": {
+            "description": "Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model)",
+            "type": "object",
+            "properties": {
+                "credentialsJson": {
+                    "description": "Service-account JSON content for Vertex AI authentication. When set, mounted as a file at /app/google/credentials.json (SOPS-encrypted in gitops). google-auth-library uses it to mint and auto-refresh short-lived OAuth2 tokens",
+                    "type": "string"
+                },
+                "location": {
+                    "description": "Vertex AI region, e.g. europe-west1 (exposed as GOOGLE_CLOUD_LOCATION env var)",
+                    "type": "string"
+                },
+                "project": {
+                    "description": "GCP project ID for Vertex AI (exposed as GOOGLE_CLOUD_PROJECT env var)",
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        },
         "grafana": {
             "description": "Grafana integration settings",
             "type": "object",

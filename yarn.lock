@@ -62,7 +62,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/anthropic@npm:^4.0.15":
+"@ai-sdk/anthropic@npm:4.0.15, @ai-sdk/anthropic@npm:^4.0.15":
   version: 4.0.15
   resolution: "@ai-sdk/anthropic@npm:4.0.15"
   dependencies:
@@ -139,6 +139,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ai-sdk/google-vertex@npm:^5.0.21":
+  version: 5.0.21
+  resolution: "@ai-sdk/google-vertex@npm:5.0.21"
+  dependencies:
+    "@ai-sdk/anthropic": "npm:4.0.15"
+    "@ai-sdk/google": "npm:4.0.17"
+    "@ai-sdk/openai-compatible": "npm:3.0.11"
+    "@ai-sdk/provider": "npm:4.0.3"
+    "@ai-sdk/provider-utils": "npm:5.0.10"
+    google-auth-library: "npm:^10.6.2"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/6fe45761bf8e0734d0d686ef845694d388f3f5a84b46b9a9f305691fcaf45d071ee1eeb42e7646414d82f6eef2df85560fb1815067875f5a7dac962b97ddbc8c
+  languageName: node
+  linkType: hard
+
+"@ai-sdk/google@npm:4.0.17":
+  version: 4.0.17
+  resolution: "@ai-sdk/google@npm:4.0.17"
+  dependencies:
+    "@ai-sdk/provider": "npm:4.0.3"
+    "@ai-sdk/provider-utils": "npm:5.0.10"
+  peerDependencies:
+    zod: ^3.25.76 || ^4.1.8
+  checksum: 10c0/bf81eefbfac19e427db910551eee7f0731adae177b438a201271e794f0306a21648bb784b1d772834739a9bea9e3fe66af8de2312af98ed77943c570a4d401fd
+  languageName: node
+  linkType: hard
+
 "@ai-sdk/mcp@npm:^1.0.52":
   version: 1.0.60
   resolution: "@ai-sdk/mcp@npm:1.0.60"
@@ -165,7 +193,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/openai-compatible@npm:^3.0.11":
+"@ai-sdk/openai-compatible@npm:3.0.11, @ai-sdk/openai-compatible@npm:^3.0.11":
   version: 3.0.11
   resolution: "@ai-sdk/openai-compatible@npm:3.0.11"
   dependencies:
@@ -11426,6 +11454,7 @@ __metadata:
   dependencies:
     "@ai-sdk/anthropic": "npm:^4.0.15"
     "@ai-sdk/azure": "npm:^4.0.16"
+    "@ai-sdk/google-vertex": "npm:^5.0.21"
     "@ai-sdk/mcp": "npm:^2.0.14"
     "@ai-sdk/openai": "npm:^4.0.15"
     "@ai-sdk/openai-compatible": "npm:^3.0.11"
@@ -33444,6 +33473,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"gaxios@npm:^7.0.0, gaxios@npm:^7.1.4":
+  version: 7.2.0
+  resolution: "gaxios@npm:7.2.0"
+  dependencies:
+    extend: "npm:^3.0.2"
+    https-proxy-agent: "npm:^7.0.1"
+    node-fetch: "npm:^3.3.2"
+  checksum: 10c0/a70ea81446224aa385e235f4d318a431b3cbb246be4489a07c7f2ed55f96ddacbb799863f118f2d402e321ade6f5398dd126695f67f103d2d94c2700cec2a1e8
+  languageName: node
+  linkType: hard
+
+"gcp-metadata@npm:8.1.2":
+  version: 8.1.2
+  resolution: "gcp-metadata@npm:8.1.2"
+  dependencies:
+    gaxios: "npm:^7.0.0"
+    google-logging-utils: "npm:^1.0.0"
+    json-bigint: "npm:^1.0.0"
+  checksum: 10c0/15a61231a9410dc11c2828d2c9fdc8b0a939f1af746195c44edc6f2ffea0acab52cef3a7b9828069a36fd5d68bda730f7328a415fe42a01258f6e249dfba6908
+  languageName: node
+  linkType: hard
+
 "gcp-metadata@npm:^6.1.0":
   version: 6.1.0
   resolution: "gcp-metadata@npm:6.1.0"
@@ -33958,6 +34009,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"google-auth-library@npm:^10.6.2":
+  version: 10.9.0
+  resolution: "google-auth-library@npm:10.9.0"
+  dependencies:
+    base64-js: "npm:^1.3.0"
+    ecdsa-sig-formatter: "npm:^1.0.11"
+    gaxios: "npm:^7.1.4"
+    gcp-metadata: "npm:8.1.2"
+    google-logging-utils: "npm:1.1.3"
+    jws: "npm:^4.0.0"
+  checksum: 10c0/d731d0bff429c63e995a954f4a08ccbcdb159bff322c529c467e89a98de215fff6630ddf94c9a29a1737ab8d820ff5943b7131c51faabae04497f146d62636dc
+  languageName: node
+  linkType: hard
+
 "google-auth-library@npm:^9.3.0, google-auth-library@npm:^9.6.3":
   version: 9.14.1
   resolution: "google-auth-library@npm:9.14.1"
@@ -33989,6 +34054,20 @@ __metadata:
     retry-request: "npm:^7.0.0"
     uuid: "npm:^9.0.1"
   checksum: 10c0/ff27a5f045b84c50c7c539f45d36c4373c0cc58a39a46fb77976f456c4029238b8cc08f83368e4491c381a67774bc3d42534b68e8eda487c87efc22e84edf6d3
+  languageName: node
+  linkType: hard
+
+"google-logging-utils@npm:1.1.3":
+  version: 1.1.3
+  resolution: "google-logging-utils@npm:1.1.3"
+  checksum: 10c0/e65201c7e96543bd1423b9324013736646b9eed60941e0bfa47b9bfd146d2f09cf3df1c99ca60b7d80a726075263ead049ee72de53372cb8458c3bc55c2c1e59
+  languageName: node
+  linkType: hard
+
+"google-logging-utils@npm:^1.0.0":
+  version: 1.1.4
+  resolution: "google-logging-utils@npm:1.1.4"
+  checksum: 10c0/860873974dd31678553f1074eb8fcf49c6417807086f4645ee8d4eaa81e8dce39f8f7a4b6856be4fda6e5d812b2df10e7abeb6dfe28353d28724cf81357c5a53
   languageName: node
   linkType: hard
 

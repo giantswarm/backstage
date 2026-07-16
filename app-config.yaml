@@ -289,6 +289,14 @@ aiChat:
   #   # baseUrl: https://my-resource.openai.azure.com/openai  # alternative: full URL
   #   # apiVersion: '2024-10-21'  # optional API version override
 
+  # Google Vertex AI configuration (used when model is a gemini-* model).
+  # Authenticates from a mounted service-account JSON; google-auth-library
+  # mints and auto-refreshes short-lived OAuth2 tokens (no static API key).
+  google:
+    project: ${GOOGLE_CLOUD_PROJECT}
+    location: ${GOOGLE_CLOUD_LOCATION}
+    keyFilename: /app/google/credentials.json
+
   # Model to use (default: gpt-4o-mini)
   model: gpt-4o-mini
 

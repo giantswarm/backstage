@@ -19,6 +19,46 @@ const backend = createBackend();
 backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 ```
 
+## Providers
+
+The provider is selected from `aiChat.model`:
+
+- `claude-*` → Anthropic (`aiChat.anthropic`)
+- `gemini-*` → Google Vertex AI (`aiChat.google`)
+- otherwise → Azure OpenAI (`aiChat.azure`, when configured), an
+  OpenAI-compatible server (`aiChat.openai.api: chat`, e.g. vLLM), or OpenAI
+
+### Google Vertex AI (Gemini)
+
+A `gemini-*` model routes chat through Google Vertex AI using the first-class
+[`@ai-sdk/google-vertex`](https://ai-sdk.dev/providers/ai-sdk-providers/google-vertex)
+provider. Vertex is **not** authenticated with a static API key: the provider
+uses `google-auth-library` to read a service-account JSON and mint +
+auto-refresh short-lived (~1 h) OAuth2 access tokens for us — no custom
+token-refresh code is involved.
+
+```yaml
+aiChat:
+  model: gemini-2.5-flash
+  google:
+    project: my-gcp-project # GCP project ID
+    location: europe-west1 # Vertex region
+    keyFilename: /app/google/credentials.json # mounted service-account JSON
+```
+
+- `keyFilename` is the path to the mounted SA JSON and is required — the
+  backend treats Vertex as configured only when that file actually exists.
+- Streaming and tool-calling work exactly as with the other providers.
+- `temperature`, `topP`, `topK`, `seed`, and `maxOutputTokens` pass through as
+  usual (see [Sampling](#sampling)); `minP` is not supported by Vertex.
+- `GET /api/ai-chat/health` reports `provider: google-vertex` and
+  `configured: true` once project, location and credentials are all set.
+
+In the Helm chart, set `google.project`, `google.location`, and
+`google.credentialsJson` (the SA JSON content, SOPS-encrypted in gitops); the
+chart mounts it at `/app/google/credentials.json` and exports
+`GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION`.
+
 ## Sampling
 
 The Vercel AI SDK omits `temperature`, `topP`, `topK`, `seed`, `minP`, and

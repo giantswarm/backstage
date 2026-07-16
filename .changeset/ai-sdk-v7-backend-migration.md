@@ -8,8 +8,8 @@ Migrate the AI chat backend from the `ai@6` generation of the Vercel AI SDK to
 `ai@7` and the matching `v4` providers.
 
 - Bump `ai` → `^7`, `@ai-sdk/anthropic`/`@ai-sdk/openai`/`@ai-sdk/azure` → `^4`,
-  `@ai-sdk/openai-compatible` → `^3`, and `@ai-sdk/mcp` → `^2` (in
-  `ai-chat-backend`, `gs-node`, and `muster-backend`).
+  `@ai-sdk/google-vertex` → `^5`, `@ai-sdk/openai-compatible` → `^3`, and
+  `@ai-sdk/mcp` → `^2` (in `ai-chat-backend`, `gs-node`, and `muster-backend`).
 - Drop the `@ai-sdk/mcp` SSE transport patch: the fix (treating an `undefined`
   SSE `event` field the same as `event: "message"`) is upstreamed in
   `@ai-sdk/mcp@2`.
