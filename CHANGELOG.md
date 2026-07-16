@@ -8,6 +8,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 ### Added
 
 - Deployments: show a warning banner on the deployment details page when an ancestor Flux Kustomization is suspended or failing and therefore blocking updates to the deployment. The banner names the blocking Kustomization (root cause), shows its Ready condition error message, and links to the Flux overview with the resource selected (#1931).
+- Flux: the resources tree search now also matches the Ready condition error messages of failing resources. Flux embeds the names of resources it fails to apply in its build/apply errors, so searching for a service that never got created leads to the Kustomization that is blocking it (#1934).
 
 ## [0.138.0] - 2026-06-21
 
