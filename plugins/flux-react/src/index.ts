@@ -6,3 +6,9 @@ export {
   getKustomizationName,
   getKustomizationNamespace,
 } from './utils/isManagedByFlux';
+export {
+  findKustomizationAncestors,
+  findBlockedAncestors,
+  selectBlockingRootCause,
+} from './utils/findKustomizationAncestors';
+export type { BlockedAncestor } from './utils/findKustomizationAncestors';
