@@ -92,7 +92,3 @@ export const getOciRepositoryFromEntity = (entity: Entity) => {
 export const isEntityWithOciRepository = (entity: Entity) => {
   return Boolean(getOciRepositoryFromEntity(entity));
 };
-
-export const isEntityWithIcon = (entity: Entity) => {
-  return Boolean(getIconUrlFromEntity(entity));
-};
