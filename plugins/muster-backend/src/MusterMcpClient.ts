@@ -229,6 +229,10 @@ export class MusterMcpClient {
       result = await tool.execute(args, {
         toolCallId: `muster-backend-${metaTool}`,
         messages: [],
+        // ai@7 added a required `context` field to ToolExecutionOptions
+        // (formerly experimental_context). Muster meta-tools carry no tool
+        // context, so pass undefined.
+        context: undefined,
       });
     } catch (error) {
       if (isClosedClientError(error)) {

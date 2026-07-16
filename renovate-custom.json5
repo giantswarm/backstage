@@ -29,9 +29,25 @@
       // a new major without the matching `ai` core major (or vice versa) breaks
       // AI chat at runtime with AI_UnsupportedModelVersionError -- and the unit
       // tests don't catch it because they mock the model (that is exactly what
-      // #1926 did, fixed in #1944). Do the ai@6 -> ai@7 migration deliberately,
-      // bumping core + all providers together in one reviewed PR, then lift
-      // this rule. Minor/patch updates still flow.
+      // #1926 did, fixed in #1944).
+      //
+      // The ai@6 -> ai@7 migration is now PARTIAL: the backend
+      // (ai-chat-backend + its @ai-sdk/* providers, gs-node, muster-backend)
+      // moved to ai@7 / provider@4 / @ai-sdk/mcp@2, but the FRONTEND
+      // (plugins/ai-chat) is still on ai@6 because @assistant-ui/react-ai-sdk
+      // has no ai@7 release yet (its latest still peer-requires ai@^6 /
+      // @ai-sdk/react@^3). The two `ai` majors coexist via a scoped
+      // `resolutions` override (backend pinned to 7.x; the unscoped `ai` pin
+      // keeps the frontend + assistant-ui on 6.x). The UI-message-stream wire
+      // protocol is unchanged between v6 and v7, so the ai@7 backend streams
+      // to the ai@6 frontend fine.
+      //
+      // Keep this hold: the spec-lock rationale is permanent, and lifting it
+      // while the stack is split across two majors would let Renovate propose
+      // exactly the uncoordinated major bump #1926 hit. Do the next major
+      // (ai@7 -> ai@8, providers@4 -> @5) deliberately in one reviewed PR --
+      // ideally once assistant-ui ships ai@7 support so the frontend can move
+      // too -- then revisit lifting this rule. Minor/patch updates still flow.
       matchPackageNames: ['ai', '@ai-sdk{/,}**'],
       matchUpdateTypes: ['major'],
       enabled: false,

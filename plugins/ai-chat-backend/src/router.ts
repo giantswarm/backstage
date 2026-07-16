@@ -518,6 +518,14 @@ export async function createRouter(
           : dereasonedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
         abortSignal: req.socket ? undefined : undefined,
+        // ai@7 rejects `role: 'system'` messages inside `messages`/`prompt` by
+        // default (prompt-injection guard). For Anthropic we deliberately
+        // prepend a system message to the array so we can attach
+        // `providerOptions.anthropic.cacheControl` for prompt caching (see
+        // `systemMessage` above), so we opt back in here. Non-Anthropic models
+        // pass the prompt via the top-level `system` field and never put a
+        // system message in the array.
+        allowSystemInMessages: true,
         stopWhen: stepCountIs(maxSteps),
         tools: allTools as ToolSet,
         ...samplingParams,

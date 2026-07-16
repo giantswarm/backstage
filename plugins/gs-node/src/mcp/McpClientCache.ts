@@ -93,7 +93,7 @@ export class McpClientCache {
           // `transport` is private on MCPClient, but the chain hook is
           // the only practical way to detect closure without polling.
           // Cast through `unknown` to avoid lint complaints; runtime
-          // shape is stable across the @ai-sdk/mcp 1.x line.
+          // shape is stable across the @ai-sdk/mcp 1.x/2.x line.
           const transport = (
             client as unknown as {
               transport?: { onclose?: (...args: unknown[]) => void };
