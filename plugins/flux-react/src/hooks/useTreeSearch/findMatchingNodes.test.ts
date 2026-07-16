@@ -89,6 +89,8 @@ function createNode(options: {
       resource: options.resource,
       hasChildren: children.length > 0,
       hasChildrenInCompactView: children.some(c => c.displayInCompactView),
+      isFailing: false,
+      hasFailingDescendants: false,
     },
     children,
     displayInCompactView: options.displayInCompactView ?? true,
