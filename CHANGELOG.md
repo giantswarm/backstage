@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- Flux: the resources tree search now also matches the Ready condition error messages of failing resources. Flux embeds the names of resources it fails to apply in its build/apply errors, so searching for a service that never got created leads to the Kustomization that is blocking it (#1934).
+
 ## [0.138.0] - 2026-06-21
 
 ### Changed
