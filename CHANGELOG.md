@@ -8,6 +8,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 ### Added
 
 - Deployments: show a warning banner on the deployment details page when an ancestor Flux Kustomization is suspended or failing and therefore blocking updates to the deployment. The banner names the blocking Kustomization (root cause), shows its Ready condition error message, and links to the Flux overview with the resource selected (#1931).
+- Flux: the resources tree search now also matches the Ready condition error messages of failing resources. Flux embeds the names of resources it fails to apply in its build/apply errors, so searching for a service that never got created leads to the Kustomization that is blocking it (#1934).
 - AI chat: let users ask the AI to explain Flux error messages. The Flux resource card's "Troubleshoot with AI" button now sends the actual failing condition message (instead of asking the AI to look the resource up), and the HelmRelease conditions card on the deployment details page gets an "Explain this error" button on failing conditions. The buttons render nothing on installations without ai-chat enabled (#1935).
 
 ## [0.138.0] - 2026-06-21

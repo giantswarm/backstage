@@ -100,6 +100,7 @@ export const TreeSearch = () => {
           className={classes.textField}
           variant="outlined"
           size="small"
+          placeholder="Name or failure message"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           disabled={!tree}
