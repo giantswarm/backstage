@@ -15,3 +15,5 @@ export { useFluxOverviewData } from './FluxOverviewDataProvider';
 export { useFluxResourcesData } from './FluxResourcesDataProvider';
 
 export { GitOpsCard } from './GitOpsCard';
+
+export { FluxBlockedByCard } from './FluxBlockedByCard';

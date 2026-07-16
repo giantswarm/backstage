@@ -7,6 +7,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Added
 
+- Deployments: show a warning banner on the deployment details page when an ancestor Flux Kustomization is suspended or failing and therefore blocking updates to the deployment. The banner names the blocking Kustomization (root cause), shows its Ready condition error message, and links to the Flux overview with the resource selected (#1931).
 - Flux: roll up failing descendant status in the Flux resources tree and add a "Failing only" status filter. Parent nodes show a warning indicator when any resource beneath them has `Ready=False` (visible while collapsed), and the new filter prunes the tree to only the paths that lead to failing resources (#1933).
 
 ## [0.138.0] - 2026-06-21
