@@ -58,6 +58,7 @@ type ResourceNodeProps = {
   onExpand: () => void;
   searchMatch?: boolean;
   currentSearchMatch?: boolean;
+  hasFailingDescendants?: boolean;
 };
 
 export const ResourceNode = ({
@@ -74,6 +75,7 @@ export const ResourceNode = ({
   onExpand,
   searchMatch,
   currentSearchMatch,
+  hasFailingDescendants,
 }: ResourceNodeProps) => {
   const classes = useStyles();
   const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
@@ -136,6 +138,7 @@ export const ResourceNode = ({
             isReconciling={isReconciling}
             isSuspended={isSuspended}
             resource={resource}
+            hasFailingDescendants={hasFailingDescendants}
             nowrap
           />
         </Box>

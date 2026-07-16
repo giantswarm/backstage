@@ -68,6 +68,8 @@ const getNodeData = (
       resource: node.nodeData.resource,
       hasChildren: node.nodeData.hasChildren,
       hasChildrenInCompactView: node.nodeData.hasChildrenInCompactView,
+      isFailing: node.nodeData.isFailing,
+      hasFailingDescendants: node.nodeData.hasFailingDescendants,
     },
     nestingLevel,
     node,
@@ -125,6 +127,7 @@ const Node = ({
       onExpand={() => setOpen(!isOpen)}
       searchMatch={isSearchMatch}
       currentSearchMatch={isCurrentMatch}
+      hasFailingDescendants={data.hasFailingDescendants}
     />
   );
 

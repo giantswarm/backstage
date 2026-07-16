@@ -60,6 +60,17 @@ export const treeResourceTypePicker = FluxTreeFilterBlueprint.make({
   },
 });
 
+export const treeStatusPicker = FluxTreeFilterBlueprint.make({
+  name: 'status-picker',
+  params: {
+    loader: async () => {
+      const { FluxResourcesTreeViewStatusPicker } =
+        await import('@giantswarm/backstage-plugin-flux-react');
+      return <FluxResourcesTreeViewStatusPicker />;
+    },
+  },
+});
+
 export const treeSearch = FluxTreeFilterBlueprint.make({
   name: 'tree-search',
   params: {
