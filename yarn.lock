@@ -11684,6 +11684,7 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
     "@backstage/frontend-test-utils": "backstage:^"
+    "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
