@@ -70,6 +70,27 @@ export interface Config {
       apiVersion?: string;
     };
 
+    google?: {
+      /**
+       * GCP project ID for Vertex AI.
+       * @visibility backend
+       */
+      project?: string;
+      /**
+       * Vertex AI region, e.g. `europe-west1`.
+       * @visibility backend
+       */
+      location?: string;
+      /**
+       * Path to the mounted Google Cloud service-account JSON. Used by
+       * google-auth-library to mint and auto-refresh short-lived OAuth2
+       * access tokens. If unset, `GOOGLE_APPLICATION_CREDENTIALS` is honoured
+       * (Application Default Credentials).
+       * @visibility backend
+       */
+      keyFilename?: string;
+    };
+
     /** Model to use for AI chat (default: gpt-4o-mini) */
     model?: string;
 

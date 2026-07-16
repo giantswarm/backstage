@@ -53,4 +53,49 @@ describe('createRouter provider configuration logging', () => {
       ]),
     );
   });
+
+  it('selects Vertex for a gemini model with full google config, without the OpenAI info log', async () => {
+    // A gemini-* model with project, location and a key file is fully
+    // configured: it must not warn, and must not fall through to the
+    // "no OpenAI API key" info branch meant for the default OpenAI provider.
+    const logger = await buildRouter({
+      aiChat: {
+        model: 'gemini-2.5-flash',
+        google: {
+          project: 'my-project',
+          location: 'europe-west1',
+          keyFilename: '/app/google/credentials.json',
+        },
+      },
+    });
+
+    const infoMessages = messagesFor(logger.info as jest.Mock);
+    const warnMessages = messagesFor(logger.warn as jest.Mock);
+
+    expect(infoMessages).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('no OpenAI API key configured'),
+      ]),
+    );
+    expect(warnMessages).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Google Vertex model selected'),
+      ]),
+    );
+  });
+
+  it('warns when a gemini model is selected but google config is incomplete', async () => {
+    // Operator chose a gemini model but left project/location/credentials
+    // unset -- a genuine misconfiguration that should reach Sentry.
+    const logger = await buildRouter({
+      aiChat: { model: 'gemini-2.5-flash' },
+    });
+
+    const warnMessages = messagesFor(logger.warn as jest.Mock);
+    expect(warnMessages).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Google Vertex model selected'),
+      ]),
+    );
+  });
 });

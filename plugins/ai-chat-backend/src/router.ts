@@ -10,6 +10,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
+import { createVertex } from '@ai-sdk/google-vertex';
 import {
   convertToModelMessages,
   stepCountIs,
@@ -183,8 +184,22 @@ export async function createRouter(
     (azureResourceName || azureBaseUrl)
   );
 
+  // Get Google Vertex AI configuration. Vertex is not authenticated with a
+  // static API key: `@ai-sdk/google-vertex` uses google-auth-library to read
+  // the service-account JSON and mint + auto-refresh short-lived OAuth2 tokens.
+  const googleProject = config.getOptionalString('aiChat.google.project');
+  const googleLocation = config.getOptionalString('aiChat.google.location');
+  const googleKeyFile = config.getOptionalString('aiChat.google.keyFilename');
+
   // Determine which provider to use based on model name
   const isAnthropicModel = modelName.startsWith('claude-');
+  const isGoogleModel = modelName.startsWith('gemini-');
+
+  // `@ai-sdk/google-vertex` reads credentials either from an explicit
+  // keyFilename or from the `GOOGLE_APPLICATION_CREDENTIALS` env var
+  // (Application Default Credentials). Treat either as "configured".
+  const googleCredentialsAvailable =
+    !!googleKeyFile || !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
   // Validate configuration
   if (isAnthropicModel && !anthropicApiKey) {
@@ -193,13 +208,32 @@ export async function createRouter(
     );
   }
 
-  if (!isAnthropicModel && isAzureConfigured && !azureApiKey) {
+  if (
+    isGoogleModel &&
+    (!googleProject || !googleLocation || !googleCredentialsAvailable)
+  ) {
+    logger.warn(
+      'Google Vertex model selected but configuration is incomplete. Set aiChat.google.project, aiChat.google.location, and aiChat.google.keyFilename (or GOOGLE_APPLICATION_CREDENTIALS) in app-config.yaml',
+    );
+  }
+
+  if (
+    !isAnthropicModel &&
+    !isGoogleModel &&
+    isAzureConfigured &&
+    !azureApiKey
+  ) {
     logger.warn(
       'Azure OpenAI configured but no API key set. Set aiChat.azure.apiKey in app-config.yaml',
     );
   }
 
-  if (!isAnthropicModel && !isAzureConfigured && !openaiApiKey) {
+  if (
+    !isAnthropicModel &&
+    !isGoogleModel &&
+    !isAzureConfigured &&
+    !openaiApiKey
+  ) {
     // Expected when a customer hasn't set up the AI chat feature: the default
     // model (gpt-4o-mini) selects the OpenAI provider, but no key is set. This
     // is benign, so log at `info` — `warn` (and above) is forwarded to Sentry
@@ -285,6 +319,18 @@ export async function createRouter(
     baseURL: azureBaseUrl,
     apiVersion: azureApiVersion,
     useDeploymentBasedUrls: true,
+  });
+
+  // Google Vertex AI provider. `googleAuthOptions.keyFilename` points at the
+  // mounted service-account JSON; when omitted, google-auth-library falls back
+  // to Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS). Tokens
+  // are minted and refreshed by the library, so no static API key is involved.
+  const vertex = createVertex({
+    project: googleProject,
+    location: googleLocation,
+    googleAuthOptions: googleKeyFile
+      ? { keyFilename: googleKeyFile }
+      : undefined,
   });
 
   router.post('/chat', async (req, res) => {
@@ -414,9 +460,18 @@ export async function createRouter(
       } else {
         openaiCompatibleModel = openai(modelName);
       }
-      const selectedModel = isAnthropicModel
-        ? anthropic(modelName)
-        : openaiCompatibleModel;
+      // Provider precedence: claude- -> Anthropic; gemini- -> Vertex (kept
+      // ahead of the Azure/OpenAI chain so a gemini model isn't swallowed by
+      // isAzureConfigured); else the existing Azure / openai-compatible / openai
+      // selection.
+      let selectedModel;
+      if (isAnthropicModel) {
+        selectedModel = anthropic(modelName);
+      } else if (isGoogleModel) {
+        selectedModel = vertex(modelName);
+      } else {
+        selectedModel = openaiCompatibleModel;
+      }
 
       // Convert UI messages to model messages
       const modelMessages = await convertToModelMessages(
@@ -558,6 +613,7 @@ export async function createRouter(
       if (isDebugRequest) {
         let providerName = 'openai';
         if (isAnthropicModel) providerName = 'anthropic';
+        else if (isGoogleModel) providerName = 'google-vertex';
         else if (isAzureConfigured) providerName = 'azure';
         else if (openaiApi === 'chat') providerName = 'openai-compatible';
 
@@ -676,17 +732,31 @@ export async function createRouter(
     const openaiCompatibleConfigured = isAzureConfigured
       ? !!azureApiKey
       : !!openaiApiKey;
+    const googleConfigured =
+      !!googleProject && !!googleLocation && googleCredentialsAvailable;
+
+    let provider: string;
+    let configured: boolean;
+    if (isAnthropicModel) {
+      provider = 'anthropic';
+      configured = !!anthropicApiKey;
+    } else if (isGoogleModel) {
+      provider = 'google-vertex';
+      configured = googleConfigured;
+    } else {
+      provider = openaiCompatibleProvider;
+      configured = openaiCompatibleConfigured;
+    }
 
     res.json({
       status: 'ok',
       model: modelName,
-      provider: isAnthropicModel ? 'anthropic' : openaiCompatibleProvider,
-      configured: isAnthropicModel
-        ? !!anthropicApiKey
-        : openaiCompatibleConfigured,
+      provider,
+      configured,
       openaiConfigured: !!openaiApiKey,
       anthropicConfigured: !!anthropicApiKey,
       azureConfigured: isAzureConfigured,
+      googleConfigured,
     });
   });
 
