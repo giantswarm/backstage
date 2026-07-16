@@ -58,15 +58,28 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+type Condition = {
+  lastTransitionTime: string;
+  message: string;
+  reason: string;
+  status: 'True' | 'False' | 'Unknown';
+  type: string;
+};
+
+// Most condition types report failure as status False, but 'Stalled' is an
+// abnormal-true condition: Stalled with status True means the release is
+// stuck, while Stalled with status False is healthy.
+function isFailingCondition(condition: Condition): boolean {
+  if (condition.type === 'Stalled') {
+    return condition.status === 'True';
+  }
+
+  return condition.status === 'False';
+}
+
 type ConditionCardProps = {
   helmrelease: HelmRelease;
-  condition: {
-    lastTransitionTime: string;
-    message: string;
-    reason: string;
-    status: 'True' | 'False' | 'Unknown';
-    type: string;
-  };
+  condition: Condition;
   defaultState?: 'expanded' | 'collapsed';
 };
 
@@ -87,15 +100,14 @@ const ConditionCard = ({
     conditionHeadline = `HelmRelease Not ${condition.type.toLowerCase()}`;
   }
 
-  const isFailing =
-    condition.status === 'False' || condition.type === 'Stalled';
+  const isFailing = isFailingCondition(condition);
 
   return (
     <Box>
       <Box display="flex" flexDirection="column">
         <Box display="flex" alignItems="center">
           {condition.status !== 'Unknown' &&
-            (condition.status === 'False' || condition.type === 'Stalled' ? (
+            (isFailing ? (
               <StyledCancelOutlinedIcon />
             ) : (
               <StyledCheckCircleOutlinedIcon />
@@ -153,7 +165,7 @@ const ConditionCard = ({
                         cluster: helmrelease.cluster,
                         message: condition.message,
                         reason: condition.reason,
-                        revision: helmrelease.getLastAppliedRevision(),
+                        revision: helmrelease.getLastAttemptedRevision(),
                       }),
                     },
                   ]}
@@ -208,8 +220,7 @@ export const HelmReleaseConditions = ({
               helmrelease={helmrelease}
               condition={condition}
               defaultState={
-                idx === 0 &&
-                (condition.status === 'False' || condition.type === 'Stalled')
+                idx === 0 && isFailingCondition(condition)
                   ? 'expanded'
                   : 'collapsed'
               }

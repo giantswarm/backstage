@@ -155,10 +155,10 @@ export const ResourceCard = ({
 
   const inactive = isSuspended || isDependencyNotReady;
 
-  const failureMessage =
-    readyStatus === 'False'
-      ? resource?.findReadyCondition()?.message
-      : undefined;
+  const readyCondition =
+    readyStatus === 'False' ? resource?.findReadyCondition() : undefined;
+  const failureMessage = readyCondition?.message;
+  const namespacePart = namespace ? ` in namespace '${namespace}'` : '';
 
   let aiChatMessage: string;
   if (readyStatus === 'False' && failureMessage) {
@@ -168,12 +168,12 @@ export const ResourceCard = ({
       namespace,
       cluster,
       message: failureMessage,
-      reason: resource?.findReadyCondition()?.reason,
+      reason: readyCondition?.reason,
     });
   } else if (readyStatus === 'False') {
-    aiChatMessage = `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}' and help me understand why it is not in a Ready state.`;
+    aiChatMessage = `Please read the ${kind} resource named '${name}'${namespacePart} on management cluster '${cluster}' and help me understand why it is not in a Ready state.`;
   } else {
-    aiChatMessage = `Please read the ${kind} resource named '${name}' in namespace '${namespace}' on management cluster '${cluster}', and show me basic details, so that I can ask further questions about it.`;
+    aiChatMessage = `Please read the ${kind} resource named '${name}'${namespacePart} on management cluster '${cluster}', and show me basic details, so that I can ask further questions about it.`;
   }
 
   return (

@@ -35,6 +35,20 @@ describe('buildExplainErrorMessage', () => {
     expect(message).not.toContain('at revision');
   });
 
+  it('widens the code fence when the message contains backtick runs', () => {
+    const message = buildExplainErrorMessage({
+      kind: 'Kustomization',
+      name: 'apps',
+      cluster: 'test-mc',
+      message: 'invalid value: ```yaml\nfoo\n``` is not allowed',
+    });
+
+    // The fence must be longer than any backtick run in the message, so the
+    // message cannot terminate the code block early.
+    expect(message).toContain('````\ninvalid value:');
+    expect(message).toContain('is not allowed\n````');
+  });
+
   it('truncates very long error messages', () => {
     const message = buildExplainErrorMessage({
       kind: 'Kustomization',

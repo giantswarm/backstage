@@ -27,15 +27,23 @@ export function buildExplainErrorMessage(context: ExplainErrorContext): string {
       ? `${context.message.slice(0, MAX_ERROR_MESSAGE_LENGTH)}…`
       : context.message;
 
+  // Use a fence longer than any backtick run in the message (computed after
+  // truncation) so the error text cannot terminate the code block early.
+  const backtickRuns = message.match(/`+/g);
+  const longestBacktickRun = backtickRuns
+    ? Math.max(...backtickRuns.map(run => run.length))
+    : 0;
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1));
+
   const namespacePart = namespace ? ` in namespace '${namespace}'` : '';
   const revisionPart = revision ? ` at revision '${revision}'` : '';
   const reasonPart = reason ? ` with reason '${reason}'` : '';
 
   return `The ${kind} resource named '${name}'${namespacePart} on management cluster '${cluster}' is failing${revisionPart}${reasonPart} and reports this error message:
 
-\`\`\`
+${fence}
 ${message}
-\`\`\`
+${fence}
 
 Please explain in plain language what this error means, what the most likely root cause is, and suggest concrete next steps to fix it. You can read the resource and related resources on the cluster if you need more detail.`;
 }
