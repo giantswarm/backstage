@@ -8,9 +8,14 @@ import { DeploymentRevisionsCard } from './DeploymentRevisionsCard';
 import { GridItem } from '../../../UI';
 import { DeploymentGitOpsCard } from './DeploymentGitOpsCard';
 import { DeploymentResourceUsageCard } from './DeploymentResourceUsageCard';
+import { DeploymentBlockedByCard } from './DeploymentBlockedByCard';
 
 export const DeploymentOverview = () => (
   <Grid container spacing={3} alignItems="stretch">
+    <GridItem xs={12}>
+      <DeploymentBlockedByCard />
+    </GridItem>
+
     {/* Left column section */}
     <GridItem md={6} xs={12}>
       <GridItem container spacing={3}>

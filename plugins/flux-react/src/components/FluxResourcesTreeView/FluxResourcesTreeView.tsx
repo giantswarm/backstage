@@ -12,9 +12,7 @@ import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { FluxOverview } from '../FluxOverview';
 import { FluxResourceDetails } from '../FluxResourceDetails';
 import { DefaultFilters } from './DefaultFilters';
-
-const FLUX_RESOURCE_PANE_ID = 'flux-resource';
-const FLUX_RESOURCE_PANE_PREFIX = 'sr';
+import { FLUX_RESOURCE_PANE_ID, FLUX_RESOURCE_PANE_PREFIX } from './constants';
 
 const Content = ({ filters }: { filters: ReactNode }) => {
   const {

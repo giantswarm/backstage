@@ -90,7 +90,7 @@ export const SidebarContent = NavContentBlueprint.make({
         nav.take('page:gs/clusters'),
         nav.take('page:gs/installations'),
         nav.take('page:flux'),
-        nav.take('page:muster'),
+        nav.take('page:agent-platform'),
         nav.take('page:plans'),
         nav.take('page:roadmap'),
       ].filter(Boolean);

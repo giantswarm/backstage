@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 
-import { newAgentRouteRef, newAgentReviewRouteRef } from '../../routes';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { NewAgentFormProvider } from '../NewAgentFormProvider';
 import { AgentsIndexPage } from '../AgentsIndexPage';
@@ -19,23 +18,21 @@ function ScrollToTop() {
   return null;
 }
 
-// The form and review screens share one NewAgentFormProvider so the composed
-// agent survives navigation between `/agents/new` and `/agents/new/review`.
-// Route paths come from the sub-route refs (same pattern as the gs clusters
-// Router); no `*` catch-all — under react-router v7 a `<Navigate to=".">` there
-// resolves to the current path and renders nothing (blank page).
-export const Router = () => {
+// Content of the "Agents" tab. The index is a stub landing; the form and review
+// screens share one NewAgentFormProvider so the composed agent survives
+// navigation between `/agent-platform/agents/new` and `.../new/review`.
+//
+// This router is mounted as the tab's content (a descendant `<Routes>`), so the
+// paths here are relative — no leading slash — matching muster's WorkflowsRouter.
+export const AgentsRouter = () => {
   return (
     <QueryClientProvider>
       <NewAgentFormProvider>
         <ScrollToTop />
         <Routes>
-          <Route path="/" element={<AgentsIndexPage />} />
-          <Route path={newAgentRouteRef.path} element={<NewAgentPage />} />
-          <Route
-            path={newAgentReviewRouteRef.path}
-            element={<NewAgentReviewPage />}
-          />
+          <Route index element={<AgentsIndexPage />} />
+          <Route path="new" element={<NewAgentPage />} />
+          <Route path="new/review" element={<NewAgentReviewPage />} />
         </Routes>
       </NewAgentFormProvider>
     </QueryClientProvider>

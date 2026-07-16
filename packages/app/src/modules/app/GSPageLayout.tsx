@@ -1,7 +1,11 @@
-import { useLocation, useParams } from 'react-router-dom';
 import type { PageLayoutProps } from '@backstage/frontend-plugin-api';
 import { PluginHeader } from '@backstage/ui';
 import type { HeaderTab } from '@backstage/ui';
+import {
+  PageHeaderActionsProvider,
+  usePageHeaderActionsSlot,
+  useSplatBasePath,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Custom implementation of the NFS `PageLayout` swappable component, rendered
@@ -16,30 +20,37 @@ import type { HeaderTab } from '@backstage/ui';
  * `/flux/list/tree` (append) instead of `/flux/tree`, and no tab is ever
  * highlighted. Turning the relative sub-page paths into absolute hrefs here
  * fixes both.
+ *
+ * The layout also hosts a page-header-actions slot (`PageHeaderActionsProvider`
+ * + `useProvidePageHeaderActions`), so routed tab content can inject
+ * context-specific header buttons — e.g. the agent-platform create flow's
+ * Cancel / Review buttons — into this single header instead of rendering a
+ * second header of its own.
  */
 export function GSPageLayout(props: PageLayoutProps) {
-  const { title, icon, noHeader, titleLink, headerActions, tabs, children } =
-    props;
-
-  const { pathname } = useLocation();
-  const params = useParams();
-
   // Pages that render their own header (clusters/deployments/ai-chat/home)
-  // opt out; skip the tab/base-path work entirely for them.
-  if (noHeader) {
-    return <>{children}</>;
+  // opt out; skip the header (and its actions slot) entirely for them.
+  if (props.noHeader) {
+    return <>{props.children}</>;
   }
 
-  // The page is mounted at a splat route (e.g. `/flux/*`), so the base path is
-  // the current pathname with the matched remainder removed. Work by path
-  // *segment* rather than string length: `location.pathname` stays
-  // percent-encoded while `useParams()['*']` is decoded, so comparing lengths
-  // would break on encoded chars — but the `/` separator count is unaffected.
-  const splatSegments = (params['*'] ?? '').split('/').filter(Boolean).length;
-  const segments = pathname.split('/').filter(Boolean);
-  const basePath = `/${segments
-    .slice(0, Math.max(0, segments.length - splatSegments))
-    .join('/')}`;
+  return (
+    <PageHeaderActionsProvider>
+      <PageLayoutWithHeader {...props} />
+    </PageHeaderActionsProvider>
+  );
+}
+
+function PageLayoutWithHeader(props: PageLayoutProps) {
+  const { title, icon, titleLink, headerActions, tabs, children } = props;
+
+  // Actions injected by the active routed content (if any) take precedence over
+  // the page's static header actions.
+  const dynamicActions = usePageHeaderActionsSlot();
+
+  // The page is mounted at a splat route (e.g. `/flux/*`); resolve its base path
+  // so the sub-page tab hrefs below are absolute.
+  const basePath = useSplatBasePath();
 
   const headerTabs: HeaderTab[] | undefined = tabs?.map(tab => {
     const cleanPath = tab.href.replace(/^\//, '');
@@ -59,7 +70,7 @@ export function GSPageLayout(props: PageLayoutProps) {
         title={title}
         icon={icon}
         titleLink={titleLink}
-        customActions={headerActions}
+        customActions={dynamicActions ?? headerActions}
         tabs={headerTabs}
       />
       {children}
