@@ -22,7 +22,7 @@ import {
 import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
 import { McpClientCache } from '@giantswarm/backstage-plugin-gs-node';
 import { frontendTools } from './frontendTools';
@@ -186,7 +186,8 @@ export async function createRouter(
 
   // Get Google Vertex AI configuration. Vertex is not authenticated with a
   // static API key: `@ai-sdk/google-vertex` uses google-auth-library to read
-  // the service-account JSON and mint + auto-refresh short-lived OAuth2 tokens.
+  // the mounted service-account JSON and mint + auto-refresh short-lived
+  // OAuth2 tokens.
   const googleProject = config.getOptionalString('aiChat.google.project');
   const googleLocation = config.getOptionalString('aiChat.google.location');
   const googleKeyFile = config.getOptionalString('aiChat.google.keyFilename');
@@ -195,11 +196,12 @@ export async function createRouter(
   const isAnthropicModel = modelName.startsWith('claude-');
   const isGoogleModel = modelName.startsWith('gemini-');
 
-  // `@ai-sdk/google-vertex` reads credentials either from an explicit
-  // keyFilename or from the `GOOGLE_APPLICATION_CREDENTIALS` env var
-  // (Application Default Credentials). Treat either as "configured".
+  // Credentials are available only when the configured service-account JSON
+  // actually exists on disk. A keyFilename string alone doesn't mean the SA
+  // JSON was mounted -- checking existence lets us detect the common
+  // misconfiguration where a gemini deployment is missing its mounted secret.
   const googleCredentialsAvailable =
-    !!googleKeyFile || !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    !!googleKeyFile && existsSync(googleKeyFile);
 
   // Validate configuration
   if (isAnthropicModel && !anthropicApiKey) {
@@ -213,7 +215,7 @@ export async function createRouter(
     (!googleProject || !googleLocation || !googleCredentialsAvailable)
   ) {
     logger.warn(
-      'Google Vertex model selected but configuration is incomplete. Set aiChat.google.project, aiChat.google.location, and aiChat.google.keyFilename (or GOOGLE_APPLICATION_CREDENTIALS) in app-config.yaml',
+      'Google Vertex model selected but configuration is incomplete. Set aiChat.google.project, aiChat.google.location, and aiChat.google.keyFilename (pointing to a mounted service-account JSON) in app-config.yaml',
     );
   }
 

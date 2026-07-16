@@ -82,10 +82,9 @@ export interface Config {
        */
       location?: string;
       /**
-       * Path to the mounted Google Cloud service-account JSON. Used by
+       * Path to the mounted Google Cloud service-account JSON, used by
        * google-auth-library to mint and auto-refresh short-lived OAuth2
-       * access tokens. If unset, `GOOGLE_APPLICATION_CREDENTIALS` is honoured
-       * (Application Default Credentials).
+       * access tokens. Required for Vertex (`gemini-*`) models.
        * @visibility backend
        */
       keyFilename?: string;

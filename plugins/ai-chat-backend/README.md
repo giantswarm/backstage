@@ -46,9 +46,8 @@ aiChat:
     keyFilename: /app/google/credentials.json # mounted service-account JSON
 ```
 
-- `keyFilename` is the primary, self-documenting path to the mounted SA JSON.
-  If omitted, `google-auth-library` falls back to Application Default
-  Credentials via the `GOOGLE_APPLICATION_CREDENTIALS` env var.
+- `keyFilename` is the path to the mounted SA JSON and is required — the
+  backend treats Vertex as configured only when that file actually exists.
 - Streaming and tool-calling work exactly as with the other providers.
 - `temperature`, `topP`, `topK`, `seed`, and `maxOutputTokens` pass through as
   usual (see [Sampling](#sampling)); `minP` is not supported by Vertex.
