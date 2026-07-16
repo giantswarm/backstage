@@ -15,8 +15,26 @@
   ],
   packageRules: [
     {
+      // Group the `ai` core together with the @ai-sdk/* providers so they are
+      // always proposed in one PR -- they are version-locked (see the major
+      // hold below) and must move together.
       groupName: 'ai-sdk packages',
-      matchPackageNames: ['@ai-sdk{/,}**'],
+      matchPackageNames: ['ai', '@ai-sdk{/,}**'],
+    },
+    {
+      // Hold the AI SDK (core `ai` + all @ai-sdk/* providers) at their current
+      // majors. The core and providers are locked together by language-model
+      // spec version: ai@6 speaks provider spec v2/v3 (@ai-sdk/provider@3),
+      // ai@7 speaks v4 (@ai-sdk/provider@4). Renovate bumping the providers to
+      // a new major without the matching `ai` core major (or vice versa) breaks
+      // AI chat at runtime with AI_UnsupportedModelVersionError -- and the unit
+      // tests don't catch it because they mock the model (that is exactly what
+      // #1926 did, fixed in #1944). Do the ai@6 -> ai@7 migration deliberately,
+      // bumping core + all providers together in one reviewed PR, then lift
+      // this rule. Minor/patch updates still flow.
+      matchPackageNames: ['ai', '@ai-sdk{/,}**'],
+      matchUpdateTypes: ['major'],
+      enabled: false,
     },
     {
       groupName: 'assistant-ui packages',
