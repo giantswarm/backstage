@@ -1,4 +1,4 @@
-import { Chip, Tooltip } from '@material-ui/core';
+import { Box, Chip, Tooltip, makeStyles, Theme } from '@material-ui/core';
 import { Link } from '@backstage/core-components';
 import {
   discoveryApiRef,
@@ -14,15 +14,38 @@ import { roadmapItemExternalRouteRef } from '../../routes';
 interface BoardItem {
   id: string;
   title: string;
+  assignees: string[];
   fields: Record<string, string>;
 }
+
+const useStyles = makeStyles((theme: Theme) => ({
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: theme.spacing(0.5),
+  },
+  assignees: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5),
+    maxWidth: 160,
+  },
+  assigneeChip: {
+    height: 18,
+    fontSize: 11,
+  },
+}));
 
 /**
  * Chip linking a plan to the roadmap epic it implements. When the roadmap
  * plugin can resolve the epic's board item, the chip shows its Status and
  * links to the epic detail view; otherwise it links to the GitHub issue.
+ * The epic's assignees, when known, are shown as `@login` chips below it.
  */
 export function EpicChip({ epic }: { epic: EpicRef }) {
+  const classes = useStyles();
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
   const itemLink = useRouteRef(roadmapItemExternalRouteRef);
@@ -48,17 +71,35 @@ export function EpicChip({ epic }: { epic: EpicRef }) {
 
   const status = item?.fields?.Status;
   const to = item && itemLink ? itemLink({ id: item.id }) : epic.url;
+  const assignees = item?.assignees ?? [];
 
   return (
-    <Tooltip title={item?.title ?? `${epic.owner}/${epic.repo}#${epic.number}`}>
-      <Link to={to} underline="none">
-        <Chip
-          size="small"
-          variant="outlined"
-          clickable
-          label={status ? `Epic · ${status}` : `Epic #${epic.number}`}
-        />
-      </Link>
-    </Tooltip>
+    <Box className={classes.root}>
+      <Tooltip
+        title={item?.title ?? `${epic.owner}/${epic.repo}#${epic.number}`}
+      >
+        <Link to={to} underline="none">
+          <Chip
+            size="small"
+            variant="outlined"
+            clickable
+            label={status ? `Epic · ${status}` : `Epic #${epic.number}`}
+          />
+        </Link>
+      </Tooltip>
+      {assignees.length > 0 && (
+        <Box className={classes.assignees}>
+          {assignees.map(login => (
+            <Chip
+              key={login}
+              className={classes.assigneeChip}
+              size="small"
+              variant="outlined"
+              label={`@${login}`}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
   );
 }

@@ -174,12 +174,4 @@ declare module '@giantswarm-io/pro' {
     variables?: Record<string, unknown>,
     token?: string,
   ): Promise<T>;
-
-  /** Authenticated Octokit REST client (only `request` is consumed here). */
-  export function getOctokit(token?: string): {
-    request<T = unknown>(
-      route: string,
-      params?: Record<string, unknown>,
-    ): Promise<{ data: T }>;
-  };
 }

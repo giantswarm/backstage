@@ -30,8 +30,6 @@ interface SubIssue {
 
 interface SubIssuesResponse {
   subIssues: SubIssue[];
-  /** The queried epic issue itself, for its own metadata (assignees, state). */
-  epic: SubIssue | null;
 }
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -150,14 +148,6 @@ export function EpicSubIssues({ epic }: { epic: EpicRef }) {
           label={`${closed}/${subIssues.length} done`}
         />
       </Box>
-      {data?.epic && (
-        <Box className={classes.meta}>
-          <Typography variant="caption" color="textSecondary">
-            Epic assignees:
-          </Typography>
-          <Assignees logins={data.epic.assignees} />
-        </Box>
-      )}
       <List dense disablePadding>
         {subIssues.map(issue => (
           <ListItem key={issue.id} disableGutters>
