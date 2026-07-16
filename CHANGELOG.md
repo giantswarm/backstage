@@ -5,6 +5,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ## [Unreleased]
 
+### Added
+
+- AI chat: let users ask the AI to explain Flux error messages. The Flux resource card's "Troubleshoot with AI" button now sends the actual failing condition message (instead of asking the AI to look the resource up), and the HelmRelease conditions card on the deployment details page gets an "Explain this error" button on failing conditions. The buttons render nothing on installations without ai-chat enabled (#1935).
+
 ## [0.138.0] - 2026-06-21
 
 ### Changed
