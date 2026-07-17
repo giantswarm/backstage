@@ -14,7 +14,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Fixed
 
-- Flux: fixed the resources tree crashing with "TreeWalker must yield at least one root node" when a self-managed Kustomization (one that lists itself in its own inventory) collapsed the tree to zero roots. Self-managed Kustomizations now stay tree roots without showing up as their own child, inventory references are matched by namespace and name, and an empty tree (e.g. "Failing only" on a healthy cluster) renders an empty state instead of crashing (#1951).
+- Flux: fixed the resources tree crashing with "TreeWalker must yield at least one root node". Tree root detection now matches inventory references by namespace and name instead of name only — name collisions across namespaces could disqualify every root and collapse the tree — and an empty tree (e.g. "Failing only" on a cluster without failures) renders an empty state instead of crashing (#1951).
 
 ## [0.138.0] - 2026-06-21
 

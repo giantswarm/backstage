@@ -172,11 +172,13 @@ describe('KustomizationTreeBuilder', () => {
     expect(findNode(tree, 'my-app')).toBeDefined();
   });
 
-  describe('self-managed root kustomizations', () => {
+  describe('root detection', () => {
     it('keeps a self-referencing kustomization as root and hides the self-child', () => {
       // A self-managed root (Flux bootstrap pattern) lists itself in its own
-      // inventory. It must still be a root — otherwise the whole tree
-      // disappears — and it must not show up as its own child.
+      // inventory. The self-entry is stripped at parse time by
+      // parseInventoryEntries, not by the builder — this test guards the
+      // combined invariant so a parser change cannot silently collapse the
+      // tree (a disqualified root disappears together with its subtree).
       const root = createMockKustomization({
         name: 'gitops',
         readyCondition: { status: 'True' },

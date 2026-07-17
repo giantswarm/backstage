@@ -157,23 +157,22 @@ export class KustomizationTreeBuilder {
 
   private findRoots(): Kustomization[] {
     // Find kustomizations that are not listed in another kustomization's
-    // inventory. A kustomization that lists itself in its own inventory
-    // (a self-managed root, e.g. the Flux bootstrap pattern) still counts
-    // as a root — otherwise a self-managed top-level kustomization would
-    // make itself and its whole subtree disappear from the tree.
+    // inventory. References are matched by namespace and name — name-only
+    // matching would let any inventory entry disqualify unrelated
+    // kustomizations that share its name in other namespaces, which can
+    // collapse the whole tree to zero roots on multi-org clusters.
+    // (A kustomization's own self-reference — the self-managed bootstrap
+    // pattern — is already stripped at parse time by parseInventoryEntries.)
     const referencedKeys = new Set(
-      Array.from(this.inventories.entries()).flatMap(
-        ([ownerKey, inventoryEntries]) => {
-          if (!inventoryEntries) {
-            return [];
-          }
+      Array.from(this.inventories.values()).flatMap(inventoryEntries => {
+        if (!inventoryEntries) {
+          return [];
+        }
 
-          return inventoryEntries
-            .filter(e => e.kind === Kustomization.kind)
-            .map(e => this.getKey(e.name, e.namespace))
-            .filter(entryKey => entryKey !== ownerKey);
-        },
-      ),
+        return inventoryEntries
+          .filter(e => e.kind === Kustomization.kind)
+          .map(e => this.getKey(e.name, e.namespace));
+      }),
     );
 
     return Array.from(this.kustomizations.entries())
@@ -274,18 +273,8 @@ export class KustomizationTreeBuilder {
 
     visited.add(key);
 
-    // Find children - kustomizations that depend on this one. A self-managed
-    // kustomization lists itself in its own inventory; skip that entry so it
-    // does not appear as its own child.
-    const childResources = this.sortChildResources(
-      this.findChildren(key).filter(
-        child =>
-          !(
-            child.kind === Kustomization.kind &&
-            this.getKey(child.name, child.namespace) === key
-          ),
-      ),
-    );
+    // Find children - kustomizations that depend on this one
+    const childResources = this.sortChildResources(this.findChildren(key));
 
     // Filter out ImagePolicies that have a parent ImageRepository in the same inventory
     // (they will be shown as children of the ImageRepository instead)
