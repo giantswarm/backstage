@@ -51,6 +51,45 @@ export const FluxOverview = ({
     return undefined;
   }, [currentMatchId]);
 
+  // Deriving the content from `tree` in one place keeps the empty state and
+  // the tree mutually exclusive. An empty tree must not reach OverviewTree —
+  // react-vtree throws when the tree walker yields no root node.
+  let treeContent = null;
+  if (tree) {
+    treeContent =
+      tree.length === 0 ? (
+        <EmptyState
+          missing="content"
+          title={
+            statusFilter === 'failing'
+              ? 'No failing resources'
+              : 'No resources to display'
+          }
+          description={
+            statusFilter === 'failing'
+              ? 'No Flux resources are currently failing.'
+              : 'No Flux resources were found on this cluster.'
+          }
+        />
+      ) : (
+        <ContentContainer
+          renderContent={containerHeight => (
+            <OverviewTree
+              ref={treeRef}
+              tree={tree}
+              compactView={compactView}
+              selectedResourceRef={selectedResourceRef}
+              height={containerHeight}
+              onSelectResource={onSelectResource}
+              searchMatchIds={searchMatchIds}
+              currentMatchId={currentMatchId}
+              pathsToExpand={pathsToExpand}
+            />
+          )}
+        />
+      );
+  }
+
   return (
     <Box display="flex" flexDirection="column" height="100%">
       {isLoading ? <Progress /> : null}
@@ -63,41 +102,7 @@ export const FluxOverview = ({
         />
       ) : null}
 
-      {tree ? (
-        // An empty tree must not reach OverviewTree — react-vtree throws
-        // when the tree walker yields no root node.
-        tree.length === 0 ? (
-          <EmptyState
-            missing="content"
-            title={
-              statusFilter === 'failing'
-                ? 'No failing resources'
-                : 'No resources to display'
-            }
-            description={
-              statusFilter === 'failing'
-                ? 'No Flux resources are currently failing.'
-                : 'No Flux resources were found on this cluster.'
-            }
-          />
-        ) : (
-          <ContentContainer
-            renderContent={containerHeight => (
-              <OverviewTree
-                ref={treeRef}
-                tree={tree}
-                compactView={compactView}
-                selectedResourceRef={selectedResourceRef}
-                height={containerHeight}
-                onSelectResource={onSelectResource}
-                searchMatchIds={searchMatchIds}
-                currentMatchId={currentMatchId}
-                pathsToExpand={pathsToExpand}
-              />
-            )}
-          />
-        )
-      ) : null}
+      {treeContent}
     </Box>
   );
 };
