@@ -48,7 +48,7 @@
     "json-schema": "^0.4.0",
     "lodash": "^4.17.21",
     "qs": "^6.14.0",
-    "react-syntax-highlighter": "^15.4.5",
+    "react-syntax-highlighter": "^16.0.0",
     "react-use": "^17.6.0",
     "recharts": "^3.9.0",
     "semver": "^7.7.2",
