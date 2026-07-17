@@ -12,6 +12,10 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 - Flux: the resources tree search now also matches the Ready condition error messages of failing resources. Flux embeds the names of resources it fails to apply in its build/apply errors, so searching for a service that never got created leads to the Kustomization that is blocking it (#1934).
 - AI chat: let users ask the AI to explain Flux error messages. The Flux resource card's "Troubleshoot with AI" button now sends the actual failing condition message (instead of asking the AI to look the resource up), and the HelmRelease conditions card on the deployment details page gets an "Explain this error" button on failing conditions. The buttons render nothing on installations without ai-chat enabled (#1935).
 
+### Fixed
+
+- Flux: fixed the resources tree crashing with "TreeWalker must yield at least one root node". Tree root detection now matches inventory references by namespace and name instead of name only — name collisions across namespaces could disqualify every root and collapse the tree — and an empty tree (e.g. "Failing only" on a cluster without failures) renders an empty state instead of crashing (#1951).
+
 ## [0.138.0] - 2026-06-21
 
 ### Changed
