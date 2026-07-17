@@ -14,6 +14,22 @@ export class Agent extends KubeObject<AgentInterface> {
   static readonly kind = 'Agent' as const;
   static readonly plural = 'agents';
 
+  /**
+   * Friendly name for lists. Prefers the `ui.giantswarm.io/display-name`
+   * annotation when present, otherwise falls back to the resource name. Mirrors
+   * `ModelConfig.getDisplayName()`.
+   */
+  getDisplayName() {
+    return (
+      this.getAnnotations()?.['ui.giantswarm.io/display-name'] ?? this.getName()
+    );
+  }
+
+  /** `Declarative` (chart-configured) or `BYO` (bring-your-own container). */
+  getType() {
+    return this.jsonData.spec?.type;
+  }
+
   getDescription() {
     return this.jsonData.spec?.description;
   }
@@ -27,8 +43,16 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.jsonData.spec?.declarative?.systemMessage;
   }
 
-  /** OCI/git skill image refs mounted under /skills. */
+  /**
+   * Git repositories the agent pulls skills from, each mounted under `/skills`.
+   * (The v1alpha2 CRD models skills as `spec.skills.gitRefs`.)
+   */
   getSkillRefs() {
-    return this.jsonData.spec?.skills?.refs ?? [];
+    return this.jsonData.spec?.skills?.gitRefs ?? [];
+  }
+
+  /** Number of skills mounted by the agent. */
+  getSkillCount() {
+    return this.getSkillRefs().length;
   }
 }
