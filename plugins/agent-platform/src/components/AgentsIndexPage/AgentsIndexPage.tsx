@@ -59,8 +59,7 @@ function AgentsIndexPageContent() {
     <Content>
       <Flex direction="column" gap="3">
         <Text color="secondary">
-          Agents running across your management clusters, each deployed from the
-          Giant Swarm general-purpose-agent chart.
+          Agents running across your management clusters.
         </Text>
 
         {isLoading ? (
