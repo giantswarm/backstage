@@ -3,6 +3,7 @@ import { CircularProgress } from '@material-ui/core';
 
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
+import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 export function InstallationSelect() {
   const { state, setInstallation } = useNewAgentForm();
@@ -16,18 +17,12 @@ export function InstallationSelect() {
   const description =
     'The management cluster this agent runs on. Determines which models are available and where the agent is deployed.';
 
-  const unreachableNote =
-    unreachableInstallations.length > 0 ? (
-      <Alert
-        status="warning"
-        title={`Couldn't read ${unreachableInstallations.length} installation${
-          unreachableInstallations.length === 1 ? '' : 's'
-        }`}
-        description={`Skipped because their kagent resources couldn't be read — the installation may be unreachable, or you may not have permission to list ModelConfigs there: ${unreachableInstallations.join(
-          ', ',
-        )}.`}
-      />
-    ) : null;
+  const unreachableNote = (
+    <UnreachableInstallationsAlert
+      installations={unreachableInstallations}
+      resourceName="ModelConfigs"
+    />
+  );
 
   // Installations resolve one by one across the fleet, so offer each as soon as
   // it responds rather than waiting for the slowest one. Only fall back to the
