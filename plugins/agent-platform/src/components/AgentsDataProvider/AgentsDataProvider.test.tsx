@@ -4,21 +4,24 @@ import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 
 // Mock the fleet-query plumbing so the test drives the loading/partial-result
 // and sticky-accumulation logic directly (see also helpers.test.ts for the row
-// mapping itself).
+// mapping itself). The `mock`-prefixed names are the only out-of-scope
+// references jest allows inside a mock factory.
 const mockUseResources = jest.fn();
+let mockConfigInstallations: string[] = ['alpha', 'beta', 'gaggle'];
+let mockReachable: { installations: string[]; isProbing: boolean } = {
+  installations: ['alpha', 'beta', 'gaggle'],
+  isProbing: false,
+};
 
 jest.mock('@backstage/core-plugin-api', () => ({
   configApiRef: {},
   useApi: () => ({
-    getOptionalConfig: () => ({ keys: () => ['alpha', 'beta', 'gaggle'] }),
+    getOptionalConfig: () => ({ keys: () => mockConfigInstallations }),
   }),
 }));
 
 jest.mock('../../hooks/useReachableInstallations', () => ({
-  useReachableInstallations: () => ({
-    installations: ['alpha', 'beta', 'gaggle'],
-    isProbing: false,
-  }),
+  useReachableInstallations: () => mockReachable,
 }));
 
 jest.mock('../ModelConfigsProvider', () => ({
@@ -31,14 +34,20 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResources: (...args: unknown[]) => mockUseResources(...args),
 }));
 
+type AgentSpec = {
+  name: string;
+  resourceVersion?: string;
+  description?: string;
+};
+
 // Duck-typed stand-in for an Agent instance — only the getters toAgentRow uses.
-function fakeAgent(cluster: string, name: string) {
+function fakeAgent(cluster: string, spec: AgentSpec) {
   return {
     cluster,
     getNamespace: () => 'team-a',
-    getName: () => name,
-    getDisplayName: () => name,
-    getDescription: () => '',
+    getName: () => spec.name,
+    getDisplayName: () => spec.name,
+    getDescription: () => spec.description ?? '',
     getModelConfigName: () => undefined,
     getSkillCount: () => 0,
   };
@@ -46,24 +55,29 @@ function fakeAgent(cluster: string, name: string) {
 
 /**
  * Build a `useResources` return value. `succeeded` maps each successfully-read
- * installation to the agent names it returned (the source of both `resources`
- * and `clustersData`); `failed` lists installations whose read errored.
+ * installation to the agents it returned (a name string, or a spec with
+ * resourceVersion/description); `failed` lists installations whose read errored.
  */
 function result({
   succeeded = {},
   failed = [],
   isLoading = false,
 }: {
-  succeeded?: Record<string, string[]>;
+  succeeded?: Record<string, Array<string | AgentSpec>>;
   failed?: string[];
   isLoading?: boolean;
 }) {
-  const resources = Object.entries(succeeded).flatMap(([cluster, names]) =>
-    names.map(name => fakeAgent(cluster, name)),
+  const specs = (entries: Array<string | AgentSpec>): AgentSpec[] =>
+    entries.map(e => (typeof e === 'string' ? { name: e } : e));
+
+  const resources = Object.entries(succeeded).flatMap(([cluster, entries]) =>
+    specs(entries).map(spec => fakeAgent(cluster, spec)),
   );
-  const clustersData = Object.entries(succeeded).map(([cluster, names]) => ({
+  const clustersData = Object.entries(succeeded).map(([cluster, entries]) => ({
     cluster,
-    data: names.map(name => ({ metadata: { name } })),
+    data: specs(entries).map(spec => ({
+      metadata: { name: spec.name, resourceVersion: spec.resourceVersion },
+    })),
   }));
   const errors = failed.map(cluster => ({ cluster }));
   return { resources, clustersData, isLoading, errors };
@@ -76,7 +90,14 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 const renderUseAgents = () => renderHook(() => useAgents(), { wrapper });
 
 describe('AgentsDataProvider', () => {
-  beforeEach(() => mockUseResources.mockReset());
+  beforeEach(() => {
+    mockUseResources.mockReset();
+    mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
+    mockReachable = {
+      installations: ['alpha', 'beta', 'gaggle'],
+      isProbing: false,
+    };
+  });
 
   it('shows a blocking skeleton only until the first installation responds', () => {
     mockUseResources.mockReturnValue(result({ isLoading: true }));
@@ -85,6 +106,21 @@ describe('AgentsDataProvider', () => {
 
     expect(hook.current.rows).toHaveLength(0);
     expect(hook.current.isLoading).toBe(true);
+    expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('reports not-loading with no installations configured (so the empty state can show)', () => {
+    // No installations configured: useReachableInstallations reports isProbing
+    // forever (empty-status fallback). isLoading must not be pinned true, or the
+    // "no installations configured" empty state is unreachable.
+    mockConfigInstallations = [];
+    mockReachable = { installations: [], isProbing: true };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderUseAgents();
+
+    expect(hook.current.hasInstallations).toBe(false);
+    expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(false);
   });
 
@@ -103,7 +139,33 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.isLoadingMore).toBe(true);
   });
 
-  it('keeps an installation’s agents when it later drops out of the queried set', async () => {
+  it('refreshes an agent’s fields on an in-place edit (same name, new resourceVersion)', async () => {
+    mockUseResources.mockReturnValue(
+      result({
+        succeeded: {
+          alpha: [{ name: 'a1', resourceVersion: '1', description: 'old' }],
+        },
+      }),
+    );
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows[0]?.description).toBe('old'));
+
+    // Same name, bumped resourceVersion + edited description — must propagate.
+    mockUseResources.mockReturnValue(
+      result({
+        succeeded: {
+          alpha: [{ name: 'a1', resourceVersion: '2', description: 'new' }],
+        },
+      }),
+    );
+    rerender();
+
+    await waitFor(() => expect(hook.current.rows[0]?.description).toBe('new'));
+  });
+
+  it('keeps an installation’s agents through a transient miss while it stays reachable', async () => {
     // First: both alpha and beta responded.
     mockUseResources.mockReturnValue(
       result({ succeeded: { alpha: ['a1'], beta: ['b1'] } }),
@@ -113,13 +175,33 @@ describe('AgentsDataProvider', () => {
 
     await waitFor(() => expect(hook.current.rows).toHaveLength(2));
 
-    // Then the reachable set narrows and only alpha is queried — beta's agents
-    // must not vanish from the table.
+    // A refetch returns only alpha this round, but beta is still reachable —
+    // its agents must not vanish.
     mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
     rerender();
 
     await waitFor(() =>
       expect(hook.current.rows.map(r => r.name).sort()).toEqual(['a1', 'b1']),
+    );
+  });
+
+  it('prunes an installation that durably leaves the reachable set', async () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'], beta: ['b1'] } }),
+    );
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(2));
+
+    // beta drops out of the reachable set (session-expired / degraded / removed)
+    // and is no longer queried — its stale agents must be pruned.
+    mockReachable = { installations: ['alpha', 'gaggle'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+    rerender();
+
+    await waitFor(() =>
+      expect(hook.current.rows.map(r => r.name)).toEqual(['a1']),
     );
   });
 

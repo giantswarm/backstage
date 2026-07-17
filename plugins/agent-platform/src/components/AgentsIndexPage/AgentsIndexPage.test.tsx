@@ -134,4 +134,21 @@ describe('AgentsIndexPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/gremlin, gauss/)).toBeInTheDocument();
   });
+
+  it('surfaces unreachable installations even while still loading with no rows yet', async () => {
+    // A fleet where the only reachable installations all error: no rows, still
+    // "loading". The warning must not be suppressed behind the progress bar.
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      isLoading: true,
+      unreachableInstallations: ['gremlin'],
+    });
+
+    await renderPage();
+
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(
+      screen.getByText("Couldn't read 1 installation"),
+    ).toBeInTheDocument();
+  });
 });

@@ -77,13 +77,16 @@ function AgentsIndexPageContent() {
             <Box>
               <AgentsTable rows={rows} />
             </Box>
-
-            <UnreachableInstallationsAlert
-              installations={unreachableInstallations}
-              resourceName="Agents"
-            />
           </>
         )}
+
+        {/* Rendered regardless of the loading branch so that a fleet where the
+            only reachable installations all error (no rows, still "loading")
+            still surfaces the failure instead of an indefinite progress bar. */}
+        <UnreachableInstallationsAlert
+          installations={unreachableInstallations}
+          resourceName="Agents"
+        />
       </Flex>
     </Content>
   );

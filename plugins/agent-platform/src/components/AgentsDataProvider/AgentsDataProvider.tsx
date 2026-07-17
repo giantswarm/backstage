@@ -59,9 +59,10 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations: reachableInstallations, isProbing } =
     useReachableInstallations(allInstallations);
 
-  // allInstallations is derived fresh each render from config; key memos on its
-  // contents rather than its (unstable) identity.
+  // allInstallations/reachableInstallations are derived fresh each render; key
+  // memos/effects on their contents rather than their (unstable) identity.
   const allInstallationsKey = allInstallations.join(',');
+  const reachableInstallationsKey = reachableInstallations.join(',');
 
   // Single Agent version (v1alpha2), so skip API version discovery — it adds
   // round-trips per cluster for no benefit here. `clustersData` is the raw
@@ -100,8 +101,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const readSignature = useMemo(() => {
     const ok = clustersData.map(
       ({ cluster, data }) =>
+        // Include resourceVersion so an in-place edit to an existing Agent
+        // (same name, changed model/description/skills/annotation) changes the
+        // signature and the reconcile effect refreshes its cached instance.
         `ok:${cluster}:${data
-          .map(item => item.metadata?.name ?? '')
+          .map(
+            item =>
+              `${item.metadata?.name ?? ''}@${
+                item.metadata?.resourceVersion ?? ''
+              }`,
+          )
           .join(',')}`,
     );
     const failed = errors.map(e => `err:${e.cluster}`);
@@ -140,6 +149,29 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readSignature]);
 
+  // Prune cached entries for installations that have durably left the reachable
+  // set (session-expired, degraded, or removed from config). They are no longer
+  // queried, so they'd never produce a success/error to refresh or clear them —
+  // leaving stale agents shown as if live. A *transient* refetch failure keeps
+  // the installation reachable, so its rows are retained; only a durable
+  // drop-out is pruned here.
+  useEffect(() => {
+    const reachable = new Set(reachableInstallations);
+    setAgentsByInstallation(prev => {
+      const kept = Object.fromEntries(
+        Object.entries(prev).filter(([cluster]) => reachable.has(cluster)),
+      );
+      return Object.keys(kept).length === Object.keys(prev).length
+        ? prev
+        : kept;
+    });
+    setErroredInstallations(prev => {
+      const kept = prev.filter(cluster => reachable.has(cluster));
+      return kept.length === prev.length ? prev : kept;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reachableInstallationsKey]);
+
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
@@ -156,12 +188,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // The fleet-wide query reports "loading" until every installation settles,
     // so gate the blocking state on having no rows yet — otherwise one slow or
     // failing installation would hide agents already loaded from healthy ones.
-    const isBusy = isProbing || isLoading;
+    // Also gate on hasInstallations: with none configured, useReachableInstallations
+    // reports isProbing forever (its empty-status fallback), which would otherwise
+    // pin isLoading true and hide the "no installations configured" empty state.
+    const hasInstallations = allInstallations.length > 0;
+    const isBusy = hasInstallations && (isProbing || isLoading);
     return {
       rows,
       isLoading: isBusy && rows.length === 0,
       isLoadingMore: isBusy && rows.length > 0,
-      hasInstallations: allInstallations.length > 0,
+      hasInstallations,
       unreachableInstallations,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
