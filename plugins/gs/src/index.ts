@@ -16,6 +16,10 @@ export {
   type ClusterAccessState,
 } from './apis/clusterAccessStatus';
 export {
+  mutedInstallationsApiRef,
+  type MutedInstallationsApi,
+} from './apis/mutedInstallations';
+export {
   ClusterAccessStatusSidebarItem,
   ClusterAccessConnector,
 } from './components/ClusterAccessStatus';
