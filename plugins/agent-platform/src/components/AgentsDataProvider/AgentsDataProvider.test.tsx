@@ -220,6 +220,30 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.isLoadingMore).toBe(false);
   });
 
+  it('drops a failing installation from the card once it leaves the reachable set', async () => {
+    // gaggle fails while still reachable → surfaced in the card.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, failed: ['gaggle'] }),
+    );
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['gaggle']),
+    );
+
+    // gaggle degrades mid-session: it leaves the reachable (healthy) set and is
+    // no longer queried. The sidebar Cluster-access widget owns that state, so it
+    // must drop out of the "couldn't read" card rather than duplicate it.
+    mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+    rerender();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual([]),
+    );
+  });
+
   it('does not report an installation as unreachable while its agents are still shown', async () => {
     // alpha succeeded first...
     mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));

@@ -179,10 +179,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
       ),
     );
 
-    // Only surface installations we have *nothing* for; if we're still showing
-    // an installation's last-known agents, don't also claim we couldn't read it.
+    // Surface only the genuinely actionable case: a currently-healthy cluster we
+    // have *nothing* for. Intersecting with the reachable (healthy) set means a
+    // cluster that degrades mid-session drops out of the card immediately — the
+    // sidebar Cluster-access widget owns that state, so we'd otherwise duplicate
+    // it. And if we're still showing an installation's last-known agents, don't
+    // also claim we couldn't read it.
+    const reachableSet = new Set(reachableInstallations);
     const unreachableInstallations = erroredInstallations.filter(
-      cluster => !agentsByInstallation[cluster]?.length,
+      cluster =>
+        reachableSet.has(cluster) && !agentsByInstallation[cluster]?.length,
     );
 
     // The fleet-wide query reports "loading" until every installation settles,
@@ -208,6 +214,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     isProbing,
     modelConfigsFor,
     allInstallationsKey,
+    reachableInstallationsKey,
   ]);
 
   return (
