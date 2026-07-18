@@ -65,6 +65,17 @@
       matchPackageNames: ['@backstage{/,}**'],
     },
     {
+      // Group the PagerDuty frontend plugin together with its backend
+      // counterpart so they are always proposed in one PR. The two packages
+      // are released in lockstep and share the same integration surface, so
+      // bumping one without the other risks a version mismatch.
+      groupName: 'pagerduty packages',
+      matchPackageNames: [
+        '@pagerduty/backstage-plugin',
+        '@pagerduty/backstage-plugin-backend',
+      ],
+    },
+    {
       groupName: 'testing-library packages',
       matchPackageNames: ['@testing-library{/,}**'],
     },
