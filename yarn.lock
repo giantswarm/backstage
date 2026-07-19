@@ -362,12 +362,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/core@npm:0.2.20":
-  version: 0.2.20
-  resolution: "@assistant-ui/core@npm:0.2.20"
+"@assistant-ui/core@npm:0.2.21":
+  version: 0.2.21
+  resolution: "@assistant-ui/core@npm:0.2.21"
   dependencies:
-    assistant-stream: "npm:^0.3.25"
-    nanoid: "npm:^5.1.15"
+    assistant-stream: "npm:^0.3.26"
+    nanoid: "npm:^6.0.0"
   peerDependencies:
     "@assistant-ui/store": ^0.2.13
     "@assistant-ui/tap": ^0.9.0
@@ -384,7 +384,7 @@ __metadata:
       optional: true
     zustand:
       optional: true
-  checksum: 10c0/79f18b9466f5b8ecddccbf4f882c51419add115337a8de42581b47035639d49831a51a2ed9344df87ccac635e5974303ae47ba7fb4d26665e3de75a388d85c34
+  checksum: 10c0/338010a554da55c72c3150529fe8132098bcf6dc57ac29f2dd312c556d2f0dd73f81cbf1ff0fc485f157d94f14075d962b68a2d42587380bbab0b47fa4a5ae28
   languageName: node
   linkType: hard
 
