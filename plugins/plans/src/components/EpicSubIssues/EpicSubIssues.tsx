@@ -9,13 +9,8 @@ import {
   Theme,
 } from '@material-ui/core';
 import { Link } from '@backstage/core-components';
-import {
-  discoveryApiRef,
-  fetchApiRef,
-  useApi,
-} from '@backstage/frontend-plugin-api';
-import { useQuery } from '@tanstack/react-query';
 import { EpicRef } from '../../apis';
+import { useRoadmapFetch } from '../../hooks/useRoadmapFetch';
 
 /** The slice of a GitHub issue the panel needs (roadmap backend REST shape). */
 interface SubIssue {
@@ -104,31 +99,16 @@ function Assignees({ logins }: { logins: string[] }) {
 /**
  * The implementation issues of the plan's epic, from GitHub's sub-issue
  * hierarchy, with the assignees of the epic and each sub-issue. Like
- * EpicChip, the roadmap plugin's backend is queried directly (instead of
- * through its frontend API) to avoid coupling the plugin packages; portals
- * without the roadmap plugin render nothing via the failed query.
+ * EpicChip, the roadmap plugin's backend is queried directly (via
+ * `useRoadmapFetch`) to avoid coupling the plugin packages; portals without the
+ * roadmap plugin render nothing via the failed query.
  */
 export function EpicSubIssues({ epic }: { epic: EpicRef }) {
   const classes = useStyles();
-  const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
 
-  const { data } = useQuery({
+  const { data } = useRoadmapFetch<SubIssuesResponse>({
+    path: ['issues', epic.owner, epic.repo, epic.number, 'sub-issues'],
     queryKey: ['plans', 'epic-sub-issues', epic.owner, epic.repo, epic.number],
-    queryFn: async (): Promise<SubIssuesResponse> => {
-      const baseUrl = await discoveryApi.getBaseUrl('roadmap');
-      const response = await fetchApi.fetch(
-        `${baseUrl}/issues/${encodeURIComponent(epic.owner)}/${encodeURIComponent(epic.repo)}/${epic.number}/sub-issues`,
-      );
-      if (!response.ok) {
-        throw new Error(
-          `Sub-issue lookup failed with status ${response.status}`,
-        );
-      }
-      return response.json();
-    },
-    retry: false,
-    staleTime: 60_000,
   });
 
   const subIssues = data?.subIssues ?? [];
