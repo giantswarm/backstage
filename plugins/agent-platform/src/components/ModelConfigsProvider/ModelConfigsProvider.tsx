@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
+  isNotFoundError,
   ModelConfig,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -68,14 +69,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
     // simply has no ModelConfigs — not a "couldn't read" failure. Only genuine
     // failures (403 forbidden, unreachable) that produced no models are surfaced.
     const unreachableInstallations = Array.from(
-      new Set(
-        errors
-          .filter(
-            e =>
-              e.type === 'incompatibility' || e.error.name !== 'NotFoundError',
-          )
-          .map(e => e.cluster),
-      ),
+      new Set(errors.filter(e => !isNotFoundError(e)).map(e => e.cluster)),
     ).filter(name => !withModels.has(name));
 
     return {

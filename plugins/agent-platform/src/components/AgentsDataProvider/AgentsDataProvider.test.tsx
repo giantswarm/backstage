@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 
 // Mock the fleet-query plumbing so the test drives the loading/partial-result
@@ -32,6 +33,8 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   Agent: class {},
   ModelConfig: class {},
   useResources: (...args: unknown[]) => mockUseResources(...args),
+  isNotFoundError: (e: { type?: string; error?: { name?: string } }) =>
+    e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
 }));
 
 type AgentSpec = {
@@ -83,13 +86,7 @@ function result({
       metadata: { name: spec.name, resourceVersion: spec.resourceVersion },
     })),
   }));
-  const errors = [
-    ...failed.map(cluster => ({ cluster, error: { name: 'ForbiddenError' } })),
-    ...notFound.map(cluster => ({
-      cluster,
-      error: { name: 'NotFoundError' },
-    })),
-  ];
+  const errors = buildResourceErrors({ failed, notFound });
   return { resources, clustersData, isLoading, errors };
 }
 
@@ -241,6 +238,35 @@ describe('AgentsDataProvider', () => {
     await waitFor(() => expect(hook.current.rows).toHaveLength(1));
     // grizzly must not be flagged as "couldn't read".
     expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('reclassifies a cluster when its error flips 404 → 403 on a refetch', async () => {
+    // grizzly must be reachable for the card to consider it at all.
+    mockConfigInstallations = ['alpha', 'grizzly'];
+    mockReachable = { installations: ['alpha', 'grizzly'], isProbing: false };
+
+    // First render: grizzly 404s (kagent not installed) → treated as empty.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, notFound: ['grizzly'] }),
+    );
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual([]),
+    );
+
+    // Same cluster now 403 on a background refetch (RBAC changed). The reconcile
+    // signature must include the error name, or this same-cluster error→error
+    // transition would be invisible and grizzly would stay unflagged.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, failed: ['grizzly'] }),
+    );
+    rerender();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['grizzly']),
+    );
   });
 
   it('drops a failing installation from the card once it leaves the reachable set', async () => {

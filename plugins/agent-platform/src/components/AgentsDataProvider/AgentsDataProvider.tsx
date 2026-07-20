@@ -9,6 +9,7 @@ import {
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   Agent,
+  isNotFoundError,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
@@ -113,7 +114,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
           )
           .join(',')}`,
     );
-    const failed = errors.map(e => `err:${e.cluster}`);
+    // Include the error discriminator: the reconcile effect classifies by error
+    // name (a 404 is an empty read, anything else is a failure), so a same-cluster
+    // error→error transition that flips the name (404 ⇄ 403) must change the
+    // signature, or the effect wouldn't re-run and would keep the stale verdict.
+    const failed = errors.map(
+      e =>
+        `err:${e.cluster}:${
+          e.type === 'incompatibility' ? 'incompat' : e.error.name
+        }`,
+    );
     return [...ok, ...failed].sort().join('|');
   }, [clustersData, errors]);
 
@@ -124,11 +134,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // we can list it, there just are no Agents. Genuine failures (403 forbidden,
     // unreachable) still count as errors.
     const notInstalled = new Set(
-      errors
-        .filter(
-          e => e.type !== 'incompatibility' && e.error.name === 'NotFoundError',
-        )
-        .map(e => e.cluster),
+      errors.filter(isNotFoundError).map(e => e.cluster),
     );
 
     // Clusters that responded successfully this render (empty result included),

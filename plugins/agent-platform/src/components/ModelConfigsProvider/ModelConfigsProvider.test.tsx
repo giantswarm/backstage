@@ -1,5 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { buildResourceErrors } from '../resourceErrorFixtures';
 import { ModelConfigsProvider, useModelConfigs } from './ModelConfigsProvider';
 
 // Mock the fleet-query plumbing so the test drives the reachable→with-models
@@ -26,6 +27,8 @@ jest.mock('../../hooks/useReachableInstallations', () => ({
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ModelConfig: class {},
   useResources: (...args: unknown[]) => mockUseResources(...args),
+  isNotFoundError: (e: { type?: string; error?: { name?: string } }) =>
+    e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
 }));
 
 // Duck-typed stand-in for a ModelConfig instance — the provider only reads
@@ -54,13 +57,7 @@ function result({
   const resources = Object.entries(succeeded).flatMap(([cluster, count]) =>
     Array.from({ length: count }, () => fakeModelConfig(cluster)),
   );
-  const errors = [
-    ...failed.map(cluster => ({ cluster, error: { name: 'ForbiddenError' } })),
-    ...notFound.map(cluster => ({
-      cluster,
-      error: { name: 'NotFoundError' },
-    })),
-  ];
+  const errors = buildResourceErrors({ failed, notFound });
   return { resources, isLoading, errors };
 }
 
