@@ -18,10 +18,12 @@ export class MutedInstallationsStore implements MutedInstallationsApi {
 
   private constructor() {
     this.muted = MutedInstallationsStore.load();
-    // Keep multiple tabs consistent: another tab writing the key reloads ours.
+    // Keep multiple tabs consistent: reload when another tab writes our key.
+    // `event.key` is `null` when another tab calls `localStorage.clear()` (and
+    // for some bulk changes), so treat that as "storage changed, re-read".
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', event => {
-        if (event.key === STORAGE_KEY) {
+        if (event.key === STORAGE_KEY || event.key === null) {
           this.muted = MutedInstallationsStore.load();
           this.notify();
         }

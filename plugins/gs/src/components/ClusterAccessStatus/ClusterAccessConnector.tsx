@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useApi, SessionState } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
 import { ClusterTokenError } from '../../apis/auth/DefaultAuthConnector';
 import { clusterAccessStatusApiRef } from '../../apis/clusterAccessStatus';
-import { mutedInstallationsApiRef } from '../../apis/mutedInstallations';
+import { useMutedInstallations } from '../../apis/mutedInstallations';
 import { KubernetesClient } from '../../apis/kubernetes';
 
 function assertNever(value: never): never {
@@ -122,17 +122,13 @@ export function ClusterAccessConnector() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const authProvidersApi = useApi(gsAuthProvidersApiRef);
   const statusApi = useApi(clusterAccessStatusApiRef);
-  const mutedApi = useApi(mutedInstallationsApiRef);
 
   // Track the user's muted set reactively so muting/unmuting re-runs the probe
-  // effects (a muted installation must stop being probed and drop off the
-  // status set; unmuting must resume probing). The store emits only on real
-  // changes, so `muted`'s identity is stable between changes.
-  const [muted, setMuted] = useState<string[]>(() => mutedApi.getSnapshot());
-  useEffect(() => {
-    const subscription = mutedApi.muted$().subscribe(setMuted);
-    return () => subscription.unsubscribe();
-  }, [mutedApi]);
+  // effects (a muted installation must stop being probed and drop off the status
+  // set; unmuting must resume probing). `useMutedInstallations` returns a stable
+  // reference that only changes when the contents change, so the initial replay
+  // doesn't spuriously re-run these effects and restart the fleet probe.
+  const muted = useMutedInstallations();
 
   useEffect(() => {
     const mutedSet = new Set(muted);

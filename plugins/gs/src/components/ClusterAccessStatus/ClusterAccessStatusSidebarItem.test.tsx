@@ -143,4 +143,13 @@ describe('ClusterAccessStatusSidebarItem', () => {
 
     await waitFor(() => expect(mutedStore.isMuted('alpha')).toBe(true));
   });
+
+  it('does not claim "All 0 healthy" when everything is muted', async () => {
+    // No live entries, only muted installations: the summary must reflect the
+    // muted count, not a green "All 0 healthy".
+    await renderSidebar({ entries: [], muted: ['alpha', 'beta'] });
+
+    expect(screen.getByText(/2 off/)).toBeInTheDocument();
+    expect(screen.queryByText(/All 0 healthy/)).not.toBeInTheDocument();
+  });
 });

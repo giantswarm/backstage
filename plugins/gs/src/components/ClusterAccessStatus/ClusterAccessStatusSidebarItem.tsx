@@ -17,7 +17,10 @@ import {
   ClusterAccessStatusEntry,
   clusterAccessStatusApiRef,
 } from '../../apis/clusterAccessStatus';
-import { mutedInstallationsApiRef } from '../../apis/mutedInstallations';
+import {
+  mutedInstallationsApiRef,
+  useMutedInstallations,
+} from '../../apis/mutedInstallations';
 import { gsAuthApiRef } from '../../apis/auth/types';
 
 const STATE_COLORS: Record<ClusterAccessState, string> = {
@@ -170,7 +173,7 @@ export function ClusterAccessStatusSidebarItem() {
   const [entries, setEntries] = useState<ClusterAccessStatusEntry[]>(
     statusApi.getSnapshot(),
   );
-  const [muted, setMuted] = useState<string[]>(() => mutedApi.getSnapshot());
+  const muted = useMutedInstallations();
   const [anchorEl, setAnchorEl] = useState<Element | null>(null);
 
   useEffect(() => {
@@ -178,15 +181,17 @@ export function ClusterAccessStatusSidebarItem() {
     return () => subscription.unsubscribe();
   }, [statusApi]);
 
-  useEffect(() => {
-    const subscription = mutedApi.muted$().subscribe(setMuted);
-    return () => subscription.unsubscribe();
-  }, [mutedApi]);
-
   const state = useMemo(() => overallState(entries), [entries]);
-  const summary = useMemo(() => summarize(entries), [entries]);
+  // `summarize`/`overallState` only know about *probed* entries. With no live
+  // entries but some muted installations, they'd report a green "All 0 healthy" —
+  // the opposite of reality — so drive the badge and summary off the muted set in
+  // that case (the muted count is appended to the summary in render).
+  const summary = useMemo(
+    () => (entries.length > 0 ? summarize(entries) : []),
+    [entries],
+  );
   const sessionExpired = state === 'session-expired';
-  const color = STATE_COLORS[state];
+  const badgeColor = entries.length === 0 ? MUTED_COLOR : STATE_COLORS[state];
 
   // One row per accessed *or* muted installation, sorted by name. A muted
   // installation isn't probed (so it has no status entry) but is still listed so
@@ -231,7 +236,10 @@ export function ClusterAccessStatusSidebarItem() {
   const icon = () => (
     <Box position="relative" display="flex">
       <CloudIcon />
-      <FiberManualRecordIcon className={classes.badge} style={{ color }} />
+      <FiberManualRecordIcon
+        className={classes.badge}
+        style={{ color: badgeColor }}
+      />
     </Box>
   );
 
@@ -271,6 +279,12 @@ export function ClusterAccessStatusSidebarItem() {
                 </span>
               </span>
             ))}
+            {muted.length > 0 && (
+              <span>
+                {summary.length > 0 && ' · '}
+                {muted.length} off
+              </span>
+            )}
           </Typography>
         </div>
         <Divider />

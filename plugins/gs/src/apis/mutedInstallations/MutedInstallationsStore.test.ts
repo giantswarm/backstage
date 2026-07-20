@@ -101,4 +101,21 @@ describe('MutedInstallationsStore', () => {
     expect(store.isMuted('gamma')).toBe(true);
     expect(emissions[emissions.length - 1]).toEqual(['gamma']);
   });
+
+  it('reloads when another tab clears storage (event.key === null)', async () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(['delta']));
+    const store = MutedInstallationsStore.create();
+    expect(store.isMuted('delta')).toBe(true);
+
+    const { emissions } = collect(store);
+    await tick();
+
+    // localStorage.clear() in another tab fires a storage event with key === null.
+    window.localStorage.clear();
+    window.dispatchEvent(Object.assign(new Event('storage'), { key: null }));
+    await tick();
+
+    expect(store.isMuted('delta')).toBe(false);
+    expect(emissions[emissions.length - 1]).toEqual([]);
+  });
 });
