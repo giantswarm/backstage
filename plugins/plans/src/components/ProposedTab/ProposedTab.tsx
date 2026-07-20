@@ -18,6 +18,7 @@ import { formatDate } from '../../lib/dates';
 import { pullRouteRef } from '../../routes';
 import { EpicAssignees } from '../EpicAssignees';
 import { EpicChip } from '../EpicChip';
+import { useEpicListItemStyles } from '../epicListItemStyles';
 
 const useStyles = makeStyles((theme: Theme) => ({
   listPanel: {
@@ -25,17 +26,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   draftChip: {
     marginLeft: theme.spacing(1),
-  },
-  // Let the epic assignees wrap onto a full-width line below the row's main
-  // content and the EpicChip (which sits in the secondary-action slot).
-  planItem: {
-    flexWrap: 'wrap',
-  },
-  // The row is now multi-line, so anchor the chip to the top instead of
-  // letting it float at the vertical centre.
-  epicAction: {
-    top: theme.spacing(2),
-    transform: 'none',
   },
 }));
 
@@ -47,6 +37,7 @@ const useStyles = makeStyles((theme: Theme) => ({
  */
 export function ProposedTab({ repo }: { repo: string }) {
   const classes = useStyles();
+  const epicClasses = useEpicListItemStyles();
   const plansApi = useApi(plansApiRef);
   const pullLink = useRouteRef(pullRouteRef);
 
@@ -115,7 +106,7 @@ export function ProposedTab({ repo }: { repo: string }) {
           return (
             <ListItem
               key={pull.number}
-              className={classes.planItem}
+              className={epicClasses.planItem}
               button
               divider
               component={RouterLink}
@@ -140,7 +131,7 @@ export function ProposedTab({ repo }: { repo: string }) {
                 <EpicAssignees epic={epicByPull.get(pull.number)!.epic} />
               )}
               {epicByPull.has(pull.number) && (
-                <ListItemSecondaryAction className={classes.epicAction}>
+                <ListItemSecondaryAction className={epicClasses.epicAction}>
                   <EpicChip epic={epicByPull.get(pull.number)!.epic} />
                 </ListItemSecondaryAction>
               )}

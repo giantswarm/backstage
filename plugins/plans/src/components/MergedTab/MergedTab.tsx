@@ -22,23 +22,13 @@ import { EpicAssignees } from '../EpicAssignees';
 import { EpicChip } from '../EpicChip';
 import { EpicSubIssues } from '../EpicSubIssues';
 import { PlanFileContent } from '../PlanFileContent';
+import { useEpicListItemStyles } from '../epicListItemStyles';
 
 const ROOT_GROUP = '(repository root)';
 
 const useStyles = makeStyles((theme: Theme) => ({
   listPanel: {
     padding: 0,
-  },
-  // Let the epic assignees wrap onto a full-width line below the row's main
-  // content and the EpicChip (which sits in the secondary-action slot).
-  planItem: {
-    flexWrap: 'wrap',
-  },
-  // The row is now multi-line, so anchor the chip to the top instead of
-  // letting it float at the vertical centre.
-  epicAction: {
-    top: theme.spacing(2),
-    transform: 'none',
   },
   detailPanel: {
     padding: theme.spacing(2),
@@ -69,6 +59,7 @@ interface PlanGroup {
  */
 export function MergedTab({ repo }: { repo: string }) {
   const classes = useStyles();
+  const epicClasses = useEpicListItemStyles();
   const plansApi = useApi(plansApiRef);
   // The selected plan lives in `?plan=` so the roadmap epic view (and
   // anyone with the URL) can deep-link a specific plan.
@@ -150,7 +141,7 @@ export function MergedTab({ repo }: { repo: string }) {
             {groups.map(group => (
               <ListItem
                 key={group.name}
-                className={classes.planItem}
+                className={epicClasses.planItem}
                 button
                 divider
                 selected={group.name === selectedGroup.name}
@@ -166,7 +157,7 @@ export function MergedTab({ repo }: { repo: string }) {
                   <EpicAssignees epic={epicByFolder.get(group.name)!.epic} />
                 )}
                 {epicByFolder.has(group.name) && (
-                  <ListItemSecondaryAction className={classes.epicAction}>
+                  <ListItemSecondaryAction className={epicClasses.epicAction}>
                     <EpicChip epic={epicByFolder.get(group.name)!.epic} />
                   </ListItemSecondaryAction>
                 )}
