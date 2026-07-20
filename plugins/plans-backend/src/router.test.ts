@@ -716,4 +716,17 @@ describe('parseEpicRef', () => {
   it('returns null when no Epic line is present', () => {
     expect(parseEpicRef('# Plan\n\nNo epic here.\n')).toBeNull();
   });
+
+  it('skips an earlier Epic-labelled line that carries no ref', () => {
+    // A prose caption matches the plain `Epic:` label but has no usable ref;
+    // the real header sits below it and must still win. A non-global match
+    // would stop at the caption and return null, masking the header.
+    expect(
+      parseEpicRef(
+        '# PRD\n\n' +
+          '> Epic: originally split out of a larger effort.\n\n' +
+          '**Epic:** [giantswarm/giantswarm#37164](https://github.com/giantswarm/giantswarm/issues/37164)\n',
+      ),
+    ).toEqual(epic);
+  });
 });
