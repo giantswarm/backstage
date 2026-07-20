@@ -13,10 +13,10 @@ let mockReachable: { installations: string[]; isProbing: boolean } = {
   isProbing: false,
 };
 
-jest.mock('@backstage/core-plugin-api', () => ({
-  configApiRef: {},
-  useApi: () => ({
-    getOptionalConfig: () => ({ keys: () => mockConfigInstallations }),
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  useInstallations: () => ({
+    installations: mockConfigInstallations.map(name => ({ name })),
+    isLoading: false,
   }),
 }));
 

@@ -1,3 +1,4 @@
+import { RootConfigService } from '@backstage/backend-plugin-api';
 import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { z } from 'zod/v3';
@@ -10,18 +11,41 @@ import {
 } from './agentSkills/discoverAgentSkills';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
+import { readInstallationsConfig } from './installations';
 
 export async function createRouter({
+  config,
   containerRegistry,
   mimir,
   githubCredentialsProvider,
 }: {
+  config: RootConfigService;
   containerRegistry: typeof containerRegistryServiceRef.T;
   mimir: typeof mimirServiceRef.T;
   githubCredentialsProvider: GithubCredentialsProvider;
 }): Promise<express.Router> {
   const router = Router();
   router.use(express.json());
+
+  /**
+   * GET /installations
+   *
+   * Returns the full Giant Swarm installations map from app-config
+   * (`gs.installations`). This block is intentionally NOT shipped to the
+   * unauthenticated frontend config (it would deanonymize customers via
+   * `baseDomain` and leak the installation topology), so the SPA loads it from
+   * this authenticated endpoint after the user signs in. Authenticated by
+   * default in the new backend system.
+   *
+   * Returns:
+   * - A map keyed by installation name, each value carrying the installation's
+   *   configuration fields (pipeline, providers, authProvider,
+   *   oidcTokenProvider, clusterTokenAudience, backendUrl, baseDomain, region,
+   *   apiVersionOverrides).
+   */
+  router.get('/installations', async (_req, res) => {
+    res.json(readInstallationsConfig(config));
+  });
 
   /**
    * GET /container-registry/tags

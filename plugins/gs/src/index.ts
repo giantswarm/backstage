@@ -8,7 +8,17 @@ export { ReviewStep } from './components/scaffolder/ReviewStep';
 
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
-export { gsAuthApiRef, gsAuthProvidersApiRef } from './apis/auth/types';
+export {
+  gsAuthApiRef,
+  gsAuthProvidersApiRef,
+  type GSAuthProvidersApi,
+} from './apis/auth/types';
+export {
+  useInstallations,
+  type InstallationConfig,
+  type UseInstallationsResult,
+} from './apis/installations';
+export { InstallationsConfigLoader } from './components/InstallationsConfigLoader';
 export {
   clusterAccessStatusApiRef,
   type ClusterAccessStatusApi,

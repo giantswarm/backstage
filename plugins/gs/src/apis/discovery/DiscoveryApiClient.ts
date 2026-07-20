@@ -1,5 +1,9 @@
 import { UrlPatternDiscovery } from '@backstage/core-app-api';
 import { ConfigApi, DiscoveryApi } from '@backstage/core-plugin-api';
+import {
+  getInstallationsConfig,
+  getInstallationsConfigSnapshot,
+} from '../installations';
 
 const PLUGINS = ['auth', 'scaffolder', 'kubernetes'];
 
@@ -7,13 +11,8 @@ export class DiscoveryApiClient implements DiscoveryApi {
   private urlPatternDiscovery: UrlPatternDiscovery;
 
   private static installation: string | null = null;
-  private static baseUrlOverrides: Record<string, string> = {};
-  private static installationsWithBaseUrlOverrides: string[] = [];
 
-  constructor(
-    baseUrl: string,
-    private readonly baseUrlOverrides: Record<string, string> = {},
-  ) {
+  constructor(baseUrl: string) {
     this.urlPatternDiscovery = UrlPatternDiscovery.compile(
       `${baseUrl}/api/{{ pluginId }}`,
     );
@@ -22,15 +21,28 @@ export class DiscoveryApiClient implements DiscoveryApi {
   async getBaseUrl(pluginId: string, installation?: string) {
     const selectedInstallation =
       installation || DiscoveryApiClient.getInstallation();
-    const baseUrlOverride = selectedInstallation
-      ? this.baseUrlOverrides[selectedInstallation]
-      : undefined;
 
-    if (PLUGINS.includes(pluginId) && baseUrlOverride) {
-      const customUrlPatternDiscovery = UrlPatternDiscovery.compile(
-        `${baseUrlOverride}/api/{{ pluginId }}`,
-      );
-      return customUrlPatternDiscovery.getBaseUrl(pluginId);
+    // The default backend URL never depends on installations, so this path must
+    // not block on the (post-sign-in) installations fetch -- pre-sign-in auth
+    // discovery relies on it. Only a request explicitly scoped to an
+    // installation can carry a `backendUrl` override, and by then installations
+    // are loaded (post-sign-in); await the source only if it somehow is not.
+    if (selectedInstallation && PLUGINS.includes(pluginId)) {
+      let overrides = DiscoveryApiClient.getBaseUrlOverrides();
+      if (
+        getInstallationsConfigSnapshot() === undefined &&
+        overrides[selectedInstallation] === undefined
+      ) {
+        await getInstallationsConfig();
+        overrides = DiscoveryApiClient.getBaseUrlOverrides();
+      }
+      const baseUrlOverride = overrides[selectedInstallation];
+      if (baseUrlOverride) {
+        const customUrlPatternDiscovery = UrlPatternDiscovery.compile(
+          `${baseUrlOverride}/api/{{ pluginId }}`,
+        );
+        return customUrlPatternDiscovery.getBaseUrl(pluginId);
+      }
     }
 
     return this.urlPatternDiscovery.getBaseUrl(pluginId);
@@ -38,21 +50,29 @@ export class DiscoveryApiClient implements DiscoveryApi {
 
   static fromConfig(configApi: ConfigApi) {
     const baseUrl = configApi.getString('backend.baseUrl');
-    const baseUrlOverrides =
-      DiscoveryApiClient.calculateBaseUrlOverrides(configApi);
-    DiscoveryApiClient.baseUrlOverrides = baseUrlOverrides;
-    DiscoveryApiClient.installationsWithBaseUrlOverrides =
-      Object.keys(baseUrlOverrides);
-
-    return new DiscoveryApiClient(baseUrl, baseUrlOverrides);
+    return new DiscoveryApiClient(baseUrl);
   }
 
-  static getUrlPrefixAllowlist(configApi: ConfigApi) {
-    const baseUrl = configApi.getString('backend.baseUrl');
-    const baseUrlOverrides =
-      DiscoveryApiClient.calculateBaseUrlOverrides(configApi);
-
-    return [baseUrl, ...Object.values(baseUrlOverrides)];
+  /**
+   * Builds a matcher for the identity-auth fetch middleware. Evaluated per
+   * request so `backendUrl` overrides loaded after app boot are honored without
+   * rebuilding the fetch API.
+   */
+  static createUrlPrefixAllowlistMatcher(
+    configApi: ConfigApi,
+  ): (url: string) => boolean {
+    const baseUrl = configApi.getString('backend.baseUrl').replace(/\/$/, '');
+    return (url: string) => {
+      const prefixes = [
+        baseUrl,
+        ...Object.values(DiscoveryApiClient.getBaseUrlOverrides()).map(prefix =>
+          prefix.replace(/\/$/, ''),
+        ),
+      ];
+      return prefixes.some(
+        prefix => url === prefix || url.startsWith(`${prefix}/`),
+      );
+    };
   }
 
   static setInstallation(installation: string) {
@@ -81,32 +101,21 @@ export class DiscoveryApiClient implements DiscoveryApi {
   }
 
   static getInstallationsWithBaseUrlOverrides() {
-    return DiscoveryApiClient.installationsWithBaseUrlOverrides;
+    return Object.keys(DiscoveryApiClient.getBaseUrlOverrides());
   }
 
-  static getBaseUrlOverrides() {
-    return DiscoveryApiClient.baseUrlOverrides;
-  }
-
-  private static calculateBaseUrlOverrides(
-    configApi: ConfigApi,
-  ): Record<string, string> {
+  /**
+   * Map of installation name -> `backendUrl` override, derived from the loaded
+   * installations snapshot. Empty until installations load.
+   */
+  static getBaseUrlOverrides(): Record<string, string> {
+    const installations = getInstallationsConfigSnapshot() ?? [];
     const baseUrlOverrides: Record<string, string> = {};
-    const installationsConfig = configApi.getOptionalConfig('gs.installations');
-    if (installationsConfig) {
-      const installationNames = installationsConfig.keys();
-      for (const installationName of installationNames) {
-        const installationConfig =
-          installationsConfig.getConfig(installationName);
-
-        const baseUrlOverride =
-          installationConfig.getOptionalString('backendUrl');
-        if (baseUrlOverride) {
-          baseUrlOverrides[installationName] = baseUrlOverride;
-        }
+    for (const installation of installations) {
+      if (installation.backendUrl) {
+        baseUrlOverrides[installation.name] = installation.backendUrl;
       }
     }
-
     return baseUrlOverrides;
   }
 }

@@ -6,12 +6,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   Agent,
   isNotFoundError,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { AgentRow, sortAgentRows, toAgentRow } from './helpers';
@@ -50,9 +50,8 @@ const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
  * inside one.
  */
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
-  const configApi = useApi(configApiRef);
-  const allInstallations =
-    configApi.getOptionalConfig('gs.installations')?.keys() ?? [];
+  const { installations } = useInstallations();
+  const allInstallations = installations.map(installation => installation.name);
 
   // Only query reachable installations so the fleet-wide query doesn't fan out
   // to unreachable/forbidden clusters (each hangs for the full proxy timeout

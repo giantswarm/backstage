@@ -1,4 +1,4 @@
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useInstallations } from '../../apis/installations';
 
 const typedUrl = (
   baseDomain: string,
@@ -25,10 +25,10 @@ export const useGrafanaDashboardLink = (
   namespace: string,
   applicationName: string,
 ): string | undefined => {
-  const config = useApi(configApiRef);
-  const baseDomain = config.getOptionalString(
-    `gs.installations.${installationName}.baseDomain`,
-  );
+  const { installations } = useInstallations();
+  const baseDomain = installations.find(
+    installation => installation.name === installationName,
+  )?.baseDomain;
 
   if (!baseDomain) {
     return undefined;

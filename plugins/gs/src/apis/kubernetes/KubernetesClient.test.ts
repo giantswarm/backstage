@@ -2,6 +2,10 @@ import { ConfigApi, FetchApi } from '@backstage/core-plugin-api';
 import { KubernetesAuthProvidersApi } from '@backstage/plugin-kubernetes-react';
 import { KubernetesClient } from './KubernetesClient';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import {
+  __resetInstallationsConfigForTests,
+  setInstallationsConfig,
+} from '../installations';
 
 function abortError(): Error {
   const error = new Error('The operation was aborted');
@@ -199,5 +203,44 @@ describe('KubernetesClient.proxy', () => {
       client.proxy({ clusterName: 'golem', path: '/api/v1/namespaces' }),
     ).resolves.toBe(response);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('KubernetesClient.getClusters', () => {
+  beforeEach(() => {
+    __resetInstallationsConfigForTests();
+  });
+
+  afterEach(() => {
+    __resetInstallationsConfigForTests();
+  });
+
+  it('derives clusters from the async installations source', async () => {
+    const client = createClient(jest.fn());
+    // createClient stubs `clusters` to isolate proxy tests; clear it so
+    // getClusters reads from the installations source instead.
+    (client as unknown as { clusters: unknown }).clusters = undefined;
+
+    setInstallationsConfig([
+      { name: 'golem', authProvider: 'oidc', oidcTokenProvider: 'oidc-golem' },
+      { name: 'gaggle', authProvider: 'oidc' },
+    ]);
+
+    await expect(client.getClusters()).resolves.toEqual([
+      { name: 'golem', authProvider: 'oidc', oidcTokenProvider: 'oidc-golem' },
+      { name: 'gaggle', authProvider: 'oidc', oidcTokenProvider: undefined },
+    ]);
+  });
+
+  it('waits for the source when installations load after the call', async () => {
+    const client = createClient(jest.fn());
+    (client as unknown as { clusters: unknown }).clusters = undefined;
+
+    const pending = client.getClusters();
+    setInstallationsConfig([{ name: 'golem', authProvider: 'oidc' }]);
+
+    await expect(pending).resolves.toEqual([
+      { name: 'golem', authProvider: 'oidc', oidcTokenProvider: undefined },
+    ]);
   });
 });
