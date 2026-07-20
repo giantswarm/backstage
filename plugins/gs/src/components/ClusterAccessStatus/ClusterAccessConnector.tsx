@@ -153,11 +153,19 @@ export function ClusterAccessConnector() {
     // running, so a refresh tick never stacks a second loop on the same one.
     const inFlight = new Set<string>();
 
-    // Seed once so the sidebar lists every covered installation immediately,
-    // before any probe settles. Re-probes (interval) intentionally do not
-    // reset entries to "connecting", to avoid flicker.
+    // Seed the sidebar so it lists every covered installation immediately,
+    // before any probe settles — but only installations not already tracked.
+    // This effect re-runs whenever the muted set changes, so re-seeding every
+    // installation to "connecting" would reset already-resolved (healthy/
+    // degraded) clusters to grey on every mute/unmute. Seeding only the unknown
+    // ones keeps resolved states stable; the interval re-probe never seeds.
+    const alreadyTracked = new Set(
+      statusApi.getSnapshot().map(entry => entry.installation),
+    );
     for (const installation of installations) {
-      statusApi.recordConnecting(installation);
+      if (!alreadyTracked.has(installation)) {
+        statusApi.recordConnecting(installation);
+      }
     }
 
     const apply = (installation: string, outcome: ProbeOutcome): boolean => {
