@@ -118,8 +118,25 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   }, [clustersData, errors]);
 
   useEffect(() => {
-    // Clusters that responded successfully this render (empty result included).
-    const succeeded = new Set(clustersData.map(c => c.cluster));
+    // A 404 means the kagent.dev API group isn't installed on that cluster —
+    // kagent simply isn't deployed there. Treat it as a successful empty read
+    // (zero agents), not a "couldn't read" failure: the cluster is reachable and
+    // we can list it, there just are no Agents. Genuine failures (403 forbidden,
+    // unreachable) still count as errors.
+    const notInstalled = new Set(
+      errors
+        .filter(
+          e => e.type !== 'incompatibility' && e.error.name === 'NotFoundError',
+        )
+        .map(e => e.cluster),
+    );
+
+    // Clusters that responded successfully this render (empty result included),
+    // plus the kagent-not-installed 404s treated as empty.
+    const succeeded = new Set([
+      ...clustersData.map(c => c.cluster),
+      ...notInstalled,
+    ]);
     const nextAgents: Record<string, Agent[]> = {};
     for (const cluster of succeeded) {
       nextAgents[cluster] = [];

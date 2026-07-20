@@ -56,15 +56,19 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
 /**
  * Build a `useResources` return value. `succeeded` maps each successfully-read
  * installation to the agents it returned (a name string, or a spec with
- * resourceVersion/description); `failed` lists installations whose read errored.
+ * resourceVersion/description); `failed` lists installations whose read errored
+ * (403/unreachable); `notFound` lists installations that 404'd (kagent not
+ * installed).
  */
 function result({
   succeeded = {},
   failed = [],
+  notFound = [],
   isLoading = false,
 }: {
   succeeded?: Record<string, Array<string | AgentSpec>>;
   failed?: string[];
+  notFound?: string[];
   isLoading?: boolean;
 }) {
   const specs = (entries: Array<string | AgentSpec>): AgentSpec[] =>
@@ -79,7 +83,13 @@ function result({
       metadata: { name: spec.name, resourceVersion: spec.resourceVersion },
     })),
   }));
-  const errors = failed.map(cluster => ({ cluster }));
+  const errors = [
+    ...failed.map(cluster => ({ cluster, error: { name: 'ForbiddenError' } })),
+    ...notFound.map(cluster => ({
+      cluster,
+      error: { name: 'NotFoundError' },
+    })),
+  ];
   return { resources, clustersData, isLoading, errors };
 }
 
@@ -218,6 +228,19 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.rows).toHaveLength(1);
     expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('treats a 404 (kagent not installed) as zero agents, not a failure', async () => {
+    // grizzly is reachable but kagent isn't deployed there → the list 404s.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, notFound: ['grizzly'] }),
+    );
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    // grizzly must not be flagged as "couldn't read".
+    expect(hook.current.unreachableInstallations).toEqual([]);
   });
 
   it('drops a failing installation from the card once it leaves the reachable set', async () => {

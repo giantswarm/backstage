@@ -36,21 +36,31 @@ function fakeModelConfig(cluster: string) {
 
 /**
  * Build a `useResources` return value. `succeeded` maps each installation to how
- * many ModelConfigs it returned; `failed` lists installations whose read errored.
+ * many ModelConfigs it returned; `failed` lists installations whose read errored
+ * (403/unreachable); `notFound` lists installations that 404'd (kagent not
+ * installed).
  */
 function result({
   succeeded = {},
   failed = [],
+  notFound = [],
   isLoading = false,
 }: {
   succeeded?: Record<string, number>;
   failed?: string[];
+  notFound?: string[];
   isLoading?: boolean;
 }) {
   const resources = Object.entries(succeeded).flatMap(([cluster, count]) =>
     Array.from({ length: count }, () => fakeModelConfig(cluster)),
   );
-  const errors = failed.map(cluster => ({ cluster }));
+  const errors = [
+    ...failed.map(cluster => ({ cluster, error: { name: 'ForbiddenError' } })),
+    ...notFound.map(cluster => ({
+      cluster,
+      error: { name: 'NotFoundError' },
+    })),
+  ];
   return { resources, isLoading, errors };
 }
 
@@ -92,6 +102,17 @@ describe('ModelConfigsProvider', () => {
     expect(hook.current.availableInstallations).toEqual(['alpha']);
     expect(hook.current.modelConfigsFor('alpha')).toHaveLength(2);
     expect(hook.current.modelConfigsFor('beta')).toHaveLength(0);
+  });
+
+  it('does not flag a 404 (kagent not installed) as unreachable', () => {
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: 1 }, notFound: ['grizzly'] }),
+    );
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.unreachableInstallations).toEqual([]);
+    expect(hook.current.availableInstallations).toEqual(['alpha']);
   });
 
   it('surfaces installations that errored and produced no models', () => {
