@@ -9,6 +9,7 @@ import {
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   Agent,
+  isNotFoundError,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
@@ -113,13 +114,35 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
           )
           .join(',')}`,
     );
-    const failed = errors.map(e => `err:${e.cluster}`);
+    // Include the error discriminator: the reconcile effect classifies by error
+    // name (a 404 is an empty read, anything else is a failure), so a same-cluster
+    // error→error transition that flips the name (404 ⇄ 403) must change the
+    // signature, or the effect wouldn't re-run and would keep the stale verdict.
+    const failed = errors.map(
+      e =>
+        `err:${e.cluster}:${
+          e.type === 'incompatibility' ? 'incompat' : e.error.name
+        }`,
+    );
     return [...ok, ...failed].sort().join('|');
   }, [clustersData, errors]);
 
   useEffect(() => {
-    // Clusters that responded successfully this render (empty result included).
-    const succeeded = new Set(clustersData.map(c => c.cluster));
+    // A 404 means the kagent.dev API group isn't installed on that cluster —
+    // kagent simply isn't deployed there. Treat it as a successful empty read
+    // (zero agents), not a "couldn't read" failure: the cluster is reachable and
+    // we can list it, there just are no Agents. Genuine failures (403 forbidden,
+    // unreachable) still count as errors.
+    const notInstalled = new Set(
+      errors.filter(isNotFoundError).map(e => e.cluster),
+    );
+
+    // Clusters that responded successfully this render (empty result included),
+    // plus the kagent-not-installed 404s treated as empty.
+    const succeeded = new Set([
+      ...clustersData.map(c => c.cluster),
+      ...notInstalled,
+    ]);
     const nextAgents: Record<string, Agent[]> = {};
     for (const cluster of succeeded) {
       nextAgents[cluster] = [];
@@ -179,10 +202,16 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
       ),
     );
 
-    // Only surface installations we have *nothing* for; if we're still showing
-    // an installation's last-known agents, don't also claim we couldn't read it.
+    // Surface only the genuinely actionable case: a currently-healthy cluster we
+    // have *nothing* for. Intersecting with the reachable (healthy) set means a
+    // cluster that degrades mid-session drops out of the card immediately — the
+    // sidebar Cluster-access widget owns that state, so we'd otherwise duplicate
+    // it. And if we're still showing an installation's last-known agents, don't
+    // also claim we couldn't read it.
+    const reachableSet = new Set(reachableInstallations);
     const unreachableInstallations = erroredInstallations.filter(
-      cluster => !agentsByInstallation[cluster]?.length,
+      cluster =>
+        reachableSet.has(cluster) && !agentsByInstallation[cluster]?.length,
     );
 
     // The fleet-wide query reports "loading" until every installation settles,
@@ -208,6 +237,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     isProbing,
     modelConfigsFor,
     allInstallationsKey,
+    reachableInstallationsKey,
   ]);
 
   return (

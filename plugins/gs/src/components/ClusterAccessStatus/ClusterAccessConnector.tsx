@@ -19,13 +19,15 @@ function assertNever(value: never): never {
 const HEALTH_PROBE_PATH = '/version';
 
 /**
- * Per-probe timeout, deliberately shorter than the default proxy timeout. The
- * warm-up probes the whole fleet, so an unreachable cluster must release its
- * concurrency slot quickly instead of holding it for the full default (~10s)
- * and dominating the tail. A genuinely slow-but-healthy cluster recovers via
- * the retry/backoff loop and the refresh interval.
+ * Per-probe timeout, deliberately shorter than the default proxy timeout (~10s).
+ * The warm-up probes the whole fleet, so an unreachable cluster must release its
+ * concurrency slot instead of holding it for the full default and dominating the
+ * tail. Kept at 5s rather than lower because a too-tight budget flagged
+ * slow-but-healthy clusters as `degraded` during load spikes; a genuinely
+ * unreachable cluster still recovers its slot well before the default, and a
+ * transiently slow one recovers via the retry/backoff loop and refresh interval.
  */
-const PROBE_TIMEOUT_MS = 2000;
+const PROBE_TIMEOUT_MS = 5000;
 
 /**
  * Re-probe interval. Keeps the sidebar live (a recovered or newly-broken

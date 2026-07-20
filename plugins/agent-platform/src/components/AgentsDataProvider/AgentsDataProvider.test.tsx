@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 
 // Mock the fleet-query plumbing so the test drives the loading/partial-result
@@ -32,6 +33,8 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   Agent: class {},
   ModelConfig: class {},
   useResources: (...args: unknown[]) => mockUseResources(...args),
+  isNotFoundError: (e: { type?: string; error?: { name?: string } }) =>
+    e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
 }));
 
 type AgentSpec = {
@@ -56,15 +59,19 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
 /**
  * Build a `useResources` return value. `succeeded` maps each successfully-read
  * installation to the agents it returned (a name string, or a spec with
- * resourceVersion/description); `failed` lists installations whose read errored.
+ * resourceVersion/description); `failed` lists installations whose read errored
+ * (403/unreachable); `notFound` lists installations that 404'd (kagent not
+ * installed).
  */
 function result({
   succeeded = {},
   failed = [],
+  notFound = [],
   isLoading = false,
 }: {
   succeeded?: Record<string, Array<string | AgentSpec>>;
   failed?: string[];
+  notFound?: string[];
   isLoading?: boolean;
 }) {
   const specs = (entries: Array<string | AgentSpec>): AgentSpec[] =>
@@ -79,7 +86,7 @@ function result({
       metadata: { name: spec.name, resourceVersion: spec.resourceVersion },
     })),
   }));
-  const errors = failed.map(cluster => ({ cluster }));
+  const errors = buildResourceErrors({ failed, notFound });
   return { resources, clustersData, isLoading, errors };
 }
 
@@ -218,6 +225,72 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.rows).toHaveLength(1);
     expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('treats a 404 (kagent not installed) as zero agents, not a failure', async () => {
+    // grizzly is reachable but kagent isn't deployed there → the list 404s.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, notFound: ['grizzly'] }),
+    );
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    // grizzly must not be flagged as "couldn't read".
+    expect(hook.current.unreachableInstallations).toEqual([]);
+  });
+
+  it('reclassifies a cluster when its error flips 404 → 403 on a refetch', async () => {
+    // grizzly must be reachable for the card to consider it at all.
+    mockConfigInstallations = ['alpha', 'grizzly'];
+    mockReachable = { installations: ['alpha', 'grizzly'], isProbing: false };
+
+    // First render: grizzly 404s (kagent not installed) → treated as empty.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, notFound: ['grizzly'] }),
+    );
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual([]),
+    );
+
+    // Same cluster now 403 on a background refetch (RBAC changed). The reconcile
+    // signature must include the error name, or this same-cluster error→error
+    // transition would be invisible and grizzly would stay unflagged.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, failed: ['grizzly'] }),
+    );
+    rerender();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['grizzly']),
+    );
+  });
+
+  it('drops a failing installation from the card once it leaves the reachable set', async () => {
+    // gaggle fails while still reachable → surfaced in the card.
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'] }, failed: ['gaggle'] }),
+    );
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['gaggle']),
+    );
+
+    // gaggle degrades mid-session: it leaves the reachable (healthy) set and is
+    // no longer queried. The sidebar Cluster-access widget owns that state, so it
+    // must drop out of the "couldn't read" card rather than duplicate it.
+    mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+    rerender();
+
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual([]),
+    );
   });
 
   it('does not report an installation as unreachable while its agents are still shown', async () => {

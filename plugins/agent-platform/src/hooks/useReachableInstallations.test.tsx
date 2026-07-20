@@ -48,7 +48,7 @@ const entry = (
 ): ClusterAccessStatusEntry => ({ installation, state, lastChecked: 0 });
 
 describe('useReachableInstallations', () => {
-  it('keeps only healthy and connecting installations', () => {
+  it('keeps only healthy installations', () => {
     const { result } = renderWith(
       ['gazelle', 'graveler', 'grizzly', 'gerbil'],
       [
@@ -59,7 +59,9 @@ describe('useReachableInstallations', () => {
       ],
     );
 
-    expect(result.current.installations).toEqual(['gazelle', 'graveler']);
+    // connecting/degraded/session-expired are all excluded now — only a
+    // confirmed apiserver round-trip counts as reachable.
+    expect(result.current.installations).toEqual(['gazelle']);
     // A connecting probe is still in flight, so the set may still grow.
     expect(result.current.isProbing).toBe(true);
   });
