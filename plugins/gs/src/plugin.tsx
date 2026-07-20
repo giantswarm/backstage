@@ -48,6 +48,10 @@ import {
   clusterAccessStatusApiRef,
   ClusterAccessStatusStore,
 } from './apis/clusterAccessStatus';
+import {
+  mutedInstallationsApiRef,
+  MutedInstallationsStore,
+} from './apis/mutedInstallations';
 import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 import {
   ContainerRegistryClient,
@@ -117,6 +121,16 @@ const clusterAccessStatusApi = ApiBlueprint.make({
       api: clusterAccessStatusApiRef,
       deps: {},
       factory: () => ClusterAccessStatusStore.create(),
+    }),
+});
+
+const mutedInstallationsApi = ApiBlueprint.make({
+  name: 'muted-installations',
+  params: defineParams =>
+    defineParams({
+      api: mutedInstallationsApiRef,
+      deps: {},
+      factory: () => MutedInstallationsStore.create(),
     }),
 });
 
@@ -591,6 +605,7 @@ export const gsPlugin = createFrontendPlugin({
     deploymentsPage,
     installationsPage,
     clusterAccessStatusApi,
+    mutedInstallationsApi,
     gsAuthProvidersApi,
     gsAuthApi,
     containerRegistryApi,
