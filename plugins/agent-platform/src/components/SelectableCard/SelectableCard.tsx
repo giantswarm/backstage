@@ -15,7 +15,10 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1.5),
   },
   card: {
-    display: 'block',
+    // Flex column so content stays pinned to the top when the grid stretches
+    // cards to equal row height (native buttons otherwise center content).
+    display: 'flex',
+    flexDirection: 'column',
     width: '100%',
     textAlign: 'left',
     cursor: 'pointer',

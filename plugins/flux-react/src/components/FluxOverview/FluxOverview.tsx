@@ -28,6 +28,7 @@ export const FluxOverview = ({
     tree,
     isLoading,
     resourceType,
+    statusFilter,
     searchMatches,
     currentMatchId,
     pathsToExpand,
@@ -50,19 +51,27 @@ export const FluxOverview = ({
     return undefined;
   }, [currentMatchId]);
 
-  return (
-    <Box display="flex" flexDirection="column" height="100%">
-      {isLoading ? <Progress /> : null}
-
-      {!isLoading && !tree ? (
+  // Deriving the content from `tree` in one place keeps the empty state and
+  // the tree mutually exclusive. An empty tree must not reach OverviewTree —
+  // react-vtree throws when the tree walker yields no root node.
+  let treeContent = null;
+  if (tree) {
+    treeContent =
+      tree.length === 0 ? (
         <EmptyState
-          missing="info"
-          title="No information to display"
-          description="Please select a cluster to view Flux resources."
+          missing="content"
+          title={
+            statusFilter === 'failing'
+              ? 'No failing resources'
+              : 'No resources to display'
+          }
+          description={
+            statusFilter === 'failing'
+              ? 'No Flux resources are currently failing.'
+              : 'No Flux resources were found on this cluster.'
+          }
         />
-      ) : null}
-
-      {tree ? (
+      ) : (
         <ContentContainer
           renderContent={containerHeight => (
             <OverviewTree
@@ -78,7 +87,22 @@ export const FluxOverview = ({
             />
           )}
         />
+      );
+  }
+
+  return (
+    <Box display="flex" flexDirection="column" height="100%">
+      {isLoading ? <Progress /> : null}
+
+      {!isLoading && !tree ? (
+        <EmptyState
+          missing="info"
+          title="No information to display"
+          description="Please select a cluster to view Flux resources."
+        />
       ) : null}
+
+      {treeContent}
     </Box>
   );
 };

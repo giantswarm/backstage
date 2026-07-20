@@ -15,8 +15,46 @@
   ],
   packageRules: [
     {
+      // Group the `ai` core together with the @ai-sdk/* providers so they are
+      // always proposed in one PR -- they are version-locked (see the major
+      // hold below) and must move together.
       groupName: 'ai-sdk packages',
-      matchPackageNames: ['@ai-sdk{/,}**'],
+      matchPackageNames: ['ai', '@ai-sdk{/,}**'],
+    },
+    {
+      // Hold the AI SDK (core `ai` + all @ai-sdk/* providers) at their current
+      // majors. The core and providers are locked together by language-model
+      // spec version: ai@6 speaks provider spec v2/v3 (@ai-sdk/provider@3),
+      // ai@7 speaks v4 (@ai-sdk/provider@4). Renovate bumping the providers to
+      // a new major without the matching `ai` core major (or vice versa) breaks
+      // AI chat at runtime with AI_UnsupportedModelVersionError -- and the unit
+      // tests don't catch it because they mock the model (that is exactly what
+      // #1926 did, fixed in #1944).
+      //
+      // The ai@6 -> ai@7 migration is now PARTIAL: the backend
+      // (ai-chat-backend + its @ai-sdk/* providers, gs-node, muster-backend)
+      // moved to ai@7 / provider@4 / @ai-sdk/mcp@2, but the FRONTEND
+      // (plugins/ai-chat) is still on ai@6 because @assistant-ui/react-ai-sdk
+      // has no ai@7 release yet (its latest still peer-requires ai@^6 /
+      // @ai-sdk/react@^3). The two `ai` majors coexist because root
+      // package.json pins ONLY the backend to 7.x via a scoped `resolutions`
+      // override (`.../ai-chat-backend/ai`); there is deliberately no unscoped
+      // `ai` resolution, since an unscoped pin overrides scoped ones in Yarn 4
+      // and would drag the backend back down. The frontend + assistant-ui
+      // therefore stay on 6.x purely via their own `ai@^6` dependency ranges,
+      // and THIS major-hold is what keeps them from being bumped to 7. The
+      // UI-message-stream wire protocol is unchanged between v6 and v7, so the
+      // ai@7 backend streams to the ai@6 frontend fine.
+      //
+      // Keep this hold: the spec-lock rationale is permanent, and lifting it
+      // while the stack is split across two majors would let Renovate propose
+      // exactly the uncoordinated major bump #1926 hit. Do the next major
+      // (ai@7 -> ai@8, providers@4 -> @5) deliberately in one reviewed PR --
+      // ideally once assistant-ui ships ai@7 support so the frontend can move
+      // too -- then revisit lifting this rule. Minor/patch updates still flow.
+      matchPackageNames: ['ai', '@ai-sdk{/,}**'],
+      matchUpdateTypes: ['major'],
+      enabled: false,
     },
     {
       groupName: 'assistant-ui packages',
@@ -25,6 +63,17 @@
     {
       groupName: 'backstage packages',
       matchPackageNames: ['@backstage{/,}**'],
+    },
+    {
+      // Group the PagerDuty frontend plugin together with its backend
+      // counterpart so they are always proposed in one PR. The two packages
+      // are released in lockstep and share the same integration surface, so
+      // bumping one without the other risks a version mismatch.
+      groupName: 'pagerduty packages',
+      matchPackageNames: [
+        '@pagerduty/backstage-plugin',
+        '@pagerduty/backstage-plugin-backend',
+      ],
     },
     {
       groupName: 'testing-library packages',

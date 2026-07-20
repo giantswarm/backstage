@@ -25,6 +25,20 @@ export type IncompatibilityErrorInfo = {
  */
 export type ErrorInfoUnion = ErrorInfo | IncompatibilityErrorInfo;
 
+/**
+ * True when a list/get failed with a 404 — the resource's API group/CRD is not
+ * served by that cluster (see the `NotFoundError` name set in `useListResources`).
+ * Distinct from a 403 (`ForbiddenError`) or a transport failure, so callers can
+ * treat it as "this resource type isn't installed here" rather than
+ * "couldn't read".
+ */
+export function isNotFoundError(errorInfo: ErrorInfoUnion): boolean {
+  return (
+    errorInfo.type !== 'incompatibility' &&
+    errorInfo.error.name === 'NotFoundError'
+  );
+}
+
 export const mapQueriesToClusters = <T>(
   clusters: string[],
   queries: UseQueryResult<T, unknown>[],

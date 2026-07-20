@@ -156,23 +156,28 @@ export class KustomizationTreeBuilder {
   }
 
   private findRoots(): Kustomization[] {
-    // Find kustomizations that are not listed in other kustomizations inventory
-    const kustomizationInventoryEntries = Array.from(
-      this.inventories.values(),
-    ).flatMap(inventoryEntries => {
-      if (!inventoryEntries) {
-        return [];
-      }
+    // Find kustomizations that are not listed in another kustomization's
+    // inventory. References are matched by namespace and name — name-only
+    // matching would let any inventory entry disqualify unrelated
+    // kustomizations that share its name in other namespaces, which can
+    // collapse the whole tree to zero roots on multi-org clusters.
+    // (A kustomization's own self-reference — the self-managed bootstrap
+    // pattern — is already stripped at parse time by parseInventoryEntries.)
+    const referencedKeys = new Set(
+      Array.from(this.inventories.values()).flatMap(inventoryEntries => {
+        if (!inventoryEntries) {
+          return [];
+        }
 
-      return inventoryEntries.filter(e => e.kind === 'Kustomization');
-    });
-
-    return Array.from(this.kustomizations.values()).filter(
-      k =>
-        !Boolean(
-          kustomizationInventoryEntries.find(e => e.name === k.getName()),
-        ),
+        return inventoryEntries
+          .filter(e => e.kind === Kustomization.kind)
+          .map(e => this.getKey(e.name, e.namespace));
+      }),
     );
+
+    return Array.from(this.kustomizations.entries())
+      .filter(([key]) => !referencedKeys.has(key))
+      .map(([, k]) => k);
   }
 
   private findChildren(parentKey: string): ObjectMetadata[] {

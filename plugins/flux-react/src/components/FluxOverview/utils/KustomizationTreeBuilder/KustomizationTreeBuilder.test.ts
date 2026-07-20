@@ -172,6 +172,96 @@ describe('KustomizationTreeBuilder', () => {
     expect(findNode(tree, 'my-app')).toBeDefined();
   });
 
+  describe('root detection', () => {
+    it('keeps a self-referencing kustomization as root and hides the self-child', () => {
+      // A self-managed root (Flux bootstrap pattern) lists itself in its own
+      // inventory. The self-entry is stripped at parse time by
+      // parseInventoryEntries, not by the builder — this test guards the
+      // combined invariant so a parser change cannot silently collapse the
+      // tree (a disqualified root disappears together with its subtree).
+      const root = createMockKustomization({
+        name: 'gitops',
+        readyCondition: { status: 'True' },
+        inventory: [
+          {
+            namespace: 'flux-system',
+            name: 'gitops',
+            group: KUSTOMIZATION_GROUP,
+            kind: 'Kustomization',
+          },
+          {
+            namespace: 'flux-system',
+            name: 'child',
+            group: KUSTOMIZATION_GROUP,
+            kind: 'Kustomization',
+          },
+        ],
+      });
+      const child = createMockKustomization({
+        name: 'child',
+        readyCondition: { status: 'True' },
+      });
+
+      const builder = new KustomizationTreeBuilder(
+        [root, child],
+        [],
+        [],
+        [],
+        [],
+      );
+      const tree = builder.buildTree();
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0].nodeData.name).toEqual('gitops');
+      expect(tree[0].children.map(c => c.nodeData.name)).toEqual(['child']);
+    });
+
+    it('matches inventory references by namespace and name', () => {
+      // A kustomization in another namespace that happens to share a name
+      // with an inventory entry must not lose its root status.
+      const root = createMockKustomization({
+        name: 'apps',
+        namespace: 'org-a',
+        readyCondition: { status: 'True' },
+        inventory: [
+          {
+            namespace: 'org-a',
+            name: 'child',
+            group: KUSTOMIZATION_GROUP,
+            kind: 'Kustomization',
+          },
+        ],
+      });
+      const sameNameOtherNamespace = createMockKustomization({
+        name: 'child',
+        namespace: 'org-b',
+        readyCondition: { status: 'True' },
+      });
+      const child = createMockKustomization({
+        name: 'child',
+        namespace: 'org-a',
+        readyCondition: { status: 'True' },
+      });
+
+      const builder = new KustomizationTreeBuilder(
+        [root, child, sameNameOtherNamespace],
+        [],
+        [],
+        [],
+        [],
+      );
+      const tree = builder.buildTree();
+
+      expect(tree.map(node => node.nodeData.name).sort()).toEqual([
+        'apps',
+        'child',
+      ]);
+      expect(
+        tree.find(node => node.nodeData.name === 'child')?.nodeData.namespace,
+      ).toEqual('org-b');
+    });
+  });
+
   describe('failing status rollup', () => {
     it('marks a failing leaf and all its ancestors', () => {
       const tree = buildFixtureTree({ helmReleaseReadyStatus: 'False' });

@@ -6,10 +6,6 @@ import {
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError } from '@backstage/errors';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createAzure } from '@ai-sdk/azure';
 import {
   convertToModelMessages,
   stepCountIs,
@@ -18,10 +14,15 @@ import {
   UIMessage,
   SystemModelMessage,
 } from 'ai';
+import {
+  selectModel,
+  isAzureConfigured,
+  type SelectModelOptions,
+} from './selectModel';
 import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
 import { McpClientCache } from '@giantswarm/backstage-plugin-gs-node';
 import { frontendTools } from './frontendTools';
@@ -178,13 +179,33 @@ export async function createRouter(
   );
   const azureBaseUrl = config.getOptionalString('aiChat.azure.baseUrl');
   const azureApiVersion = config.getOptionalString('aiChat.azure.apiVersion');
-  const isAzureConfigured = !!(
-    azureApiKey &&
-    (azureResourceName || azureBaseUrl)
-  );
+  // Reuse the same "Azure configured" predicate that drives provider selection
+  // so the config-validation warnings below can never disagree with which
+  // provider `selectModel` actually picks.
+  const azureConfigured = isAzureConfigured({
+    apiKey: azureApiKey,
+    resourceName: azureResourceName,
+    baseUrl: azureBaseUrl,
+  });
+
+  // Get Google Vertex AI configuration. Vertex is not authenticated with a
+  // static API key: `@ai-sdk/google-vertex` uses google-auth-library to read
+  // the mounted service-account JSON and mint + auto-refresh short-lived
+  // OAuth2 tokens.
+  const googleProject = config.getOptionalString('aiChat.google.project');
+  const googleLocation = config.getOptionalString('aiChat.google.location');
+  const googleKeyFile = config.getOptionalString('aiChat.google.keyFilename');
 
   // Determine which provider to use based on model name
   const isAnthropicModel = modelName.startsWith('claude-');
+  const isGoogleModel = modelName.startsWith('gemini-');
+
+  // Credentials are available only when the configured service-account JSON
+  // actually exists on disk. A keyFilename string alone doesn't mean the SA
+  // JSON was mounted -- checking existence lets us detect the common
+  // misconfiguration where a gemini deployment is missing its mounted secret.
+  const googleCredentialsAvailable =
+    !!googleKeyFile && existsSync(googleKeyFile);
 
   // Validate configuration
   if (isAnthropicModel && !anthropicApiKey) {
@@ -193,13 +214,27 @@ export async function createRouter(
     );
   }
 
-  if (!isAnthropicModel && isAzureConfigured && !azureApiKey) {
+  if (
+    isGoogleModel &&
+    (!googleProject || !googleLocation || !googleCredentialsAvailable)
+  ) {
+    logger.warn(
+      'Google Vertex model selected but configuration is incomplete. Set aiChat.google.project, aiChat.google.location, and aiChat.google.keyFilename (pointing to a mounted service-account JSON) in app-config.yaml',
+    );
+  }
+
+  if (!isAnthropicModel && !isGoogleModel && azureConfigured && !azureApiKey) {
     logger.warn(
       'Azure OpenAI configured but no API key set. Set aiChat.azure.apiKey in app-config.yaml',
     );
   }
 
-  if (!isAnthropicModel && !isAzureConfigured && !openaiApiKey) {
+  if (
+    !isAnthropicModel &&
+    !isGoogleModel &&
+    !azureConfigured &&
+    !openaiApiKey
+  ) {
     // Expected when a customer hasn't set up the AI chat feature: the default
     // model (gpt-4o-mini) selects the OpenAI provider, but no key is set. This
     // is benign, so log at `info` — `warn` (and above) is forwarded to Sentry
@@ -239,53 +274,41 @@ export async function createRouter(
     effort: anthropicEffort,
   });
 
-  // Create provider clients
-  const openai = createOpenAI({
-    apiKey: openaiApiKey,
-    baseURL: openaiBaseUrl,
-  });
-
-  // OpenAI-compatible provider for `aiChat.openai.api: chat` (vLLM and similar
-  // OpenAI-compatible servers). Unlike `@ai-sdk/openai`'s chat path, this
-  // provider handles the `delta.reasoning` / `delta.reasoning_content` SSE
-  // fields that vLLM emits when `--reasoning-parser` is configured (e.g.
-  // `nemotron_v3` for Nemotron-Super), and forwards them as proper
-  // `reasoning-start` / `reasoning-delta` / `reasoning-end` LanguageModelV3
-  // stream parts. Without this, the reasoning phase appears as silence to
-  // the chat UI and only the post-think answer text streams through.
-  const openaiCompatible = createOpenAICompatible({
-    name: 'openai-compatible',
-    baseURL: openaiBaseUrl ?? '',
-    apiKey: openaiApiKey,
-    // Ask vLLM/KServe (and other OpenAI-compatible chat-completions
-    // servers) to include token usage in streaming responses by adding
-    // `stream_options: { include_usage: true }` to the request body.
-    // Without this, vLLM emits no usage chunk and `getContextUsage` has
-    // no data to show.
-    includeUsage: true,
-    // `min_p` is not part of the AI SDK CallSettings, but vLLM accepts it
-    // as a top-level field on `/v1/chat/completions`. When configured
-    // under `aiChat.sampling.minP`, splice it into the outgoing request
-    // body. Recommended for Qwen3 thinking-mode (Qwen team's recipe is
-    // `temperature=0.6, topP=0.95, topK=20, minP=0`).
-    transformRequestBody:
-      samplingMinP !== undefined
-        ? args => ({ ...args, min_p: samplingMinP })
-        : undefined,
-  });
-
-  const anthropic = createAnthropic({
-    apiKey: anthropicApiKey,
-    baseURL: anthropicBaseUrl,
-  });
-
-  const azure = createAzure({
-    apiKey: azureApiKey,
-    resourceName: azureResourceName,
-    baseURL: azureBaseUrl,
-    apiVersion: azureApiVersion,
-    useDeploymentBasedUrls: true,
-  });
+  // Provider selection (precedence + client construction) lives in the pure
+  // `selectModel` helper so the exact `ai` core + `@ai-sdk/*` resolution path can
+  // be unit tested offline -- this is the path that threw
+  // `AI_UnsupportedModelVersionError` for every request in #1926 when the
+  // providers and core disagreed on the language-model spec version.
+  //
+  // Called per request (inside the handler's try/catch below) rather than here:
+  // some provider factories validate eagerly (e.g. Vertex requires a location),
+  // and building the model at router-creation time would turn a misconfiguration
+  // into a hard `createRouter` failure instead of the graceful warning +
+  // per-request error the rest of this setup is careful to produce.
+  const selectModelOptions = {
+    modelName,
+    openai: {
+      apiKey: openaiApiKey,
+      baseUrl: openaiBaseUrl,
+      api: openaiApi,
+    },
+    anthropic: {
+      apiKey: anthropicApiKey,
+      baseUrl: anthropicBaseUrl,
+    },
+    azure: {
+      apiKey: azureApiKey,
+      resourceName: azureResourceName,
+      baseUrl: azureBaseUrl,
+      apiVersion: azureApiVersion,
+    },
+    google: {
+      project: googleProject,
+      location: googleLocation,
+      keyFilename: googleKeyFile,
+    },
+    samplingMinP,
+  } satisfies SelectModelOptions;
 
   router.post('/chat', async (req, res) => {
     // Verify user is authenticated
@@ -402,21 +425,10 @@ export async function createRouter(
       req.headers['x-ai-chat-debug'] === 'true';
 
     try {
-      // Select the appropriate provider based on model type
-      // When Azure is configured, non-Anthropic models route through Azure
-      let openaiCompatibleModel;
-      if (isAzureConfigured) {
-        openaiCompatibleModel = azure.chat(modelName);
-      } else if (openaiApi === 'chat') {
-        // Use @ai-sdk/openai-compatible for vLLM-style chat-completions servers
-        // so reasoning chunks are surfaced (see provider construction above).
-        openaiCompatibleModel = openaiCompatible.chatModel(modelName);
-      } else {
-        openaiCompatibleModel = openai(modelName);
-      }
-      const selectedModel = isAnthropicModel
-        ? anthropic(modelName)
-        : openaiCompatibleModel;
+      // Build the language model and resolve which provider backs it (see the
+      // note at `selectModelOptions` for why this is per request).
+      const { model: selectedModel, providerName } =
+        selectModel(selectModelOptions);
 
       // Convert UI messages to model messages
       const modelMessages = await convertToModelMessages(
@@ -517,7 +529,14 @@ export async function createRouter(
           ? [systemMessage, ...dereasonedMessages]
           : dereasonedMessages,
         system: isAnthropicModel ? undefined : effectiveSystemPrompt,
-        abortSignal: req.socket ? undefined : undefined,
+        // ai@7 rejects `role: 'system'` messages inside `messages`/`prompt` by
+        // default (prompt-injection guard). For Anthropic we deliberately
+        // prepend a system message to the array so we can attach
+        // `providerOptions.anthropic.cacheControl` for prompt caching (see
+        // `systemMessage` above), so we opt back in here. Non-Anthropic models
+        // pass the prompt via the top-level `system` field and never put a
+        // system message in the array.
+        allowSystemInMessages: true,
         stopWhen: stepCountIs(maxSteps),
         tools: allTools as ToolSet,
         ...samplingParams,
@@ -556,11 +575,6 @@ export async function createRouter(
       // the backend sends to the LLM so it can be logged in the browser console.
       // Gated to non-production above, so header size is not a concern here.
       if (isDebugRequest) {
-        let providerName = 'openai';
-        if (isAnthropicModel) providerName = 'anthropic';
-        else if (isAzureConfigured) providerName = 'azure';
-        else if (openaiApi === 'chat') providerName = 'openai-compatible';
-
         const toolEntries = Object.entries(allTools).map(([name, t]) => ({
           name,
           description: (t as { description?: string }).description,
@@ -670,23 +684,37 @@ export async function createRouter(
 
   // Health check endpoint
   router.get('/health', (_, res) => {
-    const openaiCompatibleProvider = isAzureConfigured
+    const openaiCompatibleProvider = azureConfigured
       ? 'azure-openai'
       : 'openai';
-    const openaiCompatibleConfigured = isAzureConfigured
+    const openaiCompatibleConfigured = azureConfigured
       ? !!azureApiKey
       : !!openaiApiKey;
+    const googleConfigured =
+      !!googleProject && !!googleLocation && googleCredentialsAvailable;
+
+    let provider: string;
+    let configured: boolean;
+    if (isAnthropicModel) {
+      provider = 'anthropic';
+      configured = !!anthropicApiKey;
+    } else if (isGoogleModel) {
+      provider = 'google-vertex';
+      configured = googleConfigured;
+    } else {
+      provider = openaiCompatibleProvider;
+      configured = openaiCompatibleConfigured;
+    }
 
     res.json({
       status: 'ok',
       model: modelName,
-      provider: isAnthropicModel ? 'anthropic' : openaiCompatibleProvider,
-      configured: isAnthropicModel
-        ? !!anthropicApiKey
-        : openaiCompatibleConfigured,
+      provider,
+      configured,
       openaiConfigured: !!openaiApiKey,
       anthropicConfigured: !!anthropicApiKey,
-      azureConfigured: isAzureConfigured,
+      azureConfigured,
+      googleConfigured,
     });
   });
 

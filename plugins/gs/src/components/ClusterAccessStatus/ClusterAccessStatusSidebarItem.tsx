@@ -1,6 +1,7 @@
 import { MouseEvent, useEffect, useMemo, useState } from 'react';
 import { SidebarItem } from '@backstage/core-components';
 import { useApi, errorApiRef } from '@backstage/core-plugin-api';
+import { Switch } from '@backstage/ui';
 import {
   Box,
   Button,
@@ -16,6 +17,10 @@ import {
   ClusterAccessStatusEntry,
   clusterAccessStatusApiRef,
 } from '../../apis/clusterAccessStatus';
+import {
+  mutedInstallationsApiRef,
+  useMutedInstallations,
+} from '../../apis/mutedInstallations';
 import { gsAuthApiRef } from '../../apis/auth/types';
 
 const STATE_COLORS: Record<ClusterAccessState, string> = {
@@ -24,6 +29,11 @@ const STATE_COLORS: Record<ClusterAccessState, string> = {
   degraded: '#f9a825',
   'session-expired': '#c62828',
 };
+
+// A muted installation is switched off app-wide: not probed, not fetched. Shown
+// greyed with an "Off" caption and its toggle in the off position.
+const MUTED_COLOR = '#bdbdbd';
+const MUTED_LABEL = 'Off';
 
 const STATE_LABELS: Record<ClusterAccessState, string> = {
   connecting: 'Connecting…',
@@ -72,7 +82,7 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
-    padding: theme.spacing(0.5, 2),
+    padding: theme.spacing(0.5, 1, 0.5, 2),
   },
   name: {
     flexShrink: 0,
@@ -87,6 +97,11 @@ const useStyles = makeStyles(theme => ({
     // baseline lines up with the installation name instead of sitting high.
     position: 'relative',
     top: 2,
+  },
+  toggle: {
+    // Right-align the switch even when a row has no reason caption to fill the
+    // gap.
+    marginLeft: 'auto',
   },
   actions: {
     padding: theme.spacing(1, 2, 2, 2),
@@ -151,12 +166,14 @@ function StatusDot({ color }: { color: string }) {
 export function ClusterAccessStatusSidebarItem() {
   const classes = useStyles();
   const statusApi = useApi(clusterAccessStatusApiRef);
+  const mutedApi = useApi(mutedInstallationsApiRef);
   const mainAuthApi = useApi(gsAuthApiRef);
   const errorApi = useApi(errorApiRef);
 
   const [entries, setEntries] = useState<ClusterAccessStatusEntry[]>(
     statusApi.getSnapshot(),
   );
+  const muted = useMutedInstallations();
   const [anchorEl, setAnchorEl] = useState<Element | null>(null);
 
   useEffect(() => {
@@ -165,19 +182,64 @@ export function ClusterAccessStatusSidebarItem() {
   }, [statusApi]);
 
   const state = useMemo(() => overallState(entries), [entries]);
-  const summary = useMemo(() => summarize(entries), [entries]);
+  // `summarize`/`overallState` only know about *probed* entries. With no live
+  // entries but some muted installations, they'd report a green "All 0 healthy" —
+  // the opposite of reality — so drive the badge and summary off the muted set in
+  // that case (the muted count is appended to the summary in render).
+  const summary = useMemo(
+    () => (entries.length > 0 ? summarize(entries) : []),
+    [entries],
+  );
   const sessionExpired = state === 'session-expired';
-  const color = STATE_COLORS[state];
+  const badgeColor = entries.length === 0 ? MUTED_COLOR : STATE_COLORS[state];
 
-  // Nothing has been accessed yet -- keep the sidebar uncluttered.
-  if (entries.length === 0) {
+  // One row per accessed *or* muted installation, sorted by name. A muted
+  // installation isn't probed (so it has no status entry) but is still listed so
+  // it can be switched back on.
+  const rows = useMemo(() => {
+    const mutedSet = new Set(muted);
+    const entryByInstallation = new Map(
+      entries.map(entry => [entry.installation, entry]),
+    );
+    const installations = Array.from(
+      new Set([...entryByInstallation.keys(), ...muted]),
+    ).sort((a, b) => a.localeCompare(b));
+
+    return installations.map(installation => {
+      if (mutedSet.has(installation)) {
+        return {
+          installation,
+          dotColor: MUTED_COLOR,
+          caption: MUTED_LABEL,
+          enabled: false,
+        };
+      }
+      const entry = entryByInstallation.get(installation)!;
+      const caption =
+        entry.state === 'degraded' || entry.state === 'session-expired'
+          ? (entry.reason ?? STATE_LABELS[entry.state])
+          : undefined;
+      return {
+        installation,
+        dotColor: STATE_COLORS[entry.state],
+        caption,
+        enabled: true,
+      };
+    });
+  }, [entries, muted]);
+
+  // Nothing accessed and nothing muted -- keep the sidebar uncluttered.
+  if (entries.length === 0 && muted.length === 0) {
     return null;
   }
 
   const icon = () => (
     <Box position="relative" display="flex">
       <CloudIcon />
-      <FiberManualRecordIcon className={classes.badge} style={{ color }} />
+      <FiberManualRecordIcon
+        className={classes.badge}
+        style={{ color: badgeColor }}
+      />
     </Box>
   );
 
@@ -217,34 +279,42 @@ export function ClusterAccessStatusSidebarItem() {
                 </span>
               </span>
             ))}
+            {muted.length > 0 && (
+              <span>
+                {summary.length > 0 && ' · '}
+                {muted.length} off
+              </span>
+            )}
           </Typography>
         </div>
         <Divider />
         <div className={classes.list}>
-          {entries.map(entry => {
-            const reason =
-              entry.state === 'degraded' || entry.state === 'session-expired'
-                ? (entry.reason ?? STATE_LABELS[entry.state])
-                : undefined;
-            return (
-              <div key={entry.installation} className={classes.row}>
-                <StatusDot color={STATE_COLORS[entry.state]} />
-                <Typography variant="body2" noWrap className={classes.name}>
-                  {entry.installation}
+          {rows.map(({ installation, dotColor, caption, enabled }) => (
+            <div key={installation} className={classes.row}>
+              <StatusDot color={dotColor} />
+              <Typography variant="body2" noWrap className={classes.name}>
+                {installation}
+              </Typography>
+              {caption && (
+                <Typography
+                  variant="caption"
+                  color="textSecondary"
+                  className={classes.reason}
+                  title={caption}
+                >
+                  {caption}
                 </Typography>
-                {reason && (
-                  <Typography
-                    variant="caption"
-                    color="textSecondary"
-                    className={classes.reason}
-                    title={reason}
-                  >
-                    {reason}
-                  </Typography>
-                )}
-              </div>
-            );
-          })}
+              )}
+              <Switch
+                className={classes.toggle}
+                aria-label={`Enable installation ${installation}`}
+                isSelected={enabled}
+                onChange={isSelected =>
+                  mutedApi.setMuted(installation, !isSelected)
+                }
+              />
+            </div>
+          ))}
         </div>
         {sessionExpired && (
           <>

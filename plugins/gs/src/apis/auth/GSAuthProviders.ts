@@ -229,7 +229,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     return async () => {
       try {
         const clusterToken = await mint();
-        statusApi?.recordHealthy(installationName);
+        // A successful token mint only proves the broker is reachable, not that
+        // the cluster's apiserver is — so it must NOT be recorded as healthy here
+        // (that showed a misleading green, e.g. right after un-muting an
+        // unreachable installation, until the real probe corrected it to
+        // degraded). Health is owned by the authoritative `/version` probe in
+        // ClusterAccessConnector; the catch below still records the precise
+        // broker-level failure states, which that probe defers to.
         return clusterToken;
       } catch (error) {
         if (error instanceof ClusterTokenError) {

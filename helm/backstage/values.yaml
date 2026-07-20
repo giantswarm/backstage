@@ -206,6 +206,18 @@ openai:
   # -- OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var)
   apiKey: ''
 
+# -- Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model)
+google:
+  # @schema type:string
+  # -- GCP project ID for Vertex AI (exposed as GOOGLE_CLOUD_PROJECT env var)
+  project: ''
+  # @schema type:string
+  # -- Vertex AI region, e.g. europe-west1 (exposed as GOOGLE_CLOUD_LOCATION env var)
+  location: ''
+  # @schema type:string
+  # -- Service-account JSON content for Vertex AI authentication. When set, mounted as a file at /app/google/credentials.json (SOPS-encrypted in gitops). google-auth-library uses it to mint and auto-refresh short-lived OAuth2 tokens
+  credentialsJson: ''
+
 # -- PagerDuty integration settings
 pagerduty:
   # @schema type:string

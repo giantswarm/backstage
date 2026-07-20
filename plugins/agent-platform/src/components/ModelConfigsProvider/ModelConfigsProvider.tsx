@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
+  isNotFoundError,
   ModelConfig,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -64,9 +65,11 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ModelConfigsContextValue>(() => {
     const withModels = new Set(resources.map(mc => mc.cluster));
 
-    // Distinct installations whose query errored and produced no models.
+    // A 404 means the kagent.dev API group isn't installed on that cluster, so it
+    // simply has no ModelConfigs — not a "couldn't read" failure. Only genuine
+    // failures (403 forbidden, unreachable) that produced no models are surfaced.
     const unreachableInstallations = Array.from(
-      new Set(errors.map(e => e.cluster)),
+      new Set(errors.filter(e => !isNotFoundError(e)).map(e => e.cluster)),
     ).filter(name => !withModels.has(name));
 
     return {

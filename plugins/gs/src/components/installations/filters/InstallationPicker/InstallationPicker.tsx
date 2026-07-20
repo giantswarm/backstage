@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { Box } from '@material-ui/core';
 import {
   MultipleClustersSelector,
   useClustersInfo,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useDisabledInstallations } from '../../../hooks';
+import { useMutedInstallations } from '../../../../apis/mutedInstallations';
 
 type InstallationPickerProps = {
   onActiveInstallationsChange: (installations: string[]) => void;
@@ -18,6 +20,16 @@ export const InstallationPicker = ({
   const { disabledInstallations, isLoading: isLoadingDisabledInstallations } =
     useDisabledInstallations();
 
+  // Installations the user has muted app-wide are excluded from fleet fetches
+  // exactly like health-disabled ones: fold them into disabledClusters, which
+  // MultipleClustersSelector both greys out and drops from the active set.
+  const muted = useMutedInstallations();
+
+  const disabledClusters = useMemo(
+    () => Array.from(new Set([...disabledInstallations, ...muted])),
+    [disabledInstallations, muted],
+  );
+
   return (
     <Box py={clusters.length > 1 ? 1 : 0}>
       <MultipleClustersSelector
@@ -25,7 +37,7 @@ export const InstallationPicker = ({
         persistToURL={persistToURL}
         urlParameterName="installations"
         clusters={clusters}
-        disabledClusters={disabledInstallations}
+        disabledClusters={disabledClusters}
         isLoadingDisabledClusters={isLoadingDisabledInstallations}
         disabled={isLoading}
         onActiveClustersChange={onActiveInstallationsChange}
