@@ -349,14 +349,6 @@ export function NewAgentReviewPage() {
               <CodeBlock content={helmInstallCommand} />
             </div>
           </details>
-
-          <Box mt="3">
-            <Alert
-              status="warning"
-              title="The muster gateway isn't fully configured yet"
-              description="The chart wires the shared muster gateway by default, but the create flow doesn't set the per-installation muster.stsWellKnownUri, so a freshly deployed agent may not reach its tools until that's provided."
-            />
-          </Box>
         </div>
       </div>
     </Content>
