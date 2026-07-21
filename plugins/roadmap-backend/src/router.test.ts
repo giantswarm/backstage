@@ -85,6 +85,7 @@ function buildProMock() {
           title: ITEM.title,
           url: ITEM.url,
           state: 'OPEN',
+          assignees: { nodes: [{ login: 'pau' }] },
           projectItems: {
             nodes: [
               {
@@ -336,6 +337,7 @@ describe('createRouter', () => {
           url: ITEM.url,
           repo: 'giantswarm/giantswarm',
           state: 'OPEN',
+          assignees: ['pau'],
           fields: { Status: 'In Progress ⛏️', Quarter: 'Q3 2026' },
         },
       });

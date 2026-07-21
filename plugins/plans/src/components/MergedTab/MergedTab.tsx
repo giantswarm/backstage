@@ -18,8 +18,11 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { compareDisplayPaths, isRenderableFile } from '../../lib/files';
+import { EpicAssignees } from '../EpicAssignees';
 import { EpicChip } from '../EpicChip';
+import { EpicSubIssues } from '../EpicSubIssues';
 import { PlanFileContent } from '../PlanFileContent';
+import { useEpicListItemStyles } from '../epicListItemStyles';
 
 const ROOT_GROUP = '(repository root)';
 
@@ -56,6 +59,7 @@ interface PlanGroup {
  */
 export function MergedTab({ repo }: { repo: string }) {
   const classes = useStyles();
+  const epicClasses = useEpicListItemStyles();
   const plansApi = useApi(plansApiRef);
   // The selected plan lives in `?plan=` so the roadmap epic view (and
   // anyone with the URL) can deep-link a specific plan.
@@ -137,6 +141,7 @@ export function MergedTab({ repo }: { repo: string }) {
             {groups.map(group => (
               <ListItem
                 key={group.name}
+                className={epicClasses.planItem}
                 button
                 divider
                 selected={group.name === selectedGroup.name}
@@ -149,7 +154,10 @@ export function MergedTab({ repo }: { repo: string }) {
                   }`}
                 />
                 {epicByFolder.has(group.name) && (
-                  <ListItemSecondaryAction>
+                  <EpicAssignees epic={epicByFolder.get(group.name)!.epic} />
+                )}
+                {epicByFolder.has(group.name) && (
+                  <ListItemSecondaryAction className={epicClasses.epicAction}>
                     <EpicChip epic={epicByFolder.get(group.name)!.epic} />
                   </ListItemSecondaryAction>
                 )}
@@ -165,6 +173,9 @@ export function MergedTab({ repo }: { repo: string }) {
               The repository tree was truncated by GitHub; some documents may be
               missing.
             </Alert>
+          )}
+          {epicByFolder.has(selectedGroup.name) && (
+            <EpicSubIssues epic={epicByFolder.get(selectedGroup.name)!.epic} />
           )}
           {selectedGroup.files.map(path => (
             <Box key={path} className={classes.fileSection}>

@@ -16,7 +16,9 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { formatDate } from '../../lib/dates';
 import { pullRouteRef } from '../../routes';
+import { EpicAssignees } from '../EpicAssignees';
 import { EpicChip } from '../EpicChip';
+import { useEpicListItemStyles } from '../epicListItemStyles';
 
 const useStyles = makeStyles((theme: Theme) => ({
   listPanel: {
@@ -35,6 +37,7 @@ const useStyles = makeStyles((theme: Theme) => ({
  */
 export function ProposedTab({ repo }: { repo: string }) {
   const classes = useStyles();
+  const epicClasses = useEpicListItemStyles();
   const plansApi = useApi(plansApiRef);
   const pullLink = useRouteRef(pullRouteRef);
 
@@ -103,6 +106,7 @@ export function ProposedTab({ repo }: { repo: string }) {
           return (
             <ListItem
               key={pull.number}
+              className={epicClasses.planItem}
               button
               divider
               component={RouterLink}
@@ -124,7 +128,10 @@ export function ProposedTab({ repo }: { repo: string }) {
                 secondary={secondary}
               />
               {epicByPull.has(pull.number) && (
-                <ListItemSecondaryAction>
+                <EpicAssignees epic={epicByPull.get(pull.number)!.epic} />
+              )}
+              {epicByPull.has(pull.number) && (
+                <ListItemSecondaryAction className={epicClasses.epicAction}>
                   <EpicChip epic={epicByPull.get(pull.number)!.epic} />
                 </ListItemSecondaryAction>
               )}

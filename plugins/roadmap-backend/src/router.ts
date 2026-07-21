@@ -26,6 +26,9 @@ const ISSUE_PROJECT_ITEM_QUERY = `
         title
         url
         state
+        assignees(first: 10) {
+          nodes { login }
+        }
         projectItems(first: 20, includeArchived: false) {
           nodes {
             id
@@ -410,6 +413,7 @@ export async function createRouter(
                 title: string;
                 url: string;
                 state: string;
+                assignees?: { nodes?: Array<{ login: string }> };
                 projectItems?: {
                   nodes?: Array<{
                     id: string;
@@ -451,6 +455,7 @@ export async function createRouter(
             url: issue.url,
             repo: `${owner}/${repo}`,
             state: issue.state,
+            assignees: (issue.assignees?.nodes ?? []).map(a => a.login),
             fields,
           };
         }),

@@ -34,17 +34,11 @@ interface EpicRef {
   url: string;
 }
 
-/**
- * Parse the Epic header convention out of plan markdown: a line like
- * `**Epic:** [giantswarm/giantswarm#36625](https://github.com/...)`.
- * Accepts an `owner/repo#N` reference or a GitHub issue URL anywhere on
- * that line; the first Epic line wins.
- */
-export function parseEpicRef(markdown: string): EpicRef | null {
-  const line = markdown.match(/^[ \t]*\*\*Epic:?\*\*:?(.*)$/im)?.[1];
-  if (!line) {
-    return null;
-  }
+/** A line labelled with the Epic convention; captures the remainder. */
+const EPIC_LINE_PATTERN = /^[ \t>]*(?:\*\*Epic:?\*\*:?|Epic:)(.*)$/gim;
+
+/** Extract an `owner/repo#N` reference or GitHub issue URL from one line. */
+function epicRefFromLine(line: string): EpicRef | null {
   const ref = line.match(/([\w.-]+)\/([\w.-]+)#(\d+)/);
   if (ref) {
     const [, owner, repo, number] = ref;
@@ -66,6 +60,29 @@ export function parseEpicRef(markdown: string): EpicRef | null {
       number: parseInt(number, 10),
       url: `https://github.com/${owner}/${repo}/issues/${number}`,
     };
+  }
+  return null;
+}
+
+/**
+ * Parse the Epic header convention out of plan markdown: a line like
+ * `**Epic:** [giantswarm/giantswarm#36625](https://github.com/...)`.
+ * The `Epic:` label may be bold or plain and may sit inside a blockquote
+ * (`> Epic: ...`). Accepts an `owner/repo#N` reference or a GitHub issue URL
+ * anywhere on that line.
+ *
+ * Every Epic-labelled line is scanned and the first that actually yields a ref
+ * wins -- not merely the first labelled line. Since the label matches a plain
+ * `Epic:` anywhere at line start, a stray earlier line (prose, a caption) can
+ * carry the label without a usable ref; stopping at it would mask a real
+ * `**Epic:** [owner/repo#N]` header further down.
+ */
+export function parseEpicRef(markdown: string): EpicRef | null {
+  for (const match of markdown.matchAll(EPIC_LINE_PATTERN)) {
+    const epic = epicRefFromLine(match[1]);
+    if (epic) {
+      return epic;
+    }
   }
   return null;
 }

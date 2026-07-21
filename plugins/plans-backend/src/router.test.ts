@@ -4,7 +4,7 @@ import { AuthenticationError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import express from 'express';
 import request from 'supertest';
-import { createRouter, RouterOptions } from './router';
+import { createRouter, parseEpicRef, RouterOptions } from './router';
 
 const REPO = 'giantswarm/bumblebee-plans';
 
@@ -672,5 +672,61 @@ describe('createRouter', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ merged: [], pulls: [] });
     });
+  });
+});
+
+describe('parseEpicRef', () => {
+  const epic = {
+    owner: 'giantswarm',
+    repo: 'giantswarm',
+    number: 37164,
+    url: 'https://github.com/giantswarm/giantswarm/issues/37164',
+  };
+
+  it('parses the bold header form', () => {
+    expect(
+      parseEpicRef(
+        '# PRD\n\n**Epic:** [giantswarm/giantswarm#37164](https://github.com/giantswarm/giantswarm/issues/37164)\n',
+      ),
+    ).toEqual(epic);
+  });
+
+  it('parses a plain Epic label inside a blockquote', () => {
+    expect(
+      parseEpicRef(
+        '# Plan\n\n' +
+          '> Epic: [giantswarm/giantswarm#37164](https://github.com/giantswarm/giantswarm/issues/37164)\n' +
+          '> — *muster sessions die early*.\n',
+      ),
+    ).toEqual(epic);
+  });
+
+  it('parses a bold Epic label inside a blockquote', () => {
+    expect(parseEpicRef('> **Epic**: giantswarm/giantswarm#37164\n')).toEqual(
+      epic,
+    );
+  });
+
+  it('requires a colon after a plain Epic label', () => {
+    expect(
+      parseEpicRef('Epic work on giantswarm/giantswarm#37164 continues\n'),
+    ).toBeNull();
+  });
+
+  it('returns null when no Epic line is present', () => {
+    expect(parseEpicRef('# Plan\n\nNo epic here.\n')).toBeNull();
+  });
+
+  it('skips an earlier Epic-labelled line that carries no ref', () => {
+    // A prose caption matches the plain `Epic:` label but has no usable ref;
+    // the real header sits below it and must still win. A non-global match
+    // would stop at the caption and return null, masking the header.
+    expect(
+      parseEpicRef(
+        '# PRD\n\n' +
+          '> Epic: originally split out of a larger effort.\n\n' +
+          '**Epic:** [giantswarm/giantswarm#37164](https://github.com/giantswarm/giantswarm/issues/37164)\n',
+      ),
+    ).toEqual(epic);
   });
 });
