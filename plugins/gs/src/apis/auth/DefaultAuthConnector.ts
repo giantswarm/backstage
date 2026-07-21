@@ -121,6 +121,14 @@ type Options<AuthSession> = {
    * popup. Returning undefined or throwing falls back to the legacy flow.
    */
   clusterTokenProvider?: () => Promise<ClusterToken | undefined>;
+  /**
+   * True for the main sign-in provider (the one whose id equals
+   * `gs.authProvider`). Its id may follow the `oidc-<name>` shape, but it is
+   * NOT installation-scoped, so it must not derive an installation id from its
+   * provider id (doing so wrongly drives auth discovery into the
+   * installation-scoped, installations-dependent branch pre-sign-in).
+   */
+  isMainProvider?: boolean;
 };
 
 function defaultJoinScopes(scopes: Set<string>) {
@@ -146,6 +154,7 @@ export class DefaultAuthConnector<
   private readonly clusterTokenProvider?: () => Promise<
     ClusterToken | undefined
   >;
+  private readonly isMainProvider: boolean;
   constructor(options: Options<AuthSession>) {
     const {
       configApi,
@@ -157,6 +166,7 @@ export class DefaultAuthConnector<
       sessionTransform = id => id,
       popupOptions,
       clusterTokenProvider,
+      isMainProvider = false,
     } = options;
 
     if (!warned && !configApi) {
@@ -189,6 +199,7 @@ export class DefaultAuthConnector<
     this.sessionTransform = sessionTransform;
     this.popupOptions = popupOptions;
     this.clusterTokenProvider = clusterTokenProvider;
+    this.isMainProvider = isMainProvider;
   }
 
   async createSession(
@@ -338,9 +349,16 @@ export class DefaultAuthConnector<
 
   /**
    * Installation name encoded in the provider id (e.g. `oidc-golem` -> `golem`).
-   * Returns undefined when the id does not follow the `oidc-` convention.
+   * Returns undefined when the id does not follow the `oidc-` convention, and
+   * always for the main sign-in provider: even though its id may share the
+   * `oidc-<name>` shape, it is not installation-scoped, so treating it as such
+   * would route pre-sign-in auth discovery through the installations-dependent
+   * branch and deadlock the boot sequence.
    */
   private installationId(): string | undefined {
+    if (this.isMainProvider) {
+      return undefined;
+    }
     return this.provider.id.split('oidc-')[1];
   }
 

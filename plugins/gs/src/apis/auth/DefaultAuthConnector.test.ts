@@ -121,4 +121,56 @@ describe('DefaultAuthConnector', () => {
       expect(session).toEqual(legacyRefreshResponse);
     });
   });
+
+  describe('installation scoping (buildUrl)', () => {
+    function createConnectorForProvider(options: {
+      providerId: string;
+      isMainProvider?: boolean;
+    }) {
+      const getBaseUrl = jest.fn().mockResolvedValue('http://backend/api/auth');
+      const scopedDiscoveryApi = {
+        getBaseUrl,
+      } as unknown as DiscoveryApiClient;
+      const connector = new DefaultAuthConnector({
+        configApi,
+        discoveryApi: scopedDiscoveryApi,
+        environment: 'development',
+        provider: {
+          id: options.providerId,
+          title: options.providerId,
+          icon: () => null,
+        },
+        oauthRequestApi,
+        isMainProvider: options.isMainProvider,
+      });
+      return { connector, getBaseUrl };
+    }
+
+    it('does not scope the main sign-in provider to an installation', async () => {
+      // Even though the id follows the `oidc-<name>` shape, the main provider
+      // (id === gs.authProvider) is not installation-scoped, so auth discovery
+      // must be resolved with an undefined installation -- otherwise pre-sign-in
+      // discovery hits the installations-dependent branch and deadlocks.
+      mockLegacyRefresh();
+      const { connector, getBaseUrl } = createConnectorForProvider({
+        providerId: 'oidc-gazelle',
+        isMainProvider: true,
+      });
+
+      await connector.refreshSession({ scopes: new Set(['openid']) });
+
+      expect(getBaseUrl).toHaveBeenCalledWith('auth', undefined);
+    });
+
+    it('scopes a genuine per-installation provider to its installation', async () => {
+      mockLegacyRefresh();
+      const { connector, getBaseUrl } = createConnectorForProvider({
+        providerId: 'oidc-gazelle',
+      });
+
+      await connector.refreshSession({ scopes: new Set(['openid']) });
+
+      expect(getBaseUrl).toHaveBeenCalledWith('auth', 'gazelle');
+    });
+  });
 });

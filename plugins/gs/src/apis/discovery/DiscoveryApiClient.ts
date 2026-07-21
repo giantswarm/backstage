@@ -1,9 +1,6 @@
 import { UrlPatternDiscovery } from '@backstage/core-app-api';
 import { ConfigApi, DiscoveryApi } from '@backstage/core-plugin-api';
-import {
-  getInstallationsConfig,
-  getInstallationsConfigSnapshot,
-} from '../installations';
+import { getInstallationsConfigSnapshot } from '../installations';
 
 const PLUGINS = ['auth', 'scaffolder', 'kubernetes'];
 
@@ -23,20 +20,19 @@ export class DiscoveryApiClient implements DiscoveryApi {
       installation || DiscoveryApiClient.getInstallation();
 
     // The default backend URL never depends on installations, so this path must
-    // not block on the (post-sign-in) installations fetch -- pre-sign-in auth
-    // discovery relies on it. Only a request explicitly scoped to an
-    // installation can carry a `backendUrl` override, and by then installations
-    // are loaded (post-sign-in); await the source only if it somehow is not.
-    if (selectedInstallation && PLUGINS.includes(pluginId)) {
-      let overrides = DiscoveryApiClient.getBaseUrlOverrides();
-      if (
-        getInstallationsConfigSnapshot() === undefined &&
-        overrides[selectedInstallation] === undefined
-      ) {
-        await getInstallationsConfig();
-        overrides = DiscoveryApiClient.getBaseUrlOverrides();
-      }
-      const baseUrlOverride = overrides[selectedInstallation];
+    // never block on the (post-sign-in) installations fetch. Pre-sign-in auth
+    // discovery relies on it, and the installations loader itself only resolves
+    // after sign-in completes -- awaiting the source here would deadlock the
+    // boot sequence. Per-installation `backendUrl` overrides are therefore
+    // consulted only once the installations snapshot is available (post
+    // -sign-in); until then we fall through to the default backend URL.
+    if (
+      selectedInstallation &&
+      PLUGINS.includes(pluginId) &&
+      getInstallationsConfigSnapshot() !== undefined
+    ) {
+      const baseUrlOverride =
+        DiscoveryApiClient.getBaseUrlOverrides()[selectedInstallation];
       if (baseUrlOverride) {
         const customUrlPatternDiscovery = UrlPatternDiscovery.compile(
           `${baseUrlOverride}/api/{{ pluginId }}`,

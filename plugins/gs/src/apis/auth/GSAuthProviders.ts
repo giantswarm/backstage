@@ -121,7 +121,12 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       ? mainProviderName.split(OIDC_PROVIDER_NAME_PREFIX)[1]
       : mainProviderName;
 
-    return this.createKubernetesAuthApi(mainProviderName, providerDisplayName);
+    return this.createKubernetesAuthApi(
+      mainProviderName,
+      providerDisplayName,
+      undefined,
+      true,
+    );
   }
 
   /**
@@ -342,6 +347,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     providerName: string,
     providerDisplayName: string,
     clusterTokenProvider?: () => Promise<ClusterToken | undefined>,
+    isMainProvider = false,
   ): AuthApi {
     const authConnector = new DefaultAuthConnector({
       configApi: this.configApi,
@@ -355,6 +361,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         icon: GiantSwarmIcon,
       },
       clusterTokenProvider,
+      isMainProvider,
       sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
         const session: OAuth2Session = {
           ...res,
