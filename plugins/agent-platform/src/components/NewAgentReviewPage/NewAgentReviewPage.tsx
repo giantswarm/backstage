@@ -9,6 +9,7 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 
 import { CHART_DEFAULTS } from '../../lib/agentDefaults';
 import { CHART_NAME, composeManifests } from '../../lib/composeManifests';
+import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useDeployAgent } from '../../hooks/useDeployAgent';
 import { newAgentRouteRef } from '../../routes';
@@ -110,6 +111,12 @@ export function NewAgentReviewPage() {
   // with the create form.
   const { version: chartVersion } = useAgentChart();
 
+  // Persist the same deterministic avatar the UI renders onto the resource, as
+  // the size-agnostic canonical URL. Seeded by the technical name (= agent.name)
+  // so it matches the created agent; undefined when the installation has no
+  // configured base domain (then the chart keeps its default).
+  const buildAvatarUrl = useAgentAvatarUrl();
+
   // The agent's resources are applied alongside the ModelConfig it uses — that
   // namespace already exists and is where kagent watches.
   const namespace = state.modelConfigNamespace ?? '';
@@ -127,6 +134,7 @@ export function NewAgentReviewPage() {
           description: state.description,
           modelConfigName: state.modelConfigName ?? '',
           systemMessage: state.systemMessage,
+          iconUrl: buildAvatarUrl(state.installation, state.slug) ?? '',
           skills: state.selectedSkills.map(skill => ({
             url: skill.repoUrl,
             path: skill.path,
@@ -150,6 +158,7 @@ export function NewAgentReviewPage() {
       state.systemMessage,
       state.selectedSkills,
       state.installation,
+      buildAvatarUrl,
       namespace,
       chartOciUrl,
       chartVersion,
