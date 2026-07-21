@@ -1,6 +1,7 @@
 import { Box, makeStyles, Theme } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
-import { MarkdownContent, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
+import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../apis';
@@ -79,7 +80,7 @@ export function PlanFileContent(props: {
   return (
     <Box className={classes.markdown}>
       {frontmatter && <Box className={classes.frontmatter}>{frontmatter}</Box>}
-      <MarkdownContent content={body} dialect="gfm" />
+      <GSMarkdownContent content={body} />
     </Box>
   );
 }

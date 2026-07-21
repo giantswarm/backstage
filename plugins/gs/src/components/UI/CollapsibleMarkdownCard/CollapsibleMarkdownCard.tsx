@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useCallback, ReactNode } from 'react';
-import { MarkdownContent, Progress } from '@backstage/core-components';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import { Progress } from '@backstage/core-components';
+import {
+  GSMarkdownContent,
+  InfoCard,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   Box,
   Button,
@@ -153,7 +156,7 @@ export const CollapsibleMarkdownCard = ({
             collapsedSize={collapsedSize}
           >
             <div ref={contentRef}>
-              <MarkdownContent content={content} />
+              <GSMarkdownContent content={content} />
             </div>
           </Collapse>
           {needsExpansion && !expanded && (

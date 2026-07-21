@@ -59,6 +59,42 @@ export function compareDisplayPaths(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+// Friendly, human-readable names for well-known plan file names, keyed by
+// lower-cased basename. Extend as new conventions appear.
+const FRIENDLY_FILE_NAMES: Record<string, string> = {
+  'prd.md': 'Product Requirements Document',
+  'index.html': 'Web page',
+};
+
+/**
+ * A human-friendly name for a well-known plan file (e.g. `PRD.md` →
+ * "Product Requirements Document"), matched case-insensitively on the file's
+ * basename. Returns undefined for files without a known convention.
+ */
+export function friendlyFileName(path: string): string | undefined {
+  const base = path.split('/').pop()?.toLowerCase() ?? '';
+  return FRIENDLY_FILE_NAMES[base];
+}
+
+/**
+ * Whether any segment of the path is dot-prefixed, i.e. it is (or lives under)
+ * a hidden file or folder such as `.agents/…` or `plan/.notes.md`.
+ */
+export function isDotPath(path: string): boolean {
+  return path.split('/').some(segment => segment.startsWith('.'));
+}
+
+/**
+ * The path with its plan-folder prefix removed, for display in a context that
+ * already names the folder (e.g. a per-folder accordion). Paths that don't sit
+ * under `folder` — including root-level documents grouped under a synthetic
+ * folder name — are returned unchanged.
+ */
+export function stripFolderPrefix(path: string, folder: string): string {
+  const prefix = `${folder}/`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
+}
+
 function displayRank(path: string): number {
   const base = path.split('/').pop()?.toLowerCase() ?? '';
   if (base === 'readme.md') return 0;

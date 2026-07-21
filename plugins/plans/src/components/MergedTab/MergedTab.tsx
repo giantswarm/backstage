@@ -1,46 +1,53 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import type { Selection } from 'react-aria-components';
 import {
-  Box,
-  Grid,
+  Accordion,
+  AccordionGroup,
+  AccordionPanel,
+  AccordionTrigger,
+  Alert,
+  Flex,
   List,
-  ListItem,
-  ListItemSecondaryAction,
-  ListItemText,
-  Paper,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import { Alert } from '@material-ui/lab';
+  ListRow,
+} from '@backstage/ui';
+import { makeStyles, Theme } from '@material-ui/core';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
-import { compareDisplayPaths, isRenderableFile } from '../../lib/files';
+import {
+  compareDisplayPaths,
+  friendlyFileName,
+  isDotPath,
+  isRenderableFile,
+  stripFolderPrefix,
+} from '../../lib/files';
 import { EpicChip } from '../EpicChip';
 import { PlanFileContent } from '../PlanFileContent';
 
-const ROOT_GROUP = '(repository root)';
-
 const useStyles = makeStyles((theme: Theme) => ({
-  listPanel: {
-    padding: 0,
-  },
-  detailPanel: {
-    padding: theme.spacing(2),
-  },
-  fileSection: {
-    marginTop: theme.spacing(2),
-    '&:first-child': {
-      marginTop: 0,
+  layout: {
+    display: 'grid',
+    gridTemplateColumns: '1fr',
+    gap: theme.spacing(2),
+    alignItems: 'start',
+    [theme.breakpoints.up('md')]: {
+      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)',
     },
   },
+  // The file path in each accordion trigger, so a long plan reads as a
+  // navigable stack of documents rather than one wall of text.
   fileName: {
     fontFamily: 'monospace',
-    fontSize: 14,
-    fontWeight: 600,
-    marginBottom: theme.spacing(1),
+  },
+  // bui's accordion trigger has no bottom padding, so an expanded header sits
+  // flush against the document below it. Add breathing room only when
+  // expanded — a collapsed header would otherwise look top-heavy.
+  accordionGroup: {
+    '& .bui-AccordionTriggerButton[aria-expanded="true"]': {
+      paddingBottom: theme.spacing(1),
+    },
   },
 }));
 
@@ -51,8 +58,8 @@ interface PlanGroup {
 
 /**
  * Merged plans: renderable documents on the default branch, grouped by their
- * top-level folder (one folder per plan by convention; loose root documents
- * are grouped under a synthetic root entry).
+ * top-level folder (one folder per plan by convention). Loose repository-root
+ * documents and dot files/folders are hidden.
  */
 export function MergedTab({ repo }: { repo: string }) {
   const classes = useStyles();
@@ -94,8 +101,16 @@ export function MergedTab({ repo }: { repo: string }) {
       if (!isRenderableFile(entry.path)) {
         continue;
       }
+      // Hide dot files/folders (e.g. `.agents/…`) and loose repository-root
+      // documents — a plan is a top-level folder of documents.
+      if (isDotPath(entry.path)) {
+        continue;
+      }
       const slash = entry.path.indexOf('/');
-      const folder = slash === -1 ? ROOT_GROUP : entry.path.slice(0, slash);
+      if (slash === -1) {
+        continue;
+      }
+      const folder = entry.path.slice(0, slash);
       byFolder.set(folder, [...(byFolder.get(folder) ?? []), entry.path]);
     }
     return [...byFolder.entries()]
@@ -103,18 +118,20 @@ export function MergedTab({ repo }: { repo: string }) {
         name,
         files: [...files].sort(compareDisplayPaths),
       }))
-      .sort((a, b) => {
-        if (a.name === ROOT_GROUP) return 1;
-        if (b.name === ROOT_GROUP) return -1;
-        return a.name.localeCompare(b.name);
-      });
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
   if (isLoading) {
     return <Progress />;
   }
   if (error) {
-    return <Alert severity="error">{(error as Error).message}</Alert>;
+    return (
+      <Alert
+        status="danger"
+        title="Failed to load merged plans"
+        description={(error as Error).message}
+      />
+    );
   }
   if (groups.length === 0) {
     return (
@@ -129,53 +146,82 @@ export function MergedTab({ repo }: { repo: string }) {
   const selectedGroup =
     groups.find(group => group.name === selected) ?? groups[0];
 
+  const onSelectionChange = (selection: Selection) => {
+    if (selection === 'all' || selection.size === 0) {
+      return;
+    }
+    selectPlan(String(selection.values().next().value));
+  };
+
   return (
-    <Grid container spacing={2}>
-      <Grid item xs={12} md={4}>
-        <Paper className={classes.listPanel} variant="outlined">
-          <List disablePadding>
-            {groups.map(group => (
-              <ListItem
-                key={group.name}
-                button
-                divider
-                selected={group.name === selectedGroup.name}
-                onClick={() => selectPlan(group.name)}
-              >
-                <ListItemText
-                  primary={group.name}
-                  secondary={`${group.files.length} document${
-                    group.files.length === 1 ? '' : 's'
-                  }`}
-                />
-                {epicByFolder.has(group.name) && (
-                  <ListItemSecondaryAction>
-                    <EpicChip epic={epicByFolder.get(group.name)!.epic} />
-                  </ListItemSecondaryAction>
-                )}
-              </ListItem>
-            ))}
-          </List>
-        </Paper>
-      </Grid>
-      <Grid item xs={12} md={8}>
-        <Paper className={classes.detailPanel} variant="outlined">
-          {data?.truncated && (
-            <Alert severity="warning">
-              The repository tree was truncated by GitHub; some documents may be
-              missing.
-            </Alert>
-          )}
-          {selectedGroup.files.map(path => (
-            <Box key={path} className={classes.fileSection}>
-              {selectedGroup.files.length > 1 && (
-                <Typography className={classes.fileName}>{path}</Typography>
-              )}
-              <PlanFileContent repo={repo} refName="HEAD" path={path} />
-            </Box>
-          ))}
-        </Paper>
-      </Grid>
-    </Grid>
+    <div className={classes.layout}>
+      <List
+        aria-label="Merged plans"
+        selectionMode="single"
+        disallowEmptySelection
+        selectedKeys={new Set([selectedGroup.name])}
+        onSelectionChange={onSelectionChange}
+      >
+        {groups.map(group => (
+          <ListRow
+            key={group.name}
+            id={group.name}
+            textValue={group.name}
+            description={`${group.files.length} document${
+              group.files.length === 1 ? '' : 's'
+            }`}
+            customActions={
+              epicByFolder.has(group.name) ? (
+                <EpicChip epic={epicByFolder.get(group.name)!.epic} />
+              ) : undefined
+            }
+          >
+            {group.name}
+          </ListRow>
+        ))}
+      </List>
+      <Flex direction="column" gap="3">
+        {data?.truncated && (
+          <Alert
+            status="warning"
+            title="Truncated repository tree"
+            description="The repository tree was truncated by GitHub; some documents may be missing."
+          />
+        )}
+        {/* One accordion per document, all expanded by default so the plan
+            reads top-to-bottom while still being collapsible when long. Keying
+            the group by folder remounts it on selection change, so a newly
+            selected plan's documents start expanded too (defaultExpandedKeys
+            only applies on mount). */}
+        <AccordionGroup
+          key={selectedGroup.name}
+          className={classes.accordionGroup}
+          allowsMultiple
+          defaultExpandedKeys={new Set(selectedGroup.files)}
+        >
+          {selectedGroup.files.map(path => {
+            const displayPath = stripFolderPrefix(path, selectedGroup.name);
+            const friendly = friendlyFileName(displayPath);
+            return (
+              <Accordion key={path} id={path}>
+                <AccordionTrigger>
+                  {friendly ? (
+                    <span>
+                      {friendly}{' '}
+                      <span className={classes.fileName}>({displayPath})</span>
+                    </span>
+                  ) : (
+                    <span className={classes.fileName}>{displayPath}</span>
+                  )}
+                </AccordionTrigger>
+                <AccordionPanel>
+                  <PlanFileContent repo={repo} refName="HEAD" path={path} />
+                </AccordionPanel>
+              </Accordion>
+            );
+          })}
+        </AccordionGroup>
+      </Flex>
+    </div>
   );
 }

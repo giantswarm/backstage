@@ -1,15 +1,7 @@
-import {
-  Chip,
-  List,
-  ListItem,
-  ListItemSecondaryAction,
-  ListItemText,
-  Paper,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import { Link as RouterLink } from 'react-router-dom';
-import { Alert } from '@material-ui/lab';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Badge, Flex, List, ListRow } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQueries, useQuery } from '@tanstack/react-query';
@@ -18,14 +10,25 @@ import { formatDate } from '../../lib/dates';
 import { pullRouteRef } from '../../routes';
 import { EpicChip } from '../EpicChip';
 
-const useStyles = makeStyles((theme: Theme) => ({
-  listPanel: {
-    padding: 0,
+// bui only applies row affordances (pointer, hover/press background, padding)
+// to selection lists. This is an action list — clicking a row navigates — so
+// re-apply the same affordances (matching bui's own selection-mode values) to
+// make the rows read as interactive.
+const useStyles = makeStyles({
+  list: {
+    '& .bui-ListRow': {
+      cursor: 'pointer',
+      paddingBlock: 'var(--bui-space-2)',
+      paddingInline: 'var(--bui-space-2)',
+      '&[data-hovered], &[data-focus-visible]': {
+        backgroundColor: 'var(--bui-bg-neutral-1-hover)',
+      },
+      '&[data-pressed]': {
+        backgroundColor: 'var(--bui-bg-neutral-1-pressed)',
+      },
+    },
   },
-  draftChip: {
-    marginLeft: theme.spacing(1),
-  },
-}));
+});
 
 /**
  * Open pull requests against the plan repository -- plans proposed for team
@@ -37,6 +40,7 @@ export function ProposedTab({ repo }: { repo: string }) {
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
   const pullLink = useRouteRef(pullRouteRef);
+  const navigate = useNavigate();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['plans', 'pulls', repo],
@@ -52,8 +56,9 @@ export function ProposedTab({ repo }: { repo: string }) {
     queryFn: () => plansApi.listEpics(repo),
     retry: false,
   });
-  const epicByPull = new Map(
-    (epicsData?.pulls ?? []).map(entry => [entry.number, entry]),
+  const epicByPull = useMemo(
+    () => new Map((epicsData?.pulls ?? []).map(entry => [entry.number, entry])),
+    [epicsData],
   );
 
   // Changed-file counts for the list. Same query keys as the review page,
@@ -69,7 +74,13 @@ export function ProposedTab({ repo }: { repo: string }) {
     return <Progress />;
   }
   if (error) {
-    return <Alert severity="error">{(error as Error).message}</Alert>;
+    return (
+      <Alert
+        status="danger"
+        title="Failed to load proposed plans"
+        description={(error as Error).message}
+      />
+    );
   }
 
   if (pulls.length === 0) {
@@ -83,55 +94,47 @@ export function ProposedTab({ repo }: { repo: string }) {
   }
 
   return (
-    <Paper className={classes.listPanel} variant="outlined">
-      <List disablePadding>
-        {pulls.map((pull, index) => {
-          const fileCount = fileQueries[index]?.data?.files.length;
-          const updated = formatDate(pull.updatedAt);
-          const secondary = [
-            `#${pull.number}`,
-            pull.author,
-            fileCount !== undefined
-              ? `${fileCount} file${fileCount === 1 ? '' : 's'} changed`
-              : undefined,
-            updated ? `updated ${updated}` : undefined,
-          ]
-            .filter(Boolean)
-            .join(' · ');
-          const to = `${pullLink?.({ number: String(pull.number) }) ?? '#'}?repo=${encodeURIComponent(repo)}`;
+    <List
+      aria-label="Proposed plans"
+      className={classes.list}
+      onAction={key => {
+        const to = `${pullLink?.({ number: String(key) }) ?? '#'}?repo=${encodeURIComponent(repo)}`;
+        navigate(to);
+      }}
+    >
+      {pulls.map((pull, index) => {
+        const fileCount = fileQueries[index]?.data?.files.length;
+        const updated = formatDate(pull.updatedAt);
+        const secondary = [
+          `#${pull.number}`,
+          pull.author,
+          fileCount !== undefined
+            ? `${fileCount} file${fileCount === 1 ? '' : 's'} changed`
+            : undefined,
+          updated ? `updated ${updated}` : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · ');
 
-          return (
-            <ListItem
-              key={pull.number}
-              button
-              divider
-              component={RouterLink}
-              to={to}
-            >
-              <ListItemText
-                primary={
-                  <>
-                    {pull.title}
-                    {pull.draft && (
-                      <Chip
-                        className={classes.draftChip}
-                        size="small"
-                        label="Draft"
-                      />
-                    )}
-                  </>
-                }
-                secondary={secondary}
-              />
-              {epicByPull.has(pull.number) && (
-                <ListItemSecondaryAction>
-                  <EpicChip epic={epicByPull.get(pull.number)!.epic} />
-                </ListItemSecondaryAction>
-              )}
-            </ListItem>
-          );
-        })}
-      </List>
-    </Paper>
+        return (
+          <ListRow
+            key={pull.number}
+            id={String(pull.number)}
+            textValue={pull.title}
+            description={secondary}
+            customActions={
+              epicByPull.has(pull.number) ? (
+                <EpicChip epic={epicByPull.get(pull.number)!.epic} />
+              ) : undefined
+            }
+          >
+            <Flex align="center" gap="2">
+              {pull.title}
+              {pull.draft && <Badge size="small">Draft</Badge>}
+            </Flex>
+          </ListRow>
+        );
+      })}
+    </List>
   );
 }

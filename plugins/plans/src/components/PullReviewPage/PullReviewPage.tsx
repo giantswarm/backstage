@@ -1,25 +1,24 @@
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import type { Selection } from 'react-aria-components';
+import { makeStyles, Theme } from '@material-ui/core';
 import {
-  Box,
-  Chip,
+  Alert,
+  Badge,
   List,
-  ListItem,
-  ListItemText,
-  Paper,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import { Alert, ToggleButton, ToggleButtonGroup } from '@material-ui/lab';
+  ListRow,
+  Text,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@backstage/ui';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import {
   Content,
   EmptyState,
   Link,
-  MarkdownContent,
   Progress,
 } from '@backstage/core-components';
+import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   useMutation,
@@ -73,28 +72,13 @@ const useStyles = makeStyles((theme: Theme) => ({
     position: 'sticky',
     top: theme.spacing(2),
   },
-  navItemText: {
-    '& .MuiListItemText-primary': {
-      fontSize: 14,
-    },
-    '& .MuiListItemText-secondary': {
-      fontSize: 11,
-      fontFamily: 'monospace',
-      wordBreak: 'break-all',
-    },
-  },
-  countBadge: {
-    height: 20,
-    fontSize: 11,
-    marginLeft: theme.spacing(1),
-  },
   statusDot: {
     display: 'inline-block',
     width: 8,
     height: 8,
     borderRadius: '50%',
-    marginRight: theme.spacing(1),
     flexShrink: 0,
+    marginRight: theme.spacing(1),
   },
   added: {
     backgroundColor: theme.palette.success.main,
@@ -109,6 +93,8 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   panel: {
     padding: theme.spacing(3),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: theme.shape.borderRadius,
   },
   toolbar: {
     display: 'flex',
@@ -184,30 +170,32 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
   return (
     <>
       {pull.body ? (
-        <MarkdownContent content={pull.body} dialect="gfm" />
+        <GSMarkdownContent content={pull.body} />
       ) : (
-        <Typography variant="body2" color="textSecondary">
-          This pull request has no description.
-        </Typography>
+        <Text color="secondary">This pull request has no description.</Text>
       )}
-      <Typography variant="h6" className={classes.discussionTitle}>
+      <Text as="h6" variant="title-small" className={classes.discussionTitle}>
         Discussion
-      </Typography>
+      </Text>
       {isLoading && <Progress />}
       {error ? (
-        <Alert severity="error">{(error as Error).message}</Alert>
+        <Alert
+          status="danger"
+          title="Failed to load discussion"
+          description={(error as Error).message}
+        />
       ) : null}
       {data?.comments.length === 0 && (
-        <Typography variant="body2" color="textSecondary">
+        <Text color="secondary">
           No comments yet. Start the discussion below.
-        </Typography>
+        </Text>
       )}
       {data?.comments.length ? (
-        <Box className={classes.discussion}>
+        <div className={classes.discussion}>
           {data.comments.map(comment => (
             <CommentItem key={comment.id} comment={comment} />
           ))}
-        </Box>
+        </div>
       ) : null}
       <CommentForm onSubmit={body => createComment.mutateAsync(body)} />
     </>
@@ -259,7 +247,13 @@ function DocumentPanel(props: {
     if (isLoading) {
       body = <Progress />;
     } else if (error) {
-      body = <Alert severity="error">{(error as Error).message}</Alert>;
+      body = (
+        <Alert
+          status="danger"
+          title="Failed to load document"
+          description={(error as Error).message}
+        />
+      );
     } else if (!data) {
       body = null;
     } else if (html) {
@@ -291,35 +285,36 @@ function DocumentPanel(props: {
       />
     );
   } else {
-    body = (
-      <Typography variant="body2" color="textSecondary">
-        No diff available for this file.
-      </Typography>
-    );
+    body = <Text color="secondary">No diff available for this file.</Text>;
   }
 
   return (
     <>
-      <Box className={classes.toolbar}>
+      <div className={classes.toolbar}>
         {renderable && file.patch && (
           <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={view}
-            onChange={(_, value) => value && setView(value)}
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={[view]}
+            onSelectionChange={keys => {
+              const next = [...keys][0];
+              if (next === 'rendered' || next === 'diff') {
+                setView(next);
+              }
+            }}
           >
-            <ToggleButton value="rendered">Rendered</ToggleButton>
-            <ToggleButton value="diff">Diff</ToggleButton>
+            <ToggleButton id="rendered">Rendered</ToggleButton>
+            <ToggleButton id="diff">Diff</ToggleButton>
           </ToggleButtonGroup>
         )}
         {file.status !== 'modified' && (
-          <Chip size="small" variant="outlined" label={file.status} />
+          <Badge size="small">{file.status}</Badge>
         )}
         <span className={classes.additions}>+{file.additions}</span>
         <span className={classes.deletions}>−{file.deletions}</span>
-        <Box className={classes.toolbarSpacer} />
+        <div className={classes.toolbarSpacer} />
         <Link to={githubUrl}>View on GitHub</Link>
-      </Box>
+      </div>
       {body}
     </>
   );
@@ -440,7 +435,11 @@ export function PullReviewPage() {
   if (loadError) {
     return (
       <Content>
-        <Alert severity="error">{(loadError as Error).message}</Alert>
+        <Alert
+          status="danger"
+          title="Failed to load pull request"
+          description={(loadError as Error).message}
+        />
       </Content>
     );
   }
@@ -469,57 +468,69 @@ export function PullReviewPage() {
     setSearchParams(params);
   };
 
+  const onNavSelectionChange = (selection: Selection) => {
+    if (selection === 'all' || selection.size === 0) {
+      return;
+    }
+    selectDoc(String(selection.values().next().value));
+  };
+
   const selectedFile = files.find(file => file.filename === doc);
   const updated = formatDate(pull.updatedAt);
   const discussionCount = discussionComments?.comments.length;
 
-  const countChip = (count: number | undefined) =>
+  const countBadge = (count: number | undefined) =>
     count !== undefined && count > 0 ? (
-      <Chip className={classes.countBadge} size="small" label={count} />
+      <Badge size="small">{String(count)}</Badge>
     ) : null;
 
   return (
     <Content>
-      <Box className={classes.header}>
+      <div className={classes.header}>
         <Link className={classes.backLink} to={plansPath}>
           <ArrowBackIcon fontSize="inherit" /> All plans
         </Link>
-        <Typography variant="h4">{pull.title}</Typography>
-        <Box className={classes.headerMeta}>
-          {pull.draft && <Chip size="small" label="Draft" />}
-          <Typography variant="body2" color="textSecondary">
+        <Text as="h4" variant="title-medium">
+          {pull.title}
+        </Text>
+        <div className={classes.headerMeta}>
+          {pull.draft && <Badge size="small">Draft</Badge>}
+          <Text variant="body-small" color="secondary">
             <Link to={`https://github.com/${repo}/pull/${pull.number}`}>
               {repo}#{pull.number}
             </Link>
             {pull.author && ` by ${pull.author}`}
             {updated && ` · updated ${updated}`}
-          </Typography>
-        </Box>
-      </Box>
+          </Text>
+        </div>
+      </div>
 
-      <Box className={classes.layout}>
-        <Paper className={classes.nav} variant="outlined">
-          <List dense disablePadding>
-            <ListItem
-              button
-              divider
-              selected={doc === OVERVIEW}
-              onClick={() => selectDoc(OVERVIEW)}
+      <div className={classes.layout}>
+        <nav className={classes.nav}>
+          <List
+            aria-label="Documents in this pull request"
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={new Set([doc])}
+            onSelectionChange={onNavSelectionChange}
+          >
+            <ListRow
+              id={OVERVIEW}
+              textValue="Overview"
+              description="Description & discussion"
+              customActions={countBadge(discussionCount)}
             >
-              <ListItemText
-                className={classes.navItemText}
-                primary="Overview"
-                secondary="Description & discussion"
-              />
-              {countChip(discussionCount)}
-            </ListItem>
+              Overview
+            </ListRow>
             {files.map(file => (
-              <ListItem
+              <ListRow
                 key={file.filename}
-                button
-                divider
-                selected={doc === file.filename}
-                onClick={() => selectDoc(file.filename)}
+                id={file.filename}
+                textValue={titles.get(file.filename) ?? basename(file.filename)}
+                description={file.filename}
+                customActions={countBadge(
+                  commentsByFile.get(file.filename)?.length,
+                )}
               >
                 {file.status !== 'modified' && (
                   <span
@@ -531,19 +542,14 @@ export function PullReviewPage() {
                     title={file.status}
                   />
                 )}
-                <ListItemText
-                  className={classes.navItemText}
-                  primary={titles.get(file.filename) ?? basename(file.filename)}
-                  secondary={file.filename}
-                />
-                {countChip(commentsByFile.get(file.filename)?.length)}
-              </ListItem>
+                {titles.get(file.filename) ?? basename(file.filename)}
+              </ListRow>
             ))}
           </List>
-        </Paper>
+        </nav>
 
-        <Box className={classes.reading}>
-          <Paper className={classes.panel} variant="outlined">
+        <div className={classes.reading}>
+          <div className={classes.panel}>
             {selectedFile ? (
               <DocumentPanel
                 key={selectedFile.filename}
@@ -557,9 +563,9 @@ export function PullReviewPage() {
             ) : (
               <OverviewPanel repo={repo} pull={pull} />
             )}
-          </Paper>
-        </Box>
-      </Box>
+          </div>
+        </div>
+      </div>
     </Content>
   );
 }
