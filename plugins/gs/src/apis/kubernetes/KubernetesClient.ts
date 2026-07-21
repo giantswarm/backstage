@@ -12,6 +12,7 @@ import {
   WorkloadsByEntityRequest,
 } from '@backstage/plugin-kubernetes-common';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import { getInstallationsConfig } from '../installations';
 
 /**
  * Default per-request timeout for the k8s proxy. An unreachable management
@@ -35,7 +36,6 @@ const DEFAULT_PROXY_MAX_CONCURRENCY = 6;
 
 export class KubernetesClient implements KubernetesApi {
   private readonly backendClient: KubernetesBackendClient;
-  private readonly configApi: ConfigApi;
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly fetchApi: FetchApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
@@ -60,7 +60,6 @@ export class KubernetesClient implements KubernetesApi {
       kubernetesAuthProvidersApi: options.kubernetesAuthProvidersApi,
     });
 
-    this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
@@ -131,29 +130,42 @@ export class KubernetesClient implements KubernetesApi {
     return clusters.find(cluster => cluster.name === clusterName);
   }
 
-  getClusters(): Promise<ClusterConfiguration[]> {
+  async getClusters(): Promise<ClusterConfiguration[]> {
     if (this.clusters) {
-      return Promise.resolve(this.clusters);
+      return this.clusters;
     }
 
-    const installationsConfig =
-      this.configApi.getOptionalConfig('gs.installations');
-    if (!installationsConfig) {
-      throw new Error(`Missing gs.installations configuration`);
-    }
-
-    const installations = this.configApi.getConfig('gs.installations').keys();
-    this.clusters = installations.map(installation => {
-      const installationConfig = installationsConfig.getConfig(installation);
+    // Installations are loaded from the authenticated backend endpoint after
+    // sign-in (they are no longer in the frontend config). `getClusters` is
+    // only ever called post-sign-in (the clusters/deployments pages), so
+    // awaiting the source here does not stall app boot.
+    const installations = await getInstallationsConfig();
+    const clusters = installations.map(installation => {
+      if (!installation.authProvider) {
+        throw new Error(
+          `Missing authProvider for installation "${installation.name}"`,
+        );
+      }
       return {
-        name: installation,
-        authProvider: installationConfig.getString('authProvider'),
-        oidcTokenProvider:
-          installationConfig.getOptionalString('oidcTokenProvider'),
+        name: installation.name,
+        authProvider: installation.authProvider,
+        oidcTokenProvider: installation.oidcTokenProvider,
       };
     });
 
-    return Promise.resolve(this.clusters);
+    // Do NOT cache an empty result. When the installations loader exhausts its
+    // retries it publishes `[]` (a transient backend blip), and caching that
+    // would degrade the whole session to "no clusters". Leaving `this.clusters`
+    // unset means the next `getClusters()` recomputes and recovers once the
+    // snapshot becomes non-empty. (Residual limitation: this only recovers if
+    // the installations snapshot itself is later republished with entries; a
+    // full periodic background re-fetch of the config is out of scope here.)
+    if (clusters.length === 0) {
+      return clusters;
+    }
+
+    this.clusters = clusters;
+    return this.clusters;
   }
 
   private async getCredentials(

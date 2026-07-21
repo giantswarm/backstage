@@ -3,6 +3,7 @@ import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
+import { errorApiRef } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
 import {
@@ -17,6 +18,7 @@ import { ClusterAccessConnector } from './ClusterAccessConnector';
 
 function fakeAuthProviders(broker: string[]) {
   return {
+    ensureInitialized: () => Promise.resolve(),
     getBrokerCoveredInstallations: () => broker,
     getKubernetesAuthApis: () => ({}),
     getProviders: () => [],
@@ -43,6 +45,7 @@ describe('ClusterAccessConnector', () => {
     await renderInTestApp(
       <TestApiProvider
         apis={[
+          [errorApiRef, { post: jest.fn(), error$: jest.fn() }],
           [kubernetesApiRef, kubernetesApi],
           [gsAuthProvidersApiRef, fakeAuthProviders(['alpha', 'beta'])],
           [clusterAccessStatusApiRef, statusApi],

@@ -3,7 +3,10 @@ import {
   ClusterTokenError,
   DefaultAuthConnector,
 } from './DefaultAuthConnector';
-import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import {
+  DiscoveryApiClient,
+  NO_INSTALLATION,
+} from '../discovery/DiscoveryApiClient';
 
 const configApi = {
   getOptionalBoolean: jest.fn().mockReturnValue(false),
@@ -119,6 +122,60 @@ describe('DefaultAuthConnector', () => {
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(session).toEqual(legacyRefreshResponse);
+    });
+  });
+
+  describe('installation scoping (buildUrl)', () => {
+    function createConnectorForProvider(options: {
+      providerId: string;
+      isMainProvider?: boolean;
+    }) {
+      const getBaseUrl = jest.fn().mockResolvedValue('http://backend/api/auth');
+      const scopedDiscoveryApi = {
+        getBaseUrl,
+      } as unknown as DiscoveryApiClient;
+      const connector = new DefaultAuthConnector({
+        configApi,
+        discoveryApi: scopedDiscoveryApi,
+        environment: 'development',
+        provider: {
+          id: options.providerId,
+          title: options.providerId,
+          icon: () => null,
+        },
+        oauthRequestApi,
+        isMainProvider: options.isMainProvider,
+      });
+      return { connector, getBaseUrl };
+    }
+
+    it('does not scope the main sign-in provider to an installation', async () => {
+      // Even though the id follows the `oidc-<name>` shape, the main provider
+      // (id === gs.authProvider) is not installation-scoped, so auth discovery
+      // must be resolved with the NO_INSTALLATION sentinel -- otherwise the
+      // static current-installation fallback could mis-scope it to a
+      // per-installation backend override (and pre-sign-in discovery would hit
+      // the installations-dependent branch).
+      mockLegacyRefresh();
+      const { connector, getBaseUrl } = createConnectorForProvider({
+        providerId: 'oidc-gazelle',
+        isMainProvider: true,
+      });
+
+      await connector.refreshSession({ scopes: new Set(['openid']) });
+
+      expect(getBaseUrl).toHaveBeenCalledWith('auth', NO_INSTALLATION);
+    });
+
+    it('scopes a genuine per-installation provider to its installation', async () => {
+      mockLegacyRefresh();
+      const { connector, getBaseUrl } = createConnectorForProvider({
+        providerId: 'oidc-gazelle',
+      });
+
+      await connector.refreshSession({ scopes: new Set(['openid']) });
+
+      expect(getBaseUrl).toHaveBeenCalledWith('auth', 'gazelle');
     });
   });
 });

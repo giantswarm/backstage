@@ -64,7 +64,13 @@ export interface Config {
       }[];
     };
 
-    /** @deepVisibility frontend */
+    /**
+     * The full installations map is intentionally backend-only: shipping it to
+     * the unauthenticated frontend config deanonymizes customers (via
+     * `baseDomain`) and leaks the installation topology. The SPA loads it from
+     * the authenticated `GET /api/gs/installations` endpoint after sign-in.
+     * @visibility backend
+     */
     installations: {
       [installationName: string]: {
         pipeline: string;

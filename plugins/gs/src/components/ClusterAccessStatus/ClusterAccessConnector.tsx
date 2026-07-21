@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useApi, SessionState } from '@backstage/core-plugin-api';
+import { useEffect, useState } from 'react';
+import { errorApiRef, useApi, SessionState } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
 import { ClusterTokenError } from '../../apis/auth/DefaultAuthConnector';
@@ -124,6 +124,7 @@ export function ClusterAccessConnector() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const authProvidersApi = useApi(gsAuthProvidersApiRef);
   const statusApi = useApi(clusterAccessStatusApiRef);
+  const errorApi = useApi(errorApiRef);
 
   // Track the user's muted set reactively so muting/unmuting re-runs the probe
   // effects (a muted installation must stop being probed and drop off the status
@@ -132,7 +133,35 @@ export function ClusterAccessConnector() {
   // doesn't spuriously re-run these effects and restart the fleet probe.
   const muted = useMutedInstallations();
 
+  // The broker-covered set and per-installation auth APIs are only known once
+  // the installations config has loaded (post sign-in) and the lazy auth-
+  // provider init has run. Gate the probe effects on that so they read a
+  // populated set rather than an empty one at boot.
+  const [authProvidersReady, setAuthProvidersReady] = useState(false);
   useEffect(() => {
+    let cancelled = false;
+    authProvidersApi.ensureInitialized().then(
+      () => {
+        if (!cancelled) {
+          setAuthProvidersReady(true);
+        }
+      },
+      error => {
+        // Do not swallow the failure: `authProvidersReady` stays false and the
+        // widget renders empty, which is indistinguishable from "no clusters"
+        // unless we report why the readiness gate never opened.
+        errorApi.post(error as Error);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [authProvidersApi, errorApi]);
+
+  useEffect(() => {
+    if (!authProvidersReady) {
+      return undefined;
+    }
     const mutedSet = new Set(muted);
     // Drop any muted installation from the status set — it may have been probed
     // and recorded before being muted, and it must not linger in the widget as
@@ -238,7 +267,7 @@ export function ClusterAccessConnector() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [kubernetesApi, authProvidersApi, statusApi, muted]);
+  }, [kubernetesApi, authProvidersApi, statusApi, muted, authProvidersReady]);
 
   // Non-broker installations can't be probed proactively: a proxy call on one
   // without a live session would pop up a per-cluster login. So instead of
@@ -247,6 +276,9 @@ export function ClusterAccessConnector() {
   // the widget when signed out. This is the "different logic" from the broker
   // path above, which probes real apiserver health.
   useEffect(() => {
+    if (!authProvidersReady) {
+      return undefined;
+    }
     const mutedSet = new Set(muted);
     // A muted non-broker installation must also drop off the status set.
     for (const installation of muted) {
@@ -286,7 +318,7 @@ export function ClusterAccessConnector() {
     return () => {
       subscriptions.forEach(subscription => subscription.unsubscribe());
     };
-  }, [authProvidersApi, statusApi, muted]);
+  }, [authProvidersApi, statusApi, muted, authProvidersReady]);
 
   return null;
 }

@@ -16,6 +16,7 @@ import {
 } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
+import { getInstallationsConfig } from '../installations';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -66,8 +67,18 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly oauthRequestApi: OAuthRequestApi;
 
-  private readonly kubernetesAuthProviders: AuthProvider[];
-  private readonly kubernetesAuthApis: { [providerName: string]: AuthApi };
+  // Per-installation kubernetes auth providers/APIs are populated lazily by
+  // `ensureInitialized()` once installations load from the authenticated
+  // backend endpoint (post main sign-in). They start empty.
+  private kubernetesAuthProviders: AuthProvider[] = [];
+  private kubernetesAuthApis: { [providerName: string]: AuthApi } = {};
+  private initialized = false;
+  private initPromise: Promise<void> | undefined;
+
+  // The main sign-in auth API is built synchronously from `gs.authProvider`
+  // alone (which stays frontend-visible). It does NOT need `gs.installations`,
+  // so sign-in works before installations are loaded.
+  private readonly mainAuthApi?: AuthApi;
 
   private readonly mcpAuthProviders: AuthProvider[];
   private readonly mcpAuthApis: { [providerName: string]: AuthApi };
@@ -80,8 +91,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     this.oauthRequestApi = options.oauthRequestApi;
     this.clusterAccessStatusApi = options.clusterAccessStatusApi;
 
-    this.kubernetesAuthProviders = this.getKubernetesAuthProvidersFromConfig();
-    this.kubernetesAuthApis = this.createKubernetesAuthApis();
+    this.mainAuthApi = this.createMainAuthApi();
 
     this.mcpAuthProviders = this.getMCPAuthProvidersFromConfig();
     this.mcpAuthApis = this.createMCPAuthApis();
@@ -93,47 +103,106 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     return new GSAuthProviders(options);
   }
 
-  private getKubernetesAuthProvidersFromConfig(): AuthProvider[] {
-    const installationsConfig =
-      this.configApi?.getOptionalConfig('gs.installations');
-    if (!installationsConfig) {
-      return [];
+  /**
+   * Builds the main sign-in OAuth2 client from `gs.authProvider` only, without
+   * touching `gs.installations`. The main provider never uses the cluster-token
+   * broker path (its own session IS the broker's subject token), so no
+   * per-installation config is required.
+   */
+  private createMainAuthApi(): AuthApi | undefined {
+    const mainProviderName =
+      this.configApi?.getOptionalString('gs.authProvider');
+    if (!mainProviderName) {
+      return undefined;
     }
+    const providerDisplayName = mainProviderName.startsWith(
+      OIDC_PROVIDER_NAME_PREFIX,
+    )
+      ? mainProviderName.split(OIDC_PROVIDER_NAME_PREFIX)[1]
+      : mainProviderName;
 
-    const installationNames = installationsConfig.keys();
-    return installationNames.map(installationName => {
-      const installationConfig =
-        installationsConfig.getConfig(installationName);
-      const authProvider = installationConfig.getString('authProvider');
+    return this.createKubernetesAuthApi(
+      mainProviderName,
+      providerDisplayName,
+      undefined,
+      true,
+    );
+  }
+
+  /**
+   * Lazily builds the per-installation kubernetes auth providers/APIs once the
+   * installations config has loaded from the backend. Safe to call repeatedly;
+   * the work runs at most once.
+   */
+  async ensureInitialized(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+    if (!this.initPromise) {
+      this.initPromise = (async () => {
+        try {
+          const installations = await getInstallationsConfig();
+          this.kubernetesAuthProviders =
+            this.buildKubernetesAuthProviders(installations);
+          this.kubernetesAuthApis = this.buildKubernetesAuthApis(
+            this.kubernetesAuthProviders,
+          );
+          this.initialized = true;
+        } catch (error) {
+          // Never latch a rejected promise: a permanently-cached rejection
+          // would make every later `ensureInitialized()` re-await the same
+          // failure and break k8s OIDC auth fleet-wide. Reset so a later call
+          // can retry.
+          this.initPromise = undefined;
+          throw error;
+        }
+      })();
+    }
+    await this.initPromise;
+  }
+
+  private buildKubernetesAuthProviders(
+    installations: Awaited<ReturnType<typeof getInstallationsConfig>>,
+  ): AuthProvider[] {
+    // A single malformed installation entry must not take down auth for the
+    // whole fleet: skip entries with a non-`oidc` auth provider or a
+    // missing/invalid OIDC token provider (logging a warning) so the valid
+    // installations still build.
+    return installations.flatMap(installation => {
+      const installationName = installation.name;
+      const authProvider = installation.authProvider;
       if (!authProvider || authProvider !== 'oidc') {
-        throw new Error(
-          `OIDC auth provider is not configured for installation "${installationName}".`,
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Skipping installation "${installationName}": OIDC auth provider is not configured.`,
         );
+        return [];
       }
-      const oidcTokenProvider =
-        installationConfig.getOptionalString('oidcTokenProvider');
+      const oidcTokenProvider = installation.oidcTokenProvider;
 
       if (
         !oidcTokenProvider ||
         !oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)
       ) {
-        throw new Error(
-          `OIDC token provider is not configured for installation "${installationName}".`,
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Skipping installation "${installationName}": OIDC token provider is not configured.`,
         );
+        return [];
       }
 
       const providerDisplayName = oidcTokenProvider.split(
         OIDC_PROVIDER_NAME_PREFIX,
       )[1];
 
-      return {
-        providerName: oidcTokenProvider,
-        providerDisplayName,
-        installationName,
-        clusterTokenAudience: installationConfig.getOptionalString(
-          'clusterTokenAudience',
-        ),
-      };
+      return [
+        {
+          providerName: oidcTokenProvider,
+          providerDisplayName,
+          installationName,
+          clusterTokenAudience: installation.clusterTokenAudience,
+        },
+      ];
     });
   }
 
@@ -257,79 +326,104 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     };
   }
 
-  private createKubernetesAuthApis() {
-    const entries = this.kubernetesAuthProviders.map(
-      ({ providerName, providerDisplayName, installationName }) => {
-        const authConnector = new DefaultAuthConnector({
-          configApi: this.configApi,
-          discoveryApi: this.discoveryApi,
-          oauthRequestApi: this.oauthRequestApi,
-          environment:
-            this.configApi?.getOptionalString('auth.environment') ??
-            'development',
-          provider: {
-            id: providerName,
-            title: providerDisplayName,
-            icon: GiantSwarmIcon,
-          },
-          clusterTokenProvider: this.createClusterTokenProvider(
-            installationName,
-            providerName,
-          ),
-          sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
-            const session: OAuth2Session = {
-              ...res,
-              providerInfo: {
-                idToken: res.providerInfo.idToken,
-                accessToken: res.providerInfo.accessToken,
-                scopes: OAuth2.normalizeScopes(res.providerInfo.scope),
-                expiresAt: res.providerInfo.expiresInSeconds
-                  ? new Date(
-                      Date.now() + res.providerInfo.expiresInSeconds * 1000,
-                    )
-                  : undefined,
-              },
-            };
-            if (backstageIdentity) {
-              session.backstageIdentity = {
-                token: backstageIdentity.token,
-                identity: backstageIdentity.identity,
-                expiresAt: backstageIdentity.expiresInSeconds
-                  ? new Date(
-                      Date.now() + backstageIdentity.expiresInSeconds * 1000,
-                    )
-                  : undefined,
-              };
-            }
-            return session;
-          },
-          popupOptions: {
-            size: {
-              width: 600,
-              height: 600,
-            },
-          },
-        });
+  /**
+   * Builds the map of per-installation kubernetes auth APIs. The provider whose
+   * name matches the main provider (`gs.authProvider`) reuses the already-built
+   * main auth API instance, so the sign-in session and the per-cluster
+   * credential source are one and the same OAuth2 client.
+   */
+  private buildKubernetesAuthApis(providers: AuthProvider[]): {
+    [providerName: string]: AuthApi;
+  } {
+    const mainProviderName =
+      this.configApi?.getOptionalString('gs.authProvider');
 
+    const entries = providers.map(
+      ({ providerName, providerDisplayName, installationName }) => {
+        if (providerName === mainProviderName && this.mainAuthApi) {
+          return [providerName, this.mainAuthApi] as const;
+        }
         return [
           providerName,
-          OAuth2.create({
-            authConnector,
-            defaultScopes: [
-              'openid',
-              'profile',
-              'email',
-              'groups',
-              'offline_access',
-              'federated:id',
-              'audience:server:client_id:dex-k8s-authenticator',
-            ],
-          }),
-        ];
+          this.createKubernetesAuthApi(
+            providerName,
+            providerDisplayName,
+            this.createClusterTokenProvider(installationName, providerName),
+          ),
+        ] as const;
       },
     );
 
     return Object.fromEntries(entries);
+  }
+
+  /**
+   * Creates a single kubernetes (OIDC) OAuth2 auth API. Shared by the main
+   * sign-in provider (no cluster-token provider) and the lazily-built
+   * per-installation providers (broker-backed cluster-token provider).
+   */
+  private createKubernetesAuthApi(
+    providerName: string,
+    providerDisplayName: string,
+    clusterTokenProvider?: () => Promise<ClusterToken | undefined>,
+    isMainProvider = false,
+  ): AuthApi {
+    const authConnector = new DefaultAuthConnector({
+      configApi: this.configApi,
+      discoveryApi: this.discoveryApi,
+      oauthRequestApi: this.oauthRequestApi,
+      environment:
+        this.configApi?.getOptionalString('auth.environment') ?? 'development',
+      provider: {
+        id: providerName,
+        title: providerDisplayName,
+        icon: GiantSwarmIcon,
+      },
+      clusterTokenProvider,
+      isMainProvider,
+      sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
+        const session: OAuth2Session = {
+          ...res,
+          providerInfo: {
+            idToken: res.providerInfo.idToken,
+            accessToken: res.providerInfo.accessToken,
+            scopes: OAuth2.normalizeScopes(res.providerInfo.scope),
+            expiresAt: res.providerInfo.expiresInSeconds
+              ? new Date(Date.now() + res.providerInfo.expiresInSeconds * 1000)
+              : undefined,
+          },
+        };
+        if (backstageIdentity) {
+          session.backstageIdentity = {
+            token: backstageIdentity.token,
+            identity: backstageIdentity.identity,
+            expiresAt: backstageIdentity.expiresInSeconds
+              ? new Date(Date.now() + backstageIdentity.expiresInSeconds * 1000)
+              : undefined,
+          };
+        }
+        return session;
+      },
+      popupOptions: {
+        size: {
+          width: 600,
+          height: 600,
+        },
+      },
+    });
+
+    return OAuth2.create({
+      authConnector,
+      defaultScopes: [
+        'openid',
+        'profile',
+        'email',
+        'groups',
+        'offline_access',
+        'federated:id',
+        'audience:server:client_id:dex-k8s-authenticator',
+      ],
+    });
   }
 
   private getMCPAuthProvidersFromConfig(): AuthProvider[] {
@@ -464,9 +558,28 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   getAuthApi(providerName: string) {
+    if (this.mainAuthApi) {
+      const mainProviderName =
+        this.configApi?.getOptionalString('gs.authProvider');
+      if (providerName === mainProviderName) {
+        return this.mainAuthApi;
+      }
+    }
     return (
       this.kubernetesAuthApis[providerName] || this.mcpAuthApis[providerName]
     );
+  }
+
+  /**
+   * Async lookup of a per-installation kubernetes auth API. Ensures the lazy
+   * initialization (which needs installations loaded) has run first. Returns
+   * `undefined` if the provider is not configured.
+   */
+  async getKubernetesAuthApi(
+    providerName: string,
+  ): Promise<AuthApi | undefined> {
+    await this.ensureInitialized();
+    return this.kubernetesAuthApis[providerName];
   }
 
   getMainAuthApi() {
@@ -479,15 +592,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       );
     }
 
-    const authApi = this.getAuthApi(authProviderName);
-
-    if (!authApi) {
+    if (!this.mainAuthApi) {
       throw new Error(
         `Auth provider with name "${authProviderName}" is not configured.`,
       );
     }
 
-    return authApi;
+    return this.mainAuthApi;
   }
 
   getKubernetesAuthApis() {
