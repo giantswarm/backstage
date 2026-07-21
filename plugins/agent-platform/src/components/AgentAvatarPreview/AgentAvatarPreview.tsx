@@ -4,7 +4,6 @@ import { Avatar } from '@backstage/ui';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 
@@ -24,19 +23,19 @@ const DEBOUNCE_MS = 300;
  *
  * The avatar seeds from the technical name (the slug), not the display name.
  * The endpoint is per-installation, but DiceBear output is identical across
- * installations, so we render as soon as a name is typed — using the selected
- * installation if one is picked, else the first reachable installation. It uses
- * the no-cache `/preview/` route and debounces the slug.
+ * installations, so this cosmetic preview stays decoupled from cluster
+ * reachability: it uses the selected installation if one is picked, else the
+ * first configured installation that has a base domain, so the preview appears
+ * as soon as a name is typed. It uses the no-cache `/preview/` route and
+ * debounces the slug.
  */
 export function AgentAvatarPreview() {
   const { state } = useNewAgentForm();
   const { installations } = useInstallations();
   const buildAvatarUrl = useAgentAvatarUrl();
 
-  const { installations: reachable } = useReachableInstallations(
-    installations.map(i => i.name),
-  );
-  const previewInstallation = state.installation ?? reachable[0];
+  const previewInstallation =
+    state.installation ?? installations.find(i => i.baseDomain)?.name;
 
   const [debouncedSlug, setDebouncedSlug] = useState(state.slug);
   useDebounce(() => setDebouncedSlug(state.slug), DEBOUNCE_MS, [state.slug]);

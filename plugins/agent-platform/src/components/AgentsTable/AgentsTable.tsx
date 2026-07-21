@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Avatar,
   Cell,
@@ -26,10 +27,12 @@ function getColumnConfig(
       label: 'Agent',
       isRowHeader: true,
       // Hand-rolled (rather than CellProfile) so the avatar can be larger than
-      // CellProfile's fixed x-small, and so it always renders — the bui Avatar
-      // shows name-derived initials when the image is missing (no resolvable
-      // base domain). The avatar seeds from the technical name, not the display
-      // name.
+      // CellProfile's fixed x-small and stay top-aligned, and so it always
+      // renders — the bui Avatar shows name-derived initials when the image is
+      // missing (no resolvable base domain). The avatar seeds from the
+      // technical name, not the display name. The text mirrors CellText's
+      // truncation (single-line, ellipsis, full text on hover) so this column
+      // wraps/overflows consistently with the others.
       cell: row => (
         <Cell>
           <Flex align="start" gap="3">
@@ -43,12 +46,17 @@ function getColumnConfig(
                 }) ?? ''
               }
             />
-            <Flex direction="column" gap="1">
-              <Text as="p" variant="body-medium">
+            <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
+              <Text as="p" variant="body-medium" truncate title={row.name}>
                 {row.name}
               </Text>
               {row.description && (
-                <Text variant="body-medium" color="secondary">
+                <Text
+                  variant="body-medium"
+                  color="secondary"
+                  truncate
+                  title={row.description}
+                >
                   {row.description}
                 </Text>
               )}
@@ -99,10 +107,14 @@ export type AgentsTableProps = {
  */
 export function AgentsTable({ rows }: AgentsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
+  const columnConfig = useMemo(
+    () => getColumnConfig(buildAvatarUrl),
+    [buildAvatarUrl],
+  );
 
   return (
     <Table<AgentRow>
-      columnConfig={getColumnConfig(buildAvatarUrl)}
+      columnConfig={columnConfig}
       data={rows}
       pagination={{ type: 'none' }}
       emptyState={
