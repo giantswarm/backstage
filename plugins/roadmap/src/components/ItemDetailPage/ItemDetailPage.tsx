@@ -14,9 +14,9 @@ import {
   Content,
   EmptyState,
   Link,
-  MarkdownContent,
   Progress,
 } from '@backstage/core-components';
+import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { roadmapApiRef } from '../../apis';
@@ -198,7 +198,7 @@ export function ItemDetailPage() {
         <Box className={classes.main}>
           <Paper className={classes.panel} variant="outlined">
             {item.body ? (
-              <MarkdownContent content={item.body} dialect="gfm" />
+              <GSMarkdownContent content={item.body} />
             ) : (
               <Typography variant="body2" color="textSecondary">
                 This item has no description.
@@ -218,7 +218,7 @@ export function ItemDetailPage() {
                     {formatDate(comment.createdAt, { time: true }) &&
                       ` · ${formatDate(comment.createdAt, { time: true })}`}
                   </Typography>
-                  <MarkdownContent content={comment.body} dialect="gfm" />
+                  <GSMarkdownContent content={comment.body} />
                 </Box>
               ))}
             </Paper>

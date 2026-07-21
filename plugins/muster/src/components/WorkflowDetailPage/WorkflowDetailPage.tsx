@@ -5,7 +5,6 @@ import {
   Content,
   EmptyState,
   Link,
-  MarkdownContent,
   Progress,
   ResponseErrorPanel,
 } from '@backstage/core-components';
@@ -26,7 +25,10 @@ import Share from '@material-ui/icons/Share';
 import History from '@material-ui/icons/History';
 import AccountTree from '@material-ui/icons/AccountTree';
 import { Alert } from '@material-ui/lab';
-import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateComponent,
+  GSMarkdownContent,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { findReferencedBy } from '../../lib/workflowReferences';
@@ -80,16 +82,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginTop: theme.spacing(1.5),
     maxWidth: '80ch',
     color: theme.palette.text.secondary,
-    // MarkdownContent emits bare <p> tags without MUI Typography classes, so
-    // they fall back to the document line-height. Match the body1 variant other
-    // paragraphs use so spacing reads consistently.
-    '& p': {
-      ...theme.typography.body1,
-      margin: 0,
-    },
-    '& p + p': {
-      marginTop: theme.spacing(1),
-    },
   },
   metaRow: {
     marginTop: theme.spacing(2),
@@ -322,12 +314,10 @@ function WorkflowDetailContent() {
           </Box>
 
           {workflow.getDescription() && (
-            <Box className={classes.description}>
-              <MarkdownContent
-                content={workflow.getDescription()!}
-                dialect="gfm"
-              />
-            </Box>
+            <GSMarkdownContent
+              content={workflow.getDescription()!}
+              className={classes.description}
+            />
           )}
 
           <Box className={classes.metaRow}>
