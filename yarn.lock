@@ -9615,15 +9615,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codemirror/view@npm:6.43.5":
-  version: 6.43.5
-  resolution: "@codemirror/view@npm:6.43.5"
+"@codemirror/view@npm:6.43.6":
+  version: 6.43.6
+  resolution: "@codemirror/view@npm:6.43.6"
   dependencies:
     "@codemirror/state": "npm:^6.7.0"
     crelt: "npm:^1.0.6"
     style-mod: "npm:^4.1.0"
     w3c-keyname: "npm:^2.2.4"
-  checksum: 10c0/c8e9999bd86f7078cb3cd7a37016237e0ab0aa074e7c42053fb77883a38bb733626f9e8ab6e9381760ab38609aff9d0d51353e424d292aabc7c4ab377dc6bfe3
+  checksum: 10c0/930b043b8d48e02421a1cb15eb311fb39edbb9709a107eeea8de133aad8ab3fb9bbfae9e829216914cb997026d06d26a71768ff0e2a8d679c9d27d3cb1b940eb
   languageName: node
   linkType: hard
 
