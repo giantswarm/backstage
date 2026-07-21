@@ -77,6 +77,18 @@ techdocs:
 #       baseDomain: mcname.example.gigantic.io
 #       region: eu-central-1
 
+# Allow the agent-platform avatar icons (served from avatars.<baseDomain>) to
+# load past the Content-Security-Policy while developing locally. Add one entry
+# per installation you connect to. `img-src` is replaced (not merged), so re-list
+# the base entries from app-config.yaml alongside your avatars host(s).
+# backend:
+#   csp:
+#     img-src:
+#       - "'self'"
+#       - 'data:'
+#       - 'https://avatars.githubusercontent.com'
+#       - 'https://avatars.mcname.example.gigantic.io'
+
 # kubernetes:
 #   clusterLocatorMethods:
 #     - type: 'config'

@@ -162,6 +162,7 @@ describe('toAgentRow', () => {
       installation: 'installation-1',
       namespace: 'sre-team',
       name: 'Incident triager',
+      technicalName: 'triager',
       description: 'Triages incidents',
       model: 'Claude Sonnet 4.6',
       skillCount: 3,

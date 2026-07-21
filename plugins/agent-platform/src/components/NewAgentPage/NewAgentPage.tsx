@@ -18,6 +18,7 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 import { agentsRouteRef, newAgentReviewRouteRef } from '../../routes';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
@@ -176,29 +177,36 @@ function NewAgentPageContent() {
                 description="How this agent appears across the platform."
               />
               <Flex direction="column" gap="4">
-                <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
-                  <Grid.Item>
-                    <TextField
-                      label="Name"
-                      isRequired
-                      value={state.name}
-                      onChange={setName}
-                      placeholder="e.g. Go service reviewer"
-                      description="The user-friendly name humans will use to refer to this agent."
-                    />
-                  </Grid.Item>
-                  <Grid.Item>
-                    <TextField
-                      label="Slug"
-                      secondaryLabel="auto-derived"
-                      isRequired
-                      value={state.slug}
-                      onChange={setSlug}
-                      placeholder="go-service-reviewer"
-                      description="URL-friendly identifier used in links and resource names."
-                    />
-                  </Grid.Item>
-                </Grid.Root>
+                <Flex align="start" gap="4">
+                  <AgentAvatarPreview />
+                  <Grid.Root
+                    columns={{ initial: '1', sm: '2' }}
+                    gap="4"
+                    style={{ flex: 1 }}
+                  >
+                    <Grid.Item>
+                      <TextField
+                        label="Name"
+                        isRequired
+                        value={state.name}
+                        onChange={setName}
+                        placeholder="e.g. Go service reviewer"
+                        description="The user-friendly name humans will use to refer to this agent."
+                      />
+                    </Grid.Item>
+                    <Grid.Item>
+                      <TextField
+                        label="Slug"
+                        secondaryLabel="auto-derived"
+                        isRequired
+                        value={state.slug}
+                        onChange={setSlug}
+                        placeholder="go-service-reviewer"
+                        description="URL-friendly identifier used in links and resource names."
+                      />
+                    </Grid.Item>
+                  </Grid.Root>
+                </Flex>
                 <TextAreaField
                   label="Description"
                   value={state.description}

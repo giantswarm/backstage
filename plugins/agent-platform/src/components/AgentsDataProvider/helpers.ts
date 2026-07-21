@@ -15,6 +15,11 @@ export type AgentRow = {
   namespace: string;
   /** Display name (annotation) falling back to the resource name. */
   name: string;
+  /**
+   * Technical (DNS-1123) resource name. Seeds the deterministic avatar — the
+   * avatar derives from the technical name, not the display name.
+   */
+  technicalName: string;
   description: string;
   /**
    * Human-readable model label resolved from the referenced ModelConfig, or
@@ -65,6 +70,7 @@ export function toAgentRow(
     installation,
     namespace,
     name: agent.getDisplayName(),
+    technicalName: name,
     description: agent.getDescription() ?? '',
     model: resolveModelLabel(agent, modelConfigs),
     skillCount: agent.getSkillCount(),
