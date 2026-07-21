@@ -31,7 +31,10 @@ import {
   OAuthRequestApi,
   OAuthRequester,
 } from '@backstage/core-plugin-api';
-import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import {
+  DiscoveryApiClient,
+  NO_INSTALLATION,
+} from '../discovery/DiscoveryApiClient';
 
 let warned = false;
 
@@ -366,7 +369,14 @@ export class DefaultAuthConnector<
     path: string,
     query?: { [key: string]: string | boolean | undefined },
   ): Promise<string> {
-    const installation = this.installationId();
+    // The main sign-in provider is not installation-scoped: pass the sentinel
+    // so getBaseUrl neither consults the static current-installation fallback
+    // nor applies a per-installation `backendUrl` override (either would
+    // mis-scope its token refresh). Per-installation providers pass their own
+    // installation name (or undefined when the id is not `oidc-`-scoped).
+    const installation = this.isMainProvider
+      ? NO_INSTALLATION
+      : this.installationId();
     const baseUrl = await this.discoveryApi.getBaseUrl('auth', installation);
 
     const queryString = this.buildQueryString({

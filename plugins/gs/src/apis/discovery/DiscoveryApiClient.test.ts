@@ -1,4 +1,4 @@
-import { DiscoveryApiClient } from './DiscoveryApiClient';
+import { DiscoveryApiClient, NO_INSTALLATION } from './DiscoveryApiClient';
 import {
   __resetInstallationsConfigForTests,
   setInstallationsConfig,
@@ -58,5 +58,28 @@ describe('DiscoveryApiClient.getBaseUrl', () => {
     const url = await client.getBaseUrl('catalog', 'gazelle');
 
     expect(url).toBe('http://backend/api/catalog');
+  });
+
+  it('bypasses the static current-installation fallback (and any override) for the NO_INSTALLATION sentinel', async () => {
+    // A per-installation flow (e.g. ScaffolderApiClient.withInstallation) set
+    // the static current installation, which also carries a backendUrl
+    // override. A main-provider refresh passes the sentinel so it resolves the
+    // default backend rather than being mis-scoped to that override.
+    setInstallationsConfig([
+      { name: 'gazelle', backendUrl: 'http://gazelle.example' },
+    ]);
+    const reset = DiscoveryApiClient.setInstallation('gazelle');
+    try {
+      const client = new DiscoveryApiClient('http://backend');
+
+      const sentinelUrl = await client.getBaseUrl('auth', NO_INSTALLATION);
+      expect(sentinelUrl).toBe('http://backend/api/auth');
+
+      // A genuine per-installation call still applies the override.
+      const scopedUrl = await client.getBaseUrl('auth', 'gazelle');
+      expect(scopedUrl).toBe('http://gazelle.example/api/auth');
+    } finally {
+      reset?.();
+    }
   });
 });

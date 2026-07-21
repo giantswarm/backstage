@@ -243,4 +243,29 @@ describe('KubernetesClient.getClusters', () => {
       { name: 'golem', authProvider: 'oidc', oidcTokenProvider: undefined },
     ]);
   });
+
+  it('does not cache an empty result and recovers once installations become non-empty', async () => {
+    const client = createClient(jest.fn());
+    (client as unknown as { clusters: unknown }).clusters = undefined;
+
+    // The loader exhausted its retries and published an empty set (a transient
+    // backend blip). getClusters must return [] without caching it.
+    setInstallationsConfig([]);
+    await expect(client.getClusters()).resolves.toEqual([]);
+    expect(
+      (client as unknown as { clusters: unknown }).clusters,
+    ).toBeUndefined();
+
+    // A later re-publish with entries recovers -- getClusters recomputes rather
+    // than serving the stale empty cache.
+    setInstallationsConfig([{ name: 'golem', authProvider: 'oidc' }]);
+    await expect(client.getClusters()).resolves.toEqual([
+      { name: 'golem', authProvider: 'oidc', oidcTokenProvider: undefined },
+    ]);
+
+    // Non-empty results ARE cached.
+    expect((client as unknown as { clusters: unknown }).clusters).toEqual([
+      { name: 'golem', authProvider: 'oidc', oidcTokenProvider: undefined },
+    ]);
+  });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useApi, SessionState } from '@backstage/core-plugin-api';
+import { errorApiRef, useApi, SessionState } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
 import { ClusterTokenError } from '../../apis/auth/DefaultAuthConnector';
@@ -124,6 +124,7 @@ export function ClusterAccessConnector() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const authProvidersApi = useApi(gsAuthProvidersApiRef);
   const statusApi = useApi(clusterAccessStatusApiRef);
+  const errorApi = useApi(errorApiRef);
 
   // Track the user's muted set reactively so muting/unmuting re-runs the probe
   // effects (a muted installation must stop being probed and drop off the status
@@ -145,12 +146,17 @@ export function ClusterAccessConnector() {
           setAuthProvidersReady(true);
         }
       },
-      () => {},
+      error => {
+        // Do not swallow the failure: `authProvidersReady` stays false and the
+        // widget renders empty, which is indistinguishable from "no clusters"
+        // unless we report why the readiness gate never opened.
+        errorApi.post(error as Error);
+      },
     );
     return () => {
       cancelled = true;
     };
-  }, [authProvidersApi]);
+  }, [authProvidersApi, errorApi]);
 
   useEffect(() => {
     if (!authProvidersReady) {

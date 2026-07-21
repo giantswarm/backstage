@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
+import { errorApiRef, useApi } from '@backstage/core-plugin-api';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import { ProviderSettingsItem } from './ProviderSettingsItem';
 import { gsAuthProvidersApiRef } from '../../apis/auth';
 
 export const ProviderSettings = () => {
   const gsAuthProvidersApi = useApi(gsAuthProvidersApiRef);
+  const errorApi = useApi(errorApiRef);
 
   // The per-installation providers are built lazily once the installations
   // config has loaded (post sign-in). Wait for that so the settings list is
@@ -19,12 +20,17 @@ export const ProviderSettings = () => {
           setReady(true);
         }
       },
-      () => {},
+      error => {
+        // Do not swallow the failure: `ready` stays false and the list renders
+        // empty, which is indistinguishable from "no providers" unless we report
+        // why initialization never completed.
+        errorApi.post(error as Error);
+      },
     );
     return () => {
       cancelled = true;
     };
-  }, [gsAuthProvidersApi]);
+  }, [gsAuthProvidersApi, errorApi]);
 
   if (!ready) {
     return null;

@@ -140,7 +140,7 @@ export class KubernetesClient implements KubernetesApi {
     // only ever called post-sign-in (the clusters/deployments pages), so
     // awaiting the source here does not stall app boot.
     const installations = await getInstallationsConfig();
-    this.clusters = installations.map(installation => {
+    const clusters = installations.map(installation => {
       if (!installation.authProvider) {
         throw new Error(
           `Missing authProvider for installation "${installation.name}"`,
@@ -153,6 +153,18 @@ export class KubernetesClient implements KubernetesApi {
       };
     });
 
+    // Do NOT cache an empty result. When the installations loader exhausts its
+    // retries it publishes `[]` (a transient backend blip), and caching that
+    // would degrade the whole session to "no clusters". Leaving `this.clusters`
+    // unset means the next `getClusters()` recomputes and recovers once the
+    // snapshot becomes non-empty. (Residual limitation: this only recovers if
+    // the installations snapshot itself is later republished with entries; a
+    // full periodic background re-fetch of the config is out of scope here.)
+    if (clusters.length === 0) {
+      return clusters;
+    }
+
+    this.clusters = clusters;
     return this.clusters;
   }
 

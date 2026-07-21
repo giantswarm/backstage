@@ -4,6 +4,19 @@ import { getInstallationsConfigSnapshot } from '../installations';
 
 const PLUGINS = ['auth', 'scaffolder', 'kubernetes'];
 
+/**
+ * Sentinel passed as the `installation` argument to signal "explicitly no
+ * installation -- and do NOT consult the static `getInstallation()` fallback".
+ *
+ * The main sign-in provider is not installation-scoped, but a per-installation
+ * flow may have set the static current installation (e.g.
+ * `ScaffolderApiClient.withInstallation` / agent-platform). Passing `undefined`
+ * would let that static value leak in and mis-scope a main-provider token
+ * refresh to a per-installation backend that carries a `backendUrl` override.
+ * The sentinel bypasses both the static fallback and any override.
+ */
+export const NO_INSTALLATION = Symbol('gs.discovery.no-installation');
+
 export class DiscoveryApiClient implements DiscoveryApi {
   private urlPatternDiscovery: UrlPatternDiscovery;
 
@@ -15,7 +28,17 @@ export class DiscoveryApiClient implements DiscoveryApi {
     );
   }
 
-  async getBaseUrl(pluginId: string, installation?: string) {
+  async getBaseUrl(
+    pluginId: string,
+    installation?: string | typeof NO_INSTALLATION,
+  ) {
+    // An explicit sentinel means "no installation, and do not fall back to the
+    // static current installation". The main sign-in provider uses this so its
+    // token refresh is never mis-scoped to a per-installation backend override.
+    if (installation === NO_INSTALLATION) {
+      return this.urlPatternDiscovery.getBaseUrl(pluginId);
+    }
+
     const selectedInstallation =
       installation || DiscoveryApiClient.getInstallation();
 

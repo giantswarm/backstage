@@ -140,13 +140,22 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     }
     if (!this.initPromise) {
       this.initPromise = (async () => {
-        const installations = await getInstallationsConfig();
-        this.kubernetesAuthProviders =
-          this.buildKubernetesAuthProviders(installations);
-        this.kubernetesAuthApis = this.buildKubernetesAuthApis(
-          this.kubernetesAuthProviders,
-        );
-        this.initialized = true;
+        try {
+          const installations = await getInstallationsConfig();
+          this.kubernetesAuthProviders =
+            this.buildKubernetesAuthProviders(installations);
+          this.kubernetesAuthApis = this.buildKubernetesAuthApis(
+            this.kubernetesAuthProviders,
+          );
+          this.initialized = true;
+        } catch (error) {
+          // Never latch a rejected promise: a permanently-cached rejection
+          // would make every later `ensureInitialized()` re-await the same
+          // failure and break k8s OIDC auth fleet-wide. Reset so a later call
+          // can retry.
+          this.initPromise = undefined;
+          throw error;
+        }
       })();
     }
     await this.initPromise;
@@ -155,13 +164,19 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private buildKubernetesAuthProviders(
     installations: Awaited<ReturnType<typeof getInstallationsConfig>>,
   ): AuthProvider[] {
-    return installations.map(installation => {
+    // A single malformed installation entry must not take down auth for the
+    // whole fleet: skip entries with a non-`oidc` auth provider or a
+    // missing/invalid OIDC token provider (logging a warning) so the valid
+    // installations still build.
+    return installations.flatMap(installation => {
       const installationName = installation.name;
       const authProvider = installation.authProvider;
       if (!authProvider || authProvider !== 'oidc') {
-        throw new Error(
-          `OIDC auth provider is not configured for installation "${installationName}".`,
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Skipping installation "${installationName}": OIDC auth provider is not configured.`,
         );
+        return [];
       }
       const oidcTokenProvider = installation.oidcTokenProvider;
 
@@ -169,21 +184,25 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         !oidcTokenProvider ||
         !oidcTokenProvider.startsWith(OIDC_PROVIDER_NAME_PREFIX)
       ) {
-        throw new Error(
-          `OIDC token provider is not configured for installation "${installationName}".`,
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Skipping installation "${installationName}": OIDC token provider is not configured.`,
         );
+        return [];
       }
 
       const providerDisplayName = oidcTokenProvider.split(
         OIDC_PROVIDER_NAME_PREFIX,
       )[1];
 
-      return {
-        providerName: oidcTokenProvider,
-        providerDisplayName,
-        installationName,
-        clusterTokenAudience: installation.clusterTokenAudience,
-      };
+      return [
+        {
+          providerName: oidcTokenProvider,
+          providerDisplayName,
+          installationName,
+          clusterTokenAudience: installation.clusterTokenAudience,
+        },
+      ];
     });
   }
 
