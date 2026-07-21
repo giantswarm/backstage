@@ -58,8 +58,8 @@ interface PlanGroup {
 
 /**
  * Merged plans: renderable documents on the default branch, grouped by their
- * top-level folder (one folder per plan by convention; loose root documents
- * are grouped under a synthetic root entry).
+ * top-level folder (one folder per plan by convention). Loose repository-root
+ * documents and dot files/folders are hidden.
  */
 export function MergedTab({ repo }: { repo: string }) {
   const classes = useStyles();

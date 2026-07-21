@@ -132,10 +132,8 @@ describe('stripFolderPrefix', () => {
   });
 
   it('leaves paths outside the folder unchanged', () => {
-    // Root-level documents grouped under a synthetic folder name.
-    expect(stripFolderPrefix('README.md', '(repository root)')).toBe(
-      'README.md',
-    );
+    // A path that isn't under the given folder is returned verbatim.
+    expect(stripFolderPrefix('README.md', 'my-plan')).toBe('README.md');
     // A folder name that is a prefix but not a path segment must not match.
     expect(stripFolderPrefix('my-plan-2/README.md', 'my-plan')).toBe(
       'my-plan-2/README.md',
