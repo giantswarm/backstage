@@ -1,39 +1,21 @@
-import { useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  Box,
-  MenuItem,
-  Tab,
-  Tabs,
-  TextField,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
-import { Alert } from '@material-ui/lab';
+import {
+  Alert,
+  Box,
+  Select,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
+} from '@backstage/ui';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { ProposedTab } from '../ProposedTab';
 import { MergedTab } from '../MergedTab';
-
-const useStyles = makeStyles((theme: Theme) => ({
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-  },
-  repoPicker: {
-    marginLeft: 'auto',
-    minWidth: 280,
-  },
-  tabBody: {
-    paddingTop: theme.spacing(1),
-  },
-}));
 
 /**
  * Plans viewer: proposed plans (open PRs, rendered from their head branch)
@@ -41,7 +23,6 @@ const useStyles = makeStyles((theme: Theme) => ({
  * repositories configured in `plans.repositories`.
  */
 export function PlansPage() {
-  const classes = useStyles();
   const plansApi = useApi(plansApiRef);
   // The selected repository lives in `?repo=` (the same param the review
   // page uses), so it survives navigating into a PR and back and the list
@@ -49,21 +30,56 @@ export function PlansPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const repo = searchParams.get('repo') ?? undefined;
   // Deep links to a merged plan (`?plan=`, e.g. from the roadmap epic view)
-  // land on the merged tab directly.
-  const [tab, setTab] = useState<'proposed' | 'merged'>(
-    searchParams.has('plan') ? 'merged' : 'proposed',
-  );
+  // land on the merged tab directly; after that the tab is uncontrolled UI
+  // state that never needs to travel back to the URL.
+  const defaultTab = searchParams.has('plan') ? 'merged' : 'proposed';
 
-  const selectRepo = (next: string) => {
-    const params = new URLSearchParams(searchParams);
-    params.set('repo', next);
-    setSearchParams(params, { replace: true });
-  };
+  // Functional update so this callback never depends on the current
+  // `searchParams` identity and stays stable across renders (the repo Select
+  // is memoized on it).
+  const selectRepo = useCallback(
+    (next: string) => {
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev);
+          params.set('repo', next);
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['plans', 'repos'],
     queryFn: () => plansApi.listRepos(),
   });
+
+  const repositories = useMemo(() => data?.repositories ?? [], [data]);
+  const activeRepo =
+    repo && repositories.includes(repo) ? repo : repositories[0];
+
+  // The repository picker lives in the shared "Plans" PluginHeader (rendered by
+  // the app's PageLayout), injected via the header-actions slot rather than a
+  // toolbar in the page body. The review page provides no actions, so the slot
+  // clears automatically when this page unmounts.
+  const headerActions = useMemo(
+    () =>
+      repositories.length > 0 ? (
+        <Select
+          aria-label="Repository"
+          options={repositories.map(repository => ({
+            id: repository,
+            label: repository,
+          }))}
+          selectedKey={activeRepo ?? null}
+          onSelectionChange={key => key && selectRepo(String(key))}
+        />
+      ) : null,
+    [repositories, activeRepo, selectRepo],
+  );
+  useProvidePageHeaderActions(headerActions);
 
   if (isLoading) {
     return (
@@ -75,12 +91,15 @@ export function PlansPage() {
   if (error) {
     return (
       <Content>
-        <Alert severity="error">{(error as Error).message}</Alert>
+        <Alert
+          status="danger"
+          title="Failed to load plan repositories"
+          description={(error as Error).message}
+        />
       </Content>
     );
   }
 
-  const repositories = data?.repositories ?? [];
   if (repositories.length === 0) {
     return (
       <Content>
@@ -93,45 +112,24 @@ export function PlansPage() {
     );
   }
 
-  const activeRepo =
-    repo && repositories.includes(repo) ? repo : repositories[0];
-
   return (
     <Content>
-      <Box className={classes.toolbar}>
-        <Tabs
-          value={tab}
-          onChange={(_, value) => setTab(value)}
-          indicatorColor="primary"
-        >
-          <Tab label="Proposed" value="proposed" />
-          <Tab label="Merged" value="merged" />
-        </Tabs>
-        {/* Always visible, even with a single repository: the repo name is
-            what tells the user whose plans they are looking at. */}
-        <TextField
-          className={classes.repoPicker}
-          select
-          size="small"
-          variant="outlined"
-          label="Repository"
-          value={activeRepo}
-          onChange={event => selectRepo(event.target.value)}
-        >
-          {repositories.map(repository => (
-            <MenuItem key={repository} value={repository}>
-              {repository}
-            </MenuItem>
-          ))}
-        </TextField>
-      </Box>
-      <Box className={classes.tabBody}>
-        {tab === 'proposed' ? (
-          <ProposedTab repo={activeRepo} />
-        ) : (
-          <MergedTab repo={activeRepo} />
-        )}
-      </Box>
+      <Tabs defaultSelectedKey={defaultTab}>
+        <TabList>
+          <Tab id="proposed">Proposed</Tab>
+          <Tab id="merged">Merged</Tab>
+        </TabList>
+        <TabPanel id="proposed">
+          <Box pt="4">
+            <ProposedTab repo={activeRepo} />
+          </Box>
+        </TabPanel>
+        <TabPanel id="merged">
+          <Box pt="4">
+            <MergedTab repo={activeRepo} />
+          </Box>
+        </TabPanel>
+      </Tabs>
     </Content>
   );
 }

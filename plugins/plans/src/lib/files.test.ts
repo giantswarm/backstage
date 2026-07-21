@@ -1,10 +1,13 @@
 import {
   compareDisplayPaths,
   firstHeading,
+  friendlyFileName,
   isHtmlFile,
   isMarkdownFile,
+  isDotPath,
   isRenderableFile,
   splitFrontmatter,
+  stripFolderPrefix,
 } from './files';
 
 describe('file type helpers', () => {
@@ -84,5 +87,58 @@ describe('compareDisplayPaths', () => {
       'plan/top.md',
       'plan/sub/deep.md',
     ]);
+  });
+});
+
+describe('friendlyFileName', () => {
+  it('maps well-known file names case-insensitively', () => {
+    expect(friendlyFileName('PRD.md')).toBe('Product Requirements Document');
+    expect(friendlyFileName('prd.md')).toBe('Product Requirements Document');
+    expect(friendlyFileName('index.html')).toBe('Web page');
+    // Matches on the basename, so nested paths still resolve.
+    expect(friendlyFileName('sub/PRD.md')).toBe(
+      'Product Requirements Document',
+    );
+  });
+
+  it('returns undefined for files without a known convention', () => {
+    expect(friendlyFileName('notes.md')).toBeUndefined();
+    expect(friendlyFileName('design.html')).toBeUndefined();
+  });
+});
+
+describe('isDotPath', () => {
+  it('flags dot files and folders anywhere in the path', () => {
+    expect(isDotPath('.agents/plan.md')).toBe(true);
+    expect(isDotPath('.cursor')).toBe(true);
+    expect(isDotPath('plan/.notes.md')).toBe(true);
+    expect(isDotPath('plan/.hidden/doc.md')).toBe(true);
+  });
+
+  it('leaves normal paths unflagged', () => {
+    expect(isDotPath('my-plan/README.md')).toBe(false);
+    expect(isDotPath('plan/sub/deep.md')).toBe(false);
+    // A dot inside a segment (not a prefix) is fine.
+    expect(isDotPath('plan/v1.2.3-notes.md')).toBe(false);
+  });
+});
+
+describe('stripFolderPrefix', () => {
+  it('removes the folder prefix from a path within it', () => {
+    expect(stripFolderPrefix('my-plan/README.md', 'my-plan')).toBe('README.md');
+    expect(stripFolderPrefix('my-plan/sub/deep.md', 'my-plan')).toBe(
+      'sub/deep.md',
+    );
+  });
+
+  it('leaves paths outside the folder unchanged', () => {
+    // Root-level documents grouped under a synthetic folder name.
+    expect(stripFolderPrefix('README.md', '(repository root)')).toBe(
+      'README.md',
+    );
+    // A folder name that is a prefix but not a path segment must not match.
+    expect(stripFolderPrefix('my-plan-2/README.md', 'my-plan')).toBe(
+      'my-plan-2/README.md',
+    );
   });
 });

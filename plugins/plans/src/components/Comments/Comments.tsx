@@ -1,14 +1,7 @@
 import { FormEvent, useState } from 'react';
-import {
-  Box,
-  Button,
-  TextField,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import { Alert } from '@material-ui/lab';
-import { MarkdownContent } from '@backstage/core-components';
+import { Alert, Button, Flex, Text, TextAreaField } from '@backstage/ui';
+import { makeStyles, Theme } from '@material-ui/core';
+import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 import { NewReviewComment, PlanComment } from '../../apis';
 import { ReviewThread } from '../../lib/annotations';
 import { formatDate } from '../../lib/dates';
@@ -20,16 +13,7 @@ const useStyles = makeStyles((theme: Theme) => ({
       borderTop: `1px solid ${theme.palette.divider}`,
     },
   },
-  meta: {
-    color: theme.palette.text.secondary,
-    fontSize: 12,
-  },
   form: {
-    marginTop: theme.spacing(1),
-  },
-  actions: {
-    display: 'flex',
-    gap: theme.spacing(1),
     marginTop: theme.spacing(1),
   },
 }));
@@ -44,13 +28,13 @@ export function CommentItem({ comment }: { comment: PlanComment }) {
   const created = formatDate(comment.createdAt, { time: true });
 
   return (
-    <Box className={classes.comment}>
-      <Typography className={classes.meta}>
+    <div className={classes.comment}>
+      <Text variant="body-small" color="secondary">
         {comment.author ?? 'unknown'}
         {created && ` · ${created}`}
-      </Typography>
-      <MarkdownContent content={comment.body} dialect="gfm" />
-    </Box>
+      </Text>
+      <GSMarkdownContent content={comment.body} />
+    </div>
   );
 }
 
@@ -92,6 +76,8 @@ export function CommentForm(props: {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
+  const label = placeholder ?? 'Leave a comment (markdown supported)';
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (body.trim() === '' || pending) {
@@ -111,34 +97,39 @@ export function CommentForm(props: {
 
   return (
     <form className={classes.form} onSubmit={submit}>
-      <TextField
-        fullWidth
-        multiline
-        minRows={2}
-        variant="outlined"
-        size="small"
-        placeholder={placeholder ?? 'Leave a comment (markdown supported)'}
-        value={body}
-        onChange={event => setBody(event.target.value)}
-        disabled={pending}
-      />
-      {error && <Alert severity="error">{error}</Alert>}
-      <Box className={classes.actions}>
-        <Button
-          type="submit"
-          size="small"
-          variant="contained"
-          color="primary"
-          disabled={pending || body.trim() === ''}
-        >
-          Comment
-        </Button>
-        {onCancel && (
-          <Button size="small" onClick={onCancel} disabled={pending}>
-            Cancel
-          </Button>
+      <Flex direction="column" gap="2">
+        <TextAreaField
+          aria-label={label}
+          placeholder={label}
+          rows={2}
+          value={body}
+          onChange={setBody}
+          isDisabled={pending}
+        />
+        {error && (
+          <Alert status="danger" title="Comment failed" description={error} />
         )}
-      </Box>
+        <Flex gap="2">
+          <Button
+            type="submit"
+            variant="primary"
+            size="small"
+            isDisabled={pending || body.trim() === ''}
+          >
+            Comment
+          </Button>
+          {onCancel && (
+            <Button
+              variant="tertiary"
+              size="small"
+              onClick={onCancel}
+              isDisabled={pending}
+            >
+              Cancel
+            </Button>
+          )}
+        </Flex>
+      </Flex>
     </form>
   );
 }

@@ -1,4 +1,5 @@
-import { Chip, Tooltip } from '@material-ui/core';
+import { Tooltip } from '@material-ui/core';
+import { Badge } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import {
   discoveryApiRef,
@@ -52,12 +53,9 @@ export function EpicChip({ epic }: { epic: EpicRef }) {
   return (
     <Tooltip title={item?.title ?? `${epic.owner}/${epic.repo}#${epic.number}`}>
       <Link to={to} underline="none">
-        <Chip
-          size="small"
-          variant="outlined"
-          clickable
-          label={status ? `Epic · ${status}` : `Epic #${epic.number}`}
-        />
+        <Badge size="small">
+          {status ? `Epic · ${status}` : `Epic #${epic.number}`}
+        </Badge>
       </Link>
     </Tooltip>
   );
