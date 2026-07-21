@@ -1,41 +1,99 @@
-import { Cell, CellText, ColumnConfig, Table, Text } from '@backstage/ui';
+import { useMemo } from 'react';
+import {
+  Avatar,
+  Cell,
+  CellText,
+  ColumnConfig,
+  Flex,
+  Table,
+  Text,
+} from '@backstage/ui';
 import { AgentRow } from '../AgentsDataProvider';
+import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { AvatarSize } from '../../lib/agentAvatar';
 
-const columnConfig: ColumnConfig<AgentRow>[] = [
-  {
-    id: 'name',
-    label: 'Agent',
-    isRowHeader: true,
-    cell: row => <CellText title={row.name} description={row.description} />,
-  },
-  {
-    id: 'installation',
-    label: 'Installation',
-    cell: row => <CellText title={row.installation} />,
-  },
-  {
-    id: 'namespace',
-    label: 'Namespace',
-    cell: row => <CellText title={row.namespace || '—'} />,
-  },
-  {
-    id: 'model',
-    label: 'Model',
-    cell: row => <CellText title={row.model ?? '—'} />,
-  },
-  {
-    id: 'skills',
-    label: 'Skills',
-    width: '10%',
-    cell: row => (
-      <Cell>
-        <Text style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {row.skillCount}
-        </Text>
-      </Cell>
-    ),
-  },
-];
+/**
+ * The avatar spans roughly two lines of text (`large` = 40px). Request 2× that
+ * from the allowlist for crispness on hi-dpi displays.
+ */
+const LIST_AVATAR_SIZE: AvatarSize = 96;
+
+function getColumnConfig(
+  buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>,
+): ColumnConfig<AgentRow>[] {
+  return [
+    {
+      id: 'name',
+      label: 'Agent',
+      isRowHeader: true,
+      // Hand-rolled (rather than CellProfile) so the avatar can be larger than
+      // CellProfile's fixed x-small and stay top-aligned, and so it always
+      // renders — the bui Avatar shows name-derived initials when the image is
+      // missing (no resolvable base domain). The avatar seeds from the
+      // technical name, not the display name. The text mirrors CellText's
+      // truncation (single-line, ellipsis, full text on hover) so this column
+      // wraps/overflows consistently with the others.
+      cell: row => (
+        <Cell>
+          <Flex align="start" gap="3">
+            <Avatar
+              size="large"
+              purpose="decoration"
+              name={row.name}
+              src={
+                buildAvatarUrl(row.installation, row.technicalName, {
+                  size: LIST_AVATAR_SIZE,
+                }) ?? ''
+              }
+            />
+            <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
+              <Text as="p" variant="body-medium" truncate title={row.name}>
+                {row.name}
+              </Text>
+              {row.description && (
+                <Text
+                  variant="body-medium"
+                  color="secondary"
+                  truncate
+                  title={row.description}
+                >
+                  {row.description}
+                </Text>
+              )}
+            </Flex>
+          </Flex>
+        </Cell>
+      ),
+    },
+    {
+      id: 'installation',
+      label: 'Installation',
+      cell: row => <CellText title={row.installation} />,
+    },
+    {
+      id: 'namespace',
+      label: 'Namespace',
+      cell: row => <CellText title={row.namespace || '—'} />,
+    },
+    {
+      id: 'model',
+      label: 'Model',
+      cell: row => <CellText title={row.model ?? '—'} />,
+    },
+    {
+      id: 'skills',
+      label: 'Skills',
+      width: '10%',
+      cell: row => (
+        <Cell>
+          <Text style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {row.skillCount}
+          </Text>
+        </Cell>
+      ),
+    },
+  ];
+}
 
 export type AgentsTableProps = {
   rows: AgentRow[];
@@ -48,6 +106,12 @@ export type AgentsTableProps = {
  * "no agents" empty state.
  */
 export function AgentsTable({ rows }: AgentsTableProps) {
+  const buildAvatarUrl = useAgentAvatarUrl();
+  const columnConfig = useMemo(
+    () => getColumnConfig(buildAvatarUrl),
+    [buildAvatarUrl],
+  );
+
   return (
     <Table<AgentRow>
       columnConfig={columnConfig}

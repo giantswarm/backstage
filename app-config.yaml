@@ -80,6 +80,15 @@ backend:
     # host: 127.0.0.1
   csp:
     connect-src: ["'self'", 'http:', 'https:']
+    # Agent avatar icons are served per installation from
+    # `avatars.<baseDomain>` (see plugins/agent-platform). Each deployment must
+    # allowlist its own installations' avatars hosts here — e.g.
+    # `https://avatars.<baseDomain>` — in the environment config where
+    # `gs.installations` is set (customer base domains are intentionally kept
+    # out of this checked-in file). Backstage replaces (does not merge) config
+    # arrays, so an environment override of `img-src` must re-list these base
+    # entries. For local dev, add your test installation's avatars host to
+    # app-config.local.yaml.
     img-src:
       - "'self'"
       - 'data:'

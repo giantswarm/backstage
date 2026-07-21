@@ -3,12 +3,22 @@ import { screen } from '@testing-library/react';
 import { AgentRow } from '../AgentsDataProvider';
 import { AgentsTable } from './AgentsTable';
 
+const mockBuildAvatarUrl = jest.fn(
+  (installation: string, name: string) =>
+    `https://avatars.${installation}.example/v1/48/${name}.png`,
+);
+
+jest.mock('../../hooks/useAgentAvatarUrl', () => ({
+  useAgentAvatarUrl: () => mockBuildAvatarUrl,
+}));
+
 const rows: AgentRow[] = [
   {
     id: 'inst-1/sre-team/triager',
     installation: 'inst-1',
     namespace: 'sre-team',
     name: 'Incident triager',
+    technicalName: 'incident-triager',
     description: 'Triages incidents',
     model: 'Claude Sonnet 4.6',
     skillCount: 3,
@@ -18,6 +28,7 @@ const rows: AgentRow[] = [
     installation: 'inst-1',
     namespace: 'dev',
     name: 'BYO agent',
+    technicalName: 'byo-agent',
     description: '',
     model: undefined,
     skillCount: 0,
@@ -25,6 +36,9 @@ const rows: AgentRow[] = [
 ];
 
 describe('AgentsTable', () => {
+  beforeEach(() => {
+    mockBuildAvatarUrl.mockClear();
+  });
   it('renders the column headers', async () => {
     await renderInTestApp(<AgentsTable rows={rows} />);
 
@@ -55,5 +69,21 @@ describe('AgentsTable', () => {
     await renderInTestApp(<AgentsTable rows={[]} />);
 
     expect(screen.getByText('No agents found.')).toBeInTheDocument();
+  });
+
+  it('builds each avatar from the technical name at the list size', async () => {
+    await renderInTestApp(<AgentsTable rows={rows} />);
+
+    // The avatar seeds from the technical (resource) name, not the display name.
+    expect(mockBuildAvatarUrl).toHaveBeenCalledWith(
+      'inst-1',
+      'incident-triager',
+      {
+        size: 96,
+      },
+    );
+    expect(mockBuildAvatarUrl).toHaveBeenCalledWith('inst-1', 'byo-agent', {
+      size: 96,
+    });
   });
 });
