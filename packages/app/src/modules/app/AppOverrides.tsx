@@ -42,6 +42,7 @@ import {
 import {
   GSDiscoveryApiClient,
   gsAuthApiRef,
+  InstallationsConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { grafanaPlugin } from '@backstage-community/plugin-grafana';
@@ -118,8 +119,14 @@ export const appOverrides = createFrontendModule({
                 FetchMiddlewares.injectIdentityAuth({
                   identityApi,
                   config: configApi,
-                  urlPrefixAllowlist:
-                    GSDiscoveryApiClient.getUrlPrefixAllowlist(configApi),
+                  // Per-request matcher (not a static allowlist): the
+                  // per-installation `backendUrl` overrides are loaded from the
+                  // backend after sign-in, so the set of URLs needing the
+                  // Backstage token grows after app boot.
+                  allowUrl:
+                    GSDiscoveryApiClient.createUrlPrefixAllowlistMatcher(
+                      configApi,
+                    ),
                   header: {
                     name: 'X-Backstage-Token',
                     value: (token: string) => `Bearer ${token}`,
@@ -182,6 +189,18 @@ export const appOverrides = createFrontendModule({
       name: 'branding-favicon',
       params: {
         element: <BrandingFavicon />,
+      },
+    }),
+    /**
+     * Loads the `gs.installations` config from the authenticated backend
+     * endpoint once, after sign-in, and publishes it to the module-level source
+     * consumed by the boot-time APIs and UI. The block is no longer shipped in
+     * the unauthenticated frontend config (it deanonymized customers).
+     */
+    AppRootElementBlueprint.make({
+      name: 'installations-config-loader',
+      params: {
+        element: <InstallationsConfigLoader />,
       },
     }),
     /**

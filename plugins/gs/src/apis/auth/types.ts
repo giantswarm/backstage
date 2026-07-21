@@ -44,6 +44,17 @@ export type GSAuthProvidersApi = {
   getMCPAuthApis: () => { [providerName: string]: AuthApi };
   getProviders: () => AuthProvider[];
   /**
+   * Ensures the lazily-loaded per-installation auth providers/APIs have been
+   * built (they depend on the installations config fetched from the backend
+   * after sign-in). Safe to call repeatedly.
+   */
+  ensureInitialized: () => Promise<void>;
+  /**
+   * Async lookup of a per-installation kubernetes (OIDC) auth API, awaiting
+   * lazy initialization first. Returns `undefined` if not configured.
+   */
+  getKubernetesAuthApi: (providerName: string) => Promise<AuthApi | undefined>;
+  /**
    * Names of installations whose cluster access is fully covered by the token
    * broker (broker configured, `clusterTokenAudience` set, not the main
    * provider). These can be connected to silently -- without a per-cluster

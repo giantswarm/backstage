@@ -1,19 +1,35 @@
 import { fetchApiRef, useApi } from '@backstage/core-plugin-api';
 import { useIsRestoring, useQuery } from '@tanstack/react-query';
-import { DiscoveryApiClient } from '../../apis/discovery/DiscoveryApiClient';
 import { useMemo } from 'react';
+import { useInstallations } from '../../apis/installations';
 
 const STATUS_CHECK_TIMEOUT = 5000;
 const STATUS_CHECK_INTERVAL = 20000;
 export const useDisabledInstallations = () => {
   const isRestoring = useIsRestoring();
   const fetchApi = useApi(fetchApiRef);
-  const baseUrlOverrides = DiscoveryApiClient.getBaseUrlOverrides();
-  const uniqueEndpoints = Array.from(new Set(Object.values(baseUrlOverrides)));
+  const { installations } = useInstallations();
+
+  // Installation name -> `backendUrl` override, derived reactively from the
+  // loaded installations so this updates once they arrive after sign-in.
+  const baseUrlOverrides = useMemo(() => {
+    const overrides: Record<string, string> = {};
+    for (const installation of installations) {
+      if (installation.backendUrl) {
+        overrides[installation.name] = installation.backendUrl;
+      }
+    }
+    return overrides;
+  }, [installations]);
+
+  const uniqueEndpoints = useMemo(
+    () => Array.from(new Set(Object.values(baseUrlOverrides))),
+    [baseUrlOverrides],
+  );
 
   const { data: endpointStatuses, isLoading: isLoadingEndpointStatuses } =
     useQuery({
-      queryKey: ['installations', 'status'],
+      queryKey: ['installations', 'status', ...uniqueEndpoints],
       queryFn: async () => {
         const requestPromises = uniqueEndpoints.map(endpoint => {
           const statusEndpoint = `${endpoint}/.backstage/health/v1/readiness`;

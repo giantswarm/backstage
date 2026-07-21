@@ -1,0 +1,1 @@
+export { InstallationsConfigLoader } from './InstallationsConfigLoader';

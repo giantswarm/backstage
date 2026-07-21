@@ -46,6 +46,7 @@ export const gsPlugin = createBackendPlugin({
 
         httpRouter.use(
           await createRouter({
+            config,
             containerRegistry,
             mimir,
             githubCredentialsProvider,

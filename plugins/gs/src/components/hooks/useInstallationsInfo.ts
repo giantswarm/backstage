@@ -1,4 +1,4 @@
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useInstallations } from '../../apis/installations';
 
 export type InstallationInfo = {
   name: string;
@@ -8,29 +8,26 @@ export type InstallationInfo = {
   region?: string;
 };
 
+/**
+ * Installation metadata for UI consumers. Sourced from the installations config
+ * loaded from the authenticated backend endpoint after sign-in (no longer from
+ * the frontend config), so `isLoading` is true until that fetch resolves.
+ */
 export function useInstallationsInfo() {
-  const configApi = useApi(configApiRef);
-  const installationsConfig = configApi.getOptionalConfig('gs.installations');
-  if (!installationsConfig) {
-    throw new Error(`Missing gs.installations configuration`);
-  }
-
-  const installations = configApi.getConfig('gs.installations').keys();
+  const { installations, isLoading } = useInstallations();
 
   const installationsInfo: InstallationInfo[] = installations.map(
-    installation => {
-      const installationConfig = installationsConfig.getConfig(installation);
-      return {
-        name: installation,
-        pipeline: installationConfig.getString('pipeline'),
-        providers: installationConfig.getOptionalStringArray('providers') ?? [],
-        baseDomain: installationConfig.getOptionalString('baseDomain'),
-        region: installationConfig.getOptionalString('region'),
-      };
-    },
+    installation => ({
+      name: installation.name,
+      pipeline: installation.pipeline ?? '',
+      providers: installation.providers ?? [],
+      baseDomain: installation.baseDomain,
+      region: installation.region,
+    }),
   );
 
   return {
     installationsInfo,
+    isLoading,
   };
 }
