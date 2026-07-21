@@ -7,6 +7,7 @@ const model = {
   description: "Reviews pull requests on the platform team's Go services.",
   modelConfigName: 'opus-4-7',
   systemMessage: 'You review pull requests.\nRead for intent first.',
+  iconUrl: 'https://avatars.gazelle.example.io/v1/go-service-reviewer.png',
   skills: [] as {
     url: string;
     path: string;
@@ -79,6 +80,27 @@ describe('composeManifests', () => {
     expect(values.agent.modelConfig).toBeUndefined();
     // No skills selected → the skills block is omitted (gitRefs requires ≥1).
     expect(values.skills).toBeUndefined();
+  });
+
+  it('sets agent.iconUrl from the model (also in the standalone values)', () => {
+    const { files, valuesYaml } = composeManifests(model, ctx);
+
+    const hr = parse(files[0].content);
+    expect(hr.spec.values.agent.iconUrl).toBe(
+      'https://avatars.gazelle.example.io/v1/go-service-reviewer.png',
+    );
+    // The manual `helm install --values` path carries it too.
+    expect(parse(valuesYaml).agent.iconUrl).toBe(
+      'https://avatars.gazelle.example.io/v1/go-service-reviewer.png',
+    );
+  });
+
+  it('omits agent.iconUrl when it is empty (chart default applies)', () => {
+    const hr = parse(
+      composeManifests({ ...model, iconUrl: '' }, ctx).files[0].content,
+    );
+    expect(hr.spec.values.agent.iconUrl).toBeUndefined();
+    expect(hr.spec.values.agent.name).toBe('go-service-reviewer');
   });
 
   it('omits agent.systemMessage when the prompt is empty (chart default applies)', () => {

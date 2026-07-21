@@ -36,6 +36,11 @@ export type AgentModel = {
   modelConfigName: string;
   /** System message (agent.systemMessage). */
   systemMessage: string;
+  /**
+   * Canonical avatar URL (chart `agent.iconUrl`), derived from the technical
+   * name — see agentAvatar. Empty → the field is omitted (chart default).
+   */
+  iconUrl: string;
   /** Selected skills → agent.skills.gitRefs. Empty → the block is omitted. */
   skills: AgentSkillRef[];
 };
@@ -126,6 +131,12 @@ function buildValues(model: AgentModel): Record<string, unknown> {
   };
   if (model.description.trim()) {
     agent.description = model.description;
+  }
+  // Deterministic avatar URL for the agent's technical name; omitted when it
+  // can't be resolved so the chart keeps its default (empty) rather than us
+  // writing an empty string.
+  if (model.iconUrl.trim()) {
+    agent.iconUrl = model.iconUrl;
   }
   // Only override the prompt when the user provided one; an empty field means
   // "use the chart's default agent.systemMessage" (and the chart requires a
