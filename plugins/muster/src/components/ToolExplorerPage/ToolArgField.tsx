@@ -1,49 +1,20 @@
 import {
   Box,
   Button,
-  FormControlLabel,
-  IconButton,
-  Link,
-  MenuItem,
+  ButtonIcon,
+  Flex,
+  NumberField,
+  Select,
   Switch,
+  Text,
+  TextAreaField,
   TextField,
   Tooltip,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
+  TooltipTrigger,
+} from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import { fieldKind, FormValue, SchemaField } from '../../lib/schemaForm';
-
-const useStyles = makeStyles((theme: Theme) => ({
-  field: {
-    marginBottom: theme.spacing(2),
-  },
-  argType: {
-    color: theme.palette.text.secondary,
-    fontSize: '0.75rem',
-  },
-  arrayHeader: {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing(0.5),
-  },
-  arrayRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-  },
-  helper: {
-    marginTop: theme.spacing(0.5),
-    display: 'block',
-  },
-  error: {
-    color: theme.palette.error.main,
-  },
-}));
 
 function helperFor(field: SchemaField, error?: string): string | undefined {
   if (error) {
@@ -56,6 +27,44 @@ function helperFor(field: SchemaField, error?: string): string | undefined {
     return `Default: ${JSON.stringify(field.default)}`;
   }
   return undefined;
+}
+
+/** The per-row editor inside an array field, chosen from the item type. */
+function ArrayItemInput({
+  label,
+  itemType,
+  enumOptions,
+  value,
+  onChange,
+}: {
+  label: string;
+  itemType?: string;
+  enumOptions: { id: string; label: string }[];
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  if (enumOptions.length > 0) {
+    return (
+      <Select
+        aria-label={label}
+        options={enumOptions}
+        selectedKey={value || null}
+        onSelectionChange={key => onChange(key === null ? '' : String(key))}
+      />
+    );
+  }
+  if (itemType === 'number') {
+    return (
+      <NumberField
+        aria-label={label}
+        value={value === '' ? NaN : Number(value)}
+        onChange={n => onChange(Number.isNaN(n) ? '' : String(n))}
+      />
+    );
+  }
+  return (
+    <TextField aria-label={label} value={value} onChange={v => onChange(v)} />
+  );
 }
 
 function ArrayField({
@@ -73,7 +82,6 @@ function ArrayField({
   onChange: (value: FormValue) => void;
   onToggleJson: () => void;
 }) {
-  const classes = useStyles();
   const rows = Array.isArray(value) ? value : [];
 
   const setRow = (index: number, next: string) => {
@@ -85,96 +93,79 @@ function ArrayField({
   const removeRow = (index: number) =>
     onChange(rows.filter((_, i) => i !== index));
 
+  const enumOptions = (field.itemEnumValues ?? []).map(option => {
+    const v = String(option);
+    return { id: v, label: v };
+  });
+
   return (
-    <Box className={classes.field}>
-      <Box className={classes.arrayHeader}>
-        <Typography variant="body2">
+    <Box mb="4">
+      <Flex align="baseline" justify="between" mb="1">
+        <Text variant="body-medium">
           {field.name}
           {field.required ? ' *' : ''}{' '}
-          <span className={classes.argType}>
+          <Text variant="body-small" color="secondary">
             (array of {field.itemType ?? 'string'})
-          </span>
-        </Typography>
-        <Link
-          component="button"
-          type="button"
-          variant="caption"
-          onClick={onToggleJson}
-        >
+          </Text>
+        </Text>
+        <Button variant="tertiary" size="small" onClick={onToggleJson}>
           {jsonMode ? 'Edit as rows' : 'Edit as JSON'}
-        </Link>
-      </Box>
+        </Button>
+      </Flex>
 
       {jsonMode ? (
-        <TextField
-          fullWidth
-          multiline
-          minRows={3}
-          variant="outlined"
-          size="small"
+        <TextAreaField
+          rows={3}
           placeholder='["a", "b"]'
-          error={Boolean(error)}
+          isInvalid={Boolean(error)}
           value={typeof value === 'string' ? value : ''}
-          onChange={e => onChange(e.target.value)}
+          onChange={v => onChange(v)}
         />
       ) : (
-        <>
+        <Flex direction="column" gap="2">
           {rows.map((row, index) => (
-            <Box key={index} className={classes.arrayRow}>
-              {field.itemEnumValues && field.itemEnumValues.length > 0 ? (
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
-                  variant="outlined"
+            <Flex key={index} align="center" gap="2">
+              <Box style={{ flexGrow: 1 }}>
+                <ArrayItemInput
+                  label={`${field.name} item ${index + 1}`}
+                  itemType={field.itemType}
+                  enumOptions={enumOptions}
                   value={row}
-                  onChange={e => setRow(index, e.target.value)}
-                >
-                  {field.itemEnumValues.map(option => {
-                    const v = String(option);
-                    return (
-                      <MenuItem key={v} value={v}>
-                        {v}
-                      </MenuItem>
-                    );
-                  })}
-                </TextField>
-              ) : (
-                <TextField
-                  fullWidth
-                  size="small"
-                  variant="outlined"
-                  type={field.itemType === 'number' ? 'number' : 'text'}
-                  value={row}
-                  onChange={e => setRow(index, e.target.value)}
+                  onChange={next => setRow(index, next)}
                 />
-              )}
-              <Tooltip title="Remove">
-                <IconButton size="small" onClick={() => removeRow(index)}>
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
+              </Box>
+              <TooltipTrigger>
+                <ButtonIcon
+                  variant="tertiary"
+                  size="small"
+                  icon={<DeleteOutlineIcon fontSize="small" />}
+                  onClick={() => removeRow(index)}
+                />
+                <Tooltip>Remove</Tooltip>
+              </TooltipTrigger>
+            </Flex>
           ))}
-          <Button
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={addRow}
-            variant="outlined"
-          >
-            Add item
-          </Button>
-        </>
+          <Box>
+            <Button
+              variant="secondary"
+              size="small"
+              iconStart={<AddIcon fontSize="inherit" />}
+              onClick={addRow}
+            >
+              Add item
+            </Button>
+          </Box>
+        </Flex>
       )}
 
       {(error || field.description) && (
-        <Typography
-          variant="caption"
-          className={`${classes.helper} ${error ? classes.error : ''}`}
-          color={error ? 'error' : 'textSecondary'}
+        <Text
+          variant="body-small"
+          color={error ? 'danger' : 'secondary'}
+          style={{ display: 'block', marginTop: 4 }}
         >
           {error ?? field.description}
-        </Typography>
+        </Text>
       )}
     </Box>
   );
@@ -203,30 +194,19 @@ export function ToolArgField({
   onChange,
   onToggleJson,
 }: ToolArgFieldProps) {
-  const classes = useStyles();
   const kind = fieldKind(field);
 
   if (kind === 'boolean') {
     return (
-      <FormControlLabel
-        className={classes.field}
-        control={
-          <Switch
-            color="primary"
-            checked={Boolean(value ?? field.default ?? false)}
-            onChange={e => onChange(e.target.checked)}
-          />
-        }
-        label={
-          <>
-            {field.name}
-            {field.required ? ' *' : ''}{' '}
-            <span className={classes.argType}>
-              {field.description ?? 'boolean'}
-            </span>
-          </>
-        }
-      />
+      <Box mb="4">
+        <Switch
+          label={`${field.name}${field.required ? ' *' : ''} · ${
+            field.description ?? 'boolean'
+          }`}
+          isSelected={Boolean(value ?? field.default ?? false)}
+          onChange={checked => onChange(checked)}
+        />
+      </Box>
     );
   }
 
@@ -244,54 +224,69 @@ export function ToolArgField({
   }
 
   const helperText = helperFor(field, error);
+  const label = `${field.name} (${field.type})`;
 
   if (kind === 'enum') {
     return (
-      <TextField
-        select
-        className={classes.field}
-        fullWidth
-        variant="outlined"
-        size="small"
-        required={field.required}
-        label={`${field.name} (${field.type})`}
-        helperText={helperText}
-        error={Boolean(error)}
-        value={(value as string | undefined) ?? ''}
-        onChange={e => onChange(e.target.value)}
-      >
-        <MenuItem value="">
-          <em>unset</em>
-        </MenuItem>
-        {(field.enumValues ?? []).map(option => {
-          const v = String(option);
-          return (
-            <MenuItem key={v} value={v}>
-              {v}
-            </MenuItem>
-          );
-        })}
-      </TextField>
+      <Box mb="4">
+        <Select
+          label={label}
+          description={helperText}
+          isRequired={field.required}
+          placeholder="Select a value"
+          options={(field.enumValues ?? []).map(option => {
+            const v = String(option);
+            return { id: v, label: v };
+          })}
+          selectedKey={(value as string | undefined) || null}
+          onSelectionChange={key => onChange(key === null ? '' : String(key))}
+        />
+      </Box>
     );
   }
 
-  const isJson = kind === 'json';
+  if (kind === 'number') {
+    return (
+      <Box mb="4">
+        <NumberField
+          label={label}
+          description={helperText}
+          isRequired={field.required}
+          isInvalid={Boolean(error)}
+          value={value === undefined || value === '' ? NaN : Number(value)}
+          onChange={n => onChange(Number.isNaN(n) ? '' : String(n))}
+        />
+      </Box>
+    );
+  }
+
+  if (kind === 'json') {
+    return (
+      <Box mb="4">
+        <TextAreaField
+          label={label}
+          description={helperText}
+          isRequired={field.required}
+          isInvalid={Boolean(error)}
+          rows={3}
+          placeholder="{ }"
+          value={(value as string | undefined) ?? ''}
+          onChange={v => onChange(v)}
+        />
+      </Box>
+    );
+  }
+
   return (
-    <TextField
-      className={classes.field}
-      fullWidth
-      variant="outlined"
-      size="small"
-      type={kind === 'number' ? 'number' : 'text'}
-      multiline={isJson}
-      minRows={isJson ? 3 : undefined}
-      required={field.required}
-      label={`${field.name} (${field.type})`}
-      placeholder={isJson ? '{ }' : undefined}
-      helperText={helperText}
-      error={Boolean(error)}
-      value={(value as string | undefined) ?? ''}
-      onChange={e => onChange(e.target.value)}
-    />
+    <Box mb="4">
+      <TextField
+        label={label}
+        description={helperText}
+        isRequired={field.required}
+        isInvalid={Boolean(error)}
+        value={(value as string | undefined) ?? ''}
+        onChange={v => onChange(v)}
+      />
+    </Box>
   );
 }

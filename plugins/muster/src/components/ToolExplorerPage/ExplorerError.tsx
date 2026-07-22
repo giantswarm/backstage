@@ -1,5 +1,4 @@
-import { Button } from '@material-ui/core';
-import { Alert, AlertTitle } from '@material-ui/lab';
+import { Alert, Button } from '@backstage/ui';
 import { ResponseErrorPanel } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -48,24 +47,27 @@ export function ExplorerError({ error, installation }: ExplorerErrorProps) {
     return <ResponseErrorPanel error={error as Error} />;
   }
 
+  const description = `Sign in to muster${
+    installation ? ` (${installation})` : ''
+  } to browse and run its tools.${
+    signIn.isError ? ' Sign-in failed — check the muster auth provider.' : ''
+  }`;
+
   return (
     <Alert
-      severity="info"
-      action={
+      status="info"
+      title="Authentication required"
+      description={description}
+      customActions={
         <Button
-          color="inherit"
+          variant="secondary"
           size="small"
-          disabled={signIn.isPending}
+          isPending={signIn.isPending}
           onClick={() => signIn.mutate()}
         >
           {signIn.isPending ? 'Signing in…' : 'Sign in'}
         </Button>
       }
-    >
-      <AlertTitle>Authentication required</AlertTitle>
-      Sign in to muster
-      {installation ? ` (${installation})` : ''} to browse and run its tools.
-      {signIn.isError && ' Sign-in failed — check the muster auth provider.'}
-    </Alert>
+    />
   );
 }
