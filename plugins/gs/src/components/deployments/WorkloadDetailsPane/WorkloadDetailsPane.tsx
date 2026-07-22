@@ -1,15 +1,9 @@
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
-import {
-  Box,
-  Card,
-  CardContent,
-  LinearProgress,
-  Typography,
-} from '@material-ui/core';
-import { Alert } from '@material-ui/lab';
+import { Alert, Box, Flex, Skeleton, Text } from '@backstage/ui';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import {
   DetailsPane,
+  InfoCard,
   JsonHighlight,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -32,29 +26,6 @@ import {
 } from '../../hooks/useMimirWorkloadDiagnostics';
 
 export const WORKLOAD_DETAILS_PANE_ID = 'workloadDetails';
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card>
-      <CardContent>
-        <Typography
-          variant="subtitle1"
-          style={{ fontWeight: 'bold' }}
-          gutterBottom
-        >
-          {title}
-        </Typography>
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
 
 const KIND_LABELS: Record<string, string> = {
   app: 'App',
@@ -80,8 +51,8 @@ function InstallationLink({ installationName }: { installationName: string }) {
 
 function SummaryCard({ workload }: { workload: DeploymentData }) {
   return (
-    <Section title="Summary">
-      <Box display="flex" flexDirection="column" style={{ gap: 12 }}>
+    <InfoCard title="Summary">
+      <Flex direction="column" gap="3">
         <ContentRow title="Kind">
           {KIND_LABELS[workload.kind] ?? workload.kind}
         </ContentRow>
@@ -150,16 +121,16 @@ function SummaryCard({ workload }: { workload: DeploymentData }) {
         ) : (
           workload.app && <ContentRow title="App">{workload.app}</ContentRow>
         )}
-      </Box>
-    </Section>
+      </Flex>
+    </InfoCard>
   );
 }
 
 function StatusCard({ status }: { status: string }) {
   return (
-    <Section title="Status">
+    <InfoCard title="Status">
       <DeploymentStatus status={status} />
-    </Section>
+    </InfoCard>
   );
 }
 
@@ -169,32 +140,34 @@ function ReplicasCard({
   replicaStatus: { desired: number; ready: number };
 }) {
   const { desired, ready } = replicaStatus;
-  let readyColor: 'textSecondary' | 'inherit' | 'error' = 'error';
+  let readyColor: 'secondary' | 'primary' | 'danger' = 'danger';
   if (desired === 0) {
-    readyColor = 'textSecondary';
+    readyColor = 'secondary';
   } else if (ready >= desired) {
-    readyColor = 'inherit';
+    readyColor = 'primary';
   }
 
   return (
-    <Section title="Replicas">
-      <Box display="flex">
-        <Box flex={1} textAlign="center">
-          <Typography variant="h4">{desired}</Typography>
-          <Typography variant="caption" color="textSecondary">
+    <InfoCard title="Replicas">
+      <Flex>
+        <Box grow style={{ textAlign: 'center' }}>
+          <Text as="div" variant="title-medium">
+            {desired}
+          </Text>
+          <Text as="div" variant="body-x-small" color="secondary">
             Desired
-          </Typography>
+          </Text>
         </Box>
-        <Box flex={1} textAlign="center">
-          <Typography variant="h4" color={readyColor}>
+        <Box grow style={{ textAlign: 'center' }}>
+          <Text as="div" variant="title-medium" color={readyColor}>
             {ready}
-          </Typography>
-          <Typography variant="caption" color="textSecondary">
+          </Text>
+          <Text as="div" variant="body-x-small" color="secondary">
             Ready
-          </Typography>
+          </Text>
         </Box>
-      </Box>
-    </Section>
+      </Flex>
+    </InfoCard>
   );
 }
 
@@ -202,9 +175,9 @@ function KubeLabelsCard({ labels }: { labels: Record<string, string> }) {
   if (Object.keys(labels).length === 0) return null;
 
   return (
-    <Section title="Labels">
+    <InfoCard title="Labels">
       <Labels labels={labels} labelsConfig={[]} displayFriendlyItems={false} />
-    </Section>
+    </InfoCard>
   );
 }
 
@@ -304,14 +277,16 @@ function DiagnosticsCard({ workload }: { workload: DeploymentData }) {
   ];
 
   return (
-    <Section title="Diagnostics">
-      <Box display="flex" flexDirection="column" style={{ gap: 12 }}>
-        {diagnostics.isLoading && <LinearProgress />}
+    <InfoCard title="Diagnostics">
+      <Flex direction="column" gap="3">
+        {diagnostics.isLoading && <Skeleton height={8} />}
 
         {severeIssues.map((issue, i) => (
-          <Alert key={i} severity="error">
-            {issue.reason} (container: {issue.container || 'unknown'})
-          </Alert>
+          <Alert
+            key={i}
+            status="danger"
+            title={`${issue.reason} (container: ${issue.container || 'unknown'})`}
+          />
         ))}
 
         {hasConditions && (
@@ -355,12 +330,12 @@ function DiagnosticsCard({ workload }: { workload: DeploymentData }) {
         )}
 
         {!diagnostics.isLoading && !hasDiagnosticData && (
-          <Typography variant="body2" color="textSecondary">
+          <Text variant="body-small" color="secondary">
             No diagnostic metrics available for this workload.
-          </Typography>
+          </Text>
         )}
 
-        <Box mt={1}>
+        <Box style={{ marginTop: 4 }}>
           <AIChatButton
             troubleshoot
             items={[
@@ -370,31 +345,29 @@ function DiagnosticsCard({ workload }: { workload: DeploymentData }) {
             ]}
           />
         </Box>
-      </Box>
-    </Section>
+      </Flex>
+    </InfoCard>
   );
 }
 
 function RawDataAccordion({ data }: { data: DeploymentData }) {
   return (
-    <Card>
-      <CardContent>
-        <SimpleAccordion title="Raw data">
-          <Box width="100%">
-            <JsonHighlight
-              customStyle={{
-                margin: 0,
-                padding: 16,
-                fontSize: '0.8rem',
-                borderRadius: 4,
-              }}
-            >
-              {JSON.stringify(data, null, 2)}
-            </JsonHighlight>
-          </Box>
-        </SimpleAccordion>
-      </CardContent>
-    </Card>
+    <InfoCard>
+      <SimpleAccordion title="Raw data">
+        <Box width="100%">
+          <JsonHighlight
+            customStyle={{
+              margin: 0,
+              padding: 16,
+              fontSize: '0.8rem',
+              borderRadius: 4,
+            }}
+          >
+            {JSON.stringify(data, null, 2)}
+          </JsonHighlight>
+        </Box>
+      </SimpleAccordion>
+    </InfoCard>
   );
 }
 
@@ -424,14 +397,14 @@ function WorkloadDetails({
 
   if (!workload) {
     return (
-      <Typography variant="body2" color="textSecondary">
+      <Text variant="body-small" color="secondary">
         Workload not found.
-      </Typography>
+      </Text>
     );
   }
 
   return (
-    <Box display="flex" flexDirection="column" style={{ gap: 16 }}>
+    <Flex direction="column" gap="4">
       <SummaryCard workload={workload} />
 
       {workload.status && <StatusCard status={workload.status} />}
@@ -449,7 +422,7 @@ function WorkloadDetails({
       )}
 
       <RawDataAccordion data={workload} />
-    </Box>
+    </Flex>
   );
 }
 
