@@ -1,19 +1,18 @@
 import { useMemo, useState } from 'react';
+import type { Key } from 'react-aria-components';
 import {
   Box,
-  Button,
-  ButtonGroup,
-  IconButton,
+  ButtonIcon,
+  CellText,
+  ColumnConfig,
+  Flex,
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
+  Text,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
+  TooltipTrigger,
+} from '@backstage/ui';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import ReplayIcon from '@material-ui/icons/Replay';
 import UnfoldLessIcon from '@material-ui/icons/UnfoldLess';
@@ -22,53 +21,10 @@ import { CopyTextButton } from '@backstage/core-components';
 import { JsonHighlight } from '@giantswarm/backstage-plugin-ui-react';
 import { detectTable } from '../../lib/resultShape';
 
-const useStyles = makeStyles((theme: Theme) => ({
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    flexWrap: 'wrap',
-  },
-  meta: {
-    marginLeft: 'auto',
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
-    color: theme.palette.text.secondary,
-  },
-  metaValue: {
-    fontVariantNumeric: 'tabular-nums',
-  },
-  raw: {
-    margin: 0,
-    fontFamily: 'monospace',
-    fontSize: '0.75rem',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    maxHeight: 480,
-    overflow: 'auto',
-  },
-  cell: {
-    fontFamily: 'monospace',
-    fontSize: '0.75rem',
-    maxWidth: 280,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  headerCell: {
-    whiteSpace: 'nowrap',
-  },
-  tableWrap: {
-    maxHeight: 480,
-    overflow: 'auto',
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-  },
-}));
-
 type ViewMode = 'parsed' | 'raw' | 'table';
+
+/** One table row: a stable id plus the raw record `detectTable` produced. */
+type ResultRow = { id: string; values: Record<string, unknown> };
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -107,7 +63,6 @@ export function ToolResultViewer({
   onRerun,
   rerunDisabled,
 }: ToolResultViewerProps) {
-  const classes = useStyles();
   const table = useMemo(() => detectTable(result), [result]);
   const [mode, setMode] = useState<ViewMode>(table ? 'table' : 'parsed');
   const [collapsed, setCollapsed] = useState(false);
@@ -122,6 +77,20 @@ export function ToolResultViewer({
   const approxTokens = Math.max(1, Math.ceil(sizeBytes / 4));
   const copyText = mode === 'raw' ? raw : pretty;
 
+  const columnConfig = useMemo<ColumnConfig<ResultRow>[]>(
+    () =>
+      (table?.columns ?? []).map(col => ({
+        id: col,
+        label: col,
+        cell: row => <CellText title={cellText(row.values[col])} />,
+      })),
+    [table],
+  );
+  const rows = useMemo<ResultRow[]>(
+    () => (table?.rows ?? []).map((values, i) => ({ id: String(i), values })),
+    [table],
+  );
+
   const download = () => {
     const blob = new Blob([pretty], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -132,120 +101,142 @@ export function ToolResultViewer({
     URL.revokeObjectURL(url);
   };
 
+  const onModeChange = (keys: Set<Key>) => {
+    const next = [...keys][0];
+    if (next) {
+      setMode(String(next) as ViewMode);
+    }
+  };
+
   return (
     <Box>
-      <Box className={classes.toolbar}>
-        <ButtonGroup size="small">
-          {table && (
-            <Button
-              variant={mode === 'table' ? 'contained' : 'outlined'}
-              onClick={() => setMode('table')}
-            >
-              Table
-            </Button>
-          )}
-          <Button
-            variant={mode === 'parsed' ? 'contained' : 'outlined'}
-            onClick={() => setMode('parsed')}
+      <Flex
+        align="center"
+        justify="between"
+        gap="2"
+        style={{ flexWrap: 'wrap' }}
+      >
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+          <ToggleButtonGroup
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={[mode]}
+            onSelectionChange={onModeChange}
           >
-            Parsed
-          </Button>
-          <Button
-            variant={mode === 'raw' ? 'contained' : 'outlined'}
-            onClick={() => setMode('raw')}
-          >
-            Raw
-          </Button>
-        </ButtonGroup>
-        <CopyTextButton text={copyText} tooltipText="Copied result" />
-        <Tooltip title="Download as JSON">
-          <IconButton size="small" onClick={download}>
-            <GetAppIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        {mode === 'parsed' && (
-          <Tooltip title={collapsed ? 'Expand' : 'Collapse'}>
-            <IconButton size="small" onClick={() => setCollapsed(c => !c)}>
-              {collapsed ? (
-                <UnfoldMoreIcon fontSize="small" />
-              ) : (
-                <UnfoldLessIcon fontSize="small" />
-              )}
-            </IconButton>
-          </Tooltip>
-        )}
-        {onRerun && (
-          <Tooltip title="Run again with the same arguments">
-            <span>
-              <IconButton
+            {table ? <ToggleButton id="table">Table</ToggleButton> : <></>}
+            <ToggleButton id="parsed">Parsed</ToggleButton>
+            <ToggleButton id="raw">Raw</ToggleButton>
+          </ToggleButtonGroup>
+          <CopyTextButton text={copyText} tooltipText="Copied result" />
+          <TooltipTrigger>
+            <ButtonIcon
+              variant="tertiary"
+              size="small"
+              aria-label="Download as JSON"
+              icon={<GetAppIcon fontSize="small" />}
+              onClick={download}
+            />
+            <Tooltip>Download as JSON</Tooltip>
+          </TooltipTrigger>
+          {mode === 'parsed' && (
+            <TooltipTrigger>
+              <ButtonIcon
+                variant="tertiary"
                 size="small"
-                onClick={onRerun}
-                disabled={rerunDisabled}
-              >
-                <ReplayIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-        )}
-        <Box className={classes.meta}>
-          {durationMs !== undefined && (
-            <Typography variant="caption" className={classes.metaValue}>
-              {durationMs} ms
-            </Typography>
+                aria-label={collapsed ? 'Expand' : 'Collapse'}
+                icon={
+                  collapsed ? (
+                    <UnfoldMoreIcon fontSize="small" />
+                  ) : (
+                    <UnfoldLessIcon fontSize="small" />
+                  )
+                }
+                onClick={() => setCollapsed(c => !c)}
+              />
+              <Tooltip>{collapsed ? 'Expand' : 'Collapse'}</Tooltip>
+            </TooltipTrigger>
           )}
-          <Typography variant="caption" className={classes.metaValue}>
-            {formatBytes(sizeBytes)}
-          </Typography>
-          <Typography variant="caption" className={classes.metaValue}>
-            ~{approxTokens.toLocaleString()} tok
-          </Typography>
-        </Box>
-      </Box>
-
-      {mode === 'table' && table && (
-        <Box className={classes.tableWrap}>
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
-                {table.columns.map(col => (
-                  <TableCell key={col} className={classes.headerCell}>
-                    {col}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {table.rows.map((row, i) => (
-                <TableRow key={i}>
-                  {table.columns.map(col => (
-                    <TableCell key={col} className={classes.cell}>
-                      <Tooltip title={cellText(row[col])}>
-                        <span>{cellText(row[col])}</span>
-                      </Tooltip>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
-
-      {mode === 'parsed' &&
-        (collapsed ? (
-          <Typography variant="caption" color="textSecondary">
-            Result collapsed ({table ? `${table.rows.length} rows, ` : ''}
-            {formatBytes(sizeBytes)}). Use the expand button to show it.
-          </Typography>
-        ) : (
-          <JsonHighlight
-            customStyle={{ margin: 0, fontSize: '0.75rem', maxHeight: 480 }}
+          {onRerun && (
+            <TooltipTrigger>
+              <ButtonIcon
+                variant="tertiary"
+                size="small"
+                aria-label="Run again with the same arguments"
+                icon={<ReplayIcon fontSize="small" />}
+                isDisabled={rerunDisabled}
+                onClick={onRerun}
+              />
+              <Tooltip>Run again with the same arguments</Tooltip>
+            </TooltipTrigger>
+          )}
+        </Flex>
+        <Flex align="center" gap="3">
+          {durationMs !== undefined && (
+            <Text
+              variant="body-small"
+              color="secondary"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {durationMs} ms
+            </Text>
+          )}
+          <Text
+            variant="body-small"
+            color="secondary"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
           >
-            {pretty}
-          </JsonHighlight>
-        ))}
+            {formatBytes(sizeBytes)}
+          </Text>
+          <Text
+            variant="body-small"
+            color="secondary"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            ~{approxTokens.toLocaleString()} tok
+          </Text>
+        </Flex>
+      </Flex>
 
-      {mode === 'raw' && <pre className={classes.raw}>{raw}</pre>}
+      <Box mt="2">
+        {mode === 'table' && table && (
+          <Table<ResultRow>
+            columnConfig={columnConfig}
+            data={rows}
+            pagination={{ type: 'none' }}
+          />
+        )}
+
+        {mode === 'parsed' &&
+          (collapsed ? (
+            <Text variant="body-small" color="secondary">
+              Result collapsed ({table ? `${table.rows.length} rows, ` : ''}
+              {formatBytes(sizeBytes)}). Use the expand button to show it.
+            </Text>
+          ) : (
+            <JsonHighlight
+              customStyle={{ margin: 0, fontSize: '0.75rem', maxHeight: 480 }}
+            >
+              {pretty}
+            </JsonHighlight>
+          ))}
+
+        {mode === 'raw' && (
+          <Box
+            as="pre"
+            style={{
+              margin: 0,
+              fontFamily: 'monospace',
+              fontSize: '0.75rem',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxHeight: 480,
+              overflow: 'auto',
+            }}
+          >
+            {raw}
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 }

@@ -1,26 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
-  Box,
-  Button,
-  Chip,
-  IconButton,
-  InputAdornment,
-  List,
-  ListItem,
-  ListItemSecondaryAction,
-  ListItemText,
-  TextField,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import SearchIcon from '@material-ui/icons/Search';
+import { makeStyles, Theme } from '@material-ui/core';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
+import {
+  Accordion,
+  AccordionGroup,
+  AccordionPanel,
+  AccordionTrigger,
+  Badge,
+  Box,
+  Button,
+  ButtonIcon,
+  Flex,
+  SearchField,
+  Text,
+} from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef, ToolSummary } from '../../apis';
@@ -40,36 +34,22 @@ const BROWSE_LIMIT = 2000;
 const SEARCH_LIMIT = 50;
 
 const useStyles = makeStyles((theme: Theme) => ({
-  search: {
-    marginBottom: theme.spacing(2),
+  // The clickable tool row: a reset <button> so the whole row selects the tool
+  // while the favourite star stays a separate, non-nested button.
+  row: {
+    flexGrow: 1,
+    minWidth: 0,
+    appearance: 'none',
+    background: 'none',
+    border: 'none',
+    textAlign: 'left',
+    cursor: 'pointer',
+    padding: theme.spacing(0.75, 1),
+    borderRadius: theme.shape.borderRadius,
+    '&:hover': { backgroundColor: theme.palette.action.hover },
   },
-  toolName: {
-    fontFamily: 'monospace',
-    fontSize: '0.8rem',
-  },
-  group: {
-    boxShadow: 'none',
-    '&:before': { display: 'none' },
-  },
-  groupSummary: {
-    minHeight: 40,
-  },
-  groupTitle: {
-    fontWeight: 600,
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: theme.spacing(1),
-  },
-  groupSub: {
-    color: theme.palette.text.secondary,
-    fontWeight: 400,
-    fontSize: '0.75rem',
-  },
-  details: {
-    padding: 0,
-    display: 'block',
-    maxHeight: 360,
-    overflow: 'auto',
+  rowContainer: {
+    borderBottom: `1px solid ${theme.palette.divider}`,
   },
   selected: {
     backgroundColor: theme.palette.action.selected,
@@ -77,24 +57,18 @@ const useStyles = makeStyles((theme: Theme) => ({
   active: {
     outline: `2px solid ${theme.palette.primary.main}`,
     outlineOffset: -2,
+    borderRadius: theme.shape.borderRadius,
   },
-  quickHeader: {
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    fontSize: '0.7rem',
-    color: theme.palette.text.secondary,
-    margin: theme.spacing(1, 0, 0.5),
+  toolName: {
+    fontFamily: 'monospace',
+    fontSize: '0.8rem',
   },
-  scopeBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(1),
+  panel: {
+    maxHeight: 360,
+    overflow: 'auto',
   },
   kbd: {
     fontFamily: 'monospace',
-    fontSize: '0.7rem',
-    color: theme.palette.text.secondary,
   },
 }));
 
@@ -114,41 +88,47 @@ function ToolRow({
   onToggleFavourite: (name: string) => void;
 }) {
   const classes = useStyles();
+  const subtitle = tool.summary ?? tool.description;
   return (
-    <ListItem
-      button
-      dense
-      divider
-      className={`${selected ? classes.selected : ''} ${
+    <Flex
+      align="center"
+      gap="1"
+      px="1"
+      className={`${classes.rowContainer} ${selected ? classes.selected : ''} ${
         active ? classes.active : ''
       }`}
-      onClick={() => onSelect(tool.name)}
     >
-      <ListItemText
-        primary={
-          <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-            <span className={classes.toolName}>{tool.name}</span>
-            {tool.score !== undefined && (
-              <Chip size="small" label={`score ${tool.score}`} />
-            )}
-          </Box>
-        }
-        secondary={tool.summary ?? tool.description}
-      />
-      <ListItemSecondaryAction>
-        <IconButton
-          edge="end"
-          size="small"
-          onClick={() => onToggleFavourite(tool.name)}
-        >
-          {favourite ? (
+      <button
+        type="button"
+        className={classes.row}
+        onClick={() => onSelect(tool.name)}
+      >
+        <Flex align="center" gap="2" style={{ minWidth: 0 }}>
+          <span className={classes.toolName}>{tool.name}</span>
+          {tool.score !== undefined && (
+            <Badge size="small">score {tool.score}</Badge>
+          )}
+        </Flex>
+        {subtitle && (
+          <Text as="p" variant="body-small" color="secondary" truncate>
+            {subtitle}
+          </Text>
+        )}
+      </button>
+      <ButtonIcon
+        variant="tertiary"
+        size="small"
+        aria-label={favourite ? 'Remove favourite' : 'Add favourite'}
+        icon={
+          favourite ? (
             <StarIcon fontSize="small" color="primary" />
           ) : (
             <StarBorderIcon fontSize="small" />
-          )}
-        </IconButton>
-      </ListItemSecondaryAction>
-    </ListItem>
+          )
+        }
+        onClick={() => onToggleFavourite(tool.name)}
+      />
+    </Flex>
   );
 }
 
@@ -187,13 +167,12 @@ export function ToolBrowser({
   serverScope,
   serversLoading = false,
 }: ToolBrowserProps) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(-1);
   // A `?server=` deep link scopes the browse until the user clears it.
   const [scopeCleared, setScopeCleared] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
   const trimmed = query.trim();
 
   // ⌘K / Ctrl-K focuses the search field from anywhere on the page.
@@ -201,7 +180,7 @@ export function ToolBrowser({
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        searchRef.current?.focus();
+        searchRef.current?.querySelector('input')?.focus();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -280,25 +259,15 @@ export function ToolBrowser({
 
   return (
     <Box>
-      <TextField
-        className={classes.search}
-        fullWidth
-        variant="outlined"
-        size="small"
-        label="Search tools"
-        placeholder="e.g. list pods, prometheus query  (⌘K)"
-        value={query}
-        inputRef={searchRef}
-        onChange={e => setQuery(e.target.value)}
-        onKeyDown={onSearchKeyDown}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" />
-            </InputAdornment>
-          ),
-        }}
-      />
+      <Box mb="3" ref={searchRef}>
+        <SearchField
+          aria-label="Search tools"
+          placeholder="e.g. list pods, prometheus query  (⌘K)"
+          value={query}
+          onChange={setQuery}
+          onKeyDown={onSearchKeyDown}
+        />
+      </Box>
 
       {trimmed !== '' ? (
         <SearchResults
@@ -316,21 +285,22 @@ export function ToolBrowser({
       ) : (
         <>
           {scoped ? (
-            <Box className={classes.scopeBanner}>
-              <Chip
+            <Flex align="center" justify="between" gap="2" mb="2">
+              <Flex align="center" gap="2">
+                <Badge>Server: {serverScope}</Badge>
+                <Text variant="body-small" color="secondary">
+                  {scoped.tools.length} tool
+                  {scoped.tools.length === 1 ? '' : 's'}
+                </Text>
+              </Flex>
+              <Button
+                variant="tertiary"
                 size="small"
-                color="primary"
-                label={`Server: ${serverScope}`}
-              />
-              <Typography variant="caption" color="textSecondary">
-                {scoped.tools.length} tool
-                {scoped.tools.length === 1 ? '' : 's'}
-              </Typography>
-              <Box flexGrow={1} />
-              <Button size="small" onClick={() => setScopeCleared(true)}>
+                onClick={() => setScopeCleared(true)}
+              >
                 Show all tools
               </Button>
-            </Box>
+            </Flex>
           ) : (
             (favouriteTools.length > 0 || recentTools.length > 0) && (
               <QuickAccess
@@ -357,6 +327,22 @@ export function ToolBrowser({
   );
 }
 
+function QuickHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <Box mt="2" mb="1">
+      <Text
+        as="p"
+        variant="body-x-small"
+        color="secondary"
+        weight="bold"
+        style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
+      >
+        {children}
+      </Text>
+    </Box>
+  );
+}
+
 function QuickAccess({
   favourites,
   recents,
@@ -370,36 +356,28 @@ function QuickAccess({
   prefs: ToolPrefs;
   onSelect: (name: string) => void;
 }) {
-  const classes = useStyles();
-  const renderList = (tools: ToolSummary[]) => (
-    <List dense disablePadding>
-      {tools.map(tool => (
-        <ToolRow
-          key={tool.name}
-          tool={tool}
-          selected={tool.name === selected}
-          favourite={prefs.isFavourite(tool.name)}
-          onSelect={onSelect}
-          onToggleFavourite={prefs.toggleFavourite}
-        />
-      ))}
-    </List>
-  );
+  const renderList = (tools: ToolSummary[]) =>
+    tools.map(tool => (
+      <ToolRow
+        key={tool.name}
+        tool={tool}
+        selected={tool.name === selected}
+        favourite={prefs.isFavourite(tool.name)}
+        onSelect={onSelect}
+        onToggleFavourite={prefs.toggleFavourite}
+      />
+    ));
   return (
     <Box>
       {favourites.length > 0 && (
         <>
-          <Typography className={classes.quickHeader}>
-            Favourites ({favourites.length})
-          </Typography>
+          <QuickHeader>Favourites ({favourites.length})</QuickHeader>
           {renderList(favourites)}
         </>
       )}
       {recents.length > 0 && (
         <>
-          <Typography className={classes.quickHeader}>
-            Recent ({recents.length})
-          </Typography>
+          <QuickHeader>Recent ({recents.length})</QuickHeader>
           {renderList(recents)}
         </>
       )}
@@ -433,33 +411,28 @@ function BrowseGroups({
   }
   if (groups.length === 0) {
     return (
-      <Typography variant="body2" color="textSecondary">
+      <Text variant="body-medium" color="secondary">
         No tools available from this installation.
-      </Typography>
+      </Text>
     );
   }
+  const coreKeys = groups.filter(g => g.kind === 'core').map(g => g.key);
+  // `defaultExpandedKeys` applies on mount only, so key the group by its
+  // contents to re-expand Core when the installation/scope changes.
+  const groupSignature = groups.map(g => g.key).join('|');
   return (
-    <>
+    <AccordionGroup
+      key={groupSignature}
+      allowsMultiple
+      defaultExpandedKeys={coreKeys}
+    >
       {groups.map(group => (
-        <Accordion
-          key={group.key}
-          className={classes.group}
-          defaultExpanded={group.kind === 'core'}
-          TransitionProps={{ unmountOnExit: true }}
-        >
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            className={classes.groupSummary}
-          >
-            <Typography className={classes.groupTitle}>
-              {group.key} ({group.tools.length})
-              {group.subtitle && (
-                <span className={classes.groupSub}>· {group.subtitle}</span>
-              )}
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails className={classes.details}>
-            <List dense disablePadding style={{ width: '100%' }}>
+        <Accordion id={group.key} key={group.key}>
+          <AccordionTrigger subtitle={group.subtitle}>
+            {group.key} ({group.tools.length})
+          </AccordionTrigger>
+          <AccordionPanel>
+            <Box className={classes.panel}>
               {group.tools.map(tool => (
                 <ToolRow
                   key={tool.name}
@@ -470,11 +443,11 @@ function BrowseGroups({
                   onToggleFavourite={prefs.toggleFavourite}
                 />
               ))}
-            </List>
-          </AccordionDetails>
+            </Box>
+          </AccordionPanel>
         </Accordion>
       ))}
-    </>
+    </AccordionGroup>
   );
 }
 
@@ -510,36 +483,33 @@ function SearchResults({
   }
   if (tools.length === 0) {
     return (
-      <Typography variant="body2" color="textSecondary">
+      <Text variant="body-medium" color="secondary">
         No tools match this search.
-      </Typography>
+      </Text>
     );
   }
   return (
     <>
-      <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-        <Typography variant="caption" color="textSecondary">
+      <Flex align="center" justify="between" gap="2" mb="1">
+        <Text variant="body-small" color="secondary">
           {total} match{total === 1 ? '' : 'es'}
           {truncated ? ` (showing top ${tools.length})` : ''}
-        </Typography>
-        <Box flexGrow={1} />
-        <Typography variant="caption" className={classes.kbd}>
+        </Text>
+        <Text variant="body-small" color="secondary" className={classes.kbd}>
           ↑↓ navigate · ↵ open
-        </Typography>
-      </Box>
-      <List dense disablePadding>
-        {tools.map((tool, index) => (
-          <ToolRow
-            key={tool.name}
-            tool={tool}
-            selected={tool.name === selected}
-            active={index === activeIndex}
-            favourite={prefs.isFavourite(tool.name)}
-            onSelect={onSelect}
-            onToggleFavourite={prefs.toggleFavourite}
-          />
-        ))}
-      </List>
+        </Text>
+      </Flex>
+      {tools.map((tool, index) => (
+        <ToolRow
+          key={tool.name}
+          tool={tool}
+          selected={tool.name === selected}
+          active={index === activeIndex}
+          favourite={prefs.isFavourite(tool.name)}
+          onSelect={onSelect}
+          onToggleFavourite={prefs.toggleFavourite}
+        />
+      ))}
     </>
   );
 }

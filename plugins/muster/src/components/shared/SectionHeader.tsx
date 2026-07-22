@@ -1,13 +1,11 @@
 import { ReactNode } from 'react';
-import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
+import { Box, Flex, Text } from '@backstage/ui';
+import { makeStyles, Theme } from '@material-ui/core';
 
+// The muted rounded icon square has no bui primitive (Box exposes no
+// background/border-radius props), so keep a tiny makeStyles block for just
+// that surface. Everything else is expressed with bui layout/typography props.
 const useStyles = makeStyles((theme: Theme) => ({
-  root: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: theme.spacing(1.5),
-    marginBottom: theme.spacing(2.5),
-  },
   iconSquare: {
     flexShrink: 0,
     width: 32,
@@ -22,22 +20,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     '& svg': {
       fontSize: 18,
     },
-  },
-  body: {
-    minWidth: 0,
-  },
-  title: {
-    fontWeight: 600,
-    lineHeight: 1.3,
-  },
-  description: {
-    marginTop: theme.spacing(0.5),
-    maxWidth: '70ch',
-    color: theme.palette.text.secondary,
-  },
-  action: {
-    marginLeft: 'auto',
-    flexShrink: 0,
   },
 }));
 
@@ -63,19 +45,24 @@ export function SectionHeader({
 }: SectionHeaderProps) {
   const classes = useStyles();
   return (
-    <Box className={classes.root}>
+    <Flex align="start" gap="2" mb="5">
       <span className={classes.iconSquare}>{icon}</span>
-      <Box className={classes.body}>
-        <Typography variant="subtitle1" className={classes.title}>
+      <Flex direction="column" gap="1" style={{ minWidth: 0, flexGrow: 1 }}>
+        <Text as="p" variant="body-large" weight="bold">
           {title}
-        </Typography>
+        </Text>
         {description && (
-          <Typography variant="body2" className={classes.description}>
+          <Text
+            as="p"
+            variant="body-medium"
+            color="secondary"
+            style={{ maxWidth: '70ch' }}
+          >
             {description}
-          </Typography>
+          </Text>
         )}
-      </Box>
-      {action && <Box className={classes.action}>{action}</Box>}
-    </Box>
+      </Flex>
+      {action && <Box style={{ flexShrink: 0 }}>{action}</Box>}
+    </Flex>
   );
 }

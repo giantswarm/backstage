@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Button,
-  IconButton,
-  Tooltip,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
-import { Alert } from '@material-ui/lab';
+import {
+  Alert,
+  Box,
+  Button,
+  ButtonIcon,
+  Flex,
+  Text,
+  Tooltip,
+  TooltipTrigger,
+} from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
@@ -25,35 +25,6 @@ import { ToolArgField } from './ToolArgField';
 import { ToolResultViewer } from './ToolResultViewer';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
-
-const useStyles = makeStyles((theme: Theme) => ({
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
-  },
-  toolName: {
-    fontFamily: 'monospace',
-    fontWeight: 600,
-  },
-  spacer: {
-    marginLeft: 'auto',
-  },
-  description: {
-    marginTop: theme.spacing(1),
-    whiteSpace: 'pre-wrap',
-  },
-  section: {
-    marginTop: theme.spacing(2),
-  },
-  actions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(2),
-    marginTop: theme.spacing(1),
-  },
-}));
 
 /** localStorage key for a tool's last-used arguments, scoped per installation. */
 function argsKey(installation: string | undefined, name: string): string {
@@ -97,7 +68,6 @@ export function ToolDetailPanel({
   isFavourite,
   onToggleFavourite,
 }: ToolDetailPanelProps) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
 
   const storageKey = argsKey(installation, name);
@@ -207,39 +177,59 @@ export function ToolDetailPanel({
 
   return (
     <Box>
-      <Box className={classes.header}>
-        <Typography variant="h6" className={classes.toolName}>
-          {name}
-        </Typography>
-        <Box className={classes.spacer} />
-        <Tooltip title={isFavourite ? 'Remove favourite' : 'Add to favourites'}>
-          <IconButton size="small" onClick={onToggleFavourite}>
-            {isFavourite ? (
-              <StarIcon fontSize="small" color="primary" />
-            ) : (
-              <StarBorderIcon fontSize="small" />
-            )}
-          </IconButton>
-        </Tooltip>
-      </Box>
-      {data?.description && (
-        <Typography
-          variant="body2"
-          color="textSecondary"
-          className={classes.description}
+      <Flex align="center" justify="between" gap="2">
+        <Text
+          as="p"
+          variant="title-small"
+          weight="bold"
+          style={{ fontFamily: 'monospace', minWidth: 0 }}
+          truncate
         >
-          {data.description}
-        </Typography>
+          {name}
+        </Text>
+        <TooltipTrigger>
+          <ButtonIcon
+            variant="tertiary"
+            size="small"
+            aria-label={isFavourite ? 'Remove favourite' : 'Add to favourites'}
+            icon={
+              isFavourite ? (
+                <StarIcon fontSize="small" color="primary" />
+              ) : (
+                <StarBorderIcon fontSize="small" />
+              )
+            }
+            onClick={onToggleFavourite}
+          />
+          <Tooltip>
+            {isFavourite ? 'Remove favourite' : 'Add to favourites'}
+          </Tooltip>
+        </TooltipTrigger>
+      </Flex>
+
+      {data?.description && (
+        <Box mt="1">
+          <Text
+            as="p"
+            variant="body-medium"
+            color="secondary"
+            style={{ whiteSpace: 'pre-wrap' }}
+          >
+            {data.description}
+          </Text>
+        </Box>
       )}
 
-      <Box className={classes.section}>
-        <Typography variant="subtitle2" gutterBottom>
-          Arguments
-        </Typography>
+      <Box mt="3">
+        <Box mb="1">
+          <Text as="p" variant="body-large" weight="bold">
+            Arguments
+          </Text>
+        </Box>
         {fields.length === 0 ? (
-          <Typography variant="body2" color="textSecondary">
+          <Text variant="body-medium" color="secondary">
             This tool takes no arguments.
-          </Typography>
+          </Text>
         ) : (
           fields.map(field => (
             <ToolArgField
@@ -257,27 +247,28 @@ export function ToolDetailPanel({
         )}
       </Box>
 
-      <Box className={classes.actions}>
-        <Button
-          color="primary"
-          variant="contained"
-          disabled={mutation.isPending}
-          onClick={run}
-        >
+      <Box mt="2">
+        <Button variant="primary" isPending={mutation.isPending} onClick={run}>
           {mutation.isPending ? 'Running…' : 'Execute'}
         </Button>
       </Box>
 
       {mutation.isError && (
-        <Alert severity="error" className={classes.section}>
-          {(mutation.error as Error).message}
-        </Alert>
+        <Box mt="3">
+          <Alert
+            status="danger"
+            title="Execution failed"
+            description={(mutation.error as Error).message}
+          />
+        </Box>
       )}
       {mutation.isSuccess && (
-        <Box className={classes.section}>
-          <Typography variant="subtitle2" gutterBottom>
-            Result
-          </Typography>
+        <Box mt="3">
+          <Box mb="1">
+            <Text as="p" variant="body-large" weight="bold">
+              Result
+            </Text>
+          </Box>
           <ToolResultViewer
             result={mutation.data.result}
             durationMs={mutation.data.durationMs}

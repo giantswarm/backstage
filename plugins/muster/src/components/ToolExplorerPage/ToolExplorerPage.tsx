@@ -1,17 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  Box,
-  Button,
-  Grid,
-  Paper,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
+import { makeStyles, Theme } from '@material-ui/core';
 import BuildIcon from '@material-ui/icons/Build';
-import { Alert } from '@material-ui/lab';
 import { Content, EmptyState } from '@backstage/core-components';
+import { Alert, Box, Button, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
@@ -24,14 +16,25 @@ import { ToolDetailPanel } from './ToolDetailPanel';
 import { useToolPrefs } from './useToolPrefs';
 
 const useStyles = makeStyles((theme: Theme) => ({
+  // A responsive two-panel split (browser | detail); stacks on small screens.
+  layout: {
+    display: 'grid',
+    gap: theme.spacing(2),
+    gridTemplateColumns: '1fr',
+    alignItems: 'start',
+    [theme.breakpoints.up('md')]: {
+      gridTemplateColumns: '5fr 7fr',
+    },
+  },
   panel: {
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: theme.shape.borderRadius,
     padding: theme.spacing(2),
     height: '100%',
   },
   placeholder: {
     padding: theme.spacing(4),
     textAlign: 'center',
-    color: theme.palette.text.secondary,
   },
 }));
 
@@ -56,25 +59,32 @@ function AuthAffordance({ installation }: { installation: string }) {
     return null;
   }
 
+  const description = `${servers.length} server${
+    servers.length === 1 ? '' : 's'
+  } require authentication and their tools are hidden until you sign in: ${servers
+    .map(s => s.name)
+    .join(', ')}.${
+    signIn.isError ? ' Sign-in failed — check the muster auth provider.' : ''
+  }`;
+
   return (
-    <Alert
-      severity="warning"
-      action={
-        <Button
-          color="inherit"
-          size="small"
-          disabled={signIn.isPending}
-          onClick={() => signIn.mutate()}
-        >
-          {signIn.isPending ? 'Signing in…' : 'Sign in'}
-        </Button>
-      }
-    >
-      {servers.length} server{servers.length === 1 ? '' : 's'} require
-      authentication and their tools are hidden until you sign in:{' '}
-      {servers.map(s => s.name).join(', ')}.
-      {signIn.isError && ' Sign-in failed — check the muster auth provider.'}
-    </Alert>
+    <Box mb="3">
+      <Alert
+        status="warning"
+        title="Authentication required"
+        description={description}
+        customActions={
+          <Button
+            variant="secondary"
+            size="small"
+            isPending={signIn.isPending}
+            onClick={() => signIn.mutate()}
+          >
+            {signIn.isPending ? 'Signing in…' : 'Sign in'}
+          </Button>
+        }
+      />
+    </Box>
   );
 }
 
@@ -116,44 +126,39 @@ function ExplorerBody({ installation }: { installation: string }) {
   return (
     <>
       <AuthAffordance installation={installation} />
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={5}>
-          <Paper className={classes.panel} variant="outlined">
-            <ToolBrowser
+      <Box className={classes.layout}>
+        <Box className={classes.panel}>
+          <ToolBrowser
+            installation={installation}
+            selected={selected}
+            onSelect={handleSelect}
+            servers={servers}
+            prefs={prefs}
+            serverScope={serverScope}
+            serversLoading={isLoading}
+          />
+        </Box>
+        <Box className={classes.panel}>
+          {selected ? (
+            <ToolDetailPanel
+              key={`${installation}/${selected}`}
+              name={selected}
               installation={installation}
-              selected={selected}
-              onSelect={handleSelect}
-              servers={servers}
-              prefs={prefs}
-              serverScope={serverScope}
-              serversLoading={isLoading}
+              isFavourite={prefs.isFavourite(selected)}
+              onToggleFavourite={() => prefs.toggleFavourite(selected)}
             />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={7}>
-          <Paper className={classes.panel} variant="outlined">
-            {selected ? (
-              <ToolDetailPanel
-                key={`${installation}/${selected}`}
-                name={selected}
-                installation={installation}
-                isFavourite={prefs.isFavourite(selected)}
-                onToggleFavourite={() => prefs.toggleFavourite(selected)}
-              />
-            ) : (
-              <Box className={classes.placeholder}>
-                <Typography variant="body1">
-                  Select a tool to view its schema and run it.
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  Press <strong>⌘K</strong> to search, ↑/↓ to navigate, ↵ to
-                  open.
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
+          ) : (
+            <Box className={classes.placeholder}>
+              <Text as="p" variant="body-medium">
+                Select a tool to view its schema and run it.
+              </Text>
+              <Text as="p" variant="body-small" color="secondary">
+                Press ⌘K to search, ↑/↓ to navigate, ↵ to open.
+              </Text>
+            </Box>
+          )}
+        </Box>
+      </Box>
     </>
   );
 }
