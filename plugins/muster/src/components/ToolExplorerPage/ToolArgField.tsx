@@ -227,6 +227,10 @@ export function ToolArgField({
   const label = `${field.name} (${field.type})`;
 
   if (kind === 'enum') {
+    // A leading "unset" entry lets an optional enum be cleared back to empty
+    // (react-aria Select has no built-in clear); the sentinel maps to '' so it
+    // is dropped from the call payload.
+    const UNSET = '__unset__';
     return (
       <Box mb="4">
         <Select
@@ -234,12 +238,17 @@ export function ToolArgField({
           description={helperText}
           isRequired={field.required}
           placeholder="Select a value"
-          options={(field.enumValues ?? []).map(option => {
-            const v = String(option);
-            return { id: v, label: v };
-          })}
+          options={[
+            { id: UNSET, label: 'unset' },
+            ...(field.enumValues ?? []).map(option => {
+              const v = String(option);
+              return { id: v, label: v };
+            }),
+          ]}
           selectedKey={(value as string | undefined) || null}
-          onSelectionChange={key => onChange(key === null ? '' : String(key))}
+          onSelectionChange={key =>
+            onChange(key === null || key === UNSET ? '' : String(key))
+          }
         />
       </Box>
     );
