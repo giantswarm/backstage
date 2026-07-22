@@ -115,31 +115,48 @@ This is a Yarn workspaces monorepo with:
 
 ### Key Custom Plugins
 
-#### Frontend Plugins
+All plugins live under `plugins/` and are published under the
+`@giantswarm/backstage-plugin-*` npm scope. Roles below use Backstage's package
+`role` (`frontend-plugin`, `backend-plugin`, `backend-plugin-module`,
+`web-library`, `node-library`, `common-library`).
 
-- **`gs`** - Main Giant Swarm plugin (largest plugin, 375+ files)
-  - Contains all core GS pages: Clusters, Deployments, Installations, Kratix
+#### Frontend plugins
+
+- **`gs`** - Main Giant Swarm plugin (by far the largest, 500+ files)
+  - Contains all core GS pages: Clusters, Deployments, Installations
   - Custom scaffolder field extensions (ClusterPicker, ChartPicker, etc.)
   - Custom APIs: gsAuth, containerRegistry, kubernetes, scaffolder
   - Custom catalog page and entity cards
 
-- **`flux`** & **`flux-react`** - Flux CD GitOps integration
-  - Flux resources visualization and management
-
-- **`kubernetes-react`** - Kubernetes utilities and custom React hooks
-  - Reusable Kubernetes components and hooks
-
-- **`ui-react`** - Shared UI component library
-  - Reusable components like tables, charts, date formatting
-  - Utilities: `useTableColumns`, `isTableColumnHidden`, `sortAndFilterOptions`, `semverCompareSort`
-
-- **`gs-common`** - Shared constants and utilities
+- **`flux`** - Flux CD GitOps plugin shell (most logic lives in `flux-react`)
 
 - **`ai-chat`** - AI chat interface
 
-#### Backend Plugins
+- **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
+  (kagent), ported from the APUI prototype
+
+- **`muster`** - Muster (MCP tool aggregator) UI, incl. the Tool Explorer
+
+- **`plans`** - Plans feature
+
+- **`roadmap`** - Roadmap feature
+
+#### Backend plugins
 
 - **`gs-backend`** - Backend services for GS functionality
+
+- **`ai-chat-backend`** - AI chat backend service (LLM providers)
+
+- **`muster-backend`** - Backend for the Muster plugin
+
+- **`plans-backend`** - Backend for the Plans plugin
+
+- **`roadmap-backend`** - Backend for the Roadmap plugin
+
+#### Backend plugin modules (extend upstream Backstage backends)
+
+- **`catalog-backend-module-gs`** - Custom catalog entity providers/processors
+  (largest module)
 
 - **`auth-backend-module-gs`** - Custom authentication module
 
@@ -147,7 +164,25 @@ This is a Yarn workspaces monorepo with:
 
 - **`techdocs-backend-module-gs`** - Custom TechDocs backend functionality
 
-- **`ai-chat-backend`** - AI chat backend service
+#### Shared libraries
+
+- **`kubernetes-react`** (web) - K8s resource classes (CRD wrappers under
+  `lib/k8s/`), hooks, and reusable components
+
+- **`flux-react`** (web) - Flux resource visualization and management components
+  (the bulk of the Flux integration)
+
+- **`ui-react`** (web) - Shared UI component library
+  - Reusable components like tables, charts, date formatting
+  - Utilities: `useTableColumns`, `isTableColumnHidden`, `sortAndFilterOptions`, `semverCompareSort`
+
+- **`ai-chat-react`** (web) - Shared components for the AI chat plugin
+
+- **`error-reporter-react`** (web) - Error reporting components
+
+- **`gs-common`** (common) - Shared constants/utilities for frontend and backend
+
+- **`gs-node`** (node) - Shared backend-only (node) utilities
 
 ### Backend Architecture
 
