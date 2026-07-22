@@ -199,11 +199,20 @@ export function ToolResultViewer({
 
       <Box mt="2">
         {mode === 'table' && table && (
-          <Table<ResultRow>
-            columnConfig={columnConfig}
-            data={rows}
-            pagination={{ type: 'none' }}
-          />
+          <Box
+            style={{
+              maxHeight: 480,
+              overflow: 'auto',
+              border: '1px solid var(--bui-border-1)',
+              borderRadius: 'var(--bui-radius-2)',
+            }}
+          >
+            <Table<ResultRow>
+              columnConfig={columnConfig}
+              data={rows}
+              pagination={{ type: 'none' }}
+            />
+          </Box>
         )}
 
         {mode === 'parsed' &&

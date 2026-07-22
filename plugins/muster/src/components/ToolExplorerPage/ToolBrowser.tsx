@@ -103,14 +103,24 @@ function ToolRow({
         className={classes.row}
         onClick={() => onSelect(tool.name)}
       >
-        <Flex align="center" gap="2" style={{ minWidth: 0 }}>
+        {/* Children are phrasing content (spans) so nothing block-level nests
+            inside the native <button>. */}
+        <span
+          style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
+        >
           <span className={classes.toolName}>{tool.name}</span>
           {tool.score !== undefined && (
             <Badge size="small">score {tool.score}</Badge>
           )}
-        </Flex>
+        </span>
         {subtitle && (
-          <Text as="p" variant="body-small" color="secondary" truncate>
+          <Text
+            as="span"
+            variant="body-small"
+            color="secondary"
+            truncate
+            style={{ display: 'block' }}
+          >
             {subtitle}
           </Text>
         )}

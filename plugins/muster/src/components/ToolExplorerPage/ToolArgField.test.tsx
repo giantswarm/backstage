@@ -45,6 +45,22 @@ describe('ToolArgField', () => {
     expect(screen.getByRole('button', { name: /level/i })).toBeInTheDocument();
   });
 
+  it('lets an enum value be cleared via the "unset" option', async () => {
+    const { onChange } = renderField(
+      {
+        name: 'level',
+        type: 'string',
+        required: false,
+        enumValues: ['low', 'high'],
+      },
+      { value: 'high' },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /level/i }));
+    await userEvent.click(screen.getByRole('option', { name: 'unset' }));
+    expect(onChange).toHaveBeenCalledWith('');
+  });
+
   it('renders a number field', () => {
     renderField({ name: 'count', type: 'integer', required: false });
 
