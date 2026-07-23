@@ -9,32 +9,9 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, Button, makeStyles } from '@material-ui/core';
+import { Box, ButtonIcon, Flex } from '@backstage/ui';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
-import classNames from 'classnames';
 import { ResourceInfo, ResourceWrapper } from '../ResourceCard';
-
-const useStyles = makeStyles(theme => ({
-  node: {
-    maxWidth: '560px',
-    minWidth: '560px',
-  },
-  expandButton: {
-    alignItems: 'flex-start',
-    padding: theme.spacing(1),
-    paddingTop: '13px',
-    minWidth: '40px',
-
-    '& svg': {
-      transition: theme.transitions.create('transform'),
-    },
-  },
-  expandButtonExpanded: {
-    '& svg': {
-      transform: 'rotate(90deg)',
-    },
-  },
-}));
 
 type ResourceNodeProps = {
   cluster: string;
@@ -77,7 +54,6 @@ export const ResourceNode = ({
   currentSearchMatch,
   hasFailingDescendants,
 }: ResourceNodeProps) => {
-  const classes = useStyles();
   const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
     useMemo(() => {
       if (!resource) {
@@ -96,36 +72,52 @@ export const ResourceNode = ({
 
   return (
     <ResourceWrapper
-      className={classes.node}
+      style={{ minWidth: '560px', maxWidth: '560px' }}
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
       inactive={inactive}
       searchMatch={searchMatch}
       currentSearchMatch={currentSearchMatch}
     >
-      <Box display="flex">
+      <Flex align="start" gap="0">
         {expandable ? (
-          <Button
-            className={classNames(classes.expandButton, {
-              [classes.expandButtonExpanded]: expanded,
-            })}
-            onClick={e => {
-              e.preventDefault();
-              e.stopPropagation();
-              onExpand();
-            }}
+          // The node is wrapped in a tree anchor that React Router resolves to a
+          // real href, so an un-prevented click triggers a full-page navigation
+          // (reload). Cancel that default in the CAPTURE phase: the bui
+          // ButtonIcon (react-aria) calls stopPropagation on the bubbling click,
+          // so a bubble-phase onClick on this wrapper would never fire. Capture
+          // runs top-down before react-aria sees the event. We must NOT
+          // stopPropagation here — that would block react-aria's press
+          // activation and the node would stop toggling. Not selecting the
+          // resource is already handled by react-aria severing the bubble so the
+          // anchor's own onClick never runs.
+          <Box
+            onClickCapture={e => e.preventDefault()}
+            style={{ paddingTop: '5px' }}
           >
-            <PlayArrowIcon />
-          </Button>
+            <ButtonIcon
+              icon={
+                <PlayArrowIcon
+                  fontSize="small"
+                  style={{
+                    transform: expanded ? 'rotate(90deg)' : undefined,
+                    transition: 'transform 0.2s',
+                  }}
+                />
+              }
+              aria-label={expanded ? 'Collapse' : 'Expand'}
+              variant="tertiary"
+              size="small"
+              onPress={onExpand}
+            />
+          </Box>
         ) : null}
         <Box
-          display="flex"
-          flexDirection="column"
-          flexGrow={1}
-          p={2}
-          pt={1}
-          pl={expandable ? 1 : '48px'}
-          width="100%"
+          grow
+          p="4"
+          pt="2"
+          pl={expandable ? '2' : '12'}
+          style={{ width: '100%' }}
         >
           <ResourceInfo
             cluster={cluster}
@@ -142,7 +134,7 @@ export const ResourceNode = ({
             nowrap
           />
         </Box>
-      </Box>
+      </Flex>
     </ResourceWrapper>
   );
 };

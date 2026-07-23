@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Box } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { ContentContainer } from './ContentContainer';
 import { OverviewTree, OverviewTreeRef } from './OverviewTree';
@@ -91,7 +91,7 @@ export const FluxOverview = ({
   }
 
   return (
-    <Box display="flex" flexDirection="column" height="100%">
+    <Flex direction="column" gap="0" style={{ height: '100%' }}>
       {isLoading ? <Progress /> : null}
 
       {!isLoading && !tree ? (
@@ -103,6 +103,6 @@ export const FluxOverview = ({
       ) : null}
 
       {treeContent}
-    </Box>
+    </Flex>
   );
 };

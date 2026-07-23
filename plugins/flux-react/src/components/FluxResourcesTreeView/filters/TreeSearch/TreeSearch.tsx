@@ -1,63 +1,24 @@
 import { useEffect, useRef } from 'react';
 import {
   Box,
-  IconButton,
-  InputAdornment,
-  TextField,
-  Typography,
-  makeStyles,
-} from '@material-ui/core';
-import ClearIcon from '@material-ui/icons/Clear';
+  ButtonIcon,
+  Flex,
+  SearchField,
+  Text,
+  Tooltip,
+  TooltipTrigger,
+} from '@backstage/ui';
 import KeyboardArrowUpIcon from '@material-ui/icons/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
 import { useFluxOverviewData } from '../../../FluxOverviewDataProvider';
 
 const MIN_SEARCH_LENGTH = 3;
 
-const useStyles = makeStyles(theme => ({
-  root: {
-    paddingBottom: theme.spacing(1),
-    paddingTop: theme.spacing(1),
-  },
-  label: {
-    fontWeight: 'bold',
-    fontSize: theme.typography.body2.fontSize,
-    marginBottom: theme.spacing(1),
-    color: theme.palette.text.primary,
-  },
-  searchContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 3,
-  },
-  textField: {
-    flex: 1,
-    '& .MuiOutlinedInput-root': {
-      backgroundColor: theme.palette.background.paper,
-    },
-    '& [class*="MuiOutlinedInput-adornedEnd"]': {
-      paddingRight: '4px !important',
-    },
-  },
-  counter: {
-    fontSize: theme.typography.body2.fontSize,
-    color: theme.palette.text.secondary,
-    textAlign: 'center',
-    whiteSpace: 'nowrap',
-    marginLeft: 3,
-  },
-  navigationButtons: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  navButton: {
-    padding: 0,
-  },
-}));
-
 export const TreeSearch = () => {
-  const classes = useStyles();
-  const inputRef = useRef<HTMLInputElement>(null);
+  // Hold the ref on the Box we own (rather than the SearchField itself) and
+  // reach the input through it, so focusing does not depend on where bui's
+  // SearchField forwards its ref.
+  const searchFieldRef = useRef<HTMLDivElement>(null);
   const {
     searchQuery,
     setSearchQuery,
@@ -76,7 +37,7 @@ export const TreeSearch = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
-        inputRef.current?.focus();
+        searchFieldRef.current?.querySelector('input')?.focus();
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
         e.preventDefault();
         if (e.shiftKey) {
@@ -92,58 +53,61 @@ export const TreeSearch = () => {
   }, [navigateToNextMatch, navigateToPreviousMatch]);
 
   return (
-    <Box className={classes.root}>
-      <Typography className={classes.label}>Search resources</Typography>
-      <Box className={classes.searchContainer}>
-        <TextField
-          inputRef={inputRef}
-          className={classes.textField}
-          variant="outlined"
-          size="small"
-          placeholder="Name or failure message"
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          disabled={!tree}
-          InputProps={{
-            endAdornment: searchQuery && (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setSearchQuery('')}>
-                  <ClearIcon fontSize="small" />
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-        />
+    <Box pt="2" pb="2">
+      <Box mb="2">
+        <Text variant="body-small" weight="bold">
+          Search resources
+        </Text>
+      </Box>
+      <Flex align="center" gap="2">
+        <Box grow ref={searchFieldRef}>
+          <SearchField
+            aria-label="Search resources"
+            placeholder="Name or failure message"
+            value={searchQuery}
+            onChange={setSearchQuery}
+            isDisabled={!tree}
+            size="small"
+          />
+        </Box>
         {showCounter && (
           <>
-            <Typography className={classes.counter}>
+            <Text
+              variant="body-small"
+              color="secondary"
+              style={{ whiteSpace: 'nowrap' }}
+            >
               {hasMatches
                 ? `${currentMatchIndex + 1} / ${totalMatches}`
                 : '0 hits'}
-            </Typography>
-            <Box className={classes.navigationButtons}>
-              <IconButton
-                className={classes.navButton}
-                size="small"
-                onClick={navigateToPreviousMatch}
-                disabled={!hasMatches}
-                title="Previous match"
-              >
-                <KeyboardArrowUpIcon fontSize="small" />
-              </IconButton>
-              <IconButton
-                className={classes.navButton}
-                size="small"
-                onClick={navigateToNextMatch}
-                disabled={!hasMatches}
-                title="Next match"
-              >
-                <KeyboardArrowDownIcon fontSize="small" />
-              </IconButton>
-            </Box>
+            </Text>
+            <Flex direction="column" gap="0">
+              <TooltipTrigger>
+                <ButtonIcon
+                  icon={<KeyboardArrowUpIcon fontSize="small" />}
+                  aria-label="Previous match"
+                  variant="tertiary"
+                  size="small"
+                  onPress={navigateToPreviousMatch}
+                  isDisabled={!hasMatches}
+                />
+                <Tooltip>Previous match</Tooltip>
+              </TooltipTrigger>
+              <TooltipTrigger>
+                <ButtonIcon
+                  icon={<KeyboardArrowDownIcon fontSize="small" />}
+                  aria-label="Next match"
+                  variant="tertiary"
+                  size="small"
+                  onPress={navigateToNextMatch}
+                  isDisabled={!hasMatches}
+                />
+                <Tooltip>Next match</Tooltip>
+              </TooltipTrigger>
+            </Flex>
           </>
         )}
-      </Box>
+      </Flex>
     </Box>
   );
 };
