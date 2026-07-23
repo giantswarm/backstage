@@ -1,4 +1,4 @@
-import { ReactNode, useMemo } from 'react';
+import { CSSProperties, ReactNode, useMemo } from 'react';
 import {
   GitRepository,
   HelmRelease,
@@ -101,6 +101,7 @@ type ResourceWrapperProps = {
   searchMatch?: boolean;
   currentSearchMatch?: boolean;
   className?: string;
+  style?: CSSProperties;
   children?: ReactNode;
 };
 
@@ -111,6 +112,7 @@ export const ResourceWrapper = ({
   searchMatch,
   currentSearchMatch,
   className,
+  style,
   children,
 }: ResourceWrapperProps) => {
   const classes = useStyles();
@@ -128,6 +130,7 @@ export const ResourceWrapper = ({
         },
         className,
       )}
+      style={style}
     >
       {children}
     </Box>
