@@ -235,14 +235,27 @@ export const ResourceCard = ({
     );
   }
 
+  // Include the cluster so the id is unique even when the same
+  // kind+namespace+name identity appears in more than one card on a panel
+  // (e.g. the primary card and a dependency card for the same object).
+  const accordionId = `${kind}-${namespace ?? ''}-${name}-${cluster}`;
+
   return (
     <ResourceWrapper
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
       inactive={inactive}
     >
+      {/*
+        Key the Accordion by the resource identity so it re-mounts when the panel
+        switches to a different resource of the same kind (rendered in place
+        without a React key). Otherwise the uncontrolled `defaultExpanded` only
+        applies on first mount, and a card the user collapsed would stay
+        collapsed for the next resource.
+      */}
       <Accordion
-        id={`${kind}-${namespace ?? ''}-${name}`}
+        key={accordionId}
+        id={accordionId}
         className={classes.accordion}
         defaultExpanded
       >

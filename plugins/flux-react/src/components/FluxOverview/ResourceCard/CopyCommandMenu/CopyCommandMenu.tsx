@@ -1,5 +1,13 @@
 import { useEffect, useState, MouseEvent } from 'react';
-import { Box, ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
+import {
+  Box,
+  ButtonIcon,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Tooltip,
+  TooltipTrigger,
+} from '@backstage/ui';
 import CheckIcon from '@material-ui/icons/Check';
 import {
   FluxObject,
@@ -149,18 +157,21 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
   return (
     <Box onClick={stopPropagation}>
       <MenuTrigger>
-        <ButtonIcon
-          icon={
-            copiedId ? (
-              <CheckIcon fontSize="small" />
-            ) : (
-              <TerminalIcon fontSize="small" />
-            )
-          }
-          aria-label="Copy CLI command"
-          variant="tertiary"
-          size="small"
-        />
+        <TooltipTrigger>
+          <ButtonIcon
+            icon={
+              copiedId ? (
+                <CheckIcon fontSize="small" />
+              ) : (
+                <TerminalIcon fontSize="small" />
+              )
+            }
+            aria-label="Copy CLI command"
+            variant="tertiary"
+            size="small"
+          />
+          <Tooltip>Copy CLI command</Tooltip>
+        </TooltipTrigger>
         <Menu>
           {applicableCommands.map(command => (
             <MenuItem key={command.id} onAction={() => handleCopy(command)}>
