@@ -1,5 +1,13 @@
 import { useEffect, useRef } from 'react';
-import { Box, ButtonIcon, Flex, SearchField, Text } from '@backstage/ui';
+import {
+  Box,
+  ButtonIcon,
+  Flex,
+  SearchField,
+  Text,
+  Tooltip,
+  TooltipTrigger,
+} from '@backstage/ui';
 import KeyboardArrowUpIcon from '@material-ui/icons/KeyboardArrowUp';
 import KeyboardArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
 import { useFluxOverviewData } from '../../../FluxOverviewDataProvider';
@@ -7,8 +15,9 @@ import { useFluxOverviewData } from '../../../FluxOverviewDataProvider';
 const MIN_SEARCH_LENGTH = 3;
 
 export const TreeSearch = () => {
-  // The bui SearchField forwards a ref to its wrapper element, so reach the
-  // inner input through it to focus on the keyboard shortcut.
+  // Hold the ref on the Box we own (rather than the SearchField itself) and
+  // reach the input through it, so focusing does not depend on where bui's
+  // SearchField forwards its ref.
   const searchFieldRef = useRef<HTMLDivElement>(null);
   const {
     searchQuery,
@@ -51,9 +60,8 @@ export const TreeSearch = () => {
         </Text>
       </Box>
       <Flex align="center" gap="2">
-        <Box grow>
+        <Box grow ref={searchFieldRef}>
           <SearchField
-            ref={searchFieldRef}
             aria-label="Search resources"
             placeholder="Name or failure message"
             value={searchQuery}
@@ -74,22 +82,28 @@ export const TreeSearch = () => {
                 : '0 hits'}
             </Text>
             <Flex direction="column" gap="0">
-              <ButtonIcon
-                icon={<KeyboardArrowUpIcon fontSize="small" />}
-                aria-label="Previous match"
-                variant="tertiary"
-                size="small"
-                onPress={navigateToPreviousMatch}
-                isDisabled={!hasMatches}
-              />
-              <ButtonIcon
-                icon={<KeyboardArrowDownIcon fontSize="small" />}
-                aria-label="Next match"
-                variant="tertiary"
-                size="small"
-                onPress={navigateToNextMatch}
-                isDisabled={!hasMatches}
-              />
+              <TooltipTrigger>
+                <ButtonIcon
+                  icon={<KeyboardArrowUpIcon fontSize="small" />}
+                  aria-label="Previous match"
+                  variant="tertiary"
+                  size="small"
+                  onPress={navigateToPreviousMatch}
+                  isDisabled={!hasMatches}
+                />
+                <Tooltip>Previous match</Tooltip>
+              </TooltipTrigger>
+              <TooltipTrigger>
+                <ButtonIcon
+                  icon={<KeyboardArrowDownIcon fontSize="small" />}
+                  aria-label="Next match"
+                  variant="tertiary"
+                  size="small"
+                  onPress={navigateToNextMatch}
+                  isDisabled={!hasMatches}
+                />
+                <Tooltip>Next match</Tooltip>
+              </TooltipTrigger>
             </Flex>
           </>
         )}

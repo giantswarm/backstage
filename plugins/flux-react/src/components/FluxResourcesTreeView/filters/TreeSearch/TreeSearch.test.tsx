@@ -96,4 +96,31 @@ describe('TreeSearch', () => {
     await user.click(screen.getByRole('button', { name: 'Previous match' }));
     expect(data.navigateToPreviousMatch).toHaveBeenCalledTimes(1);
   });
+
+  it('focuses the search input on Ctrl/Cmd+F', async () => {
+    const user = userEvent.setup();
+    setData();
+
+    await renderInTestApp(<TreeSearch />);
+
+    const input = screen.getByPlaceholderText('Name or failure message');
+    expect(input).not.toHaveFocus();
+
+    await user.keyboard('{Control>}f{/Control}');
+
+    expect(input).toHaveFocus();
+  });
+
+  it('navigates matches on Ctrl/Cmd+G and Ctrl/Cmd+Shift+G', async () => {
+    const user = userEvent.setup();
+    const data = setData({ searchQuery: 'app', totalMatches: 2 });
+
+    await renderInTestApp(<TreeSearch />);
+
+    await user.keyboard('{Control>}g{/Control}');
+    expect(data.navigateToNextMatch).toHaveBeenCalledTimes(1);
+
+    await user.keyboard('{Control>}{Shift>}g{/Shift}{/Control}');
+    expect(data.navigateToPreviousMatch).toHaveBeenCalledTimes(1);
+  });
 });
