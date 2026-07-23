@@ -99,6 +99,25 @@ yarn clean
 - **HTTPS**: Configure via `certificate.yaml` (see `certificate.yaml.example`)
 - **Ports**: Frontend on 3000, Backend on 7007
 
+### Git worktrees
+
+A fresh `git worktree` contains only git-tracked files, so the app will not run
+in it until the gitignored local config is copied over from the main checkout.
+Symptom: the frontend loads but shows `Error: You do not appear to be signed
+in.` (missing `.env`/credentials). Copy these from the main checkout into the
+worktree root (they are all gitignored, so they won't show up in the worktree's
+diff):
+
+- `.env` — secrets (main cause of the "not signed in" error)
+- `github-app-credentials.yaml` — GitHub OAuth credentials
+- `app-config.local.yaml` — local config
+- `certificate.yaml` — HTTPS cert (`$include`d by `app-config.local.yaml`)
+- `catalog/` — local stub files + `templates/` that `app-config.local.yaml`
+  points at via `../../catalog/*.yaml`
+
+Also **do not symlink `node_modules`** — run a real `yarn install` per worktree
+(a shared/symlinked tree lets an install corrupt the main checkout's tree).
+
 ## Architecture Overview
 
 ### Monorepo Structure
