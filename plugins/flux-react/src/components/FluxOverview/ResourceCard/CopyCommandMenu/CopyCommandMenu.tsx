@@ -1,29 +1,19 @@
 import { useEffect, useState, MouseEvent } from 'react';
 import {
   Box,
-  Button,
+  ButtonIcon,
   Menu,
   MenuItem,
+  MenuTrigger,
   Tooltip,
-  Typography,
-  makeStyles,
-} from '@material-ui/core';
+  TooltipTrigger,
+} from '@backstage/ui';
 import CheckIcon from '@material-ui/icons/Check';
 import {
   FluxObject,
   KubeObject,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { TerminalIcon } from '../../../../assets/icons';
-
-const useStyles = makeStyles(theme => ({
-  button: {
-    padding: theme.spacing(0.5),
-    minWidth: 'unset',
-  },
-  menuItem: {
-    minWidth: 200,
-  },
-}));
 
 function getFullyQualifiedResourceType(resource: KubeObject): string {
   const ctor = resource.constructor as typeof KubeObject;
@@ -134,8 +124,6 @@ type CopyCommandMenuProps = {
 };
 
 export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
-  const classes = useStyles();
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -146,16 +134,6 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
     return undefined;
   }, [copiedId]);
 
-  const handleOpen = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    event.preventDefault();
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
-
   const handleCopy = async (command: CommandDefinition) => {
     const text = command.build(resource);
     try {
@@ -164,56 +142,44 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
     } catch {
       // Clipboard API not available
     }
-    handleClose();
   };
 
-  const isOpen = Boolean(anchorEl);
+  // Stop the click from bubbling up to any wrapping tree/list anchor so opening
+  // the menu doesn't also trigger navigation.
+  const stopPropagation = (event: MouseEvent) => {
+    event.stopPropagation();
+  };
+
+  const applicableCommands = commands.filter(
+    command => !command.isApplicable || command.isApplicable(resource),
+  );
 
   return (
-    <Box>
-      <Tooltip title="Copy CLI command">
-        <Button
-          className={classes.button}
-          size="small"
-          onClick={handleOpen}
-          aria-label="Copy CLI command"
-          aria-haspopup="true"
-        >
-          {copiedId ? (
-            <CheckIcon fontSize="small" />
-          ) : (
-            <TerminalIcon fontSize="small" />
-          )}
-        </Button>
-      </Tooltip>
-      <Menu
-        anchorEl={anchorEl}
-        open={isOpen}
-        onClose={handleClose}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'left',
-        }}
-        transformOrigin={{
-          vertical: 'top',
-          horizontal: 'left',
-        }}
-        getContentAnchorEl={null}
-      >
-        {commands
-          .filter(
-            command => !command.isApplicable || command.isApplicable(resource),
-          )
-          .map(command => (
-            <MenuItem
-              key={command.id}
-              className={classes.menuItem}
-              onClick={() => handleCopy(command)}
-            >
-              <Typography variant="body2">{command.label}</Typography>
+    <Box onClick={stopPropagation}>
+      <MenuTrigger>
+        <TooltipTrigger>
+          <ButtonIcon
+            icon={
+              copiedId ? (
+                <CheckIcon fontSize="small" />
+              ) : (
+                <TerminalIcon fontSize="small" />
+              )
+            }
+            aria-label="Copy CLI command"
+            variant="tertiary"
+            size="small"
+          />
+          <Tooltip>Copy CLI command</Tooltip>
+        </TooltipTrigger>
+        <Menu>
+          {applicableCommands.map(command => (
+            <MenuItem key={command.id} onAction={() => handleCopy(command)}>
+              {command.label}
             </MenuItem>
           ))}
-      </Menu>
+        </Menu>
+      </MenuTrigger>
     </Box>
   );
 };

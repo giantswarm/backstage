@@ -5,7 +5,7 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, Grid } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
 import { Section } from '../../UI';
 import { findTargetClusterName } from '../../../utils/findTargetClusterName';
@@ -110,7 +110,7 @@ export const RepositoryDetails = ({
   );
 
   return (
-    <Box>
+    <Flex direction="column" gap="8">
       <Section heading={`This ${repository.getKind()}`}>
         <ResourceCard
           cluster={repository.cluster}
@@ -124,32 +124,27 @@ export const RepositoryDetails = ({
 
       {dependentResources.length > 0 ? (
         <Section heading="Resources using this source">
-          <Grid container spacing={3}>
+          <Flex direction="column" gap="6">
             {dependentResources.map(resource => (
-              <Grid
-                item
-                xs={12}
+              <ResourceCard
                 key={`${resource.cluster}-${resource.getKind()}-${resource.getNamespace()}-${resource.getName()}`}
-              >
-                <ResourceCard
-                  cluster={resource.cluster}
-                  kind={resource.getKind()}
-                  name={resource.getName()}
-                  namespace={resource.getNamespace()}
-                  targetCluster={
-                    resource instanceof Kustomization ||
-                    resource instanceof HelmRelease
-                      ? findTargetClusterName(resource)
-                      : undefined
-                  }
-                  resource={resource}
-                  source={repository}
-                />
-              </Grid>
+                cluster={resource.cluster}
+                kind={resource.getKind()}
+                name={resource.getName()}
+                namespace={resource.getNamespace()}
+                targetCluster={
+                  resource instanceof Kustomization ||
+                  resource instanceof HelmRelease
+                    ? findTargetClusterName(resource)
+                    : undefined
+                }
+                resource={resource}
+                source={repository}
+              />
             ))}
-          </Grid>
+          </Flex>
         </Section>
       ) : null}
-    </Box>
+    </Flex>
   );
 };

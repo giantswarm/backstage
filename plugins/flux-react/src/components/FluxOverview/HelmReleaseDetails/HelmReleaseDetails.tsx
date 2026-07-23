@@ -4,7 +4,7 @@ import {
   HelmRepository,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, Grid } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
@@ -96,7 +96,7 @@ export const HelmReleaseDetails = ({
     : null;
 
   return (
-    <Box>
+    <Flex direction="column" gap="8">
       <Section heading="This HelmRelease">
         <ResourceCard
           cluster={helmRelease.cluster}
@@ -138,26 +138,21 @@ export const HelmReleaseDetails = ({
 
       {dependencies ? (
         <Section heading="Dependencies">
-          <Grid container spacing={3}>
+          <Flex direction="column" gap="6">
             {dependencies.map(resource => (
-              <Grid
-                item
-                xs={12}
+              <ResourceCard
                 key={`${resource.cluster}-${resource.getKind()}-${resource.getNamespace()}-${resource.getName()}`}
-              >
-                <ResourceCard
-                  cluster={resource.cluster}
-                  kind={resource.getKind()}
-                  name={resource.getName()}
-                  namespace={resource.getNamespace()}
-                  targetCluster={findTargetClusterName(resource)}
-                  resource={resource}
-                />
-              </Grid>
+                cluster={resource.cluster}
+                kind={resource.getKind()}
+                name={resource.getName()}
+                namespace={resource.getNamespace()}
+                targetCluster={findTargetClusterName(resource)}
+                resource={resource}
+              />
             ))}
-          </Grid>
+          </Flex>
         </Section>
       ) : null}
-    </Box>
+    </Flex>
   );
 };

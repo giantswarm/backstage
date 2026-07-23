@@ -9,7 +9,7 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, Typography } from '@material-ui/core';
+import { Box, Flex, Text } from '@backstage/ui';
 import { KustomizationDetails } from '../KustomizationDetails';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
@@ -116,19 +116,19 @@ export const Details = ({
         : `This resource is referenced in a Kustomization inventory but could not be found. It may have been deleted or the inventory data may be stale.`;
 
     return (
-      <Box>
-        <Typography variant="body1">
+      <Flex direction="column" gap="2">
+        <Text as="p" variant="body-medium">
           {resourceKindName}{' '}
           <strong>
             {resourceRef.namespace ? `${resourceRef.namespace}/` : ''}
             {resourceRef.name}
           </strong>{' '}
           in cluster <strong>{resourceRef.cluster}</strong> not found.
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
+        </Text>
+        <Text as="p" variant="body-small" color="secondary">
           {diagnosticMessage}
-        </Typography>
-      </Box>
+        </Text>
+      </Flex>
     );
   }
 
