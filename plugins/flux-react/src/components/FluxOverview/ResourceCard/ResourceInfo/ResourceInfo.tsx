@@ -1,4 +1,4 @@
-import { Box, Tooltip, makeStyles } from '@material-ui/core';
+import { Box, Flex } from '@backstage/ui';
 import ReportProblemOutlinedIcon from '@material-ui/icons/ReportProblemOutlined';
 import {
   Kustomization,
@@ -35,14 +35,8 @@ type ResourceInfoProps = {
   isSuspended: boolean;
   hasFailingDescendants?: boolean;
   nowrap?: boolean;
+  emphasized?: boolean;
 };
-
-const useStyles = makeStyles(theme => ({
-  failingDescendantsIcon: {
-    color: theme.palette.warning.main,
-    fontSize: '1.25rem',
-  },
-}));
 
 export const ResourceInfo = ({
   name,
@@ -57,46 +51,60 @@ export const ResourceInfo = ({
   isSuspended,
   hasFailingDescendants = false,
   nowrap = false,
+  emphasized = false,
 }: ResourceInfoProps) => {
-  const classes = useStyles();
   const inactive = isSuspended || isDependencyNotReady;
 
-  return (
-    <Box>
-      <Box
-        display="flex"
-        alignItems="baseline"
-        justifyContent="space-between"
-        mb={0.5}
-      >
-        <ResourceHeading name={name} inactive={inactive} nowrap={nowrap} />
+  const status = resource ? (
+    <ResourceStatus
+      readyStatus={readyStatus}
+      isDependencyNotReady={isDependencyNotReady}
+      isReconciling={isReconciling}
+      isSuspended={isSuspended}
+      emphasized={emphasized}
+    />
+  ) : null;
 
-        <Box display="flex" alignItems="center">
-          {hasFailingDescendants && (
-            <Tooltip title="Contains failing resources">
-              <Box display="flex" alignItems="center" mr={resource ? 1 : 0}>
+  return (
+    <Flex direction="column" gap={emphasized ? '2' : '1'}>
+      {emphasized ? (
+        // Panel header: keep the status inline right after the heading, so it
+        // reads as a badge on the title rather than colliding with the caret
+        // pinned to the far right of the accordion trigger.
+        <Flex align="center" gap="2">
+          <ResourceHeading name={name} inactive={inactive} emphasized />
+          {status}
+        </Flex>
+      ) : (
+        <Flex align="baseline" justify="between">
+          <ResourceHeading name={name} inactive={inactive} nowrap={nowrap} />
+
+          <Flex align="center" gap="0.5">
+            {hasFailingDescendants && (
+              <Box
+                display="flex"
+                title="Contains failing resources"
+                style={{ alignItems: 'center', marginRight: resource ? 8 : 0 }}
+              >
                 <ReportProblemOutlinedIcon
-                  className={classes.failingDescendantsIcon}
+                  style={{
+                    color: 'var(--bui-fg-warning)',
+                    fontSize: '1.25rem',
+                  }}
                 />
               </Box>
-            </Tooltip>
-          )}
-          {resource && (
-            <ResourceStatus
-              readyStatus={readyStatus}
-              isDependencyNotReady={isDependencyNotReady}
-              isReconciling={isReconciling}
-              isSuspended={isSuspended}
-            />
-          )}
-        </Box>
-      </Box>
+            )}
+            {status}
+          </Flex>
+        </Flex>
+      )}
       <ResourceChips
         kind={kind}
         namespace={namespace}
         cluster={cluster}
         targetCluster={targetCluster}
+        emphasized={emphasized}
       />
-    </Box>
+    </Flex>
   );
 };

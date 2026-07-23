@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { ReactNode, useMemo } from 'react';
 import {
   GitRepository,
   HelmRelease,
@@ -14,7 +14,14 @@ import {
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { Box, Divider, makeStyles, Paper, PaperProps } from '@material-ui/core';
+import {
+  Accordion,
+  AccordionPanel,
+  AccordionTrigger,
+  Box,
+  Flex,
+} from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
 import {
   AIChatButton,
@@ -27,6 +34,9 @@ import { ResourceInfo } from './ResourceInfo';
 
 const palette = makeResourceCardColorVariants();
 
+// The resource card background colors are custom, theme-aware hex values with
+// no equivalent in the bui design tokens, so we intentionally keep a colocated
+// makeStyles here (the rest of the tree is migrated to @backstage/ui).
 const useStyles = makeStyles(theme => {
   const colors = palette[theme.palette.type];
 
@@ -34,6 +44,8 @@ const useStyles = makeStyles(theme => {
     root: {
       position: 'relative',
       border: '1px solid transparent',
+      borderRadius: 'var(--bui-radius-3)',
+      overflow: 'hidden',
       backgroundColor: colors.default.backgroundColor,
 
       'a:hover > &': {
@@ -65,15 +77,31 @@ const useStyles = makeStyles(theme => {
       outline: '3px solid #e91e63',
       outlineOffset: 1,
     },
+    // The bui Accordion paints its own opaque surface background (via its
+    // `data-bg="neutral-1"` context), which would hide the wrapper's
+    // status-colored background. Keep it transparent so the wrapper stays the
+    // single source of truth for the card color.
+    accordion: {
+      backgroundColor: 'transparent',
+    },
+    // Top-align the expand/collapse caret with the resource heading instead of
+    // vertically centering it against the taller two-line header.
+    accordionTrigger: {
+      '& button': {
+        alignItems: 'flex-start',
+      },
+    },
   };
 });
 
-type ResourceWrapperProps = PaperProps & {
+type ResourceWrapperProps = {
   highlighted?: boolean;
   error?: boolean;
   inactive?: boolean;
   searchMatch?: boolean;
   currentSearchMatch?: boolean;
+  className?: string;
+  children?: ReactNode;
 };
 
 export const ResourceWrapper = ({
@@ -84,13 +112,11 @@ export const ResourceWrapper = ({
   currentSearchMatch,
   className,
   children,
-  ...props
 }: ResourceWrapperProps) => {
   const classes = useStyles();
 
   return (
-    <Paper
-      {...props}
+    <Box
       className={classNames(
         classes.root,
         {
@@ -104,7 +130,7 @@ export const ResourceWrapper = ({
       )}
     >
       {children}
-    </Paper>
+    </Box>
   );
 };
 
@@ -139,6 +165,7 @@ export const ResourceCard = ({
   highlighted,
   error,
 }: ResourceCardProps) => {
+  const classes = useStyles();
   const { readyStatus, isDependencyNotReady, isReconciling, isSuspended } =
     useMemo(() => {
       if (!resource) {
@@ -176,65 +203,94 @@ export const ResourceCard = ({
     aiChatMessage = `Please read the ${kind} resource named '${name}'${namespacePart} on management cluster '${cluster}', and show me basic details, so that I can ask further questions about it.`;
   }
 
+  const resourceInfo = (
+    <ResourceInfo
+      cluster={cluster}
+      name={name}
+      kind={kind}
+      namespace={namespace}
+      targetCluster={targetCluster}
+      readyStatus={readyStatus}
+      isDependencyNotReady={isDependencyNotReady}
+      isReconciling={isReconciling}
+      isSuspended={isSuspended}
+      resource={resource}
+      emphasized
+    />
+  );
+
+  // Without a resource there is no body to reveal, so render a plain card
+  // instead of a (pointless) collapsible one.
+  if (!resource) {
+    return (
+      <ResourceWrapper
+        highlighted={highlighted}
+        error={error}
+        inactive={inactive}
+      >
+        <Box p="4" pt="2">
+          {resourceInfo}
+        </Box>
+      </ResourceWrapper>
+    );
+  }
+
   return (
     <ResourceWrapper
       highlighted={highlighted}
       error={readyStatus === 'False' || error}
       inactive={inactive}
     >
-      <Box display="flex" flexDirection="column" flexGrow={1} p={2} pt={1}>
-        <ResourceInfo
-          cluster={cluster}
-          name={name}
-          kind={kind}
-          namespace={namespace}
-          targetCluster={targetCluster}
-          readyStatus={readyStatus}
-          isDependencyNotReady={isDependencyNotReady}
-          isReconciling={isReconciling}
-          isSuspended={isSuspended}
-          resource={resource}
-        />
-        {resource && (
-          <Box mt={2} px={2}>
-            <StructuredMetadataList
-              metadata={{
-                Created: resource.getCreatedTimestamp() ? (
-                  <DateComponent
-                    value={resource.getCreatedTimestamp()}
-                    relative
-                  />
-                ) : (
-                  <NotAvailable />
-                ),
-              }}
-              fixedKeyColumnWidth="120px"
-            />
+      <Accordion
+        id={`${kind}-${namespace ?? ''}-${name}`}
+        className={classes.accordion}
+        defaultExpanded
+      >
+        <AccordionTrigger className={classes.accordionTrigger}>
+          <Box grow pr="2">
+            {resourceInfo}
           </Box>
-        )}
-        {resource && (
-          <>
-            <Box mt={2}>
-              <Divider />
+        </AccordionTrigger>
+        <AccordionPanel>
+          <Flex direction="column" gap="0" pt="2">
+            <Box px="4">
+              <StructuredMetadataList
+                metadata={{
+                  Created: resource.getCreatedTimestamp() ? (
+                    <DateComponent
+                      value={resource.getCreatedTimestamp()}
+                      relative
+                    />
+                  ) : (
+                    <NotAvailable />
+                  ),
+                }}
+                fixedKeyColumnWidth="120px"
+              />
             </Box>
+            <div
+              style={{
+                marginTop: '16px',
+                borderTop: '1px solid var(--bui-border-1)',
+              }}
+            />
             <ResourceMetadata resource={resource} source={source} />
-          </>
-        )}
-        {resource && (
-          <>
-            <Box mt={1}>
-              <Divider />
-            </Box>
-            <Box display="flex" alignItems="center" mt={1} gridGap={8}>
+            <div
+              style={{
+                marginTop: '8px',
+                borderTop: '1px solid var(--bui-border-1)',
+              }}
+            />
+            <Flex align="center" mt="2" gap="2">
               <CopyCommandMenu resource={resource} />
               <AIChatButton
                 troubleshoot={readyStatus === 'False'}
                 items={[{ message: aiChatMessage }]}
               />
-            </Box>
-          </>
-        )}
-      </Box>
+            </Flex>
+          </Flex>
+        </AccordionPanel>
+      </Accordion>
     </ResourceWrapper>
   );
 };

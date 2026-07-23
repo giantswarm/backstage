@@ -5,7 +5,7 @@ import {
   ImageUpdateAutomation,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, Grid } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
 import { Section } from '../../UI';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
@@ -90,7 +90,7 @@ const ImagePolicyDetails = ({
   parentKustomizationSource,
 }: ImagePolicyDetailsProps) => {
   return (
-    <Box>
+    <Flex direction="column" gap="8">
       <Section heading="This ImagePolicy">
         <ResourceCard
           cluster={imagePolicy.cluster}
@@ -127,7 +127,7 @@ const ImagePolicyDetails = ({
           />
         </Section>
       ) : null}
-    </Box>
+    </Flex>
   );
 };
 
@@ -147,7 +147,7 @@ const ImageRepositoryDetails = ({
   parentKustomizationSource,
 }: ImageRepositoryDetailsProps) => {
   return (
-    <Box>
+    <Flex direction="column" gap="8">
       <Section heading="This ImageRepository">
         <ResourceCard
           cluster={imageRepository.cluster}
@@ -175,26 +175,21 @@ const ImageRepositoryDetails = ({
 
       {childImagePolicies.length > 0 ? (
         <Section heading="ImagePolicies">
-          <Grid container spacing={2}>
+          <Flex direction="column" gap="4">
             {childImagePolicies.map(policy => (
-              <Grid
-                item
-                xs={12}
+              <ResourceCard
                 key={`${policy.cluster}-${policy.getKind()}-${policy.getNamespace()}-${policy.getName()}`}
-              >
-                <ResourceCard
-                  cluster={policy.cluster}
-                  kind={policy.getKind()}
-                  name={policy.getName()}
-                  namespace={policy.getNamespace()}
-                  resource={policy}
-                />
-              </Grid>
+                cluster={policy.cluster}
+                kind={policy.getKind()}
+                name={policy.getName()}
+                namespace={policy.getNamespace()}
+                resource={policy}
+              />
             ))}
-          </Grid>
+          </Flex>
         </Section>
       ) : null}
-    </Box>
+    </Flex>
   );
 };
 
@@ -214,7 +209,7 @@ const ImageUpdateAutomationDetails = ({
   parentKustomizationSource,
 }: ImageUpdateAutomationDetailsProps) => {
   return (
-    <Box>
+    <Flex direction="column" gap="8">
       <Section heading="This ImageUpdateAutomation">
         <ResourceCard
           cluster={imageUpdateAutomation.cluster}
@@ -251,7 +246,7 @@ const ImageUpdateAutomationDetails = ({
           />
         </Section>
       ) : null}
-    </Box>
+    </Flex>
   );
 };
 

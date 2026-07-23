@@ -15,7 +15,7 @@ import {
   NotAvailable,
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { Box, Divider } from '@material-ui/core';
+import { Box } from '@backstage/ui';
 import { findHelmReleaseChartName } from '../../../../utils/findHelmReleaseChartName';
 import { useGitSourceLink } from '../../../../hooks/useGitSourceLink';
 import { ReactNode } from 'react';
@@ -519,7 +519,7 @@ export const ResourceMetadata = ({
   return (
     <>
       {hasSpec && (
-        <Box mt={2} px={2}>
+        <Box mt="4" px="4">
           <StructuredMetadataList
             metadata={spec}
             fixedKeyColumnWidth={fixedKeyColumnWidth}
@@ -527,12 +527,15 @@ export const ResourceMetadata = ({
         </Box>
       )}
       {hasSpec && hasStatus && (
-        <Box mt={2}>
-          <Divider />
-        </Box>
+        <div
+          style={{
+            marginTop: '16px',
+            borderTop: '1px solid var(--bui-border-1)',
+          }}
+        />
       )}
       {hasStatus && (
-        <Box mt={2} px={2}>
+        <Box mt="4" px="4">
           <StructuredMetadataList
             metadata={status}
             fixedKeyColumnWidth={fixedKeyColumnWidth}

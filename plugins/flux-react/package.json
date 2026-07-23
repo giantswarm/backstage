@@ -65,8 +65,10 @@
   "devDependencies": {
     "@backstage/cli": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
+    "@backstage/test-utils": "backstage:^",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/qs": "^6",
     "@types/react-window": "^1",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"

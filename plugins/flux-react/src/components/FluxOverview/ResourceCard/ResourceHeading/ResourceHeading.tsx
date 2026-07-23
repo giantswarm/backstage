@@ -1,50 +1,37 @@
-import { Box, makeStyles, Typography } from '@material-ui/core';
-import classNames from 'classnames';
+import { Box, Text } from '@backstage/ui';
 import MiddleEllipsis from 'react-middle-ellipsis';
-
-const useStyles = makeStyles(theme => ({
-  heading: {
-    margin: 0,
-  },
-  headingInactive: {
-    color: theme.palette.type === 'light' ? '#444' : '#909090',
-  },
-}));
 
 type ResourceHeadingProps = {
   name: string;
   inactive?: boolean;
   nowrap?: boolean;
+  emphasized?: boolean;
 };
 
 export const ResourceHeading = ({
   name,
   inactive,
   nowrap = false,
+  emphasized = false,
 }: ResourceHeadingProps) => {
-  const classes = useStyles();
+  const color = inactive ? 'secondary' : 'primary';
+  // The details panel (emphasized) gets a larger, bold heading; the tree-view
+  // node keeps its original, smaller size until it is migrated separately.
+  const as = emphasized ? 'h4' : 'div';
+  const weight = emphasized ? 'bold' : 'regular';
+  const variant = emphasized ? 'title-small' : 'title-x-small';
 
   return nowrap ? (
-    <Box flexGrow={1} whiteSpace="nowrap" overflow="hidden">
-      <Typography
-        variant="h6"
-        className={classNames(classes.heading, {
-          [classes.headingInactive]: inactive,
-        })}
-      >
+    <Box grow style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>
+      <Text as={as} variant={variant} weight={weight} color={color}>
         <MiddleEllipsis>
           <span title={name}>{name}</span>
         </MiddleEllipsis>
-      </Typography>
+      </Text>
     </Box>
   ) : (
-    <Typography
-      variant="h6"
-      className={classNames(classes.heading, {
-        [classes.headingInactive]: inactive,
-      })}
-    >
+    <Text as={as} variant={variant} weight={weight} color={color}>
       {name}
-    </Typography>
+    </Text>
   );
 };

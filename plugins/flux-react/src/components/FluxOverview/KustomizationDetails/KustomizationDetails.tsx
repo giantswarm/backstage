@@ -3,7 +3,7 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { Box, Grid } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
 import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
@@ -57,7 +57,7 @@ export const KustomizationDetails = ({
     : null;
 
   return (
-    <Box>
+    <Flex direction="column" gap="8">
       <Section heading="This Kustomization">
         <ResourceCard
           cluster={kustomization.cluster}
@@ -99,31 +99,26 @@ export const KustomizationDetails = ({
 
       {dependencies ? (
         <Section heading="Dependencies">
-          <Grid container spacing={3}>
+          <Flex direction="column" gap="6">
             {dependencies.map(resource => (
-              <Grid
-                item
-                xs={12}
+              <ResourceCard
                 key={`${resource.cluster}-${resource.getKind()}-${resource.getNamespace()}-${resource.getName()}`}
-              >
-                <ResourceCard
-                  cluster={resource.cluster}
-                  kind={resource.getKind()}
-                  name={resource.getName()}
-                  namespace={resource.getNamespace()}
-                  targetCluster={findTargetClusterName(resource)}
-                  resource={resource}
-                  source={findKustomizationSource(
-                    resource,
-                    allGitRepositories,
-                    allOCIRepositories,
-                  )}
-                />
-              </Grid>
+                cluster={resource.cluster}
+                kind={resource.getKind()}
+                name={resource.getName()}
+                namespace={resource.getNamespace()}
+                targetCluster={findTargetClusterName(resource)}
+                resource={resource}
+                source={findKustomizationSource(
+                  resource,
+                  allGitRepositories,
+                  allOCIRepositories,
+                )}
+              />
             ))}
-          </Grid>
+          </Flex>
         </Section>
       ) : null}
-    </Box>
+    </Flex>
   );
 };
