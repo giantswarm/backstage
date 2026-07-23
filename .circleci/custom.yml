@@ -24,13 +24,10 @@ jobs:
   # Override just the resource_class of the generated `node-build` job. The
   # dynamic-config deep-merge (yq `*+`) merges this map into the generated
   # jobs.node-build; scalars from custom.yml win, so `docker`/`steps` stay as
-  # generated and only the executor size changes. Bumped large (4 vCPU / 8 GB)
-  # -> xlarge (8 vCPU / 16 GB) -> 2xlarge (16 vCPU / 32 GB): `ci:verify` runs
-  # tsc (--max-old-space-size=6144), lint:all, and test:all --coverage (131
-  # suites) concurrently, which peaked near the 16 GB ceiling and OOM-killed the
-  # job intermittently (fast failure, no step logs). 32 GB gives headroom.
+  # generated and only the executor size changes. Bumped from large (4 vCPU /
+  # 8 GB) to xlarge (8 vCPU / 16 GB) to speed up install/verify/build.
   node-build:
-    resource_class: 2xlarge
+    resource_class: xlarge
 
 workflows:
   build:
