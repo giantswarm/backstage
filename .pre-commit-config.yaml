@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/d3f37cf9d05f6d5ef4240dde559f4875d41170e0/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#    https://github.com/giantswarm/devctl/blob/89a95f262fe2aade19279e001b7434a34d757f28/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
@@ -58,12 +58,14 @@ repos:
     rev: v2.6.1
     hooks:
       - id: schemalint-normalize
+        pass_filenames: false
         args:
           - helm/backstage/values.schema.json
           - -o
           - helm/backstage/values.schema.json
           - --force
       - id: schemalint-verify
+        pass_filenames: false
         args:
           - helm/backstage/values.schema.json
   - repo: https://github.com/norwoodj/helm-docs
