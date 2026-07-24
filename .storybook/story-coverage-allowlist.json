@@ -1,0 +1,4 @@
+{
+  "$comment": "Components exported by ui-react that are intentionally NOT storied. Each entry must have a justification here. The coverage gate (scripts/check-story-coverage.mts) fails if an entry no longer matches any export, so this list can't hide stale entries.",
+  "components": []
+}

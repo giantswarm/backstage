@@ -1,0 +1,74 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Introduction" />
+
+# Giant Swarm shared UI components (`ui-react`)
+
+This Storybook documents **`@giantswarm/backstage-plugin-ui-react`** — Giant
+Swarm's own shared component library for our [Backstage](https://backstage.io)
+app. It exists so that a developer (or an agent) working in
+[`giantswarm/backstage`](https://github.com/giantswarm/backstage) can quickly
+answer: **“does a shared component for this already exist, and how do I use it
+correctly?”** — instead of reading source across the plugin or hand-rolling a
+duplicate.
+
+Each component below has a live rendering, interactive controls, an
+auto-generated props table, its key variants/states, a short _what / when to use
+it_ note, and a **migration-status note** telling you whether it still uses
+deprecated MUI v4 or has moved to bui. Use the **Theme** toolbar control to flip
+any story between the real GS **light** and **dark** themes.
+
+## The three UI layers — and where `ui-react` sits
+
+New UI in this repo is built from three layers, in order of preference:
+
+1. **bui — `@backstage/ui`** — the new Backstage design system. **Prefer this for
+   new work.** Documented upstream at
+   [ui.backstage.io](https://ui.backstage.io/) (not duplicated here).
+2. **classic core-components — `@backstage/core-components`** — legacy Backstage
+   components. Use only where bui has no equivalent yet (e.g. the feature-rich
+   `Table`, `Page`/`Header`/`Content` scaffolding).
+3. **MUI v4 — `@material-ui/core`** — legacy primitives, deprecated.
+
+**`ui-react` is Giant Swarm's own shared layer on top of those.** It is currently
+built mostly on MUI v4, which is why every component here carries a
+migration-status note. Reach for a `ui-react` component when you need the
+_Giant-Swarm-specific_ behaviour it encapsulates (our date formatting, our
+async/error/loading affordances, our YAML editor, our themed chart, etc.). For
+generic primitives (buttons, cards, text, layout) reach for **bui** first.
+
+### When to reach for what
+
+- **Need a generic primitive** (button, card, text, flex/grid, select)? → **bui**
+  ([ui.backstage.io](https://ui.backstage.io/)). If you're building a card,
+  though, use this library's [`InfoCard`](/docs/components-infocard--docs) — it
+  wraps bui `Card` with the GS header/footer conventions.
+- **Need GS-specific shared behaviour** (async value rendering, relative dates,
+  filter layouts, YAML editing, a themed stacked bar chart)? → **`ui-react`**,
+  documented here.
+- **Nothing fits, and it's genuinely reusable?** Build it on **bui**, and
+  consider contributing it to `ui-react` so the next person finds it.
+
+## For agents working in this repo
+
+Each shared component has a co-located `*.stories.tsx` file demonstrating its
+**intended usage** — treat those stories as the canonical usage reference and
+read them before extending or duplicating a component. In the repo they live at:
+
+```
+plugins/ui-react/src/**/*.stories.tsx
+```
+
+Every story also records the component's **migration status** (via
+`.storybook/docs.ts`), so you can avoid recommending or extending a deprecated
+MUI v4 component when bui is preferred. The repo's `.claude/skills/ui` skill
+points here too.
+
+## Scope
+
+This site documents the barrel-exported **visual** components of `ui-react`.
+Its **hooks** (`useContainerDimensions`, `useDetailsPane`, `useFilters`,
+`useSplatBasePath`, `useTableColumns`) and **utils** (`isTableColumnHidden`,
+`formatVersion`, `passwordManagerIgnoreProps`, table helpers) are exported for
+reuse but are not storied — see the plugin's `README.md` for the full list.
+Per-plugin `components/UI` folders elsewhere in the repo are out of scope.

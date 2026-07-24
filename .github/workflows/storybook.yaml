@@ -1,0 +1,63 @@
+# Builds the ui-react Storybook (docs for @giantswarm/backstage-plugin-ui-react)
+# and enforces the story coverage gate on every PR; publishes the static site to
+# GitHub Pages on merge to main.
+#
+# Hand-authored (not devctl-generated), so it is safe to edit here.
+name: Storybook
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storybook-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Runs on every PR (and on main): the story coverage gate + a full Storybook
+  # build. A broken story or an undocumented exported component fails here.
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Check story coverage
+        run: yarn storybook:coverage
+      - name: Build Storybook
+        run: yarn storybook:build
+      - name: Upload Pages artifact
+        # Only needed for the deploy job (push to main).
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: storybook-static
+
+  # Publishes the built site to GitHub Pages, only on merge to main.
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
