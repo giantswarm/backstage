@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { StackedBarChart } from './StackedBarChart';
+import type { StackedBarChartProps } from './StackedBarChart';
 import { componentDocs } from '../../storybook/docs';
 
 type Row = {
@@ -48,10 +49,13 @@ const meta = {
       },
     },
   },
-} satisfies Meta<typeof StackedBarChart>;
+  // Type the meta by the concrete args (`StackedBarChartProps<Row>`) rather than
+  // `typeof StackedBarChart`: the component is generic, and `typeof` collapses
+  // `T` to `object`, making `xAxisKey` (`keyof T & string`) resolve to `never`.
+} satisfies Meta<StackedBarChartProps<Row>>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj<StackedBarChartProps<Row>>;
 
 export const Default: Story = {
   args: {

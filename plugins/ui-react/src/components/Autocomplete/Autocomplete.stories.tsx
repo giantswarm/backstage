@@ -15,6 +15,8 @@ const meta = {
   title: 'Components/Autocomplete',
   component: Autocomplete,
   tags: ['autodocs'],
+  // Default args cover the required props; each story is controlled via `render`.
+  args: { label: 'Provider', items },
   parameters: {
     docs: {
       description: {

@@ -61,6 +61,8 @@ const meta = {
   title: 'Components/PageHeaderActions',
   component: PageHeaderActionsProvider,
   tags: ['autodocs'],
+  // The Demo story provides its own tree via `render`; satisfy the required prop.
+  args: { children: null },
   parameters: {
     docs: {
       description: {

@@ -6,6 +6,8 @@ const meta = {
   title: 'Components/AsyncValue',
   component: AsyncValue,
   tags: ['autodocs'],
+  // Default args cover the required props; each story overrides via `render`.
+  args: { value: 'v1.29.4', isLoading: false },
   parameters: {
     docs: {
       description: {

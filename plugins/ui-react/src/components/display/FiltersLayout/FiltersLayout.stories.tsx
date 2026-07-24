@@ -7,6 +7,8 @@ const meta = {
   title: 'Components/display/FiltersLayout',
   component: FiltersLayout,
   tags: ['autodocs'],
+  // The Default story builds its own tree via `render`; satisfy the required prop.
+  args: { children: null },
   parameters: {
     docs: {
       description: {
