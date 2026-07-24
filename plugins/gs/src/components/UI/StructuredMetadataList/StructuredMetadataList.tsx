@@ -1,5 +1,5 @@
 import { Grid } from '@material-ui/core';
-import { ContentRow } from '../ContentRow';
+import { ContentRow } from '@giantswarm/backstage-plugin-ui-react';
 
 type StructuredMetadataListProps = {
   metadata: { [key: string]: any };

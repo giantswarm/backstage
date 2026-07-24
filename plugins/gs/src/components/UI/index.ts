@@ -6,7 +6,7 @@ export { ClusterLink } from './ClusterLink';
 export { CodeBlock } from '@giantswarm/backstage-plugin-ui-react';
 export { CollapsibleMarkdownCard } from './CollapsibleMarkdownCard';
 export { ColorWrapper } from './ColorWrapper';
-export { ContentRow } from './ContentRow';
+export { ContentRow } from '@giantswarm/backstage-plugin-ui-react';
 export { DateComponent } from './Date';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { GridItem } from './GridItem';
