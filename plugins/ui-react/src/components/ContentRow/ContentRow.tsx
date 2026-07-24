@@ -1,16 +1,19 @@
-import { Box, Typography } from '@material-ui/core';
+import { ReactNode } from 'react';
+import { Flex, Text } from '@backstage/ui';
 
 export const ContentRow = ({
   title,
   children,
 }: {
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => {
   return (
-    <Box display="flex" alignItems="baseline">
-      <Typography variant="subtitle2">{title}</Typography>
-      <Typography variant="body2">{children}</Typography>
-    </Box>
+    <Flex direction="column" gap="0.5">
+      <Text variant="body-medium" weight="bold">
+        {title}
+      </Text>
+      <Text variant="body-medium">{children}</Text>
+    </Flex>
   );
 };

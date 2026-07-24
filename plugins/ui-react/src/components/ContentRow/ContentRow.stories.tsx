@@ -15,13 +15,13 @@ const meta = {
       description: {
         component: componentDocs({
           summary:
-            'A single label/value row: a bold `subtitle2` title next to `body2` ' +
-            'content, baseline-aligned.',
+            'A single label/value pair: a bold title stacked above its ' +
+            '`body-medium` content.',
           whenToUse:
-            'For simple inline “key: value” lines. For a full metadata block with ' +
+            'For simple stacked “key / value” lines. For a full metadata block with ' +
             'many rows and responsive key/value columns, prefer ' +
             '`StructuredMetadataList` instead.',
-          migration: 'mui-v4',
+          migration: 'bui',
         }),
       },
     },
