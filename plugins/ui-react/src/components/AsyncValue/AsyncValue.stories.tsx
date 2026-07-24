@@ -14,18 +14,18 @@ const meta = {
         component: componentDocs({
           summary:
             'Renders the three states of an asynchronously-loaded value from one ' +
-            'set of props: a loading `Progress` bar, an inline `ErrorStatus` (when ' +
-            '`errorMessage` is set), a `NotAvailable` marker (when the value is ' +
-            '`null`/`undefined`), or the value itself.',
+            'set of props: a loading `Skeleton` placeholder, an inline ' +
+            '`ErrorStatus` (when `errorMessage` is set), a `NotAvailable` marker ' +
+            '(when the value is `null`/`undefined`), or the value itself.',
           whenToUse:
             'Anywhere you render a single value fetched from an API and want ' +
             'consistent loading/error/empty handling without repeating the ' +
             'if/else in every cell. Pass a `children` render function to format ' +
             'the loaded value.',
-          migration: 'mixed',
+          migration: 'bui',
           extra:
-            'Built on MUI v4 `Box` for layout and `@backstage/core-components` ' +
-            '`Progress` for the loading bar.',
+            'The loading state renders a bui (`@backstage/ui`) `Skeleton`; the ' +
+            '`height` prop sets its height (default `24`).',
         }),
       },
     },
@@ -55,7 +55,9 @@ export const Loading: Story = {
   render: () => <AsyncValue value={undefined} isLoading />,
   parameters: {
     docs: {
-      description: { story: 'While loading, a slim `Progress` bar is shown.' },
+      description: {
+        story: 'While loading, a `Skeleton` placeholder is shown.',
+      },
     },
   },
 };
