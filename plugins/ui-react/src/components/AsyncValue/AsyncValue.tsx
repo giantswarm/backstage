@@ -1,10 +1,7 @@
 import { ReactNode } from 'react';
-import { Progress } from '@backstage/core-components';
-import { Box } from '@material-ui/core';
+import { Skeleton } from '@backstage/ui';
 import { ErrorStatus } from '../ErrorStatus';
 import { NotAvailable } from '../NotAvailable';
-
-const progressHeight = 4;
 
 const defaultRenderErrorFn = (errorMessage: string) => (
   <ErrorStatus errorMessage={errorMessage} />
@@ -38,14 +35,7 @@ export const AsyncValue = <T extends ReactNode>({
 
   return (
     <>
-      {isLoading && (
-        <Box
-          paddingTop={`${(height - progressHeight) / 2}px`}
-          height={`${height}px`}
-        >
-          <Progress />
-        </Box>
-      )}
+      {isLoading && <Skeleton height={height} />}
 
       {!isLoading && !errorMessage && renderValue()}
 
