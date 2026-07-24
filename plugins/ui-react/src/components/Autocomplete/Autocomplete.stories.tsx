@@ -40,18 +40,35 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// Small components so the interactive stories can own selection state (hooks
+// belong in a component, not a bare `render` callback).
+const SingleExample = () => {
+  const [value, setValue] = useState<string | null>('aws');
+  return (
+    <Autocomplete
+      label="Provider"
+      items={items}
+      selectedValue={value}
+      onChange={setValue}
+    />
+  );
+};
+
+const MultipleExample = () => {
+  const [values, setValues] = useState<string[]>(['aws', 'gcp']);
+  return (
+    <Autocomplete
+      label="Providers"
+      items={items}
+      selectedValue={values}
+      onChange={setValues}
+      multiple
+    />
+  );
+};
+
 export const Single: Story = {
-  render: () => {
-    const [value, setValue] = useState<string | null>('aws');
-    return (
-      <Autocomplete
-        label="Provider"
-        items={items}
-        selectedValue={value}
-        onChange={setValue}
-      />
-    );
-  },
+  render: () => <SingleExample />,
   parameters: {
     docs: {
       description: {
@@ -62,18 +79,7 @@ export const Single: Story = {
 };
 
 export const Multiple: Story = {
-  render: () => {
-    const [values, setValues] = useState<string[]>(['aws', 'gcp']);
-    return (
-      <Autocomplete
-        label="Providers"
-        items={items}
-        selectedValue={values}
-        onChange={setValues}
-        multiple
-      />
-    );
-  },
+  render: () => <MultipleExample />,
   parameters: {
     docs: {
       description: {

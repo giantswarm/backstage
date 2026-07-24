@@ -30,6 +30,7 @@
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build -o storybook-static",
     "storybook:coverage": "tsx scripts/check-story-coverage.mts",
+    "typecheck:storybook": "tsc -p tsconfig.storybook.json",
     "postinstall": "yarn patch-package",
     "prepare": "husky"
   },

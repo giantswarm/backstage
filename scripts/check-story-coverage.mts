@@ -26,6 +26,15 @@ const allowlistPath = join(
 /**
  * Component names barrel-exported by the library: every `export * from './X/Y'`
  * in components/index.ts contributes its last path segment (the component name).
+ *
+ * Invariant this relies on: each component directory is named after the
+ * component it exports (our repo convention — one component per directory,
+ * `ComponentName/ComponentName.tsx`). The gate therefore keys on the directory
+ * (path segment) rather than resolving the actual exported symbol. If a
+ * directory ever exports a differently-named component, this derivation — and
+ * the matching story-file name below — would need to resolve real exports
+ * instead. The `danglingStories` check in `checkStoryCoverage` guards the
+ * inverse (a story with no matching export).
  */
 function readExportedComponents(): string[] {
   const source = readFileSync(componentsIndex, 'utf8');
@@ -38,7 +47,13 @@ function readExportedComponents(): string[] {
   return [...names];
 }
 
-/** All `*.stories.tsx` files under the plugin, as component names. */
+/**
+ * All story files under the plugin, as component names. Matches both
+ * `*.stories.tsx` and `*.stories.ts` to stay in sync with the Storybook `stories`
+ * glob in `.storybook/main.ts` (`*.stories.@(ts|tsx)`).
+ */
+const STORY_FILE_RE = /\.stories\.tsx?$/;
+
 function readStoriedComponents(): string[] {
   const names = new Set<string>();
   const walk = (dir: string) => {
@@ -46,8 +61,8 @@ function readStoriedComponents(): string[] {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(full);
-      } else if (entry.name.endsWith('.stories.tsx')) {
-        names.add(entry.name.replace(/\.stories\.tsx$/, ''));
+      } else if (STORY_FILE_RE.test(entry.name)) {
+        names.add(entry.name.replace(STORY_FILE_RE, ''));
       }
     }
   };
@@ -102,7 +117,30 @@ if (result.staleAllowlist.length > 0) {
   );
 }
 
-if (result.undocumented.length > 0 || result.staleAllowlist.length > 0) {
+if (result.danglingStories.length > 0) {
+  console.error(
+    `\n✗ These stories have no matching exported ui-react component (dangling ` +
+      `after a rename/removal?):\n` +
+      result.danglingStories.map(name => `    - ${name}`).join('\n') +
+      `\n\n  Remove the stale story, or re-export the component from ` +
+      `plugins/ui-react/src/components/index.ts.`,
+  );
+}
+
+if (result.redundantAllowlist.length > 0) {
+  console.error(
+    `\n✗ These allowlist entries are redundant — the component now has a story:\n` +
+      result.redundantAllowlist.map(name => `    - ${name}`).join('\n') +
+      `\n\n  Remove them from .storybook/story-coverage-allowlist.json.`,
+  );
+}
+
+if (
+  result.undocumented.length > 0 ||
+  result.staleAllowlist.length > 0 ||
+  result.danglingStories.length > 0 ||
+  result.redundantAllowlist.length > 0
+) {
   process.exit(1);
 }
 

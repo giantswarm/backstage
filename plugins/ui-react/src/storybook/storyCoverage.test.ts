@@ -48,6 +48,29 @@ describe('checkStoryCoverage', () => {
     expect(isStoryCoverageComplete(result)).toBe(false);
   });
 
+  it('surfaces a dangling story whose component is no longer exported', () => {
+    const result = checkStoryCoverage({
+      exportedComponents: ['AsyncValue'],
+      storiedComponents: ['AsyncValue', 'RenamedAway'],
+      allowlist: [],
+    });
+
+    expect(result.danglingStories).toEqual(['RenamedAway']);
+    expect(isStoryCoverageComplete(result)).toBe(false);
+  });
+
+  it('surfaces an allowlist entry that is redundant because it has a story', () => {
+    const result = checkStoryCoverage({
+      exportedComponents: ['AsyncValue'],
+      storiedComponents: ['AsyncValue'],
+      allowlist: ['AsyncValue'],
+    });
+
+    expect(result.undocumented).toEqual([]);
+    expect(result.redundantAllowlist).toEqual(['AsyncValue']);
+    expect(isStoryCoverageComplete(result)).toBe(false);
+  });
+
   it('reports both undocumented components and stale allowlist entries together', () => {
     const result = checkStoryCoverage({
       exportedComponents: ['AsyncValue', 'InfoCard', 'CodeBlock'],

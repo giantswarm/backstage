@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
-import { MultipleSelect } from './MultipleSelect';
+import { MultipleSelect, type MultipleSelectProps } from './MultipleSelect';
 import { componentDocs } from '../../storybook/docs';
 
 const items = [
@@ -40,13 +40,17 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// A small component so the interactive story can own selection state (hooks
+// belong in a component, not a bare `render` callback).
+const MultipleSelectExample = (args: MultipleSelectProps) => {
+  const [selected, setSelected] = useState<string[]>(['ready']);
+  return (
+    <MultipleSelect {...args} selected={selected} onChange={setSelected} />
+  );
+};
+
 export const Interactive: Story = {
-  render: args => {
-    const [selected, setSelected] = useState<string[]>(['ready']);
-    return (
-      <MultipleSelect {...args} selected={selected} onChange={setSelected} />
-    );
-  },
+  render: args => <MultipleSelectExample {...args} />,
   parameters: {
     docs: {
       description: { story: 'A fully interactive, controlled checkbox group.' },

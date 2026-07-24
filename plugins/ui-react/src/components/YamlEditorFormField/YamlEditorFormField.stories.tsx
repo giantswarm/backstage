@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ComponentProps, useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import type { JSONSchema7 } from 'json-schema';
 import { YamlEditorFormField } from './YamlEditorFormField';
@@ -51,11 +51,17 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// A small component so the interactive story can own the edited value (hooks
+// belong in a component, not a bare `render` callback).
+const YamlEditorFormFieldExample = (
+  args: ComponentProps<typeof YamlEditorFormField>,
+) => {
+  const [value, setValue] = useState(args.value);
+  return <YamlEditorFormField {...args} value={value} onChange={setValue} />;
+};
+
 export const Interactive: Story = {
-  render: args => {
-    const [value, setValue] = useState(args.value);
-    return <YamlEditorFormField {...args} value={value} onChange={setValue} />;
-  },
+  render: args => <YamlEditorFormFieldExample {...args} />,
   parameters: {
     docs: {
       description: {

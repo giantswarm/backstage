@@ -2,7 +2,7 @@ import { ReactNode, useMemo } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { ConfigReader } from '@backstage/config';
 import { configApiRef, errorApiRef } from '@backstage/core-plugin-api';
-import { TestApiProvider } from '@backstage/test-utils';
+import { MockErrorApi, TestApiProvider } from '@backstage/test-utils';
 import { createUnifiedTheme, UnifiedThemeProvider } from '@backstage/theme';
 import type { Decorator } from '@storybook/react';
 // Reuse the *real* app palette-building logic so stories render in the exact
@@ -22,12 +22,9 @@ const themes = {
   dark: createUnifiedTheme({ palette: buildPalette(emptyConfig, 'dark') }),
 };
 
-// A no-op ErrorApi so components that report copy/errors (e.g. CodeBlock) can
-// resolve `errorApiRef` without a real app.
-const errorApi = {
-  post: () => {},
-  error$: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }) as any,
-};
+// A real (test) ErrorApi so components that report errors (e.g. CodeBlock's
+// copy-failure path) can resolve `errorApiRef` without a full app.
+const errorApi = new MockErrorApi();
 
 function Providers({
   children,

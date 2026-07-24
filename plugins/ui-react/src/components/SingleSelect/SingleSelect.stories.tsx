@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
-import { SingleSelect } from './SingleSelect';
+import { SingleSelect, type SingleSelectProps } from './SingleSelect';
 import { componentDocs } from '../../storybook/docs';
 
 const items = [
@@ -40,13 +40,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// A small component so the interactive story can own selection state (hooks
+// belong in a component, not a bare `render` callback).
+const SingleSelectExample = (args: SingleSelectProps) => {
+  const [selected, setSelected] = useState<string | null>('aws');
+  return <SingleSelect {...args} selected={selected} onChange={setSelected} />;
+};
+
 export const Interactive: Story = {
-  render: args => {
-    const [selected, setSelected] = useState<string | null>('aws');
-    return (
-      <SingleSelect {...args} selected={selected} onChange={setSelected} />
-    );
-  },
+  render: args => <SingleSelectExample {...args} />,
   parameters: {
     docs: {
       description: { story: 'A fully interactive, controlled radio group.' },

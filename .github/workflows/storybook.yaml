@@ -5,12 +5,32 @@
 # Hand-authored (not devctl-generated), so it is safe to edit here.
 name: Storybook
 
+# Only the ui-react library, the Storybook config/tooling, and dependency
+# manifests affect this site — so scope the PR/push triggers to those paths and
+# don't make unrelated (e.g. backend-only) PRs pay for a full install + build.
+# merge_group is left unscoped so the merge queue always gets a green signal.
 on:
   pull_request:
+    paths:
+      - 'plugins/ui-react/**'
+      - '.storybook/**'
+      - 'scripts/check-story-coverage.mts'
+      - 'tsconfig.storybook.json'
+      - '.github/workflows/storybook.yaml'
+      - 'package.json'
+      - 'yarn.lock'
   merge_group:
   push:
     branches:
       - main
+    paths:
+      - 'plugins/ui-react/**'
+      - '.storybook/**'
+      - 'scripts/check-story-coverage.mts'
+      - 'tsconfig.storybook.json'
+      - '.github/workflows/storybook.yaml'
+      - 'package.json'
+      - 'yarn.lock'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +55,8 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --immutable
+      - name: Type-check Storybook config and scripts
+        run: yarn typecheck:storybook
       - name: Check story coverage
         run: yarn storybook:coverage
       - name: Build Storybook

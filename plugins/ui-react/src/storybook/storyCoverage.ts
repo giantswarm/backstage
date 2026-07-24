@@ -30,6 +30,18 @@ export interface StoryCoverageResult {
    * allowlist can't hide stale entries after a component is renamed/removed.
    */
   staleAllowlist: string[];
+  /**
+   * Stories whose component is no longer exported (e.g. a story left behind
+   * after a component was renamed or removed) — a failure, so the story set
+   * can't silently drift out of sync with the barrel.
+   */
+  danglingStories: string[];
+  /**
+   * Allowlist entries whose component actually has a story — a failure, so the
+   * allowlist stays a list of genuine exceptions rather than accumulating
+   * entries that no longer need excusing.
+   */
+  redundantAllowlist: string[];
 }
 
 export function checkStoryCoverage(
@@ -47,10 +59,23 @@ export function checkStoryCoverage(
     .filter(name => !exported.has(name))
     .sort();
 
-  return { undocumented, staleAllowlist };
+  const danglingStories = [...storied]
+    .filter(name => !exported.has(name))
+    .sort();
+
+  const redundantAllowlist = [...allowlisted]
+    .filter(name => storied.has(name))
+    .sort();
+
+  return { undocumented, staleAllowlist, danglingStories, redundantAllowlist };
 }
 
-/** True when every exported component is documented and the allowlist is clean. */
+/** True when every exported component is documented and nothing has drifted. */
 export function isStoryCoverageComplete(result: StoryCoverageResult): boolean {
-  return result.undocumented.length === 0 && result.staleAllowlist.length === 0;
+  return (
+    result.undocumented.length === 0 &&
+    result.staleAllowlist.length === 0 &&
+    result.danglingStories.length === 0 &&
+    result.redundantAllowlist.length === 0
+  );
 }
