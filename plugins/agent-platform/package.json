@@ -53,7 +53,7 @@
     "@backstage/dev-utils": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
     "@backstage/test-utils": "backstage:^",
-    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.6.0",
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.6.1",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.0.0",
