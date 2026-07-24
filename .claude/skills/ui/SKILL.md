@@ -55,6 +55,26 @@ header/footer action slots. Prefer it over hand-rolling a bui `Card` or the
 core-components `InfoCard` for new cards. Source:
 `plugins/ui-react/src/components/InfoCard/InfoCard.tsx`.
 
+### Code blocks: use the shared `CodeBlock`
+
+`@giantswarm/backstage-plugin-ui-react` exports a `CodeBlock` that renders a
+monospace `<pre>` with a neutral copy-to-clipboard button (bui `ButtonIcon`,
+`tertiary` variant) aligned to the top-right corner, plus a "Copy"/"Copied"
+tooltip. Prefer it over hand-rolling a code block or reaching for
+core-components' `CopyTextButton` — that button renders an oversized,
+primary-colored `ButtonIcon` that needs margin hacks to sit right. Source:
+`plugins/ui-react/src/components/CodeBlock/CodeBlock.tsx`.
+
+### Overriding bui component sizes
+
+bui components size themselves via **data-attribute selectors** (e.g.
+`.bui-ButtonIcon[data-size="small"]` sets a fixed 32px square). Those selectors
+out-specify a plain `makeStyles` class, so a MUI-style `height`/`width` override
+silently doesn't take — bump specificity with `!important` (or `&&`). The icon
+inside is sized separately and renders larger than body text, so shrink it with a
+nested rule: `'& svg': { width: '1rem', height: '1rem' }`. `CodeBlock.tsx` is a
+worked example of both.
+
 ### Tables: see the `tables` skill
 
 The bui `Table` (data-driven `columnConfig` + `data`, cells must return

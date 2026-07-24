@@ -11093,6 +11093,7 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@codemirror/autocomplete": "npm:^6.20.0"
     "@codemirror/commands": "npm:^6.10.0"

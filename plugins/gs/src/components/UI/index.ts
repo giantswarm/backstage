@@ -3,7 +3,7 @@ export { AboutFieldValue } from './AboutFieldValue';
 export { Account } from './Account';
 export { ApplicationLink } from './ApplicationLink';
 export { ClusterLink } from './ClusterLink';
-export { CodeBlock } from './CodeBlock';
+export { CodeBlock } from '@giantswarm/backstage-plugin-ui-react';
 export { CollapsibleMarkdownCard } from './CollapsibleMarkdownCard';
 export { ColorWrapper } from './ColorWrapper';
 export { ContentRow } from './ContentRow';
