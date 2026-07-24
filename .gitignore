@@ -83,3 +83,7 @@ CLAUDE.local.md
 
 # graphify knowledge graph (regenerable, rebuilt by the post-commit hook)
 graphify-out/
+
+# Storybook build output
+storybook-static/
+*.storybook.log

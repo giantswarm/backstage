@@ -1,0 +1,19 @@
+{
+  "//": "Type-checks the Storybook config (.storybook/**) and the coverage-gate script (scripts/**). These live outside the root tsconfig's `include` (packages/*/src, plugins/*/src), so `yarn tsc`/`ci:verify` never checks them, and the coverage script is executed via tsx (type-stripped). Run via `yarn typecheck:storybook` and in the Storybook CI workflow so type errors here fail fast instead of only surfacing at `storybook:build` (or never, for the script).",
+  "extends": "@backstage/cli/config/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "incremental": false,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "types": ["node"]
+  },
+  "include": [
+    ".storybook/**/*.ts",
+    ".storybook/**/*.tsx",
+    "scripts/**/*.ts",
+    "scripts/**/*.mts"
+  ]
+}

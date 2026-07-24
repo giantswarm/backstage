@@ -9,7 +9,7 @@ const progressHeight = 4;
 const defaultRenderErrorFn = (errorMessage: string) => (
   <ErrorStatus errorMessage={errorMessage} />
 );
-interface AsyncValueProps<T> {
+export interface AsyncValueProps<T> {
   children?: (value: NonNullable<T>) => ReactNode;
   renderError?: (message: string) => ReactNode;
   renderNotAvailable?: ReactNode;

@@ -83,14 +83,45 @@ documented in depth in the **`tables`** skill, including the choice matrix and
 gotchas (loading skeleton needs `data={undefined}`). Read that skill for anything
 table-related; don't duplicate it here.
 
-## Reading Backstage Storybook source
+## Our shared library: the `ui-react` Storybook
 
-The [Backstage Storybook](https://backstage.io/storybook/) renders components
-from the upstream **`backstage/backstage` monorepo** — stories are `.stories.tsx`
-files colocated with their components. There is **no separate storybook repo**,
-and we do **not** run a local storybook. To learn a pattern (how a page/card is
-composed, what props a bui component takes), read the story + component source
-directly.
+Before hand-rolling a component, check whether
+`@giantswarm/backstage-plugin-ui-react` already has one. It is **fully documented
+in its own Storybook** — the canonical reference for what the shared library
+contains and how each piece is meant to be used.
+
+- **In-repo stories are the source of truth.** Each shared component has a
+  co-located story: `plugins/ui-react/src/**/*.stories.tsx`. **Read the story as
+  the authoritative usage example** rather than guessing from the component
+  source. Every story also records a **migration-status note** (MUI v4 vs bui, via
+  `plugins/ui-react/src/storybook/docs.ts`) — use it to avoid extending a
+  deprecated MUI v4 component when bui is preferred.
+- **Hosted site (for humans):** published to GitHub Pages on merge to `main`
+  (`https://giantswarm.github.io/backstage/`) — link to a component in reviews.
+- **Run it locally:** `yarn storybook` (dev server on
+  [http://localhost:6006](http://localhost:6006)); `yarn storybook:build` for a
+  static build. The theme toolbar toggles the real GS light/dark themes.
+- **Coverage gate:** every exported visual component must have a story
+  (`yarn storybook:coverage`, enforced in CI); config lives in the root
+  `.storybook/`. See `plugins/ui-react/README.md` for the full component/hook/util
+  inventory.
+
+Components confirmed to live here (prefer them over rebuilding): `InfoCard`,
+`CodeBlock` (both covered above), plus `AsyncValue`, `DateComponent`,
+`ExternalLink`, `GSMarkdownContent`, `JsonHighlight`, `StructuredMetadataList`,
+the select/filter controls (`SingleSelect`, `MultipleSelect`, `Autocomplete`,
+`MultiplePicker`, `display/FiltersLayout`), `YamlEditor`/`YamlEditorFormField`,
+`StackedBarChart`, and more.
+
+## Reading upstream Backstage (bui) Storybook source
+
+The [Backstage Storybook](https://backstage.io/storybook/) renders **upstream
+bui** components from the **`backstage/backstage` monorepo** — stories are
+`.stories.tsx` files colocated with their components. There is **no separate
+upstream storybook repo**, and we do **not** run the upstream bui storybook
+locally (that's distinct from our own `ui-react` Storybook above). To learn a bui
+pattern (how a page/card is composed, what props a bui component takes), read the
+story + component source directly.
 
 ### The reliable technique: `index.json` → `importPath` → GitHub raw
 

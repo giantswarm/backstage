@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDate, getRelativeDate, parseDate } from './utils';
 import { Tooltip, Typography } from '@material-ui/core';
 
-interface IDateProps extends React.ComponentPropsWithoutRef<typeof Typography> {
+export interface IDateProps extends React.ComponentPropsWithoutRef<
+  typeof Typography
+> {
   value: string | Date | null | undefined;
   relative?: boolean;
   tooltip?: boolean;
