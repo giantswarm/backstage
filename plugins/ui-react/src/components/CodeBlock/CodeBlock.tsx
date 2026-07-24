@@ -3,6 +3,7 @@ import { Box, makeStyles } from '@material-ui/core';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import CheckIcon from '@material-ui/icons/Check';
 import { ButtonIcon, Tooltip, TooltipTrigger } from '@backstage/ui';
+import { errorApiRef, useApi } from '@backstage/core-plugin-api';
 import useCopyToClipboard from 'react-use/esm/useCopyToClipboard';
 
 const useStyles = makeStyles(theme => ({
@@ -12,10 +13,7 @@ const useStyles = makeStyles(theme => ({
   },
   codeBlock: {
     margin: 0,
-    // Leave room on the right so long single-line content doesn't run under
-    // the copy button.
     padding: theme.spacing(1),
-    paddingRight: theme.spacing(5),
     backgroundColor: theme.palette.type === 'dark' ? '#444' : '#f5f5f5',
     color: theme.palette.type === 'dark' ? '#ddd' : '#333',
     borderRadius: 4,
@@ -24,6 +22,11 @@ const useStyles = makeStyles(theme => ({
     lineHeight: 1.6,
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
+  },
+  // Extra right padding so long single-line content doesn't run under the copy
+  // button — only needed when the button is actually rendered.
+  withCopyButton: {
+    paddingRight: theme.spacing(5),
   },
   copyButton: {
     position: 'absolute',
@@ -35,8 +38,6 @@ const useStyles = makeStyles(theme => ({
     // inside the block; `!important` overrides bui's own height/width rules.
     width: '1.5rem !important',
     height: '1.5rem !important',
-    minWidth: 'unset',
-    minHeight: 'unset',
     // Shrink the icon itself to roughly body-text size.
     '& svg': {
       width: '1rem',
@@ -60,9 +61,18 @@ export const CodeBlock = ({
   transparent = false,
 }: CodeBlockProps) => {
   const classes = useStyles();
+  const errorApi = useApi(errorApiRef);
   const [copied, setCopied] = useState(false);
   const [{ error }, copyToClipboard] = useCopyToClipboard();
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Surface a copy failure the same way Backstage's CopyTextButton does, rather
+  // than silently reverting to "Copy".
+  useEffect(() => {
+    if (error) {
+      errorApi.post(error);
+    }
+  }, [error, errorApi]);
 
   useEffect(() => {
     return () => {
@@ -86,7 +96,11 @@ export const CodeBlock = ({
   return (
     <Box className={classes.root}>
       <pre
-        className={classes.codeBlock}
+        className={
+          copyEnabled
+            ? `${classes.codeBlock} ${classes.withCopyButton}`
+            : classes.codeBlock
+        }
         style={transparent ? { backgroundColor: 'transparent' } : undefined}
       >
         {text}
