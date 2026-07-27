@@ -1,0 +1,39 @@
+{
+  "error": false,
+  "data": [
+    {
+      "id": "sess-user-1",
+      "name": "Investigating a flak...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T16:04:28.586641Z",
+      "updated_at": "2026-07-23T16:09:58.162014Z",
+      "agent_id": "kagent__NS__sre_agent",
+      "deleted_at": "",
+      "source": "user",
+      "share_token": null,
+      "share_read_only": null,
+      "read_only": false,
+      "labels": { "team": "sre" },
+      "metadata": { "nested": { "deeply": true } }
+    },
+    {
+      "id": "sess-subagent-1",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T15:00:00.000000Z",
+      "updated_at": "2026-07-23T15:01:00.000000Z",
+      "agent_id": "kagent__NS__issue_tracker",
+      "source": "agent",
+      "read_only": true
+    },
+    {
+      "id": "sess-nosource-1",
+      "name": "No source field at a...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-22T09:33:17.279076Z",
+      "updated_at": "2026-07-22T11:05:20.102739Z",
+      "agent_id": "kagent__NS__mega_k8s_sre",
+      "state": "archived"
+    }
+  ],
+  "message": "Successfully listed sessions"
+}

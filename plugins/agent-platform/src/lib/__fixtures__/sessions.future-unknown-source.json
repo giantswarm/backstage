@@ -1,0 +1,15 @@
+{
+  "error": false,
+  "data": [
+    {
+      "id": "sess-scheduled-1",
+      "name": "Nightly cost sweep",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T16:04:28.586641Z",
+      "updated_at": "2026-07-23T16:09:58.162014Z",
+      "agent_id": "kagent__NS__sre_agent",
+      "source": "scheduled"
+    }
+  ],
+  "message": "Successfully listed sessions"
+}

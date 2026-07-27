@@ -1,10 +1,18 @@
 import {
+  ApiBlueprint,
   createFrontendPlugin,
+  discoveryApiRef,
+  fetchApiRef,
   PageBlueprint,
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
+import {
+  kubernetesApiRef,
+  kubernetesAuthProvidersApiRef,
+} from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
 
+import { KagentApiClient, kagentApiRef } from './apis';
 import {
   agentsRouteRef,
   newAgentReviewRouteRef,
@@ -47,9 +55,29 @@ const agentsSubPage = SubPageBlueprint.make({
   },
 });
 
+// Client for the kagent REST API, via the agent-platform-backend proxy. The
+// kubernetes APIs are dependencies because each installation's Dex ID token is
+// minted through them (kubernetesApi.getCluster →
+// kubernetesAuthProvidersApi.getCredentials), the same way the agent deploy flow
+// mints its scaffolder secret.
+const kagentApi = ApiBlueprint.make({
+  name: 'kagent',
+  params: defineParams =>
+    defineParams({
+      api: kagentApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+        kubernetesApi: kubernetesApiRef,
+        kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+      },
+      factory: deps => new KagentApiClient(deps),
+    }),
+});
+
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
-  extensions: [agentPlatformPage, agentsSubPage],
+  extensions: [agentPlatformPage, agentsSubPage, kagentApi],
   routes: {
     root: rootRouteRef,
     agents: agentsRouteRef,

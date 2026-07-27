@@ -1,0 +1,14 @@
+{
+  "error": false,
+  "data": [
+    {
+      "id": "sess-zero-time",
+      "name": "Never updated",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "0001-01-01T00:00:00Z",
+      "updated_at": "0001-01-01T00:00:00Z",
+      "agent_id": "kagent__NS__sre_agent"
+    }
+  ],
+  "message": "Successfully listed sessions"
+}

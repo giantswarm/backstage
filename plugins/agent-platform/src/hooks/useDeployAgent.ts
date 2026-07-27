@@ -5,6 +5,7 @@ import {
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
 import { scaffolderApiRef } from '@backstage/plugin-scaffolder-react';
+import { getInstallationOidcToken } from '../lib/installationOidcToken';
 
 const DEFAULT_DEPLOY_TEMPLATE_REF = 'template:default/agent-deployment';
 
@@ -55,24 +56,11 @@ export function useDeployAgent() {
       try {
         setStatus({ phase: 'authenticating' });
 
-        const cluster = await kubernetesApi.getCluster(installation);
-        if (!cluster) {
-          throw new Error(
-            `Installation "${installation}" is not known to the Kubernetes API.`,
-          );
-        }
-
-        const { authProvider, oidcTokenProvider } = cluster;
-        const { token } = await kubernetesAuthProvidersApi.getCredentials(
-          authProvider === 'oidc'
-            ? `${authProvider}.${oidcTokenProvider}`
-            : authProvider,
+        const token = await getInstallationOidcToken(
+          kubernetesApi,
+          kubernetesAuthProvidersApi,
+          installation,
         );
-        if (!token) {
-          throw new Error(
-            `Could not obtain an access token for "${installation}". You may need to log in to that installation first.`,
-          );
-        }
 
         setStatus({ phase: 'submitting' });
 

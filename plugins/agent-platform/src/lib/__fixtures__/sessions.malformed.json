@@ -1,0 +1,16 @@
+{
+  "error": false,
+  "data": [
+    {
+      "id": "sess-weird-types",
+      "name": 42,
+      "user_id": "marian@giantswarm.io",
+      "created_at": "not-a-date",
+      "updated_at": "2026-07-23T16:09:58.162014Z",
+      "agent_id": {}
+    },
+    {},
+    null
+  ],
+  "message": "Successfully listed sessions"
+}
