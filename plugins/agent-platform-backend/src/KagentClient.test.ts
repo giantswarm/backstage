@@ -107,6 +107,23 @@ describe('readKagentInstallationsFromConfig', () => {
     expect(result.get('local')?.apiBaseUrl).toBe('http://localhost:8083/api');
   });
 
+  it.each([
+    ['a scheme-less host', 'kagent.example.io/api'],
+    ['a protocol-relative URL', '//kagent.example.io/api'],
+    ['a bare path', '/api'],
+    ['a non-http scheme', 'ftp://kagent.example.io/api'],
+    ['nonsense', 'not a url'],
+  ])('skips an installation whose apiBaseUrl is %s', (_label, apiBaseUrl) => {
+    // Caught at startup with one clear message rather than failing opaquely on
+    // every request.
+    const result = read({
+      gs: { installations: { golem: {} } },
+      agentPlatform: { kagent: { installations: { golem: { apiBaseUrl } } } },
+    });
+
+    expect(result.size).toBe(0);
+  });
+
   it('strips trailing slashes', () => {
     const result = read({
       gs: { installations: { golem: {} } },
@@ -169,25 +186,29 @@ describe('KagentClient', () => {
   it('omits the Authorization header when no token is given', async () => {
     const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
 
-    await build(fetchFn).getVersion({});
+    await build(fetchFn).getMe({});
 
     expect(fetchFn.mock.calls[0][1].headers).toEqual({
       Accept: 'application/json',
     });
   });
 
-  it('resolves /version against the origin, not under /api', async () => {
-    // kagent serves /version at the server root (APIPathVersion), so appending
-    // it to the configured base URL would 404.
-    const fetchFn = jest
-      .fn()
-      .mockResolvedValue(jsonResponse({ kagent_version: '0.9.9' }));
+  it('only ever requests paths under the configured API base URL', async () => {
+    // Everything must stay under `/api`: that is the only prefix either door
+    // proxies to the controller. The derived door's nginx sends `/` to the
+    // kagent UI, and the agentgateway override only matches `/kagent` — so a
+    // root-relative path (as a `/version` probe would need) never reaches
+    // kagent at all.
+    // A fresh Response per call: a body can only be read once.
+    const fetchFn = jest.fn().mockImplementation(async () => jsonResponse({}));
+    const client = build(fetchFn);
 
-    await build(fetchFn).getVersion({ userToken: 't' });
+    await client.listSessions({ userToken: 't' });
+    await client.getMe({ userToken: 't' });
 
-    expect(fetchFn.mock.calls[0][0]).toBe(
-      'https://kagent.gazelle.example.io/version',
-    );
+    for (const [url] of fetchFn.mock.calls) {
+      expect(url).toMatch(/^https:\/\/kagent\.gazelle\.example\.io\/api\//);
+    }
   });
 
   it('requests /me under the API base URL', async () => {
@@ -268,6 +289,51 @@ describe('KagentClient', () => {
       await expect(
         build(fetchFn).listSessions({ userToken: 't' }),
       ).rejects.toThrow(/gazelle/);
+    });
+
+    describe('failures while reading the body', () => {
+      // The abort signal stays armed after the headers arrive, so the body read
+      // is a second chance to fail. These must map to the same 503 the frontend
+      // keys off, not escape as an unmapped 500.
+      function respondWithBodyError(error: Error) {
+        return jest.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => {
+            throw error;
+          },
+        } as unknown as Response);
+      }
+
+      it('maps a mid-stream abort to ServiceUnavailableError', async () => {
+        const abortError = new Error('The operation was aborted');
+        abortError.name = 'AbortError';
+
+        await expect(
+          build(respondWithBodyError(abortError)).listSessions({
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+      });
+
+      it('maps invalid or truncated JSON to ServiceUnavailableError', async () => {
+        const syntaxError = new SyntaxError('Unexpected end of JSON input');
+
+        await expect(
+          build(respondWithBodyError(syntaxError)).listSessions({
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+      });
+
+      it('maps a connection reset mid-body to ServiceUnavailableError', async () => {
+        await expect(
+          build(respondWithBodyError(new Error('ECONNRESET'))).listSessions({
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+      });
     });
   });
 });

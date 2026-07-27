@@ -67,6 +67,16 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+/** Whether a configured URL is absolute and http(s), so `fetch` can use it. */
+function isAbsoluteHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Resolve the installations this proxy can target, keyed by name.
  *
@@ -112,6 +122,17 @@ export function readKagentInstallationsFromConfig(
       continue;
     }
 
+    // Reject a non-absolute URL here rather than letting it fail per request:
+    // an operator omitting the scheme would otherwise surface as an opaque
+    // fetch failure on every call instead of one clear message at startup.
+    if (!isAbsoluteHttpUrl(apiBaseUrl)) {
+      logger.warn(
+        `Skipping kagent proxy for installation '${name}': apiBaseUrl must be an absolute http(s) URL.`,
+        { apiBaseUrl },
+      );
+      continue;
+    }
+
     result.set(name, {
       name,
       apiBaseUrl: stripTrailingSlash(apiBaseUrl),
@@ -144,18 +165,23 @@ export class KagentClient {
     return this.request(`${this.installation.apiBaseUrl}/sessions`, options);
   }
 
-  /**
-   * `GET <origin>/version`.
-   *
-   * NOTE: kagent serves `/version` at the **server root**, not under `/api`
-   * (see `APIPathVersion` in kagent's `internal/httpserver/server.go`), so this
-   * resolves against the origin rather than appending to the configured base
-   * URL — otherwise it 404s.
-   */
-  async getVersion(options: KagentRequestOptions): Promise<unknown> {
-    const url = new URL('/version', this.installation.apiBaseUrl).toString();
-    return this.request(url, options);
-  }
+  // There is deliberately no version probe. kagent serves `/version` at the
+  // server root (`APIPathVersion`), not under `/api`, and neither door we
+  // support routes the root to the controller:
+  //
+  // - The derived door's nginx sidecar (`helm/kagent/files/nginx.conf`) proxies
+  //   only `location /api/` to `kagent-controller:8083`; `location /` goes to
+  //   the kagent UI, which answers with HTML — which our non-JSON guard would
+  //   then report as a sign-in page on a perfectly healthy installation.
+  // - The agentgateway override matches on the `/kagent` path prefix, so a
+  //   root-relative `/version` does not match its HTTPRoute at all.
+  //
+  // Nothing under `/api` exposes the controller version either (the `Version`
+  // fields in `/api/substrate/status` are per-actor, not the controller's), so
+  // there is nothing reachable to probe. Version *tolerance* does not depend on
+  // this — it lives in the frontend's permissive parsing. If a future feature
+  // needs version gating, probe by behaviour (call a version-specific endpoint
+  // and treat 404 as "absent") rather than by version string.
 
   /**
    * `GET <apiBaseUrl>/me` — the identity kagent resolved for the forwarded
@@ -243,6 +269,21 @@ export class KagentClient {
       );
     }
 
-    return response.json();
+    // Reading the body is a second chance to fail: the abort signal is still
+    // armed after the headers arrive, so a slow or large response can abort
+    // mid-stream, the connection can reset, or the body can be truncated /
+    // invalid JSON. All of those are transport failures and must map to the
+    // same 503 the frontend keys off — not escape as an unmapped 500.
+    try {
+      return await response.json();
+    } catch (error) {
+      this.logger.debug(
+        `Failed to read the kagent API response body for installation '${this.installation.name}'`,
+        { error: String(error) },
+      );
+      throw new ServiceUnavailableError(
+        `Could not read the response from the kagent API for installation '${this.installation.name}'.`,
+      );
+    }
   }
 }

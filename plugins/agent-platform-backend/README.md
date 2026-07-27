@@ -28,11 +28,32 @@ All routes are under `/api/agent-platform` and require `?installation=<name>`.
 | `GET /health`               | —        | `{ status, configured }` — how many installations resolved |
 | `GET /kagent/installations` | —        | Names of installations kagent can be proxied for           |
 | `GET /kagent/sessions`      | required | The user's sessions, kagent's JSON verbatim                |
-| `GET /kagent/version`       | optional | Version probe for capability negotiation                   |
 | `GET /kagent/me`            | optional | Identity probe (see Diagnosing below)                      |
 
 The user token is read from the `backstage-kagent-authorization` header, which
 must match `KAGENT_AUTH_HEADER` in `plugins/agent-platform`.
+
+Every kagent-side path stays under `/api`, because that is the only prefix either
+door proxies to the controller.
+
+### Why there is no version endpoint
+
+kagent serves `/version` at its **server root**, not under `/api`, and neither
+door routes the root to the controller:
+
+- The derived door's nginx sidecar (`helm/kagent/files/nginx.conf`) proxies only
+  `location /api/` to `kagent-controller:8083`. `location /` goes to the kagent
+  UI, which answers with HTML — so a probe would surface as a sign-in page on a
+  perfectly healthy installation.
+- The agentgateway override matches on the `/kagent` path prefix, so a
+  root-relative `/version` never matches its HTTPRoute.
+
+Nothing under `/api` exposes the controller version either (the `Version` fields
+in `/api/substrate/status` are per-actor, not the controller's). Version
+_tolerance_ does not depend on this — it lives in the frontend's permissive
+parsing. If a future feature needs version gating, probe by behaviour (call a
+version-specific endpoint and treat a 404 as "absent") rather than by version
+string, or have the platform expose `/version` through the ingress.
 
 ### Deliberately a verbatim proxy
 

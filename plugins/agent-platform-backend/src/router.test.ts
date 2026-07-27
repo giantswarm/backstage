@@ -17,12 +17,10 @@ const twoInstallations = {
 
 describe('createRouter', () => {
   const listSessions = jest.fn();
-  const getVersion = jest.fn();
   const getMe = jest.fn();
 
   const mockClient = {
     listSessions,
-    getVersion,
     getMe,
   } as unknown as KagentClient;
 
@@ -51,7 +49,6 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     listSessions.mockReset();
-    getVersion.mockReset();
     getMe.mockReset();
     app = await buildApp();
   });
@@ -219,29 +216,15 @@ describe('createRouter', () => {
     });
   });
 
-  describe('GET /kagent/version', () => {
-    it('works without a user token', async () => {
-      getVersion.mockResolvedValue({ kagent_version: '0.9.9' });
+  it('exposes no version route', async () => {
+    // kagent's /version lives at the server root, which neither supported door
+    // proxies to the controller, so a probe would fail on every healthy
+    // installation. Asserted so the route is not reintroduced casually.
+    const response = await request(app)
+      .get('/kagent/version')
+      .query({ installation: 'gazelle' });
 
-      const response = await request(app)
-        .get('/kagent/version')
-        .query({ installation: 'gazelle' });
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ kagent_version: '0.9.9' });
-      expect(getVersion).toHaveBeenCalledWith({ userToken: undefined });
-    });
-
-    it('forwards the token when one is present', async () => {
-      getVersion.mockResolvedValue({ kagent_version: '0.9.9' });
-
-      await request(app)
-        .get('/kagent/version')
-        .query({ installation: 'gazelle' })
-        .set(KAGENT_AUTH_HEADER, 'user-token');
-
-      expect(getVersion).toHaveBeenCalledWith({ userToken: 'user-token' });
-    });
+    expect(response.status).toBe(404);
   });
 
   describe('GET /kagent/me', () => {

@@ -157,20 +157,10 @@ export async function createRouter(
     res.json(result);
   });
 
-  /**
-   * Version probe, used for per-installation capability negotiation. The token
-   * is forwarded when available but not required: kagent's `/version` is
-   * unauthenticated in-process, so this still works if a deployment ever puts
-   * it outside the oauth2-proxy, and a token-mint failure never turns the probe
-   * into a hard 401.
-   */
-  router.get('/kagent/version', async (req, res) => {
-    const { client } = resolveInstallation(req);
-    const result = await client.getVersion({
-      userToken: readUserToken(req, { required: false }),
-    });
-    res.json(result);
-  });
+  // There is no version route. kagent serves `/version` at the server root, and
+  // neither supported door proxies the root to the controller — the derived
+  // door's nginx sends `/` to the kagent UI, and the agentgateway override only
+  // matches the `/kagent` prefix. See the comment in KagentClient for details.
 
   /**
    * Identity probe. Diagnoses the two ways a correct-looking sessions list can

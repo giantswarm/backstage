@@ -8,10 +8,15 @@ Platform "Sessions" list needs — kagent sessions live in kagent's Postgres and
 are served over HTTP, so unlike agents and model configs they are not
 Kubernetes resources and the Kubernetes proxy cannot reach them.
 
-- `GET /kagent/sessions` (user token required), plus `/kagent/version` and
-  `/kagent/me` probes (token optional) and `/kagent/installations`, which
-  returns names only — the kagent URL is derived from `baseDomain`, which is
-  backend-only because it deanonymizes customers.
+- `GET /kagent/sessions` (user token required), plus a `/kagent/me` identity
+  probe (token optional) and `/kagent/installations`, which returns names only —
+  the kagent URL is derived from `baseDomain`, which is backend-only because it
+  deanonymizes customers.
+- Every kagent-side path stays under `/api`, the only prefix either door proxies
+  to the controller. There is deliberately no version probe: kagent serves
+  `/version` at its server root, which the derived door's nginx sends to the
+  kagent UI (HTML) and which the agentgateway override's `/kagent` prefix never
+  matches, so a probe would fail on every healthy installation.
 - The base URL is derived per installation as `https://kagent.<baseDomain>/api`
   (the oauth2-proxy-fronted host, whose nginx sidecar proxies `/api/` to
   `kagent-controller:8083`), overridable via
@@ -29,4 +34,9 @@ Bearer` toward kagent, whose `trusted-proxy` auth mode derives the user from
   release.
 - Transport failures map to typed errors: an oauth2-proxy redirect or a non-JSON
   200 (a sign-in page) becomes a 401 rather than being followed, a missing
-  kagent becomes a 404, and DNS/TLS/timeout failures become a 503.
+  kagent becomes a 404, and DNS/TLS/timeout failures become a 503. Body reads are
+  covered by the same mapping, since the abort signal stays armed after the
+  headers arrive — a mid-stream abort, a connection reset, or truncated JSON is
+  still a 503 rather than an unmapped 500.
+- A configured `apiBaseUrl` that is not an absolute http(s) URL is rejected at
+  startup with one clear message, instead of failing opaquely on every request.
