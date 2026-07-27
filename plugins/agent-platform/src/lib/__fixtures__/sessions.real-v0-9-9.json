@@ -1,0 +1,86 @@
+{
+  "error": false,
+  "data": [
+    {
+      "id": "f43d209450a0c9574e4e5a8d77265f37bf5a09a5c35f1a4598787ae33d2d2fe1",
+      "name": "What issues are assi...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T16:04:28.586641Z",
+      "updated_at": "2026-07-23T16:09:58.162014Z",
+      "agent_id": "kagent__NS__issue_tracker"
+    },
+    {
+      "id": "081e306e2802c4481f819eb71290ef9c4cc656f35df1125ec5cd429623b28e91",
+      "name": "Is backstage on gaze...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T16:02:41.330105Z",
+      "updated_at": "2026-07-23T16:03:21.864521Z",
+      "agent_id": "kagent__NS__sre_agent"
+    },
+    {
+      "id": "5c237d85438fecd736388ce3df21a87d860b16b94f0e1a2dd7ac96d2840b7aaa",
+      "name": "Are you there?",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T13:48:52.684794Z",
+      "updated_at": "2026-07-23T14:27:10.344025Z",
+      "agent_id": "kagent__NS__emoji_explosion"
+    },
+    {
+      "id": "9ec8356c5469fb96177a7c354a78eb4469190623c20ebb5cf2282fc7d44ae5e2",
+      "name": "[message from quenti...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T11:52:34.961733Z",
+      "updated_at": "2026-07-23T11:54:12.942535Z",
+      "agent_id": "kagent__NS__sre_agent"
+    },
+    {
+      "id": "6072c9c1e8f8219e49805c6d3193303bfc84dc5da704e7af592001baa05d6870",
+      "name": "Can your agents read...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-23T03:53:05.72168Z",
+      "updated_at": "2026-07-23T04:06:23.819092Z",
+      "agent_id": "kagent__NS__sre_agent"
+    },
+    {
+      "id": "8bd9fcbd12bb4620f101c72236868e93f197fcbb4e6d1bcbaa463a6e9fb9e876",
+      "name": "Can you remember thi...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-22T16:40:23.424139Z",
+      "updated_at": "2026-07-22T16:40:34.640406Z",
+      "agent_id": "kagent__NS__mega_k8s_sre"
+    },
+    {
+      "id": "946a292efda44d7a712781479bdc8cbd414875d7f9c4e103c62fff4e29c37825",
+      "name": "Do you see any alert...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-22T16:20:14.399815Z",
+      "updated_at": "2026-07-22T16:37:24.667934Z",
+      "agent_id": "kagent__NS__mega_k8s_sre"
+    },
+    {
+      "id": "019f8a13-c6c2-73af-a1d9-ab0abeeb6734",
+      "name": "Do you have access t...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-22T13:46:19.716706Z",
+      "updated_at": "2026-07-22T13:47:22.801009Z",
+      "agent_id": "kagent__NS__mega_k8s_sre"
+    },
+    {
+      "id": "21c93f804488dbe907c8e1b6b4fc50675ec668a6bc6986516e3af6b9eda98695",
+      "name": "You are defined by a...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-22T09:33:17.279076Z",
+      "updated_at": "2026-07-22T11:05:20.102739Z",
+      "agent_id": "kagent__NS__sre_agent"
+    },
+    {
+      "id": "2f6047bba87bc982907db8e3c98cbd611fc9a548f487623a0303aae729ee0a2f",
+      "name": "Hi! Can I interact h...",
+      "user_id": "marian@giantswarm.io",
+      "created_at": "2026-07-22T07:46:25.783792Z",
+      "updated_at": "2026-07-22T08:11:40.39808Z",
+      "agent_id": "kagent__NS__sre_agent"
+    }
+  ],
+  "message": "Successfully listed sessions"
+}
