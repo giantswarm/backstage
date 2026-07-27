@@ -400,3 +400,17 @@ agentPlatform:
     # becomes a kagent spec.skills.gitRefs entry.
     repositories:
       - https://github.com/giantswarm/agent-skills
+  # kagent REST API access, used by the Sessions list. The backend proxies
+  # kagent per installation and forwards the user's Dex ID token.
+  #
+  # By default every `gs.installations` entry with a `baseDomain` is derived as
+  # `https://kagent.<baseDomain>/api` — installations that don't run kagent
+  # simply report as "not installed". Set `installations` to restrict the
+  # fan-out to the ones that do, or to point one at a different ingress.
+  # Base domains stay out of this file: they are backend-only config.
+  # kagent:
+  #   timeoutMs: 10000
+  #   installations:
+  #     gazelle: {}   # enabled, use the derived URL
+  #     golem:
+  #       apiBaseUrl: https://agentgateway.<baseDomain>/kagent/api

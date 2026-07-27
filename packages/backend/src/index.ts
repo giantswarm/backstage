@@ -88,6 +88,9 @@ backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 // muster plugin (workflow visualization)
 backend.add(import('@giantswarm/backstage-plugin-muster-backend'));
 
+// agent platform plugin (kagent REST proxy for the Sessions list)
+backend.add(import('@giantswarm/backstage-plugin-agent-platform-backend'));
+
 // plans plugin (planning-document viewer)
 backend.add(import('@giantswarm/backstage-plugin-plans-backend'));
 

@@ -1,0 +1,248 @@
+import { LoggerService } from '@backstage/backend-plugin-api';
+import { Config } from '@backstage/config';
+import {
+  AuthenticationError,
+  NotAllowedError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '@backstage/errors';
+
+/**
+ * Header the agent-platform frontend uses to forward the user's
+ * per-installation Dex OIDC ID token, which this proxy sets as
+ * `Authorization: Bearer` toward kagent.
+ *
+ * Mirrors muster's `backstage-muster-authorization`: kept off `Authorization`
+ * because that header carries the Backstage identity on the inbound leg.
+ *
+ * Must match KAGENT_AUTH_HEADER in plugins/agent-platform.
+ */
+export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
+
+/** Default per-request timeout toward a kagent API. */
+export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
+
+/** One installation's kagent endpoint. */
+export interface KagentInstallationConfig {
+  /** Installation name, as in `gs.installations`. */
+  name: string;
+  /**
+   * kagent API base URL, no trailing slash — e.g.
+   * `https://kagent.<baseDomain>/api`.
+   */
+  apiBaseUrl: string;
+}
+
+export interface KagentRequestOptions {
+  /**
+   * The user's Dex ID token, forwarded as `Authorization: Bearer` toward
+   * kagent. Optional because `/version` and `/me` are useful even when no
+   * token could be minted; `/sessions` requires one.
+   */
+  userToken?: string;
+}
+
+/**
+ * Derive the kagent API base URL for an installation from its base domain.
+ *
+ * The hostname pattern matches the `agentic-platform-connectivity` chart's
+ * `kagent.uiRoute.hostname` (`kagent.<codename>.<base>`), which is exactly
+ * `kagent.<baseDomain>` — the same derivation `useAgentAvatarUrl` uses for
+ * `avatars.<baseDomain>`. That host is fronted by oauth2-proxy, whose nginx
+ * sidecar proxies `/api/` to `kagent-controller:8083`.
+ *
+ * Returns undefined when the installation has no `baseDomain`.
+ */
+export function deriveKagentApiBaseUrl(
+  baseDomain: string | undefined,
+): string | undefined {
+  if (!baseDomain) {
+    return undefined;
+  }
+  return `https://kagent.${baseDomain}/api`;
+}
+
+/** Strip trailing slashes so URL joining stays predictable. */
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+/**
+ * Resolve the installations this proxy can target, keyed by name.
+ *
+ * `agentPlatform.kagent.installations`, when present, acts as the allowlist and
+ * each entry's `apiBaseUrl` overrides the derived URL. When absent, every
+ * `gs.installations` entry with a `baseDomain` is derived — kagent is only
+ * deployed on some installations, and the ones without it simply fail per
+ * request and are reported as "not installed".
+ *
+ * Installations that resolve to no URL are logged once at init and omitted.
+ */
+export function readKagentInstallationsFromConfig(
+  config: Config,
+  logger: LoggerService,
+): Map<string, KagentInstallationConfig> {
+  const result = new Map<string, KagentInstallationConfig>();
+
+  const gsInstallations = config.getOptionalConfig('gs.installations');
+  const baseDomains = new Map<string, string | undefined>();
+  for (const name of gsInstallations?.keys() ?? []) {
+    baseDomains.set(
+      name,
+      gsInstallations?.getOptionalString(`${name}.baseDomain`),
+    );
+  }
+
+  const overrides = config.getOptionalConfig(
+    'agentPlatform.kagent.installations',
+  );
+  // The explicit block is the allowlist when present; otherwise fan out to the
+  // whole configured fleet.
+  const names = overrides ? overrides.keys() : [...baseDomains.keys()];
+
+  for (const name of names) {
+    const explicitUrl = overrides?.getOptionalString(`${name}.apiBaseUrl`);
+    const apiBaseUrl =
+      explicitUrl ?? deriveKagentApiBaseUrl(baseDomains.get(name));
+
+    if (!apiBaseUrl) {
+      logger.info(
+        `Skipping kagent proxy for installation '${name}': no apiBaseUrl configured and no baseDomain to derive one from.`,
+      );
+      continue;
+    }
+
+    result.set(name, {
+      name,
+      apiBaseUrl: stripTrailingSlash(apiBaseUrl),
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Thin HTTP client for one installation's kagent REST API.
+ *
+ * Deliberately a byte-for-byte proxy: it returns kagent's JSON verbatim,
+ * without unwrapping the `{error, data, message}` envelope, stripping unknown
+ * fields, or filtering anything. Schema tolerance lives in the frontend, so a
+ * kagent schema change never requires a backend release. The split is:
+ * backend = transport, frontend = schema.
+ */
+export class KagentClient {
+  constructor(
+    private readonly installation: KagentInstallationConfig,
+    private readonly logger: LoggerService,
+    /** Overridable for tests; defaults to the global fetch. */
+    private readonly fetchFn: typeof fetch = fetch,
+    private readonly timeoutMs: number = DEFAULT_KAGENT_TIMEOUT_MS,
+  ) {}
+
+  /** `GET <apiBaseUrl>/sessions` — the user's sessions, kagent's JSON verbatim. */
+  async listSessions(options: KagentRequestOptions): Promise<unknown> {
+    return this.request(`${this.installation.apiBaseUrl}/sessions`, options);
+  }
+
+  /**
+   * `GET <origin>/version`.
+   *
+   * NOTE: kagent serves `/version` at the **server root**, not under `/api`
+   * (see `APIPathVersion` in kagent's `internal/httpserver/server.go`), so this
+   * resolves against the origin rather than appending to the configured base
+   * URL — otherwise it 404s.
+   */
+  async getVersion(options: KagentRequestOptions): Promise<unknown> {
+    const url = new URL('/version', this.installation.apiBaseUrl).toString();
+    return this.request(url, options);
+  }
+
+  /**
+   * `GET <apiBaseUrl>/me` — the identity kagent resolved for the forwarded
+   * token. Used to detect the controller's auth mode: under `trusted-proxy` it
+   * reflects the caller's claims, while under `unsecure` kagent ignores the
+   * token and falls back to a shared default user.
+   */
+  async getMe(options: KagentRequestOptions): Promise<unknown> {
+    return this.request(`${this.installation.apiBaseUrl}/me`, options);
+  }
+
+  private async request(
+    url: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    let response: Response;
+    try {
+      response = await this.fetchFn(url, {
+        headers: {
+          Accept: 'application/json',
+          ...(options.userToken && {
+            Authorization: `Bearer ${options.userToken}`,
+          }),
+        },
+        // Do NOT follow oauth2-proxy's redirect into Dex: a 3xx here means the
+        // forwarded token was not accepted, and following it would yield an
+        // HTML sign-in page with a 200.
+        redirect: 'manual',
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (error) {
+      // DNS failure, TLS error, connection refused or timeout. On a fleet where
+      // most installations do not run kagent this is the normal, expected
+      // outcome, so it is logged at debug rather than warn (the root logger
+      // forwards warn/error to Sentry).
+      this.logger.debug(
+        `kagent request failed for installation '${this.installation.name}'`,
+        { error: String(error) },
+      );
+      throw new ServiceUnavailableError(
+        `Could not reach the kagent API for installation '${this.installation.name}'.`,
+      );
+    }
+
+    if (response.status >= 300 && response.status < 400) {
+      throw new AuthenticationError(
+        `The kagent API for installation '${this.installation.name}' redirected to a sign-in page; the forwarded token was not accepted.`,
+      );
+    }
+
+    if (response.status === 401) {
+      throw new AuthenticationError(
+        `Not authenticated against the kagent API for installation '${this.installation.name}'.`,
+      );
+    }
+
+    if (response.status === 403) {
+      throw new NotAllowedError(
+        `Not authorized to read the kagent API for installation '${this.installation.name}'.`,
+      );
+    }
+
+    if (response.status === 404) {
+      throw new NotFoundError(
+        `The kagent API is not available for installation '${this.installation.name}'.`,
+      );
+    }
+
+    if (!response.ok) {
+      this.logger.debug(
+        `kagent API returned an error status for installation '${this.installation.name}'`,
+        { status: response.status },
+      );
+      throw new ServiceUnavailableError(
+        `The kagent API for installation '${this.installation.name}' returned status ${response.status}.`,
+      );
+    }
+
+    // A 2xx with a non-JSON body is oauth2-proxy serving its sign-in page
+    // rather than kagent answering.
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('application/json')) {
+      throw new AuthenticationError(
+        `The kagent API for installation '${this.installation.name}' returned a non-JSON response (content-type '${contentType}'), which usually means a sign-in page was served instead.`,
+      );
+    }
+
+    return response.json();
+  }
+}
