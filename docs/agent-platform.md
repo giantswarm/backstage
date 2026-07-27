@@ -212,6 +212,43 @@ the controller, which is also why there is **no version probe** — kagent serve
 `/version` at its server root, where the derived door's nginx answers from the UI
 and the agentgateway override's `/kagent` prefix does not match.
 
+### ⚠️ Prerequisite: kagent's oauth2-proxy must accept Backstage's audience
+
+kagent's oauth2-proxy runs with `skip-jwt-bearer-tokens: true`, which accepts a
+bearer JWT **only when its audience matches oauth2-proxy's own `--client-id`**.
+Backstage mints per-installation tokens for its _own_ Dex client
+(`aud: [dex-k8s-authenticator, <backstage client>]`), while kagent's oauth2-proxy
+uses a separate Dex client. Unless the two are reconciled, every session read
+returns **401** and the tab shows "Couldn't read N installations".
+
+The fix is platform-side: add Backstage's Dex client id as an
+`--oidc-extra-audience` on kagent's oauth2-proxy (neither the charts nor the
+install configs set one today).
+
+For **local development** before that lands, point an installation at the
+agentgateway door instead, which enforces no auth of its own and passes the bearer
+through to kagent's `trusted-proxy` mode:
+
+```yaml
+agentPlatform:
+  kagent:
+    installations:
+      <installation>:
+        apiBaseUrl: https://agentgateway.<baseDomain>/kagent/api
+```
+
+Local dev only — that door is unauthenticated on GS installations and must never
+be the default. (Worth reporting separately: it exposes kagent's whole REST + A2A
+surface with no enforcement, because the `AgentgatewayPolicy` JWT check only
+renders under `oauthMode: validate` and only targets `/mcp`, while GS runs
+`passthrough`.)
+
+**Related open question.** kagent scopes with `WHERE user_id = <userIdClaim>` and
+GS sets `userIdClaim: sub`, but existing sessions have been observed keyed by
+email. If the `sub` Backstage sends doesn't match what kagent recorded, the list
+will be correct-but-empty rather than erroring. `GET /kagent/me` reports the
+identity kagent resolved and is the way to tell the two apart.
+
 ### What the list can and cannot show
 
 A kagent `Session` carries only `id`, `name?`, `user_id`, `created_at`,
