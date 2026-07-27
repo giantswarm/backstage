@@ -171,30 +171,6 @@ describe('KagentApiClient', () => {
     });
   });
 
-  describe('getVersion', () => {
-    it('extracts the raw version string', async () => {
-      fetchMock.mockResolvedValue(
-        jsonResponse({
-          kagent_version: 'v0.10.0-beta9',
-          git_commit: 'abc',
-          build_date: '2026-07-21',
-        }),
-      );
-
-      await expect(buildClient().getVersion('gazelle')).resolves.toBe(
-        'v0.10.0-beta9',
-      );
-    });
-
-    it('returns undefined when the probe reports nothing usable', async () => {
-      fetchMock.mockResolvedValue(jsonResponse({}));
-
-      await expect(
-        buildClient().getVersion('gazelle'),
-      ).resolves.toBeUndefined();
-    });
-  });
-
   describe('getIdentity', () => {
     it('reads the subject kagent resolved', async () => {
       fetchMock.mockResolvedValue(

@@ -83,13 +83,6 @@ export const kagentSessionListSchema = z.union([
   })),
 ]);
 
-/** kagent `GET /version`. */
-export const kagentVersionWireSchema = z.looseObject({
-  kagent_version: wireString,
-  git_commit: wireString,
-  build_date: wireString,
-});
-
 /**
  * kagent `GET /api/me`.
  *

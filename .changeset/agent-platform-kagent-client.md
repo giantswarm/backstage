@@ -20,19 +20,24 @@ installation and defensive by default:
   top-level array. `Date.parse`-hostile values and Go zero time
   (`0001-01-01T00:00:00Z`, which browsers render as "Dec 31, 0000") are dropped so
   callers can show a dash.
-- **Per-installation capability negotiation** (`lib/kagentCapabilities.ts`,
-  `hooks/useKagentCapabilities.ts`). A cached `/version` probe per installation
-  yields named flags (`hasSessionShares`, `canRenameSessionViaPatch`,
-  `hasSessionReadOnly`) so components never compare versions inline. The
-  supported window is explicit (`MIN_SUPPORTED` 0.9.9, `TESTED_UP_TO` 0.10.0):
-  below the floor is flagged but still rendered, above the ceiling proceeds
-  optimistically and logs once. A failed or unparseable probe degrades to the
-  oldest supported version instead of erroring, and never blocks the session
-  query.
-- **An `isUserScoped` flag** from a `/me` probe. kagent's `unsecure` auth mode
-  ignores the forwarded token and resolves every caller to a shared built-in
-  user, so the list would not be "your sessions" — worth detecting rather than
-  mislabelling.
+- **Per-installation capabilities** (`lib/kagentCapabilities.ts`,
+  `hooks/useKagentCapabilities.ts`), keyed per installation because each is an
+  independent deployment. Currently one observable capability: `isUserScoped`,
+  from a cached `/me` probe. kagent's `unsecure` auth mode ignores the forwarded
+  token and resolves every caller to a shared built-in user, so the list would
+  silently not be "your sessions" — worth detecting rather than mislabelling. The
+  probe is non-fatal and never gates the sessions query; until it resolves,
+  nothing is claimed either way.
+
+  Capabilities are deliberately **not** derived from a kagent version number.
+  kagent serves `/version` at its server root, which neither door we reach it
+  through routes to the controller (the derived door's nginx sends `/` to the
+  kagent UI; the agentgateway override matches only `/kagent`), and nothing under
+  `/api` reports the controller version. Version _tolerance_ does not depend on
+  it — that lives in the parsing layer above, which is where it does the real
+  work. If version gating is ever needed, probe by behaviour (call a
+  version-specific endpoint, treat 404 as "absent") instead.
+
 - **`KagentApiClient`** (`apis/`), registered as `kagentApiRef`. Mints each
   installation's Dex ID token lazily per request so a mint failure degrades one
   installation (the user may be signed in to some and not others), and never

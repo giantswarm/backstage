@@ -8,10 +8,7 @@ import {
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
-import {
-  kagentMeWireSchema,
-  kagentVersionWireSchema,
-} from '../lib/kagentSchema';
+import { kagentMeWireSchema } from '../lib/kagentSchema';
 import { KagentSession, normalizeSessionList } from '../lib/kagentSessions';
 import { KAGENT_AUTH_HEADER, KagentApi, KagentIdentity } from './types';
 
@@ -81,12 +78,6 @@ export class KagentApiClient implements KagentApi {
       reportDrift(installation, drift);
     }
     return sessions;
-  }
-
-  async getVersion(installation: string): Promise<string | undefined> {
-    const body = await this.get<unknown>('/kagent/version', installation);
-    const parsed = kagentVersionWireSchema.safeParse(body);
-    return parsed.success ? parsed.data.kagent_version : undefined;
   }
 
   async getIdentity(installation: string): Promise<KagentIdentity> {

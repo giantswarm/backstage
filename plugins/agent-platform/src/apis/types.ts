@@ -33,9 +33,6 @@ export interface KagentApi {
    */
   listSessions(installation: string): Promise<KagentSession[]>;
 
-  /** Raw `kagent_version`, or undefined when the probe yielded nothing. */
-  getVersion(installation: string): Promise<string | undefined>;
-
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;
 }
