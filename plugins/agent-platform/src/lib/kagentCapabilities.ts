@@ -20,12 +20,20 @@
  */
 export type KagentCapabilities = {
   /**
-   * Whether sessions are scoped to the signed-in user.
+   * Whether sessions are scoped to the signed-in user. **Tri-state.**
    *
-   * False when the controller runs in `unsecure` mode, where the forwarded token
-   * is ignored and every caller resolves to a shared built-in user — so the list
-   * is *not* "your sessions" and must not be labelled as such. Undefined until
-   * the identity probe resolves.
+   * - `true` — kagent reported a real user subject.
+   * - `false` — kagent reported its `unsecure`-mode shared built-in user, so the
+   *   list is *not* "your sessions" and must not be labelled as such.
+   * - `undefined` — we don't know: the probe hasn't resolved, failed, or reported
+   *   no subject at all.
+   *
+   * The third case is reachable on a healthy deployment: `/api/me` returns the
+   * token's claims verbatim, so an IdP that doesn't emit `sub` (or a controller
+   * configured with a different `userIdClaim`) yields no subject. Collapsing that
+   * into `false` would show an odd-but-working installation the very "these
+   * aren't your sessions" warning this probe exists to avoid, so callers must
+   * treat `undefined` as "stay silent" rather than as either answer.
    */
   isUserScoped?: boolean;
 };
@@ -45,12 +53,15 @@ const UNSCOPED_SUBJECTS = ['admin@kagent.dev'];
 /**
  * Whether the subject kagent reported means the session list is user-scoped.
  *
- * An absent subject is treated as *not* scoped: we cannot confirm scoping, and
- * wrongly claiming it is the more misleading of the two errors.
+ * Returns `undefined` when no subject was reported: that is "we can't tell",
+ * which is distinct from "confirmed shared user". Reporting `false` there would
+ * flag a healthy deployment whose IdP simply doesn't emit `sub`.
  */
-export function isUserScopedSubject(sub: string | undefined): boolean {
+export function isUserScopedSubject(
+  sub: string | undefined,
+): boolean | undefined {
   if (!sub) {
-    return false;
+    return undefined;
   }
   return !UNSCOPED_SUBJECTS.includes(sub);
 }

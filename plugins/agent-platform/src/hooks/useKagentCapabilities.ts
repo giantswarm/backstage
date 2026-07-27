@@ -39,13 +39,23 @@ export function useKagentCapabilitiesMap(
       queryKey: kagentIdentityQueryKey(installation),
       queryFn: () => kagentApi.getIdentity(installation),
       staleTime: IDENTITY_STALE_TIME_MS,
-      retry: 1,
+      // No `retry` override: a per-query value would *replace* the
+      // QueryClientProvider's predicate, which returns false for
+      // NotFoundError/ServiceUnavailableError precisely so that "kagent isn't
+      // deployed on this installation" fails fast. Since kagent runs on only a
+      // couple of installations, that is the normal outcome for most of the
+      // fleet, and retrying each one would cost a doomed request plus another
+      // broker token exchange.
     })),
   });
 
-  // useQueries returns fresh arrays every render, so the memo below keys off a
-  // stable signature of the outcomes rather than the array identities. Computed
-  // plainly (not memoized) because it is the memo's own dependency and is cheap.
+  // useQueries returns fresh arrays every render, and callers routinely derive
+  // the installations array inline, so the memo below keys off this signature
+  // *only* — no array identities. The signature already encodes the installation
+  // names, so it captures everything the memo depends on. Same approach as
+  // useReachableInstallations, which keys on `allInstallations.join(',')`.
+  // Computed plainly (not memoized) because it is the memo's own dependency and
+  // is cheap.
   const signature = installations
     .map((installation, index) => {
       const identity = identityQueries[index];
@@ -70,7 +80,7 @@ export function useKagentCapabilitiesMap(
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [installations, signature]);
+  }, [signature]);
 
   return useCallback(
     (installation: string) =>

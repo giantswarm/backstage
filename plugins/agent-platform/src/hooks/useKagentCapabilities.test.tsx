@@ -98,6 +98,52 @@ describe('useKagentCapabilitiesMap', () => {
     expect(result.current('gazelle').isUserScoped).toBeUndefined();
   });
 
+  it('claims nothing when kagent reports no subject', async () => {
+    // Reachable on a healthy deployment: /api/me returns the token's claims
+    // verbatim, so an IdP that omits `sub` yields no subject. That is "unknown",
+    // not "confirmed shared user" — flagging it would show the very warning this
+    // probe exists to avoid.
+    getIdentity.mockResolvedValue({ sub: undefined });
+
+    const { result } = renderWith(['gazelle']);
+
+    await waitFor(() => expect(getIdentity).toHaveBeenCalled());
+    expect(result.current('gazelle').isUserScoped).toBeUndefined();
+  });
+
+  it('keeps a stable callback identity when the array is derived inline', async () => {
+    // Callers naturally write `useKagentCapabilitiesMap(reachable.map(...))`,
+    // which is a *fresh array on every render*. The memo keys off the outcome
+    // signature alone, so downstream memos and effects must not be invalidated by
+    // that — note the inline array literal below, which is what makes this a real
+    // test rather than one that reuses a single instance.
+    getIdentity.mockResolvedValue({ sub: 'marian@giantswarm.io' });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    const { result, rerender } = renderHook(
+      () => useKagentCapabilitiesMap(['gazelle']),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(result.current('gazelle').isUserScoped).toBe(true),
+    );
+
+    const before = result.current;
+    rerender();
+
+    expect(result.current).toBe(before);
+  });
+
   it('falls back without throwing when the probe fails', async () => {
     // An installation whose kagent is absent or unreachable must degrade, not
     // take the page down.

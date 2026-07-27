@@ -107,6 +107,12 @@ describe('KagentApiClient', () => {
     // These names are load-bearing twice: QueryClientProvider's retry predicate
     // short-circuits on them, and the sessions provider classifies on them.
     it.each([
+      // 400 = the backend has no kagent endpoint configured for the requested
+      // installation. Its allowlist is not the same set as the installations the
+      // frontend considers reachable, so this occurs in ordinary operation and
+      // belongs on the silent "not available here" path rather than being
+      // retried with backoff and surfaced as a read failure.
+      [400, 'NotFoundError'],
       [401, 'UnauthorizedError'],
       [403, 'ForbiddenError'],
       [404, 'NotFoundError'],
@@ -187,6 +193,37 @@ describe('KagentApiClient', () => {
 
       await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
         sub: 'admin@kagent.dev',
+      });
+    });
+
+    it('still probes when the token cannot be minted', async () => {
+      // The backend reads the token as optional here, so a broker or Dex-session
+      // failure must not stop the probe: this is the diagnostic that catches an
+      // unsecure-mode deployment presenting a shared list as the user's own, so
+      // losing it to a mint failure would be exactly backwards.
+      getCredentials.mockResolvedValue({ token: undefined });
+      fetchMock.mockResolvedValue(jsonResponse({ sub: 'admin@kagent.dev' }));
+
+      await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
+        sub: 'admin@kagent.dev',
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // The request goes out without the auth header rather than not at all.
+      expect(
+        fetchMock.mock.calls[0][1].headers[KAGENT_AUTH_HEADER],
+      ).toBeUndefined();
+    });
+
+    it('reports no subject when kagent’s claims omit one', async () => {
+      // /api/me returns the token's claims verbatim, so an IdP that doesn't emit
+      // `sub` lands here. Distinct from a confirmed shared user.
+      fetchMock.mockResolvedValue(
+        jsonResponse({ email: 'marian@example.com' }),
+      );
+
+      await expect(buildClient().getIdentity('gazelle')).resolves.toEqual({
+        sub: undefined,
       });
     });
   });

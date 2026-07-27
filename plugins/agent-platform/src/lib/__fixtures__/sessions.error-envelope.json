@@ -1,0 +1,5 @@
+{
+  "error": true,
+  "data": null,
+  "message": "failed to list sessions: database connection lost"
+}

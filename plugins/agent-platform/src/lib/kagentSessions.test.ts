@@ -1,6 +1,7 @@
 import bareArray from './__fixtures__/sessions.bare-array.json';
 import dataNotArray from './__fixtures__/sessions.data-not-array.json';
 import dataNull from './__fixtures__/sessions.data-null.json';
+import errorEnvelope from './__fixtures__/sessions.error-envelope.json';
 import emptyNoData from './__fixtures__/sessions.empty-no-data.json';
 import futureUnknownSource from './__fixtures__/sessions.future-unknown-source.json';
 import futureV0_11 from './__fixtures__/sessions.future-v0-11.json';
@@ -109,7 +110,31 @@ describe('normalizeSessionList — envelope tolerance', () => {
     const { sessions, drift } = normalizeSessionList(dataNotArray, 'gazelle');
 
     expect(sessions).toEqual([]);
-    expect(drift).toBe('data was present but not an array');
+    expect(drift).toEqual({
+      kind: 'data-not-array',
+      message: 'data was present but not an array',
+    });
+  });
+
+  it('reports an in-band error rather than an innocuous empty list', () => {
+    // kagent can fail on a 200: the backend classifies only on HTTP status and
+    // passes any 2xx body through verbatim, so without this check
+    // `{error: true, data: null}` would be indistinguishable from "this user has
+    // no sessions" — an empty table and nothing logged anywhere.
+    const { sessions, drift } = normalizeSessionList(errorEnvelope, 'gazelle');
+
+    expect(sessions).toEqual([]);
+    expect(drift).toEqual({
+      kind: 'error-envelope',
+      message: 'failed to list sessions: database connection lost',
+    });
+  });
+
+  it('falls back to a generic message when the error carries none', () => {
+    const { drift } = normalizeSessionList({ error: true }, 'gazelle');
+
+    expect(drift?.kind).toBe('error-envelope');
+    expect(drift?.message).toBe('kagent reported an error in the envelope');
   });
 });
 
@@ -121,7 +146,10 @@ describe('normalizeSessionList — malformed input', () => {
     // id and are dropped.
     expect(sessions).toHaveLength(1);
     expect(sessions[0].sessionId).toBe('sess-weird-types');
-    expect(drift).toBe('skipped 2 unreadable session rows');
+    expect(drift).toEqual({
+      kind: 'skipped-rows',
+      message: 'skipped 2 unreadable session rows',
+    });
   });
 
   it('degrades individual bad fields to undefined', () => {

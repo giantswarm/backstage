@@ -78,13 +78,28 @@ export function normalizeSession(
   };
 }
 
+/**
+ * Stable identifier for a kind of response drift.
+ *
+ * Kept separate from the human-readable message so callers can deduplicate
+ * logging on the kind: the `skipped-rows` message embeds a varying count, so
+ * keying on the formatted string would defeat any dedupe.
+ */
+export type SessionListDriftKind =
+  'unparseable-body' | 'error-envelope' | 'data-not-array' | 'skipped-rows';
+
+export type SessionListDrift = {
+  kind: SessionListDriftKind;
+  message: string;
+};
+
 export type NormalizedSessionList = {
   sessions: KagentSession[];
   /**
    * Set when the response did not look the way we expect. The sessions we could
    * read are still returned — drift is reported, never fatal.
    */
-  drift?: string;
+  drift?: SessionListDrift;
 };
 
 /**
@@ -100,7 +115,10 @@ export function normalizeSessionList(
 ): NormalizedSessionList {
   const parsed = kagentSessionListSchema.safeParse(raw);
   if (!parsed.success) {
-    return { sessions: [], drift: 'unparseable response body' };
+    return {
+      sessions: [],
+      drift: { kind: 'unparseable-body', message: 'unparseable response body' },
+    };
   }
 
   // Validate row by row so one malformed entry is skipped instead of costing us
@@ -117,6 +135,21 @@ export function normalizeSessionList(
     sessions.push(normalizeSession(wire, installation));
   }
 
+  // kagent can report a failure in-band on a 200: the backend classifies only on
+  // HTTP status and passes any 2xx body through verbatim, so the envelope's
+  // `error` flag is ours to check. Without this an `{error: true, data: null}`
+  // response would be indistinguishable from "this user has no sessions".
+  if (parsed.data.isError) {
+    return {
+      sessions,
+      drift: {
+        kind: 'error-envelope',
+        message:
+          parsed.data.message ?? 'kagent reported an error in the envelope',
+      },
+    };
+  }
+
   // An envelope whose `data` key exists but held something other than an array
   // is the interesting case: `data` legitimately absent just means "no
   // sessions", but a non-array means the contract moved.
@@ -127,15 +160,24 @@ export function normalizeSessionList(
   const hadDataKey = dataValue !== null && dataValue !== undefined;
 
   if (hadDataKey && !parsed.data.hadDataArray) {
-    return { sessions, drift: 'data was present but not an array' };
+    return {
+      sessions,
+      drift: {
+        kind: 'data-not-array',
+        message: 'data was present but not an array',
+      },
+    };
   }
 
   if (skippedRows > 0) {
     return {
       sessions,
-      drift: `skipped ${skippedRows} unreadable session ${
-        skippedRows === 1 ? 'row' : 'rows'
-      }`,
+      drift: {
+        kind: 'skipped-rows',
+        message: `skipped ${skippedRows} unreadable session ${
+          skippedRows === 1 ? 'row' : 'rows'
+        }`,
+      },
     };
   }
 

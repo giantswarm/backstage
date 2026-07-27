@@ -17,11 +17,15 @@ describe('isUserScopedSubject', () => {
   it.each([
     ['undefined', undefined],
     ['an empty string', ''],
-  ])('treats %s as not user-scoped', (_label, input) => {
-    // We cannot confirm scoping, and wrongly claiming it is the more misleading
-    // of the two errors.
-    expect(isUserScopedSubject(input)).toBe(false);
-  });
+  ])(
+    'reports %s as unknown rather than as not user-scoped',
+    (_label, input) => {
+      // Distinct from a confirmed shared user: /api/me returns the token's claims
+      // verbatim, so a healthy deployment whose IdP omits `sub` lands here and must
+      // not be flagged. Callers treat undefined as "stay silent".
+      expect(isUserScopedSubject(input)).toBeUndefined();
+    },
+  );
 });
 
 describe('FALLBACK_KAGENT_CAPABILITIES', () => {
