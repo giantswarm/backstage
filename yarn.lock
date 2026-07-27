@@ -10876,6 +10876,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@giantswarm/backstage-plugin-agent-platform-backend@workspace:^, @giantswarm/backstage-plugin-agent-platform-backend@workspace:plugins/agent-platform-backend":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-agent-platform-backend@workspace:plugins/agent-platform-backend"
+  dependencies:
+    "@backstage/backend-defaults": "backstage:^"
+    "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^"
+    "@backstage/cli": "backstage:^"
+    "@backstage/config": "backstage:^"
+    "@backstage/errors": "backstage:^"
+    "@types/express": "npm:^5.0.0"
+    "@types/supertest": "npm:^7.0.0"
+    express: "npm:^5.0.0"
+    express-promise-router: "npm:^4.1.0"
+    supertest: "npm:^7.0.0"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-agent-platform@workspace:^, @giantswarm/backstage-plugin-agent-platform@workspace:plugins/agent-platform":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-agent-platform@workspace:plugins/agent-platform"
@@ -27163,6 +27181,7 @@ __metadata:
     "@backstage/plugin-signals-backend": "backstage:^"
     "@backstage/plugin-techdocs-backend": "backstage:^"
     "@devangelista/backstage-scaffolder-kubernetes": "npm:^0.5.0"
+    "@giantswarm/backstage-plugin-agent-platform-backend": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.17.2"
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.15.0"
     "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.6.1"
