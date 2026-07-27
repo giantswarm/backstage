@@ -139,6 +139,13 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // Must stay above the generic '/agent-platform' cases below: `switch (true)`
+    // takes the first match, so after them this would be dead and the Sessions
+    // tab would report as `page: 'Agents', view: 'sessions'`.
+    case pathname === '/agent-platform/sessions':
+      payload = { page: 'Sessions index' };
+      break;
+
     case pathname === '/agent-platform':
       payload = { page: 'Agents index' };
       break;

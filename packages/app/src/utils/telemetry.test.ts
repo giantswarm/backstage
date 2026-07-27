@@ -277,6 +277,16 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for the sessions tab', () => {
+    // Reported as its own page rather than falling through to the generic
+    // agent-platform case, which would label it `page: 'Agents'`.
+    const result = getTelemetryPageViewPayload('/agent-platform/sessions');
+    expect(result).toEqual({
+      page: 'Sessions index',
+      path: '/agent-platform/sessions',
+    });
+  });
+
   it('should return correct payload for metrics page', () => {
     const result = getTelemetryPageViewPayload('/metrics');
     expect(result).toEqual({
@@ -337,6 +347,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform',
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/review',
+      '/agent-platform/sessions',
       '/metrics',
       '/search',
     ];

@@ -18,6 +18,7 @@ import {
   newAgentReviewRouteRef,
   newAgentRouteRef,
   rootRouteRef,
+  sessionsRouteRef,
 } from './routes';
 
 // The Agent Platform section is a tabbed page: with no loader of its own,
@@ -55,6 +56,23 @@ const agentsSubPage = SubPageBlueprint.make({
   },
 });
 
+// The "Sessions" tab. Read-only list of the signed-in user's kagent chat
+// sessions across the fleet, via the agent-platform-backend kagent proxy.
+// Declared after the Agents tab because tab order follows the `extensions` array.
+const sessionsSubPage = SubPageBlueprint.make({
+  name: 'sessions',
+  params: {
+    path: 'sessions',
+    title: 'Sessions',
+    routeRef: sessionsRouteRef,
+    loader: async () => {
+      const { SessionsIndexPage } =
+        await import('./components/SessionsIndexPage');
+      return <SessionsIndexPage />;
+    },
+  },
+});
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -77,11 +95,12 @@ const kagentApi = ApiBlueprint.make({
 
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
-  extensions: [agentPlatformPage, agentsSubPage, kagentApi],
+  extensions: [agentPlatformPage, agentsSubPage, sessionsSubPage, kagentApi],
   routes: {
     root: rootRouteRef,
     agents: agentsRouteRef,
     newAgent: newAgentRouteRef,
     newAgentReview: newAgentReviewRouteRef,
+    sessions: sessionsRouteRef,
   },
 });

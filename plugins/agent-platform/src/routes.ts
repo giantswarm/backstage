@@ -21,3 +21,6 @@ export const newAgentReviewRouteRef = createSubRouteRef({
   path: '/new/review',
   parent: agentsRouteRef,
 });
+
+// The "Sessions" tab (`/agent-platform/sessions`).
+export const sessionsRouteRef = createRouteRef();
