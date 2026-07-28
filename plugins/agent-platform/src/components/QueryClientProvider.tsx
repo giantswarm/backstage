@@ -1,5 +1,10 @@
 import { ReactNode, useMemo } from 'react';
-import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
+import type { QueryKey } from '@tanstack/react-query';
+import {
+  defaultShouldDehydrateQuery,
+  QueryClient,
+  QueryClientConfig,
+} from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 
@@ -12,6 +17,34 @@ import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persi
 // triggered and one cluster transiently failed.
 const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
+
+/**
+ * Query keys whose data belongs to one *user* rather than to the fleet, and which
+ * must therefore never be written to localStorage.
+ *
+ * Everything else cached here (Agents, ModelConfigs, the kagent installation
+ * list) is installation state: identical for every user, and safe to persist.
+ * kagent sessions are not — the rows are one user's chat titles, and the identity
+ * probe caches their subject (an email address).
+ *
+ * Persisting them would be wrong twice over on a shared workstation: the data
+ * outlives sign-out on disk, and `PersistQueryClientProvider` would rehydrate the
+ * previous user's sessions for the next one under the same origin and key — which
+ * `staleTime` would not even refetch if the entry is under a minute old.
+ */
+function isUserScopedQueryKey(queryKey: QueryKey): boolean {
+  const [scope, subsystem, resource] = queryKey as unknown[];
+  return (
+    scope === 'agent-platform' &&
+    subsystem === 'kagent' &&
+    (resource === 'sessions' || resource === 'me')
+  );
+}
+
+/** Exported for testing: the persistence filter applied below. */
+export function shouldDehydrateAgentPlatformQuery(queryKey: QueryKey): boolean {
+  return !isUserScopedQueryKey(queryKey);
+}
 
 export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useMemo(() => {
@@ -56,7 +89,18 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   return (
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister, maxAge }}
+      persistOptions={{
+        persister,
+        maxAge,
+        // User-scoped queries stay in memory only — see isUserScopedQueryKey
+        // above. Composed with the library default rather than replacing it, so
+        // its "only persist successful queries" rule still applies.
+        dehydrateOptions: {
+          shouldDehydrateQuery: query =>
+            defaultShouldDehydrateQuery(query) &&
+            shouldDehydrateAgentPlatformQuery(query.queryKey),
+        },
+      }}
     >
       {children}
     </PersistQueryClientProvider>

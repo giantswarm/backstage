@@ -66,6 +66,47 @@ The one transport detail worth knowing: `redirect: 'manual'` is set so an
 oauth2-proxy redirect into Dex surfaces as a 401 instead of being followed into
 a 200 HTML sign-in page.
 
+### Error mapping: "absent" vs "unwell"
+
+The distinction matters because the frontend **silences** one and **surfaces** the
+other, and getting it wrong makes a broken kagent look like an empty account.
+
+| Upstream outcome                               | Error                 | HTTP | Frontend treats as             |
+| ---------------------------------------------- | --------------------- | ---- | ------------------------------ |
+| DNS failure, TLS error, connection refused     | `NotFoundError`       | 404  | not deployed here — **silent** |
+| kagent's own 404 (or unknown-installation 400) | `NotFoundError`       | 404  | not deployed here — **silent** |
+| 3xx, 401, or a 2xx non-JSON body               | `AuthenticationError` | 401  | read failure — reported        |
+| 403                                            | `NotAllowedError`     | 403  | read failure — reported        |
+| 5xx / 429, a timeout, or an unreadable body    | `UpstreamError`       | 500  | read failure — reported        |
+
+Plus `ServiceUnavailableError` (503) when _no_ installation is configured at all —
+a real misconfiguration, unlike the per-installation cases above.
+
+Only the first two mean _nothing is there_. A timeout, a 500, or a truncated body
+all mean kagent answered and failed, so they must not share an error with
+"unreachable" — otherwise a degraded installation's sessions vanish from the
+fleet-merged list with no alert and nothing logged.
+
+### Never return a 5xx for an expected outcome
+
+These status codes are not only about frontend classification — they decide what
+reaches Sentry. `MiddlewareFactory.error()` logs at `error` for any status `>= 500`,
+and the root logger forwards `warn`/`error` to Sentry
+(`packages/backend-common/src/rootLogger.ts`).
+
+On a fleet where kagent runs on two of fifteen installations, the Sessions tab
+queries every reachable one and thirteen answer "no kagent here" — twice over,
+counting the identity probe. As a 503 that would have raised ~26 Sentry events per
+page view per user, fanned out into a separate issue per installation name. Hence
+404: below the logging threshold, and semantically right.
+
+Logging the cause at `debug` in the client does **not** avoid this — the throw is
+what gets logged, by the middleware, after the client is done. The only fix is not
+to raise a 5xx for something expected.
+
+The inverse holds too: `UpstreamError` is deliberately a 500, because a
+deployed-but-degraded kagent is rare and genuinely worth an alert.
+
 ## URL resolution
 
 The base URL is **derived**, not configured per installation:

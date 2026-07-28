@@ -11,16 +11,26 @@ we're moving. But it is not yet a full replacement for the older component.
 
 | Need | Use |
 | --- | --- |
-| Simple listing, no built-in search/filter/column-toggle | **bui `Table`** from `@backstage/ui` |
-| Built-in quick-search, per-column filtering, column-visibility toggle, CSV export | **`Table`** from `@backstage/core-components` (material-table based) |
+| Listing, incl. search, sorting, pagination, row selection | **bui `Table`** from `@backstage/ui` |
+| Column-visibility toggle, CSV export, faceted-sidebar filtering | **`Table`** from `@backstage/core-components` (material-table based) |
+
+As of `@backstage/ui` **0.17.0** the bui `Table` does support sorting
+(`isSortable` per column + `initialSort`), row selection, pagination,
+`isPending`/`error`/`emptyState` — and its `useTable` hook provides client-side
+search and filtering via `searchFn`/`filterFn` (with `searchDebounceMs`). Pair it
+with a bui `SearchField`. Reference:
+`plugins/agent-platform/src/components/SessionsTable/` (search + sort + pagination
+via `useTable`), `plugins/agent-platform/src/components/AgentsTable/` (plain
+listing), and `plugins/ai-chat/src/components/ConversationHistoryTable/`.
 
 The `@backstage/core-components` `Table` (documented in the bulk of this skill)
-wraps `@material-table/core` and is still the only option when you need its
-search box, `columnsButton`, `customFilterAndSearch`, or the faceted-sidebar
-pattern. The bui `Table` has **none** of those yet — no search, no filtering, no
-column visibility — so don't reach for it when those are required. Reference for
-bui usage: `plugins/ai-chat/src/components/ConversationHistoryTable/` and
-`plugins/gs/src/components/deployments/deployment-details/DeploymentGateway/DeploymentHttpRoutesCard/`.
+wraps `@material-table/core` and remains the option when you need its
+`columnsButton` column-visibility toggle (with `useTableColumns` persistence),
+CSV export, or the faceted `FiltersLayout` sidebar pattern.
+
+> Two gotchas when using `useTable` in `'complete'` mode: pass `data: undefined`
+> (not `[]`) while loading, or the empty state flashes instead of the skeleton;
+> and column `id`s must match the row field names your `sortFn` reads.
 
 ## bui Table (`@backstage/ui`)
 

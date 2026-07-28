@@ -185,9 +185,196 @@ covered.) The generated `HelmRelease` sets it from
 `agentPlatform.fluxServiceAccountName`. This is currently a **placeholder** — see
 the open TODOs.
 
+## The Sessions tab
+
+`/agent-platform/sessions` lists the signed-in user's kagent chat sessions across
+the fleet. Read-only: no create, delete, rename, or detail view.
+
+### Why it needs a backend proxy
+
+Unlike agents and model configs, kagent **sessions are not Kubernetes
+resources** — they live in kagent's Postgres and are served over the controller's
+HTTP API, so the Kubernetes proxy the rest of the plugin uses cannot reach them.
+Two things then force a backend hop, which `agent-platform-backend` provides:
+
+- The browser cannot call `kagent.<baseDomain>` cross-origin.
+- kagent runs `controller.auth.mode: trusted-proxy` and derives the user from the
+  `sub` claim of an `Authorization: Bearer` JWT — but inbound, that header carries
+  the Backstage identity. So the user's per-installation Dex ID token travels in a
+  separate `backstage-kagent-authorization` header and is promoted to
+  `Authorization` by the proxy. Same approach as `muster-backend`.
+
+The URL is derived per installation as `https://kagent.<baseDomain>/api` (the
+oauth2-proxy-fronted host whose nginx sidecar proxies `/api/` to
+`kagent-controller:8083`), overridable via `agentPlatform.kagent.installations`.
+Everything stays under `/api`: that is the only prefix either ingress routes to
+the controller, which is also why there is **no version probe** — kagent serves
+`/version` at its server root, where the derived door's nginx answers from the UI
+and the agentgateway override's `/kagent` prefix does not match.
+
+### ⚠️ Prerequisite: kagent's oauth2-proxy must accept Backstage's audience
+
+kagent's oauth2-proxy runs with `skip-jwt-bearer-tokens: true`, which accepts a
+bearer JWT **only when its audience matches oauth2-proxy's own `--client-id`**.
+Backstage mints per-installation tokens for its _own_ Dex client
+(`aud: [dex-k8s-authenticator, <backstage client>]`), while kagent's oauth2-proxy
+uses a separate Dex client. Unless the two are reconciled, every session read
+returns **401** and the tab shows "Couldn't read N installations".
+
+The fix is platform-side: add Backstage's Dex client id as an
+`--oidc-extra-audience` on kagent's oauth2-proxy (neither the charts nor the
+install configs set one today).
+
+For **local development** before that lands, point an installation at the
+agentgateway door instead, which enforces no auth of its own and passes the bearer
+through to kagent's `trusted-proxy` mode:
+
+```yaml
+agentPlatform:
+  kagent:
+    installations:
+      <installation>:
+        apiBaseUrl: https://agentgateway.<baseDomain>/kagent/api
+```
+
+Local dev only — that door is unauthenticated on GS installations and must never
+be the default. (Worth reporting separately: it exposes kagent's whole REST + A2A
+surface with no enforcement, because the `AgentgatewayPolicy` JWT check only
+renders under `oauthMode: validate` and only targets `/mcp`, while GS runs
+`passthrough`.)
+
+**Related open question.** kagent scopes with `WHERE user_id = <userIdClaim>` and
+GS sets `userIdClaim: sub`, but existing sessions have been observed keyed by
+email. If the `sub` Backstage sends doesn't match what kagent recorded, the list
+will be correct-but-empty rather than erroring. `GET /kagent/me` reports the
+identity kagent resolved and is the way to tell the two apart.
+
+### What the list can and cannot show
+
+A kagent `Session` carries only `id`, `name?`, `user_id`, `created_at`,
+`updated_at`, `deleted_at?`, `agent_id?` and `source?`. So the columns are
+Session, Agent, Installation, Started, and Last activity — and the prototype's
+status, trigger, duration, cost, tokens, team, linked task, results and evaluation
+columns have no backing data at all. The nine-stat summary band derives from those
+same absent fields, so it is out too.
+
+Two consequences worth knowing:
+
+- **Only "your" sessions exist as a concept.** kagent lists with
+  `WHERE user_id = <sub>` and exposes no cross-user endpoint, so the prototype's
+  Mine/Watched/All scope tabs reduce to a single implicit scope.
+- **Titles are short and lossy.** kagent derives them from the first message and
+  truncates to 20 characters (`"What issues are assi..."`), and the full text is
+  unrecoverable — so the Agent column carries much of a row's meaning.
+
+### Fleet behaviour
+
+Each installation is an independent kagent deployment, so reachability, auth mode,
+and availability all vary per installation:
+
+1. `useReachableInstallations` narrows to installations the app considers
+   reachable, so the fan-out doesn't hang on unreachable clusters.
+2. `GET /kagent/installations` says which of those the backend can reach kagent
+   on. **The session queries wait for this**, deliberately: kagent runs on only a
+   couple of installations, and querying the rest would fire a doomed request each
+   — every one of which mints that installation's Dex token first. One cached call
+   up front is much cheaper than N wasted ones per cold load. If the allowlist
+   itself fails, we fall back to the reachable set so a backend hiccup doesn't look
+   like an empty session list.
+3. One react-query per installation, so each loads, caches and fails
+   independently. Rows are merged and re-sorted across the fleet, each tagged with
+   its installation.
+4. `isLoading` is true only while _no_ rows exist; once any installation answers,
+   further loading shows as a thin progress bar so a slow cluster never blanks the
+   table.
+
+Failures are classified per installation, and the line is drawn between **absent**
+and **unwell** rather than by status code alone:
+
+- **Silent** — `404`, which the backend uses for everything meaning "no kagent API
+  here": kagent's own 404, an unknown-installation `400`, and connection-level
+  failures (DNS, TLS, connection refused). Nothing is deployed there, which is the
+  common case fleet-wide and not actionable.
+- **Reported** via `UnreachableInstallationsAlert` — everything else, including a
+  `5xx`/`429` from kagent, a request that times out, and a response whose body
+  can't be read. kagent answered and failed in all of those, so it is deployed and
+  unwell. Sharing an error with "unreachable" would let a degraded installation's
+  sessions disappear from the merged list with no alert and nothing logged —
+  indistinguishable from "you have no sessions there".
+
+The same applies to responses that are nominally successful: an in-band
+`{error: true}` on a `200`, or a `data` that is no longer an array, both throw so
+the installation is reported rather than contributing an innocuous empty list. A
+partial read (some rows unparseable) does _not_ throw — the rows we could read are
+still shown, with a console warning recording what was dropped.
+
+**Why the status codes matter beyond classification.**
+`MiddlewareFactory.error()` logs at `error` for any status `>= 500`, and the root
+logger forwards `warn`/`error` to Sentry. The Sessions tab queries every reachable
+installation, so on a fleet where kagent runs on two of fifteen, thirteen answer
+"no kagent here" on every page view — twice over with the identity probe. Returning
+a `5xx` for that would raise ~26 Sentry events per page view per user, split into
+one issue per installation name. Hence `404` for the expected case, and `500`
+reserved for the rare, actionable one. Logging the cause at `debug` in the client
+does not help: the throw is what the middleware logs.
+
+### Caching: user-scoped data is never persisted
+
+The plugin's `QueryClientProvider` persists its cache to `localStorage` for an
+hour, which is right for the Agents and ModelConfig lists — that is installation
+state, identical for every user, and caching it across reloads is the point.
+
+Sessions are different: the rows are one user's chat titles, and the identity probe
+caches their subject (an email). Those two query keys are therefore excluded from
+persistence via `dehydrateOptions.shouldDehydrateQuery`, so they live in memory
+only. Without that, on a shared workstation the data would outlive sign-out on
+disk, and `PersistQueryClientProvider` would rehydrate the previous user's sessions
+for the next one — under the same origin and key, and with `staleTime: 60_000` an
+entry under a minute old would not even be refetched.
+
+The filter composes with `defaultShouldDehydrateQuery` rather than replacing it, so
+the library's "only persist successful queries" rule still applies.
+
+### User scoping
+
+kagent's `unsecure` auth mode ignores the forwarded token and resolves every
+caller to a shared built-in user, which would silently present a shared list as
+the user's own. A `/kagent/me` probe detects this per installation and the UI warns
+about the affected installations.
+
+The flag is **tri-state**, and the distinction matters: `undefined` means "we don't
+know" — the probe hasn't resolved, or kagent reported no subject, which is
+reachable on a healthy deployment since `/api/me` returns the token's claims
+verbatim and an IdP need not emit `sub`. The UI warns **only** on an explicit
+`false`, so an odd-but-working installation isn't flagged.
+
+### Version tolerance
+
+kagent ships no OpenAPI spec, GS pins v0.9.9 while upstream is on v0.10.x, and the
+fleet can run a mix. Tolerance therefore lives in the parsing layer
+(`lib/kagentSchema.ts`, `lib/kagentSessions.ts`) rather than in version detection:
+
+- Permissive zod schemas — unknown fields pass through, every field may be absent
+  or retyped, and rows are validated one at a time so a single bad entry is
+  skipped rather than costing the list.
+- Envelope tolerance: `data` absent (Go's `omitempty` on an empty slice — this is
+  what "no sessions" looks like on the wire), `data: null`, or a bare array. An
+  in-band `{error: true}` on a 200 is reported rather than becoming a silent empty
+  list.
+- Go zero time (`0001-01-01T00:00:00Z`, which browsers render as "Dec 31, 0000")
+  and unparseable timestamps are dropped so the UI shows a dash.
+
+Backed by version-matrix fixtures in `lib/__fixtures__/`, including a captured
+live v0.9.9 response, asserting v0.9.9 and v0.10 payloads normalise identically.
+
+`source === 'agent'` (A2A subagent) sessions are excluded — though note live
+v0.9.9 responses omit `source` entirely, so this is forward-compatibility rather
+than active filtering today.
+
 ## Configuration
 
-All under `agentPlatform` (see `plugins/agent-platform/config.d.ts`):
+All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
+`plugins/agent-platform-backend/config.d.ts`):
 
 | Key                      | Purpose                                                                                                                           |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -196,6 +383,13 @@ All under `agentPlatform` (see `plugins/agent-platform/config.d.ts`):
 | `fluxServiceAccountName` | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                              |
 | `deployTemplateRef`      | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                               |
 | `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                            |
+| `kagent.timeoutMs`       | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                            |
+| `kagent.installations`   | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only. |
+
+The `kagent` keys keep the default **backend** visibility and are never served to
+the frontend: `apiBaseUrl` embeds `baseDomain`, which deanonymises customers (the
+same reason `gs.installations` is backend-only). The frontend learns installation
+_names_ from the authenticated `GET /kagent/installations` instead.
 
 The plugin's page and nav item are enabled via `app.extensions` in
 `app-config.yaml`.
@@ -271,9 +465,14 @@ above). What remains is a separate, deeper concern:
   `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD/chart but the
   create flow doesn't set it); (2) discovery reads a repo's **default branch** and
   doesn't expose per-skill version/`ref` selection in the UI.
-- **Agent list / management view.** Only the create flow exists so far. A delete
-  action must respect the shared `OCIRepository/agent` (see "Shared OCIRepository
-  per namespace") — delete only the agent's `HelmRelease`, not the shared source.
+- **Agent management actions.** The agent list exists; management does not. A
+  delete action must respect the shared `OCIRepository/agent` (see "Shared
+  OCIRepository per namespace") — delete only the agent's `HelmRelease`, not the
+  shared source.
+- **Session management + detail.** The Sessions tab is read-only. kagent supports
+  deleting (soft) and renaming sessions, and exposes a session's events and A2A
+  tasks — enough for a detail view. Deliberately deferred: rename in particular
+  deviates from the prototype, where sessions are never user-named.
 - **Main menu entry + landing page.** The plugin is not yet surfaced in the main
   sidebar menu. Adding it requires deciding **what page the entry leads to** —
   there is no landing page yet (only the create flow and a minimal index). The

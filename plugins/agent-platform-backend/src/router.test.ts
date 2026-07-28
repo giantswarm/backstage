@@ -110,12 +110,52 @@ describe('createRouter', () => {
     });
 
     it('returns 503 for reads', async () => {
+      // Nothing configured at all is a real misconfiguration, so a 5xx (and the
+      // Sentry event that follows) is wanted here — unlike the per-installation
+      // "kagent isn't deployed" case below.
       const response = await request(await buildUnconfiguredApp())
         .get('/kagent/sessions')
         .query({ installation: 'gazelle' })
         .set(KAGENT_AUTH_HEADER, 'user-token');
 
       expect(response.status).toBe(503);
+    });
+  });
+
+  describe('Sentry noise', () => {
+    // MiddlewareFactory.error() logs at `error` for any status >= 500, and the
+    // root logger forwards warn/error to Sentry. So the expected outcome on a
+    // fleet — most installations simply not running kagent — must never come back
+    // as a 5xx, or every page view raises an event per kagent-less installation.
+    it('reports an unreachable kagent as 404, not a 5xx', async () => {
+      const notFound = new Error(
+        'The kagent API is not available for installation gazelle.',
+      );
+      notFound.name = 'NotFoundError';
+      listSessions.mockRejectedValue(notFound);
+
+      const response = await request(app)
+        .get('/kagent/sessions')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+      expect(response.status).toBeLessThan(500);
+    });
+
+    it('still reports a degraded kagent as a 5xx', async () => {
+      // The counterpart: deployed-but-unwell is rare and actionable, so it should
+      // reach Sentry.
+      const upstream = new Error('kagent returned status 500');
+      upstream.name = 'UpstreamError';
+      listSessions.mockRejectedValue(upstream);
+
+      const response = await request(app)
+        .get('/kagent/sessions')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBeGreaterThanOrEqual(500);
     });
   });
 

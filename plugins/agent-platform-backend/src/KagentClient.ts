@@ -4,7 +4,6 @@ import {
   AuthenticationError,
   NotAllowedError,
   NotFoundError,
-  ServiceUnavailableError,
 } from '@backstage/errors';
 
 /**
@@ -65,6 +64,26 @@ export function deriveKagentApiBaseUrl(
 /** Strip trailing slashes so URL joining stays predictable. */
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+/**
+ * kagent answered (or was reachable) and then failed: a 5xx, a 429, a timeout, or
+ * a body that could not be read.
+ *
+ * Deliberately **not** the same error as "kagent is absent". That case is a 404
+ * (see the catch block in `request`): silenced by the frontend, and below the
+ * `>= 500` threshold at which `MiddlewareFactory.error()` logs to Sentry, which
+ * matters because it is the expected outcome on most installations.
+ *
+ * This one surfaces as a 500, so the frontend reports it *and* it reaches Sentry —
+ * both correct here. A deployed-but-degraded kagent is rare and genuinely
+ * actionable, and its sessions silently vanishing from the fleet-merged list would
+ * be the worse failure.
+ */
+function upstreamError(message: string): Error {
+  const error = new Error(message);
+  error.name = 'UpstreamError';
+  return error;
 }
 
 /** Whether a configured URL is absolute and http(s), so `fetch` can use it. */
@@ -213,16 +232,41 @@ export class KagentClient {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
-      // DNS failure, TLS error, connection refused or timeout. On a fleet where
-      // most installations do not run kagent this is the normal, expected
-      // outcome, so it is logged at debug rather than warn (the root logger
-      // forwards warn/error to Sentry).
+      // A timeout means something *is* listening but did not answer in time —
+      // kagent is deployed and unwell, not absent. That must not be swallowed as
+      // "no kagent here", so it becomes an upstream failure the frontend
+      // surfaces. `AbortSignal.timeout` rejects with a TimeoutError.
+      if ((error as Error)?.name === 'TimeoutError') {
+        this.logger.debug(
+          `kagent request timed out for installation '${this.installation.name}'`,
+          { timeoutMs: this.timeoutMs },
+        );
+        throw upstreamError(
+          `The kagent API for installation '${this.installation.name}' did not respond within ${this.timeoutMs}ms.`,
+        );
+      }
+
+      // DNS failure, TLS error or connection refused: nothing is reachable at
+      // that host, i.e. kagent is not deployed on this installation. On a fleet
+      // where only a couple of installations run kagent, this is the *normal,
+      // expected* outcome for most of them on every page view.
+      //
+      // It must therefore be a 404 and not a 503. `MiddlewareFactory.error()`
+      // logs `logger.error` for any status >= 500, and the root logger forwards
+      // warn/error to Sentry — so a 503 here would raise one Sentry event per
+      // kagent-less installation per page view, per user, fanned out into a
+      // separate issue per installation name. Logging the cause at debug does
+      // not prevent that; only not throwing a 5xx does.
+      //
+      // 404 also matches what the frontend already does with kagent's own 404:
+      // treat it as "no kagent API here" and stay silent. The two cases carried
+      // no distinguishable meaning, so collapsing them loses nothing.
       this.logger.debug(
-        `kagent request failed for installation '${this.installation.name}'`,
+        `kagent is not reachable for installation '${this.installation.name}'`,
         { error: String(error) },
       );
-      throw new ServiceUnavailableError(
-        `Could not reach the kagent API for installation '${this.installation.name}'.`,
+      throw new NotFoundError(
+        `The kagent API is not available for installation '${this.installation.name}'.`,
       );
     }
 
@@ -251,11 +295,15 @@ export class KagentClient {
     }
 
     if (!response.ok) {
+      // Anything else non-ok (5xx, 429, …) means kagent or its ingress answered
+      // and failed. It is deployed but unwell, so this must NOT share
+      // ServiceUnavailableError with "host unreachable" — the frontend silences
+      // that one, which would make a degraded kagent look like an empty account.
       this.logger.debug(
         `kagent API returned an error status for installation '${this.installation.name}'`,
         { status: response.status },
       );
-      throw new ServiceUnavailableError(
+      throw upstreamError(
         `The kagent API for installation '${this.installation.name}' returned status ${response.status}.`,
       );
     }
@@ -272,8 +320,8 @@ export class KagentClient {
     // Reading the body is a second chance to fail: the abort signal is still
     // armed after the headers arrive, so a slow or large response can abort
     // mid-stream, the connection can reset, or the body can be truncated /
-    // invalid JSON. All of those are transport failures and must map to the
-    // same 503 the frontend keys off — not escape as an unmapped 500.
+    // invalid JSON. kagent answered in all of those cases, so they are upstream
+    // failures worth surfacing — not "kagent isn't deployed here".
     try {
       return await response.json();
     } catch (error) {
@@ -281,7 +329,7 @@ export class KagentClient {
         `Failed to read the kagent API response body for installation '${this.installation.name}'`,
         { error: String(error) },
       );
-      throw new ServiceUnavailableError(
+      throw upstreamError(
         `Could not read the response from the kagent API for installation '${this.installation.name}'.`,
       );
     }
