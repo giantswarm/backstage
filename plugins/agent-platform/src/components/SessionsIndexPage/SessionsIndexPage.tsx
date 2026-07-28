@@ -37,9 +37,15 @@ function SessionsIndexPageContent() {
   return (
     <Content>
       <Flex direction="column" gap="3">
+        {/* The "only your own" reassurance is dropped when any installation
+            reports that its kagent does not identify individual users —
+            otherwise the page would promise it at the top and contradict itself
+            in the warning below the table, and the reassuring claim is the one
+            read first. */}
         <Text color="secondary">
-          Your agent chat sessions across the management clusters. kagent scopes
-          sessions to the signed-in user, so only your own are listed.
+          {notUserScopedInstallations.length > 0
+            ? 'Agent chat sessions across the management clusters.'
+            : 'Your agent chat sessions across the management clusters. kagent scopes sessions to the signed-in user, so only your own are listed.'}
         </Text>
 
         {isLoading ? (

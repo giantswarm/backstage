@@ -83,6 +83,48 @@ describe('KagentApiClient', () => {
       expect(sessions.map(session => session.source)).toContain('agent');
     });
 
+    it('throws on an in-band error rather than resolving empty', async () => {
+      // kagent can fail on a 200. Resolving with [] would put the installation
+      // on the success path and show "no sessions" with nothing but a console
+      // line — so this must reach the provider's failure path instead.
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          error: true,
+          data: null,
+          message: 'failed to list sessions: database connection lost',
+        }),
+      );
+
+      await expect(buildClient().listSessions('gazelle')).rejects.toThrow(
+        'failed to list sessions: database connection lost',
+      );
+    });
+
+    it('throws when the contract moved and dropped every row', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: false, data: { unexpected: 'object' } }),
+      );
+
+      await expect(buildClient().listSessions('gazelle')).rejects.toThrow(
+        /not an array/,
+      );
+    });
+
+    it('still resolves when only some rows were unreadable', async () => {
+      // Partial data is worth showing; the warning records what was dropped.
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          error: false,
+          data: [{ id: 'good', name: 'Kept' }, {}, null],
+        }),
+      );
+
+      const sessions = await buildClient().listSessions('gazelle');
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].sessionId).toBe('good');
+    });
+
     it('returns an empty list when kagent omits the data key', async () => {
       fetchMock.mockResolvedValue(
         jsonResponse({ error: false, message: 'Successfully listed sessions' }),

@@ -86,9 +86,30 @@ export class KagentApiClient implements KagentApi {
   async listSessions(installation: string): Promise<KagentSession[]> {
     const body = await this.get<unknown>('/kagent/sessions', installation);
     const { sessions, drift } = normalizeSessionList(body, installation);
+
     if (drift) {
       reportDrift(installation, drift);
     }
+
+    // Two drift kinds mean we cannot claim to have read this installation's
+    // sessions, so they must reach the caller's failure path rather than
+    // resolving as an empty list:
+    //
+    // - `error-envelope`: kagent reported a failure in-band on a 200. Resolving
+    //   with [] would be indistinguishable from "this user has no sessions".
+    // - `data-not-array`: the contract moved and we dropped every row.
+    //
+    // A console warning alone is not enough — nobody is watching it. Throwing
+    // puts the installation into `unreachableInstallations`, which is visible.
+    //
+    // `skipped-rows` deliberately does *not* throw: partial data is still worth
+    // showing, and the warning records what was dropped.
+    if (drift?.kind === 'error-envelope' || drift?.kind === 'data-not-array') {
+      const error = new Error(drift.message);
+      error.name = 'UpstreamError';
+      throw error;
+    }
+
     return sessions;
   }
 

@@ -66,6 +66,24 @@ The one transport detail worth knowing: `redirect: 'manual'` is set so an
 oauth2-proxy redirect into Dex surfaces as a 401 instead of being followed into
 a 200 HTML sign-in page.
 
+### Error mapping: "absent" vs "unwell"
+
+The distinction matters because the frontend **silences** one and **surfaces** the
+other, and getting it wrong makes a broken kagent look like an empty account.
+
+| Upstream outcome                            | Error                     | HTTP | Frontend treats as             |
+| ------------------------------------------- | ------------------------- | ---- | ------------------------------ |
+| DNS failure, TLS error, connection refused  | `ServiceUnavailableError` | 503  | not deployed here — **silent** |
+| 404 (and an unknown-installation 400)       | `NotFoundError`           | 404  | not deployed here — **silent** |
+| 3xx, 401, or a 2xx non-JSON body            | `AuthenticationError`     | 401  | read failure — reported        |
+| 403                                         | `NotAllowedError`         | 403  | read failure — reported        |
+| 5xx / 429, a timeout, or an unreadable body | `UpstreamError`           | 500  | read failure — reported        |
+
+Only the first two mean _nothing is there_. A timeout, a 500, or a truncated body
+all mean kagent answered and failed, so they must not share an error with
+"unreachable" — otherwise a degraded installation's sessions vanish from the
+fleet-merged list with no alert and nothing logged.
+
 ## URL resolution
 
 The base URL is **derived**, not configured per installation:

@@ -215,24 +215,30 @@ describe('SessionsDataProvider', () => {
       expect(result.current.unreachableInstallations).toEqual([]);
     });
 
-    it.each(['ForbiddenError', 'UnauthorizedError', 'Error'])(
-      'surfaces %s',
-      async errorName => {
-        listSessions.mockImplementation((installation: string) =>
-          installation === 'gazelle'
-            ? Promise.resolve([session()])
-            : Promise.reject(namedError(errorName)),
-        );
+    it.each([
+      'ForbiddenError',
+      'UnauthorizedError',
+      // Raised by the backend for a 5xx/429, a timeout, or an unreadable body —
+      // kagent answered and failed, so it is deployed and unwell. Must not share
+      // the silent path with "unreachable", or a degraded installation's sessions
+      // would vanish with no alert.
+      'UpstreamError',
+      'Error',
+    ])('surfaces %s', async errorName => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.resolve([session()])
+          : Promise.reject(namedError(errorName)),
+      );
 
-        const { result } = renderProvider();
+      const { result } = renderProvider();
 
-        await waitFor(() =>
-          expect(result.current.unreachableInstallations).toEqual(['golem']),
-        );
-        // The healthy installation's rows still render.
-        expect(result.current.rows).toHaveLength(1);
-      },
-    );
+      await waitFor(() =>
+        expect(result.current.unreachableInstallations).toEqual(['golem']),
+      );
+      // The healthy installation's rows still render.
+      expect(result.current.rows).toHaveLength(1);
+    });
 
     it('does not let one failing installation empty the table', async () => {
       listSessions.mockImplementation((installation: string) =>

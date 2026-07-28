@@ -130,7 +130,15 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const capabilitiesFor = useKagentCapabilitiesMap(targets);
 
   const { rows: agentRows } = useAgents();
-  const agentRowsKey = agentRows.map(agent => agent.id).join('|');
+  // Keyed on id *and* display name: `AgentRow.id` is
+  // `installation/namespace/name`, which does not change when an agent's
+  // display-name annotation does. AgentsDataProvider picks such an edit up (its
+  // signature includes resourceVersion) and emits fresh rows, so keying on ids
+  // alone would leave this index holding the previous objects and the table
+  // showing the old name until an agent is added or removed.
+  const agentRowsKey = agentRows
+    .map(agent => `${agent.id}@${agent.name}`)
+    .join('|');
   const agentIndex = useMemo(
     () => buildAgentIndex(agentRows),
     // Rebuild only when the agents actually change, not on every render.

@@ -288,11 +288,42 @@ and availability all vary per installation:
    further loading shows as a thin progress bar so a slow cluster never blanks the
    table.
 
-Failures are classified per installation: `404`/`503` mean "kagent isn't deployed
-here" — the common case fleet-wide and not actionable — so they contribute nothing
-and stay silent. Anything else lands in the `UnreachableInstallationsAlert`. (The
-backend also maps an unknown-installation `400` to `404`, so a not-configured
-installation takes the silent path.)
+Failures are classified per installation, and the line is drawn between **absent**
+and **unwell** rather than by status code alone:
+
+- **Silent** — `404` (no kagent API at that host; the backend also maps an
+  unknown-installation `400` here) and `503`, which the backend now raises _only_
+  for connection-level failures: DNS, TLS, connection refused. These mean nothing
+  is deployed there, which is the common case fleet-wide and not actionable.
+- **Reported** via `UnreachableInstallationsAlert` — everything else, including a
+  `5xx`/`429` from kagent, a request that times out, and a response whose body
+  can't be read. kagent answered and failed in all of those, so it is deployed and
+  unwell. Sharing an error with "unreachable" would let a degraded installation's
+  sessions disappear from the merged list with no alert and nothing logged —
+  indistinguishable from "you have no sessions there".
+
+The same applies to responses that are nominally successful: an in-band
+`{error: true}` on a `200`, or a `data` that is no longer an array, both throw so
+the installation is reported rather than contributing an innocuous empty list. A
+partial read (some rows unparseable) does _not_ throw — the rows we could read are
+still shown, with a console warning recording what was dropped.
+
+### Caching: user-scoped data is never persisted
+
+The plugin's `QueryClientProvider` persists its cache to `localStorage` for an
+hour, which is right for the Agents and ModelConfig lists — that is installation
+state, identical for every user, and caching it across reloads is the point.
+
+Sessions are different: the rows are one user's chat titles, and the identity probe
+caches their subject (an email). Those two query keys are therefore excluded from
+persistence via `dehydrateOptions.shouldDehydrateQuery`, so they live in memory
+only. Without that, on a shared workstation the data would outlive sign-out on
+disk, and `PersistQueryClientProvider` would rehydrate the previous user's sessions
+for the next one — under the same origin and key, and with `staleTime: 60_000` an
+entry under a minute old would not even be refetched.
+
+The filter composes with `defaultShouldDehydrateQuery` rather than replacing it, so
+the library's "only persist successful queries" rule still applies.
 
 ### User scoping
 

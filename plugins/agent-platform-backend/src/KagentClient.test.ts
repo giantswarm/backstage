@@ -240,8 +240,15 @@ describe('KagentClient', () => {
       [401, 'AuthenticationError'],
       [403, 'NotAllowedError'],
       [404, 'NotFoundError'],
-      [500, 'ServiceUnavailableError'],
-      [503, 'ServiceUnavailableError'],
+      // A kagent that answers and fails is deployed but unwell. It must NOT share
+      // ServiceUnavailableError with "host unreachable", which the frontend
+      // silences as "no kagent here" — that would make a degraded kagent look
+      // like an empty account.
+      [429, 'UpstreamError'],
+      [500, 'UpstreamError'],
+      [502, 'UpstreamError'],
+      [503, 'UpstreamError'],
+      [504, 'UpstreamError'],
     ])('maps status %s to %s', async (status, expectedName) => {
       const fetchFn = jest
         .fn()
@@ -265,22 +272,35 @@ describe('KagentClient', () => {
       ).rejects.toMatchObject({ name: 'AuthenticationError' });
     });
 
-    it('maps a transport failure to ServiceUnavailableError', async () => {
-      const fetchFn = jest.fn().mockRejectedValue(new Error('ENOTFOUND'));
+    it.each([
+      ['DNS failure', 'ENOTFOUND'],
+      ['connection refused', 'ECONNREFUSED'],
+    ])(
+      'maps %s to ServiceUnavailableError (nothing is deployed there)',
+      async (_label, message) => {
+        // Genuinely "no kagent at that host" — the normal outcome across a fleet
+        // where only a couple of installations run kagent, so the frontend
+        // silences it.
+        const fetchFn = jest.fn().mockRejectedValue(new Error(message));
+
+        await expect(
+          build(fetchFn).listSessions({ userToken: 't' }),
+        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+      },
+    );
+
+    it('maps a timeout to UpstreamError, not "not deployed"', async () => {
+      // Something answered slowly, so kagent exists and is unwell. Silencing this
+      // would drop a slow installation's sessions without a word.
+      const timeoutError = new Error(
+        'The operation was aborted due to timeout',
+      );
+      timeoutError.name = 'TimeoutError';
+      const fetchFn = jest.fn().mockRejectedValue(timeoutError);
 
       await expect(
         build(fetchFn).listSessions({ userToken: 't' }),
-      ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
-    });
-
-    it('maps an abort/timeout to ServiceUnavailableError', async () => {
-      const abortError = new Error('The operation was aborted');
-      abortError.name = 'AbortError';
-      const fetchFn = jest.fn().mockRejectedValue(abortError);
-
-      await expect(
-        build(fetchFn).listSessions({ userToken: 't' }),
-      ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+      ).rejects.toMatchObject({ name: 'UpstreamError' });
     });
 
     it('names the installation in the error message', async () => {
@@ -293,8 +313,9 @@ describe('KagentClient', () => {
 
     describe('failures while reading the body', () => {
       // The abort signal stays armed after the headers arrive, so the body read
-      // is a second chance to fail. These must map to the same 503 the frontend
-      // keys off, not escape as an unmapped 500.
+      // is a second chance to fail. kagent answered in all of these cases, so
+      // they are upstream failures the frontend surfaces — not the silent
+      // "kagent isn't deployed here" path.
       function respondWithBodyError(error: Error) {
         return jest.fn().mockResolvedValue({
           ok: true,
@@ -306,7 +327,7 @@ describe('KagentClient', () => {
         } as unknown as Response);
       }
 
-      it('maps a mid-stream abort to ServiceUnavailableError', async () => {
+      it('maps a mid-stream abort to UpstreamError', async () => {
         const abortError = new Error('The operation was aborted');
         abortError.name = 'AbortError';
 
@@ -314,25 +335,25 @@ describe('KagentClient', () => {
           build(respondWithBodyError(abortError)).listSessions({
             userToken: 't',
           }),
-        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+        ).rejects.toMatchObject({ name: 'UpstreamError' });
       });
 
-      it('maps invalid or truncated JSON to ServiceUnavailableError', async () => {
+      it('maps invalid or truncated JSON to UpstreamError', async () => {
         const syntaxError = new SyntaxError('Unexpected end of JSON input');
 
         await expect(
           build(respondWithBodyError(syntaxError)).listSessions({
             userToken: 't',
           }),
-        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+        ).rejects.toMatchObject({ name: 'UpstreamError' });
       });
 
-      it('maps a connection reset mid-body to ServiceUnavailableError', async () => {
+      it('maps a connection reset mid-body to UpstreamError', async () => {
         await expect(
           build(respondWithBodyError(new Error('ECONNRESET'))).listSessions({
             userToken: 't',
           }),
-        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+        ).rejects.toMatchObject({ name: 'UpstreamError' });
       });
     });
   });

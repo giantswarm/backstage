@@ -67,6 +67,23 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+/**
+ * kagent answered (or was reachable) and then failed: a 5xx, a 429, a timeout, or
+ * a body that could not be read.
+ *
+ * Deliberately **not** `ServiceUnavailableError`. That maps to HTTP 503, which the
+ * frontend treats as "kagent isn't deployed on this installation" and silences —
+ * correct for a host that doesn't resolve, badly wrong for a deployed-but-degraded
+ * kagent, whose sessions would then vanish from the fleet-merged list with no
+ * alert and nothing logged. An unrecognised error surfaces as a 500, which the
+ * frontend classifies as a genuine read failure and reports.
+ */
+function upstreamError(message: string): Error {
+  const error = new Error(message);
+  error.name = 'UpstreamError';
+  return error;
+}
+
 /** Whether a configured URL is absolute and http(s), so `fetch` can use it. */
 function isAbsoluteHttpUrl(url: string): boolean {
   try {
@@ -213,10 +230,25 @@ export class KagentClient {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
-      // DNS failure, TLS error, connection refused or timeout. On a fleet where
-      // most installations do not run kagent this is the normal, expected
-      // outcome, so it is logged at debug rather than warn (the root logger
-      // forwards warn/error to Sentry).
+      // A timeout means something *is* listening but did not answer in time —
+      // kagent is deployed and unwell, not absent. That must not be swallowed as
+      // "no kagent here", so it becomes an upstream failure the frontend
+      // surfaces. `AbortSignal.timeout` rejects with a TimeoutError.
+      if ((error as Error)?.name === 'TimeoutError') {
+        this.logger.debug(
+          `kagent request timed out for installation '${this.installation.name}'`,
+          { timeoutMs: this.timeoutMs },
+        );
+        throw upstreamError(
+          `The kagent API for installation '${this.installation.name}' did not respond within ${this.timeoutMs}ms.`,
+        );
+      }
+
+      // DNS failure, TLS error or connection refused: nothing is reachable at
+      // that host. On a fleet where most installations do not run kagent this is
+      // the normal, expected outcome, so it is logged at debug rather than warn
+      // (the root logger forwards warn/error to Sentry) and the frontend treats
+      // it as "not deployed here".
       this.logger.debug(
         `kagent request failed for installation '${this.installation.name}'`,
         { error: String(error) },
@@ -251,11 +283,15 @@ export class KagentClient {
     }
 
     if (!response.ok) {
+      // Anything else non-ok (5xx, 429, …) means kagent or its ingress answered
+      // and failed. It is deployed but unwell, so this must NOT share
+      // ServiceUnavailableError with "host unreachable" — the frontend silences
+      // that one, which would make a degraded kagent look like an empty account.
       this.logger.debug(
         `kagent API returned an error status for installation '${this.installation.name}'`,
         { status: response.status },
       );
-      throw new ServiceUnavailableError(
+      throw upstreamError(
         `The kagent API for installation '${this.installation.name}' returned status ${response.status}.`,
       );
     }
@@ -272,8 +308,8 @@ export class KagentClient {
     // Reading the body is a second chance to fail: the abort signal is still
     // armed after the headers arrive, so a slow or large response can abort
     // mid-stream, the connection can reset, or the body can be truncated /
-    // invalid JSON. All of those are transport failures and must map to the
-    // same 503 the frontend keys off — not escape as an unmapped 500.
+    // invalid JSON. kagent answered in all of those cases, so they are upstream
+    // failures worth surfacing — not "kagent isn't deployed here".
     try {
       return await response.json();
     } catch (error) {
@@ -281,7 +317,7 @@ export class KagentClient {
         `Failed to read the kagent API response body for installation '${this.installation.name}'`,
         { error: String(error) },
       );
-      throw new ServiceUnavailableError(
+      throw upstreamError(
         `Could not read the response from the kagent API for installation '${this.installation.name}'.`,
       );
     }
