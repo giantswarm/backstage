@@ -6,6 +6,7 @@ import { alertApiRef } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  ConfigMap,
   ImagePolicy,
   Kustomization,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -38,17 +39,29 @@ function createKustomization(
   return new Kustomization(json as any, 'test-installation');
 }
 
-function createImagePolicy(): ImagePolicy {
+function createImagePolicy(options: { suspend?: boolean } = {}): ImagePolicy {
   const json = {
     apiVersion: 'image.toolkit.fluxcd.io/v1beta2',
     kind: 'ImagePolicy',
     metadata: { name: 'my-policy', namespace: 'flux-system' },
-    spec: {},
+    spec: { suspend: options.suspend },
     status: {},
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new ImagePolicy(json as any, 'test-installation');
+}
+
+/** A non-Flux resource, to exercise the kind guard. */
+function createConfigMap(): ConfigMap {
+  const json = {
+    apiVersion: 'v1',
+    kind: 'ConfigMap',
+    metadata: { name: 'my-config', namespace: 'flux-system' },
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new ConfigMap(json as any, 'test-installation');
 }
 
 type ProxyArgs = { clusterName: string; path: string; init?: RequestInit };
@@ -87,7 +100,7 @@ function createAlertApi() {
 }
 
 async function renderActions(
-  resource: Kustomization | ImagePolicy,
+  resource: Kustomization | ImagePolicy | ConfigMap,
   {
     kubernetesApi = createMockKubernetesApi(),
     alertApi = createAlertApi(),
@@ -170,14 +183,66 @@ describe('FluxResourceActions', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders nothing for a kind Flux cannot reconcile or suspend', async () => {
-    const { kubernetesApi } = await renderActions(createImagePolicy());
+  it('renders nothing for a resource that is not a Flux object', async () => {
+    const { kubernetesApi } = await renderActions(createConfigMap());
 
     expect(
       screen.queryByRole('button', { name: 'Reconcile' }),
     ).not.toBeInTheDocument();
     // No access review either — the kind is filtered out before the hook mounts.
     expect(kubernetesApi.proxy).not.toHaveBeenCalled();
+  });
+
+  it('offers both actions for an ImagePolicy', async () => {
+    // image-reflector-controller honours the reconcile-request annotation and
+    // `spec.suspend` for ImagePolicy; only the `flux` CLI lacks a subcommand.
+    const { kubernetesApi } = await renderActions(createImagePolicy());
+
+    expect(
+      await screen.findByRole('button', { name: 'Reconcile' }),
+    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument();
+
+    const review = kubernetesApi.proxy.mock.calls.find(
+      ([args]: [ProxyArgs]) => args.path === SSAR_PATH,
+    )?.[0] as ProxyArgs;
+
+    expect(
+      JSON.parse(review.init!.body as string).spec.resourceAttributes,
+    ).toEqual({
+      group: 'image.toolkit.fluxcd.io',
+      resource: 'imagepolicies',
+      namespace: 'flux-system',
+      verb: 'patch',
+    });
+  });
+
+  it('suspends an ImagePolicy', async () => {
+    const { kubernetesApi } = await renderActions(createImagePolicy());
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Suspend' }),
+    );
+
+    await waitFor(() =>
+      expect(findPatchBody(kubernetesApi)).toEqual({ spec: { suspend: true } }),
+    );
+    expect(
+      kubernetesApi.proxy.mock.calls.find(
+        ([args]: [ProxyArgs]) => args.init?.method === 'PATCH',
+      )![0].path,
+    ).toBe(
+      '/apis/image.toolkit.fluxcd.io/v1beta2/namespaces/flux-system/imagepolicies/my-policy',
+    );
+  });
+
+  it('offers Resume for a suspended ImagePolicy', async () => {
+    await renderActions(createImagePolicy({ suspend: true }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Resume' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reconcile' })).toBeDisabled();
   });
 
   it('offers Resume and disables Reconcile for a suspended resource', async () => {

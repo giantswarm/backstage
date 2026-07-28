@@ -11,8 +11,12 @@ Backstage for a terminal.
   selected resource as well as its source and dependency cards. Reconcile patches
   the `reconcile.fluxcd.io/requestedAt` annotation (equivalent to
   `flux reconcile <kind> <name>`); the suspend toggle patches `spec.suspend`, and
-  its label follows the current state. `ImagePolicy` gets no buttons — Flux
-  supports neither operation for it.
+  its label follows the current state.
+- All eight kinds the panel renders get the buttons, `ImagePolicy` included.
+  Note this is a wider set than the `flux` CLI covers: there is no
+  `flux reconcile image policy` subcommand, but image-reflector-controller does
+  honour the reconcile-request annotation and `spec.suspend` for ImagePolicy, so
+  the UI can offer both.
 - Reconcile stays disabled until a requested reconciliation has been picked up,
   determined from the resource itself by comparing the annotation against
   `status.lastHandledReconcileAt` (new `FluxObject.isReconcileRequestPending()`).
