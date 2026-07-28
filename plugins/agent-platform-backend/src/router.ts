@@ -104,6 +104,11 @@ export async function createRouter(
     req: express.Request,
   ): { config: KagentInstallationConfig; client: KagentClient } => {
     if (clients.size === 0) {
+      // Kept as a 503 — unlike "kagent is absent on this installation", nothing
+      // configured at all is a genuine misconfiguration worth a Sentry event. It
+      // also cannot spam: with no installations resolved, `/kagent/installations`
+      // returns an empty list and the frontend queries nothing, so this is only
+      // ever reached by a hand-made request.
       throw new ServiceUnavailableError(
         'No kagent installation is configured. Add gs.installations entries with a baseDomain, or set agentPlatform.kagent.installations.',
       );

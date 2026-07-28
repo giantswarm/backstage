@@ -4,7 +4,6 @@ import {
   AuthenticationError,
   NotAllowedError,
   NotFoundError,
-  ServiceUnavailableError,
 } from '@backstage/errors';
 
 /**
@@ -71,12 +70,15 @@ function stripTrailingSlash(url: string): string {
  * kagent answered (or was reachable) and then failed: a 5xx, a 429, a timeout, or
  * a body that could not be read.
  *
- * Deliberately **not** `ServiceUnavailableError`. That maps to HTTP 503, which the
- * frontend treats as "kagent isn't deployed on this installation" and silences —
- * correct for a host that doesn't resolve, badly wrong for a deployed-but-degraded
- * kagent, whose sessions would then vanish from the fleet-merged list with no
- * alert and nothing logged. An unrecognised error surfaces as a 500, which the
- * frontend classifies as a genuine read failure and reports.
+ * Deliberately **not** the same error as "kagent is absent". That case is a 404
+ * (see the catch block in `request`): silenced by the frontend, and below the
+ * `>= 500` threshold at which `MiddlewareFactory.error()` logs to Sentry, which
+ * matters because it is the expected outcome on most installations.
+ *
+ * This one surfaces as a 500, so the frontend reports it *and* it reaches Sentry —
+ * both correct here. A deployed-but-degraded kagent is rare and genuinely
+ * actionable, and its sessions silently vanishing from the fleet-merged list would
+ * be the worse failure.
  */
 function upstreamError(message: string): Error {
   const error = new Error(message);
@@ -245,16 +247,26 @@ export class KagentClient {
       }
 
       // DNS failure, TLS error or connection refused: nothing is reachable at
-      // that host. On a fleet where most installations do not run kagent this is
-      // the normal, expected outcome, so it is logged at debug rather than warn
-      // (the root logger forwards warn/error to Sentry) and the frontend treats
-      // it as "not deployed here".
+      // that host, i.e. kagent is not deployed on this installation. On a fleet
+      // where only a couple of installations run kagent, this is the *normal,
+      // expected* outcome for most of them on every page view.
+      //
+      // It must therefore be a 404 and not a 503. `MiddlewareFactory.error()`
+      // logs `logger.error` for any status >= 500, and the root logger forwards
+      // warn/error to Sentry — so a 503 here would raise one Sentry event per
+      // kagent-less installation per page view, per user, fanned out into a
+      // separate issue per installation name. Logging the cause at debug does
+      // not prevent that; only not throwing a 5xx does.
+      //
+      // 404 also matches what the frontend already does with kagent's own 404:
+      // treat it as "no kagent API here" and stay silent. The two cases carried
+      // no distinguishable meaning, so collapsing them loses nothing.
       this.logger.debug(
-        `kagent request failed for installation '${this.installation.name}'`,
+        `kagent is not reachable for installation '${this.installation.name}'`,
         { error: String(error) },
       );
-      throw new ServiceUnavailableError(
-        `Could not reach the kagent API for installation '${this.installation.name}'.`,
+      throw new NotFoundError(
+        `The kagent API is not available for installation '${this.installation.name}'.`,
       );
     }
 

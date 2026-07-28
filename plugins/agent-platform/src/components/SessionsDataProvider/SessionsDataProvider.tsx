@@ -181,11 +181,19 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       }
 
       // "kagent isn't deployed here" is the common case across the fleet and
-      // isn't actionable, so it contributes nothing and stays silent:
-      //   404 — the backend reached kagent's host but there is no API there
-      //   503 — the host didn't resolve, or no kagent endpoint is configured
-      //         (the backend also maps an unknown-installation 400 to 404)
-      // Anything else means we genuinely couldn't read it, which is worth saying.
+      // isn't actionable, so it contributes nothing and stays silent. The backend
+      // funnels every such outcome into a 404 → NotFoundError: kagent's own 404,
+      // an unknown-installation 400, and connection-level failures (DNS, TLS,
+      // refused). It deliberately does not use a 5xx for these, because anything
+      // >= 500 is logged at `error` and forwarded to Sentry — once per
+      // kagent-less installation per page view.
+      //
+      // ServiceUnavailableError is still treated as silent for safety, though the
+      // backend now only raises it when *no* installation is configured at all, in
+      // which case no session query runs.
+      //
+      // Anything else — including UpstreamError for a 5xx, a timeout or an
+      // unreadable body — means kagent answered and failed, which is worth saying.
       const errorName = (query.error as Error | null)?.name;
       const notDeployed =
         errorName === 'NotFoundError' ||

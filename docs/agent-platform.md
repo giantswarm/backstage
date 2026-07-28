@@ -291,10 +291,10 @@ and availability all vary per installation:
 Failures are classified per installation, and the line is drawn between **absent**
 and **unwell** rather than by status code alone:
 
-- **Silent** — `404` (no kagent API at that host; the backend also maps an
-  unknown-installation `400` here) and `503`, which the backend now raises _only_
-  for connection-level failures: DNS, TLS, connection refused. These mean nothing
-  is deployed there, which is the common case fleet-wide and not actionable.
+- **Silent** — `404`, which the backend uses for everything meaning "no kagent API
+  here": kagent's own 404, an unknown-installation `400`, and connection-level
+  failures (DNS, TLS, connection refused). Nothing is deployed there, which is the
+  common case fleet-wide and not actionable.
 - **Reported** via `UnreachableInstallationsAlert` — everything else, including a
   `5xx`/`429` from kagent, a request that times out, and a response whose body
   can't be read. kagent answered and failed in all of those, so it is deployed and
@@ -307,6 +307,16 @@ The same applies to responses that are nominally successful: an in-band
 the installation is reported rather than contributing an innocuous empty list. A
 partial read (some rows unparseable) does _not_ throw — the rows we could read are
 still shown, with a console warning recording what was dropped.
+
+**Why the status codes matter beyond classification.**
+`MiddlewareFactory.error()` logs at `error` for any status `>= 500`, and the root
+logger forwards `warn`/`error` to Sentry. The Sessions tab queries every reachable
+installation, so on a fleet where kagent runs on two of fifteen, thirteen answer
+"no kagent here" on every page view — twice over with the identity probe. Returning
+a `5xx` for that would raise ~26 Sentry events per page view per user, split into
+one issue per installation name. Hence `404` for the expected case, and `500`
+reserved for the rare, actionable one. Logging the cause at `debug` in the client
+does not help: the throw is what the middleware logs.
 
 ### Caching: user-scoped data is never persisted
 

@@ -276,16 +276,22 @@ describe('KagentClient', () => {
       ['DNS failure', 'ENOTFOUND'],
       ['connection refused', 'ECONNREFUSED'],
     ])(
-      'maps %s to ServiceUnavailableError (nothing is deployed there)',
+      'maps %s to NotFoundError (nothing is deployed there)',
       async (_label, message) => {
         // Genuinely "no kagent at that host" — the normal outcome across a fleet
         // where only a couple of installations run kagent, so the frontend
         // silences it.
+        //
+        // A 404 rather than a 503 is load-bearing beyond semantics:
+        // MiddlewareFactory.error() logs at `error` for any status >= 500 and the
+        // root logger forwards that to Sentry, so a 5xx here would raise an event
+        // per kagent-less installation per page view. Never return a 5xx for an
+        // expected outcome.
         const fetchFn = jest.fn().mockRejectedValue(new Error(message));
 
         await expect(
           build(fetchFn).listSessions({ userToken: 't' }),
-        ).rejects.toMatchObject({ name: 'ServiceUnavailableError' });
+        ).rejects.toMatchObject({ name: 'NotFoundError' });
       },
     );
 
