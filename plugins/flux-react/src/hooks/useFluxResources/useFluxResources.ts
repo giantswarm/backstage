@@ -11,6 +11,7 @@ import {
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEffect, useMemo, useState } from 'react';
+import { awaitsReconcileHandling } from './awaitsReconcileHandling';
 
 const RECONCILING_INTERVAL = 3000;
 const NON_RECONCILING_INTERVAL = 15000;
@@ -229,15 +230,36 @@ export function useFluxResources(clusters: string | string[] | null) {
       imageRepositories.some(r => r.isReconciling()) ||
       imageUpdateAutomations.some(a => a.isReconciling());
 
-    const newInterval = reconciling
-      ? RECONCILING_INTERVAL
-      : NON_RECONCILING_INTERVAL;
+    // An on-demand reconciliation the controller has not picked up yet also
+    // deserves the fast poll: the details panel disables its Reconcile button
+    // until the request is handled, and the slow interval would leave it
+    // disabled for far longer than the controller actually takes. See
+    // `awaitsReconcileHandling` for the cases excluded to keep this bounded.
+    const requestPending = [
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+      imagePolicies,
+      imageRepositories,
+      imageUpdateAutomations,
+    ].some(resources => resources.some(awaitsReconcileHandling));
+
+    const newInterval =
+      reconciling || requestPending
+        ? RECONCILING_INTERVAL
+        : NON_RECONCILING_INTERVAL;
 
     if (newInterval !== refetchInterval) {
       setRefetchInterval(newInterval);
     }
   }, [
     kustomizations,
+    helmReleases,
+    gitRepositories,
+    ociRepositories,
+    helmRepositories,
     imagePolicies,
     imageRepositories,
     imageUpdateAutomations,

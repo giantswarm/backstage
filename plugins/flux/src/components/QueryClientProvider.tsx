@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { shouldPersistQuery } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 
 const gcTime = 1000 * 60 * 60;
@@ -47,7 +48,14 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   return (
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister, maxAge }}
+      persistOptions={{
+        persister,
+        maxAge,
+        // Keeps the library default (successful queries only) and additionally
+        // drops anything tagged NON_PERSISTED_QUERY_META, e.g. permission probes
+        // whose answer is tied to the signed-in identity.
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+      }}
     >
       {children}
     </PersistQueryClientProvider>

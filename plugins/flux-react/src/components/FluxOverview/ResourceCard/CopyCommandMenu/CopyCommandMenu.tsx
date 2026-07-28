@@ -9,10 +9,7 @@ import {
   TooltipTrigger,
 } from '@backstage/ui';
 import CheckIcon from '@material-ui/icons/Check';
-import {
-  FluxObject,
-  KubeObject,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { TerminalIcon } from '../../../../assets/icons';
 
 function getFullyQualifiedResourceType(resource: KubeObject): string {
@@ -47,76 +44,18 @@ function buildDescribeCommand(resource: KubeObject): string {
   return parts.join(' ');
 }
 
-const fluxReconcileTypeMap: Record<string, string> = {
-  Kustomization: 'kustomization',
-  HelmRelease: 'helmrelease',
-  GitRepository: 'source git',
-  OCIRepository: 'source oci',
-  HelmRepository: 'source helm',
-  ImageRepository: 'image repository',
-  ImageUpdateAutomation: 'image update',
-};
-
-function buildFluxCommand(subcommand: string, resource: KubeObject): string {
-  const fluxType = fluxReconcileTypeMap[resource.getKind()];
-  const name = resource.getName();
-  const namespace = resource.getNamespace();
-
-  const parts = ['flux', subcommand, fluxType, name];
-  if (namespace) {
-    parts.push('-n', namespace);
-  }
-
-  return parts.join(' ');
-}
-
-function isFluxResource(resource: KubeObject): boolean {
-  return resource.getKind() in fluxReconcileTypeMap;
-}
-
-function isNotSuspended(resource: KubeObject): boolean {
-  return (
-    isFluxResource(resource) &&
-    !(resource instanceof FluxObject && resource.isSuspended())
-  );
-}
-
-function isSuspended(resource: KubeObject): boolean {
-  return (
-    isFluxResource(resource) &&
-    resource instanceof FluxObject &&
-    resource.isSuspended()
-  );
-}
-
 type CommandDefinition = {
   id: string;
   label: string;
   build: (resource: KubeObject) => string;
-  isApplicable?: (resource: KubeObject) => boolean;
 };
 
+// The `flux reconcile`/`suspend`/`resume` commands used to live here. They are
+// now offered as buttons in the card footer (see `FluxResourceActions`), which
+// act on the resource directly.
 const commands: CommandDefinition[] = [
   { id: 'get', label: 'kubectl get -o yaml', build: buildGetCommand },
   { id: 'describe', label: 'kubectl describe', build: buildDescribeCommand },
-  {
-    id: 'flux-reconcile',
-    label: 'flux reconcile',
-    build: r => buildFluxCommand('reconcile', r),
-    isApplicable: isNotSuspended,
-  },
-  {
-    id: 'flux-suspend',
-    label: 'flux suspend',
-    build: r => buildFluxCommand('suspend', r),
-    isApplicable: isNotSuspended,
-  },
-  {
-    id: 'flux-resume',
-    label: 'flux resume',
-    build: r => buildFluxCommand('resume', r),
-    isApplicable: isSuspended,
-  },
 ];
 
 type CopyCommandMenuProps = {
@@ -150,10 +89,6 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
     event.stopPropagation();
   };
 
-  const applicableCommands = commands.filter(
-    command => !command.isApplicable || command.isApplicable(resource),
-  );
-
   return (
     <Box onClick={stopPropagation}>
       <MenuTrigger>
@@ -173,7 +108,7 @@ export const CopyCommandMenu = ({ resource }: CopyCommandMenuProps) => {
           <Tooltip>Copy CLI command</Tooltip>
         </TooltipTrigger>
         <Menu>
-          {applicableCommands.map(command => (
+          {commands.map(command => (
             <MenuItem key={command.id} onAction={() => handleCopy(command)}>
               {command.label}
             </MenuItem>

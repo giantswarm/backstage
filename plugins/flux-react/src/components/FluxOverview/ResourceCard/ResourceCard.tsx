@@ -28,6 +28,7 @@ import {
   buildExplainErrorMessage,
 } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { CopyCommandMenu } from './CopyCommandMenu';
+import { FluxResourceActions } from './FluxResourceActions';
 import { ResourceMetadata } from './ResourceMetadata';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
 import { ResourceInfo } from './ResourceInfo';
@@ -298,6 +299,7 @@ export const ResourceCard = ({
               }}
             />
             <Flex align="center" mt="2" gap="2">
+              <FluxResourceActions resource={resource} />
               <CopyCommandMenu resource={resource} />
               <AIChatButton
                 troubleshoot={readyStatus === 'False'}

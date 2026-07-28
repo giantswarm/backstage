@@ -34,7 +34,9 @@ describe('CopyCommandMenu', () => {
     });
   });
 
-  it('opens the menu and shows reconcile/suspend for a running resource', async () => {
+  it('opens the menu and shows only the kubectl commands', async () => {
+    // The flux CLI commands moved to buttons in the card footer — see
+    // `FluxResourceActions`.
     await renderInTestApp(<CopyCommandMenu resource={createKustomization()} />);
 
     await userEvent.click(
@@ -45,17 +47,12 @@ describe('CopyCommandMenu', () => {
       await screen.findByRole('menuitem', { name: 'kubectl get -o yaml' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('menuitem', { name: 'flux reconcile' }),
+      screen.getByRole('menuitem', { name: 'kubectl describe' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('menuitem', { name: 'flux suspend' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('menuitem', { name: 'flux resume' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(2);
   });
 
-  it('shows flux resume for a suspended resource', async () => {
+  it('offers no flux commands for a suspended resource either', async () => {
     await renderInTestApp(
       <CopyCommandMenu resource={createKustomization({ suspend: true })} />,
     );
@@ -65,11 +62,13 @@ describe('CopyCommandMenu', () => {
     );
 
     expect(
-      await screen.findByRole('menuitem', { name: 'flux resume' }),
+      await screen.findByRole('menuitem', { name: 'kubectl get -o yaml' }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('menuitem', { name: 'flux reconcile' }),
-    ).not.toBeInTheDocument();
+    for (const command of ['flux reconcile', 'flux suspend', 'flux resume']) {
+      expect(
+        screen.queryByRole('menuitem', { name: command }),
+      ).not.toBeInTheDocument();
+    }
   });
 
   it('copies the selected command to the clipboard', async () => {
