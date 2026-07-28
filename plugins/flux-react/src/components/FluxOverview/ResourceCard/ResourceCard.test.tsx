@@ -1,6 +1,9 @@
+import { ReactNode } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderInTestApp } from '@backstage/test-utils';
+import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ResourceCard } from './ResourceCard';
 
@@ -40,9 +43,48 @@ function createKustomization(
   return new Kustomization(json as any, 'test-installation');
 }
 
+/**
+ * The footer's `FluxResourceActions` runs a `SelfSubjectAccessReview` through
+ * react-query, so the card needs a QueryClient and a Kubernetes API — in the app
+ * the flux plugin supplies the client.
+ */
+function createMockKubernetesApi({ allowed = true } = {}) {
+  return {
+    proxy: jest.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 201,
+          json: async () => ({ status: { allowed } }),
+        }) as unknown as Response,
+    ),
+    getObjectsByEntity: jest.fn(),
+    getClusters: jest.fn(),
+    getCluster: jest.fn(),
+    getWorkloadsByEntity: jest.fn(),
+    getCustomObjectsByEntity: jest.fn(),
+  };
+}
+
+async function renderCard(children: ReactNode, { allowed = true } = {}) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  await renderInTestApp(
+    <QueryClientProvider client={queryClient}>
+      <TestApiProvider
+        apis={[[kubernetesApiRef, createMockKubernetesApi({ allowed })]]}
+      >
+        {children}
+      </TestApiProvider>
+    </QueryClientProvider>,
+  );
+}
+
 describe('ResourceCard', () => {
   it('renders the resource name, kind and status', async () => {
-    await renderInTestApp(
+    await renderCard(
       <ResourceCard
         cluster="test-installation"
         name="my-app"
@@ -58,7 +100,7 @@ describe('ResourceCard', () => {
   });
 
   it('shows a not-ready status for a failing resource', async () => {
-    await renderInTestApp(
+    await renderCard(
       <ResourceCard
         cluster="test-installation"
         name="my-app"
@@ -72,7 +114,7 @@ describe('ResourceCard', () => {
   });
 
   it('renders the action row with the copy-command menu when a resource is present', async () => {
-    await renderInTestApp(
+    await renderCard(
       <ResourceCard
         cluster="test-installation"
         name="my-app"
@@ -87,10 +129,51 @@ describe('ResourceCard', () => {
     ).toBeInTheDocument();
   });
 
+  it('adds the Flux action buttons to the footer for a user who may patch', async () => {
+    await renderCard(
+      <ResourceCard
+        cluster="test-installation"
+        name="my-app"
+        namespace="flux-system"
+        kind="Kustomization"
+        resource={createKustomization({ readyStatus: 'True' })}
+      />,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Reconcile' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument();
+  });
+
+  it('omits the Flux action buttons for a read-only user', async () => {
+    await renderCard(
+      <ResourceCard
+        cluster="test-installation"
+        name="my-app"
+        namespace="flux-system"
+        kind="Kustomization"
+        resource={createKustomization({ readyStatus: 'True' })}
+      />,
+      { allowed: false },
+    );
+
+    // The copy menu is unaffected — only the write affordances are gated.
+    expect(
+      await screen.findByRole('button', { name: 'Copy CLI command' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Reconcile' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Suspend' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('collapses the panel when the trigger is clicked', async () => {
     const user = userEvent.setup();
 
-    await renderInTestApp(
+    await renderCard(
       <ResourceCard
         cluster="test-installation"
         name="my-app"

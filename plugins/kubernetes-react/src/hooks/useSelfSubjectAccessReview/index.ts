@@ -1,0 +1,1 @@
+export { useSelfSubjectAccessReview } from './useSelfSubjectAccessReview';

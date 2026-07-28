@@ -229,15 +229,35 @@ export function useFluxResources(clusters: string | string[] | null) {
       imageRepositories.some(r => r.isReconciling()) ||
       imageUpdateAutomations.some(a => a.isReconciling());
 
-    const newInterval = reconciling
-      ? RECONCILING_INTERVAL
-      : NON_RECONCILING_INTERVAL;
+    // An on-demand reconciliation the controller has not picked up yet also
+    // deserves the fast poll: the details panel disables its Reconcile button
+    // until the request is handled, and the slow interval would leave it
+    // disabled for far longer than the controller actually takes.
+    const requestPending = [
+      kustomizations,
+      helmReleases,
+      gitRepositories,
+      ociRepositories,
+      helmRepositories,
+      imagePolicies,
+      imageRepositories,
+      imageUpdateAutomations,
+    ].some(resources => resources.some(r => r.isReconcileRequestPending()));
+
+    const newInterval =
+      reconciling || requestPending
+        ? RECONCILING_INTERVAL
+        : NON_RECONCILING_INTERVAL;
 
     if (newInterval !== refetchInterval) {
       setRefetchInterval(newInterval);
     }
   }, [
     kustomizations,
+    helmReleases,
+    gitRepositories,
+    ociRepositories,
+    helmRepositories,
     imagePolicies,
     imageRepositories,
     imageUpdateAutomations,

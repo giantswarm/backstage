@@ -1,5 +1,8 @@
 import { core } from '@giantswarm/k8s-types';
-import { MultiVersionResourceMatcher } from './CustomResourceMatcher';
+import {
+  CustomResourceMatcher,
+  MultiVersionResourceMatcher,
+} from './CustomResourceMatcher';
 
 export interface KubeObjectInterface {
   kind: string;
@@ -141,6 +144,27 @@ export class KubeObject<T extends KubeObjectInterface = any> {
       plural: this.plural,
       isCore: this.isCore,
       supportedVersions: this.supportedVersions,
+    };
+  }
+
+  /**
+   * The matcher for the API version this specific object was actually read at,
+   * as opposed to the class-level {@link getGVK}, which reports the latest
+   * supported version.
+   *
+   * Reads resolve their version through API discovery (`usePreferredVersion`),
+   * so writes and cache invalidations must use this — targeting the static
+   * version can hit a version the cluster does not serve, and produces query
+   * keys that do not match the ones the read hooks registered.
+   */
+  getResolvedGVK(): CustomResourceMatcher {
+    const ctor = this.constructor as typeof KubeObject;
+
+    return {
+      apiVersion: this.getApiVersionSuffix(),
+      group: this.getGroup() ?? ctor.group,
+      plural: ctor.plural,
+      isCore: ctor.isCore,
     };
   }
 }
