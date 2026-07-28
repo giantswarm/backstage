@@ -162,7 +162,12 @@ export class KubeObject<T extends KubeObjectInterface = any> {
 
     return {
       apiVersion: this.getApiVersionSuffix(),
-      group: this.getGroup() ?? ctor.group,
+      // Core resources have no group. `getGroup()` splits `apiVersion` on '/',
+      // so for a core object (`apiVersion: 'v1'`) it returns 'v1' rather than an
+      // empty string — which would produce query keys the read hooks never
+      // registered (they drop the empty group via `.filter(Boolean)`) and access
+      // reviews asking about a group no authorizer knows.
+      group: ctor.isCore ? '' : (this.getGroup() ?? ctor.group),
       plural: ctor.plural,
       isCore: ctor.isCore,
     };

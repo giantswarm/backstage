@@ -5,6 +5,7 @@ import {
   createSelfSubjectAccessReview,
   ResourceAttributes,
 } from '../utils/selfSubjectAccessReview';
+import { NON_PERSISTED_QUERY_META } from '../utils/queryPersistence';
 
 /**
  * A verdict is cheap to re-check but changes rarely, so keep it warm for a few
@@ -53,6 +54,12 @@ export function useSelfSubjectAccessReview(
     // A failed review means "assume not allowed" — retrying would only add load
     // for a verdict we are not going to act on.
     retry: false,
+    // Never persist the verdict. The persisted cache outlives the session, so a
+    // rehydrated `allowed: true` could belong to a previous user on a shared
+    // browser, or to a since-revoked grant — and would render write affordances
+    // on first paint that vanish once the revalidation returns, exactly the
+    // flicker the fail-closed default avoids.
+    meta: { ...NON_PERSISTED_QUERY_META },
   });
 
   return {

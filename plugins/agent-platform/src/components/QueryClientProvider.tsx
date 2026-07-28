@@ -1,11 +1,8 @@
 import { ReactNode, useMemo } from 'react';
 import type { QueryKey } from '@tanstack/react-query';
-import {
-  defaultShouldDehydrateQuery,
-  QueryClient,
-  QueryClientConfig,
-} from '@tanstack/react-query';
+import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { shouldPersistQuery } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 
 // Keep entries in cache for an hour and persist them to localStorage, mirroring
@@ -92,12 +89,14 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
       persistOptions={{
         persister,
         maxAge,
-        // User-scoped queries stay in memory only — see isUserScopedQueryKey
-        // above. Composed with the library default rather than replacing it, so
-        // its "only persist successful queries" rule still applies.
+        // Two independent reasons to keep a query out of localStorage, both
+        // applied. `shouldPersistQuery` carries the shared rules — the library's
+        // "only persist successful queries" default plus the `meta`-based opt-out
+        // that permission probes use; `shouldDehydrateAgentPlatformQuery` adds
+        // this plugin's user-scoped key allowlist (see isUserScopedQueryKey).
         dehydrateOptions: {
           shouldDehydrateQuery: query =>
-            defaultShouldDehydrateQuery(query) &&
+            shouldPersistQuery(query) &&
             shouldDehydrateAgentPlatformQuery(query.queryKey),
         },
       }}
