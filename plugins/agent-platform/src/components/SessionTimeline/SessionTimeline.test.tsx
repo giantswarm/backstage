@@ -128,6 +128,43 @@ describe('SessionTimeline', () => {
     expect(screen.getByText('approved')).toBeInTheDocument();
   });
 
+  it('offers no expander for an entry with nothing behind it', async () => {
+    // The approval in this fixture carries proposed arguments, so it *is*
+    // expandable. Strip them and it must render as a plain row: an accordion that
+    // opens onto an empty panel invites a click and answers with nothing.
+    const timeline = timelineFor(tasksApproval);
+    const stripped = {
+      ...timeline,
+      items: timeline.items.map(item =>
+        item.kind === 'approval' ? { ...item, args: undefined } : item,
+      ),
+    };
+
+    await renderInTestApp(
+      <SessionTimeline timeline={stripped} agentName="Issue tracker" />,
+    );
+
+    // Still shown, and still carries its verdict.
+    expect(screen.getByText('Approval requested')).toBeInTheDocument();
+    expect(screen.getByText('approved')).toBeInTheDocument();
+    // But not as something you can open.
+    expect(
+      screen.queryByRole('button', { name: /Approval requested/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows an approval’s proposed arguments when it has them', async () => {
+    await render(tasksApproval);
+
+    const trigger = screen.getByRole('button', { name: /Approval requested/ });
+    await userEvent.click(trigger);
+
+    // Labelled "proposed", because these are arguments the agent asked to run —
+    // not something it did.
+    expect(screen.getByText('Proposed arguments')).toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('names a delegation and its token cost', async () => {
     await render(tasksV099);
 

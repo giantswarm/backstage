@@ -50,6 +50,12 @@ const useStyles = makeStyles(theme => ({
     display: 'block',
     marginBottom: theme.spacing(0.5),
   },
+  // Matches an AccordionTrigger's vertical rhythm, so a row with nothing to expand
+  // still lines up with the ones that do.
+  inertSummary: {
+    paddingTop: theme.spacing(0.75),
+    paddingBottom: theme.spacing(0.75),
+  },
 }));
 
 export type TimelineEntryProps = {
@@ -69,13 +75,40 @@ function MessageBody({ text }: { text: string }) {
 }
 
 /** Label and payloads for a tool call or a delegation. */
-function CallDetail({ item }: { item: TimelineItem }) {
-  const classes = useStyles();
-  if (item.kind !== 'tool-call' && item.kind !== 'agent-call') {
-    return null;
+/**
+ * The payloads an item can show when expanded, or `undefined` when it has none.
+ *
+ * Returning `undefined` is what lets the caller render a plain row instead of an
+ * accordion: an expander that opens onto nothing is worse than no expander.
+ */
+function payloadsOf(
+  item: TimelineItem,
+): { args?: string; result?: string } | undefined {
+  if (
+    item.kind !== 'tool-call' &&
+    item.kind !== 'agent-call' &&
+    item.kind !== 'approval'
+  ) {
+    return undefined;
   }
   const args = formatPayload(item.args);
-  const result = formatPayload(item.result);
+  // Approvals have no result — they carry the *proposed* call, which never ran as
+  // this item.
+  const result =
+    item.kind === 'approval' ? undefined : formatPayload(item.result);
+  if (!args && !result) {
+    return undefined;
+  }
+  return { args, result };
+}
+
+function CallDetail({ item }: { item: TimelineItem }) {
+  const classes = useStyles();
+  const payloads = payloadsOf(item);
+  if (!payloads) {
+    return null;
+  }
+  const { args, result } = payloads;
 
   return (
     <Flex direction="column" gap="2">
@@ -86,7 +119,9 @@ function CallDetail({ item }: { item: TimelineItem }) {
             color="secondary"
             className={classes.payloadLabel}
           >
-            Arguments
+            {/* An approval's arguments are what the agent *proposed* to run, not
+                something it did — worth naming differently. */}
+            {item.kind === 'approval' ? 'Proposed arguments' : 'Arguments'}
           </Text>
           <CodeBlock content={args} />
         </div>
@@ -102,13 +137,6 @@ function CallDetail({ item }: { item: TimelineItem }) {
           </Text>
           <CodeBlock content={result} />
         </div>
-      )}
-      {!args && !result && (
-        <Text variant="body-medium" color="secondary">
-          {item.isPending
-            ? 'No result was recorded for this call.'
-            : 'This call recorded no arguments or result.'}
-        </Text>
       )}
     </Flex>
   );
@@ -229,6 +257,23 @@ export function TimelineEntry({
           {isUser ? 'You' : (author ?? 'Agent')}
         </Text>
         <MessageBody text={item.text} />
+      </div>
+    );
+  }
+
+  // Reasoning always has text to show; everything else depends on whether kagent
+  // recorded any payload. An approval frequently has none — the verdict is already
+  // on the summary row — and a tool call can have neither arguments nor result.
+  const hasDetail = item.kind === 'reasoning' || Boolean(payloadsOf(item));
+
+  // No expander when there is nothing behind it. An accordion that opens onto an
+  // empty panel invites a click and answers with nothing.
+  if (!hasDetail) {
+    return (
+      <div className={classes.entry} data-testid={`timeline-${item.kind}`}>
+        <div className={classes.inertSummary}>
+          <CollapsedSummary item={item} />
+        </div>
       </div>
     );
   }
