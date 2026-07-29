@@ -16,9 +16,9 @@ import {
  * `ImagePolicy` belongs here like the rest: `crds.fluxcd.v1.ImagePolicy` and
  * `v1beta2` both declare `spec.suspend` and `status.lastHandledReconcileAt`, and
  * the CLI covers it too (`flux reconcile|suspend|resume image policy`, see
- * `cmd/flux/reconcile_image_policy.go` and siblings in fluxcd/flux2). It was
- * originally left out of this list on the mistaken grounds that Flux supported
- * neither operation for the kind.
+ * `cmd/flux/reconcile_image_policy.go` and siblings in fluxcd/flux2). The reason
+ * previously given here — that Flux supported neither operation for the kind —
+ * was wrong.
  */
 const ACTIONABLE_KINDS = [
   'Kustomization',

@@ -15,11 +15,25 @@ silently undone.
   `metadata.managedFields`, which the API already returns: any entry with
   operation `Apply` that owns `f:spec.f:suspend`. The toggle is disabled with a
   tooltip naming the owning manager(s).
-- Not restricted to `kustomize-controller`: a Flux object deployed by a
-  HelmRelease is applied by `helm-controller`, and a human
-  `kubectl apply --server-side` has the same effect. `Update`-operation owners are
-  ignored — they hold ownership but have no declared desired state to restore, so
-  they never revert anything. That includes our own merge patches.
+- Not restricted to `kustomize-controller`: a human `kubectl apply --server-side`,
+  or helm-controller's drift correction when `spec.driftDetection` is enabled, has
+  the same effect.
+- Stale ownership is accounted for. A `managedFields` entry is only rewritten by a
+  write, so it outlives the applier: an object handed over for manual control with
+  `kustomize.toolkit.fluxcd.io/reconcile: disabled` or
+  `kustomize.toolkit.fluxcd.io/ssa: Ignore` keeps a stale `Apply` entry naming the
+  field, and `ssa: IfNotPresent` objects carry one from creation onwards despite
+  never being applied again. Those three annotations short-circuit the check, so
+  such objects keep a working toggle instead of a permanently disabled one.
+- **Detection is limited to SSA appliers**, and is a best-effort signal rather
+  than a guarantee. The two common non-SSA declarative writers are recorded as
+  `operation: Update` and so are not detected, even though both keep a stored
+  desired state and re-assert it: client-side `kubectl apply`
+  (`kubectl-client-side-apply`), and a plain `helm upgrade`, whose three-way merge
+  resets drift on chart-declared fields. A chart that ships a Kustomization with
+  `spec.suspend` declared will therefore still show an enabled toggle whose change
+  the next upgrade reverts. Documented on
+  `KubeObject.getApplyFieldOwners` rather than guessed at from manager names.
 - **Reconcile is deliberately left enabled**, including on managed resources. The
   `reconcile.fluxcd.io/requestedAt` annotation is never part of an applied
   manifest, so no apply-owner asserts or prunes it, and the controller records the

@@ -176,21 +176,39 @@ export class KubeObject<T extends KubeObjectInterface = any> {
    * The managers that *server-side apply* the given field, and will therefore
    * re-assert it on their next apply — reverting any imperative write we make.
    *
-   * Only `Apply`-operation entries count. A manager that reached the field with
-   * an imperative `Update` (a PUT or a non-apply PATCH, which is what our own
-   * writes are) holds ownership but has no declared desired state to restore, so
-   * it will never revert anything.
+   * Only `Apply`-operation entries count, so this detects **SSA appliers only**.
+   * That is narrower than "everything that could revert us": the two common
+   * non-SSA declarative writers keep a stored desired state and re-assert it,
+   * yet are both recorded as `operation: Update` and so are missed here.
+   *
+   * - client-side `kubectl apply` (`manager: kubectl-client-side-apply`) resends
+   *   the whole manifest as a strategic-merge patch, which is why it undoes a
+   *   `kubectl edit`;
+   * - `helm upgrade` (and helm-controller's release writes) patch via a
+   *   three-way merge that resets drift on chart-declared fields. Only
+   *   helm-controller's separate drift-correction path uses SSA, i.e. when
+   *   `spec.driftDetection` is enabled.
+   *
+   * So an empty result means "no SSA applier claims this field", not "nothing
+   * will revert a write to it". Callers gating a write affordance on this should
+   * treat it as a best-effort signal.
+   *
+   * Results are deduplicated: entries are keyed by manager + operation +
+   * apiVersion + subresource, so one manager can legitimately hold several (e.g.
+   * the same controller at two apiVersions after a CRD version migration).
    *
    * @param path field path from the object root, e.g. `['spec', 'suspend']`
    */
   getApplyFieldOwners(path: string[]): string[] {
-    return (this.getManagedFields() ?? [])
+    const managers = (this.getManagedFields() ?? [])
       .filter(
         entry =>
           entry.operation === 'Apply' && ownsFieldPath(entry.fieldsV1, path),
       )
       .map(entry => entry.manager)
       .filter((manager): manager is string => Boolean(manager));
+
+    return [...new Set(managers)];
   }
 
   static getGVK(): MultiVersionResourceMatcher {

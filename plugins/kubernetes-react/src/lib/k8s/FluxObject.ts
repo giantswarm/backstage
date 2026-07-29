@@ -28,6 +28,20 @@ interface FluxObjectInterface extends KubeObjectInterface {
 export const RECONCILE_REQUESTED_AT_ANNOTATION =
   'reconcile.fluxcd.io/requestedAt';
 
+/**
+ * Annotations with which a Kustomization's *own* manifest opts an object out of
+ * being applied, handing it over for manual control.
+ *
+ * Values from `kustomizev1` in fluxcd/kustomize-controller: `reconcile: disabled`
+ * and `ssa: Ignore` exclude the object from apply entirely, and
+ * `ssa: IfNotPresent` applies it on create only and never again.
+ */
+const APPLY_OPT_OUT_ANNOTATIONS: Array<[annotation: string, value: string]> = [
+  ['kustomize.toolkit.fluxcd.io/reconcile', 'disabled'],
+  ['kustomize.toolkit.fluxcd.io/ssa', 'Ignore'],
+  ['kustomize.toolkit.fluxcd.io/ssa', 'IfNotPresent'],
+];
+
 export class FluxObject<
   T extends FluxObjectInterface = any,
 > extends KubeObject<T> {
@@ -78,11 +92,32 @@ export class FluxObject<
    * whenever this is non-empty, the offered action is precisely the one that
    * would be reverted.
    *
-   * Deliberately not restricted to `kustomize-controller`: a HelmRelease-deployed
-   * Flux object is applied by `helm-controller`, and a `kubectl apply
-   * --server-side` by a human has the same effect. Any apply-owner will revert us.
+   * Deliberately not restricted to `kustomize-controller`: a `kubectl apply
+   * --server-side` by a human, or helm-controller's drift correction when
+   * `spec.driftDetection` is enabled, has the same effect. Any SSA applier of the
+   * field will revert us.
+   *
+   * Returns nothing when the object opts out of being applied (see
+   * {@link APPLY_OPT_OUT_ANNOTATIONS}). A `managedFields` entry is only ever
+   * rewritten by a write, so it outlives the applier: an object handed over for
+   * manual control keeps a stale `Apply` entry naming the field, and
+   * `ssa: IfNotPresent` objects carry one from creation onwards despite never
+   * being applied again. Without this check both would look managed forever.
+   *
+   * Inherits the SSA-only limitation of {@link KubeObject.getApplyFieldOwners} —
+   * a client-side `kubectl apply` or a plain `helm upgrade` that declares
+   * `spec.suspend` will still revert us without being detected here.
    */
   getSuspendFieldApplyOwners(): string[] {
+    const annotations = this.getAnnotations() ?? {};
+    const optedOut = APPLY_OPT_OUT_ANNOTATIONS.some(
+      ([annotation, value]) => annotations[annotation] === value,
+    );
+
+    if (optedOut) {
+      return [];
+    }
+
     return this.getApplyFieldOwners(['spec', 'suspend']);
   }
 

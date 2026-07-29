@@ -24,11 +24,28 @@ function describe(resource: FluxObject): string {
   return `${resource.getKind()} ${namespace ? `${namespace}/` : ''}${name}`;
 }
 
-function buildManagedSuspendHint(owners: string[]): string {
-  const by = owners.length === 1 ? owners[0] : owners.join(' and ');
+function joinWithAnd(items: string[]): string {
+  if (items.length < 2) {
+    return items.join('');
+  }
 
-  return `spec.suspend is applied by ${by}, so a change made here would be reverted on the next reconciliation. Change it in Git instead.`;
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
+
+function buildManagedSuspendHint(owners: string[]): string {
+  return `spec.suspend is applied by ${joinWithAnd(
+    owners,
+  )}, so a change made here would be reverted on the next reconciliation. Change it in Git instead.`;
+}
+
+/**
+ * A disabled react-aria button still receives pointer events — bui's disabled
+ * styling only sets `cursor: not-allowed` — so the native `<button>` swallows the
+ * hover and the tooltip on the wrapping span never opens. MUI's own
+ * wrap-in-a-span recipe works only because its `ButtonBase` sets
+ * `pointer-events: none` when disabled; this restores that half of it.
+ */
+const DISABLED_BUTTON_STYLE = { pointerEvents: 'none' } as const;
 
 const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
   const alertApi = useApi(alertApiRef);
@@ -49,6 +66,8 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
   // the resource's own annotation-vs-status comparison covers the gap after it,
   // and survives a reload or a request someone else made.
   const isReconcileRequestPending = resource.isReconcileRequestPending();
+
+  const isReconcileDisabled = isSuspended || isReconcileRequestPending;
 
   let reconcileHint = '';
   if (isSuspended) {
@@ -135,7 +154,8 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
               variant="secondary"
               size="small"
               iconStart={<RefreshIcon fontSize="small" />}
-              isDisabled={isSuspended || isReconcileRequestPending}
+              isDisabled={isReconcileDisabled}
+              style={isReconcileDisabled ? DISABLED_BUTTON_STYLE : undefined}
               isPending={isRequestingReconciliation}
               onPress={handleReconcile}
             >
@@ -156,6 +176,7 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
                 )
               }
               isDisabled={isSuspendFieldManaged}
+              style={isSuspendFieldManaged ? DISABLED_BUTTON_STYLE : undefined}
               isPending={isSettingSuspended}
               onPress={handleToggleSuspended}
             >
@@ -173,8 +194,8 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
  * them, shown only to users whose cluster RBAC allows the write.
  */
 export const FluxResourceActions = ({ resource }: { resource: KubeObject }) => {
-  // Guard before the inner component mounts so unsupported kinds (e.g.
-  // ImagePolicy) issue no access review at all.
+  // Guard before the inner component mounts so unsupported kinds (e.g. a
+  // ConfigMap, or any non-Flux object) issue no access review at all.
   if (!supportsFluxActions(resource)) {
     return null;
   }

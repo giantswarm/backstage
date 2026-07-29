@@ -204,7 +204,7 @@ describe('FluxResourceActions', () => {
 
   it('offers both actions for an ImagePolicy', async () => {
     // image-reflector-controller honours the reconcile-request annotation and
-    // `spec.suspend` for ImagePolicy; only the `flux` CLI lacks a subcommand.
+    // `spec.suspend` for ImagePolicy, and the CLI covers the kind too.
     const { kubernetesApi } = await renderActions(createImagePolicy());
 
     expect(
@@ -476,5 +476,73 @@ describe('FluxResourceActions with a GitOps-managed spec.suspend', () => {
     expect(
       await screen.findByRole('button', { name: 'Suspend' }),
     ).toBeEnabled();
+  });
+});
+
+describe('FluxResourceActions disabled-button tooltips', () => {
+  it('opens the real tooltip on hover, not just the native title', async () => {
+    // bui's disabled styling sets only `cursor: not-allowed`, so without an
+    // explicit `pointer-events: none` the disabled <button> swallows the hover and
+    // MUI's handler on the wrapping span never fires — leaving only the native
+    // `title` attribute, which is what MUI renders while closed.
+    //
+    // The `toHaveStyle` assertion below is the actual regression guard. jsdom
+    // cannot model pointer-events retargeting, and `userEvent.hover(span)`
+    // dispatches straight at the span, so the hover assertions pass with or
+    // without the fix; they only prove the tooltip is wired up at all.
+    await renderActions(
+      createKustomization({
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    const toggle = await screen.findByRole('button', { name: 'Suspend' });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveStyle({ pointerEvents: 'none' });
+
+    await userEvent.hover(toggle.parentElement!);
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent(
+      /spec\.suspend is applied by kustomize-controller/,
+    );
+  });
+
+  it('leaves an enabled button clickable, with no pointer-events override', async () => {
+    await renderActions(createKustomization());
+
+    const toggle = await screen.findByRole('button', { name: 'Suspend' });
+    expect(toggle).toBeEnabled();
+    expect(toggle).not.toHaveStyle({ pointerEvents: 'none' });
+  });
+
+  it('opens the tooltip for a disabled Reconcile button too', async () => {
+    await renderActions(createKustomization({ suspend: true }));
+
+    const reconcile = await screen.findByRole('button', { name: 'Reconcile' });
+    expect(reconcile).toBeDisabled();
+
+    await userEvent.hover(reconcile.parentElement!);
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      /Suspended resources are not reconciled/,
+    );
+  });
+
+  it('joins three owners with commas and a final and', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: ['one', 'two', 'three'].map(manager => ({
+          manager,
+          operation: 'Apply',
+          fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+        })),
+      }),
+    );
+
+    await screen.findByRole('button', { name: 'Suspend' });
+    expect(
+      screen.getByTitle(/applied by one, two and three,/),
+    ).toBeInTheDocument();
   });
 });

@@ -149,3 +149,59 @@ describe('FluxObject suspend field ownership', () => {
     expect(resource.isSuspendFieldManaged()).toBe(false);
   });
 });
+
+describe('FluxObject suspend ownership and apply opt-outs', () => {
+  const suspendFields = { 'f:spec': { 'f:suspend': {} } };
+  const applyEntry = {
+    manager: 'kustomize-controller',
+    operation: 'Apply',
+    fieldsV1: suspendFields,
+  };
+
+  function withAnnotations(annotations: Record<string, string>): Kustomization {
+    return new Kustomization(
+      {
+        apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+        kind: 'Kustomization',
+        metadata: {
+          name: 'my-app',
+          namespace: 'flux-system',
+          annotations,
+          managedFields: [applyEntry],
+        },
+        spec: {},
+        status: {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      'test-installation',
+    );
+  }
+
+  // A managedFields entry is only rewritten by a write, so it outlives the
+  // applier — an object handed over for manual control keeps a stale Apply entry.
+  it.each([
+    ['kustomize.toolkit.fluxcd.io/reconcile', 'disabled'],
+    ['kustomize.toolkit.fluxcd.io/ssa', 'Ignore'],
+    ['kustomize.toolkit.fluxcd.io/ssa', 'IfNotPresent'],
+  ])('ignores a stale Apply entry when %s is %s', (annotation, value) => {
+    const resource = withAnnotations({ [annotation]: value });
+
+    expect(resource.getSuspendFieldApplyOwners()).toEqual([]);
+    expect(resource.isSuspendFieldManaged()).toBe(false);
+  });
+
+  it('still reports ownership for an unrelated annotation value', () => {
+    const resource = withAnnotations({
+      'kustomize.toolkit.fluxcd.io/ssa': 'Merge',
+      'kustomize.toolkit.fluxcd.io/reconcile': 'enabled',
+    });
+
+    expect(resource.isSuspendFieldManaged()).toBe(true);
+  });
+
+  it('still reports ownership when there are no annotations at all', () => {
+    const resource = withAnnotations({});
+
+    expect(resource.isSuspendFieldManaged()).toBe(true);
+  });
+});

@@ -203,3 +203,41 @@ describe('KubeObject.getApplyFieldOwners', () => {
     expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([]);
   });
 });
+
+describe('KubeObject.getApplyFieldOwners deduplication', () => {
+  it('reports a manager once even when it holds several entries', () => {
+    // Entries are keyed by manager + operation + apiVersion + subresource, so the
+    // same controller legitimately appears twice after a CRD version migration.
+    const suspendFields = { 'f:spec': { 'f:suspend': {} } };
+    const resource = new Kustomization(
+      {
+        apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+        kind: 'Kustomization',
+        metadata: {
+          name: 'my-app',
+          namespace: 'flux-system',
+          managedFields: [
+            {
+              manager: 'kustomize-controller',
+              operation: 'Apply',
+              apiVersion: 'kustomize.toolkit.fluxcd.io/v1beta2',
+              fieldsV1: suspendFields,
+            },
+            {
+              manager: 'kustomize-controller',
+              operation: 'Apply',
+              apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+              fieldsV1: suspendFields,
+            },
+          ],
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      'test-installation',
+    );
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([
+      'kustomize-controller',
+    ]);
+  });
+});
