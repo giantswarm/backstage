@@ -1,0 +1,15 @@
+[
+  {
+    "id": "task-1",
+    "kind": "task",
+    "status": { "state": "completed", "timestamp": "2026-07-24T09:00:00.000Z" },
+    "history": [
+      {
+        "kind": "message",
+        "messageId": "m1",
+        "role": "user",
+        "parts": [{ "kind": "text", "text": "hi" }]
+      }
+    ]
+  }
+]

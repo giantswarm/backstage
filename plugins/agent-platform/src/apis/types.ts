@@ -1,4 +1,6 @@
 import { KagentSession } from '../lib/kagentSessions';
+import { KagentSessionDetail } from '../lib/kagentSessionDetail';
+import { A2aTaskWire } from '../lib/kagentTaskSchema';
 
 /**
  * Header carrying the user's per-installation Dex OIDC ID token, read by the
@@ -32,6 +34,32 @@ export interface KagentApi {
    * isn't deployed here" from "we couldn't read it".
    */
   listSessions(installation: string): Promise<KagentSession[]>;
+
+  /**
+   * One session's metadata, plus the message timestamps recovered from its
+   * stored events.
+   *
+   * kagent scopes this by the forwarded token's user id, so a session belonging
+   * to someone else raises `NotFoundError` exactly as a deleted one does. That is
+   * the expected outcome for a stale deep link, not a fault.
+   */
+  getSessionDetail(
+    installation: string,
+    sessionId: string,
+  ): Promise<KagentSessionDetail | undefined>;
+
+  /**
+   * The session's A2A tasks, in kagent's chronological order.
+   *
+   * Returned in wire form on purpose: the only consumer is `buildTimeline`,
+   * which needs the full nested structure. Combining these with the timestamps
+   * from {@link getSessionDetail} happens in the calling hook, because neither
+   * request can see the other's result.
+   */
+  listSessionTasks(
+    installation: string,
+    sessionId: string,
+  ): Promise<A2aTaskWire[]>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;

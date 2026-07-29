@@ -86,7 +86,14 @@ export function normalizeSession(
  * keying on the formatted string would defeat any dedupe.
  */
 export type SessionListDriftKind =
-  'unparseable-body' | 'error-envelope' | 'data-not-array' | 'skipped-rows';
+  | 'unparseable-body'
+  | 'error-envelope'
+  | 'data-not-array'
+  | 'skipped-rows'
+  // A readable 200 that held no payload where one was expected. Distinct from
+  // `skipped-rows`, whose message counts dropped rows — reusing that kind for
+  // "the response carried no session" reported it as though rows were lost.
+  | 'missing-payload';
 
 export type SessionListDrift = {
   kind: SessionListDriftKind;

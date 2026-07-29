@@ -1,0 +1,71 @@
+{
+  "error": false,
+  "data": [
+    null,
+    "not a task",
+    42,
+    {
+      "id": "task-ok",
+      "kind": "task",
+      "status": {
+        "state": "completed",
+        "timestamp": "2026-07-24T09:15:00.000Z"
+      },
+      "history": [
+        null,
+        "not a message",
+        { "kind": "artifact-update", "artifact": { "name": "report.md" } },
+        {
+          "kind": "message",
+          "messageId": "m-ok",
+          "role": "user",
+          "parts": [
+            null,
+            17,
+            { "kind": "text" },
+            { "kind": "text", "text": "   " },
+            { "kind": "text", "text": "still readable" }
+          ]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-orphan-response",
+          "role": "agent",
+          "parts": [
+            {
+              "kind": "data",
+              "metadata": { "kagent_type": "function_response" },
+              "data": { "name": "kubectl_get", "response": { "items": [] } }
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-nameless-call",
+          "role": "agent",
+          "parts": [
+            {
+              "kind": "data",
+              "metadata": { "kagent_type": "function_call" },
+              "data": { "args": { "unnamed": true } }
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-weird-usage",
+          "role": "agent",
+          "metadata": { "kagent_usage_metadata": "not an object" },
+          "parts": [{ "kind": "text", "text": "reply" }]
+        }
+      ]
+    },
+    {
+      "id": "task-no-history",
+      "kind": "task",
+      "status": { "state": "canceled" },
+      "history": null
+    }
+  ],
+  "message": "Successfully retrieved session tasks"
+}
