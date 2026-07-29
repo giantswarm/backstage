@@ -205,10 +205,97 @@ describe('KagentClient', () => {
 
     await client.listSessions({ userToken: 't' });
     await client.getMe({ userToken: 't' });
+    await client.getSession('abc', { userToken: 't' });
+    await client.listSessionTasks('abc', { userToken: 't' });
 
     for (const [url] of fetchFn.mock.calls) {
       expect(url).toMatch(/^https:\/\/kagent\.gazelle\.example\.io\/api\//);
     }
+  });
+
+  describe('session detail', () => {
+    it('requests one session under the sessions path, asking for no events', async () => {
+      // kagent bundles the session's stored events into this response and they
+      // dominate it — 591 KB of events against 261 bytes of session metadata on a
+      // real 4-turn session. Nothing reads them, so `limit=1` trims the response by
+      // ~99%. A version that ignored `limit` would just return everything, which
+      // is today's behaviour, so this can only help.
+      //
+      // If this assertion fails because someone changed the value: `limit=0` does
+      // NOT mean "no events". kagent gates its LIMIT clause on `opts.Limit > 0`, so
+      // zero reads as *unlimited* and restores the full payload. `1` is the
+      // smallest value that limits anything.
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).getSession('abc123', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/abc123?limit=1',
+      );
+    });
+
+    it('requests the session tasks path', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).listSessionTasks('abc123', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/abc123/tasks',
+      );
+    });
+
+    it('sends no A2A-Version header, so kagent answers on the legacy wire', async () => {
+      // kagent's NegotiateA2AWireVersion treats a missing header as the legacy v0
+      // wire on both v0.9.9 and v0.10 — the shape kagent's own UI consumes, and so
+      // the best-tested one. Asserted so a header is not added casually.
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).listSessionTasks('abc123', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][1].headers).toEqual({
+        Accept: 'application/json',
+        Authorization: 'Bearer t',
+      });
+    });
+
+    it('escapes a session id that is not URL-safe', async () => {
+      // Session ids are opaque. Real ones are hex or UUIDs, but nothing in kagent
+      // guarantees that, so the id must never be interpolated raw — a `/` or `?`
+      // would otherwise retarget the request.
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).getSession('a/b?c=d', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/a%2Fb%3Fc%3Dd?limit=1',
+      );
+    });
+
+    it('returns the tasks body verbatim, including unknown fields', async () => {
+      const body = {
+        error: false,
+        data: [
+          {
+            id: 'task-1',
+            contextId: 'ctx-1',
+            kind: 'task',
+            status: { state: 'completed', timestamp: '2026-07-23T16:09:58Z' },
+            history: [
+              { kind: 'message', messageId: 'm1', role: 'user', parts: [] },
+            ],
+            some_future_field: 'kept',
+          },
+        ],
+        message: 'Successfully retrieved session tasks',
+      };
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse(body));
+
+      const result = await build(fetchFn).listSessionTasks('abc123', {
+        userToken: 't',
+      });
+
+      expect(result).toEqual(body);
+    });
   });
 
   it('requests /me under the API base URL', async () => {
@@ -257,6 +344,109 @@ describe('KagentClient', () => {
       await expect(
         build(fetchFn).listSessions({ userToken: 't' }),
       ).rejects.toMatchObject({ name: expectedName });
+    });
+
+    describe('what a 404 actually means', () => {
+      /** kagent's error middleware always answers JSON. */
+      function kagentNotFound() {
+        return new Response(JSON.stringify({ error: 'Session not found' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+
+      /** An unrouted path falls through to net/http's plain-text handler. */
+      function routeNotFound() {
+        return new Response('404 page not found', {
+          status: 404,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        });
+      }
+
+      it('reports a session that does not exist, not an outage', async () => {
+        // The message a user reads when they follow a bookmark to a deleted
+        // session. "The kagent API is not available" would claim an outage on a
+        // perfectly healthy installation.
+        const fetchFn = jest.fn().mockResolvedValue(kagentNotFound());
+
+        await expect(
+          build(fetchFn).getSession('abc', { userToken: 't' }),
+        ).rejects.toMatchObject({
+          name: 'NotFoundError',
+          message: expect.stringContaining('That session does not exist'),
+        });
+      });
+
+      it('reports an absent route as a version problem, not a missing session', async () => {
+        // Otherwise an installation running a kagent without this endpoint tells
+        // every user "session not found" for every session, forever — and with no
+        // version probe there is nothing else to go on.
+        const fetchFn = jest.fn().mockResolvedValue(routeNotFound());
+
+        await expect(
+          build(fetchFn).listSessionTasks('abc', { userToken: 't' }),
+        ).rejects.toMatchObject({
+          name: 'NotFoundError',
+          message: expect.stringContaining('has no session tasks endpoint'),
+        });
+      });
+
+      it('does not forward kagent’s own message', async () => {
+        // kagent's middleware appends the underlying error, so its session 404
+        // reads "Session not found: no rows in result set". Database internals are
+        // not something to put in front of a user.
+        const fetchFn = jest.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              error: 'Session not found: no rows in result set',
+            }),
+            { status: 404, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+
+        await expect(
+          build(fetchFn).getSession('abc', { userToken: 't' }),
+        ).rejects.toMatchObject({
+          message: expect.not.stringContaining('no rows in result set'),
+        });
+      });
+
+      it('keeps the "not available" wording for the fleet-wide routes', async () => {
+        // `/sessions` and `/me` are probed across the whole fleet, where a 404
+        // genuinely does mean "no kagent here" — the wording the frontend's silent
+        // classification is built around.
+        const fetchFn = jest
+          .fn()
+          .mockImplementation(async () => kagentNotFound());
+        const client = build(fetchFn);
+
+        await expect(
+          client.listSessions({ userToken: 't' }),
+        ).rejects.toMatchObject({
+          message: expect.stringContaining('is not available for installation'),
+        });
+        await expect(client.getMe({ userToken: 't' })).rejects.toMatchObject({
+          message: expect.stringContaining('is not available for installation'),
+        });
+      });
+
+      it('still maps every 404 to NotFoundError, whatever the wording', async () => {
+        // The status is what keeps this out of Sentry; only the message varies.
+        const fetchFn = jest
+          .fn()
+          .mockImplementation(async () => routeNotFound());
+        const client = build(fetchFn);
+
+        for (const call of [
+          () => client.getSession('abc', { userToken: 't' }),
+          () => client.listSessionTasks('abc', { userToken: 't' }),
+          () => client.listSessions({ userToken: 't' }),
+        ]) {
+          await expect(call()).rejects.toMatchObject({
+            name: 'NotFoundError',
+          });
+        }
+      });
     });
 
     it('treats a 200 HTML body as a sign-in page', async () => {

@@ -23,18 +23,70 @@ Two things then force a backend hop:
 
 All routes are under `/api/agent-platform` and require `?installation=<name>`.
 
-| Route                       | Token    | Purpose                                                    |
-| --------------------------- | -------- | ---------------------------------------------------------- |
-| `GET /health`               | —        | `{ status, configured }` — how many installations resolved |
-| `GET /kagent/installations` | —        | Names of installations kagent can be proxied for           |
-| `GET /kagent/sessions`      | required | The user's sessions, kagent's JSON verbatim                |
-| `GET /kagent/me`            | optional | Identity probe (see Diagnosing below)                      |
+| Route                            | Token    | Purpose                                                    |
+| -------------------------------- | -------- | ---------------------------------------------------------- |
+| `GET /health`                    | —        | `{ status, configured }` — how many installations resolved |
+| `GET /kagent/installations`      | —        | Names of installations kagent can be proxied for           |
+| `GET /kagent/sessions`           | required | The user's sessions, kagent's JSON verbatim                |
+| `GET /kagent/sessions/:id`       | required | One session object (asks kagent for `limit=1`, see below)  |
+| `GET /kagent/sessions/:id/tasks` | required | The session's A2A tasks — conversation, state, token usage |
+| `GET /kagent/me`                 | optional | Identity probe (see Diagnosing below)                      |
 
 The user token is read from the `backstage-kagent-authorization` header, which
 must match `KAGENT_AUTH_HEADER` in `plugins/agent-platform`.
 
 Every kagent-side path stays under `/api`, because that is the only prefix either
 door proxies to the controller.
+
+Session ids are **opaque**: real responses mix 64-character hex strings and
+UUIDs, so nothing validates a format — only that a path segment is present. They
+are URL-encoded before being interpolated into the kagent URL.
+
+### Why the session detail is two routes
+
+Two routes, two different jobs — **not** two views of the same data:
+
+| Route                  | What it is for                                                  |
+| ---------------------- | --------------------------------------------------------------- |
+| `…/sessions/:id`       | the session object: title, agent, timestamps, and does it exist |
+| `…/sessions/:id/tasks` | the conversation, its state (`status.state`) and token usage    |
+
+The conversation comes from `…/tasks`, which is what kagent's own UI renders from
+(`ui/src/components/chat/ChatInterface.tsx` → `extractMessagesFromTasks`). Its
+`history` is already structured as A2A messages and carries the per-message
+`{adk,kagent}_usage_metadata` the token totals are built from.
+
+**The `events` array on `…/sessions/:id` is ignored entirely,** and the request
+asks for `limit=1` to avoid transferring it. kagent's Go type calls each event's
+`data` a `JSON-serialized protocol.Message`, which suggested events could supply
+the per-message timestamps A2A messages lack. A real gazelle session disproved it:
+the decoded value is an **ADK event** (`author`, `content`, `invocation_id`,
+`partial`, `timestamp`, `usage_metadata`, …) with no `messageId` anywhere, so
+there is nothing to correlate with task history — 36 events, zero usable ids. Its
+`invocation_id` does correlate, but only per turn, which the task's own timestamp
+already provides.
+
+That matters for payload size: on that session the events were **591 KB against
+261 bytes** of session metadata. Timeline items therefore share one timestamp per
+turn, which the UI should present per turn rather than implying per-message
+precision.
+
+The limit must be **`1`, not `0`** — kagent's DB layer gates the LIMIT clause on
+`opts.Limit > 0`, so `limit=0` reads as _unlimited_ and would quietly restore the
+full payload. `1` is the smallest value that limits anything.
+
+If a finer timeline is ever wanted, events are where it would come from — but that
+means parsing ADK `Content`, whose function calls are shaped differently from A2A
+data parts, not reusing the task parsers.
+
+Neither route sends an `A2A-Version` header. kagent's `NegotiateA2AWireVersion`
+treats a missing header as the legacy v0 wire on both v0.9.9 and v0.10 — the
+shape its own UI consumes, and therefore the best-tested one. Opting into the v1
+wire would be a deliberate future migration.
+
+A session belonging to another user answers **404**, exactly as a deleted one
+does: kagent scopes the lookup by the token's user id. Both are expected outcomes
+for a stale deep link, which is why neither becomes a 5xx (see below).
 
 ### Why there is no version endpoint
 
@@ -86,6 +138,31 @@ Only the first two mean _nothing is there_. A timeout, a 500, or a truncated bod
 all mean kagent answered and failed, so they must not share an error with
 "unreachable" — otherwise a degraded installation's sessions vanish from the
 fleet-merged list with no alert and nothing logged.
+
+#### Three things arrive as a 404
+
+The status is the same for all three; the **message** is what tells them apart,
+and the session routes need that because two of the three are routine there:
+
+| Actually happened                  | How we know                               | Message says                       |
+| ---------------------------------- | ----------------------------------------- | ---------------------------------- |
+| Nothing is listening at that host  | `fetch` rejected (DNS/TLS/refused)        | kagent is not available here       |
+| kagent answered "no such resource" | 404 with `Content-Type: application/json` | that session does not exist        |
+| The endpoint does not exist        | 404 with a non-JSON body                  | this kagent predates that endpoint |
+
+The content-type check works because kagent's error middleware always answers
+JSON (`go/core/internal/httpserver/middleware_error.go`), while an unrouted path
+falls through to net/http's `http.NotFound` — kagent registers no custom
+`NotFoundHandler` — which answers `text/plain`.
+
+Without the second and third being distinguished, an installation running a
+kagent that predates an endpoint would tell every user "session not found" for
+every session, on every page load, and with no version probe there would be
+nothing else to go on.
+
+kagent's own 404 message is deliberately **not** forwarded: its middleware appends
+the underlying error, so a session 404 reads `Session not found: no rows in result
+set`. Database internals do not belong in front of a user.
 
 ### Never return a 5xx for an expected outcome
 

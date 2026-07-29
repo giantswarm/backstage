@@ -154,9 +154,54 @@ export async function createRouter(
     return token;
   };
 
+  /**
+   * Read the session id from the path.
+   *
+   * Session ids are **opaque**: real kagent responses mix 64-character hex
+   * strings and UUIDs, so nothing here validates or normalizes one. In
+   * particular there is deliberately no `trim()` — Express hands us the decoded
+   * segment, so an id with surrounding whitespace would be trimmed here,
+   * re-encoded on the way out, and a *different* id sent upstream, producing a
+   * 404 indistinguishable from a missing session.
+   *
+   * This is purely a typing shim: `req.params` is loosely typed, but `:sessionId`
+   * cannot match an empty segment, so `/kagent/sessions/` reaches the list route
+   * above rather than arriving here empty (pinned by a test).
+   */
+  const readSessionId = (req: express.Request): string => {
+    const raw = req.params.sessionId;
+    return typeof raw === 'string' ? raw : '';
+  };
+
   router.get('/kagent/sessions', async (req, res) => {
     const { client } = resolveInstallation(req);
     const result = await client.listSessions({
+      userToken: readUserToken(req, { required: true }),
+    });
+    res.json(result);
+  });
+
+  /**
+   * One session's metadata and stored events. Express matches these paths
+   * exactly, so this and the list route above do not shadow each other.
+   *
+   * A session that belongs to someone else answers 404 exactly as a deleted one
+   * does — kagent scopes the lookup by user id. That is an expected outcome for a
+   * stale deep link, so it stays a 404 and never becomes a 5xx (which
+   * `MiddlewareFactory.error()` would forward to Sentry).
+   */
+  router.get('/kagent/sessions/:sessionId', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.getSession(readSessionId(req), {
+      userToken: readUserToken(req, { required: true }),
+    });
+    res.json(result);
+  });
+
+  /** The session's A2A tasks — the conversation, its state and token usage. */
+  router.get('/kagent/sessions/:sessionId/tasks', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.listSessionTasks(readSessionId(req), {
       userToken: readUserToken(req, { required: true }),
     });
     res.json(result);

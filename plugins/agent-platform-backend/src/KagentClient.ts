@@ -42,6 +42,27 @@ export interface KagentRequestOptions {
 }
 
 /**
+ * Per-endpoint wording for a 404, so the message a user reads matches what
+ * actually went wrong.
+ *
+ * Without this every 404 reports "The kagent API is not available for
+ * installation X", which is an outage claim — badly wrong for the common case of
+ * a bookmarked link to a session that has since been deleted.
+ */
+interface NotFoundContext {
+  /**
+   * What a 404 means when **kagent's own handler** answered it: the endpoint
+   * exists, the resource does not.
+   */
+  missingResource: string;
+  /**
+   * Short name of the endpoint, used when the **route itself** is absent — an
+   * older kagent that predates it.
+   */
+  endpoint: string;
+}
+
+/**
  * Derive the kagent API base URL for an installation from its base domain.
  *
  * The hostname pattern matches the `agentic-platform-connectivity` chart's
@@ -184,6 +205,79 @@ export class KagentClient {
     return this.request(`${this.installation.apiBaseUrl}/sessions`, options);
   }
 
+  /**
+   * `GET <apiBaseUrl>/sessions/<id>` — the session object.
+   *
+   * kagent scopes this by the forwarded token's user id, so a session belonging
+   * to somebody else is indistinguishable from one that does not exist: both
+   * answer 404. That is an expected outcome for a stale or shared deep link, and
+   * `request` already maps it to `NotFoundError` (404) rather than a 5xx.
+   *
+   * The conversation comes from {@link listSessionTasks}, not from this response's
+   * `events` array — which is ignored entirely, hence the `limit=1` below.
+   */
+  async getSession(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    return this.request(
+      // `limit=1` — **not** `limit=0`, which kagent reads as *unlimited*: its DB
+      // layer gates the LIMIT clause on `opts.Limit > 0`
+      // (`go/core/internal/database/client_postgres.go`), and an absent param
+      // leaves `Limit` at its zero value. So `1` is the smallest value that limits
+      // anything, and "ask for zero events, we don't read them" — the
+      // obvious-looking simplification — silently restores the full payload.
+      //
+      // The caller wants the session object and nothing else. kagent bundles the
+      // session's stored events into this response and they dominate it — on a real
+      // 4-turn session, 591 KB of events against 261 bytes of session metadata.
+      // They are not the conversation (that comes from `/tasks`) and, despite
+      // kagent's Go doc comment, not A2A messages either, so there is nothing in
+      // them we can use.
+      //
+      // Both v0.9.9 and v0.10 honour `limit` on this endpoint — v0.9.9 parses it
+      // inline in `HandleGetSession`, v0.10 in `eventQueryOptionsFromRequest`. A
+      // version that ignored it would simply return everything, which is exactly
+      // today's behaviour — so this can only help.
+      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
+        sessionId,
+      )}?limit=1`,
+      options,
+      {
+        // The id is left out on purpose: it is opaque and high-cardinality, and
+        // the user already has it in the URL they followed.
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        endpoint: 'session detail',
+      },
+    );
+  }
+
+  /**
+   * `GET <apiBaseUrl>/sessions/<id>/tasks` — the session's A2A tasks, which
+   * carry the conversation (`history`), its state (`status.state`) and per-message
+   * token usage. This is the same endpoint kagent's own UI renders its chat from.
+   *
+   * Deliberately sends no `A2A-Version` header: kagent's `NegotiateA2AWireVersion`
+   * treats a missing header as the legacy v0 wire on both v0.9.9 and v0.10, which
+   * is the shape kagent's UI consumes and therefore the best-tested one. Opting
+   * into the v1 wire is a future, deliberate migration.
+   */
+  async listSessionTasks(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    return this.request(
+      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
+        sessionId,
+      )}/tasks`,
+      options,
+      {
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        endpoint: 'session tasks',
+      },
+    );
+  }
+
   // There is deliberately no version probe. kagent serves `/version` at the
   // server root (`APIPathVersion`), not under `/api`, and neither door we
   // support routes the root to the controller:
@@ -215,6 +309,7 @@ export class KagentClient {
   private async request(
     url: string,
     options: KagentRequestOptions,
+    notFound?: NotFoundContext,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -289,8 +384,38 @@ export class KagentClient {
     }
 
     if (response.status === 404) {
+      // Two very different things arrive here, and conflating them shows users a
+      // message about the wrong problem:
+      //
+      // - **kagent's handler said "no such resource".** Its error middleware
+      //   always answers `Content-Type: application/json`
+      //   (`go/core/internal/httpserver/middleware_error.go`), so a JSON 404 means
+      //   the endpoint exists and the thing we asked for does not — a deleted
+      //   session, or one belonging to another user.
+      // - **The route does not exist.** kagent registers no custom
+      //   `NotFoundHandler`, so an unrouted path falls through to net/http's
+      //   `http.NotFound`, which answers `text/plain`. That is what an
+      //   installation running a kagent older than an endpoint looks like.
+      //
+      // The second case matters most for the session routes: without the
+      // distinction, "this kagent is too old" would read as "session not found" on
+      // every session, on every page load, with no way to tell from the UI.
+      //
+      // kagent's own message is deliberately *not* forwarded: its middleware
+      // appends the underlying error, so a session 404 reads
+      // "Session not found: no rows in result set" — database internals are not
+      // something to put in front of a user.
+      const contentType = response.headers.get('content-type') ?? '';
+      const kagentAnswered = contentType.includes('application/json');
+
+      if (!kagentAnswered && notFound) {
+        throw new NotFoundError(
+          `The kagent API for installation '${this.installation.name}' has no ${notFound.endpoint} endpoint; it is probably running a version that predates it.`,
+        );
+      }
       throw new NotFoundError(
-        `The kagent API is not available for installation '${this.installation.name}'.`,
+        notFound?.missingResource ??
+          `The kagent API is not available for installation '${this.installation.name}'.`,
       );
     }
 
