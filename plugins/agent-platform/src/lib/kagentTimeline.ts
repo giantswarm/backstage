@@ -104,16 +104,18 @@ const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
  * - **Nothing throws.** A malformed message is counted in `skippedMessages` and
  *   the rest of the timeline renders.
  *
+ * **On timestamps:** every item takes its *task's* timestamp, because A2A
+ * messages carry none of their own and there is no finer-grained source. The
+ * session's stored events looked like one, but a real gazelle payload showed each
+ * event's `data` to be a serialized ADK event with no `messageId` — nothing to
+ * join on — and its `invocation_id` only distinguishes turns, which the task
+ * already does. So items within a turn deliberately share a time, and the UI
+ * should present it per turn rather than implying per-message precision.
+ *
  * @param tasks - kagent's tasks, already in chronological order (it returns them
  *   `ORDER BY created_at ASC`).
- * @param timestamps - `messageId` → RFC3339, from the session's stored events.
- *   Optional: A2A messages carry no time of their own, so without this items fall
- *   back to their task's timestamp.
  */
-export function buildTimeline(
-  tasks: A2aTaskWire[],
-  timestamps: Map<string, string> = new Map(),
-): SessionTimeline {
+export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   const items: TimelineItem[] = [];
   let tokens = EMPTY_USAGE;
   let skippedMessages = 0;
@@ -149,9 +151,7 @@ export function buildTimeline(
         seenMessageIds.add(message.messageId);
       }
 
-      const at =
-        (message.messageId ? timestamps.get(message.messageId) : undefined) ??
-        taskTimestamp;
+      const at = taskTimestamp;
       const author = readKagentMetadataString(message.metadata, 'author');
       const isUser = message.role === 'user';
 

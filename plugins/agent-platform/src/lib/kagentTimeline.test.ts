@@ -10,12 +10,9 @@ import emptyNoData from './__fixtures__/tasks.empty-no-data.json';
 import bareArray from './__fixtures__/tasks.bare-array.json';
 
 /** Parse a fixture the way the client does, then build its timeline. */
-function timelineFor(
-  fixture: unknown,
-  timestamps?: Map<string, string>,
-): ReturnType<typeof buildTimeline> {
+function timelineFor(fixture: unknown): ReturnType<typeof buildTimeline> {
   const { tasks } = normalizeTaskList(fixture);
-  return buildTimeline(tasks, timestamps);
+  return buildTimeline(tasks);
 }
 
 function kinds(items: TimelineItem[]): string[] {
@@ -29,11 +26,40 @@ describe('buildTimeline', () => {
     expect(kinds(items)).toEqual([
       'user-message',
       'reasoning',
+      // One message carrying prose then two calls, split in part order.
+      'agent-message',
+      'tool-call',
       'tool-call',
       'agent-message',
       'user-message',
       'agent-call',
     ]);
+  });
+
+  it('shows a user message once even though kagent stores it twice', () => {
+    // Live kagent history repeats the user message verbatim under the same
+    // messageId on every turn. Without the dedupe the timeline opens each turn by
+    // saying the same thing twice.
+    const { items } = timelineFor(kagentPrefixed);
+
+    expect(items.filter(item => item.kind === 'user-message')).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      kind: 'user-message',
+      taskIndex: 0,
+    });
+    expect(items[1].kind).not.toBe('user-message');
+  });
+
+  it('keeps prose before the calls it introduces', () => {
+    // Real messages are text-first, then their data parts. Emitting the calls
+    // first would invert the agent's narration.
+    const { items } = timelineFor(kagentPrefixed);
+    const firstAgentText = items.findIndex(
+      item => item.kind === 'agent-message',
+    );
+    const firstCall = items.findIndex(item => item.kind === 'tool-call');
+
+    expect(firstAgentText).toBeLessThan(firstCall);
   });
 
   it('merges consecutive text parts of the same kind into one item', () => {
@@ -78,10 +104,17 @@ describe('buildTimeline', () => {
   });
 
   it('attributes messages to their author', () => {
+    // Live payloads carry the author as a python identifier (`issue_tracker`),
+    // not a display name — the UI is responsible for resolving it against the
+    // Agent CRs. Asserted on the last item of the first turn, which is the
+    // agent's actual reply.
     const { items } = timelineFor(kagentPrefixed);
-    const reply = items.find(item => item.kind === 'agent-message');
 
-    expect(reply?.author).toBe('issue-tracker');
+    expect(items[1].author).toBe('issue-tracker');
+    expect(items[3].author).toBe('issue_tracker');
+    expect(
+      items.find(item => item.kind === 'user-message')?.author,
+    ).toBeUndefined();
   });
 
   it('sums message usage and delegated usage exactly once each', () => {
@@ -98,7 +131,7 @@ describe('buildTimeline', () => {
   it('groups items by the task they came from', () => {
     const { items } = timelineFor(kagentPrefixed);
 
-    expect(items.map(item => item.taskIndex)).toEqual([0, 0, 0, 0, 1, 1]);
+    expect(items.map(item => item.taskIndex)).toEqual([0, 0, 0, 0, 0, 0, 1, 1]);
   });
 
   it('gives every item a unique id', () => {
@@ -125,25 +158,20 @@ describe('buildTimeline', () => {
   });
 
   describe('timestamps', () => {
-    it('prefers the per-message time recovered from events', () => {
-      const { items } = timelineFor(
-        kagentPrefixed,
-        new Map([['m-user-1', '2026-07-23T16:04:29.101Z']]),
-      );
-
-      expect(items[0].at).toBe('2026-07-23T16:04:29.101Z');
-    });
-
-    it('falls back to the task timestamp when a message has none', () => {
-      // The join is decoration: A2A messages carry no time, and the two storage
-      // paths are not guaranteed to agree on ids.
-      const { items } = timelineFor(kagentPrefixed, new Map());
+    it('gives every item its task’s timestamp', () => {
+      // A2A messages carry no time of their own and there is no finer source:
+      // the session's stored events turned out to be ADK events with no
+      // messageId to join on. So items within a turn share a time by design, and
+      // the UI should show it per turn rather than imply per-message precision.
+      const { items } = timelineFor(kagentPrefixed);
 
       expect(items[0].at).toBe('2026-07-23T16:05:11.204Z');
       expect(items[items.length - 1].at).toBe('2026-07-23T16:09:58.162Z');
+      // Both items of the first turn carry the same time.
+      expect(items[1].at).toBe(items[0].at);
     });
 
-    it('renders no time at all when neither source has one', () => {
+    it('renders no time at all when the task has none', () => {
       const tasks: A2aTaskWire[] = [
         {
           history: [
@@ -318,9 +346,24 @@ describe('buildTimeline', () => {
 
       const { items } = buildTimeline([callOnly, responseOnly]);
 
-      expect(items).toHaveLength(2);
-      expect(items[0]).toMatchObject({ kind: 'tool-call', isPending: true });
-      expect(items[1]).toMatchObject({ kind: 'tool-call', isPending: false });
+      // The call in task 0 must stay pending — the later response did not close
+      // it — and the response must surface as its own orphan item in task 1,
+      // recognisable by having a result but no arguments.
+      const search = items.filter(
+        item =>
+          item.kind === 'tool-call' && item.toolName === 'github_search_issues',
+      );
+      expect(search).toHaveLength(2);
+      expect(search[0]).toMatchObject({
+        taskIndex: 0,
+        isPending: true,
+        args: { query: 'repo:giantswarm/backstage is:open assignee:@me' },
+      });
+      expect(search[1]).toMatchObject({
+        taskIndex: 1,
+        isPending: false,
+        args: undefined,
+      });
     });
   });
 });

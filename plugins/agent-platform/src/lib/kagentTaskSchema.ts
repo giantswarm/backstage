@@ -135,14 +135,15 @@ export const kagentTaskListSchema = listEnvelopeSchema();
  */
 const sessionDetailPayloadSchema = z.looseObject({
   session: z.unknown().optional(),
-  // Individually validated by the caller; a malformed event costs one timestamp.
-  events: z.array(z.unknown()).nullish().catch(undefined),
   read_only: z.boolean().nullish().catch(undefined),
+  // `events` is not declared: `looseObject` lets it pass through untouched, and
+  // nothing reads it. See KagentSessionDetail for why it is not the per-message
+  // timestamp source it looked like.
 });
 
 /**
  * `GET /api/sessions/:id`, tolerating both the enveloped form and a bare
- * `{ session, events }` object in case a future version drops the envelope.
+ * `{ session, … }` object in case a future version drops the envelope.
  *
  * Deliberately **one** schema rather than a `z.union` of the two shapes: with
  * every field optional, an enveloped body also satisfies the bare shape and vice
@@ -157,7 +158,6 @@ export const kagentSessionDetailSchema = z
     data: sessionDetailPayloadSchema.nullish().catch(undefined),
     // The same fields again, for the un-enveloped form.
     session: z.unknown().optional(),
-    events: z.array(z.unknown()).nullish().catch(undefined),
     read_only: z.boolean().nullish().catch(undefined),
   })
   .transform(body => ({
@@ -165,24 +165,19 @@ export const kagentSessionDetailSchema = z
       body.data ??
       (body.session === undefined
         ? undefined
-        : {
-            session: body.session,
-            events: body.events,
-            read_only: body.read_only,
-          }),
+        : { session: body.session, read_only: body.read_only }),
     isError: body.error === true,
     message: typeof body.message === 'string' ? body.message : undefined,
   }));
 
-/**
- * One stored event, used **only** to recover a message's timestamp.
- *
- * `data` is a JSON *string* holding a serialized A2A message — doubly encoded
- * (`Event.Data string // JSON-serialized protocol.Message` in
- * `go/api/database/models.go`). We parse it just far enough to read `messageId`.
- */
-export const kagentEventWireSchema = z.looseObject({
-  id: wireString,
-  created_at: wireString,
-  data: wireString,
-});
+// There is deliberately no schema for a stored event.
+//
+// kagent's Go type says `Data string // JSON-serialized protocol.Message`, which
+// suggested events could supply the per-message timestamps A2A messages lack. A
+// real gazelle payload disproved it: the decoded value is an **ADK event**
+// (`author`, `content`, `invocation_id`, `partial`, `timestamp`, `usage_metadata`,
+// …) with no `messageId` at all, so there is nothing to join task history against.
+//
+// If a future feature wants a finer timeline than one timestamp per turn, events
+// are the place to get it — but that means parsing ADK `Content` (whose function
+// calls are shaped differently from A2A data parts), not reusing anything here.

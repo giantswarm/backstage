@@ -4,7 +4,6 @@ import {
   kagentSessionDetailSchema,
   kagentTaskListSchema,
 } from './kagentTaskSchema';
-import { buildEventTimestampIndex } from './kagentEventTimestamps';
 import {
   KagentSession,
   normalizeSession,
@@ -15,14 +14,19 @@ import {
 /**
  * One session's metadata, from `GET /api/sessions/:id`.
  *
- * The `events` array in that response is *not* the conversation — the timeline
- * comes from the session's tasks. Events are read for one thing only: A2A
- * messages carry no timestamp, so `eventTimestamps` supplies them.
+ * Only `session` is read. The response's `events` array is deliberately ignored:
+ * despite what kagent's Go type claims (`Data string // JSON-serialized
+ * protocol.Message`), a stored event is **not** an A2A message — a real gazelle
+ * payload holds an ADK event (`author`, `content`, `invocation_id`, `partial`,
+ * `timestamp`, …) with no `messageId` anywhere. So events cannot be correlated
+ * with the task history that makes up the timeline, and they carry no state.
+ *
+ * They are also enormous: in that same payload the events were 591 KB against
+ * 261 bytes of session metadata, which is why the request asks kagent for as few
+ * of them as it will give us.
  */
 export type KagentSessionDetail = {
   session: KagentSession;
-  /** `messageId` → RFC3339. Empty when events were absent or unusable. */
-  eventTimestamps: Map<string, string>;
   /** v0.10+ only; undefined on v0.9.9. Unused while the page is read-only. */
   readOnly?: boolean;
 };
@@ -79,7 +83,6 @@ export function normalizeSessionDetail(
   return {
     detail: {
       session: normalizeSession(wire, installation),
-      eventTimestamps: buildEventTimestampIndex(payload?.events),
       readOnly: payload?.read_only ?? undefined,
     },
   };

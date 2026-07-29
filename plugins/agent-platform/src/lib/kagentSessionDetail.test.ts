@@ -16,7 +16,7 @@ import tasksDataNotArray from './__fixtures__/tasks.data-not-array.json';
 import tasksMalformed from './__fixtures__/tasks.malformed.json';
 
 describe('normalizeSessionDetail', () => {
-  it('reads the session and its event timestamps', () => {
+  it('reads the session', () => {
     const { detail, drift } = normalizeSessionDetail(detailV099, 'gazelle');
 
     expect(drift).toBeUndefined();
@@ -27,12 +27,19 @@ describe('normalizeSessionDetail', () => {
       title: 'Which GitHub issues...',
       agentId: 'kagent__NS__issue_tracker',
     });
-    expect(detail?.eventTimestamps.get('m-user-1')).toBe(
-      '2026-07-23T16:04:29.101Z',
-    );
-    expect(detail?.eventTimestamps.get('m-agent-reply-1')).toBe(
-      '2026-07-23T16:04:41.882Z',
-    );
+  });
+
+  it('ignores the events array entirely', () => {
+    // Events are not the conversation, and — despite kagent's Go doc comment —
+    // not A2A messages either, so there is no messageId to join task history
+    // against. Asserted so nobody reintroduces a dependency on them without
+    // re-checking a real payload.
+    const { detail } = normalizeSessionDetail(detailV099, 'gazelle');
+
+    expect(detail).toEqual({
+      session: expect.objectContaining({ installation: 'gazelle' }),
+      readOnly: undefined,
+    });
   });
 
   it('keeps the session id verbatim whatever shape it has', () => {
@@ -57,7 +64,7 @@ describe('normalizeSessionDetail', () => {
     const { detail, drift } = normalizeSessionDetail(detailNoEvents, 'gazelle');
 
     expect(drift).toBeUndefined();
-    expect(detail?.eventTimestamps.size).toBe(0);
+    expect(detail?.session.sessionId).toBe('abc');
   });
 
   it('accepts a bare object if a future version drops the envelope', () => {
@@ -99,32 +106,14 @@ describe('normalizeSessionDetail', () => {
     },
   );
 
-  describe('event timestamps', () => {
-    it('rejects Go zero time', () => {
-      // `created_at` is a non-pointer time.Time, so unset arrives as
-      // 0001-01-01T00:00:00Z, which browsers render as "Dec 31, 0000".
-      const { detail } = normalizeSessionDetail(detailV099, 'gazelle');
+  it('is unaffected by malformed events', () => {
+    // The v0.9.9 fixture deliberately includes a Go zero-time event and one with
+    // a truncated payload. Since events are not read, neither can affect the
+    // result — which is the point of not reading them.
+    const { detail, drift } = normalizeSessionDetail(detailV099, 'gazelle');
 
-      expect(detail?.eventTimestamps.has('m-zero-time')).toBe(false);
-    });
-
-    it('skips an event whose doubly-encoded payload is truncated', () => {
-      // Event.data is a JSON *string* holding the message, so it needs a second
-      // parse — and a bad one costs one timestamp, not the page.
-      const { detail } = normalizeSessionDetail(detailV099, 'gazelle');
-
-      expect(detail?.eventTimestamps.size).toBe(2);
-    });
-
-    it('keeps the earliest time when a message id repeats', () => {
-      // Events are append-only, so the first row mentioning a message is when it
-      // happened; a later duplicate is a resend.
-      const { detail } = normalizeSessionDetail(detailV099, 'gazelle');
-
-      expect(detail?.eventTimestamps.get('m-user-1')).toBe(
-        '2026-07-23T16:04:29.101Z',
-      );
-    });
+    expect(drift).toBeUndefined();
+    expect(detail?.session.sessionId).toBeTruthy();
   });
 });
 

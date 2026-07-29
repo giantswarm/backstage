@@ -247,16 +247,13 @@ describe('KagentApiClient', () => {
       );
     });
 
-    it('returns the session and its recovered message timestamps', async () => {
+    it('returns the session', async () => {
       fetchMock.mockResolvedValue(jsonResponse(detailV0_9_9));
 
       const detail = await buildClient().getSessionDetail('gazelle', 'abc');
 
       expect(detail?.session.installation).toBe('gazelle');
       expect(detail?.session.title).toBe('Which GitHub issues...');
-      expect(detail?.eventTimestamps.get('m-user-1')).toBe(
-        '2026-07-23T16:04:29.101Z',
-      );
     });
 
     it('resolves undefined when the body carried no session', async () => {
