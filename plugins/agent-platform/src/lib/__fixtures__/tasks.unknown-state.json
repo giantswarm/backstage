@@ -1,0 +1,24 @@
+{
+  "error": false,
+  "data": [
+    {
+      "id": "task-1",
+      "kind": "task",
+      "status": {
+        "state": "completed",
+        "timestamp": "2026-07-24T09:00:00.000Z"
+      },
+      "history": []
+    },
+    {
+      "id": "task-2",
+      "kind": "task",
+      "status": {
+        "state": "quantum-superposition",
+        "timestamp": "2026-07-24T09:05:00.000Z"
+      },
+      "history": []
+    }
+  ],
+  "message": "Successfully retrieved session tasks"
+}

@@ -5,6 +5,9 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import realV0_9_9 from '../lib/__fixtures__/sessions.real-v0-9-9.json';
 import v0_9_9 from '../lib/__fixtures__/sessions.v0-9-9.json';
+import detailV0_9_9 from '../lib/__fixtures__/session-detail.v0-9-9.json';
+import tasksV0_9_9 from '../lib/__fixtures__/tasks.v0-9-9.json';
+import tasksMalformed from '../lib/__fixtures__/tasks.malformed.json';
 import { KagentApiClient } from './KagentApiClient';
 import { KAGENT_AUTH_HEADER } from './types';
 
@@ -216,6 +219,131 @@ describe('KagentApiClient', () => {
       await expect(buildClient().listInstallations()).resolves.toEqual([
         'gazelle',
       ]);
+    });
+  });
+
+  describe('getSessionDetail', () => {
+    it('targets the session and forwards the minted token', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(detailV0_9_9));
+
+      await buildClient().getSessionDetail('gazelle', 'abc');
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc?installation=gazelle',
+      );
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+    });
+
+    it('escapes a session id that is not URL-safe', async () => {
+      // Ids are opaque, so one must never be interpolated raw — a `/` or `?`
+      // would otherwise retarget the request.
+      fetchMock.mockResolvedValue(jsonResponse(detailV0_9_9));
+
+      await buildClient().getSessionDetail('gazelle', 'a/b?c=d');
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb%3Fc%3Dd?installation=gazelle',
+      );
+    });
+
+    it('returns the session and its recovered message timestamps', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(detailV0_9_9));
+
+      const detail = await buildClient().getSessionDetail('gazelle', 'abc');
+
+      expect(detail?.session.installation).toBe('gazelle');
+      expect(detail?.session.title).toBe('Which GitHub issues...');
+      expect(detail?.eventTimestamps.get('m-user-1')).toBe(
+        '2026-07-23T16:04:29.101Z',
+      );
+    });
+
+    it('resolves undefined when the body carried no session', async () => {
+      // Same condition as a 404, and the page shows one "not found" state for
+      // both — so this must not throw.
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: false, data: { events: [] } }),
+      );
+
+      await expect(
+        buildClient().getSessionDetail('gazelle', 'abc'),
+      ).resolves.toBeUndefined();
+      warnSpy.mockRestore();
+    });
+
+    it('throws on an in-band error rather than looking like a missing session', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, message: 'boom' }),
+      );
+
+      await expect(
+        buildClient().getSessionDetail('gazelle', 'abc'),
+      ).rejects.toMatchObject({ name: 'UpstreamError', message: 'boom' });
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('listSessionTasks', () => {
+    it('targets the tasks path', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(tasksV0_9_9));
+
+      await buildClient().listSessionTasks('gazelle', 'abc');
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc/tasks?installation=gazelle',
+      );
+    });
+
+    it('returns tasks in wire form, in kagent’s order', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(tasksV0_9_9));
+
+      const tasks = await buildClient().listSessionTasks('gazelle', 'abc');
+
+      expect(tasks.map(task => task.id)).toEqual(['task-1', 'task-2']);
+    });
+
+    it('resolves empty for a session that was never run', async () => {
+      // Go's omitempty drops a zero-length slice, so there is no `data` key. That
+      // is ordinary, not a failure.
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: false, message: 'Successfully retrieved' }),
+      );
+
+      await expect(
+        buildClient().listSessionTasks('gazelle', 'abc'),
+      ).resolves.toEqual([]);
+    });
+
+    it('throws when the contract moved', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: false, data: { tasks: [] } }),
+      );
+
+      await expect(
+        buildClient().listSessionTasks('gazelle', 'abc'),
+      ).rejects.toMatchObject({ name: 'UpstreamError' });
+      warnSpy.mockRestore();
+    });
+
+    it('still resolves when only some tasks were unreadable', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      fetchMock.mockResolvedValue(jsonResponse(tasksMalformed));
+
+      // A distinct installation on purpose: drift is deduped on
+      // `installation:kind` in module state, and `gazelle:skipped-rows` was
+      // already reported by the listSessions suite above — so reusing it here
+      // would assert on a warning that is correctly suppressed.
+      const tasks = await buildClient().listSessionTasks('golem', 'abc');
+
+      expect(tasks).toHaveLength(2);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('skipped 3 unreadable task rows'),
+      );
+      warnSpy.mockRestore();
     });
   });
 
