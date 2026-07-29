@@ -12,6 +12,37 @@ export interface KubeObjectInterface {
   status?: any;
 }
 
+/**
+ * Whether a `managedFields` entry's `fieldsV1` set covers the given field path.
+ *
+ * `fieldsV1` prefixes every path segment with `f:`, so ownership of
+ * `spec.suspend` is encoded as `{"f:spec":{"f:suspend":{}}}`.
+ */
+function ownsFieldPath(fieldsV1: unknown, path: string[]): boolean {
+  let node = fieldsV1;
+
+  for (let depth = 0; depth < path.length; depth++) {
+    if (!node || typeof node !== 'object') {
+      return false;
+    }
+
+    const fields = node as Record<string, unknown>;
+    const key = `f:${path[depth]}`;
+
+    if (key in fields) {
+      node = fields[key];
+      continue;
+    }
+
+    // A node we have descended into that lists no children is an atomic field:
+    // the manager owns the whole subtree, including the path being asked about.
+    // At the root, though, an empty set simply means the manager owns nothing.
+    return depth > 0 && Object.keys(fields).length === 0;
+  }
+
+  return true;
+}
+
 export class KubeObject<T extends KubeObjectInterface = any> {
   jsonData: T;
   cluster: string;
@@ -135,6 +166,49 @@ export class KubeObject<T extends KubeObjectInterface = any> {
 
   findLabel(label: string) {
     return this.jsonData.metadata.labels?.[label];
+  }
+
+  getManagedFields() {
+    return this.jsonData.metadata.managedFields;
+  }
+
+  /**
+   * The managers that *server-side apply* the given field, and will therefore
+   * re-assert it on their next apply — reverting any imperative write we make.
+   *
+   * Only `Apply`-operation entries count, so this detects **SSA appliers only**.
+   * That is narrower than "everything that could revert us": the two common
+   * non-SSA declarative writers keep a stored desired state and re-assert it,
+   * yet are both recorded as `operation: Update` and so are missed here.
+   *
+   * - client-side `kubectl apply` (`manager: kubectl-client-side-apply`) resends
+   *   the whole manifest as a strategic-merge patch, which is why it undoes a
+   *   `kubectl edit`;
+   * - `helm upgrade` (and helm-controller's release writes) patch via a
+   *   three-way merge that resets drift on chart-declared fields. Only
+   *   helm-controller's separate drift-correction path uses SSA, i.e. when
+   *   `spec.driftDetection` is enabled.
+   *
+   * So an empty result means "no SSA applier claims this field", not "nothing
+   * will revert a write to it". Callers gating a write affordance on this should
+   * treat it as a best-effort signal.
+   *
+   * Results are deduplicated: entries are keyed by manager + operation +
+   * apiVersion + subresource, so one manager can legitimately hold several (e.g.
+   * the same controller at two apiVersions after a CRD version migration).
+   *
+   * @param path field path from the object root, e.g. `['spec', 'suspend']`
+   */
+  getApplyFieldOwners(path: string[]): string[] {
+    const managers = (this.getManagedFields() ?? [])
+      .filter(
+        entry =>
+          entry.operation === 'Apply' && ownsFieldPath(entry.fieldsV1, path),
+      )
+      .map(entry => entry.manager)
+      .filter((manager): manager is string => Boolean(manager));
+
+    return [...new Set(managers)];
   }
 
   static getGVK(): MultiVersionResourceMatcher {

@@ -24,6 +24,46 @@ function describe(resource: FluxObject): string {
   return `${resource.getKind()} ${namespace ? `${namespace}/` : ''}${name}`;
 }
 
+function joinWithAnd(items: string[]): string {
+  if (items.length < 2) {
+    return items.join('');
+  }
+
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/**
+ * Deliberately says "at the source that applies it" rather than "in Git": the
+ * ownership check is not Git-specific, so the applier may be a chart rendered by
+ * helm-controller or a human's `kubectl apply --server-side` just as easily as a
+ * Kustomization built from a repository.
+ */
+function buildManagedSuspendHint(owners: string[]): string {
+  return `spec.suspend is applied by ${joinWithAnd(
+    owners,
+  )}, so a change made here would be reverted on the next reconciliation. Change it at the source that applies it.`;
+}
+
+/**
+ * Reconcile's hint when the resource is suspended *and* its suspension is
+ * declaratively managed. Plain {@link SUSPENDED_HINT} would say "Resume it first",
+ * which is a dead end here — we have just disabled Resume for the same reason.
+ */
+function buildManagedSuspendedReconcileHint(owners: string[]): string {
+  return `Suspended resources are not reconciled, and spec.suspend is applied by ${joinWithAnd(
+    owners,
+  )} — resume it at the source that applies it.`;
+}
+
+/**
+ * A disabled react-aria button still receives pointer events — bui's disabled
+ * styling only sets `cursor: not-allowed` — so the native `<button>` swallows the
+ * hover and the tooltip on the wrapping span never opens. MUI's own
+ * wrap-in-a-span recipe works only because its `ButtonBase` sets
+ * `pointer-events: none` when disabled; this restores that half of it.
+ */
+const DISABLED_BUTTON_STYLE = { pointerEvents: 'none' } as const;
+
 const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
   const alertApi = useApi(alertApiRef);
   const {
@@ -44,12 +84,28 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
   // and survives a reload or a request someone else made.
   const isReconcileRequestPending = resource.isReconcileRequestPending();
 
+  const isReconcileDisabled = isSuspended || isReconcileRequestPending;
+
+  // Reconcile is deliberately *not* gated on declarative management: the
+  // `reconcile.fluxcd.io/requestedAt` annotation is never part of an applied
+  // manifest, so no apply-owner ever asserts or prunes it. Only `spec.suspend`
+  // can be contested.
+  const suspendFieldApplyOwners = resource.getSuspendFieldApplyOwners();
+  const isSuspendFieldManaged = suspendFieldApplyOwners.length > 0;
+
   let reconcileHint = '';
-  if (isSuspended) {
+  if (isSuspended && isSuspendFieldManaged) {
+    // Must precede the plain suspended case: telling someone to resume first
+    // would be a dead end when Resume is disabled for being managed.
+    reconcileHint = buildManagedSuspendedReconcileHint(suspendFieldApplyOwners);
+  } else if (isSuspended) {
     reconcileHint = SUSPENDED_HINT;
   } else if (isReconcileRequestPending) {
     reconcileHint = REQUEST_PENDING_HINT;
   }
+  const suspendHint = isSuspendFieldManaged
+    ? buildManagedSuspendHint(suspendFieldApplyOwners)
+    : '';
 
   const notifyFailure = (error: unknown, action: string) => {
     const forbidden = error instanceof Error && error.name === 'ForbiddenError';
@@ -119,7 +175,8 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
               variant="secondary"
               size="small"
               iconStart={<RefreshIcon fontSize="small" />}
-              isDisabled={isSuspended || isReconcileRequestPending}
+              isDisabled={isReconcileDisabled}
+              style={isReconcileDisabled ? DISABLED_BUTTON_STYLE : undefined}
               isPending={isRequestingReconciliation}
               onPress={handleReconcile}
             >
@@ -127,21 +184,27 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
             </Button>
           </span>
         </Tooltip>
-        <Button
-          variant="secondary"
-          size="small"
-          iconStart={
-            isSuspended ? (
-              <PlayArrowIcon fontSize="small" />
-            ) : (
-              <PauseIcon fontSize="small" />
-            )
-          }
-          isPending={isSettingSuspended}
-          onPress={handleToggleSuspended}
-        >
-          {isSuspended ? 'Resume' : 'Suspend'}
-        </Button>
+        <Tooltip title={suspendHint}>
+          <span>
+            <Button
+              variant="secondary"
+              size="small"
+              iconStart={
+                isSuspended ? (
+                  <PlayArrowIcon fontSize="small" />
+                ) : (
+                  <PauseIcon fontSize="small" />
+                )
+              }
+              isDisabled={isSuspendFieldManaged}
+              style={isSuspendFieldManaged ? DISABLED_BUTTON_STYLE : undefined}
+              isPending={isSettingSuspended}
+              onPress={handleToggleSuspended}
+            >
+              {isSuspended ? 'Resume' : 'Suspend'}
+            </Button>
+          </span>
+        </Tooltip>
       </Flex>
     </Box>
   );
@@ -152,8 +215,8 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
  * them, shown only to users whose cluster RBAC allows the write.
  */
 export const FluxResourceActions = ({ resource }: { resource: KubeObject }) => {
-  // Guard before the inner component mounts so unsupported kinds (e.g.
-  // ImagePolicy) issue no access review at all.
+  // Guard before the inner component mounts so unsupported kinds (e.g. a
+  // ConfigMap, or any non-Flux object) issue no access review at all.
   if (!supportsFluxActions(resource)) {
     return null;
   }

@@ -14,11 +14,19 @@ import { FluxResourceActions } from './FluxResourceActions';
 
 const SSAR_PATH = '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews';
 
+/** A managedFields entry showing `spec.suspend` under declarative management. */
+const SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER = {
+  manager: 'kustomize-controller',
+  operation: 'Apply',
+  fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+};
+
 function createKustomization(
   options: {
     suspend?: boolean;
     requestedAt?: string;
     lastHandledReconcileAt?: string;
+    managedFields?: unknown[];
   } = {},
 ): Kustomization {
   const json = {
@@ -27,6 +35,7 @@ function createKustomization(
     metadata: {
       name: 'my-app',
       namespace: 'flux-system',
+      managedFields: options.managedFields,
       annotations: options.requestedAt
         ? { 'reconcile.fluxcd.io/requestedAt': options.requestedAt }
         : undefined,
@@ -195,7 +204,7 @@ describe('FluxResourceActions', () => {
 
   it('offers both actions for an ImagePolicy', async () => {
     // image-reflector-controller honours the reconcile-request annotation and
-    // `spec.suspend` for ImagePolicy; only the `flux` CLI lacks a subcommand.
+    // `spec.suspend` for ImagePolicy, and the CLI covers the kind too.
     const { kubernetesApi } = await renderActions(createImagePolicy());
 
     expect(
@@ -232,7 +241,7 @@ describe('FluxResourceActions', () => {
         ([args]: [ProxyArgs]) => args.init?.method === 'PATCH',
       )![0].path,
     ).toBe(
-      '/apis/image.toolkit.fluxcd.io/v1beta2/namespaces/flux-system/imagepolicies/my-policy',
+      '/apis/image.toolkit.fluxcd.io/v1beta2/namespaces/flux-system/imagepolicies/my-policy?fieldManager=giantswarm-backstage',
     );
   });
 
@@ -382,5 +391,218 @@ describe('FluxResourceActions', () => {
           'You are not allowed to suspend Kustomization flux-system/my-app on cluster test-installation.',
       }),
     );
+  });
+});
+
+describe('FluxResourceActions with a GitOps-managed spec.suspend', () => {
+  it('disables the suspend toggle and explains why', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    const toggle = await screen.findByRole('button', { name: 'Suspend' });
+    expect(toggle).toBeDisabled();
+
+    // The explanation lives on a wrapping span, since a disabled react-aria
+    // button receives no hover events.
+    expect(
+      screen.getByTitle(
+        'spec.suspend is applied by kustomize-controller, so a change made here would be reverted on the next reconciliation. Change it at the source that applies it.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('disables Resume too, for an already-suspended managed resource', async () => {
+    await renderActions(
+      createKustomization({
+        suspend: true,
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Resume' }),
+    ).toBeDisabled();
+  });
+
+  it('leaves Reconcile enabled — the annotation is never apply-owned', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Reconcile' }),
+    ).toBeEnabled();
+  });
+
+  it('names every apply-owner in the explanation', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: [
+          SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER,
+          {
+            manager: 'helm-controller',
+            operation: 'Apply',
+            fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+          },
+        ],
+      }),
+    );
+
+    await screen.findByRole('button', { name: 'Suspend' });
+    expect(
+      screen.getByTitle(/kustomize-controller and helm-controller/),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the toggle enabled when only an imperative writer owns the field', async () => {
+    // Our own merge patches land as operation Update — they must not lock us out.
+    await renderActions(
+      createKustomization({
+        managedFields: [
+          {
+            manager: 'giantswarm-backstage',
+            operation: 'Update',
+            fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+          },
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Suspend' }),
+    ).toBeEnabled();
+  });
+});
+
+describe('FluxResourceActions disabled-button tooltips', () => {
+  it('opens the real tooltip on hover, not just the native title', async () => {
+    // bui's disabled styling sets only `cursor: not-allowed`, so without an
+    // explicit `pointer-events: none` the disabled <button> swallows the hover and
+    // MUI's handler on the wrapping span never fires — leaving only the native
+    // `title` attribute, which is what MUI renders while closed.
+    //
+    // The `toHaveStyle` assertion below is the actual regression guard. jsdom
+    // cannot model pointer-events retargeting, and `userEvent.hover(span)`
+    // dispatches straight at the span, so the hover assertions pass with or
+    // without the fix; they only prove the tooltip is wired up at all.
+    await renderActions(
+      createKustomization({
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    const toggle = await screen.findByRole('button', { name: 'Suspend' });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveStyle({ pointerEvents: 'none' });
+
+    await userEvent.hover(toggle.parentElement!);
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent(
+      /spec\.suspend is applied by kustomize-controller/,
+    );
+  });
+
+  it('leaves an enabled button clickable, with no pointer-events override', async () => {
+    await renderActions(createKustomization());
+
+    const toggle = await screen.findByRole('button', { name: 'Suspend' });
+    expect(toggle).toBeEnabled();
+    expect(toggle).not.toHaveStyle({ pointerEvents: 'none' });
+  });
+
+  it('opens the tooltip for a disabled Reconcile button too', async () => {
+    await renderActions(createKustomization({ suspend: true }));
+
+    const reconcile = await screen.findByRole('button', { name: 'Reconcile' });
+    expect(reconcile).toBeDisabled();
+
+    await userEvent.hover(reconcile.parentElement!);
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      /Suspended resources are not reconciled/,
+    );
+  });
+
+  it('joins three owners with commas and a final and', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: ['one', 'two', 'three'].map(manager => ({
+          manager,
+          operation: 'Apply',
+          fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+        })),
+      }),
+    );
+
+    await screen.findByRole('button', { name: 'Suspend' });
+    expect(
+      screen.getByTitle(/applied by one, two and three,/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('FluxResourceActions hint wording', () => {
+  it('does not send a suspended, managed resource to a disabled Resume button', async () => {
+    // Both buttons are disabled in this state, so Reconcile must not advise
+    // "Resume it first" — that would point at the control we just disabled.
+    await renderActions(
+      createKustomization({
+        suspend: true,
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Reconcile' }),
+    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeDisabled();
+
+    expect(
+      screen.getByTitle(
+        'Suspended resources are not reconciled, and spec.suspend is applied by kustomize-controller — resume it at the source that applies it.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle(/Resume it first/)).not.toBeInTheDocument();
+  });
+
+  it('still advises resuming first when the suspension is not managed', async () => {
+    await renderActions(createKustomization({ suspend: true }));
+
+    expect(await screen.findByRole('button', { name: 'Resume' })).toBeEnabled();
+    expect(
+      screen.getByTitle(
+        'Suspended resources are not reconciled. Resume it first.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('avoids Git-specific advice, since the applier need not be a repository', async () => {
+    // helm-controller drift correction and `kubectl apply --server-side` both
+    // count as appliers, so "change it in Git" would be wrong for them.
+    await renderActions(
+      createKustomization({
+        managedFields: [
+          {
+            manager: 'helm-controller',
+            operation: 'Apply',
+            fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+          },
+        ],
+      }),
+    );
+
+    await screen.findByRole('button', { name: 'Suspend' });
+    expect(
+      screen.getByTitle(
+        /applied by helm-controller.*source that applies it\.$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle(/in Git/)).not.toBeInTheDocument();
   });
 });
