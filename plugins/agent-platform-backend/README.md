@@ -28,7 +28,7 @@ All routes are under `/api/agent-platform` and require `?installation=<name>`.
 | `GET /health`                    | —        | `{ status, configured }` — how many installations resolved |
 | `GET /kagent/installations`      | —        | Names of installations kagent can be proxied for           |
 | `GET /kagent/sessions`           | required | The user's sessions, kagent's JSON verbatim                |
-| `GET /kagent/sessions/:id`       | required | One session plus its stored events                         |
+| `GET /kagent/sessions/:id`       | required | One session object (asks kagent for `limit=1`, see below)  |
 | `GET /kagent/sessions/:id/tasks` | required | The session's A2A tasks — conversation, state, token usage |
 | `GET /kagent/me`                 | optional | Identity probe (see Diagnosing below)                      |
 
@@ -44,19 +44,36 @@ are URL-encoded before being interpolated into the kagent URL.
 
 ### Why the session detail is two routes
 
-The conversation comes from `…/tasks`, not from the `events` on `…/sessions/:id`.
-That is what kagent's own UI does (`ui/src/components/chat/ChatInterface.tsx` →
-`extractMessagesFromTasks`), and the two payloads carry different things:
+Two routes, two different jobs — **not** two views of the same data:
 
-|                    | `…/sessions/:id` → `events[]`                      | `…/sessions/:id/tasks` → `Task[]`         |
-| ------------------ | -------------------------------------------------- | ----------------------------------------- |
-| Message content    | `data` is a **JSON string** holding an A2A message | `history` is already structured           |
-| Session state      | —                                                  | `status.state`                            |
-| Token usage        | —                                                  | per-message `{adk,kagent}_usage_metadata` |
-| Per-item timestamp | `created_at`                                       | only one per task                         |
+| Route                  | What it is for                                                  |
+| ---------------------- | --------------------------------------------------------------- |
+| `…/sessions/:id`       | the session object: title, agent, timestamps, and does it exist |
+| `…/sessions/:id/tasks` | the conversation, its state (`status.state`) and token usage    |
 
-So the frontend fetches both: tasks for the timeline, events only to recover
-per-message timestamps (A2A messages carry none of their own).
+The conversation comes from `…/tasks`, which is what kagent's own UI renders from
+(`ui/src/components/chat/ChatInterface.tsx` → `extractMessagesFromTasks`). Its
+`history` is already structured as A2A messages and carries the per-message
+`{adk,kagent}_usage_metadata` the token totals are built from.
+
+**The `events` array on `…/sessions/:id` is ignored entirely,** and the request
+asks for `limit=1` to avoid transferring it. kagent's Go type calls each event's
+`data` a `JSON-serialized protocol.Message`, which suggested events could supply
+the per-message timestamps A2A messages lack. A real gazelle session disproved it:
+the decoded value is an **ADK event** (`author`, `content`, `invocation_id`,
+`partial`, `timestamp`, `usage_metadata`, …) with no `messageId` anywhere, so
+there is nothing to correlate with task history — 36 events, zero usable ids. Its
+`invocation_id` does correlate, but only per turn, which the task's own timestamp
+already provides.
+
+That matters for payload size: on that session the events were **591 KB against
+261 bytes** of session metadata. Timeline items therefore share one timestamp per
+turn, which the UI should present per turn rather than implying per-message
+precision.
+
+If a finer timeline is ever wanted, events are where it would come from — but that
+means parsing ADK `Content`, whose function calls are shaped differently from A2A
+data parts, not reusing the task parsers.
 
 Neither route sends an `A2A-Version` header. kagent's `NegotiateA2AWireVersion`
 treats a missing header as the legacy v0 wire on both v0.9.9 and v0.10 — the

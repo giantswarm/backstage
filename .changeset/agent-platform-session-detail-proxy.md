@@ -15,13 +15,22 @@ JSON through verbatim, as the existing routes do.
 
 Two details worth knowing:
 
+`GET /kagent/sessions/:id` asks kagent for `limit=1`, because the caller wants the
+session object and nothing else. kagent bundles the session's stored events into
+that response and they dominate it — on a real 4-turn session, 591 KB of events
+against 261 bytes of session metadata. Nothing reads them (see below), so this
+trims the request by ~99%. Both v0.9.9 and v0.10 parse `limit` with the same
+handler code, and a version that ignored it would simply return everything, which
+is the previous behaviour.
+
 - **The conversation comes from `…/tasks`, not from `…/sessions/:id`'s `events`.**
-  That is what kagent's own UI renders from, and the two payloads carry different
-  things: an event's `data` is a JSON _string_ holding an A2A message (doubly
-  encoded) and carries no state or token usage, while task history is already
-  structured and carries both. Events are still useful for one thing — A2A
-  messages have no timestamp of their own, so per-message times come from the
-  events' `created_at`.
+  That is what kagent's own UI renders from, and only task history is structured
+  as A2A messages carrying the session's state and token usage. The `events` array
+  is not a second view of the same thing: kagent's Go type calls each event's
+  `data` a `JSON-serialized protocol.Message`, but a real gazelle payload decodes
+  to an **ADK event** (`author`, `content`, `invocation_id`, `partial`,
+  `timestamp`, …) with no `messageId` at all — so it cannot be correlated with
+  task history, and it is ignored entirely. Hence `limit=1` above.
 - **No `A2A-Version` header is sent.** kagent's `NegotiateA2AWireVersion` treats a
   missing header as the legacy v0 wire on both v0.9.9 and v0.10, which is the
   shape kagent's UI consumes and therefore the best-tested one. Opting into the

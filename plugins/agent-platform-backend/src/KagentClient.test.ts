@@ -214,13 +214,18 @@ describe('KagentClient', () => {
   });
 
   describe('session detail', () => {
-    it('requests one session under the sessions path', async () => {
+    it('requests one session under the sessions path, asking for no events', async () => {
+      // kagent bundles the session's stored events into this response and they
+      // dominate it — 591 KB of events against 261 bytes of session metadata on a
+      // real 4-turn session. Nothing reads them, so `limit=1` trims the request by
+      // ~99%. A version that ignored `limit` would just return everything, which
+      // is today's behaviour, so this can only help.
       const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
 
       await build(fetchFn).getSession('abc123', { userToken: 't' });
 
       expect(fetchFn.mock.calls[0][0]).toBe(
-        'https://kagent.gazelle.example.io/api/sessions/abc123',
+        'https://kagent.gazelle.example.io/api/sessions/abc123?limit=1',
       );
     });
 
@@ -257,7 +262,7 @@ describe('KagentClient', () => {
       await build(fetchFn).getSession('a/b?c=d', { userToken: 't' });
 
       expect(fetchFn.mock.calls[0][0]).toBe(
-        'https://kagent.gazelle.example.io/api/sessions/a%2Fb%3Fc%3Dd',
+        'https://kagent.gazelle.example.io/api/sessions/a%2Fb%3Fc%3Dd?limit=1',
       );
     });
 

@@ -206,25 +206,34 @@ export class KagentClient {
   }
 
   /**
-   * `GET <apiBaseUrl>/sessions/<id>` — one session plus its stored events.
+   * `GET <apiBaseUrl>/sessions/<id>` — the session object.
    *
    * kagent scopes this by the forwarded token's user id, so a session belonging
    * to somebody else is indistinguishable from one that does not exist: both
    * answer 404. That is an expected outcome for a stale or shared deep link, and
    * `request` already maps it to `NotFoundError` (404) rather than a 5xx.
    *
-   * The frontend reads the `events` array only to recover per-message
-   * timestamps; the conversation itself comes from {@link listSessionTasks},
-   * because A2A messages carry no timestamp of their own.
+   * The conversation comes from {@link listSessionTasks}, not from this response's
+   * `events` array — which is ignored entirely, hence the `limit=1` below.
    */
   async getSession(
     sessionId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
     return this.request(
+      // `limit=1` because the caller wants the session object and nothing else.
+      // kagent bundles the session's stored events into this response and they
+      // dominate it — on a real 4-turn session, 591 KB of events against 261
+      // bytes of session metadata. They are not the conversation (that comes from
+      // `/tasks`) and, despite kagent's Go doc comment, not A2A messages either,
+      // so there is nothing in them we can use.
+      //
+      // Both v0.9.9 and v0.10 parse `limit` with the same handler code. A version
+      // that ignored it would simply return everything, which is exactly today's
+      // behaviour — so this can only help.
       `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
         sessionId,
-      )}`,
+      )}?limit=1`,
       options,
       {
         // The id is left out on purpose: it is opaque and high-cardinality, and
