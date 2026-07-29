@@ -430,8 +430,16 @@ the arguments — the problem reported in
 [klaus-gateway#163](https://github.com/giantswarm/klaus-gateway/issues/163). The
 parser looks through the wrapper (`unwrapProxiedCall`), so the row names the tool
 actually invoked and carries a `via Muster` badge; on a real gazelle session that
-unwrapped 7 of 17 calls. If `call_tool`'s payload ever stops matching the wrapper
-shape, the call degrades to showing the proxy rather than being lost.
+unwrapped 7 of 17 calls.
+
+Unwrapping requires the payload to be _nothing but_ the wrapper: a non-empty `name`,
+and no key besides `name` and `arguments`. That second half is what keeps the
+degradation honest — keying on `name` alone would mean that if muster renamed or
+nested the inner arguments, the row would still name the real tool while its
+arguments silently became `undefined`, leaving an entry with nothing to expand. As
+written, an unfamiliar key means the call degrades to showing the proxy, payload
+intact, rather than being partly lost. `{ name }` with no `arguments` still unwraps:
+that is an argument-less proxied call, and there is nothing there to lose.
 
 Approvals are deliberately **not** governed by the activity control: an approval
 records the _user's_ decision, so hiding it would erase the trace of their own
@@ -441,6 +449,13 @@ Two things real payloads taught us, both now relied on: kagent repeats each user
 message under the **same `messageId`** on every turn, so the session-wide dedupe is
 required rather than defensive; and one message can carry prose plus several tool
 calls, always text first.
+
+**A message the parser cannot read is counted, not hidden.** `skippedMessages`
+counts history entries that failed the schema outright — artifact and status updates
+are deliberately excluded, being healthy entries we simply have no renderer for —
+and the timeline warns "N messages could not be read". That warning renders even
+when _every_ entry failed and there are therefore no items at all; otherwise the one
+case it exists for would report as an ordinary empty session.
 
 ### What it cannot show
 

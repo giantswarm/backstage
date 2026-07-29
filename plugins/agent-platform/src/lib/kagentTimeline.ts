@@ -584,13 +584,20 @@ function readDecision(
 }
 
 /**
- * Whether any part of a message carries text.
+ * Whether any part of a message carries text that will actually render.
  *
  * Decides whether a decision message already contains the user's own words, in
  * which case they render from the text part and `ask_user_answers` is not needed.
+ *
+ * **Blank text does not count.** `flushText` drops a run that trims to nothing, so
+ * treating a `{ text: '' }` part as words would lose the reply twice over: the
+ * `ask_user_answers` fallback skipped because "there is text", and the text itself
+ * dropped for being empty — the exact "the user's answer vanished" symptom this
+ * fallback exists to prevent. The predicate has to agree with what `flushText`
+ * will keep.
  */
 function hasTextPart(parts: unknown[]): boolean {
-  return parts.some(rawPart => parsePart(rawPart)?.text !== undefined);
+  return parts.some(rawPart => Boolean(parsePart(rawPart)?.text?.trim()));
 }
 
 /**

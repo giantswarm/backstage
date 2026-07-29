@@ -100,7 +100,14 @@ export function useSessionDetail(
     timeline,
     state,
     taskCount: tasks?.length ?? 0,
-    isLoading: sessionQuery.isLoading || tasksQuery.isLoading,
+    // `isNotFound` short-circuits loading, because it is decided by the session
+    // read alone and the page checks `isLoading` first. Without this, a session
+    // that 404s immediately — `NotFoundError` is not retried, so that read settles
+    // at once — still sat behind a spinner for as long as the *tasks* request took:
+    // the full retry ladder (2s/4s/8s) for a non-404 failure, or the fetch timeout
+    // on an unreachable installation. The answer was already known; nothing the
+    // tasks read can return would change it.
+    isLoading: !isNotFound && (sessionQuery.isLoading || tasksQuery.isLoading),
     isNotFound,
     error,
   };
