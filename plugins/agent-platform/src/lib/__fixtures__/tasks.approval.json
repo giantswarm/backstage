@@ -63,6 +63,23 @@
           ]
         },
         {
+          "comment": "ADK resumes a long-running tool by sending its function_response. The approval is rendered as its own item and never registered as an open call, so this always lands in the orphan branch — and must be dropped rather than rendered as a tool call named adk_request_confirmation carrying ADK's internal payload.",
+          "kind": "message",
+          "messageId": "m-confirm-response-1",
+          "role": "agent",
+          "parts": [
+            {
+              "kind": "data",
+              "metadata": { "kagent_type": "function_response" },
+              "data": {
+                "id": "confirm-1",
+                "name": "adk_request_confirmation",
+                "response": { "confirmed": true }
+              }
+            }
+          ]
+        },
+        {
           "kind": "message",
           "messageId": "m-agent-reply-1",
           "role": "agent",

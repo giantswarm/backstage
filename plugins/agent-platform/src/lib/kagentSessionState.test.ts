@@ -42,6 +42,22 @@ describe('describeSessionState', () => {
   it.each([undefined, ''])('returns undefined for %p', input => {
     expect(describeSessionState(input)).toBeUndefined();
   });
+
+  it.each(['constructor', '__proto__'])(
+    'renders %p verbatim instead of matching Object.prototype',
+    state => {
+      // A bare object index resolves inherited prototype members too. Of those,
+      // only these two survive `toLowerCase()` unchanged — so only these two could
+      // take the "known" branch and spread a function or the prototype, producing a
+      // badge with an undefined label and tone.
+      expect(describeSessionState(state)).toEqual({
+        raw: state,
+        label: state,
+        tone: 'neutral',
+        isActive: false,
+      });
+    },
+  );
 });
 
 describe('deriveSessionState', () => {

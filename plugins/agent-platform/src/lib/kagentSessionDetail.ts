@@ -74,7 +74,7 @@ export function normalizeSessionDetail(
     // session. Reported as drift so it is visible, but treated as "no session".
     return {
       drift: {
-        kind: 'skipped-rows',
+        kind: 'missing-payload',
         message: 'the response carried no readable session',
       },
     };

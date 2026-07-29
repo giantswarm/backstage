@@ -56,7 +56,17 @@ export function describeSessionState(
   if (!state) {
     return undefined;
   }
-  const known = KNOWN_STATES[state.toLowerCase()];
+  // `hasOwnProperty`, not a bare lookup: a plain-object index also resolves
+  // inherited `Object.prototype` members. Of those, `constructor` and `__proto__`
+  // survive `toLowerCase()` unchanged, so a state of either would take the
+  // "known" branch and spread a function or the prototype — yielding a badge with
+  // an undefined label and tone instead of rendering the state verbatim. This
+  // module exists to tolerate whatever kagent puts on the wire, so it shouldn't
+  // have a hole shaped like two specific strings.
+  const key = state.toLowerCase();
+  const known = Object.prototype.hasOwnProperty.call(KNOWN_STATES, key)
+    ? KNOWN_STATES[key]
+    : undefined;
   if (known) {
     return { raw: state, ...known };
   }

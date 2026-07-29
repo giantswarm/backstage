@@ -171,6 +171,22 @@ describe('buildTimeline', () => {
       expect(items[1].at).toBe(items[0].at);
     });
 
+    it('rejects Go zero time rather than rendering "Dec 31, 0000"', () => {
+      // Task timestamps are non-pointer Go `time.Time`, so an unset one arrives as
+      // 0001-01-01T00:00:00Z. This is now the only timestamp source, so it becomes
+      // `at` for every item in the task.
+      const tasks = normalizeTaskList(kagentPrefixed).tasks;
+      const zeroTime = {
+        ...tasks[0],
+        status: { state: 'completed', timestamp: '0001-01-01T00:00:00Z' },
+      } as A2aTaskWire;
+
+      const { items } = buildTimeline([zeroTime]);
+
+      expect(items.length).toBeGreaterThan(0);
+      expect(items.every(item => item.at === undefined)).toBe(true);
+    });
+
     it('renders no time at all when the task has none', () => {
       const tasks: A2aTaskWire[] = [
         {
@@ -244,6 +260,69 @@ describe('buildTimeline', () => {
       ]);
     });
 
+    it('drops the confirmation’s own function_response', () => {
+      // ADK resumes a long-running tool by sending its function_response. The
+      // approval is never registered as an open call, so that response always
+      // reaches the orphan branch — and unfiltered it renders as a tool call
+      // literally named `adk_request_confirmation`, exposing ADK's internal
+      // payload right after the approval card. kagent's UI filters the same name.
+      const { items } = timelineFor(approval);
+
+      expect(kinds(items)).toEqual([
+        'user-message',
+        'approval',
+        'agent-message',
+      ]);
+      expect(
+        items.some(
+          item =>
+            item.kind === 'tool-call' && /confirmation/.test(item.toolName),
+        ),
+      ).toBe(false);
+    });
+
+    it('recognises an approval by name even without the long-running flag', () => {
+      // Discriminating on the flag would degrade an approval into a raw tool call
+      // exposing the `originalFunctionCall` wrapper — and it fails open in the
+      // ugliest direction, since a flag arriving as the string "true" is rejected
+      // by design.
+      const unflagged = structuredClone(approval) as typeof approval;
+      const confirm = unflagged.data[0].history.find(
+        item => item.messageId === 'm-confirm-1',
+      );
+      delete (confirm as { parts: { metadata: Record<string, unknown> }[] })
+        .parts[0].metadata.kagent_is_long_running;
+
+      const { items } = timelineFor(unflagged);
+
+      expect(items[1]).toMatchObject({
+        kind: 'approval',
+        toolName: 'flux_reconcile',
+      });
+    });
+
+    it('attaches a verdict recorded in a later task', () => {
+      // kagent can record the decision in a new task. With the open approval
+      // tracked per task, the decision was dropped *and* the approval left looking
+      // unanswered — the user approved and the UI said they never replied.
+      const split = structuredClone(approval) as typeof approval;
+      const history = split.data[0].history;
+      const decisionIndex = history.findIndex(
+        item => item.messageId === 'm-decision-1',
+      );
+      const [decision] = history.splice(decisionIndex, 1);
+      split.data.push({
+        id: 'task-2',
+        kind: 'task',
+        status: { state: 'completed', timestamp: '2026-07-24T09:20:00.000Z' },
+        history: [decision],
+      } as (typeof split.data)[number]);
+
+      const { items } = timelineFor(split);
+
+      expect(items[1]).toMatchObject({ kind: 'approval', verdict: 'approved' });
+    });
+
     it('leaves an unanswered approval pending', () => {
       const pending = structuredClone(approval) as typeof approval;
       pending.data[0].history = pending.data[0].history.filter(
@@ -290,6 +369,47 @@ describe('buildTimeline', () => {
         toolName: 'unknown tool',
         isPending: true,
       });
+    });
+
+    it('does not count non-message history entries as data loss', () => {
+      // `skippedMessages` feeds a "N messages could not be read" warning. An
+      // artifact or status update in `history` is a healthy part of a session we
+      // simply don't render, so counting it would make the UI warn about sound
+      // sessions. The malformed fixture's history holds `null`, a bare string and
+      // an `artifact-update` — only the first two are data loss.
+      const { skippedMessages } = timelineFor(malformed);
+
+      expect(skippedMessages).toBe(2);
+    });
+
+    it('resolves a repeated call whose response lands in a later task', () => {
+      // Dedupe is session-wide but open calls are per task, so a call message
+      // repeated across tasks used to render twice: once stuck pending in the first
+      // task, once as an orphan result in the second.
+      const tasks = normalizeTaskList(kagentPrefixed).tasks;
+      const callMessage = (tasks[0].history as unknown[]).find(
+        item => (item as { messageId?: string }).messageId === 'm-agent-call-1',
+      );
+      const responseMessage = (tasks[0].history as unknown[]).find(
+        item =>
+          (item as { messageId?: string }).messageId === 'm-agent-response-1',
+      );
+
+      const { items } = buildTimeline([
+        { ...tasks[0], history: [callMessage] } as A2aTaskWire,
+        // The same call message again, plus its response.
+        {
+          ...tasks[0],
+          history: [callMessage, responseMessage],
+        } as A2aTaskWire,
+      ]);
+
+      const search = items.filter(
+        item =>
+          item.kind === 'tool-call' && item.toolName === 'github_search_issues',
+      );
+      expect(search).toHaveLength(1);
+      expect(search[0]).toMatchObject({ isPending: false });
     });
 
     it('ignores usage metadata that is not an object', () => {

@@ -330,15 +330,37 @@ describe('KagentApiClient', () => {
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       fetchMock.mockResolvedValue(jsonResponse(tasksMalformed));
 
-      // A distinct installation on purpose: drift is deduped on
-      // `installation:kind` in module state, and `gazelle:skipped-rows` was
-      // already reported by the listSessions suite above — so reusing it here
-      // would assert on a warning that is correctly suppressed.
       const tasks = await buildClient().listSessionTasks('golem', 'abc');
 
       expect(tasks).toHaveLength(2);
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('skipped 3 unreadable task rows'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('reports its own drift even after the sessions list burned the same kind', async () => {
+      // The dedupe key includes the endpoint. Without it, one dropped row in the
+      // sessions list would permanently silence a task list that later dropped
+      // thirty — rendering half a conversation with nothing logged anywhere. This
+      // test previously had to use a *different* installation to see its warning,
+      // which was the symptom.
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: false, data: [{ id: 'good' }, null] }),
+      );
+      await buildClient().listSessions('graveler');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('kagent sessions response drift'),
+      );
+
+      warnSpy.mockClear();
+      fetchMock.mockResolvedValue(jsonResponse(tasksMalformed));
+      await buildClient().listSessionTasks('graveler', 'abc');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('kagent session tasks response drift'),
       );
       warnSpy.mockRestore();
     });

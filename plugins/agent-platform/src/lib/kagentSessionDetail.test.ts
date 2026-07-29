@@ -96,7 +96,10 @@ describe('normalizeSessionDetail', () => {
     );
 
     expect(detail).toBeUndefined();
-    expect(drift?.kind).toBe('skipped-rows');
+    // Its own kind, not `skipped-rows`: that kind's message counts dropped rows,
+    // so reusing it here reported "no session" as though rows had been lost — and
+    // it shared a dedupe key with the sessions list.
+    expect(drift?.kind).toBe('missing-payload');
   });
 
   it.each([undefined, null, 0, 'nope', [], [null]])(

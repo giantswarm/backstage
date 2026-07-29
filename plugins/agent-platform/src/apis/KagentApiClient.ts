@@ -26,14 +26,19 @@ export const kagentApiRef = createApiRef<KagentApi>({
   id: 'plugin.agent-platform.kagent',
 });
 
-/** Drift is worth knowing about, but only once per message per page-session. */
 /**
- * Drift already reported, keyed by installation + drift *kind*.
+ * Drift already reported, keyed by installation + **endpoint** + drift *kind*.
  *
  * Keying on the kind rather than the formatted message matters in both
  * directions: `skipped-rows` messages embed a varying count, so a message key
  * would report the same problem repeatedly, while a bounded set of kinds keeps
  * this from growing without limit in a tab left open for days.
+ *
+ * The endpoint is in the key because three reads now share this set and all three
+ * can emit `skipped-rows`. Without it, whichever fired first would permanently
+ * silence the others for that installation — so a session list that dropped one
+ * row would mute a task list that later dropped thirty, and the timeline would
+ * render half a conversation with nothing logged anywhere.
  */
 const reportedDrift = new Set<string>();
 
@@ -50,15 +55,22 @@ function upstreamError(message: string): Error {
   return error;
 }
 
-function reportDrift(installation: string, drift: SessionListDrift) {
-  const key = `${installation}:${drift.kind}`;
+/** Which read produced the drift — part of the dedupe key and of the message. */
+type DriftSource = 'sessions' | 'session' | 'session tasks';
+
+function reportDrift(
+  installation: string,
+  source: DriftSource,
+  drift: SessionListDrift,
+) {
+  const key = `${installation}:${source}:${drift.kind}`;
   if (reportedDrift.has(key)) {
     return;
   }
   reportedDrift.add(key);
   // eslint-disable-next-line no-console
   console.warn(
-    `kagent sessions response drift on installation '${installation}': ${drift.message}`,
+    `kagent ${source} response drift on installation '${installation}': ${drift.message}`,
   );
 }
 
@@ -107,7 +119,7 @@ export class KagentApiClient implements KagentApi {
     const { sessions, drift } = normalizeSessionList(body, installation);
 
     if (drift) {
-      reportDrift(installation, drift);
+      reportDrift(installation, 'sessions', drift);
     }
 
     // Two drift kinds mean we cannot claim to have read this installation's
@@ -141,7 +153,7 @@ export class KagentApiClient implements KagentApi {
     const { detail, drift } = normalizeSessionDetail(body, installation);
 
     if (drift) {
-      reportDrift(installation, drift);
+      reportDrift(installation, 'session', drift);
     }
 
     // Same reasoning as `listSessions`: an in-band error on a 200 must reach the
@@ -170,7 +182,7 @@ export class KagentApiClient implements KagentApi {
     const { tasks, drift } = normalizeTaskList(body);
 
     if (drift) {
-      reportDrift(installation, drift);
+      reportDrift(installation, 'session tasks', drift);
     }
 
     if (

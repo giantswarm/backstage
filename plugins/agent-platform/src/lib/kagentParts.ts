@@ -63,19 +63,33 @@ export function parsePart(part: unknown): A2aPartWire | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-/** Parse one history entry, keeping only actual messages. */
-export function parseMessage(item: unknown): A2aMessageWire | undefined {
+/**
+ * The three things a history entry can turn out to be.
+ *
+ * `'other'` and `'unparseable'` are kept apart on purpose. A history entry whose
+ * `kind` is `artifact-update` or a status update is a perfectly healthy part of a
+ * session that we simply have no renderer for — counting it as data loss would
+ * make the UI warn "N messages could not be read" about a sound session. Only a
+ * schema failure is actual loss.
+ */
+export type ParsedHistoryEntry =
+  | { kind: 'message'; message: A2aMessageWire }
+  | { kind: 'other' }
+  | { kind: 'unparseable' };
+
+/** Classify one history entry. */
+export function parseHistoryEntry(item: unknown): ParsedHistoryEntry {
   const parsed = a2aMessageWireSchema.safeParse(item);
   if (!parsed.success) {
-    return undefined;
+    return { kind: 'unparseable' };
   }
   // `kind` distinguishes messages from other history entries. Absent `kind` is
   // treated as a message: older payloads omit it, and a history entry with parts
   // and a role is a message whatever it calls itself.
   if (parsed.data.kind && parsed.data.kind !== 'message') {
-    return undefined;
+    return { kind: 'other' };
   }
-  return parsed.data;
+  return { kind: 'message', message: parsed.data };
 }
 
 /**
@@ -111,13 +125,11 @@ export function isFunctionResponsePart(part: A2aPartWire): boolean {
   );
 }
 
-/**
- * Whether a call is long-running, which is how kagent marks an approval request
- * apart from an ordinary call to the same internal tool.
- */
-export function isLongRunningPart(part: A2aPartWire): boolean {
-  return isKagentMetadataFlagSet(part.metadata, 'is_long_running');
-}
+// There is deliberately no `isLongRunningPart` helper. kagent marks a
+// confirmation call with `{adk,kagent}_is_long_running: true` and its own UI
+// checks it, but the timeline discriminates approvals on the tool *name* alone:
+// a missing flag, or one arriving as the string `"true"`, would otherwise
+// downgrade an approval into a raw tool call exposing ADK's internal wrapper.
 
 /** Read `{id, name, args}` out of a `function_call` data part. */
 export function readFunctionCall(part: A2aPartWire): FunctionCall {

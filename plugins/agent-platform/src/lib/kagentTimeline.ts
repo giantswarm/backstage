@@ -1,5 +1,6 @@
 import { A2aTaskWire } from './kagentTaskSchema';
 import { readKagentMetadataString } from './kagentMetadata';
+import { normalizeTimestamp } from './kagentSessions';
 import {
   addTokenUsage,
   CONFIRMATION_TOOL_NAME,
@@ -7,9 +8,8 @@ import {
   isFunctionCallPart,
   isFunctionResponsePart,
   isInternalToolName,
-  isLongRunningPart,
   isThoughtPart,
-  parseMessage,
+  parseHistoryEntry,
   parsePart,
   readFunctionCall,
   readFunctionResponse,
@@ -70,7 +70,14 @@ export type SessionTimeline = {
   items: TimelineItem[];
   /** Total usage across the session, message-level plus delegated agents. */
   tokens: TokenUsage;
-  /** Messages dropped because they could not be parsed at all. */
+  /**
+   * History entries that failed to parse at all — genuine data loss, safe for the
+   * UI to report as "N messages could not be read".
+   *
+   * Deliberately **excludes** well-formed entries that simply aren't messages
+   * (artifact and status updates), which are a normal part of a healthy session.
+   * Counting those would make the UI warn about sessions that are perfectly fine.
+   */
   skippedMessages: number;
 };
 
@@ -120,32 +127,56 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   let tokens = EMPTY_USAGE;
   let skippedMessages = 0;
 
-  // kagent's history can repeat a message across tasks (a resend or an
-  // overlapping window), and rendering it twice would read as the agent saying
-  // the same thing twice.
+  // kagent repeats a message under the same `messageId` — reliably for the user's
+  // message on every turn, and in principle across tasks in an overlapping history
+  // window. Rendering it twice reads as it having been said twice.
   const seenMessageIds = new Set<string>();
+  // Calls a deduped message already produced, so a response arriving in a *later*
+  // task can still fold into the existing item instead of orphaning. Without this,
+  // a repeated call message whose response lands in the next task renders twice:
+  // once stuck pending, once as a result with no request.
+  const callsByMessageId = new Map<string, OpenCall[]>();
+  // The approval awaiting a verdict, at session scope. Per task would be wrong:
+  // kagent can record the user's decision in a *new* task, and a per-task variable
+  // would drop that decision and leave the approval looking unanswered forever.
+  // Only one can be open at a time — kagent suspends until the user answers.
+  let openApprovalIndex: number | undefined;
 
   tasks.forEach((task, taskIndex) => {
-    const taskTimestamp = task.status?.timestamp;
+    // Through `normalizeTimestamp` like every other kagent timestamp: these are
+    // non-pointer Go `time.Time`, so an unset one arrives as `0001-01-01T00:00:00Z`
+    // and renders as "Dec 31, 0000". It matters more here than anywhere else,
+    // because this is now the *only* timestamp source — it becomes `at` for every
+    // item in the task.
+    const taskTimestamp = normalizeTimestamp(task.status?.timestamp);
     const history = Array.isArray(task.history) ? task.history : [];
 
     // Open calls are per task: a response never answers a call from another turn,
     // and letting them match across tasks would attach a result to the wrong call
     // when a tool is used repeatedly.
     const openCalls: OpenCall[] = [];
-    // The approval awaiting a verdict. Only one can be open at a time — kagent
-    // suspends the task until the user answers.
-    let openApprovalIndex: number | undefined;
 
     history.forEach((entry, entryIndex) => {
-      const message = parseMessage(entry);
-      if (!message) {
+      const parsed = parseHistoryEntry(entry);
+      if (parsed.kind === 'unparseable') {
         skippedMessages += 1;
         return;
       }
+      if (parsed.kind === 'other') {
+        // A well-formed entry we have no renderer for — an artifact or status
+        // update. Not data loss, so it must not inflate `skippedMessages`.
+        return;
+      }
+      const message = parsed.message;
 
       if (message.messageId) {
         if (seenMessageIds.has(message.messageId)) {
+          // Re-arm this message's calls in the current task so a response here can
+          // still resolve the item the first copy created.
+          const previous = callsByMessageId.get(message.messageId);
+          if (previous) {
+            openCalls.push(...previous);
+          }
           return;
         }
         seenMessageIds.add(message.messageId);
@@ -273,7 +304,19 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           // An orphan response: its call was in a task we don't have, or the
           // payload carried no id. Still render it — a result with no visible
           // request is odd, but hiding it would be worse.
-          if (isInternalToolName(response.name)) {
+          //
+          // Except for ADK's own plumbing. An approval is rendered as its own item
+          // and never registered as an open call, so the `function_response` ADK
+          // sends when it resumes the long-running confirmation always lands here —
+          // and without this it would render as a tool call literally named
+          // `adk_request_confirmation`, carrying the internal confirmation payload
+          // as its result, immediately after the approval card. kagent's own UI
+          // filters this name out of tool calls for the same reason
+          // (`ui/src/lib/toolCallExtraction.ts`).
+          if (
+            isInternalToolName(response.name) ||
+            response.name === CONFIRMATION_TOOL_NAME
+          ) {
             return;
           }
           items.push(
@@ -307,9 +350,17 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         flushText();
         const call = readFunctionCall(part);
 
-        // An approval request is a long-running call to an internal tool, wrapping
-        // the call the agent actually proposed.
-        if (call.name === CONFIRMATION_TOOL_NAME && isLongRunningPart(part)) {
+        // An approval request is a call to ADK's confirmation tool, wrapping the
+        // call the agent actually proposed.
+        //
+        // Discriminated on the **name alone**. kagent marks these long-running and
+        // its own UI checks that flag, but relying on it here would be fragile in a
+        // way that fails loudly: a missing flag — or one arriving as the string
+        // `"true"`, which `isKagentMetadataFlagSet` rejects by design — would make
+        // this render as a raw tool call named `adk_request_confirmation` with the
+        // internal `originalFunctionCall` wrapper as its arguments. The name is
+        // sufficient and can't degrade like that.
+        if (call.name === CONFIRMATION_TOOL_NAME) {
           const proposed = readProposedCall(call.args);
           openApprovalIndex = items.length;
           items.push({
@@ -342,7 +393,18 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           }),
         );
         if (call.id) {
-          openCalls.push({ callId: call.id, itemIndex });
+          const open = { callId: call.id, itemIndex };
+          openCalls.push(open);
+          // Remembered so a repeat of this message in a later task can re-arm the
+          // call rather than letting its response orphan into a second item.
+          if (message.messageId) {
+            const existing = callsByMessageId.get(message.messageId);
+            if (existing) {
+              existing.push(open);
+            } else {
+              callsByMessageId.set(message.messageId, [open]);
+            }
+          }
         }
       });
 
