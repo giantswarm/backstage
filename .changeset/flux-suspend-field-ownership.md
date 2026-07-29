@@ -14,7 +14,10 @@ silently undone.
   until then. `FluxObject.isSuspendFieldManaged()` reads this off
   `metadata.managedFields`, which the API already returns: any entry with
   operation `Apply` that owns `f:spec.f:suspend`. The toggle is disabled with a
-  tooltip naming the owning manager(s).
+  tooltip naming the owning manager(s) and pointing at the source that applies
+  the field — deliberately not "change it in Git", since the applier may equally
+  be a chart rendered by helm-controller or a human's
+  `kubectl apply --server-side`.
 - Not restricted to `kustomize-controller`: a human `kubectl apply --server-side`,
   or helm-controller's drift correction when `spec.driftDetection` is enabled, has
   the same effect.

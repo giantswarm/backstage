@@ -409,7 +409,7 @@ describe('FluxResourceActions with a GitOps-managed spec.suspend', () => {
     // button receives no hover events.
     expect(
       screen.getByTitle(
-        'spec.suspend is applied by kustomize-controller, so a change made here would be reverted on the next reconciliation. Change it in Git instead.',
+        'spec.suspend is applied by kustomize-controller, so a change made here would be reverted on the next reconciliation. Change it at the source that applies it.',
       ),
     ).toBeInTheDocument();
   });
@@ -544,5 +544,65 @@ describe('FluxResourceActions disabled-button tooltips', () => {
     expect(
       screen.getByTitle(/applied by one, two and three,/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('FluxResourceActions hint wording', () => {
+  it('does not send a suspended, managed resource to a disabled Resume button', async () => {
+    // Both buttons are disabled in this state, so Reconcile must not advise
+    // "Resume it first" — that would point at the control we just disabled.
+    await renderActions(
+      createKustomization({
+        suspend: true,
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Reconcile' }),
+    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeDisabled();
+
+    expect(
+      screen.getByTitle(
+        'Suspended resources are not reconciled, and spec.suspend is applied by kustomize-controller — resume it at the source that applies it.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle(/Resume it first/)).not.toBeInTheDocument();
+  });
+
+  it('still advises resuming first when the suspension is not managed', async () => {
+    await renderActions(createKustomization({ suspend: true }));
+
+    expect(await screen.findByRole('button', { name: 'Resume' })).toBeEnabled();
+    expect(
+      screen.getByTitle(
+        'Suspended resources are not reconciled. Resume it first.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('avoids Git-specific advice, since the applier need not be a repository', async () => {
+    // helm-controller drift correction and `kubectl apply --server-side` both
+    // count as appliers, so "change it in Git" would be wrong for them.
+    await renderActions(
+      createKustomization({
+        managedFields: [
+          {
+            manager: 'helm-controller',
+            operation: 'Apply',
+            fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+          },
+        ],
+      }),
+    );
+
+    await screen.findByRole('button', { name: 'Suspend' });
+    expect(
+      screen.getByTitle(
+        /applied by helm-controller.*source that applies it\.$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle(/in Git/)).not.toBeInTheDocument();
   });
 });
