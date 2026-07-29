@@ -418,6 +418,66 @@ describe('buildTimeline', () => {
       expect(tokens).toEqual({ total: 0, prompt: 0, completion: 0 });
     });
 
+    it('derives a total when kagent reports only the breakdown', () => {
+      // Found live on gazelle: every message carries promptTokenCount and
+      // candidatesTokenCount but no totalTokenCount, so summing reported totals
+      // rendered "Total 0" beside 1.4M input. kagent's own UI has the same hole
+      // (`total: usage.totalTokenCount ?? 0`).
+      const tasks = [
+        {
+          status: { state: 'completed', timestamp: '2026-07-24T09:00:00.000Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'm1',
+              role: 'agent',
+              metadata: {
+                kagent_usage_metadata: {
+                  promptTokenCount: 1000,
+                  candidatesTokenCount: 250,
+                },
+              },
+              parts: [{ kind: 'text', text: 'hi' }],
+            },
+          ],
+        },
+      ] as unknown as A2aTaskWire[];
+
+      expect(buildTimeline(tasks).tokens).toEqual({
+        total: 1250,
+        prompt: 1000,
+        completion: 250,
+      });
+    });
+
+    it('prefers a reported total over the sum of its parts', () => {
+      // A model billing thinking tokens separately counts them in the total but in
+      // neither part, so the reported total is not always prompt + completion and
+      // must not be recomputed away.
+      const tasks = [
+        {
+          status: { state: 'completed', timestamp: '2026-07-24T09:00:00.000Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'm1',
+              role: 'agent',
+              metadata: {
+                kagent_usage_metadata: {
+                  totalTokenCount: 2000,
+                  promptTokenCount: 1000,
+                  candidatesTokenCount: 250,
+                },
+              },
+              parts: [{ kind: 'text', text: 'hi' }],
+            },
+          ],
+        },
+      ] as unknown as A2aTaskWire[];
+
+      expect(buildTimeline(tasks).tokens.total).toBe(2000);
+    });
+
     it('returns an empty timeline for a session with no tasks', () => {
       expect(timelineFor(emptyNoData)).toEqual({
         items: [],

@@ -172,21 +172,36 @@ export function isInternalToolName(name: string | undefined): boolean {
  *
  * The field names are Gemini's (`promptTokenCount` / `candidatesTokenCount`),
  * which is what ADK passes through. A partial bag yields zeros for the missing
- * counts rather than being discarded — a total with no breakdown is still worth
- * showing.
+ * counts rather than being discarded — a breakdown with no total, or a total with
+ * no breakdown, is still worth showing.
+ *
+ * **`totalTokenCount` is derived when kagent doesn't report one.** Confirmed on a
+ * real gazelle session, whose every message carried exactly
+ * `adk_usage_metadata: {promptTokenCount, candidatesTokenCount}` — no
+ * `totalTokenCount` at all. Summing the reported totals therefore gave "Total 0"
+ * next to 1.4M input, which reads as broken. kagent's own UI has the same hole
+ * (`total: usage.totalTokenCount ?? 0`).
+ *
+ * The reported total still wins when present: it can legitimately exceed
+ * prompt + completion, because a model that bills thinking tokens separately
+ * counts them in the total but in neither part.
  */
 export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
   const usage = asRecord(readKagentMetadata(metadata, 'usage_metadata'));
   if (!usage) {
     return undefined;
   }
-  const total = asNumber(usage.totalTokenCount);
+  const reportedTotal = asNumber(usage.totalTokenCount);
   const prompt = asNumber(usage.promptTokenCount);
   const completion = asNumber(usage.candidatesTokenCount);
-  if (total === 0 && prompt === 0 && completion === 0) {
+  if (reportedTotal === 0 && prompt === 0 && completion === 0) {
     return undefined;
   }
-  return { total, prompt, completion };
+  return {
+    total: reportedTotal > 0 ? reportedTotal : prompt + completion,
+    prompt,
+    completion,
+  };
 }
 
 /**
