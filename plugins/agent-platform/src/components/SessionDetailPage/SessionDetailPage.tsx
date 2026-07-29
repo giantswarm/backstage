@@ -43,12 +43,6 @@ const useStyles = makeStyles(theme => ({
   statValue: {
     fontVariantNumeric: 'tabular-nums',
   },
-  sessionId: {
-    fontFamily: 'monospace',
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-    wordBreak: 'break-all',
-  },
 }));
 
 /**
@@ -209,8 +203,6 @@ export function SessionDetailPage() {
             {' · last activity '}
             {row.updatedAt ? <DateComponent value={row.updatedAt} /> : '—'}
           </Text>
-
-          <Text className={classes.sessionId}>{row.id}</Text>
         </Flex>
 
         <Box className={classes.stats}>

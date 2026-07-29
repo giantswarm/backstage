@@ -12,12 +12,13 @@ offers all three — none are wired up, so this ships without a write path.
 The page has three parts:
 
 - **Header** — title, status badge, agent (name and avatar, resolved through the
-  same `Agent` CR join the list uses), installation, started/last-activity, and the
-  session id.
+  same `Agent` CR join the list uses), installation, and started/last-activity. The
+  session id is deliberately not shown: it is a 64-character opaque string that
+  told the reader nothing, and it is already in the URL for anyone who needs it.
 - **Stats** — turns, wall-clock duration, and input/output tokens.
 - **Timeline** — the conversation, with the agent's internal work collapsible behind
-  a Hidden/Collapsed/Expanded control. Collapsed by default: the working is the
-  point of the screen, but a wall of tool payloads is unreadable.
+  a Details control. Collapsed by default: the working is the point of the screen,
+  but a wall of tool payloads is unreadable.
 
 Timeline entries cover user and agent messages (as markdown), reasoning, tool calls
 with their arguments and results folded into one entry, delegations to other agents
