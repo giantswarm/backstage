@@ -23,18 +23,49 @@ Two things then force a backend hop:
 
 All routes are under `/api/agent-platform` and require `?installation=<name>`.
 
-| Route                       | Token    | Purpose                                                    |
-| --------------------------- | -------- | ---------------------------------------------------------- |
-| `GET /health`               | —        | `{ status, configured }` — how many installations resolved |
-| `GET /kagent/installations` | —        | Names of installations kagent can be proxied for           |
-| `GET /kagent/sessions`      | required | The user's sessions, kagent's JSON verbatim                |
-| `GET /kagent/me`            | optional | Identity probe (see Diagnosing below)                      |
+| Route                            | Token    | Purpose                                                    |
+| -------------------------------- | -------- | ---------------------------------------------------------- |
+| `GET /health`                    | —        | `{ status, configured }` — how many installations resolved |
+| `GET /kagent/installations`      | —        | Names of installations kagent can be proxied for           |
+| `GET /kagent/sessions`           | required | The user's sessions, kagent's JSON verbatim                |
+| `GET /kagent/sessions/:id`       | required | One session plus its stored events                         |
+| `GET /kagent/sessions/:id/tasks` | required | The session's A2A tasks — conversation, state, token usage |
+| `GET /kagent/me`                 | optional | Identity probe (see Diagnosing below)                      |
 
 The user token is read from the `backstage-kagent-authorization` header, which
 must match `KAGENT_AUTH_HEADER` in `plugins/agent-platform`.
 
 Every kagent-side path stays under `/api`, because that is the only prefix either
 door proxies to the controller.
+
+Session ids are **opaque**: real responses mix 64-character hex strings and
+UUIDs, so nothing validates a format — only that a path segment is present. They
+are URL-encoded before being interpolated into the kagent URL.
+
+### Why the session detail is two routes
+
+The conversation comes from `…/tasks`, not from the `events` on `…/sessions/:id`.
+That is what kagent's own UI does (`ui/src/components/chat/ChatInterface.tsx` →
+`extractMessagesFromTasks`), and the two payloads carry different things:
+
+|                    | `…/sessions/:id` → `events[]`                      | `…/sessions/:id/tasks` → `Task[]`         |
+| ------------------ | -------------------------------------------------- | ----------------------------------------- |
+| Message content    | `data` is a **JSON string** holding an A2A message | `history` is already structured           |
+| Session state      | —                                                  | `status.state`                            |
+| Token usage        | —                                                  | per-message `{adk,kagent}_usage_metadata` |
+| Per-item timestamp | `created_at`                                       | only one per task                         |
+
+So the frontend fetches both: tasks for the timeline, events only to recover
+per-message timestamps (A2A messages carry none of their own).
+
+Neither route sends an `A2A-Version` header. kagent's `NegotiateA2AWireVersion`
+treats a missing header as the legacy v0 wire on both v0.9.9 and v0.10 — the
+shape its own UI consumes, and therefore the best-tested one. Opting into the v1
+wire would be a deliberate future migration.
+
+A session belonging to another user answers **404**, exactly as a deleted one
+does: kagent scopes the lookup by the token's user id. Both are expected outcomes
+for a stale deep link, which is why neither becomes a 5xx (see below).
 
 ### Why there is no version endpoint
 

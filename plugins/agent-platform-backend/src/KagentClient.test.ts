@@ -205,10 +205,87 @@ describe('KagentClient', () => {
 
     await client.listSessions({ userToken: 't' });
     await client.getMe({ userToken: 't' });
+    await client.getSession('abc', { userToken: 't' });
+    await client.listSessionTasks('abc', { userToken: 't' });
 
     for (const [url] of fetchFn.mock.calls) {
       expect(url).toMatch(/^https:\/\/kagent\.gazelle\.example\.io\/api\//);
     }
+  });
+
+  describe('session detail', () => {
+    it('requests one session under the sessions path', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).getSession('abc123', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/abc123',
+      );
+    });
+
+    it('requests the session tasks path', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).listSessionTasks('abc123', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/abc123/tasks',
+      );
+    });
+
+    it('sends no A2A-Version header, so kagent answers on the legacy wire', async () => {
+      // kagent's NegotiateA2AWireVersion treats a missing header as the legacy v0
+      // wire on both v0.9.9 and v0.10 — the shape kagent's own UI consumes, and so
+      // the best-tested one. Asserted so a header is not added casually.
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).listSessionTasks('abc123', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][1].headers).toEqual({
+        Accept: 'application/json',
+        Authorization: 'Bearer t',
+      });
+    });
+
+    it('escapes a session id that is not URL-safe', async () => {
+      // Session ids are opaque. Real ones are hex or UUIDs, but nothing in kagent
+      // guarantees that, so the id must never be interpolated raw — a `/` or `?`
+      // would otherwise retarget the request.
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).getSession('a/b?c=d', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/a%2Fb%3Fc%3Dd',
+      );
+    });
+
+    it('returns the tasks body verbatim, including unknown fields', async () => {
+      const body = {
+        error: false,
+        data: [
+          {
+            id: 'task-1',
+            contextId: 'ctx-1',
+            kind: 'task',
+            status: { state: 'completed', timestamp: '2026-07-23T16:09:58Z' },
+            history: [
+              { kind: 'message', messageId: 'm1', role: 'user', parts: [] },
+            ],
+            some_future_field: 'kept',
+          },
+        ],
+        message: 'Successfully retrieved session tasks',
+      };
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse(body));
+
+      const result = await build(fetchFn).listSessionTasks('abc123', {
+        userToken: 't',
+      });
+
+      expect(result).toEqual(body);
+    });
   });
 
   it('requests /me under the API base URL', async () => {

@@ -18,10 +18,14 @@ const twoInstallations = {
 describe('createRouter', () => {
   const listSessions = jest.fn();
   const getMe = jest.fn();
+  const getSession = jest.fn();
+  const listSessionTasks = jest.fn();
 
   const mockClient = {
     listSessions,
     getMe,
+    getSession,
+    listSessionTasks,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -50,6 +54,8 @@ describe('createRouter', () => {
   beforeEach(async () => {
     listSessions.mockReset();
     getMe.mockReset();
+    getSession.mockReset();
+    listSessionTasks.mockReset();
     app = await buildApp();
   });
 
@@ -253,6 +259,222 @@ describe('createRouter', () => {
 
       expect(response.body).toEqual(body);
       expect(response.body.data).toBeUndefined();
+    });
+  });
+
+  describe('GET /kagent/sessions/:sessionId', () => {
+    const sessionBody = {
+      error: false,
+      data: {
+        session: {
+          id: 'abc',
+          name: 'What issues are assi...',
+          user_id: 'marian@giantswarm.io',
+          created_at: '2026-07-23T16:04:28.586641Z',
+          updated_at: '2026-07-23T16:09:58.162014Z',
+          agent_id: 'kagent__NS__issue_tracker',
+        },
+        events: [
+          {
+            id: 'e1',
+            session_id: 'abc',
+            created_at: '2026-07-23T16:04:29Z',
+            data: '{"kind":"message","messageId":"m1","role":"user","parts":[]}',
+          },
+        ],
+        some_future_field: 'kept',
+      },
+      message: 'Successfully retrieved session',
+    };
+
+    it('does not shadow the list route', async () => {
+      listSessions.mockResolvedValue({ error: false, data: [] });
+
+      await request(app)
+        .get('/kagent/sessions')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(listSessions).toHaveBeenCalledTimes(1);
+      expect(getSession).not.toHaveBeenCalled();
+    });
+
+    it('forwards the id and token and echoes the body verbatim', async () => {
+      getSession.mockResolvedValue(sessionBody);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(sessionBody);
+      expect(getSession).toHaveBeenCalledWith('abc', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('passes an id through decoded, whatever shape it has', async () => {
+      // Both 64-char hex and UUIDs occur in real responses, so the router must not
+      // validate a format — only that a segment is present.
+      getSession.mockResolvedValue(sessionBody);
+
+      await request(app)
+        .get('/kagent/sessions/019f8a13-c6c2-73af-a1d9-ab0abeeb6734')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(getSession).toHaveBeenCalledWith(
+        '019f8a13-c6c2-73af-a1d9-ab0abeeb6734',
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('requires the installation query parameter', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc')
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(400);
+      expect(getSession).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(getSession).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown installation', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'nope' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(400);
+      expect(getSession).not.toHaveBeenCalled();
+    });
+
+    it('reports someone else’s or a deleted session as 404, not a 5xx', async () => {
+      // kagent scopes the lookup by user id, so "not yours" and "gone" are the
+      // same 404. Both are expected outcomes for a stale deep link, and anything
+      // >= 500 would be logged at error and forwarded to Sentry.
+      const notFound = new Error('Session not found');
+      notFound.name = 'NotFoundError';
+      getSession.mockRejectedValue(notFound);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+      expect(response.status).toBeLessThan(500);
+    });
+
+    it('still reports a degraded kagent as a 5xx', async () => {
+      const upstream = new Error('kagent returned status 500');
+      upstream.name = 'UpstreamError';
+      getSession.mockRejectedValue(upstream);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+  });
+
+  describe('GET /kagent/sessions/:sessionId/tasks', () => {
+    const tasksBody = {
+      error: false,
+      data: [
+        {
+          id: 'task-1',
+          contextId: 'abc',
+          kind: 'task',
+          status: { state: 'completed', timestamp: '2026-07-23T16:09:58Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'm1',
+              role: 'user',
+              parts: [{ kind: 'text', text: 'hello' }],
+            },
+          ],
+          some_future_field: 'kept',
+        },
+      ],
+      message: 'Successfully retrieved session tasks',
+    };
+
+    it('forwards the id and token and echoes the body verbatim', async () => {
+      listSessionTasks.mockResolvedValue(tasksBody);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc/tasks')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(tasksBody);
+      expect(listSessionTasks).toHaveBeenCalledWith('abc', {
+        userToken: 'user-token',
+      });
+      expect(getSession).not.toHaveBeenCalled();
+    });
+
+    it('requires the installation query parameter', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc/tasks')
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(400);
+      expect(listSessionTasks).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc/tasks')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(listSessionTasks).not.toHaveBeenCalled();
+    });
+
+    it('reports a session with no tasks as an empty list, not an error', async () => {
+      // Go's `omitempty` drops a zero-length slice, so an untouched session comes
+      // back with no `data` key at all.
+      const body = {
+        error: false,
+        message: 'Successfully retrieved session tasks',
+      };
+      listSessionTasks.mockResolvedValue(body);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc/tasks')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(body);
+    });
+
+    it('reports an unreadable session as 404, not a 5xx', async () => {
+      const notFound = new Error('Session not found for given ID');
+      notFound.name = 'NotFoundError';
+      listSessionTasks.mockRejectedValue(notFound);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc/tasks')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
     });
   });
 

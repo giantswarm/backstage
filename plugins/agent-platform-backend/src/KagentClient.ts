@@ -184,6 +184,52 @@ export class KagentClient {
     return this.request(`${this.installation.apiBaseUrl}/sessions`, options);
   }
 
+  /**
+   * `GET <apiBaseUrl>/sessions/<id>` — one session plus its stored events.
+   *
+   * kagent scopes this by the forwarded token's user id, so a session belonging
+   * to somebody else is indistinguishable from one that does not exist: both
+   * answer 404. That is an expected outcome for a stale or shared deep link, and
+   * `request` already maps it to `NotFoundError` (404) rather than a 5xx.
+   *
+   * The frontend reads the `events` array only to recover per-message
+   * timestamps; the conversation itself comes from {@link listSessionTasks},
+   * because A2A messages carry no timestamp of their own.
+   */
+  async getSession(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    return this.request(
+      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
+        sessionId,
+      )}`,
+      options,
+    );
+  }
+
+  /**
+   * `GET <apiBaseUrl>/sessions/<id>/tasks` — the session's A2A tasks, which
+   * carry the conversation (`history`), its state (`status.state`) and per-message
+   * token usage. This is the same endpoint kagent's own UI renders its chat from.
+   *
+   * Deliberately sends no `A2A-Version` header: kagent's `NegotiateA2AWireVersion`
+   * treats a missing header as the legacy v0 wire on both v0.9.9 and v0.10, which
+   * is the shape kagent's UI consumes and therefore the best-tested one. Opting
+   * into the v1 wire is a future, deliberate migration.
+   */
+  async listSessionTasks(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    return this.request(
+      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
+        sessionId,
+      )}/tasks`,
+      options,
+    );
+  }
+
   // There is deliberately no version probe. kagent serves `/version` at the
   // server root (`APIPathVersion`), not under `/api`, and neither door we
   // support routes the root to the controller:
