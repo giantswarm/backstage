@@ -18,14 +18,56 @@ const ACTIVITY_KINDS = new Set<TimelineItem['kind']>([
 ]);
 
 /**
- * Whether an item is internal activity the `ActivityDetail` control governs.
+ * Whether an item is internal activity that `hidden` removes.
  *
  * Approvals are deliberately **not** included: an approval is a decision the user
  * was asked to make, so hiding it would remove the record of their own action, not
  * the agent's working.
+ *
+ * Note this governs *hiding* only. Approvals still expand and collapse with the
+ * control — see {@link hasExpandableDetail}.
  */
 export function isActivityItem(item: TimelineItem): boolean {
   return ACTIVITY_KINDS.has(item.kind);
+}
+
+/**
+ * The payloads an item reveals when expanded, or `undefined` when it has none.
+ *
+ * Shared by the entry (which renders them) and the list (which decides whether to
+ * offer the expand/collapse control at all), so the two cannot disagree about what
+ * is expandable.
+ */
+export function expandablePayloads(
+  item: TimelineItem,
+): { args?: string; result?: string } | undefined {
+  if (
+    item.kind !== 'tool-call' &&
+    item.kind !== 'agent-call' &&
+    item.kind !== 'approval'
+  ) {
+    return undefined;
+  }
+  const args = formatPayload(item.args);
+  // An approval has no result — it carries the *proposed* call, which never ran as
+  // this item.
+  const result =
+    item.kind === 'approval' ? undefined : formatPayload(item.result);
+  if (!args && !result) {
+    return undefined;
+  }
+  return { args, result };
+}
+
+/**
+ * Whether an entry has anything behind an expander.
+ *
+ * Reasoning always does. Everything else depends on what kagent recorded — an
+ * approval or tool call with no payload renders as a plain row instead, because an
+ * expander that opens onto nothing invites a click and answers with nothing.
+ */
+export function hasExpandableDetail(item: TimelineItem): boolean {
+  return item.kind === 'reasoning' || Boolean(expandablePayloads(item));
 }
 
 export type TimelineTurn = {

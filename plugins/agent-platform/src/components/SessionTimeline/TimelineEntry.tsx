@@ -15,8 +15,9 @@ import { CodeBlock } from '../CodeBlock';
 import {
   agentCallLabel,
   authorLabel,
-  formatPayload,
+  expandablePayloads,
   formatTokens,
+  hasExpandableDetail,
   summarizeArgs,
 } from './helpers';
 
@@ -75,36 +76,9 @@ function MessageBody({ text }: { text: string }) {
 }
 
 /** Label and payloads for a tool call or a delegation. */
-/**
- * The payloads an item can show when expanded, or `undefined` when it has none.
- *
- * Returning `undefined` is what lets the caller render a plain row instead of an
- * accordion: an expander that opens onto nothing is worse than no expander.
- */
-function payloadsOf(
-  item: TimelineItem,
-): { args?: string; result?: string } | undefined {
-  if (
-    item.kind !== 'tool-call' &&
-    item.kind !== 'agent-call' &&
-    item.kind !== 'approval'
-  ) {
-    return undefined;
-  }
-  const args = formatPayload(item.args);
-  // Approvals have no result — they carry the *proposed* call, which never ran as
-  // this item.
-  const result =
-    item.kind === 'approval' ? undefined : formatPayload(item.result);
-  if (!args && !result) {
-    return undefined;
-  }
-  return { args, result };
-}
-
 function CallDetail({ item }: { item: TimelineItem }) {
   const classes = useStyles();
-  const payloads = payloadsOf(item);
+  const payloads = expandablePayloads(item);
   if (!payloads) {
     return null;
   }
@@ -261,14 +235,9 @@ export function TimelineEntry({
     );
   }
 
-  // Reasoning always has text to show; everything else depends on whether kagent
-  // recorded any payload. An approval frequently has none — the verdict is already
-  // on the summary row — and a tool call can have neither arguments nor result.
-  const hasDetail = item.kind === 'reasoning' || Boolean(payloadsOf(item));
-
   // No expander when there is nothing behind it. An accordion that opens onto an
   // empty panel invites a click and answers with nothing.
-  if (!hasDetail) {
+  if (!hasExpandableDetail(item)) {
     return (
       <div className={classes.entry} data-testid={`timeline-${item.kind}`}>
         <div className={classes.inertSummary}>

@@ -11,7 +11,12 @@ import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
 import { SessionTimeline as Timeline } from '../../lib/kagentTimeline';
 import { TimelineEntry } from './TimelineEntry';
-import { ActivityDetail, groupIntoTurns, isActivityItem } from './helpers';
+import {
+  ActivityDetail,
+  groupIntoTurns,
+  hasExpandableDetail,
+  isActivityItem,
+} from './helpers';
 
 const useStyles = makeStyles(theme => ({
   turnMarker: {
@@ -50,8 +55,21 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
 
   const turns = useMemo(() => groupIntoTurns(timeline.items), [timeline.items]);
 
-  const activityCount = useMemo(
-    () => timeline.items.filter(isActivityItem).length,
+  // Offered whenever *anything* can expand — not just when there is agent
+  // activity. An approval is excluded from `hidden` (it records the user's own
+  // decision, so hiding it would erase their action) but it still expands and
+  // collapses, so a session whose only collapsible entry is an approval must still
+  // get the control. Keying this on activity alone left such sessions with a
+  // collapsed panel and no way to open them all.
+  const hasExpandable = useMemo(
+    () => timeline.items.some(hasExpandableDetail),
+    [timeline.items],
+  );
+
+  // Whether `hidden` would actually remove anything, which decides if that option
+  // is worth offering.
+  const hasActivity = useMemo(
+    () => timeline.items.some(isActivityItem),
     [timeline.items],
   );
 
@@ -72,10 +90,10 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
         style={{ flexWrap: 'wrap' }}
       >
         <Text variant="title-small">Timeline</Text>
-        {activityCount > 0 && (
+        {hasExpandable && (
           <Flex align="center" gap="2">
             <Text variant="body-small" color="secondary">
-              Agent activity
+              Details
             </Text>
             <ToggleButtonGroup
               selectionMode="single"
@@ -92,7 +110,11 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
                 }
               }}
             >
-              <ToggleButton id="hidden">Hidden</ToggleButton>
+              {/* Only offered when it would remove something. `hidden` drops the
+                  agent's working, and approvals are not part of that — so a session
+                  whose only collapsible entry is an approval gets expand/collapse
+                  but nothing to hide. */}
+              {hasActivity && <ToggleButton id="hidden">Hidden</ToggleButton>}
               <ToggleButton id="collapsed">Collapsed</ToggleButton>
               <ToggleButton id="expanded">Expanded</ToggleButton>
             </ToggleButtonGroup>

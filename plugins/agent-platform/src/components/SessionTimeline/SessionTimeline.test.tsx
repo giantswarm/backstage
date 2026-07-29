@@ -128,6 +128,40 @@ describe('SessionTimeline', () => {
     expect(screen.getByText('approved')).toBeInTheDocument();
   });
 
+  it('offers the control when the only collapsible entry is an approval', async () => {
+    // This fixture has no reasoning, tool calls or delegations — just an approval.
+    // Keying the control on *activity* left such sessions with a collapsed panel
+    // and no way to open it, which is what happens on a real ask_user session.
+    await render(tasksApproval);
+
+    expect(
+      screen.getByRole('radio', { name: 'Collapsed' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Expanded' })).toBeInTheDocument();
+  });
+
+  it('omits Hidden when there is no agent activity to hide', async () => {
+    // `hidden` removes the agent's working, and an approval is not that — it is the
+    // record of the user's own decision. With nothing else to hide, the option
+    // would do nothing.
+    await render(tasksApproval);
+
+    expect(
+      screen.queryByRole('radio', { name: 'Hidden' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('expands an approval through the control', async () => {
+    await render(tasksApproval);
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Expanded' }));
+
+    expect(
+      screen.getByRole('button', { name: /Approval requested/ }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Proposed arguments')).toBeInTheDocument();
+  });
+
   it('offers no expander for an entry with nothing behind it', async () => {
     // The approval in this fixture carries proposed arguments, so it *is*
     // expandable. Strip them and it must render as a plain row: an accordion that
