@@ -33,9 +33,21 @@ const AGENT_NAMESPACE_SEPARATOR = '__NS__';
  * rather than as a tool call. Showing them would be noise indistinguishable from
  * real work.
  */
-const INTERNAL_TOOL_NAMES = new Set(['adk_request_credential', 'ask_user']);
+/**
+ * ADK's tool for asking the user a question.
+ *
+ * Arrives wrapped in a confirmation request like an approval does, but it asks for
+ * an *answer*, not permission — so it reads quite differently, and kagent's own UI
+ * branches on this name for the same reason (`buildApprovalMessage`).
+ */
+export const ASK_USER_TOOL_NAME = 'ask_user';
 
-/** The tool name kagent uses for a human-in-the-loop approval request. */
+const INTERNAL_TOOL_NAMES = new Set([
+  'adk_request_credential',
+  ASK_USER_TOOL_NAME,
+]);
+
+/** The tool name kagent uses for a human-in-the-loop confirmation request. */
 export const CONFIRMATION_TOOL_NAME = 'adk_request_confirmation';
 
 /**

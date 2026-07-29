@@ -75,6 +75,20 @@ function MessageBody({ text }: { text: string }) {
   return <GSMarkdownContent content={text} />;
 }
 
+/**
+ * What to call an entry's arguments.
+ *
+ * A confirmation request's payload is not something the agent did: for a permission
+ * request it is the call it *proposed*, and for `ask_user` it is the questions
+ * themselves.
+ */
+function argsLabel(item: TimelineItem): string {
+  if (item.kind !== 'approval') {
+    return 'Arguments';
+  }
+  return item.asks === 'input' ? 'Questions' : 'Proposed arguments';
+}
+
 /** Label and payloads for a tool call or a delegation. */
 function CallDetail({ item }: { item: TimelineItem }) {
   const classes = useStyles();
@@ -93,9 +107,7 @@ function CallDetail({ item }: { item: TimelineItem }) {
             color="secondary"
             className={classes.payloadLabel}
           >
-            {/* An approval's arguments are what the agent *proposed* to run, not
-                something it did — worth naming differently. */}
-            {item.kind === 'approval' ? 'Proposed arguments' : 'Arguments'}
+            {argsLabel(item)}
           </Text>
           <CodeBlock content={args} />
         </div>
@@ -162,9 +174,13 @@ function CollapsedSummary({ item }: { item: TimelineItem }) {
       return (
         <Flex align="center" gap="2" style={{ minWidth: 0 }}>
           <Text variant="body-medium" weight="bold">
-            Approval requested
+            {item.asks === 'input'
+              ? 'User input requested'
+              : 'Approval requested'}
           </Text>
-          {item.toolName && (
+          {/* The proposed tool names what needs approving, which is the point of
+              the row. For a question it is always `ask_user` — noise. */}
+          {item.asks === 'approval' && item.toolName && (
             <span className={classes.summary}>{item.toolName}</span>
           )}
           <ApprovalVerdict item={item} />
@@ -176,23 +192,33 @@ function CollapsedSummary({ item }: { item: TimelineItem }) {
 }
 
 /**
- * The verdict badge on an approval.
+ * How the user answered a confirmation request.
  *
- * An undefined verdict is rendered as "awaiting a decision" rather than assumed
- * approved: the parser deliberately declines to guess when kagent used wording it
- * doesn't recognise, and claiming consent would misreport the user's own action.
+ * The wording follows what was asked. ADK records both a permission request and a
+ * question as the same "approved"/"rejected" decision, but "Approved" says nothing
+ * about a question — the user simply replied. So a question reports
+ * "Responded"/"Declined" and a permission request "Approved"/"Rejected".
+ *
+ * An undefined verdict is never rendered as consent: the parser deliberately
+ * declines to guess when kagent used wording it doesn't recognise, and claiming
+ * approval would misreport the user's own action.
  */
 function ApprovalVerdict({ item }: { item: TimelineItem }) {
   if (item.kind !== 'approval') {
     return null;
   }
+  const isQuestion = item.asks === 'input';
   if (item.verdict === 'approved') {
-    return <Badge size="small">approved</Badge>;
+    return <Badge size="small">{isQuestion ? 'Responded' : 'Approved'}</Badge>;
   }
   if (item.verdict === 'rejected') {
-    return <Badge size="small">rejected</Badge>;
+    return <Badge size="small">{isQuestion ? 'Declined' : 'Rejected'}</Badge>;
   }
-  return <Badge size="small">awaiting a decision</Badge>;
+  return (
+    <Badge size="small">
+      {isQuestion ? 'Awaiting a reply' : 'Awaiting a decision'}
+    </Badge>
+  );
 }
 
 /**

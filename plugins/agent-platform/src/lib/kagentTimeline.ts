@@ -3,6 +3,7 @@ import { readKagentMetadataString } from './kagentMetadata';
 import { normalizeTimestamp } from './kagentSessions';
 import {
   addTokenUsage,
+  ASK_USER_TOOL_NAME,
   CONFIRMATION_TOOL_NAME,
   isAgentToolName,
   isFunctionCallPart,
@@ -66,6 +67,15 @@ export type TimelineItem =
     })
   | (TimelineItemBase & {
       kind: 'approval';
+      /**
+       * What the agent actually asked for.
+       *
+       * ADK wraps both in the same confirmation request, but they read completely
+       * differently: `'approval'` is "may I run this tool", `'input'` is a question
+       * put to the user via `ask_user`. Discriminated here rather than by the UI
+       * matching on a tool name, and kagent's own UI branches at the same point.
+       */
+      asks: 'approval' | 'input';
       /** The tool the agent proposed to run, when the payload named one. */
       toolName?: string;
       args?: unknown;
@@ -376,6 +386,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             at,
             author,
             taskIndex,
+            asks: proposed?.name === ASK_USER_TOOL_NAME ? 'input' : 'approval',
             toolName: proposed?.name,
             args: proposed?.args,
           });

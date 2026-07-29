@@ -8,6 +8,7 @@ import { SessionTimeline } from './SessionTimeline';
 
 import tasksV099 from '../../lib/__fixtures__/tasks.v0-9-9.json';
 import tasksApproval from '../../lib/__fixtures__/tasks.approval.json';
+import tasksAskUser from '../../lib/__fixtures__/tasks.ask-user.json';
 import tasksEmpty from '../../lib/__fixtures__/tasks.empty-no-data.json';
 
 function timelineFor(fixture: unknown) {
@@ -125,7 +126,7 @@ describe('SessionTimeline', () => {
     expect(
       screen.getByRole('button', { name: /Approval requested/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText('approved')).toBeInTheDocument();
+    expect(screen.getByText('Approved')).toBeInTheDocument();
   });
 
   it('offers the control when the only collapsible entry is an approval', async () => {
@@ -162,6 +163,50 @@ describe('SessionTimeline', () => {
     expect(screen.getByText('Proposed arguments')).toBeInTheDocument();
   });
 
+  describe('ask_user, which ADK wraps like an approval', () => {
+    it('asks for input rather than approval', async () => {
+      // Same `adk_request_confirmation` envelope as a permission request, but it
+      // puts a question to the user — so "Approval requested" describes the wrong
+      // thing. kagent's own UI branches at the same point.
+      await render(tasksAskUser, 'SRE Agent');
+
+      expect(screen.getByText('User input requested')).toBeInTheDocument();
+      expect(screen.queryByText('Approval requested')).not.toBeInTheDocument();
+    });
+
+    it('reports that the user responded, not that they approved', async () => {
+      // ADK records the reply as an "approve" decision, but "Approved" says nothing
+      // about a question — the user simply answered it.
+      await render(tasksAskUser, 'SRE Agent');
+
+      expect(screen.getByText('Responded')).toBeInTheDocument();
+      expect(screen.queryByText('Approved')).not.toBeInTheDocument();
+    });
+
+    it('calls the payload questions, and omits the redundant tool name', async () => {
+      await render(tasksAskUser, 'SRE Agent');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /User input requested/ }),
+      );
+
+      expect(screen.getByText('Questions')).toBeInTheDocument();
+      // `ask_user` on every such row carries no information.
+      expect(screen.queryByText('ask_user')).not.toBeInTheDocument();
+    });
+
+    it('reports an unanswered question as awaiting a reply', async () => {
+      const pending = structuredClone(tasksAskUser) as typeof tasksAskUser;
+      pending.data[0].history = pending.data[0].history.filter(
+        item => item.messageId !== 'm-decision-1',
+      );
+
+      await render(pending, 'SRE Agent');
+
+      expect(screen.getByText('Awaiting a reply')).toBeInTheDocument();
+    });
+  });
+
   it('offers no expander for an entry with nothing behind it', async () => {
     // The approval in this fixture carries proposed arguments, so it *is*
     // expandable. Strip them and it must render as a plain row: an accordion that
@@ -180,7 +225,7 @@ describe('SessionTimeline', () => {
 
     // Still shown, and still carries its verdict.
     expect(screen.getByText('Approval requested')).toBeInTheDocument();
-    expect(screen.getByText('approved')).toBeInTheDocument();
+    expect(screen.getByText('Approved')).toBeInTheDocument();
     // But not as something you can open.
     expect(
       screen.queryByRole('button', { name: /Approval requested/ }),

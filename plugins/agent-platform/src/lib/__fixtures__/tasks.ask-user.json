@@ -1,0 +1,66 @@
+{
+  "comment": "An ask_user request: ADK wraps it in the same adk_request_confirmation as a permission request, but it asks for an answer rather than consent. Shapes taken from a real gazelle session.",
+  "error": false,
+  "data": [
+    {
+      "id": "task-1",
+      "kind": "task",
+      "status": {
+        "state": "completed",
+        "timestamp": "2026-07-23T11:52:00.000Z"
+      },
+      "history": [
+        {
+          "kind": "message",
+          "messageId": "m-user-1",
+          "role": "user",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "it's running the file attachment PR i think"
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-ask-1",
+          "role": "agent",
+          "metadata": { "adk_author": "sre_agent" },
+          "parts": [
+            {
+              "kind": "data",
+              "metadata": {
+                "adk_type": "function_call",
+                "adk_is_long_running": true
+              },
+              "data": {
+                "id": "ask-1",
+                "name": "adk_request_confirmation",
+                "args": {
+                  "originalFunctionCall": {
+                    "id": "call-ask-1",
+                    "name": "ask_user",
+                    "args": {
+                      "questions": [
+                        {
+                          "question": "Which management cluster should I look at?"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-decision-1",
+          "role": "user",
+          "parts": [{ "kind": "data", "data": { "decision_type": "approve" } }]
+        }
+      ]
+    }
+  ],
+  "message": "Successfully retrieved session tasks"
+}
