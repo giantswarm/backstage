@@ -91,3 +91,115 @@ describe('KubeObject.getResolvedGVK', () => {
     ]);
   });
 });
+
+describe('KubeObject.getApplyFieldOwners', () => {
+  function withManagedFields(
+    managedFields: unknown[] | undefined,
+  ): Kustomization {
+    return new Kustomization(
+      {
+        apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+        kind: 'Kustomization',
+        metadata: { name: 'my-app', namespace: 'flux-system', managedFields },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      'test-installation',
+    );
+  }
+
+  const suspendFields = { 'f:spec': { 'f:suspend': {} } };
+
+  it('returns nothing when the object has no managed fields', () => {
+    expect(
+      withManagedFields(undefined).getApplyFieldOwners(['spec', 'suspend']),
+    ).toEqual([]);
+  });
+
+  it('reports an Apply-operation owner of the field', () => {
+    const resource = withManagedFields([
+      {
+        manager: 'kustomize-controller',
+        operation: 'Apply',
+        fieldsV1: suspendFields,
+      },
+    ]);
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([
+      'kustomize-controller',
+    ]);
+  });
+
+  it('ignores Update-operation owners, which never re-assert', () => {
+    // This is what our own merge patches are recorded as: ownership without a
+    // declared desired state, so nothing to revert to.
+    const resource = withManagedFields([
+      {
+        manager: 'giantswarm-backstage',
+        operation: 'Update',
+        fieldsV1: suspendFields,
+      },
+    ]);
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([]);
+  });
+
+  it('ignores an Apply owner of a different field', () => {
+    const resource = withManagedFields([
+      {
+        manager: 'kustomize-controller',
+        operation: 'Apply',
+        fieldsV1: { 'f:spec': { 'f:interval': {} } },
+      },
+    ]);
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([]);
+  });
+
+  it('reports every Apply owner of the field', () => {
+    const resource = withManagedFields([
+      {
+        manager: 'kustomize-controller',
+        operation: 'Apply',
+        fieldsV1: suspendFields,
+      },
+      { manager: 'someone-else', operation: 'Apply', fieldsV1: suspendFields },
+      {
+        manager: 'kubectl',
+        operation: 'Update',
+        fieldsV1: suspendFields,
+      },
+    ]);
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([
+      'kustomize-controller',
+      'someone-else',
+    ]);
+  });
+
+  it('treats an atomic parent field as owning the whole subtree', () => {
+    // `f:spec: {}` — the manager owns spec wholesale, suspend included.
+    const resource = withManagedFields([
+      { manager: 'owner', operation: 'Apply', fieldsV1: { 'f:spec': {} } },
+    ]);
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([
+      'owner',
+    ]);
+  });
+
+  it('does not treat an empty field set as owning everything', () => {
+    const resource = withManagedFields([
+      { manager: 'owner', operation: 'Apply', fieldsV1: {} },
+    ]);
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([]);
+  });
+
+  it('skips entries with no manager name', () => {
+    const resource = withManagedFields([
+      { operation: 'Apply', fieldsV1: suspendFields },
+    ]);
+
+    expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([]);
+  });
+});

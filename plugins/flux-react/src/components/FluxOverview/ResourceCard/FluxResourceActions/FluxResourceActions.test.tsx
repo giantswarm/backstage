@@ -14,11 +14,19 @@ import { FluxResourceActions } from './FluxResourceActions';
 
 const SSAR_PATH = '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews';
 
+/** A managedFields entry showing `spec.suspend` under declarative management. */
+const SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER = {
+  manager: 'kustomize-controller',
+  operation: 'Apply',
+  fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+};
+
 function createKustomization(
   options: {
     suspend?: boolean;
     requestedAt?: string;
     lastHandledReconcileAt?: string;
+    managedFields?: unknown[];
   } = {},
 ): Kustomization {
   const json = {
@@ -27,6 +35,7 @@ function createKustomization(
     metadata: {
       name: 'my-app',
       namespace: 'flux-system',
+      managedFields: options.managedFields,
       annotations: options.requestedAt
         ? { 'reconcile.fluxcd.io/requestedAt': options.requestedAt }
         : undefined,
@@ -232,7 +241,7 @@ describe('FluxResourceActions', () => {
         ([args]: [ProxyArgs]) => args.init?.method === 'PATCH',
       )![0].path,
     ).toBe(
-      '/apis/image.toolkit.fluxcd.io/v1beta2/namespaces/flux-system/imagepolicies/my-policy',
+      '/apis/image.toolkit.fluxcd.io/v1beta2/namespaces/flux-system/imagepolicies/my-policy?fieldManager=giantswarm-backstage',
     );
   });
 
@@ -382,5 +391,90 @@ describe('FluxResourceActions', () => {
           'You are not allowed to suspend Kustomization flux-system/my-app on cluster test-installation.',
       }),
     );
+  });
+});
+
+describe('FluxResourceActions with a GitOps-managed spec.suspend', () => {
+  it('disables the suspend toggle and explains why', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    const toggle = await screen.findByRole('button', { name: 'Suspend' });
+    expect(toggle).toBeDisabled();
+
+    // The explanation lives on a wrapping span, since a disabled react-aria
+    // button receives no hover events.
+    expect(
+      screen.getByTitle(
+        'spec.suspend is applied by kustomize-controller, so a change made here would be reverted on the next reconciliation. Change it in Git instead.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('disables Resume too, for an already-suspended managed resource', async () => {
+    await renderActions(
+      createKustomization({
+        suspend: true,
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Resume' }),
+    ).toBeDisabled();
+  });
+
+  it('leaves Reconcile enabled — the annotation is never apply-owned', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: [SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Reconcile' }),
+    ).toBeEnabled();
+  });
+
+  it('names every apply-owner in the explanation', async () => {
+    await renderActions(
+      createKustomization({
+        managedFields: [
+          SUSPEND_APPLIED_BY_KUSTOMIZE_CONTROLLER,
+          {
+            manager: 'helm-controller',
+            operation: 'Apply',
+            fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+          },
+        ],
+      }),
+    );
+
+    await screen.findByRole('button', { name: 'Suspend' });
+    expect(
+      screen.getByTitle(/kustomize-controller and helm-controller/),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the toggle enabled when only an imperative writer owns the field', async () => {
+    // Our own merge patches land as operation Update — they must not lock us out.
+    await renderActions(
+      createKustomization({
+        managedFields: [
+          {
+            manager: 'giantswarm-backstage',
+            operation: 'Update',
+            fieldsV1: { 'f:spec': { 'f:suspend': {} } },
+          },
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Suspend' }),
+    ).toBeEnabled();
   });
 });

@@ -1,6 +1,6 @@
 import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../../lib/k8s/CustomResourceMatcher';
-import { patchResource } from './patchResource';
+import { BACKSTAGE_FIELD_MANAGER, patchResource } from './patchResource';
 
 const gvk: CustomResourceMatcher = {
   group: 'kustomize.toolkit.fluxcd.io',
@@ -39,7 +39,7 @@ describe('patchResource', () => {
       clusterName: 'test-installation',
       // No trailing slash: `getK8sGetPath` appends one, which we do not want to
       // rely on the apiserver tolerating for a mutating verb.
-      path: '/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/my-app',
+      path: '/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/my-app?fieldManager=giantswarm-backstage',
       init: {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/merge-patch+json' },
@@ -82,7 +82,7 @@ describe('patchResource', () => {
     });
 
     expect(proxy.mock.calls[0][0].path).toBe(
-      '/apis/kustomize.toolkit.fluxcd.io/v1/kustomizations/my-app',
+      '/apis/kustomize.toolkit.fluxcd.io/v1/kustomizations/my-app?fieldManager=giantswarm-backstage',
     );
   });
 
@@ -148,5 +148,21 @@ describe('patchResource', () => {
         patch: {},
       }),
     ).rejects.toThrow(/Internal Server Error/);
+  });
+});
+
+describe('BACKSTAGE_FIELD_MANAGER', () => {
+  it('is an honest, attributable name rather than an impersonation of flux', () => {
+    // The apiserver would otherwise derive the manager from the proxied
+    // request's User-Agent. Masquerading as `flux` would buy nothing — nothing in
+    // Flux keys off that name — and would destroy attribution.
+    expect(BACKSTAGE_FIELD_MANAGER).toBe('giantswarm-backstage');
+    expect(BACKSTAGE_FIELD_MANAGER).not.toBe('flux');
+  });
+
+  it('needs no escaping in a query string', () => {
+    expect(encodeURIComponent(BACKSTAGE_FIELD_MANAGER)).toBe(
+      BACKSTAGE_FIELD_MANAGER,
+    );
   });
 });

@@ -9,7 +9,7 @@ import { useFluxResourceActions } from './useFluxResourceActions';
 
 const SSAR_PATH = '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews';
 const KUSTOMIZATION_PATH =
-  '/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/my-app';
+  '/apis/kustomize.toolkit.fluxcd.io/v1/namespaces/flux-system/kustomizations/my-app?fieldManager=giantswarm-backstage';
 
 function createKustomization(
   options: { suspend?: boolean; apiVersion?: string } = {},
@@ -177,7 +177,7 @@ describe('useFluxResourceActions', () => {
     await result.current.setSuspended(true);
 
     expect(findPatchCall(api)!.path).toBe(
-      '/apis/kustomize.toolkit.fluxcd.io/v1beta2/namespaces/flux-system/kustomizations/my-app',
+      '/apis/kustomize.toolkit.fluxcd.io/v1beta2/namespaces/flux-system/kustomizations/my-app?fieldManager=giantswarm-backstage',
     );
   });
 

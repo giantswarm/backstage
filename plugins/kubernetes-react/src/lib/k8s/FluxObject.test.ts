@@ -77,3 +77,75 @@ describe('FluxObject.isReconcileRequestPending', () => {
     );
   });
 });
+
+describe('FluxObject suspend field ownership', () => {
+  function withManagedFields(managedFields: unknown[]): Kustomization {
+    return new Kustomization(
+      {
+        apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+        kind: 'Kustomization',
+        metadata: { name: 'my-app', namespace: 'flux-system', managedFields },
+        spec: {},
+        status: {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      'test-installation',
+    );
+  }
+
+  const suspendFields = { 'f:spec': { 'f:suspend': {} } };
+
+  it('is unmanaged when nothing applies spec.suspend', () => {
+    const resource = withManagedFields([
+      {
+        manager: 'kustomize-controller',
+        operation: 'Apply',
+        fieldsV1: { 'f:spec': { 'f:interval': {}, 'f:path': {} } },
+      },
+    ]);
+
+    expect(resource.getSuspendFieldApplyOwners()).toEqual([]);
+    expect(resource.isSuspendFieldManaged()).toBe(false);
+  });
+
+  it('is managed when kustomize-controller applies spec.suspend', () => {
+    const resource = withManagedFields([
+      {
+        manager: 'kustomize-controller',
+        operation: 'Apply',
+        fieldsV1: suspendFields,
+      },
+    ]);
+
+    expect(resource.getSuspendFieldApplyOwners()).toEqual([
+      'kustomize-controller',
+    ]);
+    expect(resource.isSuspendFieldManaged()).toBe(true);
+  });
+
+  it('is managed for any apply-owner, not just kustomize-controller', () => {
+    // A Flux object deployed by a HelmRelease is applied by helm-controller, and
+    // a human `kubectl apply --server-side` has the same effect.
+    const resource = withManagedFields([
+      {
+        manager: 'helm-controller',
+        operation: 'Apply',
+        fieldsV1: suspendFields,
+      },
+    ]);
+
+    expect(resource.isSuspendFieldManaged()).toBe(true);
+  });
+
+  it('is unmanaged when only an imperative writer owns the field', () => {
+    const resource = withManagedFields([
+      {
+        manager: 'giantswarm-backstage',
+        operation: 'Update',
+        fieldsV1: suspendFields,
+      },
+    ]);
+
+    expect(resource.isSuspendFieldManaged()).toBe(false);
+  });
+});

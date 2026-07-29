@@ -24,6 +24,12 @@ function describe(resource: FluxObject): string {
   return `${resource.getKind()} ${namespace ? `${namespace}/` : ''}${name}`;
 }
 
+function buildManagedSuspendHint(owners: string[]): string {
+  const by = owners.length === 1 ? owners[0] : owners.join(' and ');
+
+  return `spec.suspend is applied by ${by}, so a change made here would be reverted on the next reconciliation. Change it in Git instead.`;
+}
+
 const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
   const alertApi = useApi(alertApiRef);
   const {
@@ -50,6 +56,16 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
   } else if (isReconcileRequestPending) {
     reconcileHint = REQUEST_PENDING_HINT;
   }
+
+  // Reconcile is deliberately *not* gated on declarative management: the
+  // `reconcile.fluxcd.io/requestedAt` annotation is never part of an applied
+  // manifest, so no apply-owner ever asserts or prunes it. Only `spec.suspend`
+  // can be contested.
+  const suspendFieldApplyOwners = resource.getSuspendFieldApplyOwners();
+  const isSuspendFieldManaged = suspendFieldApplyOwners.length > 0;
+  const suspendHint = isSuspendFieldManaged
+    ? buildManagedSuspendHint(suspendFieldApplyOwners)
+    : '';
 
   const notifyFailure = (error: unknown, action: string) => {
     const forbidden = error instanceof Error && error.name === 'ForbiddenError';
@@ -127,21 +143,26 @@ const FluxResourceActionsContent = ({ resource }: { resource: FluxObject }) => {
             </Button>
           </span>
         </Tooltip>
-        <Button
-          variant="secondary"
-          size="small"
-          iconStart={
-            isSuspended ? (
-              <PlayArrowIcon fontSize="small" />
-            ) : (
-              <PauseIcon fontSize="small" />
-            )
-          }
-          isPending={isSettingSuspended}
-          onPress={handleToggleSuspended}
-        >
-          {isSuspended ? 'Resume' : 'Suspend'}
-        </Button>
+        <Tooltip title={suspendHint}>
+          <span>
+            <Button
+              variant="secondary"
+              size="small"
+              iconStart={
+                isSuspended ? (
+                  <PlayArrowIcon fontSize="small" />
+                ) : (
+                  <PauseIcon fontSize="small" />
+                )
+              }
+              isDisabled={isSuspendFieldManaged}
+              isPending={isSettingSuspended}
+              onPress={handleToggleSuspended}
+            >
+              {isSuspended ? 'Resume' : 'Suspend'}
+            </Button>
+          </span>
+        </Tooltip>
       </Flex>
     </Box>
   );

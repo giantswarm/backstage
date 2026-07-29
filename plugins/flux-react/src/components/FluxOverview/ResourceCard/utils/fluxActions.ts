@@ -13,10 +13,12 @@ import {
  * resource class that lacks the fields does not silently get buttons that
  * cannot work.
  *
- * Note this is deliberately *not* the same set as the `flux` CLI's reconcile
- * subcommands: there is no `flux reconcile image policy`, but
- * image-reflector-controller does honour the annotation and `spec.suspend` for
- * ImagePolicy, so the UI can offer both.
+ * `ImagePolicy` belongs here like the rest: `crds.fluxcd.v1.ImagePolicy` and
+ * `v1beta2` both declare `spec.suspend` and `status.lastHandledReconcileAt`, and
+ * the CLI covers it too (`flux reconcile|suspend|resume image policy`, see
+ * `cmd/flux/reconcile_image_policy.go` and siblings in fluxcd/flux2). It was
+ * originally left out of this list on the mistaken grounds that Flux supported
+ * neither operation for the kind.
  */
 const ACTIONABLE_KINDS = [
   'Kustomization',

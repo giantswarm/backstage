@@ -63,6 +63,37 @@ export class FluxObject<
     return Boolean(this.jsonData.spec?.suspend);
   }
 
+  /**
+   * The managers that server-side apply `spec.suspend`, if any.
+   *
+   * When this is non-empty the field is under declarative management — typically
+   * `kustomize-controller`, when the object itself is deployed from Git by a
+   * parent Kustomization whose manifest asserts `spec.suspend`. Flux's SSA always
+   * applies with `ForceOwnership`, so that manager silently takes the field back
+   * on its next apply and an imperative suspend/resume is undone within one of
+   * *its* intervals (not this object's).
+   *
+   * Note the button a suspend toggle offers always flips away from the current
+   * value, and the current value is what the apply-owner last asserted — so
+   * whenever this is non-empty, the offered action is precisely the one that
+   * would be reverted.
+   *
+   * Deliberately not restricted to `kustomize-controller`: a HelmRelease-deployed
+   * Flux object is applied by `helm-controller`, and a `kubectl apply
+   * --server-side` by a human has the same effect. Any apply-owner will revert us.
+   */
+  getSuspendFieldApplyOwners(): string[] {
+    return this.getApplyFieldOwners(['spec', 'suspend']);
+  }
+
+  /**
+   * Whether `spec.suspend` is declaratively managed, and so cannot be changed
+   * durably from here. See {@link getSuspendFieldApplyOwners}.
+   */
+  isSuspendFieldManaged(): boolean {
+    return this.getSuspendFieldApplyOwners().length > 0;
+  }
+
   getReconcileRequestedAt(): string | undefined {
     return this.getAnnotations()?.[RECONCILE_REQUESTED_AT_ANNOTATION];
   }
