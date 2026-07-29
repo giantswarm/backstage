@@ -172,6 +172,7 @@ describe('sortSessionRows', () => {
   function row(overrides: Partial<SessionRow>): SessionRow {
     return {
       id: 'gazelle/x',
+      sessionId: 'x',
       installation: 'gazelle',
       title: 'x',
       agentName: '',
@@ -212,6 +213,7 @@ describe('sortSessionsBy', () => {
   function row(overrides: Partial<SessionRow>): SessionRow {
     return {
       id: 'gazelle/x',
+      sessionId: 'x',
       installation: 'gazelle',
       title: 'x',
       agentName: '',
@@ -265,12 +267,14 @@ describe('sessionSearchFn', () => {
   const rows: SessionRow[] = [
     {
       id: '1',
+      sessionId: '1',
       installation: 'gazelle',
       title: 'Redis OOM triage',
       agentName: 'SRE agent',
     },
     {
       id: '2',
+      sessionId: '2',
       installation: 'golem',
       title: 'Ingress question',
       agentName: 'Issue tracker',

@@ -1,7 +1,8 @@
-import { renderInTestApp } from '@backstage/test-utils';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SessionRow } from '../SessionsDataProvider/helpers';
+import { sessionsRouteRef } from '../../routes';
 import { SessionsTable } from './SessionsTable';
 
 const mockBuildAvatarUrl = jest.fn(
@@ -16,6 +17,7 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
 const rows: SessionRow[] = [
   {
     id: 'gazelle/abc',
+    sessionId: 'abc',
     installation: 'gazelle',
     title: 'What issues are assi...',
     agentName: 'Issue tracker',
@@ -25,6 +27,7 @@ const rows: SessionRow[] = [
   },
   {
     id: 'golem/def',
+    sessionId: 'def',
     installation: 'golem',
     title: 'Chat',
     agentName: '',
@@ -39,7 +42,11 @@ describe('SessionsTable', () => {
   });
 
   it('renders every column header', async () => {
-    await renderInTestApp(<SessionsTable rows={rows} />);
+    await renderInTestApp(<SessionsTable rows={rows} />, {
+      // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+      // SubRouteRef — and the detail sub-route resolves relative to it.
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
 
     for (const header of [
       'Session',
@@ -52,8 +59,30 @@ describe('SessionsTable', () => {
     }
   });
 
+  it('links each row to its session, carrying both installation and id', async () => {
+    // A real anchor, not only a row click: an anchor is what makes cmd- and
+    // middle-click open a new tab and gives keyboard users something focusable.
+    // Both path segments are needed because kagent ids are only unique within an
+    // installation.
+    await renderInTestApp(<SessionsTable rows={rows} />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    expect(
+      screen.getByRole('link', { name: 'What issues are assi...' }),
+    ).toHaveAttribute('href', '/agent-platform/sessions/gazelle/abc');
+    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
+      'href',
+      '/agent-platform/sessions/golem/def',
+    );
+  });
+
   it('renders session titles as kagent supplied them', async () => {
-    await renderInTestApp(<SessionsTable rows={rows} />);
+    await renderInTestApp(<SessionsTable rows={rows} />, {
+      // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+      // SubRouteRef — and the detail sub-route resolves relative to it.
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
 
     // kagent truncates to 20 chars, so the ellipsis is real data, not ours.
     expect(screen.getByText('What issues are assi...')).toBeInTheDocument();
@@ -62,7 +91,11 @@ describe('SessionsTable', () => {
   });
 
   it('seeds the avatar from the resolved agent’s technical name', async () => {
-    await renderInTestApp(<SessionsTable rows={rows} />);
+    await renderInTestApp(<SessionsTable rows={rows} />, {
+      // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+      // SubRouteRef — and the detail sub-route resolves relative to it.
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
 
     expect(mockBuildAvatarUrl).toHaveBeenCalledWith(
       'gazelle',
@@ -74,7 +107,11 @@ describe('SessionsTable', () => {
   });
 
   it('shows a dash where a value is unknown', async () => {
-    await renderInTestApp(<SessionsTable rows={[rows[1]]} />);
+    await renderInTestApp(<SessionsTable rows={[rows[1]]} />, {
+      // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+      // SubRouteRef — and the detail sub-route resolves relative to it.
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
 
     // Missing agent, missing created/updated timestamps: three dashes. Explicit
     // because DateComponent renders null for a falsy value, which would leave the
@@ -83,7 +120,11 @@ describe('SessionsTable', () => {
   });
 
   it('renders the empty state when there are no rows', async () => {
-    await renderInTestApp(<SessionsTable rows={[]} />);
+    await renderInTestApp(<SessionsTable rows={[]} />, {
+      // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+      // SubRouteRef — and the detail sub-route resolves relative to it.
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
 
     expect(screen.getByText('No sessions found.')).toBeInTheDocument();
   });
@@ -91,14 +132,25 @@ describe('SessionsTable', () => {
   it('shows a skeleton rather than the empty state while loading', async () => {
     // The `data={undefined}` gotcha: passing `[]` would render "No sessions
     // found." before the first rows arrive.
-    await renderInTestApp(<SessionsTable rows={[]} isLoading />);
+    await renderInTestApp(<SessionsTable rows={[]} isLoading />, {
+      // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+      // SubRouteRef — and the detail sub-route resolves relative to it.
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
 
     expect(screen.queryByText('No sessions found.')).not.toBeInTheDocument();
   });
 
   describe('search', () => {
     it('filters by session title', async () => {
-      await renderInTestApp(<SessionsTable rows={rows} searchDebounceMs={0} />);
+      await renderInTestApp(
+        <SessionsTable rows={rows} searchDebounceMs={0} />,
+        {
+          // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+          // SubRouteRef — and the detail sub-route resolves relative to it.
+          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        },
+      );
 
       await userEvent.type(
         screen.getByRole('searchbox', { name: 'Search sessions' }),
@@ -110,7 +162,14 @@ describe('SessionsTable', () => {
     });
 
     it('filters by agent name', async () => {
-      await renderInTestApp(<SessionsTable rows={rows} searchDebounceMs={0} />);
+      await renderInTestApp(
+        <SessionsTable rows={rows} searchDebounceMs={0} />,
+        {
+          // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+          // SubRouteRef — and the detail sub-route resolves relative to it.
+          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        },
+      );
 
       await userEvent.type(
         screen.getByRole('searchbox', { name: 'Search sessions' }),
@@ -122,7 +181,14 @@ describe('SessionsTable', () => {
     });
 
     it('shows the empty state when nothing matches', async () => {
-      await renderInTestApp(<SessionsTable rows={rows} searchDebounceMs={0} />);
+      await renderInTestApp(
+        <SessionsTable rows={rows} searchDebounceMs={0} />,
+        {
+          // Only the parent RouteRef is mountable — `mountedRoutes` rejects a
+          // SubRouteRef — and the detail sub-route resolves relative to it.
+          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        },
+      );
 
       await userEvent.type(
         screen.getByRole('searchbox', { name: 'Search sessions' }),

@@ -146,6 +146,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Sessions index' };
       break;
 
+    // One session: `/agent-platform/sessions/<installation>/<id>`. Deliberately
+    // carries no `view`: those segments are an installation name and an opaque
+    // session id, so including them would emit a distinct page name per session —
+    // useless as a metric, and it would record which installations a user reads.
+    case pathname.startsWith('/agent-platform/sessions/'):
+      payload = { page: 'Session detail' };
+      break;
+
     case pathname === '/agent-platform':
       payload = { page: 'Agents index' };
       break;

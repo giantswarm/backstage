@@ -2,9 +2,6 @@ import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { Alert, Box, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 
-import { QueryClientProvider } from '../QueryClientProvider';
-import { ModelConfigsProvider } from '../ModelConfigsProvider';
-import { AgentsDataProvider } from '../AgentsDataProvider';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -92,21 +89,21 @@ function SessionsIndexPageContent() {
   );
 }
 
+/**
+ * The Sessions list.
+ *
+ * `QueryClientProvider`, `ModelConfigsProvider` and `AgentsDataProvider` are
+ * mounted by `SessionsRouter` rather than here, so this screen and the session
+ * detail share one query cache and one fleet-wide Agent list — opening a session
+ * then reuses the agents already loaded for this list.
+ *
+ * Only `SessionsDataProvider` is local, because only this screen fans out across
+ * the fleet: the detail page reads one installation, named in its own route.
+ */
 export function SessionsIndexPage() {
   return (
-    <QueryClientProvider>
-      <ModelConfigsProvider>
-        {/* AgentsDataProvider supplies the Agent CRs the session rows join
-            against for agent display names and avatars. It requires
-            ModelConfigsProvider above it, so the Sessions tab pays for a
-            fleet-wide ModelConfig list it doesn't itself use — cached,
-            persisted, and shared with the Agents tab, so effectively free. */}
-        <AgentsDataProvider>
-          <SessionsDataProvider>
-            <SessionsIndexPageContent />
-          </SessionsDataProvider>
-        </AgentsDataProvider>
-      </ModelConfigsProvider>
-    </QueryClientProvider>
+    <SessionsDataProvider>
+      <SessionsIndexPageContent />
+    </SessionsDataProvider>
   );
 }
