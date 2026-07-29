@@ -287,6 +287,19 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for one session', () => {
+    // No `view`: the path carries an installation name and an opaque session id,
+    // so echoing them would emit a page name per session — and record which
+    // installations a user reads.
+    const result = getTelemetryPageViewPayload(
+      '/agent-platform/sessions/gazelle/019f8a13-c6c2-73af-a1d9-ab0abeeb6734',
+    );
+    expect(result).toEqual({
+      page: 'Session detail',
+      path: '/agent-platform/sessions/gazelle/019f8a13-c6c2-73af-a1d9-ab0abeeb6734',
+    });
+  });
+
   it('should return correct payload for metrics page', () => {
     const result = getTelemetryPageViewPayload('/metrics');
     expect(result).toEqual({
@@ -348,6 +361,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/review',
       '/agent-platform/sessions',
+      '/agent-platform/sessions/gazelle/abc123',
       '/metrics',
       '/search',
     ];

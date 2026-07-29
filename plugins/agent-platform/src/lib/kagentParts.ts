@@ -33,10 +33,70 @@ const AGENT_NAMESPACE_SEPARATOR = '__NS__';
  * rather than as a tool call. Showing them would be noise indistinguishable from
  * real work.
  */
-const INTERNAL_TOOL_NAMES = new Set(['adk_request_credential', 'ask_user']);
+/**
+ * ADK's tool for asking the user a question.
+ *
+ * Arrives wrapped in a confirmation request like an approval does, but it asks for
+ * an *answer*, not permission — so it reads quite differently, and kagent's own UI
+ * branches on this name for the same reason (`buildApprovalMessage`).
+ */
+export const ASK_USER_TOOL_NAME = 'ask_user';
 
-/** The tool name kagent uses for a human-in-the-loop approval request. */
+const INTERNAL_TOOL_NAMES = new Set([
+  'adk_request_credential',
+  ASK_USER_TOOL_NAME,
+]);
+
+/** The tool name kagent uses for a human-in-the-loop confirmation request. */
 export const CONFIRMATION_TOOL_NAME = 'adk_request_confirmation';
+
+/**
+ * muster's proxy tool. Agents reach most MCP tools through it, so the tool a call
+ * *appears* to make is almost always this one.
+ */
+export const MUSTER_PROXY_TOOL_NAME = 'call_tool';
+
+/** What the UI shows as the origin of a proxied call — the product name. */
+export const MUSTER_PROXY_LABEL = 'Muster';
+
+/**
+ * Look through muster's `call_tool` wrapper to the tool actually invoked.
+ *
+ * Agents call most MCP tools via muster, so without this every row reads
+ * `call_tool` and the real tool is buried in the arguments:
+ *
+ * ```
+ * call_tool  arguments: {…}, name: x_kubernetes_get
+ * ```
+ *
+ * which makes a run of calls impossible to scan — the problem reported in
+ * giantswarm/klaus-gateway#163 for the Slack surface. Unwrapped, the row names
+ * `x_kubernetes_get` and carries `via: 'muster'`.
+ *
+ * Only unwraps when the payload actually has the wrapper's shape (`name` a
+ * non-empty string, with the inner call's `arguments`). Anything else is returned
+ * untouched, so a future change to `call_tool` degrades to showing the wrapper
+ * rather than losing the call.
+ */
+export function unwrapProxiedCall(call: FunctionCall): FunctionCall & {
+  /** Set when the call reached its tool through a proxy. */
+  via?: string;
+} {
+  if (call.name !== MUSTER_PROXY_TOOL_NAME) {
+    return call;
+  }
+  const args = asRecord(call.args);
+  const innerName = asNonEmptyString(args?.name);
+  if (!innerName) {
+    return call;
+  }
+  return {
+    id: call.id,
+    name: innerName,
+    args: args?.arguments,
+    via: MUSTER_PROXY_LABEL,
+  };
+}
 
 export type FunctionCall = {
   /** Correlates a call with its response; absent on malformed payloads. */
@@ -172,21 +232,36 @@ export function isInternalToolName(name: string | undefined): boolean {
  *
  * The field names are Gemini's (`promptTokenCount` / `candidatesTokenCount`),
  * which is what ADK passes through. A partial bag yields zeros for the missing
- * counts rather than being discarded — a total with no breakdown is still worth
- * showing.
+ * counts rather than being discarded — a breakdown with no total, or a total with
+ * no breakdown, is still worth showing.
+ *
+ * **`totalTokenCount` is derived when kagent doesn't report one.** Confirmed on a
+ * real gazelle session, whose every message carried exactly
+ * `adk_usage_metadata: {promptTokenCount, candidatesTokenCount}` — no
+ * `totalTokenCount` at all. Summing the reported totals therefore gave "Total 0"
+ * next to 1.4M input, which reads as broken. kagent's own UI has the same hole
+ * (`total: usage.totalTokenCount ?? 0`).
+ *
+ * The reported total still wins when present: it can legitimately exceed
+ * prompt + completion, because a model that bills thinking tokens separately
+ * counts them in the total but in neither part.
  */
 export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
   const usage = asRecord(readKagentMetadata(metadata, 'usage_metadata'));
   if (!usage) {
     return undefined;
   }
-  const total = asNumber(usage.totalTokenCount);
+  const reportedTotal = asNumber(usage.totalTokenCount);
   const prompt = asNumber(usage.promptTokenCount);
   const completion = asNumber(usage.candidatesTokenCount);
-  if (total === 0 && prompt === 0 && completion === 0) {
+  if (reportedTotal === 0 && prompt === 0 && completion === 0) {
     return undefined;
   }
-  return { total, prompt, completion };
+  return {
+    total: reportedTotal > 0 ? reportedTotal : prompt + completion,
+    prompt,
+    completion,
+  };
 }
 
 /**

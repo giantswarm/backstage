@@ -21,20 +21,34 @@ const maxAge = gcTime;
  *
  * Everything else cached here (Agents, ModelConfigs, the kagent installation
  * list) is installation state: identical for every user, and safe to persist.
- * kagent sessions are not — the rows are one user's chat titles, and the identity
- * probe caches their subject (an email address).
+ * kagent sessions are not — the rows are one user's chat titles, the identity
+ * probe caches their subject (an email address), and a session's tasks are the
+ * whole conversation, including tool arguments and results.
  *
  * Persisting them would be wrong twice over on a shared workstation: the data
  * outlives sign-out on disk, and `PersistQueryClientProvider` would rehydrate the
  * previous user's sessions for the next one under the same origin and key — which
  * `staleTime` would not even refetch if the entry is under a minute old.
+ *
+ * `session-tasks` has a second, independent reason: **size**. A real 4-turn
+ * session's tasks were ~500 KB against a localStorage budget of roughly 5 MB for
+ * the entire origin, so a handful of opened conversations would evict everything
+ * else — including the fleet lists this persistence exists for in the first place.
  */
+const USER_SCOPED_RESOURCES = new Set([
+  'sessions',
+  'me',
+  'session',
+  'session-tasks',
+]);
+
 function isUserScopedQueryKey(queryKey: QueryKey): boolean {
   const [scope, subsystem, resource] = queryKey as unknown[];
   return (
     scope === 'agent-platform' &&
     subsystem === 'kagent' &&
-    (resource === 'sessions' || resource === 'me')
+    typeof resource === 'string' &&
+    USER_SCOPED_RESOURCES.has(resource)
   );
 }
 

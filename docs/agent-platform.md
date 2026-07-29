@@ -324,13 +324,19 @@ The plugin's `QueryClientProvider` persists its cache to `localStorage` for an
 hour, which is right for the Agents and ModelConfig lists — that is installation
 state, identical for every user, and caching it across reloads is the point.
 
-Sessions are different: the rows are one user's chat titles, and the identity probe
-caches their subject (an email). Those two query keys are therefore excluded from
+Sessions are different: the rows are one user's chat titles, the identity probe
+caches their subject (an email), and a session's tasks are the whole conversation
+including tool arguments and results. Those query keys are therefore excluded from
 persistence via `dehydrateOptions.shouldDehydrateQuery`, so they live in memory
 only. Without that, on a shared workstation the data would outlive sign-out on
 disk, and `PersistQueryClientProvider` would rehydrate the previous user's sessions
 for the next one — under the same origin and key, and with `staleTime: 60_000` an
 entry under a minute old would not even be refetched.
+
+`session-tasks` has a second, independent reason: **size**. A real 4-turn session's
+tasks were ~500 KB against a localStorage budget of roughly 5 MB for the whole
+origin, so a handful of opened conversations would evict everything else — including
+the fleet lists this persistence exists for in the first place.
 
 The filter composes with `defaultShouldDehydrateQuery` rather than replacing it, so
 the library's "only persist successful queries" rule still applies.
@@ -370,6 +376,111 @@ live v0.9.9 response, asserting v0.9.9 and v0.10 payloads normalise identically.
 `source === 'agent'` (A2A subagent) sessions are excluded — though note live
 v0.9.9 responses omit `source` entirely, so this is forward-compatibility rather
 than active filtering today.
+
+## The session detail page
+
+`/agent-platform/sessions/<installation>/<id>` shows one session: its metadata, a
+stats strip, and the conversation. The installation is in the path because it is
+part of the session's identity — kagent ids are only unique within one.
+
+**Read-only.** kagent can rename, delete and continue a session, and the prototype
+offers all three. None are wired up, so this screen ships without a write path.
+
+### Two reads, and why the events are ignored
+
+| Endpoint                 | Used for                                                |
+| ------------------------ | ------------------------------------------------------- |
+| `…/sessions/:id?limit=1` | the session object: title, agent, timestamps, existence |
+| `…/sessions/:id/tasks`   | the conversation, its state, and token usage            |
+
+The conversation comes from **tasks**, which is what kagent's own UI renders from.
+The `events` array on the first response is ignored entirely, and `limit=1` keeps it
+off the wire. kagent's Go type calls each event's `data` a
+`JSON-serialized protocol.Message`, which suggested events could supply the
+per-message timestamps A2A messages lack. A real gazelle session disproved it: the
+decoded value is an **ADK event** (`author`, `content`, `invocation_id`, `partial`,
+`timestamp`, …) with no `messageId` at all, so nothing correlates with task history.
+On that session the events were 591 KB against 261 bytes of session metadata.
+(`limit` must be `1`, not `0` — kagent gates its LIMIT clause on `opts.Limit > 0`,
+so zero reads as _unlimited_.)
+
+**Consequence for the UI: timestamps are per turn, not per item.** A task's
+timestamp is the finest granularity that exists, so the timeline shows it once per
+turn rather than repeating it on every entry, which would imply precision we do not
+have.
+
+### What the timeline shows
+
+Built by `lib/kagentTimeline.ts` from task history. Conversation messages render in
+full; the agent's internal work is collapsible, with a Hidden/Collapsed/Expanded
+control — collapsed by default, because the working is the point of the screen but a
+wall of tool payloads is unreadable.
+
+| Entry                | Where it comes from                                                        |
+| -------------------- | -------------------------------------------------------------------------- |
+| User / agent message | `role` plus text parts, rendered as markdown                               |
+| Reasoning            | a text part flagged `{adk,kagent}_thought`                                 |
+| Tool call            | a `function_call` data part, with its `function_response` folded in        |
+| Delegation           | a `function_call` whose name contains `__NS__`, plus the child's own usage |
+| Approval             | ADK's `adk_request_confirmation`, with the user's verdict                  |
+
+**Calls through Muster are unwrapped.** Agents reach most MCP tools via muster's
+`call_tool`, so untreated every row reads `call_tool` with the real tool buried in
+the arguments — the problem reported in
+[klaus-gateway#163](https://github.com/giantswarm/klaus-gateway/issues/163). The
+parser looks through the wrapper (`unwrapProxiedCall`), so the row names the tool
+actually invoked and carries a `via Muster` badge; on a real gazelle session that
+unwrapped 7 of 17 calls. If `call_tool`'s payload ever stops matching the wrapper
+shape, the call degrades to showing the proxy rather than being lost.
+
+Approvals are deliberately **not** governed by the activity control: an approval
+records the _user's_ decision, so hiding it would erase the trace of their own
+action rather than the agent's working.
+
+Two things real payloads taught us, both now relied on: kagent repeats each user
+message under the **same `messageId`** on every turn, so the session-wide dedupe is
+required rather than defensive; and one message can carry prose plus several tool
+calls, always text first.
+
+### What it cannot show
+
+kagent stores none of this, so the prototype's remaining fields have no data behind
+them and should not be re-added speculatively: **cost**, **tokens/second**,
+**context-window usage**, the owning **team**, the **trigger** that started the
+session, a **linked work item**, produced **results**, and **evaluation**.
+
+Delegation entries are inert — the response does not reliably carry the child
+session's id, and subagent sessions are filtered out of the list anyway.
+
+### The stats strip
+
+`Turns · Duration · Input tokens (billed, cumulative) · Output tokens`.
+
+**Input tokens are labelled "billed, cumulative" on purpose.** Every model call
+re-sends the whole context, so a 4-turn session with a large tool catalogue reached
+**1.4M prompt tokens across 14 calls** (3.9k–144k each). That is genuine billed
+usage and kagent's own UI sums it identically — but unlabelled it reads as a bug.
+
+There is deliberately **no combined total**: input and output tokens are priced
+differently, so their sum is not a number anyone acts on.
+
+One kagent quirk to know: `adk_usage_metadata` carries only `promptTokenCount` and
+`candidatesTokenCount` on some sessions — no `totalTokenCount` at all — so a total
+is derived from the parts when kagent reports none. A reported total still wins,
+since a model billing thinking tokens separately counts them in the total but in
+neither part.
+
+**Duration is wall-clock**, `updated_at − created_at`: kagent records no per-turn
+durations, so it includes however long the user was away between turns.
+
+### Timestamps are absolute here, relative in the list
+
+The detail header and the turn markers show `28 Jul 2026, 10:07 UTC`, not "1 day
+ago". Both ends of a session usually fall on the same day, so the relative form
+rendered "Started 1 day ago · last activity 1 day ago" for a session that took
+three minutes, and printed "1 day ago" identically on every turn marker — hiding
+the progression the timeline exists to show. The list keeps the relative form,
+where scanning for recency is the point.
 
 ## Configuration
 

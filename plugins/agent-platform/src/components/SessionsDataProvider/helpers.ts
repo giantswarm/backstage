@@ -14,6 +14,14 @@ export const SESSION_TITLE_FALLBACK = 'Chat';
 export type SessionRow = {
   /** Stable unique key: `${installation}/${sessionId}`. */
   id: string;
+  /**
+   * kagent's own session id, verbatim — what a link to the session needs.
+   *
+   * Carried alongside `id` rather than parsed back out of it: ids are opaque and
+   * nothing guarantees one contains no `/`, so splitting would be a format
+   * assumption about exactly the value we promise not to assume things about.
+   */
+  sessionId: string;
   installation: string;
   /**
    * Display title. kagent derives these from the first message and truncates
@@ -106,6 +114,7 @@ export function toSessionRow(
 
   return {
     id: session.id,
+    sessionId: session.sessionId,
     installation: session.installation,
     title: session.title ?? SESSION_TITLE_FALLBACK,
     agentName,

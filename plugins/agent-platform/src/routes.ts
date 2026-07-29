@@ -24,3 +24,14 @@ export const newAgentReviewRouteRef = createSubRouteRef({
 
 // The "Sessions" tab (`/agent-platform/sessions`).
 export const sessionsRouteRef = createRouteRef();
+
+// One session (`/agent-platform/sessions/<installation>/<id>`).
+//
+// The installation is part of the path rather than a query parameter because it
+// is part of the session's identity: kagent session ids are only unique within an
+// installation, so a link needs both to resolve. Ids are opaque — real ones mix
+// 64-character hex strings and UUIDs — so nothing here constrains their shape.
+export const sessionDetailRouteRef = createSubRouteRef({
+  path: '/:installation/:sessionId',
+  parent: sessionsRouteRef,
+});

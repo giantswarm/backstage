@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   Avatar,
   Cell,
@@ -10,7 +10,11 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
+import { Link } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { useNavigate } from 'react-router-dom';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
@@ -33,6 +37,7 @@ function Unknown() {
 
 function getColumnConfig(
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>,
+  hrefFor: (row: SessionRow) => string | undefined,
 ): ColumnConfig<SessionRow>[] {
   return [
     {
@@ -43,7 +48,25 @@ function getColumnConfig(
       label: 'Session',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.title} />,
+      cell: row => {
+        const href = hrefFor(row);
+        // A real anchor in the row-header cell, *as well as* the whole-row
+        // onClick below. The anchor is what makes cmd/middle-click open a new tab
+        // and what gives keyboard users something focusable; the row click is the
+        // convenience affordance. `Link` from core-components routes client-side,
+        // which `rowConfig.getHref` would not: BUIProvider is not mounted in this
+        // app, so react-aria's RouterProvider is inactive and a bui `href` would
+        // trigger a full page reload.
+        return (
+          <Cell>
+            {href ? (
+              <Link to={href}>{row.title}</Link>
+            ) : (
+              <Text variant="body-medium">{row.title}</Text>
+            )}
+          </Cell>
+        );
+      },
     },
     {
       id: 'agentName',
@@ -140,9 +163,24 @@ export function SessionsTable({
   searchDebounceMs = 150,
 }: SessionsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
+  const navigate = useNavigate();
+  const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+
+  // Both parameters are needed: kagent session ids are only unique within an
+  // installation. Undefined when the route isn't bound, in which case rows render
+  // as plain text rather than as links that go nowhere.
+  const hrefFor = useCallback(
+    (row: SessionRow) =>
+      sessionDetailRoute?.({
+        installation: row.installation,
+        sessionId: row.sessionId,
+      }),
+    [sessionDetailRoute],
+  );
+
   const columnConfig = useMemo(
-    () => getColumnConfig(buildAvatarUrl),
-    [buildAvatarUrl],
+    () => getColumnConfig(buildAvatarUrl, hrefFor),
+    [buildAvatarUrl, hrefFor],
   );
 
   const { tableProps, search } = useTable<SessionRow>({
@@ -169,6 +207,17 @@ export function SessionsTable({
       <Table<SessionRow>
         {...tableProps}
         columnConfig={columnConfig}
+        rowConfig={{
+          // Whole-row click as a convenience, on top of the anchor in the title
+          // cell. `onClick` + navigate rather than `getHref`, because without
+          // BUIProvider a bui href does a full page reload (see the title cell).
+          onClick: row => {
+            const href = hrefFor(row);
+            if (href) {
+              navigate(href);
+            }
+          },
+        }}
         emptyState={
           <Text variant="body-medium" color="secondary">
             No sessions found.

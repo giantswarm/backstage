@@ -18,6 +18,7 @@ import {
   newAgentReviewRouteRef,
   newAgentRouteRef,
   rootRouteRef,
+  sessionDetailRouteRef,
   sessionsRouteRef,
 } from './routes';
 
@@ -66,9 +67,8 @@ const sessionsSubPage = SubPageBlueprint.make({
     title: 'Sessions',
     routeRef: sessionsRouteRef,
     loader: async () => {
-      const { SessionsIndexPage } =
-        await import('./components/SessionsIndexPage');
-      return <SessionsIndexPage />;
+      const { SessionsRouter } = await import('./components/SessionsRouter');
+      return <SessionsRouter />;
     },
   },
 });
@@ -102,5 +102,6 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newAgent: newAgentRouteRef,
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
+    sessionDetail: sessionDetailRouteRef,
   },
 });

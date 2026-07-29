@@ -334,6 +334,107 @@ describe('buildTimeline', () => {
     });
   });
 
+  describe('calls proxied through Muster', () => {
+    /** A `call_tool` invocation wrapping the tool actually wanted. */
+    function proxiedTasks(args: unknown): A2aTaskWire[] {
+      return [
+        {
+          status: { state: 'completed', timestamp: '2026-07-24T09:00:00.000Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'm1',
+              role: 'agent',
+              parts: [
+                {
+                  kind: 'data',
+                  metadata: { kagent_type: 'function_call' },
+                  data: { id: 'c1', name: 'call_tool', args },
+                },
+              ],
+            },
+          ],
+        },
+      ] as unknown as A2aTaskWire[];
+    }
+
+    it('names the tool actually invoked, not the proxy', () => {
+      // Agents reach most MCP tools through muster's `call_tool`, so without this
+      // every row reads `call_tool` and the real tool is buried in the arguments —
+      // the problem reported in giantswarm/klaus-gateway#163.
+      const { items } = buildTimeline(
+        proxiedTasks({
+          name: 'x_kubernetes_get',
+          arguments: {
+            apiGroup: 'helm.toolkit.fluxcd.io',
+            resourceType: 'helmreleases',
+          },
+        }),
+      );
+
+      expect(items[0]).toMatchObject({
+        kind: 'tool-call',
+        toolName: 'x_kubernetes_get',
+        via: 'Muster',
+        // Unwrapped: the inner arguments, not the `{name, arguments}` envelope.
+        args: {
+          apiGroup: 'helm.toolkit.fluxcd.io',
+          resourceType: 'helmreleases',
+        },
+      });
+    });
+
+    it('leaves a call_tool whose payload lacks the wrapper shape alone', () => {
+      // Degrades to showing the proxy rather than losing the call, if `call_tool`
+      // ever changes shape.
+      const { items } = buildTimeline(proxiedTasks({ unexpected: true }));
+
+      expect(items[0]).toMatchObject({
+        kind: 'tool-call',
+        toolName: 'call_tool',
+        args: { unexpected: true },
+      });
+      expect((items[0] as { via?: string }).via).toBeUndefined();
+    });
+
+    it('marks nothing as proxied when the tool was called directly', () => {
+      const { items } = timelineFor(kagentPrefixed);
+      const direct = items.find(
+        item =>
+          item.kind === 'tool-call' && item.toolName === 'github_search_issues',
+      );
+
+      expect((direct as { via?: string }).via).toBeUndefined();
+    });
+
+    it('still resolves a proxied call’s result, which is keyed on the outer id', () => {
+      // The response carries the *wrapper's* call id and name, so unwrapping the
+      // request must not break the pairing.
+      const tasks = proxiedTasks({ name: 'x_kubernetes_get', arguments: {} });
+      (tasks[0].history as unknown[]).push({
+        kind: 'message',
+        messageId: 'm2',
+        role: 'agent',
+        parts: [
+          {
+            kind: 'data',
+            metadata: { kagent_type: 'function_response' },
+            data: { id: 'c1', name: 'call_tool', response: { ok: true } },
+          },
+        ],
+      });
+
+      const { items } = buildTimeline(tasks);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        toolName: 'x_kubernetes_get',
+        isPending: false,
+        result: { ok: true },
+      });
+    });
+  });
+
   describe('robustness', () => {
     it('survives a fixture full of malformed rows', () => {
       const { items, skippedMessages } = timelineFor(malformed);
@@ -416,6 +517,66 @@ describe('buildTimeline', () => {
       const { tokens } = timelineFor(malformed);
 
       expect(tokens).toEqual({ total: 0, prompt: 0, completion: 0 });
+    });
+
+    it('derives a total when kagent reports only the breakdown', () => {
+      // Found live on gazelle: every message carries promptTokenCount and
+      // candidatesTokenCount but no totalTokenCount, so summing reported totals
+      // rendered "Total 0" beside 1.4M input. kagent's own UI has the same hole
+      // (`total: usage.totalTokenCount ?? 0`).
+      const tasks = [
+        {
+          status: { state: 'completed', timestamp: '2026-07-24T09:00:00.000Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'm1',
+              role: 'agent',
+              metadata: {
+                kagent_usage_metadata: {
+                  promptTokenCount: 1000,
+                  candidatesTokenCount: 250,
+                },
+              },
+              parts: [{ kind: 'text', text: 'hi' }],
+            },
+          ],
+        },
+      ] as unknown as A2aTaskWire[];
+
+      expect(buildTimeline(tasks).tokens).toEqual({
+        total: 1250,
+        prompt: 1000,
+        completion: 250,
+      });
+    });
+
+    it('prefers a reported total over the sum of its parts', () => {
+      // A model billing thinking tokens separately counts them in the total but in
+      // neither part, so the reported total is not always prompt + completion and
+      // must not be recomputed away.
+      const tasks = [
+        {
+          status: { state: 'completed', timestamp: '2026-07-24T09:00:00.000Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'm1',
+              role: 'agent',
+              metadata: {
+                kagent_usage_metadata: {
+                  totalTokenCount: 2000,
+                  promptTokenCount: 1000,
+                  candidatesTokenCount: 250,
+                },
+              },
+              parts: [{ kind: 'text', text: 'hi' }],
+            },
+          ],
+        },
+      ] as unknown as A2aTaskWire[];
+
+      expect(buildTimeline(tasks).tokens.total).toBe(2000);
     });
 
     it('returns an empty timeline for a session with no tasks', () => {
