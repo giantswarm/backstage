@@ -212,8 +212,9 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
 
-      // A verdict arrives as a data part on a *user* message, and is shown on the
-      // approval card rather than as a message of its own.
+      // A verdict arrives as a data part on a *user* message. The verdict itself is
+      // shown on the approval card rather than as a message of its own — but the
+      // message may also carry the user's actual words, and those are conversation.
       if (isUser) {
         const decision = readDecision(parts);
         if (decision) {
@@ -227,7 +228,27 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             }
             openApprovalIndex = undefined;
           }
-          return;
+
+          // Deliberately **not** returning here. An `ask_user` reply arrives as a
+          // text part on this same message, and bailing out discarded it — the
+          // question and the agent's follow-up were shown, but what the user
+          // actually said vanished from the conversation.
+          //
+          // The text parts fall through to the normal handling below. When there
+          // are none, the answers are recovered from the decision payload's
+          // `ask_user_answers` instead: kagent's own UI reads only that field, so it
+          // may be the sole carrier on sessions that did not come through a
+          // gateway that also writes the text part.
+          if (decision.answers.length > 0 && !hasTextPart(parts)) {
+            items.push({
+              kind: 'user-message',
+              id: `${taskIndex}:${entryIndex}:${items.length}`,
+              at,
+              taskIndex,
+              text: decision.answers.join('\n\n'),
+            });
+            return;
+          }
         }
       }
 
@@ -502,21 +523,31 @@ function readProposedCall(
  * message. It is either a uniform verdict applying to every pending call, or
  * `'batch'` with a per-call map.
  *
- * Returning an object means "this message is a decision" and so it must not also
- * render as user prose. A `verdict` of `undefined` inside that object means the
- * wording was one we don't recognise: the approval is resolved, but we decline to
- * say how. Defaulting to `'approved'` there would put words in the user's mouth
- * about an action they may have refused.
+ * Returning an object means "this message is a decision", so its verdict belongs
+ * on the approval card rather than as a message of its own. A `verdict` of
+ * `undefined` inside that object means the wording was one we don't recognise: the
+ * approval is resolved, but we decline to say how. Defaulting to `'approved'` there
+ * would put words in the user's mouth about an action they may have refused.
+ *
+ * `answers` carries what the user actually typed in reply to an `ask_user`
+ * question, from the payload's `ask_user_answers`. It is a fallback: the same words
+ * usually arrive as a plain text part on this message, which reads better and is
+ * preferred. kagent's own UI reads only this structured field, so a session may
+ * exist where it is the sole carrier.
  */
 function readDecision(
   parts: unknown[],
-): { verdict?: 'approved' | 'rejected' } | undefined {
+): { verdict?: 'approved' | 'rejected'; answers: string[] } | undefined {
   for (const rawPart of parts) {
     const part = parsePart(rawPart);
     if (!part || !part.data || typeof part.data !== 'object') {
       continue;
     }
-    const data = part.data as { decision_type?: unknown; decisions?: unknown };
+    const data = part.data as {
+      decision_type?: unknown;
+      decisions?: unknown;
+      ask_user_answers?: unknown;
+    };
     const decisionType = data.decision_type;
     if (typeof decisionType !== 'string' || decisionType === '') {
       continue;
@@ -536,16 +567,54 @@ function readDecision(
           Boolean(verdict),
         );
       if (verdicts.length === 0) {
-        return {};
+        return { answers: readAskUserAnswers(data) };
       }
       return {
         verdict: verdicts.includes('rejected') ? 'rejected' : 'approved',
+        answers: readAskUserAnswers(data),
       };
     }
 
-    return { verdict: readVerdictWord(decisionType) };
+    return {
+      verdict: readVerdictWord(decisionType),
+      answers: readAskUserAnswers(data),
+    };
   }
   return undefined;
+}
+
+/**
+ * Whether any part of a message carries text.
+ *
+ * Decides whether a decision message already contains the user's own words, in
+ * which case they render from the text part and `ask_user_answers` is not needed.
+ */
+function hasTextPart(parts: unknown[]): boolean {
+  return parts.some(rawPart => parsePart(rawPart)?.text !== undefined);
+}
+
+/**
+ * The user's answers to an `ask_user` question, out of a decision payload.
+ *
+ * One entry per question asked, each with an `answer` array — questions the user
+ * skipped have an empty one, so those are dropped rather than rendered as blanks.
+ */
+function readAskUserAnswers(data: { ask_user_answers?: unknown }): string[] {
+  const entries = data.ask_user_answers;
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+  return entries
+    .flatMap(entry => {
+      const answer = (entry as { answer?: unknown })?.answer;
+      if (typeof answer === 'string') {
+        return [answer];
+      }
+      return Array.isArray(answer) ? answer : [];
+    })
+    .filter(
+      (value): value is string => typeof value === 'string' && value !== '',
+    );
 }
 
 /**

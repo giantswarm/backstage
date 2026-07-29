@@ -195,6 +195,61 @@ describe('SessionTimeline', () => {
       expect(screen.queryByText('ask_user')).not.toBeInTheDocument();
     });
 
+    it('shows what the user actually replied', async () => {
+      // The reply rides on the same message as the `decision_type` data part.
+      // Bailing out of that message discarded it, so the page showed the question
+      // and the agent's follow-up with the user's words missing in between.
+      await render(tasksAskUser, 'SRE Agent');
+
+      expect(
+        screen.getByText(/Still no reply to messages with image/),
+      ).toBeInTheDocument();
+    });
+
+    it('reads the reply as conversation, in order', async () => {
+      await render(tasksAskUser, 'SRE Agent');
+
+      const order = [
+        ...document.querySelectorAll('[data-testid^="timeline-"]'),
+      ].map(el => el.getAttribute('data-testid'));
+      expect(order).toEqual([
+        'timeline-user-message',
+        'timeline-approval',
+        'timeline-user-message',
+        'timeline-agent-message',
+      ]);
+    });
+
+    it('does not show the reply twice, though the payload carries it twice', async () => {
+      // It is in both the text part and `ask_user_answers`. The text part wins.
+      await render(tasksAskUser, 'SRE Agent');
+
+      expect(
+        screen.getAllByText(/Still no reply to messages with image/),
+      ).toHaveLength(1);
+    });
+
+    it('recovers the reply from ask_user_answers when there is no text part', async () => {
+      // kagent's own UI reads only the structured field, so a session may exist
+      // where it is the sole carrier — this one came through a Slack gateway that
+      // writes both.
+      const structuredOnly = structuredClone(
+        tasksAskUser,
+      ) as typeof tasksAskUser;
+      const decision = structuredOnly.data[0].history.find(
+        item => item.messageId === 'm-decision-1',
+      ) as { parts: unknown[] };
+      decision.parts = decision.parts.filter(
+        part => (part as { kind?: string }).kind !== 'text',
+      );
+
+      await render(structuredOnly, 'SRE Agent');
+
+      expect(
+        screen.getByText(/Still no reply to messages with image/),
+      ).toBeInTheDocument();
+    });
+
     it('reports an unanswered question as awaiting a reply', async () => {
       const pending = structuredClone(tasksAskUser) as typeof tasksAskUser;
       pending.data[0].history = pending.data[0].history.filter(

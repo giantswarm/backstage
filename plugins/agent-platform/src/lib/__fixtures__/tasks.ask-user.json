@@ -54,10 +54,43 @@
           ]
         },
         {
+          "comment": "Shaped after a real gazelle payload: the reply arrives BOTH as ask_user_answers in the decision data AND as a plain text part on the same message. One entry per question asked; skipped questions carry an empty answer array.",
           "kind": "message",
           "messageId": "m-decision-1",
           "role": "user",
-          "parts": [{ "kind": "data", "data": { "decision_type": "approve" } }]
+          "parts": [
+            {
+              "kind": "data",
+              "data": {
+                "ask_user_answers": [
+                  {
+                    "answer": [
+                      "Still no reply to messages with image. Maybe it's not that branch."
+                    ]
+                  },
+                  { "answer": [] },
+                  { "answer": [] }
+                ],
+                "decision_type": "approve"
+              }
+            },
+            {
+              "kind": "text",
+              "text": "Still no reply to messages with image. Maybe it's not that branch."
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-agent-followup-1",
+          "role": "agent",
+          "metadata": { "adk_author": "sre_agent" },
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Got it! It sounds like you're debugging an image attachment issue."
+            }
+          ]
         }
       ]
     }
