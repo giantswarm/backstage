@@ -158,17 +158,19 @@ export async function createRouter(
    * Read the session id from the path.
    *
    * Session ids are **opaque**: real kagent responses mix 64-character hex
-   * strings and UUIDs, so nothing may validate a format. Express has already
-   * decoded the segment and cannot match across `/`, so "non-empty" is the only
-   * check left worth making.
+   * strings and UUIDs, so nothing here validates or normalizes one. In
+   * particular there is deliberately no `trim()` — Express hands us the decoded
+   * segment, so an id with surrounding whitespace would be trimmed here,
+   * re-encoded on the way out, and a *different* id sent upstream, producing a
+   * 404 indistinguishable from a missing session.
+   *
+   * This is purely a typing shim: `req.params` is loosely typed, but `:sessionId`
+   * cannot match an empty segment, so `/kagent/sessions/` reaches the list route
+   * above rather than arriving here empty (pinned by a test).
    */
   const readSessionId = (req: express.Request): string => {
     const raw = req.params.sessionId;
-    const sessionId = typeof raw === 'string' ? raw.trim() : '';
-    if (!sessionId) {
-      throw new InputError('A session id is required.');
-    }
-    return sessionId;
+    return typeof raw === 'string' ? raw : '';
   };
 
   router.get('/kagent/sessions', async (req, res) => {

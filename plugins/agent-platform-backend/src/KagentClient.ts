@@ -42,6 +42,27 @@ export interface KagentRequestOptions {
 }
 
 /**
+ * Per-endpoint wording for a 404, so the message a user reads matches what
+ * actually went wrong.
+ *
+ * Without this every 404 reports "The kagent API is not available for
+ * installation X", which is an outage claim — badly wrong for the common case of
+ * a bookmarked link to a session that has since been deleted.
+ */
+interface NotFoundContext {
+  /**
+   * What a 404 means when **kagent's own handler** answered it: the endpoint
+   * exists, the resource does not.
+   */
+  missingResource: string;
+  /**
+   * Short name of the endpoint, used when the **route itself** is absent — an
+   * older kagent that predates it.
+   */
+  endpoint: string;
+}
+
+/**
  * Derive the kagent API base URL for an installation from its base domain.
  *
  * The hostname pattern matches the `agentic-platform-connectivity` chart's
@@ -205,6 +226,12 @@ export class KagentClient {
         sessionId,
       )}`,
       options,
+      {
+        // The id is left out on purpose: it is opaque and high-cardinality, and
+        // the user already has it in the URL they followed.
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        endpoint: 'session detail',
+      },
     );
   }
 
@@ -227,6 +254,10 @@ export class KagentClient {
         sessionId,
       )}/tasks`,
       options,
+      {
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        endpoint: 'session tasks',
+      },
     );
   }
 
@@ -261,6 +292,7 @@ export class KagentClient {
   private async request(
     url: string,
     options: KagentRequestOptions,
+    notFound?: NotFoundContext,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -335,8 +367,38 @@ export class KagentClient {
     }
 
     if (response.status === 404) {
+      // Two very different things arrive here, and conflating them shows users a
+      // message about the wrong problem:
+      //
+      // - **kagent's handler said "no such resource".** Its error middleware
+      //   always answers `Content-Type: application/json`
+      //   (`go/core/internal/httpserver/middleware_error.go`), so a JSON 404 means
+      //   the endpoint exists and the thing we asked for does not — a deleted
+      //   session, or one belonging to another user.
+      // - **The route does not exist.** kagent registers no custom
+      //   `NotFoundHandler`, so an unrouted path falls through to net/http's
+      //   `http.NotFound`, which answers `text/plain`. That is what an
+      //   installation running a kagent older than an endpoint looks like.
+      //
+      // The second case matters most for the session routes: without the
+      // distinction, "this kagent is too old" would read as "session not found" on
+      // every session, on every page load, with no way to tell from the UI.
+      //
+      // kagent's own message is deliberately *not* forwarded: its middleware
+      // appends the underlying error, so a session 404 reads
+      // "Session not found: no rows in result set" — database internals are not
+      // something to put in front of a user.
+      const contentType = response.headers.get('content-type') ?? '';
+      const kagentAnswered = contentType.includes('application/json');
+
+      if (!kagentAnswered && notFound) {
+        throw new NotFoundError(
+          `The kagent API for installation '${this.installation.name}' has no ${notFound.endpoint} endpoint; it is probably running a version that predates it.`,
+        );
+      }
       throw new NotFoundError(
-        `The kagent API is not available for installation '${this.installation.name}'.`,
+        notFound?.missingResource ??
+          `The kagent API is not available for installation '${this.installation.name}'.`,
       );
     }
 

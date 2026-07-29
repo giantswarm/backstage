@@ -118,6 +118,31 @@ all mean kagent answered and failed, so they must not share an error with
 "unreachable" — otherwise a degraded installation's sessions vanish from the
 fleet-merged list with no alert and nothing logged.
 
+#### Three things arrive as a 404
+
+The status is the same for all three; the **message** is what tells them apart,
+and the session routes need that because two of the three are routine there:
+
+| Actually happened                  | How we know                               | Message says                       |
+| ---------------------------------- | ----------------------------------------- | ---------------------------------- |
+| Nothing is listening at that host  | `fetch` rejected (DNS/TLS/refused)        | kagent is not available here       |
+| kagent answered "no such resource" | 404 with `Content-Type: application/json` | that session does not exist        |
+| The endpoint does not exist        | 404 with a non-JSON body                  | this kagent predates that endpoint |
+
+The content-type check works because kagent's error middleware always answers
+JSON (`go/core/internal/httpserver/middleware_error.go`), while an unrouted path
+falls through to net/http's `http.NotFound` — kagent registers no custom
+`NotFoundHandler` — which answers `text/plain`.
+
+Without the second and third being distinguished, an installation running a
+kagent that predates an endpoint would tell every user "session not found" for
+every session, on every page load, and with no version probe there would be
+nothing else to go on.
+
+kagent's own 404 message is deliberately **not** forwarded: its middleware appends
+the underlying error, so a session 404 reads `Session not found: no rows in result
+set`. Database internals do not belong in front of a user.
+
 ### Never return a 5xx for an expected outcome
 
 These status codes are not only about frontend classification — they decide what

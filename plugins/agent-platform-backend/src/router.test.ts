@@ -314,6 +314,39 @@ describe('createRouter', () => {
       });
     });
 
+    it('leaves the list route to handle a trailing slash', async () => {
+      // `:sessionId` cannot match an empty segment, so `/kagent/sessions/` reaches
+      // the list route. Pinned because the detail handler's id helper is written
+      // as a typing shim on that basis — it has no empty-id branch.
+      listSessions.mockResolvedValue({ error: false, data: [] });
+
+      const response = await request(app)
+        .get('/kagent/sessions/')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(listSessions).toHaveBeenCalledTimes(1);
+      expect(getSession).not.toHaveBeenCalled();
+    });
+
+    it('does not trim an id, so the id sent upstream is the id received', async () => {
+      // Trimming is a format assumption about a value documented as opaque. If
+      // kagent ever issues an id with surrounding whitespace, trimming it here
+      // would send a *different* id upstream and 404 in a way that looks exactly
+      // like a missing session.
+      getSession.mockResolvedValue(sessionBody);
+
+      await request(app)
+        .get('/kagent/sessions/%20abc%20')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(getSession).toHaveBeenCalledWith(' abc ', {
+        userToken: 'user-token',
+      });
+    });
+
     it('passes an id through decoded, whatever shape it has', async () => {
       // Both 64-char hex and UUIDs occur in real responses, so the router must not
       // validate a format — only that a segment is present.

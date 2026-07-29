@@ -28,9 +28,29 @@ Two details worth knowing:
   v1 wire is a deliberate future migration.
 
 Session ids stay opaque — real responses mix 64-character hex strings and UUIDs,
-so nothing validates a format; ids are URL-encoded before being interpolated.
+so nothing validates or normalizes one. In particular they are not trimmed:
+Express hands over the decoded segment, so trimming would re-encode a _different_
+id and 404 in a way indistinguishable from a missing session.
 
 A session belonging to another user answers **404**, exactly as a deleted one
 does, because kagent scopes the lookup by the token's user id. Both are expected
 outcomes for a stale deep link, so neither returns a 5xx — which
 `MiddlewareFactory.error()` would log at `error` and forward to Sentry.
+
+404 messages are now per-endpoint, because three different things arrive as one:
+
+- Nothing listening at the host (`fetch` rejects) — "kagent is not available
+  here", the fleet-wide wording the frontend's silent classification relies on.
+- kagent answering "no such resource" (404 with a JSON body, since its error
+  middleware always answers JSON) — "that session does not exist". Previously
+  this read "The kagent API is not available for installation X", i.e. a
+  bookmarked link to a deleted session reported an outage on a healthy
+  installation.
+- The endpoint not existing (404 with a non-JSON body, because kagent registers
+  no custom `NotFoundHandler` and net/http answers `text/plain`) — "this kagent
+  predates that endpoint". Without this, an installation on an older kagent would
+  report "session not found" for every session forever, and with no version probe
+  there would be nothing else to go on.
+
+kagent's own 404 message is not forwarded: its middleware appends the underlying
+error, so a session 404 reads `Session not found: no rows in result set`.

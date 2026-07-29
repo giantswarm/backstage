@@ -336,6 +336,109 @@ describe('KagentClient', () => {
       ).rejects.toMatchObject({ name: expectedName });
     });
 
+    describe('what a 404 actually means', () => {
+      /** kagent's error middleware always answers JSON. */
+      function kagentNotFound() {
+        return new Response(JSON.stringify({ error: 'Session not found' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+
+      /** An unrouted path falls through to net/http's plain-text handler. */
+      function routeNotFound() {
+        return new Response('404 page not found', {
+          status: 404,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        });
+      }
+
+      it('reports a session that does not exist, not an outage', async () => {
+        // The message a user reads when they follow a bookmark to a deleted
+        // session. "The kagent API is not available" would claim an outage on a
+        // perfectly healthy installation.
+        const fetchFn = jest.fn().mockResolvedValue(kagentNotFound());
+
+        await expect(
+          build(fetchFn).getSession('abc', { userToken: 't' }),
+        ).rejects.toMatchObject({
+          name: 'NotFoundError',
+          message: expect.stringContaining('That session does not exist'),
+        });
+      });
+
+      it('reports an absent route as a version problem, not a missing session', async () => {
+        // Otherwise an installation running a kagent without this endpoint tells
+        // every user "session not found" for every session, forever — and with no
+        // version probe there is nothing else to go on.
+        const fetchFn = jest.fn().mockResolvedValue(routeNotFound());
+
+        await expect(
+          build(fetchFn).listSessionTasks('abc', { userToken: 't' }),
+        ).rejects.toMatchObject({
+          name: 'NotFoundError',
+          message: expect.stringContaining('has no session tasks endpoint'),
+        });
+      });
+
+      it('does not forward kagent’s own message', async () => {
+        // kagent's middleware appends the underlying error, so its session 404
+        // reads "Session not found: no rows in result set". Database internals are
+        // not something to put in front of a user.
+        const fetchFn = jest.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              error: 'Session not found: no rows in result set',
+            }),
+            { status: 404, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+
+        await expect(
+          build(fetchFn).getSession('abc', { userToken: 't' }),
+        ).rejects.toMatchObject({
+          message: expect.not.stringContaining('no rows in result set'),
+        });
+      });
+
+      it('keeps the "not available" wording for the fleet-wide routes', async () => {
+        // `/sessions` and `/me` are probed across the whole fleet, where a 404
+        // genuinely does mean "no kagent here" — the wording the frontend's silent
+        // classification is built around.
+        const fetchFn = jest
+          .fn()
+          .mockImplementation(async () => kagentNotFound());
+        const client = build(fetchFn);
+
+        await expect(
+          client.listSessions({ userToken: 't' }),
+        ).rejects.toMatchObject({
+          message: expect.stringContaining('is not available for installation'),
+        });
+        await expect(client.getMe({ userToken: 't' })).rejects.toMatchObject({
+          message: expect.stringContaining('is not available for installation'),
+        });
+      });
+
+      it('still maps every 404 to NotFoundError, whatever the wording', async () => {
+        // The status is what keeps this out of Sentry; only the message varies.
+        const fetchFn = jest
+          .fn()
+          .mockImplementation(async () => routeNotFound());
+        const client = build(fetchFn);
+
+        for (const call of [
+          () => client.getSession('abc', { userToken: 't' }),
+          () => client.listSessionTasks('abc', { userToken: 't' }),
+          () => client.listSessions({ userToken: 't' }),
+        ]) {
+          await expect(call()).rejects.toMatchObject({
+            name: 'NotFoundError',
+          });
+        }
+      });
+    });
+
     it('treats a 200 HTML body as a sign-in page', async () => {
       const fetchFn = jest.fn().mockResolvedValue(
         new Response('<html>Sign in</html>', {
