@@ -73,10 +73,18 @@ export const MUSTER_PROXY_LABEL = 'Muster';
  * giantswarm/klaus-gateway#163 for the Slack surface. Unwrapped, the row names
  * `x_kubernetes_get` and carries `via: 'muster'`.
  *
- * Only unwraps when the payload actually has the wrapper's shape (`name` a
- * non-empty string, with the inner call's `arguments`). Anything else is returned
+ * Only unwraps when the payload really is *nothing but* the wrapper: a non-empty
+ * `name`, and no key other than `name` and `arguments`. Anything else is returned
  * untouched, so a future change to `call_tool` degrades to showing the wrapper
  * rather than losing the call.
+ *
+ * That second condition is what makes the promise true. Keying only on `name`
+ * would mean that if muster renamed or nested the inner arguments, every proxied
+ * row would still show the real tool name while `args` silently became
+ * `undefined` — the call's whole payload gone, rendered as a row with nothing to
+ * expand. Checking that no other key exists distinguishes that case from a
+ * genuinely argument-less proxied call (`{ name }` alone), which still unwraps
+ * because there is nothing there to lose.
  */
 export function unwrapProxiedCall(call: FunctionCall): FunctionCall & {
   /** Set when the call reached its tool through a proxy. */
@@ -88,6 +96,12 @@ export function unwrapProxiedCall(call: FunctionCall): FunctionCall & {
   const args = asRecord(call.args);
   const innerName = asNonEmptyString(args?.name);
   if (!innerName) {
+    return call;
+  }
+  const carriesOnlyWrapperKeys = Object.keys(args ?? {}).every(
+    key => key === 'name' || key === 'arguments',
+  );
+  if (!carriesOnlyWrapperKeys) {
     return call;
   }
   return {

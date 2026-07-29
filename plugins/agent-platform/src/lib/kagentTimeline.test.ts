@@ -397,6 +397,38 @@ describe('buildTimeline', () => {
       expect((items[0] as { via?: string }).via).toBeUndefined();
     });
 
+    it('unwraps a proxied call that genuinely has no arguments', () => {
+      // `{ name }` alone is an argument-less tool reached through the proxy. There
+      // is nothing to lose by unwrapping, so it still names the real tool.
+      const { items } = buildTimeline(proxiedTasks({ name: 'x_core_list' }));
+
+      expect(items[0]).toMatchObject({
+        kind: 'tool-call',
+        toolName: 'x_core_list',
+        via: 'Muster',
+      });
+    });
+
+    it('keeps the wrapper when the payload carries a key we do not know', () => {
+      // The promise the docstring makes: degrade to showing the proxy, never to a
+      // call whose arguments were silently dropped. Keying only on `name` would
+      // name the real tool here and lose `parameters` entirely, leaving a row with
+      // nothing to expand.
+      const { items } = buildTimeline(
+        proxiedTasks({
+          name: 'x_kubernetes_get',
+          parameters: { ns: 'default' },
+        }),
+      );
+
+      expect(items[0]).toMatchObject({
+        kind: 'tool-call',
+        toolName: 'call_tool',
+        args: { name: 'x_kubernetes_get', parameters: { ns: 'default' } },
+      });
+      expect((items[0] as { via?: string }).via).toBeUndefined();
+    });
+
     it('marks nothing as proxied when the tool was called directly', () => {
       const { items } = timelineFor(kagentPrefixed);
       const direct = items.find(

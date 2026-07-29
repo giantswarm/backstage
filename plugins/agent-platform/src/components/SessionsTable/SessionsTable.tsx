@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { SyntheticEvent, useCallback, useMemo } from 'react';
 import {
   Avatar,
   Cell,
@@ -25,6 +25,27 @@ import {
 
 /** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
 const ROW_AVATAR_SIZE: AvatarSize = 48;
+
+/**
+ * Keep a press on the title anchor from also reaching the row.
+ *
+ * The row's `onClick` is react-aria's `onAction`, which fires for a press anywhere
+ * inside the row — the anchor included, since `usePress` has no exemption for
+ * interactive descendants. So a single click on the title used to navigate
+ * *twice*: once through the anchor, once through the row. On a plain click that
+ * pushed the same path onto the history stack twice, and Back needed two presses
+ * to return to the list; with cmd held it was worse, because react-router leaves a
+ * modified event to the browser, so the session opened in a new tab *and* the
+ * current tab navigated away — defeating the reason the anchor exists.
+ *
+ * `usePress` works off pointer events rather than `click`, so `pointerdown` and
+ * `pointerup` are the ones that have to be stopped; `click` is stopped too, for
+ * the synthetic-click path. Stopping propagation does not set `defaultPrevented`,
+ * so the anchor's own react-router navigation still happens.
+ */
+function stopRowPress(event: SyntheticEvent) {
+  event.stopPropagation();
+}
 
 /** Dash shown where a value is genuinely unknown. */
 function Unknown() {
@@ -57,10 +78,20 @@ function getColumnConfig(
         // which `rowConfig.getHref` would not: BUIProvider is not mounted in this
         // app, so react-aria's RouterProvider is inactive and a bui `href` would
         // trigger a full page reload.
+        //
+        // The two affordances must not both fire for one click — see
+        // {@link stopRowPress}.
         return (
           <Cell>
             {href ? (
-              <Link to={href}>{row.title}</Link>
+              <Link
+                to={href}
+                onPointerDown={stopRowPress}
+                onPointerUp={stopRowPress}
+                onClick={stopRowPress}
+              >
+                {row.title}
+              </Link>
             ) : (
               <Text variant="body-medium">{row.title}</Text>
             )}

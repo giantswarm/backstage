@@ -73,11 +73,33 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
     [timeline.items],
   );
 
+  // Rendered in both branches below. An unreadable session produces *no* items
+  // and a non-zero `skippedMessages`, so keeping this inside the populated branch
+  // meant the one case the warning exists for — every history entry failing to
+  // parse — reported "no messages yet" and never warned at all, presenting total
+  // data loss as an ordinary empty session.
+  const skippedAlert = timeline.skippedMessages > 0 && (
+    <Alert
+      status="warning"
+      title="Some messages could not be read"
+      description={`${timeline.skippedMessages} ${
+        timeline.skippedMessages === 1 ? 'message' : 'messages'
+      } in this session did not match the shape we expect from kagent and are not shown.`}
+    />
+  );
+
   if (timeline.items.length === 0) {
     return (
-      <Text variant="body-medium" color="secondary">
-        This session has no messages yet.
-      </Text>
+      <Flex direction="column" gap="3">
+        {skippedAlert}
+        <Text variant="body-medium" color="secondary">
+          {timeline.skippedMessages > 0
+            ? // "No messages yet" would be a lie here: there were messages, we
+              // just could not read any of them.
+              'None of this session’s messages could be displayed.'
+            : 'This session has no messages yet.'}
+        </Text>
+      </Flex>
     );
   }
 
@@ -122,17 +144,9 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
         )}
       </Flex>
 
-      {timeline.skippedMessages > 0 && (
-        <Alert
-          status="warning"
-          title="Some messages could not be read"
-          description={`${timeline.skippedMessages} ${
-            timeline.skippedMessages === 1 ? 'message' : 'messages'
-          } in this session did not match the shape we expect from kagent and are not shown.`}
-        />
-      )}
+      {skippedAlert}
 
-      {turns.map(turn => {
+      {turns.map((turn, turnIndex) => {
         const visible =
           detail === 'hidden'
             ? turn.items.filter(item => !isActivityItem(item))
@@ -141,7 +155,11 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
           return null;
         }
         return (
-          <Flex key={turn.taskIndex} direction="column" gap="3">
+          // Keyed on the position in `turns`, not on `taskIndex`: `groupIntoTurns`
+          // deliberately emits two turns with the same index if a task index ever
+          // repeats non-contiguously, and a duplicate key would let React
+          // reconcile one turn's entries under the other's timestamp.
+          <Flex key={turnIndex} direction="column" gap="3">
             {/* Absolute, not relative: every turn of a session usually falls on
                 the same day, so the relative form printed "1 day ago" three times
                 and hid the progression entirely. An exact time shows how the

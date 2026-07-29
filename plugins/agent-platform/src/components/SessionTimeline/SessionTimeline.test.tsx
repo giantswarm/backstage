@@ -250,6 +250,27 @@ describe('SessionTimeline', () => {
       ).toBeInTheDocument();
     });
 
+    it('recovers the reply when the text part is present but blank', async () => {
+      // A blank text part is not the user's words: the text run trims to nothing
+      // and renders no message at all, so treating it as "there is text" skipped
+      // the structured fallback and lost the reply entirely.
+      const blankText = structuredClone(tasksAskUser) as typeof tasksAskUser;
+      const decision = blankText.data[0].history.find(
+        item => item.messageId === 'm-decision-1',
+      ) as { parts: unknown[] };
+      decision.parts = decision.parts.map(part =>
+        (part as { kind?: string }).kind === 'text'
+          ? { kind: 'text', text: '   ' }
+          : part,
+      );
+
+      await render(blankText, 'SRE Agent');
+
+      expect(
+        screen.getByText(/Still no reply to messages with image/),
+      ).toBeInTheDocument();
+    });
+
     it('reports an unanswered question as awaiting a reply', async () => {
       const pending = structuredClone(tasksAskUser) as typeof tasksAskUser;
       pending.data[0].history = pending.data[0].history.filter(
@@ -346,5 +367,82 @@ describe('SessionTimeline', () => {
       screen.getByText('Some messages could not be read'),
     ).toBeInTheDocument();
     expect(screen.getByText(/2 messages/)).toBeInTheDocument();
+  });
+
+  it('warns when *every* message could not be read', async () => {
+    // The case the warning exists for. A session whose entire history fails to
+    // parse yields no items at all, so an empty-state early return would swallow
+    // the warning and report total data loss as an ordinary empty session.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          items: [],
+          tokens: { total: 0, prompt: 0, completion: 0 },
+          skippedMessages: 3,
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText('Some messages could not be read'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/3 messages/)).toBeInTheDocument();
+    // And it must not claim there were none.
+    expect(
+      screen.queryByText('This session has no messages yet.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders every turn when a task index repeats non-contiguously', async () => {
+    // `groupIntoTurns` deliberately groups on runs rather than on the index, so
+    // this input produces two separate turns numbered 0. Both must render, and
+    // must not collide: React would then be free to reconcile the second against
+    // the first and render one turn's entries under the other's timestamp.
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          items: [
+            {
+              kind: 'user-message',
+              id: '0:0:0',
+              taskIndex: 0,
+              at: '2026-07-23T16:05:00Z',
+              text: 'first turn',
+            },
+            {
+              kind: 'user-message',
+              id: '1:0:1',
+              taskIndex: 1,
+              at: '2026-07-23T16:06:00Z',
+              text: 'second turn',
+            },
+            {
+              kind: 'user-message',
+              id: '0:1:2',
+              taskIndex: 0,
+              at: '2026-07-23T16:07:00Z',
+              text: 'back to the first index',
+            },
+          ],
+          tokens: { total: 0, prompt: 0, completion: 0 },
+          skippedMessages: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('first turn')).toBeInTheDocument();
+    expect(screen.getByText('second turn')).toBeInTheDocument();
+    expect(screen.getByText('back to the first index')).toBeInTheDocument();
+    expect(screen.getAllByText(/UTC$/)).toHaveLength(3);
+
+    // Filtered to the duplicate-key warning: rendering here also trips MUI v4's
+    // pre-existing `findDOMNode` deprecation notice, which is not ours.
+    const duplicateKeyWarnings = consoleError.mock.calls.filter(([first]) =>
+      String(first).includes('same key'),
+    );
+    expect(duplicateKeyWarnings).toHaveLength(0);
+    consoleError.mockRestore();
   });
 });

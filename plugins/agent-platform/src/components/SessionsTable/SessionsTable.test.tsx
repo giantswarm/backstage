@@ -14,6 +14,16 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => mockBuildAvatarUrl,
 }));
 
+// The row's programmatic navigation, and *only* it: `Link` resolves `useNavigate`
+// internally within react-router-dom, so its own client-side navigation is
+// untouched by this mock. A call here therefore means the row handler ran.
+const mockNavigate = jest.fn();
+
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate,
+}));
+
 const rows: SessionRow[] = [
   {
     id: 'gazelle/abc',
@@ -39,6 +49,7 @@ const rows: SessionRow[] = [
 describe('SessionsTable', () => {
   beforeEach(() => {
     mockBuildAvatarUrl.mockClear();
+    mockNavigate.mockClear();
   });
 
   it('renders every column header', async () => {
@@ -75,6 +86,56 @@ describe('SessionsTable', () => {
       'href',
       '/agent-platform/sessions/golem/def',
     );
+  });
+
+  describe('navigation', () => {
+    // The row's onClick is react-aria's `onAction`, which fires for a press
+    // anywhere in the row — the anchor included. Both firing for one click
+    // navigated twice: two identical history entries, so Back needed two presses,
+    // and with a modifier held the session opened in a new tab *and* took the
+    // current one with it.
+    it('does not also navigate the row when the title link is clicked', async () => {
+      await renderInTestApp(<SessionsTable rows={rows} />, {
+        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      });
+
+      await userEvent.click(
+        screen.getByRole('link', { name: 'What issues are assi...' }),
+      );
+
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('still navigates the row when a modifier key is held on the link', async () => {
+      // The browser opens the anchor in a new tab and react-router stays out of
+      // the way; the row must stay out of the way too, or the current tab is
+      // navigated away from the list the user wanted to keep.
+      await renderInTestApp(<SessionsTable rows={rows} />, {
+        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      });
+
+      await userEvent.keyboard('{Meta>}');
+      await userEvent.click(
+        screen.getByRole('link', { name: 'What issues are assi...' }),
+      );
+      await userEvent.keyboard('{/Meta}');
+
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('navigates when a cell other than the title is clicked', async () => {
+      // The whole-row click is the convenience affordance and must keep working.
+      await renderInTestApp(<SessionsTable rows={rows} />, {
+        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+      });
+
+      await userEvent.click(screen.getByText('Issue tracker'));
+
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).toHaveBeenCalledWith(
+        '/agent-platform/sessions/gazelle/abc',
+      );
+    });
   });
 
   it('renders session titles as kagent supplied them', async () => {
