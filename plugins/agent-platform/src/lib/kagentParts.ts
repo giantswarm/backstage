@@ -38,6 +38,54 @@ const INTERNAL_TOOL_NAMES = new Set(['adk_request_credential', 'ask_user']);
 /** The tool name kagent uses for a human-in-the-loop approval request. */
 export const CONFIRMATION_TOOL_NAME = 'adk_request_confirmation';
 
+/**
+ * muster's proxy tool. Agents reach most MCP tools through it, so the tool a call
+ * *appears* to make is almost always this one.
+ */
+export const MUSTER_PROXY_TOOL_NAME = 'call_tool';
+
+/** What the UI shows as the origin of a proxied call — the product name. */
+export const MUSTER_PROXY_LABEL = 'Muster';
+
+/**
+ * Look through muster's `call_tool` wrapper to the tool actually invoked.
+ *
+ * Agents call most MCP tools via muster, so without this every row reads
+ * `call_tool` and the real tool is buried in the arguments:
+ *
+ * ```
+ * call_tool  arguments: {…}, name: x_kubernetes_get
+ * ```
+ *
+ * which makes a run of calls impossible to scan — the problem reported in
+ * giantswarm/klaus-gateway#163 for the Slack surface. Unwrapped, the row names
+ * `x_kubernetes_get` and carries `via: 'muster'`.
+ *
+ * Only unwraps when the payload actually has the wrapper's shape (`name` a
+ * non-empty string, with the inner call's `arguments`). Anything else is returned
+ * untouched, so a future change to `call_tool` degrades to showing the wrapper
+ * rather than losing the call.
+ */
+export function unwrapProxiedCall(call: FunctionCall): FunctionCall & {
+  /** Set when the call reached its tool through a proxy. */
+  via?: string;
+} {
+  if (call.name !== MUSTER_PROXY_TOOL_NAME) {
+    return call;
+  }
+  const args = asRecord(call.args);
+  const innerName = asNonEmptyString(args?.name);
+  if (!innerName) {
+    return call;
+  }
+  return {
+    id: call.id,
+    name: innerName,
+    args: args?.arguments,
+    via: MUSTER_PROXY_LABEL,
+  };
+}
+
 export type FunctionCall = {
   /** Correlates a call with its response; absent on malformed payloads. */
   id?: string;

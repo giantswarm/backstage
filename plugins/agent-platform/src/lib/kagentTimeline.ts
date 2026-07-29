@@ -17,6 +17,7 @@ import {
   readPartText,
   readTokenUsage,
   TokenUsage,
+  unwrapProxiedCall,
 } from './kagentParts';
 
 /** Fields every timeline item carries. */
@@ -40,7 +41,13 @@ export type TimelineItem =
   | (TimelineItemBase & { kind: 'reasoning'; text: string })
   | (TimelineItemBase & {
       kind: 'tool-call';
+      /**
+       * The tool actually invoked. For a call made through muster's `call_tool`
+       * this is the **inner** tool, not the proxy — see `unwrapProxiedCall`.
+       */
       toolName: string;
+      /** The proxy the call travelled through, when it went through one. */
+      via?: string;
       args?: unknown;
       /** The tool's result, once its `function_response` was seen. */
       result?: unknown;
@@ -379,6 +386,11 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           return;
         }
 
+        // Agents reach most MCP tools through muster's `call_tool`, so without
+        // looking through that wrapper every row would read `call_tool` and the
+        // real tool would be buried in the arguments.
+        const effective = unwrapProxiedCall(call);
+
         const itemIndex = items.length;
         items.push(
           makeCallItem({
@@ -386,10 +398,11 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             at,
             author,
             taskIndex,
-            name: call.name,
-            args: call.args,
+            name: effective.name,
+            args: effective.args,
             result: undefined,
             isPending: true,
+            via: effective.via,
           }),
         );
         if (call.id) {
@@ -425,8 +438,10 @@ function makeCallItem(input: {
   args: unknown;
   result: unknown;
   isPending: boolean;
+  /** Set when the name and args came out of a proxy wrapper. */
+  via?: string;
 }): TimelineItem {
-  const { name, ...rest } = input;
+  const { name, via, ...rest } = input;
   if (isAgentToolName(name)) {
     return {
       ...rest,
@@ -441,6 +456,7 @@ function makeCallItem(input: {
     // A call with no name is still activity worth showing; label it rather than
     // dropping the item.
     toolName: name ?? 'unknown tool',
+    ...(via ? { via } : {}),
   };
 }
 

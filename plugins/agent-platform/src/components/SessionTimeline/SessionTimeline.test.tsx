@@ -135,14 +135,21 @@ describe('SessionTimeline', () => {
     expect(screen.getByText('3.1k tokens')).toBeInTheDocument();
   });
 
-  it('shows one timestamp per turn, not per item', async () => {
+  it('shows one absolute timestamp per turn, not per item', async () => {
     // A2A messages carry no time of their own and kagent's events cannot be
     // correlated with them, so a task's timestamp is the finest granularity there
     // is. Two turns in the fixture means two markers, not one per item.
+    //
+    // Absolute rather than relative, because every turn of a session usually falls
+    // on the same day: the relative form printed "1 day ago" for both of these and
+    // hid the four minutes between them.
     await render(tasksV099);
 
-    const relativeDates = screen.getAllByText(/ago$/);
-    expect(relativeDates).toHaveLength(2);
+    const markers = screen.getAllByText(/UTC$/);
+    expect(markers.map(m => m.textContent)).toEqual([
+      '23 Jul 2026, 16:05 UTC',
+      '23 Jul 2026, 16:09 UTC',
+    ]);
   });
 
   it('renders an empty state for a session that never ran', async () => {

@@ -21,7 +21,11 @@ import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
-import { formatTokens, SessionTimeline } from '../SessionTimeline';
+import {
+  formatDuration,
+  formatTokens,
+  SessionTimeline,
+} from '../SessionTimeline';
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -193,19 +197,17 @@ export function SessionDetailPage() {
             </Text>
           </Flex>
 
+          {/* Absolute, not relative. Both ends of a session are frequently within
+              the same day, so the relative form rendered "1 day ago · 1 day ago" —
+              identical for two timestamps 34 minutes apart, which told the reader
+              nothing. The Duration stat below now carries the span, so an exact
+              start time is the more useful thing to show here. The list keeps the
+              relative form, where scanning for recency is the point. */}
           <Text variant="body-small" color="secondary">
             Started{' '}
-            {row.createdAt ? (
-              <DateComponent value={row.createdAt} relative />
-            ) : (
-              '—'
-            )}
+            {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
             {' · last activity '}
-            {row.updatedAt ? (
-              <DateComponent value={row.updatedAt} relative />
-            ) : (
-              '—'
-            )}
+            {row.updatedAt ? <DateComponent value={row.updatedAt} /> : '—'}
           </Text>
 
           <Text className={classes.sessionId}>{row.id}</Text>
@@ -213,11 +215,20 @@ export function SessionDetailPage() {
 
         <Box className={classes.stats}>
           <Stat label="Turns" value={String(taskCount)} />
-          {/* Labelled "billed", because the raw sum is startling: every model call
-              re-sends the whole context, so a 4-turn session with a large tool
-              catalogue reached 1.5M prompt tokens across 14 calls. That is genuine
+          {/* Wall-clock span, not compute time — kagent records no per-turn
+              durations, so this includes however long the user was away between
+              turns. */}
+          <Stat
+            label="Duration"
+            value={formatDuration(row.createdAt, row.updatedAt) ?? '—'}
+          />
+          {/* Labelled "billed", because the raw number is startling: every model
+              call re-sends the whole context, so a 4-turn session with a large tool
+              catalogue reached 1.4M prompt tokens across 14 calls. That is genuine
               cumulative usage — kagent's own UI sums it the same way — but without
-              the label it reads as a bug. */}
+              the label it reads as a bug.
+              There is deliberately no combined total: input and output are priced
+              differently, so the sum is not a number anyone acts on. */}
           <Stat
             label="Input tokens (billed, cumulative)"
             value={formatTokens(timeline.tokens.prompt)}
@@ -226,7 +237,6 @@ export function SessionDetailPage() {
             label="Output tokens"
             value={formatTokens(timeline.tokens.completion)}
           />
-          <Stat label="Total" value={formatTokens(timeline.tokens.total)} />
         </Box>
 
         <SessionTimeline timeline={timeline} agentName={row.agentName} />

@@ -120,9 +120,13 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
         }
         return (
           <Flex key={turn.taskIndex} direction="column" gap="3">
+            {/* Absolute, not relative: every turn of a session usually falls on
+                the same day, so the relative form printed "1 day ago" three times
+                and hid the progression entirely. An exact time shows how the
+                session actually unfolded. */}
             <div className={classes.turnMarker}>
               <Text variant="body-small" color="secondary">
-                {turn.at ? <DateComponent value={turn.at} relative /> : '—'}
+                {turn.at ? <DateComponent value={turn.at} /> : '—'}
               </Text>
               <span className={classes.rule} />
             </div>

@@ -141,3 +141,52 @@ export function formatTokens(total: number): string {
   }
   return `${(total / 1_000_000).toFixed(1)}M`;
 }
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * How long a session spanned, from its first to its last activity.
+ *
+ * **Wall-clock, not compute time.** kagent records no per-turn durations, so this
+ * is `updated_at − created_at`: it includes however long the user was away between
+ * turns. A session answered in seconds and returned to the next day reads as a day
+ * — which is the truth about the session, just not about the agent's effort.
+ *
+ * Returns undefined when either end is unknown, or when the span is negative
+ * (clock skew between the writer and us) rather than rendering something absurd.
+ */
+export function formatDuration(
+  from: string | undefined,
+  to: string | undefined,
+): string | undefined {
+  if (!from || !to) {
+    return undefined;
+  }
+  const start = Date.parse(from);
+  const end = Date.parse(to);
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    return undefined;
+  }
+  const ms = end - start;
+  if (ms < 0) {
+    return undefined;
+  }
+  // Sub-minute spans are real — a one-shot question answered immediately — so
+  // seconds are worth showing rather than rounding to "0m".
+  if (ms < MINUTE_MS) {
+    return `${Math.round(ms / 1000)}s`;
+  }
+  if (ms < HOUR_MS) {
+    return `${Math.floor(ms / MINUTE_MS)}m`;
+  }
+  if (ms < DAY_MS) {
+    const hours = Math.floor(ms / HOUR_MS);
+    const minutes = Math.floor((ms % HOUR_MS) / MINUTE_MS);
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  const days = Math.floor(ms / DAY_MS);
+  const hours = Math.floor((ms % DAY_MS) / HOUR_MS);
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}

@@ -136,6 +136,10 @@ function CollapsedSummary({ item }: { item: TimelineItem }) {
           <Text variant="body-medium" weight="bold">
             {item.toolName}
           </Text>
+          {/* Agents reach most MCP tools through muster's `call_tool`, so the
+              parser looks through that wrapper and names the real tool. The badge
+              keeps the fact that it was proxied, which is otherwise lost. */}
+          {item.via && <Badge size="small">via {item.via}</Badge>}
           {item.isPending && <Badge size="small">no result</Badge>}
           <span className={classes.summary}>{summarizeArgs(item.args)}</span>
         </Flex>

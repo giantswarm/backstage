@@ -113,6 +113,15 @@ describe('SessionDetailPage', () => {
       screen.getByText('Input tokens (billed, cumulative)'),
     ).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
+    expect(screen.getByText('Output tokens')).toBeInTheDocument();
+  });
+
+  it('shows the wall-clock duration', async () => {
+    // kagent records no per-turn durations, so this is updated_at - created_at:
+    // the session's span, including time the user was away.
+    await render();
+
+    expect(screen.getByText('Duration')).toBeInTheDocument();
   });
 
   it('renders the timeline', async () => {
