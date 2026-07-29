@@ -221,16 +221,24 @@ export class KagentClient {
     options: KagentRequestOptions,
   ): Promise<unknown> {
     return this.request(
-      // `limit=1` because the caller wants the session object and nothing else.
-      // kagent bundles the session's stored events into this response and they
-      // dominate it — on a real 4-turn session, 591 KB of events against 261
-      // bytes of session metadata. They are not the conversation (that comes from
-      // `/tasks`) and, despite kagent's Go doc comment, not A2A messages either,
-      // so there is nothing in them we can use.
+      // `limit=1` — **not** `limit=0`, which kagent reads as *unlimited*: its DB
+      // layer gates the LIMIT clause on `opts.Limit > 0`
+      // (`go/core/internal/database/client_postgres.go`), and an absent param
+      // leaves `Limit` at its zero value. So `1` is the smallest value that limits
+      // anything, and "ask for zero events, we don't read them" — the
+      // obvious-looking simplification — silently restores the full payload.
       //
-      // Both v0.9.9 and v0.10 parse `limit` with the same handler code. A version
-      // that ignored it would simply return everything, which is exactly today's
-      // behaviour — so this can only help.
+      // The caller wants the session object and nothing else. kagent bundles the
+      // session's stored events into this response and they dominate it — on a real
+      // 4-turn session, 591 KB of events against 261 bytes of session metadata.
+      // They are not the conversation (that comes from `/tasks`) and, despite
+      // kagent's Go doc comment, not A2A messages either, so there is nothing in
+      // them we can use.
+      //
+      // Both v0.9.9 and v0.10 honour `limit` on this endpoint — v0.9.9 parses it
+      // inline in `HandleGetSession`, v0.10 in `eventQueryOptionsFromRequest`. A
+      // version that ignored it would simply return everything, which is exactly
+      // today's behaviour — so this can only help.
       `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
         sessionId,
       )}?limit=1`,

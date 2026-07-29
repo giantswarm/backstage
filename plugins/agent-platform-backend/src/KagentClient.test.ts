@@ -217,9 +217,14 @@ describe('KagentClient', () => {
     it('requests one session under the sessions path, asking for no events', async () => {
       // kagent bundles the session's stored events into this response and they
       // dominate it — 591 KB of events against 261 bytes of session metadata on a
-      // real 4-turn session. Nothing reads them, so `limit=1` trims the request by
+      // real 4-turn session. Nothing reads them, so `limit=1` trims the response by
       // ~99%. A version that ignored `limit` would just return everything, which
       // is today's behaviour, so this can only help.
+      //
+      // If this assertion fails because someone changed the value: `limit=0` does
+      // NOT mean "no events". kagent gates its LIMIT clause on `opts.Limit > 0`, so
+      // zero reads as *unlimited* and restores the full payload. `1` is the
+      // smallest value that limits anything.
       const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
 
       await build(fetchFn).getSession('abc123', { userToken: 't' });

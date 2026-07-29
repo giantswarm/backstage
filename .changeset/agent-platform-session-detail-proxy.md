@@ -5,7 +5,7 @@
 Proxy kagent's session detail and session tasks, the transport the upcoming
 Agent Platform session detail page needs.
 
-- `GET /kagent/sessions/:id` — one session plus its stored events.
+- `GET /kagent/sessions/:id` — the session object.
 - `GET /kagent/sessions/:id/tasks` — the session's A2A tasks, which carry the
   conversation (`history`), its state (`status.state`) and per-message token
   usage.
@@ -13,16 +13,18 @@ Agent Platform session detail page needs.
 Both require `?installation=` and a forwarded user token, and both pass kagent's
 JSON through verbatim, as the existing routes do.
 
-Two details worth knowing:
+Three details worth knowing:
 
-`GET /kagent/sessions/:id` asks kagent for `limit=1`, because the caller wants the
-session object and nothing else. kagent bundles the session's stored events into
-that response and they dominate it — on a real 4-turn session, 591 KB of events
-against 261 bytes of session metadata. Nothing reads them (see below), so this
-trims the request by ~99%. Both v0.9.9 and v0.10 parse `limit` with the same
-handler code, and a version that ignored it would simply return everything, which
-is the previous behaviour.
-
+- **`GET /kagent/sessions/:id` asks kagent for `limit=1`.** The caller wants the
+  session object and nothing else, but kagent bundles the session's stored events
+  into that response and they dominate it — on a real 4-turn session, 591 KB of
+  events against 261 bytes of session metadata. Nothing reads them (see below), so
+  this trims the response by ~99%. It has to be `1`, not `0`: kagent's DB layer
+  gates the LIMIT clause on `opts.Limit > 0`, so `limit=0` means _unlimited_ and
+  would quietly restore the full payload. Both v0.9.9 and v0.10 honour the param —
+  v0.9.9 parses it inline in `HandleGetSession`, v0.10 in
+  `eventQueryOptionsFromRequest` — and a version that ignored it would simply
+  return everything, which is the previous behaviour.
 - **The conversation comes from `…/tasks`, not from `…/sessions/:id`'s `events`.**
   That is what kagent's own UI renders from, and only task history is structured
   as A2A messages carrying the session's state and token usage. The `events` array

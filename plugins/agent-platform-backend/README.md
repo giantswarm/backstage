@@ -71,6 +71,10 @@ That matters for payload size: on that session the events were **591 KB against
 turn, which the UI should present per turn rather than implying per-message
 precision.
 
+The limit must be **`1`, not `0`** — kagent's DB layer gates the LIMIT clause on
+`opts.Limit > 0`, so `limit=0` reads as _unlimited_ and would quietly restore the
+full payload. `1` is the smallest value that limits anything.
+
 If a finer timeline is ever wanted, events are where it would come from — but that
 means parsing ADK `Content`, whose function calls are shaped differently from A2A
 data parts, not reusing the task parsers.
