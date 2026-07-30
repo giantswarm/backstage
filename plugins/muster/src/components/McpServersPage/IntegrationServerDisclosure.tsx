@@ -1,6 +1,12 @@
 import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
 import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
-import { DisclosureAccordion, Gate, StateBadge, severityTone } from '../shared';
+import {
+  DisclosureAccordion,
+  Gate,
+  ServerSignIn,
+  StateBadge,
+  severityTone,
+} from '../shared';
 import {
   AuthChain,
   DetailBlock,
@@ -86,6 +92,15 @@ export function IntegrationServerDisclosure({
 
       <DetailBlock title="Authentication / token chain">
         <AuthChain server={server} />
+        {/* Only meaningful with a muster session: the downstream flow is scoped
+            to it, and without one the status read would just 401. */}
+        {authenticated && (
+          <ServerSignIn
+            serverName={server.getName()}
+            installation={server.cluster}
+            onlyWhenRequired
+          />
+        )}
       </DetailBlock>
 
       <DetailBlock title="Runtime (live)">

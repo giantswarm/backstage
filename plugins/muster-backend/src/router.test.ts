@@ -265,18 +265,60 @@ describe('createRouter', () => {
     expect(callTool).toHaveBeenCalledWith('core_mcpserver_list', {}, {});
   });
 
+  /**
+   * These routes are only active on an installation that forwards a per-user
+   * token, so the whole block runs against one and sends the header.
+   */
   describe('downstream server auth', () => {
+    const TOKEN = 'user-token';
+    let authApp: express.Express;
+
+    beforeEach(async () => {
+      authApp = await buildMultiApp([
+        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
+      ]);
+    });
+
+    const login = (body: JsonObject) =>
+      request(authApp)
+        .post('/auth/login?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, TOKEN)
+        .send(body);
+
+    const readStatus = () =>
+      request(authApp)
+        .get('/auth/status?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, TOKEN);
+
     it('reads per-server auth status from the auth://status resource', async () => {
       const payload = {
         servers: [{ name: 'pro', status: 'auth_required' }],
       };
       getResource.mockResolvedValue(payload);
 
-      const response = await request(app).get('/auth/status');
+      const response = await readStatus();
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(payload);
-      expect(getResource).toHaveBeenCalledWith('auth://status', {});
+      expect(getResource).toHaveBeenCalledWith('auth://status', {
+        authToken: TOKEN,
+      });
+    });
+
+    /**
+     * A muster that doesn't register auth://status is an expected outcome, and
+     * the frontend polls this route every few seconds while a sign-in is
+     * outstanding -- a >=500 here would be a Sentry stream.
+     */
+    it('answers an unavailable status resource with an empty list, not a 5xx', async () => {
+      getResource.mockRejectedValue(
+        new Error('Muster resource auth://status returned no text content'),
+      );
+
+      const response = await readStatus();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ servers: [] });
     });
 
     it('returns the sign-in URL from an auth challenge', async () => {
@@ -295,9 +337,7 @@ describe('createRouter', () => {
         ].join('\n'),
       );
 
-      const response = await request(app)
-        .post('/auth/login')
-        .send({ server: 'pro' });
+      const response = await login({ server: 'pro' });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
@@ -308,7 +348,7 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith(
         'core_auth_login',
         { server: 'pro' },
-        {},
+        { authToken: TOKEN },
       );
     });
 
@@ -317,9 +357,7 @@ describe('createRouter', () => {
         "Server 'pro' is already authenticated and connected.",
       );
 
-      const response = await request(app)
-        .post('/auth/login')
-        .send({ server: 'pro' });
+      const response = await login({ server: 'pro' });
 
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('connected');
@@ -336,9 +374,7 @@ describe('createRouter', () => {
         new Error("Server 'pro' uses SSO and is connected automatically."),
       );
 
-      const response = await request(app)
-        .post('/auth/login')
-        .send({ server: 'pro' });
+      const response = await login({ server: 'pro' });
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
@@ -347,24 +383,71 @@ describe('createRouter', () => {
       });
     });
 
+    /**
+     * The flip side: an outage must NOT be dressed up as muster declining, or
+     * the user reads "fetch failed" as a policy decision and Sentry sees
+     * nothing.
+     */
+    it.each([
+      ['a transport failure', new TypeError('fetch failed')],
+      [
+        'a closed client',
+        new Error('Attempted to send a request from a closed client'),
+      ],
+      [
+        'an unavailable dependency',
+        Object.assign(new Error('no executor'), {
+          name: 'ServiceUnavailableError',
+        }),
+      ],
+    ])('lets %s keep its 5xx', async (_label, thrown) => {
+      callTool.mockRejectedValue(thrown);
+
+      const response = await login({ server: 'pro' });
+
+      expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+
     it('requires a server name', async () => {
-      const response = await request(app).post('/auth/login').send({});
+      const response = await login({});
 
       expect(response.status).toBe(400);
       expect(callTool).not.toHaveBeenCalled();
     });
 
-    it('still fails with 401 when the user token is missing', async () => {
-      const authApp = await buildMultiApp([
-        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
-      ]);
-
+    it('fails with 401 when the user token is missing', async () => {
       const response = await request(authApp)
         .post('/auth/login?installation=gazelle')
         .send({ server: 'pro' });
 
       expect(response.status).toBe(401);
       expect(callTool).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Without an authProvider there is no per-user token to key the MCP session
+     * cache on, so every portal user shares one muster session -- and one user's
+     * completed login would hand the next user their downstream grant.
+     */
+    describe('installation without per-user auth', () => {
+      it('reports no auth-gated servers', async () => {
+        const response = await request(app).get('/auth/status');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ servers: [] });
+        expect(getResource).not.toHaveBeenCalled();
+      });
+
+      it('refuses to start a sign-in', async () => {
+        const response = await request(app)
+          .post('/auth/login')
+          .send({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.status).toBe('error');
+        expect(response.body.message).toContain('without an authProvider');
+        expect(callTool).not.toHaveBeenCalled();
+      });
     });
   });
 

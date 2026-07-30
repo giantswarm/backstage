@@ -10,6 +10,7 @@ import Router from 'express-promise-router';
 import {
   AUTH_LOGIN_TOOL,
   AUTH_STATUS_RESOURCE,
+  isInfrastructureError,
   parseAuthLoginResult,
 } from './authLogin';
 import {
@@ -285,18 +286,51 @@ export async function createRouter(
   // --- Downstream server authentication ------------------------------------
 
   /**
+   * Downstream, per-server auth state is scoped to one muster MCP session, and
+   * MusterMcpClient keys its session cache on the forwarded user token. An
+   * installation without `authProvider` therefore has no token to key on and
+   * every portal user shares a single session -- so one user's completed
+   * `core_auth_login` would connect a downstream server for everybody, letting
+   * the next user call it under the first user's OAuth grant.
+   *
+   * Read-only discovery tolerates that shared session; per-user auth cannot, so
+   * these two routes are inert unless the installation forwards a user token.
+   */
+  const hasPerUserSession = (installation: MusterInstallationConfig) =>
+    Boolean(installation.authProvider);
+
+  /**
    * Per-server authentication status for the calling user's muster session
    * (muster's `auth://status` resource). Read by the "Sign in" affordances to
    * tell an OAuth-loginable server from an SSO-managed one and to detect when a
    * browser sign-in has completed.
+   *
+   * An empty server list means "no sign-in affordance applies here", which also
+   * covers every way the resource can be unavailable: a muster that doesn't
+   * register `auth://status`, one whose transport doesn't answer
+   * `resources/read`, or an installation without per-user sessions. Those are
+   * expected outcomes, and the frontend polls this route every few seconds while
+   * a sign-in is outstanding, so they must not become a stream of >=500s that
+   * MiddlewareFactory reports to Sentry.
    */
   router.get('/auth/status', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const result = await client.getResource(
-      AUTH_STATUS_RESOURCE,
-      readCallOptions(req, installation),
-    );
-    res.json(result);
+    if (!hasPerUserSession(installation)) {
+      res.json({ servers: [] });
+      return;
+    }
+
+    const callOptions = readCallOptions(req, installation);
+
+    try {
+      res.json(await client.getResource(AUTH_STATUS_RESOURCE, callOptions));
+    } catch (error) {
+      logger.info(`Muster ${AUTH_STATUS_RESOURCE} is unavailable`, {
+        installation: installation.name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      res.json({ servers: [] });
+    }
   });
 
   /**
@@ -307,9 +341,11 @@ export async function createRouter(
    *
    * Muster reports refusals (SSO-managed server, rate limit, undiscoverable
    * issuer) as MCP tool errors, which the client turns into a thrown Error.
-   * Those are expected outcomes for this route, so every failure is returned as
-   * a structured 200 -- with the message shown next to the button -- rather than
-   * a 5xx that MiddlewareFactory would ship to Sentry.
+   * Those are expected outcomes, so they are returned as a structured 200 --
+   * with the message shown next to the button -- rather than a 5xx that
+   * MiddlewareFactory would ship to Sentry. Infrastructure faults are NOT
+   * swallowed: reporting "fetch failed" as if muster had deliberately declined
+   * would hide an outage from both the user and Sentry.
    */
   router.post('/auth/login', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -318,6 +354,13 @@ export async function createRouter(
     if (typeof server !== 'string' || server === '') {
       throw new InputError('server is required in the request body');
     }
+    if (!hasPerUserSession(installation)) {
+      res.json({
+        status: 'error',
+        message: `The muster installation '${installation.name}' is configured without an authProvider, so it has no per-user session to authenticate a downstream server for.`,
+      });
+      return;
+    }
 
     const callOptions = readCallOptions(req, installation);
 
@@ -325,8 +368,11 @@ export async function createRouter(
     try {
       payload = await client.callTool(AUTH_LOGIN_TOOL, { server }, callOptions);
     } catch (error) {
+      if (isInfrastructureError(error)) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : String(error);
-      logger.info(`${AUTH_LOGIN_TOOL} did not connect the server`, {
+      logger.info(`${AUTH_LOGIN_TOOL} declined to connect the server`, {
         installation: installation.name,
         server,
         message,

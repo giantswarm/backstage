@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  QueryClient,
+} from '@tanstack/react-query';
 import { musterApiRef, ServerAuthStatus } from '../../apis';
 
 /** How often `auth://status` is re-read while a browser sign-in is pending. */
-const POLL_INTERVAL_MS = 5_000;
+const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
 /**
  * How long to keep polling for an unfinished sign-in. Generous enough for an
@@ -19,6 +24,40 @@ const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
   'reauth_required',
 ];
 
+/**
+ * A sign-in this browser tab started and is still waiting on. Held in the
+ * react-query cache rather than component state so it outlives the row that
+ * started it: on the MCP servers page the affordance lives inside a
+ * `DisclosureAccordion`, which unmounts its children when collapsed, and losing
+ * the pending flow there would reproduce exactly the "nothing happened" symptom
+ * this feature exists to fix. Re-mounting the row resumes the same wait.
+ */
+interface PendingSignIn {
+  authUrl: string;
+  /** Epoch ms after which polling gives up. Survives remounts with the entry. */
+  deadline: number;
+}
+
+function pendingKey(installation: string | undefined, serverName: string) {
+  return ['muster', 'pending-sign-in', installation, serverName] as const;
+}
+
+/**
+ * `null` rather than `undefined` for "nothing pending": react-query rejects a
+ * queryFn that resolves to undefined.
+ */
+function readPending(
+  queryClient: QueryClient,
+  installation: string | undefined,
+  serverName: string,
+): PendingSignIn | null {
+  return (
+    queryClient.getQueryData<PendingSignIn | null>(
+      pendingKey(installation, serverName),
+    ) ?? null
+  );
+}
+
 export interface ServerSignInState {
   /** This server's entry in `auth://status`, when muster reports one. */
   status?: ServerAuthStatus;
@@ -32,6 +71,8 @@ export interface ServerSignInState {
   hasTimedOut: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
   error?: string;
+  /** Muster's message for an outcome that isn't a failure (already connected). */
+  note?: string;
   /**
    * The server is SSO-managed (token forwarding/exchange): its connection is
    * established from muster's own session, so a user sign-in cannot fix it.
@@ -40,6 +81,11 @@ export interface ServerSignInState {
   /** Whether muster reports this server as needing a user sign-in. */
   needsLogin: boolean;
   signIn: () => void;
+}
+
+export interface UseServerSignInOptions {
+  /** Overridable so tests can drive the poll without real wall-clock waits. */
+  pollIntervalMs?: number;
 }
 
 /**
@@ -53,7 +99,7 @@ export interface ServerSignInState {
  * session, with no further tool call. There is no push signal for that, so this
  * hook polls `auth://status` while the flow is outstanding and clears itself
  * (invalidating every muster query, so hidden tools appear) once the server
- * leaves the auth-required states.
+ * reports `connected`.
  *
  * The `auth://status` query is keyed per installation, so several rows on the
  * same page share one request.
@@ -61,20 +107,43 @@ export interface ServerSignInState {
 export function useServerSignIn(
   serverName: string,
   installation?: string,
+  options: UseServerSignInOptions = {},
 ): ServerSignInState {
   const musterApi = useApi(musterApiRef);
   const queryClient = useQueryClient();
-  const [authUrl, setAuthUrl] = useState<string | undefined>();
-  const [hasTimedOut, setHasTimedOut] = useState(false);
-  const [error, setError] = useState<string | undefined>();
+  const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 
+  // Subscribing via useQuery (rather than reading the cache directly) is what
+  // re-renders this row when the pending entry is written or cleared.
+  const { data: pending } = useQuery<PendingSignIn | null>({
+    queryKey: pendingKey(installation, serverName),
+    // Cache-only: nothing fetches this, the mutation and the effects below own
+    // it.
+    queryFn: () => readPending(queryClient, installation, serverName),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  const setPending = useCallback(
+    (value: PendingSignIn | null) => {
+      queryClient.setQueryData(pendingKey(installation, serverName), value);
+    },
+    [queryClient, installation, serverName],
+  );
+
+  const authUrl = pending?.authUrl;
+  const hasTimedOut = pending ? Date.now() >= pending.deadline : false;
   const isWaiting = Boolean(authUrl) && !hasTimedOut;
 
   const { data, error: statusError } = useQuery({
     queryKey: ['muster', 'auth-status', installation],
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
-    refetchInterval: isWaiting ? POLL_INTERVAL_MS : false,
+    refetchInterval: isWaiting ? pollIntervalMs : false,
+    // An unavailable status resource, or a 401 before the user has connected to
+    // muster, are expected answers -- retrying each three times only multiplies
+    // the noise.
+    retry: false,
   });
 
   const status = data?.servers?.find(server => server.name === serverName);
@@ -82,50 +151,49 @@ export function useServerSignIn(
   const signIn = useMutation({
     mutationFn: () => musterApi.signInServer(serverName, installation),
     onSuccess: result => {
-      setHasTimedOut(false);
       if (result.status === 'auth_required' && result.authUrl) {
-        setAuthUrl(result.authUrl);
-        setError(undefined);
+        setPending({
+          authUrl: result.authUrl,
+          deadline: Date.now() + POLL_TIMEOUT_MS,
+        });
         return;
       }
-      setAuthUrl(undefined);
+      setPending(null);
       if (result.status === 'connected') {
-        setError(undefined);
         queryClient.invalidateQueries({ queryKey: ['muster'] });
-        return;
       }
-      // 'error', or an answer we couldn't classify -- show muster's own words
-      // rather than inventing a diagnosis.
-      setError(result.message);
-    },
-    onError: (mutationError: Error) => {
-      setAuthUrl(undefined);
-      setError(mutationError.message);
     },
   });
 
-  // Stop polling an abandoned flow instead of hammering the proxy forever.
+  // Re-render once the deadline passes so the row can offer a fresh sign-in
+  // instead of a challenge URL whose state has expired.
   useEffect(() => {
-    if (!authUrl || hasTimedOut) {
+    if (!pending || hasTimedOut) {
       return undefined;
     }
-    const timer = setTimeout(() => setHasTimedOut(true), POLL_TIMEOUT_MS);
+    const timer = setTimeout(
+      () => setPending({ ...pending }),
+      Math.max(0, pending.deadline - Date.now()),
+    );
     return () => clearTimeout(timer);
-  }, [authUrl, hasTimedOut]);
+  }, [pending, hasTimedOut, setPending]);
 
   // The browser flow completed: muster connected the server for this session.
   // Only `connected` ends the wait -- the same condition muster's CLI waits for
   // (`waitForServerAuthWithClient`). Any other status means the flow hasn't
-  // landed yet, so keep polling until the timeout rather than silently dropping
+  // landed yet, so keep polling until the deadline rather than silently dropping
   // the sign-in link.
   useEffect(() => {
-    if (!authUrl || status?.status !== 'connected') {
+    if (!pending || status?.status !== 'connected') {
       return;
     }
-    setAuthUrl(undefined);
-    setHasTimedOut(false);
+    setPending(null);
     queryClient.invalidateQueries({ queryKey: ['muster'] });
-  }, [authUrl, status, queryClient]);
+  }, [pending, status, queryClient, setPending]);
+
+  const signInResult = signIn.data;
+  const isFailure =
+    signInResult?.status === 'error' || signInResult?.status === 'unknown';
 
   return {
     status,
@@ -133,11 +201,22 @@ export function useServerSignIn(
     authUrl,
     isWaiting,
     hasTimedOut,
-    // A failed status read would otherwise leave the UI waiting forever for a
-    // transition it can never observe, so it is surfaced rather than swallowed.
+    // Muster's own words for a refusal, or the mutation's transport error. A
+    // failed status read is only worth showing while a sign-in is outstanding:
+    // then it explains a wait that can never end, whereas outside a flow it is
+    // just noise next to content the user didn't ask about (the servers page
+    // renders this above its own "connect to muster" gate).
     error:
-      error ??
-      (statusError ? `Auth status: ${statusError.message}` : undefined),
+      (isFailure ? signInResult?.message : undefined) ??
+      signIn.error?.message ??
+      (pending && statusError
+        ? `Auth status: ${statusError.message}`
+        : undefined),
+    // 'connected' with the alert still up is a real combination (the two come
+    // from different muster state), and silence there is indistinguishable from
+    // the no-op click this feature fixes.
+    note:
+      signInResult?.status === 'connected' ? signInResult.message : undefined,
     isSsoManaged: Boolean(
       status?.token_forwarding_enabled || status?.token_exchange_enabled,
     ),

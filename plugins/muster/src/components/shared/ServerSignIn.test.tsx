@@ -95,7 +95,12 @@ describe('ServerSignIn', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps the button when muster reports the server already connected', async () => {
+  /**
+   * muster answering "already connected" while the alert still lists the server
+   * is a real combination (the two come from different muster state). Saying
+   * nothing there is indistinguishable from the no-op click this feature fixes.
+   */
+  it('reports muster\u2019s answer when the server is already connected', async () => {
     const api = makeApi({
       status: { name: 'pro', status: 'auth_required' },
       signIn: {
@@ -107,9 +112,11 @@ describe('ServerSignIn', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    await waitFor(() => {
-      expect(api.signInServer).toHaveBeenCalled();
-    });
+    expect(
+      await screen.findByText(
+        "Server 'pro' is already authenticated and connected.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -150,43 +157,67 @@ describe('ServerSignIn', () => {
   });
 
   /**
-   * The completion signal: muster's OAuth callback connects the server for this
-   * session, and the only way the UI learns about it is auth://status flipping
-   * to `connected` (the same condition muster's CLI waits for).
+   * A broken status read is what turned this into a silent forever-wait, so it
+   * is surfaced -- but only once a sign-in is outstanding, since that is when it
+   * explains a wait that can never end.
    */
-  it('drops the waiting state once auth://status reports the server connected', async () => {
-    const api = makeApi({
-      status: { name: 'pro', status: 'auth_required' },
-    });
-    await renderSignIn(api);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await screen.findByRole('link', { name: /Open sign-in page/ });
-
-    // The browser flow completes: the next poll sees the server connected.
-    api.getAuthStatus.mockResolvedValue({
-      servers: [{ name: 'pro', status: 'connected' }],
-    });
-
-    await waitFor(
-      () => {
-        expect(screen.queryByRole('link')).not.toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 15_000);
-
-  it('surfaces a failing auth status read instead of waiting forever', async () => {
+  it('surfaces a failing auth status read once a sign-in is outstanding', async () => {
     const api = makeApi({ status: { name: 'pro', status: 'auth_required' } });
     api.getAuthStatus.mockRejectedValue(
-      new Error('Muster resource auth://status returned no text content'),
+      new Error('auth://status returned no text content'),
     );
     await renderSignIn(api);
 
     expect(
+      screen.queryByText(/auth:\/\/status returned no text content/),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(
       await screen.findByText(
-        /Auth status: Muster resource auth:\/\/status returned no text content/,
+        /Auth status: auth:\/\/status returned no text content/,
       ),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The MCP servers page renders this above its own "connect to muster" gate, so
+   * a 401 from the status read must not conjure a row (with a button that would
+   * 401 too) next to every expanded server.
+   */
+  it('stays hidden on a status error when only shown on demand', async () => {
+    const api = makeApi({});
+    api.getAuthStatus.mockRejectedValue(
+      new Error("installation 'gazelle' requires a user token"),
+    );
+    await renderSignIn(api, { onlyWhenRequired: true });
+
+    await waitFor(() => {
+      expect(api.getAuthStatus).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByText(/requires a user token/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The tool explorer renders rows without `onlyWhenRequired` because muster
+   * already said these servers are auth-gated. An SSO server whose status is not
+   * one of the auth-required values must still explain itself rather than
+   * leaving the alert with no name, action, or reason.
+   */
+  it('explains an SSO server whose status is not auth-required', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'failed',
+        token_forwarding_enabled: true,
+      },
+    });
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(/authenticates through SSO/),
     ).toBeInTheDocument();
   });
 

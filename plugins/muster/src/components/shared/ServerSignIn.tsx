@@ -23,9 +23,10 @@ export interface ServerSignInProps {
   showName?: boolean;
   /**
    * Render nothing unless `auth://status` reports this server as needing a user
-   * sign-in. Used where the affordance sits next to always-visible content (the
-   * MCP servers page); the tool explorer omits it because muster already told it
-   * these servers are auth-gated.
+   * sign-in (or a sign-in from this session has something to say about it). Used
+   * where the affordance sits next to always-visible content (the MCP servers
+   * page); the tool explorer omits it because muster already told it these
+   * servers are auth-gated.
    */
   onlyWhenRequired?: boolean;
 }
@@ -54,20 +55,24 @@ export function ServerSignIn({
     authUrl,
     hasTimedOut,
     error,
+    note,
     isSsoManaged,
     needsLogin,
     signIn,
   } = useServerSignIn(serverName, installation);
 
-  const idle = !authUrl && !error;
+  const idle = !authUrl && !error && !note;
   if (onlyWhenRequired && !needsLogin && idle) {
     return null;
   }
 
+  // Reaching here means we know the server is SSO-managed, so the explanation is
+  // always more useful than nothing. It deliberately does NOT re-gate on
+  // `needsLogin`: the tool explorer renders this without `onlyWhenRequired`
+  // precisely because muster already said the server is auth-gated, and a
+  // status like `failed`/`sso_pending` would otherwise leave the alert claiming
+  // a server needs authentication with no name, action, or reason shown.
   if (isSsoManaged) {
-    if (!needsLogin) {
-      return null;
-    }
     return (
       <Text as="p" variant="body-small" color="secondary">
         {serverName} authenticates through SSO from muster's own session, so
@@ -79,10 +84,15 @@ export function ServerSignIn({
     );
   }
 
+  // After the deadline the challenge's `state` is plausibly expired or already
+  // consumed, so following the old link cannot help. Offer the button again --
+  // minting a fresh challenge is the only action that recovers.
+  const showLink = Boolean(authUrl) && !hasTimedOut;
+
   return (
     <div className={classes.root}>
       {showName ? <code className={classes.name}>{serverName}</code> : null}
-      {authUrl ? (
+      {showLink ? (
         <>
           <ButtonLink
             href={authUrl}
@@ -94,9 +104,7 @@ export function ServerSignIn({
             Open sign-in page ↗
           </ButtonLink>
           <Text variant="body-small" color="secondary">
-            {hasTimedOut
-              ? 'Still not connected — open the link, then reload this page.'
-              : 'Waiting for you to finish signing in…'}
+            Waiting for you to finish signing in…
           </Text>
         </>
       ) : (
@@ -109,6 +117,16 @@ export function ServerSignIn({
           {isPending ? 'Signing in…' : 'Sign in'}
         </Button>
       )}
+      {hasTimedOut ? (
+        <Text variant="body-small" color="secondary">
+          Timed out waiting for the sign-in — try again.
+        </Text>
+      ) : null}
+      {note ? (
+        <Text variant="body-small" color="secondary">
+          {note}
+        </Text>
+      ) : null}
       {error ? (
         <Text variant="body-small" color="danger">
           {error}

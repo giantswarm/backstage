@@ -11,7 +11,7 @@ import {
   formatRelativeTime,
   formatTimestamp,
 } from '../../lib/formatRelativeTime';
-import { ServerSignIn, StateBadge } from '../shared';
+import { StateBadge } from '../shared';
 import { severityTone } from '../shared';
 import { toolExplorerRouteRef } from '../../routes';
 
@@ -124,9 +124,13 @@ export function ServerConfig({ server }: { server: MCPServer }) {
 }
 
 /**
- * The per-server auth/token chain recovered from `spec.auth`, plus the sign-in
- * affordance when this user's muster session is not authenticated to the server.
- * Shared by the standard and integration disclosures.
+ * The per-server auth/token chain recovered from `spec.auth`.
+ *
+ * The sign-in affordance deliberately lives in the disclosures rather than here:
+ * this component returns early for a CR without `spec.auth`, while muster can
+ * still report that server as `auth_required`, and a federated family renders
+ * one AuthChain for an arbitrary representative CR whereas `core_auth_login` is
+ * per server instance.
  */
 export function AuthChain({ server }: { server: MCPServer }) {
   const classes = useStyles();
@@ -144,11 +148,6 @@ export function AuthChain({ server }: { server: MCPServer }) {
 
   return (
     <>
-      <ServerSignIn
-        serverName={server.getName()}
-        installation={server.cluster}
-        onlyWhenRequired
-      />
       <Box className={classes.grid}>
         <DefRow label="Type">{auth.type}</DefRow>
         <DefRow label="Forward token">
