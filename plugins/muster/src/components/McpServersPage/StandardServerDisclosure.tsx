@@ -1,6 +1,11 @@
 import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
 import { MCPServer } from '../../lib/k8s';
-import { DisclosureAccordion, Gate, InstallationHealthPill } from '../shared';
+import {
+  DisclosureAccordion,
+  Gate,
+  InstallationHealthPill,
+  ServerSignIn,
+} from '../shared';
 import { presenceByMc, selectRepresentative } from '../../lib/serverGrouping';
 import {
   AuthChain,
@@ -149,6 +154,20 @@ export function StandardServerDisclosure({
           Shown for {repMc}; the auth/token chain differs per cluster (e.g.
           forward-token vs token-exchange/OBO).
         </Typography>
+        {/* One affordance per instance, not per family: `auth://status` and
+            `core_auth_login` are per server, so the representative CR's sign-in
+            would leave the family's other instances gated with no way to act.
+            `onlyWhenRequired` keeps this quiet for the connected majority. */}
+        {authenticated &&
+          servers.map(instance => (
+            <ServerSignIn
+              key={instance.getName()}
+              serverName={instance.getName()}
+              installation={instance.cluster}
+              showName
+              onlyWhenRequired
+            />
+          ))}
       </DetailBlock>
 
       <DetailBlock title="GitOps provenance">

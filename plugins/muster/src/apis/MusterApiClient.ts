@@ -5,6 +5,7 @@ import {
   FetchApi,
 } from '@backstage/core-plugin-api';
 import {
+  AuthStatusResponse,
   FilterToolsOptions,
   FilterToolsResponse,
   ListExecutionsOptions,
@@ -13,6 +14,7 @@ import {
   MusterApi,
   MusterAuthProvidersApi,
   MusterInstallationsResponse,
+  ServerSignInResult,
   ToolDetail,
   WorkflowExecution,
   WorkflowExecutionListResponse,
@@ -163,6 +165,21 @@ export class MusterApiClient implements MusterApi {
     installation?: string,
   ): Promise<unknown> {
     return this.post<unknown>('/call', { name, arguments: args }, installation);
+  }
+
+  async getAuthStatus(installation?: string): Promise<AuthStatusResponse> {
+    return this.get<AuthStatusResponse>('/auth/status', installation);
+  }
+
+  async signInServer(
+    server: string,
+    installation?: string,
+  ): Promise<ServerSignInResult> {
+    return this.post<ServerSignInResult>(
+      '/auth/login',
+      { server },
+      installation,
+    );
   }
 
   /**

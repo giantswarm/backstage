@@ -3,14 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { makeStyles, Theme } from '@material-ui/core';
 import BuildIcon from '@material-ui/icons/Build';
 import { Content, EmptyState } from '@backstage/core-components';
-import { Alert, Box, Button, Text } from '@backstage/ui';
+import { Alert, Box, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import { SectionHeader } from '../shared';
+import { SectionHeader, ServerSignIn } from '../shared';
 import { ToolBrowser } from './ToolBrowser';
 import { ToolDetailPanel } from './ToolDetailPanel';
 import { useToolPrefs } from './useToolPrefs';
@@ -40,18 +40,11 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 function AuthAffordance({ installation }: { installation: string }) {
   const musterApi = useApi(musterApiRef);
-  const queryClient = useQueryClient();
+  const { activeInstallationInfo } = useMusterInstance();
 
   const { data } = useQuery({
     queryKey: ['muster', 'list-tools-auth', installation],
     queryFn: () => musterApi.listTools(installation),
-  });
-
-  const signIn = useMutation({
-    mutationFn: () => musterApi.signIn(installation),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['muster'] });
-    },
   });
 
   const servers = data?.servers_requiring_auth ?? [];
@@ -59,13 +52,43 @@ function AuthAffordance({ installation }: { installation: string }) {
     return null;
   }
 
-  const description = `${servers.length} server${
-    servers.length === 1 ? '' : 's'
-  } require authentication and their tools are hidden until you sign in: ${servers
-    .map(s => s.name)
-    .join(', ')}.${
-    signIn.isError ? ' Sign-in failed — check the muster auth provider.' : ''
-  }`;
+  // `servers_requiring_auth` is muster's own state and says nothing about how
+  // this portal reaches it. Signing a *user* in needs a per-user muster session,
+  // which only exists when the installation is configured with an authProvider
+  // (`requiresAuth` on the wire) -- without one the sign-in has no possible
+  // outcome but an internal config message, so say it once instead of offering
+  // every server a button that cannot work.
+  const canSignIn = activeInstallationInfo?.requiresAuth ?? false;
+
+  // muster reports one `auth_tool` per server (`core_auth_login`, taking the
+  // server name) and excludes SSO-managed servers from this list, so each entry
+  // gets its own sign-in flow rather than one blanket action.
+  const description = (
+    <Flex direction="column" gap="2">
+      <Text variant="body-small">
+        {servers.length === 1
+          ? '1 server requires authentication and its tools stay hidden until you sign in.'
+          : `${servers.length} servers require authentication and their tools stay hidden until you sign in.`}
+      </Text>
+      {canSignIn ? (
+        servers.map(server => (
+          <ServerSignIn
+            key={server.name}
+            serverName={server.name}
+            installation={installation}
+            showName
+          />
+        ))
+      ) : (
+        <Text variant="body-small" color="secondary">
+          This portal talks to muster without per-user credentials, so these
+          servers ({servers.map(server => server.name).join(', ')}) cannot be
+          signed in to from here. An administrator has to configure an auth
+          provider for this installation.
+        </Text>
+      )}
+    </Flex>
+  );
 
   return (
     <Box mb="3">
@@ -73,16 +96,6 @@ function AuthAffordance({ installation }: { installation: string }) {
         status="warning"
         title="Authentication required"
         description={description}
-        customActions={
-          <Button
-            variant="secondary"
-            size="small"
-            isPending={signIn.isPending}
-            onClick={() => signIn.mutate()}
-          >
-            {signIn.isPending ? 'Signing in…' : 'Sign in'}
-          </Button>
-        }
       />
     </Box>
   );

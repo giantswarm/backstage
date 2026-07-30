@@ -8,6 +8,12 @@ import {
 import express from 'express';
 import Router from 'express-promise-router';
 import {
+  AUTH_LOGIN_TOOL,
+  AUTH_STATUS_RESOURCE,
+  isInfrastructureError,
+  parseAuthLoginResult,
+} from './authLogin';
+import {
   MusterInstallationConfig,
   MusterMcpClient,
   readMusterInstallationsFromConfig,
@@ -275,6 +281,109 @@ export async function createRouter(
       readCallOptions(req, installation),
     );
     res.json(result);
+  });
+
+  // --- Downstream server authentication ------------------------------------
+
+  /**
+   * Downstream, per-server auth state is scoped to one muster MCP session, and
+   * MusterMcpClient keys its session cache on the forwarded user token. An
+   * installation without `authProvider` therefore has no token to key on and
+   * every portal user shares a single session -- so one user's completed
+   * `core_auth_login` would connect a downstream server for everybody, letting
+   * the next user call it under the first user's OAuth grant.
+   *
+   * Read-only discovery tolerates that shared session; per-user auth cannot, so
+   * these two routes are inert unless the installation forwards a user token.
+   */
+  const hasPerUserSession = (installation: MusterInstallationConfig) =>
+    Boolean(installation.authProvider);
+
+  /**
+   * Per-server authentication status for the calling user's muster session
+   * (muster's `auth://status` resource). Read by the "Sign in" affordances to
+   * tell an OAuth-loginable server from an SSO-managed one and to detect when a
+   * browser sign-in has completed.
+   *
+   * An empty server list means "no sign-in affordance applies here". Every way
+   * the resource can be unavailable -- a muster that doesn't register
+   * `auth://status`, one whose transport doesn't answer `resources/read`, an
+   * outage mid-flow -- answers 200 with `unavailable: true` rather than a >=500:
+   * the frontend polls this every few seconds while a sign-in is outstanding, so
+   * a failing status read would otherwise be a Sentry stream. The flag is what
+   * lets the waiting row say the status is unreadable instead of claiming to
+   * still be waiting for the user.
+   */
+  router.get('/auth/status', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    if (!hasPerUserSession(installation)) {
+      res.json({ servers: [] });
+      return;
+    }
+
+    const callOptions = readCallOptions(req, installation);
+
+    try {
+      res.json(await client.getResource(AUTH_STATUS_RESOURCE, callOptions));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.info(`Muster ${AUTH_STATUS_RESOURCE} is unavailable`, {
+        installation: installation.name,
+        message,
+      });
+      res.json({ servers: [], unavailable: true, message });
+    }
+  });
+
+  /**
+   * Start (or complete) the OAuth flow for one aggregated MCP server via
+   * muster's `core_auth_login`. Muster answers with free text -- either "already
+   * connected" or a challenge carrying a sign-in URL the user must visit -- so
+   * the response is normalised here.
+   *
+   * Muster reports refusals (SSO-managed server, rate limit, undiscoverable
+   * issuer) as MCP tool errors, which the client turns into a thrown Error.
+   * Those are expected outcomes, so they are returned as a structured 200 --
+   * with the message shown next to the button -- rather than a 5xx that
+   * MiddlewareFactory would ship to Sentry. Infrastructure faults are NOT
+   * swallowed: reporting "fetch failed" as if muster had deliberately declined
+   * would hide an outage from both the user and Sentry.
+   */
+  router.post('/auth/login', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { server } = req.body ?? {};
+
+    if (typeof server !== 'string' || server === '') {
+      throw new InputError('server is required in the request body');
+    }
+    if (!hasPerUserSession(installation)) {
+      res.json({
+        status: 'error',
+        message: `The muster installation '${installation.name}' is configured without an authProvider, so it has no per-user session to authenticate a downstream server for.`,
+      });
+      return;
+    }
+
+    const callOptions = readCallOptions(req, installation);
+
+    let payload: unknown;
+    try {
+      payload = await client.callTool(AUTH_LOGIN_TOOL, { server }, callOptions);
+    } catch (error) {
+      if (isInfrastructureError(error)) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      logger.info(`${AUTH_LOGIN_TOOL} declined to connect the server`, {
+        installation: installation.name,
+        server,
+        message,
+      });
+      res.json({ status: 'error', message });
+      return;
+    }
+
+    res.json(parseAuthLoginResult(payload));
   });
 
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------

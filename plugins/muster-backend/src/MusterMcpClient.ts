@@ -202,17 +202,7 @@ export class MusterMcpClient {
       throw new NotFoundError(`Unknown muster meta-tool: ${metaTool}`);
     }
 
-    const authToken = options?.authToken;
-    const cacheKey = McpClientCache.buildKey(this.installation.name, authToken);
-
-    const headers: Record<string, string> | undefined =
-      authToken !== undefined
-        ? { ...this.installation.headers, Authorization: `Bearer ${authToken}` }
-        : this.installation.headers;
-
-    const client = await this.cache.getOrCreate(cacheKey, () =>
-      this.clientFactory(headers),
-    );
+    const { client, cacheKey } = await this.connect(options);
     const tools = client.toolsFromDefinitions({
       tools: [{ name: metaTool, inputSchema: { type: 'object' as const } }],
     });
@@ -235,16 +225,44 @@ export class MusterMcpClient {
         context: undefined,
       });
     } catch (error) {
-      if (isClosedClientError(error)) {
-        this.logger.warn(
-          `Muster MCP client returned a closed-client error; reconnecting on the next request.`,
-        );
-        this.cache.markDead(cacheKey);
-      }
+      this.handleRequestError(error, cacheKey);
       throw error;
     }
 
     return this.parseResult(result, metaTool);
+  }
+
+  /**
+   * Resolve the cached MCP client for this installation and caller. The cache is
+   * keyed per user token, so a server behind per-user auth gets one MCP session
+   * per user -- which is also what makes muster's per-session downstream auth
+   * state (see getResource / auth://status) stable across requests.
+   */
+  private async connect(options?: { authToken?: string }): Promise<{
+    client: MCPClient;
+    cacheKey: string;
+  }> {
+    const authToken = options?.authToken;
+    const cacheKey = McpClientCache.buildKey(this.installation.name, authToken);
+
+    const headers: Record<string, string> | undefined =
+      authToken !== undefined
+        ? { ...this.installation.headers, Authorization: `Bearer ${authToken}` }
+        : this.installation.headers;
+
+    const client = await this.cache.getOrCreate(cacheKey, () =>
+      this.clientFactory(headers),
+    );
+    return { client, cacheKey };
+  }
+
+  private handleRequestError(error: unknown, cacheKey: string): void {
+    if (isClosedClientError(error)) {
+      this.logger.warn(
+        `Muster MCP client returned a closed-client error; reconnecting on the next request.`,
+      );
+      this.cache.markDead(cacheKey);
+    }
   }
 
   /**
@@ -288,6 +306,52 @@ export class MusterMcpClient {
     options?: { authToken?: string },
   ): Promise<unknown> {
     return this.invokeMetaTool('list_core_tools', args, options);
+  }
+
+  /**
+   * Read one of the aggregator's own MCP resources by URI, via a native
+   * `resources/read`. Used for `auth://status`, the per-session view of which
+   * aggregated servers this user is authenticated to.
+   *
+   * This deliberately does NOT go through the `get_resource` meta-tool: that one
+   * aggregates the resources of the *downstream* servers and never sees
+   * `auth://status`, which muster registers on the aggregator's own MCP server
+   * (`list_resources` reports "No resources available" against a muster whose
+   * downstream servers expose none). muster's own CLI reads it the same way --
+   * `mcp.ReadResourceRequest` in `cmd/auth_helpers.go`.
+   *
+   * Resource contents are JSON text; the first text block is parsed.
+   */
+  async getResource(
+    uri: string,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    const { client, cacheKey } = await this.connect(options);
+
+    let result;
+    try {
+      result = await client.readResource({ uri });
+    } catch (error) {
+      this.handleRequestError(error, cacheKey);
+      throw error;
+    }
+
+    const text = result.contents.find(
+      (content): content is typeof content & { text: string } =>
+        typeof (content as { text?: unknown }).text === 'string',
+    )?.text;
+
+    if (text === undefined) {
+      throw new ServiceUnavailableError(
+        `Muster resource ${uri} returned no text content`,
+      );
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
   }
 
   async dispose(): Promise<void> {

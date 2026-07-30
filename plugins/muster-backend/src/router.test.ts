@@ -12,6 +12,7 @@ describe('createRouter', () => {
   const filterTools = jest.fn();
   const describeTool = jest.fn();
   const listCoreTools = jest.fn();
+  const getResource = jest.fn();
 
   const mockClient = {
     callTool,
@@ -19,6 +20,7 @@ describe('createRouter', () => {
     filterTools,
     describeTool,
     listCoreTools,
+    getResource,
   } as unknown as MusterMcpClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -61,6 +63,7 @@ describe('createRouter', () => {
     filterTools.mockReset();
     describeTool.mockReset();
     listCoreTools.mockReset();
+    getResource.mockReset();
     app = await buildApp();
   });
 
@@ -260,6 +263,207 @@ describe('createRouter', () => {
 
     expect(response.status).toBe(200);
     expect(callTool).toHaveBeenCalledWith('core_mcpserver_list', {}, {});
+  });
+
+  /**
+   * These routes are only active on an installation that forwards a per-user
+   * token, so the whole block runs against one and sends the header.
+   */
+  describe('downstream server auth', () => {
+    const TOKEN = 'user-token';
+    let authApp: express.Express;
+
+    beforeEach(async () => {
+      authApp = await buildMultiApp([
+        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
+      ]);
+    });
+
+    const login = (body: JsonObject) =>
+      request(authApp)
+        .post('/auth/login?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, TOKEN)
+        .send(body);
+
+    const readStatus = () =>
+      request(authApp)
+        .get('/auth/status?installation=gazelle')
+        .set(MUSTER_AUTH_HEADER, TOKEN);
+
+    it('reads per-server auth status from the auth://status resource', async () => {
+      const payload = {
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      };
+      getResource.mockResolvedValue(payload);
+
+      const response = await readStatus();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(payload);
+      expect(getResource).toHaveBeenCalledWith('auth://status', {
+        authToken: TOKEN,
+      });
+    });
+
+    /**
+     * A muster that doesn't register auth://status is an expected outcome, and
+     * the frontend polls this route every few seconds while a sign-in is
+     * outstanding -- a >=500 here would be a Sentry stream.
+     */
+    it('answers an unavailable status resource with an empty list, not a 5xx', async () => {
+      getResource.mockRejectedValue(
+        new Error('Muster resource auth://status returned no text content'),
+      );
+
+      const response = await readStatus();
+
+      expect(response.status).toBe(200);
+      // Flagged, not just empty: a waiting row has to be able to tell "nothing
+      // needs a sign-in" from "we cannot tell".
+      expect(response.body).toEqual({
+        servers: [],
+        unavailable: true,
+        message: 'Muster resource auth://status returned no text content',
+      });
+    });
+
+    it('returns the sign-in URL from an auth challenge', async () => {
+      callTool.mockResolvedValue(
+        [
+          'Authentication Required',
+          '',
+          'Server: pro',
+          'Status: Authentication required for pro. Please visit the link below to authenticate.',
+          '',
+          'Please sign in to connect to this server:',
+          '',
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+          '',
+          'After signing in, run this tool again to complete the connection.',
+        ].join('\n'),
+      );
+
+      const response = await login({ server: 'pro' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'auth_required',
+        authUrl:
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+      });
+      expect(callTool).toHaveBeenCalledWith(
+        'core_auth_login',
+        { server: 'pro' },
+        { authToken: TOKEN },
+      );
+    });
+
+    it('reports an already-connected server as connected', async () => {
+      callTool.mockResolvedValue(
+        "Server 'pro' is already authenticated and connected.",
+      );
+
+      const response = await login({ server: 'pro' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('connected');
+    });
+
+    /**
+     * Muster refuses a manual login for SSO-managed servers, rate limits, and
+     * missing OAuth config as MCP tool errors. Those are expected outcomes of
+     * this route, so they must not surface as 5xx (MiddlewareFactory logs those
+     * to Sentry regardless of our own log level).
+     */
+    it('returns a tool-level refusal as a structured 200', async () => {
+      callTool.mockRejectedValue(
+        new Error("Server 'pro' uses SSO and is connected automatically."),
+      );
+
+      const response = await login({ server: 'pro' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        status: 'error',
+        message: "Server 'pro' uses SSO and is connected automatically.",
+      });
+    });
+
+    /**
+     * The flip side: an outage must NOT be dressed up as muster declining, or
+     * the user reads "fetch failed" as a policy decision and Sentry sees
+     * nothing.
+     */
+    it.each([
+      ['a transport failure', new TypeError('fetch failed')],
+      [
+        'a closed client',
+        new Error('Attempted to send a request from a closed client'),
+      ],
+      [
+        'an unavailable dependency',
+        Object.assign(new Error('no executor'), {
+          name: 'ServiceUnavailableError',
+        }),
+      ],
+      // Every non-2xx from muster's endpoint arrives this way, including a 401
+      // from its own OAuth proxy.
+      [
+        'a non-2xx from muster',
+        Object.assign(new Error('MCP HTTP Transport Error: (HTTP 502)'), {
+          name: 'MCPClientError',
+          statusCode: 502,
+        }),
+      ],
+    ])('lets %s keep its 5xx', async (_label, thrown) => {
+      callTool.mockRejectedValue(thrown);
+
+      const response = await login({ server: 'pro' });
+
+      expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+
+    it('requires a server name', async () => {
+      const response = await login({});
+
+      expect(response.status).toBe(400);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    it('fails with 401 when the user token is missing', async () => {
+      const response = await request(authApp)
+        .post('/auth/login?installation=gazelle')
+        .send({ server: 'pro' });
+
+      expect(response.status).toBe(401);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Without an authProvider there is no per-user token to key the MCP session
+     * cache on, so every portal user shares one muster session -- and one user's
+     * completed login would hand the next user their downstream grant.
+     */
+    describe('installation without per-user auth', () => {
+      it('reports no auth-gated servers', async () => {
+        const response = await request(app).get('/auth/status');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ servers: [] });
+        expect(getResource).not.toHaveBeenCalled();
+      });
+
+      it('refuses to start a sign-in', async () => {
+        const response = await request(app)
+          .post('/auth/login')
+          .send({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.status).toBe('error');
+        expect(response.body.message).toContain('without an authProvider');
+        expect(callTool).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('/call', () => {
