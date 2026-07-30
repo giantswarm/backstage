@@ -1,3 +1,4 @@
+import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { KustomizationTreeNode } from '../../components/FluxOverview/utils/KustomizationTreeBuilder';
 
 export type SearchResult = {
@@ -14,6 +15,21 @@ function getFailureMessage(node: KustomizationTreeNode): string | undefined {
     return undefined;
   }
 
+  if (resource instanceof HelmRelease) {
+    // After a failed release is remediated, the Ready message only describes the
+    // rollback; the error a user would search for lives in the failing release
+    // condition. See HelmRelease.findFailureCauseCondition.
+    //
+    // Checked before the Ready-status gate below: a stalled release keeps Ready
+    // at Unknown, so gating on a False Ready first would make the very failures
+    // the card reports unsearchable. The selector applies its own gating, and
+    // only ever returns a condition that is currently failing.
+    const cause = resource.findFailureCauseCondition();
+    if (cause) {
+      return cause.message;
+    }
+  }
+
   const readyCondition = resource?.findReadyCondition();
   if (readyCondition?.status !== 'False') {
     // Only failure messages are searchable. Messages of healthy resources
@@ -26,7 +42,7 @@ function getFailureMessage(node: KustomizationTreeNode): string | undefined {
 
 /**
  * Finds tree nodes matching the query by resource name or, for failing
- * resources, by the Ready condition message. The latter lets users find the
+ * resources, by their failure message. The latter lets users find the
  * Kustomization that fails to apply a resource by searching for the resource's
  * name, which Flux includes in its build/apply error messages.
  *

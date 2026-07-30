@@ -154,6 +154,100 @@ describe('findMatchingNodes', () => {
     ]);
   });
 
+  it('matches failing HelmReleases by the release error a rollback masks', () => {
+    // The Ready condition only describes the rollback here, so the error a user
+    // would search for lives in the failing Released condition.
+    const json = {
+      apiVersion: 'helm.toolkit.fluxcd.io/v2',
+      kind: 'HelmRelease',
+      metadata: { name: 'my-app', namespace: 'default' },
+      spec: {},
+      status: {
+        conditions: [
+          {
+            type: 'Ready',
+            status: 'False',
+            reason: 'RollbackSucceeded',
+            message: 'Helm rollback to previous release default/my-app.v3',
+            lastTransitionTime: '2026-01-01T00:01:00Z',
+          },
+          {
+            type: 'Released',
+            status: 'False',
+            reason: 'UpgradeFailed',
+            message: 'Helm upgrade failed: cannot patch my-new-service',
+            lastTransitionTime: '2026-01-01T00:00:00Z',
+          },
+          {
+            type: 'Remediated',
+            status: 'True',
+            reason: 'RollbackSucceeded',
+            message: 'Helm rollback to previous release default/my-app.v3',
+            lastTransitionTime: '2026-01-01T00:01:00Z',
+          },
+        ],
+      },
+    };
+    const tree = [
+      createNode({
+        name: 'my-app',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        resource: new HelmRelease(json as any, 'test-installation'),
+      }),
+    ];
+
+    expect(findMatchingNodes(tree, 'my-new-service', false).matches).toEqual([
+      'test-cluster-Kustomization-flux-system-my-app',
+    ]);
+  });
+
+  it('matches a stalled HelmRelease, whose Ready condition is not False', () => {
+    // A stalled release keeps Ready at Unknown/Progressing, so the failure the
+    // card reports would be unsearchable if the Ready status gated the lookup.
+    const json = {
+      apiVersion: 'helm.toolkit.fluxcd.io/v2',
+      kind: 'HelmRelease',
+      metadata: { name: 'my-app', namespace: 'default' },
+      spec: {},
+      status: {
+        conditions: [
+          {
+            type: 'Stalled',
+            status: 'True',
+            reason: 'RetriesExceeded',
+            message: 'Failed to upgrade after 1 attempt(s)',
+            lastTransitionTime: '2026-01-01T00:01:00Z',
+          },
+          {
+            type: 'Ready',
+            status: 'Unknown',
+            reason: 'Progressing',
+            message: 'reconciliation in progress',
+            lastTransitionTime: '2026-01-01T00:01:00Z',
+          },
+          {
+            type: 'Released',
+            status: 'False',
+            reason: 'UpgradeFailed',
+            message: 'Helm upgrade failed: cannot patch my-new-service',
+            lastTransitionTime: '2026-01-01T00:00:00Z',
+          },
+        ],
+      },
+    };
+    const tree = [
+      createNode({
+        name: 'my-app',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        resource: new HelmRelease(json as any, 'test-installation'),
+      }),
+    ];
+
+    expect(findMatchingNodes(tree, 'my-new-service', false).matches).toEqual([
+      'test-cluster-Kustomization-flux-system-my-app',
+    ]);
+  });
+
   it('does not match messages of suspended resources', () => {
     // Suspended resources keep their last Ready condition frozen, so a
     // stale failure message must not be searchable.

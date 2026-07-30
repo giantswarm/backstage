@@ -55,13 +55,17 @@ export class FluxObject<
     return this.jsonData.status?.conditions;
   }
 
-  findReadyCondition() {
+  findStatusCondition(type: string) {
     const conditions = this.getStatusConditions();
     if (!conditions) {
       return undefined;
     }
 
-    return conditions.find(c => c.type === 'Ready');
+    return conditions.find(c => c.type === type);
+  }
+
+  findReadyCondition() {
+    return this.findStatusCondition('Ready');
   }
 
   isReconciling() {
