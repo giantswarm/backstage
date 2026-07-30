@@ -23,13 +23,11 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
-import {
-  AIChatButton,
-  buildExplainErrorMessage,
-} from '@giantswarm/backstage-plugin-ai-chat-react';
+import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { CopyCommandMenu } from './CopyCommandMenu';
 import { FluxResourceActions } from './FluxResourceActions';
 import { ResourceMetadata } from './ResourceMetadata';
+import { buildResourceAiChatPrompt } from './utils/buildResourceAiChatPrompt';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
 import { ResourceInfo } from './ResourceInfo';
 
@@ -186,26 +184,14 @@ export const ResourceCard = ({
 
   const inactive = isSuspended || isDependencyNotReady;
 
-  const readyCondition =
-    readyStatus === 'False' ? resource?.findReadyCondition() : undefined;
-  const failureMessage = readyCondition?.message;
-  const namespacePart = namespace ? ` in namespace '${namespace}'` : '';
-
-  let aiChatMessage: string;
-  if (readyStatus === 'False' && failureMessage) {
-    aiChatMessage = buildExplainErrorMessage({
-      kind,
-      name,
-      namespace,
-      cluster,
-      message: failureMessage,
-      reason: readyCondition?.reason,
-    });
-  } else if (readyStatus === 'False') {
-    aiChatMessage = `Please read the ${kind} resource named '${name}'${namespacePart} on management cluster '${cluster}' and help me understand why it is not in a Ready state.`;
-  } else {
-    aiChatMessage = `Please read the ${kind} resource named '${name}'${namespacePart} on management cluster '${cluster}', and show me basic details, so that I can ask further questions about it.`;
-  }
+  const aiChatPrompt = buildResourceAiChatPrompt({
+    kind,
+    name,
+    namespace,
+    cluster,
+    resource,
+    readyStatus,
+  });
 
   const resourceInfo = (
     <ResourceInfo
@@ -302,8 +288,8 @@ export const ResourceCard = ({
               <FluxResourceActions resource={resource} />
               <CopyCommandMenu resource={resource} />
               <AIChatButton
-                troubleshoot={readyStatus === 'False'}
-                items={[{ message: aiChatMessage }]}
+                troubleshoot={aiChatPrompt.troubleshoot}
+                items={[{ message: aiChatPrompt.message }]}
               />
             </Flex>
           </Flex>

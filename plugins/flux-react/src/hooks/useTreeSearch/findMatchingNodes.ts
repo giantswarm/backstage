@@ -1,3 +1,4 @@
+import { HelmRelease } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { KustomizationTreeNode } from '../../components/FluxOverview/utils/KustomizationTreeBuilder';
 
 export type SearchResult = {
@@ -21,12 +22,22 @@ function getFailureMessage(node: KustomizationTreeNode): string | undefined {
     return undefined;
   }
 
+  if (resource instanceof HelmRelease) {
+    // After a failed release is remediated, the Ready message only describes the
+    // rollback; the error a user would search for lives in the failing release
+    // condition. See HelmRelease.findFailureCauseCondition.
+    const cause = resource.findFailureCauseCondition();
+    if (cause) {
+      return cause.message;
+    }
+  }
+
   return readyCondition.message;
 }
 
 /**
  * Finds tree nodes matching the query by resource name or, for failing
- * resources, by the Ready condition message. The latter lets users find the
+ * resources, by their failure message. The latter lets users find the
  * Kustomization that fails to apply a resource by searching for the resource's
  * name, which Flux includes in its build/apply error messages.
  *

@@ -78,6 +78,57 @@ describe('FluxObject.isReconcileRequestPending', () => {
   });
 });
 
+describe('FluxObject.findStatusCondition', () => {
+  function withConditions(conditions?: unknown[]): Kustomization {
+    return new Kustomization(
+      {
+        apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+        kind: 'Kustomization',
+        metadata: { name: 'my-app', namespace: 'flux-system' },
+        spec: {},
+        status: conditions ? { conditions } : {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      'test-installation',
+    );
+  }
+
+  const readyCondition = {
+    type: 'Ready',
+    status: 'True',
+    reason: 'ReconciliationSucceeded',
+    message: 'Applied revision',
+    lastTransitionTime: '2026-07-28T10:00:00Z',
+  };
+  const reconcilingCondition = {
+    type: 'Reconciling',
+    status: 'True',
+    reason: 'Progressing',
+    message: 'Reconciliation in progress',
+    lastTransitionTime: '2026-07-28T10:00:00Z',
+  };
+
+  it('finds a condition by type', () => {
+    const resource = withConditions([readyCondition, reconcilingCondition]);
+
+    expect(resource.findStatusCondition('Reconciling')).toBe(
+      resource.getStatusConditions()?.[1],
+    );
+    expect(resource.findReadyCondition()).toMatchObject({ type: 'Ready' });
+  });
+
+  it('returns nothing for an absent type', () => {
+    expect(
+      withConditions([readyCondition]).findStatusCondition('Remediated'),
+    ).toBeUndefined();
+  });
+
+  it('returns nothing when the resource has no conditions', () => {
+    expect(withConditions().findStatusCondition('Ready')).toBeUndefined();
+    expect(withConditions().findReadyCondition()).toBeUndefined();
+  });
+});
+
 describe('FluxObject suspend field ownership', () => {
   function withManagedFields(managedFields: unknown[]): Kustomization {
     return new Kustomization(

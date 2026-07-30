@@ -59,6 +59,106 @@ function buildStatusMetadata(
   return metadata;
 }
 
+type StatusCondition = {
+  type: string;
+  reason: string;
+  status: string;
+  lastTransitionTime?: string;
+  message?: string;
+};
+
+function formatReleaseFailurePhrase(
+  cause: StatusCondition,
+  lastAttemptedReleaseAction?: string,
+): string {
+  if (cause.type === 'TestSuccess') {
+    return 'Helm test failed';
+  }
+
+  switch (cause.reason) {
+    case 'InstallFailed':
+      return 'Installation failed';
+    case 'UpgradeFailed':
+      return 'Upgrade failed';
+    default:
+      break;
+  }
+
+  // Unrecognized reason: the release action the controller last attempted still
+  // tells us what kind of release failed.
+  switch (lastAttemptedReleaseAction) {
+    case 'install':
+      return 'Installation failed';
+    case 'upgrade':
+      return 'Upgrade failed';
+    default:
+      return 'Release failed';
+  }
+}
+
+function formatRemediationPhrase(remediated: StatusCondition): string {
+  switch (remediated.reason) {
+    case 'RollbackSucceeded':
+      return 'Rollback succeeded';
+    case 'RollbackFailed':
+      return 'Rollback failed';
+    case 'UninstallSucceeded':
+      return 'Uninstall succeeded';
+    case 'UninstallFailed':
+      return 'Uninstall failed';
+    default:
+      return remediated.status === 'False'
+        ? 'Remediation failed'
+        : 'Remediated';
+  }
+}
+
+/**
+ * Status rows for a HelmRelease whose last release attempt failed.
+ *
+ * The `Ready` condition is not the source here: once helm-controller has
+ * remediated the failure, `Ready` only restates the rollback (see
+ * {@link HelmRelease.findFailureCauseCondition}). The failing condition provides
+ * both the error and the time the release actually failed, and the remediation is
+ * kept as a single line — its full message merely restates the chart version we
+ * already show, except when the remediation itself failed, where the message is
+ * the news.
+ */
+function buildReleaseFailureMetadata(
+  helmRelease: HelmRelease,
+  cause: StatusCondition,
+): Metadata {
+  const metadata: Metadata = {};
+  const stalledCondition = helmRelease.findStalledCondition();
+  const phrase = formatReleaseFailurePhrase(
+    cause,
+    helmRelease.getLastAttemptedReleaseAction(),
+  );
+
+  metadata.Status = (
+    <>
+      {phrase} <DateComponent value={cause.lastTransitionTime} relative />
+      {stalledCondition?.status === 'True' ? ' (retries exhausted)' : ''}
+    </>
+  );
+  metadata.Message = <ConditionMessage message={cause.message ?? ''} />;
+
+  const remediated = helmRelease.findRemediatedCondition();
+  if (remediated) {
+    metadata.Remediation = (
+      <>
+        {formatRemediationPhrase(remediated)}{' '}
+        <DateComponent value={remediated.lastTransitionTime} relative />
+        {remediated.status === 'False' && (
+          <ConditionMessage message={remediated.message ?? ''} />
+        )}
+      </>
+    );
+  }
+
+  return metadata;
+}
+
 // --- Kustomization ---
 
 function getKustomizationSpec(
@@ -158,7 +258,9 @@ function getHelmReleaseSpec(
 
 function getHelmReleaseStatus(helmRelease: HelmRelease): Metadata {
   const readyCondition = helmRelease.findReadyCondition();
+  const failureCause = helmRelease.findFailureCauseCondition();
   const chartVersion = helmRelease.getLastAppliedRevision();
+  const attemptedVersion = helmRelease.getLastAttemptedRevision();
   const installFailures = helmRelease.getInstallFailures();
   const upgradeFailures = helmRelease.getUpgradeFailures();
 
@@ -166,6 +268,12 @@ function getHelmReleaseStatus(helmRelease: HelmRelease): Metadata {
 
   if (chartVersion) {
     metadata['Chart Version'] = chartVersion;
+  }
+
+  // Which version the failed release attempted, so that the running version
+  // above and the one the error talks about can be told apart.
+  if (failureCause && attemptedVersion && attemptedVersion !== chartVersion) {
+    metadata.Attempted = attemptedVersion;
   }
 
   if (installFailures && installFailures > 0) {
@@ -176,7 +284,12 @@ function getHelmReleaseStatus(helmRelease: HelmRelease): Metadata {
     metadata['Upgrade Failures'] = upgradeFailures;
   }
 
-  Object.assign(metadata, buildStatusMetadata(readyCondition));
+  Object.assign(
+    metadata,
+    failureCause
+      ? buildReleaseFailureMetadata(helmRelease, failureCause)
+      : buildStatusMetadata(readyCondition),
+  );
 
   return metadata;
 }
