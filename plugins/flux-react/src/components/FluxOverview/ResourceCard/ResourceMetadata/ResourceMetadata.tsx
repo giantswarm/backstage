@@ -129,16 +129,24 @@ function buildReleaseFailureMetadata(
   cause: StatusCondition,
 ): Metadata {
   const metadata: Metadata = {};
-  const stalledCondition = helmRelease.findStalledCondition();
   const phrase = formatReleaseFailurePhrase(
     cause,
     helmRelease.getLastAttemptedReleaseAction(),
   );
 
+  // helm-controller also stalls on terminal errors that were never retried, so
+  // only an exhausted-retries stall may claim the retries ran out.
+  let stalledSuffix = '';
+  if (helmRelease.hasExhaustedRetries()) {
+    stalledSuffix = ' (retries exhausted)';
+  } else if (helmRelease.isStalled()) {
+    stalledSuffix = ' (stalled)';
+  }
+
   metadata.Status = (
     <>
       {phrase} <DateComponent value={cause.lastTransitionTime} relative />
-      {stalledCondition?.status === 'True' ? ' (retries exhausted)' : ''}
+      {stalledSuffix}
     </>
   );
   metadata.Message = <ConditionMessage message={cause.message ?? ''} />;

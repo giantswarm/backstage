@@ -432,6 +432,41 @@ describe('HelmRelease.findFailureCauseCondition', () => {
     expect(cause).toMatchObject({ type: 'Released', reason: 'UpgradeFailed' });
   });
 
+  it('returns nothing when Ready reports a terminal stall', () => {
+    // helm-controller also stalls on errors it never retries, and mirrors those
+    // into Ready. That message is the current reason the object is stuck, so it
+    // must not be replaced by an older release error.
+    const terminalMessage =
+      'invalid chart reference: OCIRepository/flux-giantswarm/missing not found';
+    const cause = createHelmRelease({
+      conditions: [
+        {
+          type: 'Stalled',
+          status: 'True',
+          reason: 'InvalidChartReference',
+          message: terminalMessage,
+          lastTransitionTime: '2026-07-30T11:33:09Z',
+        },
+        {
+          type: 'Ready',
+          status: 'False',
+          reason: 'InvalidChartReference',
+          message: terminalMessage,
+          lastTransitionTime: '2026-07-30T11:33:09Z',
+        },
+        {
+          type: 'Released',
+          status: 'False',
+          reason: 'UpgradeFailed',
+          message: UPGRADE_ERROR,
+          lastTransitionTime: '2026-05-28T12:55:44Z',
+        },
+      ],
+    }).findFailureCauseCondition();
+
+    expect(cause).toBeUndefined();
+  });
+
   it('handles a resource without conditions', () => {
     expect(createHelmRelease().findFailureCauseCondition()).toBeUndefined();
     expect(
@@ -481,5 +516,26 @@ describe('HelmRelease status getters', () => {
       reason: 'RollbackSucceeded',
     });
     expect(helmRelease.findStalledCondition()).toBeUndefined();
+    expect(helmRelease.isStalled()).toBe(false);
+    expect(helmRelease.hasExhaustedRetries()).toBe(false);
+  });
+
+  it('distinguishes exhausted retries from a terminal stall', () => {
+    const stalled = (reason: string) =>
+      createHelmRelease({
+        conditions: [
+          {
+            type: 'Stalled',
+            status: 'True',
+            reason,
+            message: 'stopped',
+            lastTransitionTime: '2026-07-30T11:33:09Z',
+          },
+        ],
+      });
+
+    expect(stalled('RetriesExceeded').hasExhaustedRetries()).toBe(true);
+    expect(stalled('InvalidChartReference').hasExhaustedRetries()).toBe(false);
+    expect(stalled('InvalidChartReference').isStalled()).toBe(true);
   });
 });

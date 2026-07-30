@@ -15,21 +15,26 @@ function getFailureMessage(node: KustomizationTreeNode): string | undefined {
     return undefined;
   }
 
+  if (resource instanceof HelmRelease) {
+    // After a failed release is remediated, the Ready message only describes the
+    // rollback; the error a user would search for lives in the failing release
+    // condition. See HelmRelease.findFailureCauseCondition.
+    //
+    // Checked before the Ready-status gate below: a stalled release keeps Ready
+    // at Unknown, so gating on a False Ready first would make the very failures
+    // the card reports unsearchable. The selector applies its own gating, and
+    // only ever returns a condition that is currently failing.
+    const cause = resource.findFailureCauseCondition();
+    if (cause) {
+      return cause.message;
+    }
+  }
+
   const readyCondition = resource?.findReadyCondition();
   if (readyCondition?.status !== 'False') {
     // Only failure messages are searchable. Messages of healthy resources
     // (e.g. "Applied revision main@sha1:...") would match almost any query.
     return undefined;
-  }
-
-  if (resource instanceof HelmRelease) {
-    // After a failed release is remediated, the Ready message only describes the
-    // rollback; the error a user would search for lives in the failing release
-    // condition. See HelmRelease.findFailureCauseCondition.
-    const cause = resource.findFailureCauseCondition();
-    if (cause) {
-      return cause.message;
-    }
   }
 
   return readyCondition.message;

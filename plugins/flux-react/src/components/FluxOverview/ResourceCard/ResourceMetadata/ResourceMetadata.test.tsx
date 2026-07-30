@@ -175,6 +175,43 @@ describe('ResourceMetadata', () => {
       expect(screen.queryByText('Remediation')).not.toBeInTheDocument();
     });
 
+    it('does not claim the retries ran out on a terminal stall', async () => {
+      // helm-controller stalls on errors it never retried, too. Ready is a
+      // progress placeholder here, so the release error is still substituted —
+      // but the wording must not assert a retry count that never happened.
+      const helmRelease = createHelmRelease({
+        conditions: [
+          {
+            type: 'Stalled',
+            status: 'True',
+            reason: 'InvalidChartReference',
+            message: 'invalid chart reference',
+            lastTransitionTime: '2026-07-30T11:33:09Z',
+          },
+          {
+            type: 'Ready',
+            status: 'Unknown',
+            reason: 'Progressing',
+            message: 'reconciliation in progress',
+            lastTransitionTime: '2026-07-30T11:33:09Z',
+          },
+          {
+            type: 'Released',
+            status: 'False',
+            reason: 'UpgradeFailed',
+            message: UPGRADE_ERROR,
+            lastTransitionTime: '2026-07-30T09:25:31Z',
+          },
+        ],
+      });
+
+      await renderInTestApp(<ResourceMetadata resource={helmRelease} />);
+
+      expect(screen.getByText(/\(stalled\)/)).toBeInTheDocument();
+      expect(screen.queryByText(/retries exhausted/)).not.toBeInTheDocument();
+      expect(screen.getByText(UPGRADE_ERROR)).toBeInTheDocument();
+    });
+
     it('shows the message of a remediation that failed itself', async () => {
       const helmRelease = createHelmRelease({
         conditions: [

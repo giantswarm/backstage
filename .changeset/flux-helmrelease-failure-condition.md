@@ -26,8 +26,9 @@ card, instead of the rollback that hides it.
   `Unknown` on a stalled release, which is safe because `Unknown` never reports a
   failure; a blocker always writes `False`.
 - Substitution otherwise requires `Ready` to be a verbatim mirror of `Remediated`
-  (or of a `True` `Stalled`), not an allow-list of remediation reasons. The mirror
-  test keeps a newer, unrelated blocker visible: when the object fails again
+  (or of a `RetriesExceeded` `Stalled`), not an allow-list of remediation reasons.
+  The mirror test keeps a newer, unrelated blocker visible: when the object fails
+  again
   after the rollback for a reason that never reaches a release attempt
   (`ArtifactFailed`, `DependencyNotReady`, a missing `valuesFrom` Secret, a
   denied release), `Ready` carries that current blocker, no longer equals the
@@ -45,10 +46,13 @@ card, instead of the rollback that hides it.
   chart version shown above it. The exception is a remediation that failed
   itself, where the message is the news and is shown in full. A new `Attempted`
   row names the revision the failed release tried, so the running `Chart Version`
-  and the version the error talks about can be told apart, and the Status line
-  notes when the retries are exhausted.
+  and the version the error talks about can be told apart. The Status line notes
+  when the release stopped — "(retries exhausted)" only for a `RetriesExceeded`
+  stall, "(stalled)" for a terminal one, since helm-controller also stalls on
+  errors it never retried.
 - The card's AI chat prompt and the resource tree's search over failure messages
   use the same condition, so neither asks about — nor matches on — the rollback
-  message any more. The button also offers to troubleshoot whenever a release
-  failure is known, rather than only when `Ready` is `False`, which is what a
-  stalled release with an `Unknown` `Ready` condition needs.
+  message any more. Both consult it before looking at the `Ready` status, which a
+  stalled release leaves at `Unknown`: the button now offers to troubleshoot such
+  a release rather than "show me basic details", and its error is searchable in
+  the tree.

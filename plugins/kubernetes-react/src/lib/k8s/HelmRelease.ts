@@ -4,6 +4,13 @@ import { compareDates } from '../../utils/compareDates';
 
 type HelmReleaseInterface = crds.fluxcd.v2.HelmRelease;
 
+/**
+ * The `Stalled` reason helm-controller uses when it gives up after exhausting
+ * `spec.install.remediation.retries`/`spec.upgrade.remediation.retries`, as
+ * opposed to the terminal-error reasons it also stalls on.
+ */
+const RETRIES_EXCEEDED_REASON = 'RetriesExceeded';
+
 export class HelmRelease extends FluxObject<HelmReleaseInterface> {
   static readonly supportedVersions = ['v2'] as const;
   static readonly group = 'helm.toolkit.fluxcd.io';
@@ -56,6 +63,28 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
   }
 
   /**
+   * Whether the controller has stopped acting on the release, either because the
+   * remediation retries ran out or because it hit a terminal error.
+   */
+  isStalled(): boolean {
+    return this.findStalledCondition()?.status === 'True';
+  }
+
+  /**
+   * Whether the release stopped specifically because its remediation retries ran
+   * out, as opposed to a terminal error that was never retried. Only the former
+   * may be described as exhausted retries.
+   */
+  hasExhaustedRetries(): boolean {
+    const stalledCondition = this.findStalledCondition();
+
+    return (
+      stalledCondition?.status === 'True' &&
+      stalledCondition.reason === RETRIES_EXCEEDED_REASON
+    );
+  }
+
+  /**
    * The condition explaining *why* the release failed, when the `Ready`
    * condition no longer does.
    *
@@ -69,11 +98,19 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
    * to show instead.
    *
    * Substitution requires `Ready` to be uninformative, which is the case when it
-   * is a verbatim mirror of `Remediated` or of a `True` `Stalled`, or when it is
-   * `Unknown` on a stalled release — helm-controller leaves the "reconciliation
-   * in progress" placeholder behind on an object that has stopped retrying, so
-   * the last release attempt is still the current state. `Unknown` is safe to
-   * override because it never reports a failure; a blocker always writes `False`.
+   * is a verbatim mirror of `Remediated` or of a `RetriesExceeded` `Stalled`, or
+   * when it is `Unknown` on a stalled release — helm-controller leaves the
+   * "reconciliation in progress" placeholder behind on an object that has stopped
+   * retrying, so the last release attempt is still the current state. `Unknown` is
+   * safe to override because it never reports a failure; a blocker always writes
+   * `False`.
+   *
+   * The `Stalled` mirror is restricted to `RetriesExceeded`, whose message only
+   * counts attempts ("Failed to upgrade after N attempt(s)"). helm-controller also
+   * stalls on *terminal* errors that were never retried (an invalid chart
+   * reference, a terminal values error) and mirrors those into `Ready` too — there
+   * `Ready` states the current reason the object is stuck, and replacing it with an
+   * older release error would hide it.
    *
    * Testing for a mirror rather than for an allow-list of remediation reasons is
    * what keeps a *newer, unrelated* blocker visible. If the object fails again
@@ -106,12 +143,10 @@ export class HelmRelease extends FluxObject<HelmReleaseInterface> {
         condition.message === readyCondition.message,
       );
 
-    const stalledCondition = this.findStalledCondition();
-    const isStalled = stalledCondition?.status === 'True';
     const readyIsUninformative =
       mirrors(this.findRemediatedCondition()) ||
-      (isStalled && mirrors(stalledCondition)) ||
-      (isStalled && readyCondition.status === 'Unknown');
+      (this.hasExhaustedRetries() && mirrors(this.findStalledCondition())) ||
+      (this.isStalled() && readyCondition.status === 'Unknown');
 
     if (!readyIsUninformative) {
       return undefined;
