@@ -12,8 +12,8 @@ made `list_tools` succeed), so the click was a guaranteed no-op. The servers
 muster lists in `servers_requiring_auth` each need their own downstream OAuth
 flow instead.
 
-- `muster-backend`: add `GET /auth/status` (muster's `auth://status` resource,
-  via the newly supported `get_resource` meta-tool) and
+- `muster-backend`: add `GET /auth/status` (a native `resources/read` of muster's
+  `auth://status`) and
   `POST /auth/login` (`core_auth_login`), which normalises muster's free-text
   answer to `{ status, authUrl?, message }`. Muster's refusals (SSO-managed
   server, rate limit, undiscoverable issuer) return HTTP 200 with

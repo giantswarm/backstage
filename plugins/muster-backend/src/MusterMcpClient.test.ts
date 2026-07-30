@@ -170,19 +170,26 @@ describe('readMusterInstallationsFromConfig', () => {
 describe('MusterMcpClient', () => {
   const logger = mockServices.logger.mock();
 
-  function buildMcpClient(execute: jest.Mock | undefined) {
+  function buildMcpClient(
+    execute: jest.Mock | undefined,
+    readResource?: jest.Mock,
+  ) {
     return {
       toolsFromDefinitions: jest.fn(
         ({ tools }: { tools: { name: string }[] }) =>
           Object.fromEntries(tools.map(tool => [tool.name, { execute }])),
       ),
+      readResource,
       close: jest.fn(),
     } as unknown as MCPClient;
   }
 
-  function buildClient(execute: jest.Mock | undefined) {
+  function buildClient(
+    execute: jest.Mock | undefined,
+    readResource?: jest.Mock,
+  ) {
     const factory = jest.fn((_headers: Record<string, string> | undefined) =>
-      Promise.resolve(buildMcpClient(execute)),
+      Promise.resolve(buildMcpClient(execute, readResource)),
     );
     const client = new MusterMcpClient(
       { name: 'muster', url: 'http://muster/mcp' },
@@ -221,6 +228,40 @@ describe('MusterMcpClient', () => {
     expect(execute).toHaveBeenCalledWith(
       { name: 'core_workflow_list', arguments: {} },
       expect.objectContaining({ toolCallId: expect.any(String) }),
+    );
+  });
+
+  /**
+   * auth://status lives on the aggregator's own MCP server, so it must be read
+   * with a native resources/read. The `get_resource` meta-tool only aggregates
+   * the *downstream* servers' resources and never sees it.
+   */
+  it('reads aggregator resources via a native resources/read', async () => {
+    const readResource = jest.fn().mockResolvedValue({
+      contents: [
+        {
+          uri: 'auth://status',
+          mimeType: 'application/json',
+          text: '{"servers":[{"name":"pro","status":"auth_required"}]}',
+        },
+      ],
+    });
+    const execute = jest.fn();
+    const { client } = buildClient(execute, readResource);
+
+    await expect(client.getResource('auth://status')).resolves.toEqual({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    expect(readResource).toHaveBeenCalledWith({ uri: 'auth://status' });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects a resource read that returns no text content', async () => {
+    const readResource = jest.fn().mockResolvedValue({ contents: [] });
+    const { client } = buildClient(jest.fn(), readResource);
+
+    await expect(client.getResource('auth://status')).rejects.toThrow(
+      'returned no text content',
     );
   });
 

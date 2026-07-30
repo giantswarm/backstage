@@ -149,6 +149,47 @@ describe('ServerSignIn', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  /**
+   * The completion signal: muster's OAuth callback connects the server for this
+   * session, and the only way the UI learns about it is auth://status flipping
+   * to `connected` (the same condition muster's CLI waits for).
+   */
+  it('drops the waiting state once auth://status reports the server connected', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+    });
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByRole('link', { name: /Open sign-in page/ });
+
+    // The browser flow completes: the next poll sees the server connected.
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('link')).not.toBeInTheDocument();
+      },
+      { timeout: 10_000 },
+    );
+  }, 15_000);
+
+  it('surfaces a failing auth status read instead of waiting forever', async () => {
+    const api = makeApi({ status: { name: 'pro', status: 'auth_required' } });
+    api.getAuthStatus.mockRejectedValue(
+      new Error('Muster resource auth://status returned no text content'),
+    );
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(
+        /Auth status: Muster resource auth:\/\/status returned no text content/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('renders nothing for a connected server when only shown on demand', async () => {
     const api = makeApi({ status: { name: 'pro', status: 'connected' } });
     await renderSignIn(api, { onlyWhenRequired: true });

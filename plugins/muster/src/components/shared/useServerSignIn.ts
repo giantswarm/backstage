@@ -70,7 +70,7 @@ export function useServerSignIn(
 
   const isWaiting = Boolean(authUrl) && !hasTimedOut;
 
-  const { data } = useQuery({
+  const { data, error: statusError } = useQuery({
     queryKey: ['muster', 'auth-status', installation],
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
@@ -114,8 +114,12 @@ export function useServerSignIn(
   }, [authUrl, hasTimedOut]);
 
   // The browser flow completed: muster connected the server for this session.
+  // Only `connected` ends the wait -- the same condition muster's CLI waits for
+  // (`waitForServerAuthWithClient`). Any other status means the flow hasn't
+  // landed yet, so keep polling until the timeout rather than silently dropping
+  // the sign-in link.
   useEffect(() => {
-    if (!authUrl || !status || NEEDS_LOGIN.includes(status.status)) {
+    if (!authUrl || status?.status !== 'connected') {
       return;
     }
     setAuthUrl(undefined);
@@ -129,7 +133,11 @@ export function useServerSignIn(
     authUrl,
     isWaiting,
     hasTimedOut,
-    error,
+    // A failed status read would otherwise leave the UI waiting forever for a
+    // transition it can never observe, so it is surfaced rather than swallowed.
+    error:
+      error ??
+      (statusError ? `Auth status: ${statusError.message}` : undefined),
     isSsoManaged: Boolean(
       status?.token_forwarding_enabled || status?.token_exchange_enabled,
     ),

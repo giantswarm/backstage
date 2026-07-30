@@ -13,7 +13,7 @@ plugin for workflow visualization.
 | `GET /api/muster/workflows/:name`                              | `core_workflow_get`                                        |
 | `GET /api/muster/executions?workflow_name&status&limit&offset` | `core_workflow_execution_list`                             |
 | `GET /api/muster/executions/:id`                               | `core_workflow_execution_get` (with `include_steps: true`) |
-| `GET /api/muster/auth/status`                                  | `get_resource` on the `auth://status` resource             |
+| `GET /api/muster/auth/status`                                  | `resources/read` of `auth://status`                        |
 | `POST /api/muster/auth/login` (body `{ server }`)              | `core_auth_login`                                          |
 
 `POST /auth/login` starts the OAuth flow for one _aggregated_ MCP server (as
@@ -23,6 +23,11 @@ the sign-in URL the user must open in a browser, after which muster's own OAuth
 callback connects the server for that muster session. Muster's refusals
 (SSO-managed server, rate limit, undiscoverable issuer) are expected outcomes
 here and come back as `{ status: 'error' }` with HTTP 200, never a 5xx.
+
+`auth://status` is read with a native MCP `resources/read`, not through the
+`get_resource` meta-tool: that meta-tool aggregates the resources of the
+_downstream_ servers and never sees the aggregator's own `auth://status`. muster's
+CLI reads it the same way.
 
 ## Configuration
 
