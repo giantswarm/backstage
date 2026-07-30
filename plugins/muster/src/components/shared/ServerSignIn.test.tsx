@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
@@ -52,7 +52,7 @@ async function renderSignIn(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  await renderInTestApp(
+  const rendered = await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
         <ServerSignIn
@@ -64,6 +64,7 @@ async function renderSignIn(
       </QueryClientProvider>
     </TestApiProvider>,
   );
+  return { queryClient, ...rendered };
 }
 
 describe('ServerSignIn', () => {
@@ -159,26 +160,43 @@ describe('ServerSignIn', () => {
   /**
    * A broken status read is what turned this into a silent forever-wait, so it
    * is surfaced -- but only once a sign-in is outstanding, since that is when it
-   * explains a wait that can never end.
+   * explains a wait that can never end. The proxy answers 200 with
+   * `unavailable` (a 5xx per 5s poll would flood Sentry), so the flag is the
+   * only signal available.
    */
-  it('surfaces a failing auth status read once a sign-in is outstanding', async () => {
-    const api = makeApi({ status: { name: 'pro', status: 'auth_required' } });
-    api.getAuthStatus.mockRejectedValue(
-      new Error('auth://status returned no text content'),
-    );
+  it('reports an unreadable auth status once a sign-in is outstanding', async () => {
+    const api = makeApi({});
+    api.getAuthStatus.mockResolvedValue({
+      servers: [],
+      unavailable: true,
+      message: 'auth://status returned no text content',
+    });
     await renderSignIn(api);
 
-    expect(
-      screen.queryByText(/auth:\/\/status returned no text content/),
-    ).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Sign in' }),
+    );
 
     expect(
       await screen.findByText(
-        /Auth status: auth:\/\/status returned no text content/,
+        /Cannot read the muster auth status: auth:\/\/status returned no text content/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('stays quiet about an unreadable status when no sign-in is outstanding', async () => {
+    const api = makeApi({});
+    api.getAuthStatus.mockResolvedValue({
+      servers: [],
+      unavailable: true,
+      message: 'auth://status returned no text content',
+    });
+    await renderSignIn(api);
+
+    await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+    expect(
+      screen.queryByText(/Cannot read the muster auth status/),
+    ).not.toBeInTheDocument();
   });
 
   /**
@@ -230,5 +248,78 @@ describe('ServerSignIn', () => {
     });
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.queryByText('pro')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The sequence from the review: the row is signable, muster refuses with
+   * something specific, and the next status read reports the server as
+   * SSO-managed. The paragraph is the better general explanation, but it must not
+   * swallow the rate-limit message.
+   */
+  it('keeps muster\u2019s refusal visible under the SSO explanation', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'error',
+        message: 'Rate limit exceeded. Too many authentication attempts.',
+      },
+    });
+    const { queryClient } = await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByText(/Rate limit exceeded/)).toBeInTheDocument();
+
+    // muster now reports the server as SSO-managed.
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'pro', status: 'failed', token_exchange_enabled: true },
+      ],
+    });
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['muster', 'auth-status', 'gazelle'],
+      });
+    });
+
+    expect(
+      await screen.findByText(/authenticates through SSO/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Rate limit exceeded/)).toBeInTheDocument();
+  });
+
+  /**
+   * `sso_attempt_failed` names a concrete misconfiguration, and the MCP servers
+   * page -- the only surface that passes `onlyWhenRequired` -- is where an
+   * operator would look for it, so the gate must let it through even though
+   * `failed` is not an auth-required status.
+   */
+  it('shows the SSO failure diagnosis even when only shown on demand', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'failed',
+        token_exchange_enabled: true,
+        sso_attempt_failed: true,
+      },
+    });
+    await renderSignIn(api, { onlyWhenRequired: true });
+
+    expect(await screen.findByText(/trusted audiences/)).toBeInTheDocument();
+  });
+
+  it('stays hidden for a healthy SSO server when only shown on demand', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'connected',
+        token_exchange_enabled: true,
+      },
+    });
+    await renderSignIn(api, { onlyWhenRequired: true });
+
+    await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+    expect(
+      screen.queryByText(/authenticates through SSO/),
+    ).not.toBeInTheDocument();
   });
 });

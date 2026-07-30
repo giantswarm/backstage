@@ -53,7 +53,6 @@ export function ServerSignIn({
     status,
     isPending,
     authUrl,
-    hasTimedOut,
     error,
     note,
     isSsoManaged,
@@ -61,8 +60,32 @@ export function ServerSignIn({
     signIn,
   } = useServerSignIn(serverName, installation);
 
-  const idle = !authUrl && !error && !note;
-  if (onlyWhenRequired && !needsLogin && idle) {
+  const messages =
+    error || note ? (
+      <>
+        {note ? (
+          <Text variant="body-small" color="secondary">
+            {note}
+          </Text>
+        ) : null}
+        {error ? (
+          <Text variant="body-small" color="danger">
+            {error}
+          </Text>
+        ) : null}
+      </>
+    ) : null;
+
+  // `idle` deliberately ignores `error`/`note`: they are the answer to a click,
+  // which by definition happened on a row that was already visible, so letting
+  // them defeat the gate would pin an unrelated row open (they also do not
+  // survive a remount, unlike the pending entry).
+  //
+  // `sso_attempt_failed` is let through because it names a concrete
+  // misconfiguration, and the MCP servers page -- where this gate applies -- is
+  // where an operator would look for it.
+  const ssoDiagnosis = isSsoManaged && Boolean(status?.sso_attempt_failed);
+  if (onlyWhenRequired && !needsLogin && !ssoDiagnosis && !authUrl) {
     return null;
   }
 
@@ -74,25 +97,26 @@ export function ServerSignIn({
   // a server needs authentication with no name, action, or reason shown.
   if (isSsoManaged) {
     return (
-      <Text as="p" variant="body-small" color="secondary">
-        {serverName} authenticates through SSO from muster's own session, so
-        there is nothing to sign in to here.
-        {status?.sso_attempt_failed
-          ? " muster tried and failed to establish it for your session — check the server's trusted audiences with an administrator."
-          : ''}
-      </Text>
+      <div className={classes.root}>
+        <Text as="p" variant="body-small" color="secondary">
+          {serverName} authenticates through SSO from muster's own session, so
+          there is nothing to sign in to here.
+          {status?.sso_attempt_failed
+            ? " muster tried and failed to establish it for your session — check the server's trusted audiences with an administrator."
+            : ''}
+        </Text>
+        {/* Rendered under the paragraph, not instead of it: a specific refusal
+            (rate limit, issuer discovery) must not be swapped for the generic
+            SSO explanation. */}
+        {messages}
+      </div>
     );
   }
-
-  // After the deadline the challenge's `state` is plausibly expired or already
-  // consumed, so following the old link cannot help. Offer the button again --
-  // minting a fresh challenge is the only action that recovers.
-  const showLink = Boolean(authUrl) && !hasTimedOut;
 
   return (
     <div className={classes.root}>
       {showName ? <code className={classes.name}>{serverName}</code> : null}
-      {showLink ? (
+      {authUrl ? (
         <>
           <ButtonLink
             href={authUrl}
@@ -117,21 +141,7 @@ export function ServerSignIn({
           {isPending ? 'Signing in…' : 'Sign in'}
         </Button>
       )}
-      {hasTimedOut ? (
-        <Text variant="body-small" color="secondary">
-          Timed out waiting for the sign-in — try again.
-        </Text>
-      ) : null}
-      {note ? (
-        <Text variant="body-small" color="secondary">
-          {note}
-        </Text>
-      ) : null}
-      {error ? (
-        <Text variant="body-small" color="danger">
-          {error}
-        </Text>
-      ) : null}
+      {messages}
     </div>
   );
 }

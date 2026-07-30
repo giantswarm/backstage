@@ -305,13 +305,14 @@ export async function createRouter(
    * tell an OAuth-loginable server from an SSO-managed one and to detect when a
    * browser sign-in has completed.
    *
-   * An empty server list means "no sign-in affordance applies here", which also
-   * covers every way the resource can be unavailable: a muster that doesn't
-   * register `auth://status`, one whose transport doesn't answer
-   * `resources/read`, or an installation without per-user sessions. Those are
-   * expected outcomes, and the frontend polls this route every few seconds while
-   * a sign-in is outstanding, so they must not become a stream of >=500s that
-   * MiddlewareFactory reports to Sentry.
+   * An empty server list means "no sign-in affordance applies here". Every way
+   * the resource can be unavailable -- a muster that doesn't register
+   * `auth://status`, one whose transport doesn't answer `resources/read`, an
+   * outage mid-flow -- answers 200 with `unavailable: true` rather than a >=500:
+   * the frontend polls this every few seconds while a sign-in is outstanding, so
+   * a failing status read would otherwise be a Sentry stream. The flag is what
+   * lets the waiting row say the status is unreadable instead of claiming to
+   * still be waiting for the user.
    */
   router.get('/auth/status', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
@@ -325,11 +326,12 @@ export async function createRouter(
     try {
       res.json(await client.getResource(AUTH_STATUS_RESOURCE, callOptions));
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       logger.info(`Muster ${AUTH_STATUS_RESOURCE} is unavailable`, {
         installation: installation.name,
-        message: error instanceof Error ? error.message : String(error),
+        message,
       });
-      res.json({ servers: [] });
+      res.json({ servers: [], unavailable: true, message });
     }
   });
 

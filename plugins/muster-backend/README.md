@@ -29,9 +29,11 @@ policy decision.
 `auth://status` is read with a native MCP `resources/read`, not through the
 `get_resource` meta-tool: that meta-tool aggregates the resources of the
 _downstream_ servers and never sees the aggregator's own `auth://status`. muster's
-CLI reads it the same way. An unavailable resource answers `{ servers: [] }`
-rather than a 5xx, since the frontend polls this route every few seconds while a
-sign-in is outstanding.
+CLI reads it the same way. An unavailable resource answers
+`{ servers: [], unavailable: true, message }` rather than a 5xx, since the
+frontend polls this route every few seconds while a sign-in is outstanding; the
+flag is what lets a waiting row distinguish "nothing needs a sign-in" from "the
+status can't be read".
 
 **Both auth routes require the installation to declare an `authProvider`** and
 are inert otherwise. Muster scopes downstream auth state to one MCP session, and

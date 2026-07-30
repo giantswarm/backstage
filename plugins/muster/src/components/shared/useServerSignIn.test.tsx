@@ -154,4 +154,37 @@ describe('useServerSignIn', () => {
     await waitFor(() => expect(other.result.current.needsLogin).toBe(true));
     expect(other.result.current.authUrl).toBeUndefined();
   });
+
+  /**
+   * The deadline CLEARS the entry rather than marking it timed out. Keeping it
+   * would leave the row visible with polling stopped and nothing able to re-read
+   * status (the muster QueryClient has refetchOnWindowFocus off), so a user who
+   * finished the IdP round-trip just after the deadline would be stuck looking at
+   * stale state.
+   */
+  it('clears a pending sign-in at the deadline so the row can act again', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(
+      () =>
+        useServerSignIn('pro', 'gazelle', {
+          pollIntervalMs: 20,
+          timeoutMs: 60,
+        }),
+      { wrapper: wrapper(api, queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    await waitFor(() => expect(result.current.authUrl).toBeUndefined());
+    expect(result.current.isWaiting).toBe(false);
+    // Nothing left in the cache pinning the row open.
+    expect(
+      queryClient.getQueryData(['muster', 'pending-sign-in', 'gazelle', 'pro']),
+    ).toBeNull();
+  });
 });

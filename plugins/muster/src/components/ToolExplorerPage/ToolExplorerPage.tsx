@@ -40,6 +40,7 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 function AuthAffordance({ installation }: { installation: string }) {
   const musterApi = useApi(musterApiRef);
+  const { activeInstallationInfo } = useMusterInstance();
 
   const { data } = useQuery({
     queryKey: ['muster', 'list-tools-auth', installation],
@@ -51,6 +52,14 @@ function AuthAffordance({ installation }: { installation: string }) {
     return null;
   }
 
+  // `servers_requiring_auth` is muster's own state and says nothing about how
+  // this portal reaches it. Signing a *user* in needs a per-user muster session,
+  // which only exists when the installation is configured with an authProvider
+  // (`requiresAuth` on the wire) -- without one the sign-in has no possible
+  // outcome but an internal config message, so say it once instead of offering
+  // every server a button that cannot work.
+  const canSignIn = activeInstallationInfo?.requiresAuth ?? false;
+
   // muster reports one `auth_tool` per server (`core_auth_login`, taking the
   // server name) and excludes SSO-managed servers from this list, so each entry
   // gets its own sign-in flow rather than one blanket action.
@@ -61,14 +70,23 @@ function AuthAffordance({ installation }: { installation: string }) {
           ? '1 server requires authentication and its tools stay hidden until you sign in.'
           : `${servers.length} servers require authentication and their tools stay hidden until you sign in.`}
       </Text>
-      {servers.map(server => (
-        <ServerSignIn
-          key={server.name}
-          serverName={server.name}
-          installation={installation}
-          showName
-        />
-      ))}
+      {canSignIn ? (
+        servers.map(server => (
+          <ServerSignIn
+            key={server.name}
+            serverName={server.name}
+            installation={installation}
+            showName
+          />
+        ))
+      ) : (
+        <Text variant="body-small" color="secondary">
+          This portal talks to muster without per-user credentials, so these
+          servers ({servers.map(server => server.name).join(', ')}) cannot be
+          signed in to from here. An administrator has to configure an auth
+          provider for this installation.
+        </Text>
+      )}
     </Flex>
   );
 

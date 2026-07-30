@@ -88,6 +88,32 @@ describe('isInfrastructureError', () => {
         name: 'ServiceUnavailableError',
       }),
     ],
+    /**
+     * @ai-sdk/mcp reports every non-2xx from muster's endpoint as an
+     * MCPClientError carrying the status -- an ingress 5xx, a 401/403 from
+     * muster's OAuth proxy, an expired MCP session. `name` is the discriminator
+     * because isInstance() matches any AISDKError.
+     */
+    [
+      'an MCP transport HTTP error',
+      Object.assign(
+        new Error(
+          'MCP HTTP Transport Error: POSTing to endpoint (HTTP 502): <html>',
+        ),
+        { name: 'MCPClientError', statusCode: 502 },
+      ),
+    ],
+    [
+      'an OAuth-proxy 401 from the transport',
+      Object.assign(new Error('MCP HTTP Transport Error: (HTTP 401)'), {
+        name: 'MCPClientError',
+        statusCode: 401,
+      }),
+    ],
+    [
+      'a protocol error reporting a numeric code',
+      Object.assign(new Error('Unexpected content type'), { code: -1 }),
+    ],
   ])('treats %s as infrastructure', (_label, error) => {
     expect(isInfrastructureError(error)).toBe(true);
   });

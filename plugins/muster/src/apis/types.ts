@@ -284,6 +284,15 @@ export interface ServerAuthStatus {
 
 export interface AuthStatusResponse {
   servers: ServerAuthStatus[];
+  /**
+   * Set when muster's `auth://status` could not be read at all (unsupported,
+   * unreachable, mid-outage). The proxy answers 200 either way so polling it
+   * doesn't flood Sentry, so this flag is the only way to tell "nothing needs a
+   * sign-in" from "we cannot tell".
+   */
+  unavailable?: boolean;
+  /** Why the status is unavailable, for display next to a waiting sign-in. */
+  message?: string;
 }
 
 /**

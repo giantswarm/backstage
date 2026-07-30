@@ -69,11 +69,19 @@ export function parseAuthLoginResult(payload: unknown): AuthLoginResult {
 }
 
 /**
- * Backstage error classes our own client code throws for a dependency problem
- * (an installation that isn't configured, a meta-tool with no executor, a
- * missing resource, a rejected token).
+ * Error names that mean a broken dependency rather than a decision by muster:
+ *
+ * - `MCPClientError` is what `@ai-sdk/mcp` throws for every transport and
+ *   protocol fault, including any non-2xx from muster's endpoint (an ingress
+ *   5xx, a 401/403 from muster's OAuth proxy, an expired MCP session). It
+ *   carries `statusCode`, and its `name` is the documented discriminator --
+ *   `isInstance()` is unusable here because it matches any `AISDKError`.
+ * - The rest are Backstage classes our own client code throws for a dependency
+ *   problem (an installation that isn't configured, a meta-tool with no
+ *   executor, a missing resource, a rejected token).
  */
 const INFRASTRUCTURE_ERROR_NAMES = [
+  'MCPClientError',
   'ServiceUnavailableError',
   'AuthenticationError',
   'NotFoundError',
@@ -97,6 +105,18 @@ export function isInfrastructureError(error: unknown): boolean {
   if (error instanceof TypeError) {
     return true;
   }
-  const name = (error as { name?: string } | undefined)?.name;
-  return name !== undefined && INFRASTRUCTURE_ERROR_NAMES.includes(name);
+  const candidate = error as
+    { name?: string; statusCode?: unknown; code?: unknown } | undefined;
+  // Any transport that reports an HTTP status (or a protocol-level code) on the
+  // error is describing a broken hop, not a tool result.
+  if (
+    typeof candidate?.statusCode === 'number' ||
+    typeof candidate?.code === 'number'
+  ) {
+    return true;
+  }
+  return (
+    candidate?.name !== undefined &&
+    INFRASTRUCTURE_ERROR_NAMES.includes(candidate.name)
+  );
 }

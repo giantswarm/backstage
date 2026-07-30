@@ -318,7 +318,13 @@ describe('createRouter', () => {
       const response = await readStatus();
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ servers: [] });
+      // Flagged, not just empty: a waiting row has to be able to tell "nothing
+      // needs a sign-in" from "we cannot tell".
+      expect(response.body).toEqual({
+        servers: [],
+        unavailable: true,
+        message: 'Muster resource auth://status returned no text content',
+      });
     });
 
     it('returns the sign-in URL from an auth challenge', async () => {
@@ -398,6 +404,15 @@ describe('createRouter', () => {
         'an unavailable dependency',
         Object.assign(new Error('no executor'), {
           name: 'ServiceUnavailableError',
+        }),
+      ],
+      // Every non-2xx from muster's endpoint arrives this way, including a 401
+      // from its own OAuth proxy.
+      [
+        'a non-2xx from muster',
+        Object.assign(new Error('MCP HTTP Transport Error: (HTTP 502)'), {
+          name: 'MCPClientError',
+          statusCode: 502,
         }),
       ],
     ])('lets %s keep its 5xx', async (_label, thrown) => {
