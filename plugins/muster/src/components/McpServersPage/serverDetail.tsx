@@ -11,7 +11,7 @@ import {
   formatRelativeTime,
   formatTimestamp,
 } from '../../lib/formatRelativeTime';
-import { StateBadge } from '../shared';
+import { ServerSignIn, StateBadge } from '../shared';
 import { severityTone } from '../shared';
 import { toolExplorerRouteRef } from '../../routes';
 
@@ -123,7 +123,11 @@ export function ServerConfig({ server }: { server: MCPServer }) {
   );
 }
 
-/** The per-server auth/token chain recovered from `spec.auth`. */
+/**
+ * The per-server auth/token chain recovered from `spec.auth`, plus the sign-in
+ * affordance when this user's muster session is not authenticated to the server.
+ * Shared by the standard and integration disclosures.
+ */
 export function AuthChain({ server }: { server: MCPServer }) {
   const classes = useStyles();
   const auth = server.getAuth();
@@ -139,53 +143,64 @@ export function AuthChain({ server }: { server: MCPServer }) {
   const { tokenExchange, localMint, authorizationServer } = auth;
 
   return (
-    <Box className={classes.grid}>
-      <DefRow label="Type">{auth.type}</DefRow>
-      <DefRow label="Forward token">{auth.forwardToken ? 'yes' : 'no'}</DefRow>
-      {auth.requiredAudiences && auth.requiredAudiences.length > 0 && (
-        <DefRow label="Required audiences">
-          <span className={classes.mono}>
-            {auth.requiredAudiences.join(', ')}
-          </span>
+    <>
+      <ServerSignIn
+        serverName={server.getName()}
+        installation={server.cluster}
+        onlyWhenRequired
+      />
+      <Box className={classes.grid}>
+        <DefRow label="Type">{auth.type}</DefRow>
+        <DefRow label="Forward token">
+          {auth.forwardToken ? 'yes' : 'no'}
         </DefRow>
-      )}
-      {authorizationServer && (
-        <DefRow label="Authorization server">
-          <span className={classes.mono}>{authorizationServer.issuer}</span>
-          {authorizationServer.scopes ? ` (${authorizationServer.scopes})` : ''}
-        </DefRow>
-      )}
-      {tokenExchange?.enabled && (
-        <>
-          {tokenExchange.connectorId && (
-            <DefRow label="TE connector">{tokenExchange.connectorId}</DefRow>
-          )}
-          {tokenExchange.dexTokenEndpoint && (
-            <DefRow label="Dex endpoint">
-              <span className={classes.mono}>
-                {tokenExchange.dexTokenEndpoint}
-              </span>
-            </DefRow>
-          )}
-          {tokenExchange.expectedIssuer && (
-            <DefRow label="Expected issuer">
-              <span className={classes.mono}>
-                {tokenExchange.expectedIssuer}
-              </span>
-            </DefRow>
-          )}
-          {tokenExchange.scopes && (
-            <DefRow label="TE scopes">{tokenExchange.scopes}</DefRow>
-          )}
-        </>
-      )}
-      {localMint?.enabled && (
-        <DefRow label="Local mint">
-          audience{' '}
-          <span className={classes.mono}>{localMint.audience ?? '-'}</span>
-        </DefRow>
-      )}
-    </Box>
+        {auth.requiredAudiences && auth.requiredAudiences.length > 0 && (
+          <DefRow label="Required audiences">
+            <span className={classes.mono}>
+              {auth.requiredAudiences.join(', ')}
+            </span>
+          </DefRow>
+        )}
+        {authorizationServer && (
+          <DefRow label="Authorization server">
+            <span className={classes.mono}>{authorizationServer.issuer}</span>
+            {authorizationServer.scopes
+              ? ` (${authorizationServer.scopes})`
+              : ''}
+          </DefRow>
+        )}
+        {tokenExchange?.enabled && (
+          <>
+            {tokenExchange.connectorId && (
+              <DefRow label="TE connector">{tokenExchange.connectorId}</DefRow>
+            )}
+            {tokenExchange.dexTokenEndpoint && (
+              <DefRow label="Dex endpoint">
+                <span className={classes.mono}>
+                  {tokenExchange.dexTokenEndpoint}
+                </span>
+              </DefRow>
+            )}
+            {tokenExchange.expectedIssuer && (
+              <DefRow label="Expected issuer">
+                <span className={classes.mono}>
+                  {tokenExchange.expectedIssuer}
+                </span>
+              </DefRow>
+            )}
+            {tokenExchange.scopes && (
+              <DefRow label="TE scopes">{tokenExchange.scopes}</DefRow>
+            )}
+          </>
+        )}
+        {localMint?.enabled && (
+          <DefRow label="Local mint">
+            audience{' '}
+            <span className={classes.mono}>{localMint.audience ?? '-'}</span>
+          </DefRow>
+        )}
+      </Box>
+    </>
   );
 }
 
@@ -377,7 +392,7 @@ export function ServerTools({
     return (
       <Typography variant="body2" className={classes.note}>
         {authGated
-          ? 'No tools exposed — this server requires an authenticated muster session for your user.'
+          ? 'No tools exposed — your muster session is not authenticated to this server. Sign in under “Authentication / token chain”.'
           : 'No tools exposed (the server may be down or unreachable).'}
       </Typography>
     );

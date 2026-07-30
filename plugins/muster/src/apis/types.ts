@@ -253,6 +253,50 @@ export interface CallToolOptions {
   installation?: string;
 }
 
+/**
+ * Per-session authentication state of one aggregated server, from muster's
+ * `auth://status` resource (pkgoauth.ServerAuthStatus). Unlike the CRD's
+ * `.status` this is scoped to the calling user's muster session.
+ */
+export interface ServerAuthStatus {
+  name: string;
+  status:
+    | 'connected'
+    | 'auth_required'
+    | 'reauth_required'
+    | 'sso_pending'
+    | 'disconnected'
+    | 'unreachable'
+    | 'failed'
+    | 'error';
+  issuer?: string;
+  scope?: string;
+  /**
+   * `core_auth_login` when the user can sign in themselves; absent for
+   * SSO-managed servers, where only an administrator can fix the connection.
+   */
+  auth_tool?: string;
+  error?: string;
+  token_forwarding_enabled?: boolean;
+  token_exchange_enabled?: boolean;
+  sso_attempt_failed?: boolean;
+}
+
+export interface AuthStatusResponse {
+  servers: ServerAuthStatus[];
+}
+
+/**
+ * Outcome of a `core_auth_login` attempt, normalised by the muster-backend.
+ * `auth_required` carries the sign-in URL the user has to open; `unknown` means
+ * muster answered something unrecognised and `auth://status` should be re-read.
+ */
+export interface ServerSignInResult {
+  status: 'connected' | 'auth_required' | 'error' | 'unknown';
+  authUrl?: string;
+  message: string;
+}
+
 export interface MusterApi {
   /** The muster installations the proxy can target. */
   listInstallations(): Promise<MusterInstallationsResponse>;
@@ -293,10 +337,28 @@ export interface MusterApi {
   /**
    * Ensure a per-user token for the target installation's muster `authProvider`
    * is available, triggering the OAuth/Dex popup if needed. Returns true when a
-   * token was obtained (or no provider is configured). Used by the tool
-   * explorer's "Sign in" affordance for servers in `Auth Required`.
+   * token was obtained (or no provider is configured).
+   *
+   * This authenticates the user to *muster itself*. It has no effect on the
+   * aggregated servers muster reports in `servers_requiring_auth`, which each
+   * need their own downstream OAuth flow -- see `signInServer`.
    */
   signIn(installation?: string): Promise<boolean>;
+  /**
+   * Per-server authentication state for the user's muster session
+   * (`auth://status`). Cheap enough to poll while a sign-in is in flight.
+   */
+  getAuthStatus(installation?: string): Promise<AuthStatusResponse>;
+  /**
+   * Start the downstream OAuth flow for one aggregated server via muster's
+   * `core_auth_login`. Either reports the server as already connected or
+   * returns a sign-in URL the user must open in a browser; muster connects the
+   * server for this session once the flow completes.
+   */
+  signInServer(
+    server: string,
+    installation?: string,
+  ): Promise<ServerSignInResult>;
 }
 
 export interface MusterAuthCredentials {

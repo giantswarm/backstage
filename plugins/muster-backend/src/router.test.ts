@@ -12,6 +12,7 @@ describe('createRouter', () => {
   const filterTools = jest.fn();
   const describeTool = jest.fn();
   const listCoreTools = jest.fn();
+  const getResource = jest.fn();
 
   const mockClient = {
     callTool,
@@ -19,6 +20,7 @@ describe('createRouter', () => {
     filterTools,
     describeTool,
     listCoreTools,
+    getResource,
   } as unknown as MusterMcpClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -61,6 +63,7 @@ describe('createRouter', () => {
     filterTools.mockReset();
     describeTool.mockReset();
     listCoreTools.mockReset();
+    getResource.mockReset();
     app = await buildApp();
   });
 
@@ -260,6 +263,109 @@ describe('createRouter', () => {
 
     expect(response.status).toBe(200);
     expect(callTool).toHaveBeenCalledWith('core_mcpserver_list', {}, {});
+  });
+
+  describe('downstream server auth', () => {
+    it('reads per-server auth status from the auth://status resource', async () => {
+      const payload = {
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      };
+      getResource.mockResolvedValue(payload);
+
+      const response = await request(app).get('/auth/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(payload);
+      expect(getResource).toHaveBeenCalledWith('auth://status', {});
+    });
+
+    it('returns the sign-in URL from an auth challenge', async () => {
+      callTool.mockResolvedValue(
+        [
+          'Authentication Required',
+          '',
+          'Server: pro',
+          'Status: Authentication required for pro. Please visit the link below to authenticate.',
+          '',
+          'Please sign in to connect to this server:',
+          '',
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+          '',
+          'After signing in, run this tool again to complete the connection.',
+        ].join('\n'),
+      );
+
+      const response = await request(app)
+        .post('/auth/login')
+        .send({ server: 'pro' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'auth_required',
+        authUrl:
+          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+      });
+      expect(callTool).toHaveBeenCalledWith(
+        'core_auth_login',
+        { server: 'pro' },
+        {},
+      );
+    });
+
+    it('reports an already-connected server as connected', async () => {
+      callTool.mockResolvedValue(
+        "Server 'pro' is already authenticated and connected.",
+      );
+
+      const response = await request(app)
+        .post('/auth/login')
+        .send({ server: 'pro' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('connected');
+    });
+
+    /**
+     * Muster refuses a manual login for SSO-managed servers, rate limits, and
+     * missing OAuth config as MCP tool errors. Those are expected outcomes of
+     * this route, so they must not surface as 5xx (MiddlewareFactory logs those
+     * to Sentry regardless of our own log level).
+     */
+    it('returns a tool-level refusal as a structured 200', async () => {
+      callTool.mockRejectedValue(
+        new Error("Server 'pro' uses SSO and is connected automatically."),
+      );
+
+      const response = await request(app)
+        .post('/auth/login')
+        .send({ server: 'pro' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        status: 'error',
+        message: "Server 'pro' uses SSO and is connected automatically.",
+      });
+    });
+
+    it('requires a server name', async () => {
+      const response = await request(app).post('/auth/login').send({});
+
+      expect(response.status).toBe(400);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    it('still fails with 401 when the user token is missing', async () => {
+      const authApp = await buildMultiApp([
+        { name: 'gazelle', url: 'https://muster.gazelle', authProvider: 'dex' },
+      ]);
+
+      const response = await request(authApp)
+        .post('/auth/login?installation=gazelle')
+        .send({ server: 'pro' });
+
+      expect(response.status).toBe(401);
+      expect(callTool).not.toHaveBeenCalled();
+    });
   });
 
   describe('/call', () => {

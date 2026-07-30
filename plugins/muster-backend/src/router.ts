@@ -8,6 +8,11 @@ import {
 import express from 'express';
 import Router from 'express-promise-router';
 import {
+  AUTH_LOGIN_TOOL,
+  AUTH_STATUS_RESOURCE,
+  parseAuthLoginResult,
+} from './authLogin';
+import {
   MusterInstallationConfig,
   MusterMcpClient,
   readMusterInstallationsFromConfig,
@@ -275,6 +280,62 @@ export async function createRouter(
       readCallOptions(req, installation),
     );
     res.json(result);
+  });
+
+  // --- Downstream server authentication ------------------------------------
+
+  /**
+   * Per-server authentication status for the calling user's muster session
+   * (muster's `auth://status` resource). Read by the "Sign in" affordances to
+   * tell an OAuth-loginable server from an SSO-managed one and to detect when a
+   * browser sign-in has completed.
+   */
+  router.get('/auth/status', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const result = await client.getResource(
+      AUTH_STATUS_RESOURCE,
+      readCallOptions(req, installation),
+    );
+    res.json(result);
+  });
+
+  /**
+   * Start (or complete) the OAuth flow for one aggregated MCP server via
+   * muster's `core_auth_login`. Muster answers with free text -- either "already
+   * connected" or a challenge carrying a sign-in URL the user must visit -- so
+   * the response is normalised here.
+   *
+   * Muster reports refusals (SSO-managed server, rate limit, undiscoverable
+   * issuer) as MCP tool errors, which the client turns into a thrown Error.
+   * Those are expected outcomes for this route, so every failure is returned as
+   * a structured 200 -- with the message shown next to the button -- rather than
+   * a 5xx that MiddlewareFactory would ship to Sentry.
+   */
+  router.post('/auth/login', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { server } = req.body ?? {};
+
+    if (typeof server !== 'string' || server === '') {
+      throw new InputError('server is required in the request body');
+    }
+
+    const callOptions = readCallOptions(req, installation);
+
+    let payload: unknown;
+    try {
+      payload = await client.callTool(AUTH_LOGIN_TOOL, { server }, callOptions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.info(`${AUTH_LOGIN_TOOL} did not connect the server`, {
+        installation: installation.name,
+        server,
+        message,
+      });
+      res.json({ status: 'error', message });
+      return;
+    }
+
+    res.json(parseAuthLoginResult(payload));
   });
 
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------

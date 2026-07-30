@@ -23,6 +23,7 @@ const META_TOOLS = [
   'list_core_tools',
   'filter_tools',
   'call_tool',
+  'get_resource',
 ] as const;
 
 export type MetaToolName = (typeof META_TOOLS)[number];
@@ -288,6 +289,18 @@ export class MusterMcpClient {
     options?: { authToken?: string },
   ): Promise<unknown> {
     return this.invokeMetaTool('list_core_tools', args, options);
+  }
+
+  /**
+   * Read one of muster's MCP resources by URI. Used for `auth://status`, the
+   * per-session view of which aggregated servers this user is authenticated to.
+   * The resource text is JSON, which parseResult unwraps to an object.
+   */
+  async getResource(
+    uri: string,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('get_resource', { uri }, options);
   }
 
   async dispose(): Promise<void> {

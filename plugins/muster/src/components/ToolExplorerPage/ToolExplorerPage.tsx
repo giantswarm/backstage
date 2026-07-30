@@ -3,14 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { makeStyles, Theme } from '@material-ui/core';
 import BuildIcon from '@material-ui/icons/Build';
 import { Content, EmptyState } from '@backstage/core-components';
-import { Alert, Box, Button, Text } from '@backstage/ui';
+import { Alert, Box, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import { SectionHeader } from '../shared';
+import { SectionHeader, ServerSignIn } from '../shared';
 import { ToolBrowser } from './ToolBrowser';
 import { ToolDetailPanel } from './ToolDetailPanel';
 import { useToolPrefs } from './useToolPrefs';
@@ -40,18 +40,10 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 function AuthAffordance({ installation }: { installation: string }) {
   const musterApi = useApi(musterApiRef);
-  const queryClient = useQueryClient();
 
   const { data } = useQuery({
     queryKey: ['muster', 'list-tools-auth', installation],
     queryFn: () => musterApi.listTools(installation),
-  });
-
-  const signIn = useMutation({
-    mutationFn: () => musterApi.signIn(installation),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['muster'] });
-    },
   });
 
   const servers = data?.servers_requiring_auth ?? [];
@@ -59,13 +51,26 @@ function AuthAffordance({ installation }: { installation: string }) {
     return null;
   }
 
-  const description = `${servers.length} server${
-    servers.length === 1 ? '' : 's'
-  } require authentication and their tools are hidden until you sign in: ${servers
-    .map(s => s.name)
-    .join(', ')}.${
-    signIn.isError ? ' Sign-in failed — check the muster auth provider.' : ''
-  }`;
+  // muster reports one `auth_tool` per server (`core_auth_login`, taking the
+  // server name) and excludes SSO-managed servers from this list, so each entry
+  // gets its own sign-in flow rather than one blanket action.
+  const description = (
+    <Flex direction="column" gap="2">
+      <Text variant="body-small">
+        {servers.length === 1
+          ? '1 server requires authentication and its tools stay hidden until you sign in.'
+          : `${servers.length} servers require authentication and their tools stay hidden until you sign in.`}
+      </Text>
+      {servers.map(server => (
+        <ServerSignIn
+          key={server.name}
+          serverName={server.name}
+          installation={installation}
+          showName
+        />
+      ))}
+    </Flex>
+  );
 
   return (
     <Box mb="3">
@@ -73,16 +78,6 @@ function AuthAffordance({ installation }: { installation: string }) {
         status="warning"
         title="Authentication required"
         description={description}
-        customActions={
-          <Button
-            variant="secondary"
-            size="small"
-            isPending={signIn.isPending}
-            onClick={() => signIn.mutate()}
-          >
-            {signIn.isPending ? 'Signing in…' : 'Sign in'}
-          </Button>
-        }
       />
     </Box>
   );
