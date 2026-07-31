@@ -12,6 +12,7 @@ import { CHART_NAME, composeManifests } from '../../lib/composeManifests';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useDeployAgent } from '../../hooks/useDeployAgent';
+import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { newAgentRouteRef, newAgentSkillsRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CodeBlock } from '../CodeBlock';
@@ -102,6 +103,10 @@ export function NewAgentReviewPage() {
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const skillsLink = useRouteRef(newAgentSkillsRouteRef);
   const { state, isComplete } = useNewAgentForm();
+  // Only to mirror step 1's flow shape: with no skill repositories configured
+  // the skills step doesn't exist, so "Back" must not send the user to a page
+  // that immediately redirects here. Cached by the time this page renders.
+  const { hasRepositories } = useSkillCatalog();
   const { deploy, status } = useDeployAgent();
   const [deployError, setDeployError] = useState<string | undefined>();
 
@@ -201,6 +206,11 @@ export function NewAgentReviewPage() {
   };
   const deployLabel = deployLabelByPhase[status.phase] ?? 'Deploy agent';
 
+  // "Back" goes to the immediately preceding step, which is the skills step only
+  // when that step exists.
+  const backLink = hasRepositories ? skillsLink : newAgentLink;
+  const stepNumber = hasRepositories ? 3 : 2;
+
   // Memoized so the header actions slot only updates when the handlers/labels
   // actually change (see useProvidePageHeaderActions).
   const actions = useMemo(
@@ -209,7 +219,7 @@ export function NewAgentReviewPage() {
         <Button
           variant="tertiary"
           isDisabled={isDeploying}
-          onPress={() => navigate(skillsLink ? skillsLink() : '..')}
+          onPress={() => navigate(backLink ? backLink() : '..')}
         >
           Back to edit
         </Button>
@@ -218,7 +228,7 @@ export function NewAgentReviewPage() {
         </Button>
       </Flex>
     ),
-    [isDeploying, skillsLink, navigate, onDeploy, deployLabel],
+    [isDeploying, backLink, navigate, onDeploy, deployLabel],
   );
 
   // Surface the actions in the section's single header (Agent Platform) rather
@@ -241,7 +251,7 @@ export function NewAgentReviewPage() {
           color="secondary"
           className={classes.stepLabel}
         >
-          Step 3 of 3: Review & deploy
+          Step {stepNumber} of {stepNumber}: Review & deploy
         </Text>
         <Text
           as="h2"
@@ -274,6 +284,22 @@ export function NewAgentReviewPage() {
               {CHART_NAME}:{chartVersion}
             </span>
           </SummaryItem>
+          {/* Named here, not just buried in the values YAML — skills are chosen
+              on their own step, so this is the only compact confirmation of
+              what that step produced. */}
+          {hasRepositories && (
+            <SummaryItem label="Skills">
+              {state.selectedSkills.length === 0 ? (
+                <Text variant="body-small" color="secondary">
+                  None
+                </Text>
+              ) : (
+                <Text variant="body-small">
+                  {state.selectedSkills.map(skill => skill.name).join(', ')}
+                </Text>
+              )}
+            </SummaryItem>
+          )}
         </div>
 
         <div className={classes.section}>

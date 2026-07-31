@@ -1,5 +1,9 @@
 import { DiscoveredSkill } from './skills';
-import { groupSkillsByRepo, skillSubgroup } from './skillGrouping';
+import {
+  groupSkillsByRepo,
+  skillSubgroup,
+  subgroupLabel,
+} from './skillGrouping';
 
 function skill(overrides: Partial<DiscoveredSkill>): DiscoveredSkill {
   return {
@@ -22,8 +26,12 @@ describe('skillSubgroup', () => {
   });
 
   it('strips a trailing "skills" container to find the plugin folder (claude-code convention)', () => {
-    expect(skillSubgroup('plugins/gs-base/skills/registries')).toBe('gs-base');
-    expect(skillSubgroup('plugins/gs-godev/skills/go-doc')).toBe('gs-godev');
+    expect(skillSubgroup('plugins/gs-base/skills/registries')).toBe(
+      'plugins/gs-base',
+    );
+    expect(skillSubgroup('plugins/gs-godev/skills/go-doc')).toBe(
+      'plugins/gs-godev',
+    );
   });
 
   it('uses the immediate parent when there is no noise container', () => {
@@ -32,6 +40,27 @@ describe('skillSubgroup', () => {
 
   it('returns undefined when only noise segments remain', () => {
     expect(skillSubgroup('skills/foo')).toBeUndefined();
+  });
+
+  it('keeps same-named directories under different parents distinct', () => {
+    // Both label as "a", but must not merge into one group.
+    expect(skillSubgroup('plugins/a/skills/x')).toBe('plugins/a');
+    expect(skillSubgroup('docs/a/skills/y')).toBe('docs/a');
+  });
+
+  it('groups a skill nested deeper than the convention under its own parent', () => {
+    // Documented limitation: only the immediate parent is treated as
+    // structural, so this does NOT fold into `plugins/gs-base`.
+    expect(skillSubgroup('plugins/gs-base/skills/registries/aws')).toBe(
+      'plugins/gs-base/skills/registries',
+    );
+  });
+});
+
+describe('subgroupLabel', () => {
+  it('shows only the last segment of the key', () => {
+    expect(subgroupLabel('plugins/gs-base')).toBe('gs-base');
+    expect(subgroupLabel('sre')).toBe('sre');
   });
 });
 
@@ -77,8 +106,33 @@ describe('groupSkillsByRepo', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].ungrouped).toEqual([]);
     expect(groups[0].subgroups).toEqual([
-      { key: 'gs-base', skills: [skills[0]] },
-      { key: 'gs-godev', skills: [skills[1], skills[2]] },
+      { key: 'plugins/gs-base', label: 'gs-base', skills: [skills[0]] },
+      {
+        key: 'plugins/gs-godev',
+        label: 'gs-godev',
+        skills: [skills[1], skills[2]],
+      },
+    ]);
+  });
+
+  it('does not merge same-named directories from unrelated trees', () => {
+    const fromPlugins = skill({
+      name: 'x',
+      repoUrl: 'https://github.com/giantswarm/claude-code',
+      path: 'plugins/a/skills/x',
+    });
+    const fromDocs = skill({
+      name: 'y',
+      repoUrl: 'https://github.com/giantswarm/claude-code',
+      path: 'docs/a/skills/y',
+    });
+
+    const [group] = groupSkillsByRepo([fromPlugins, fromDocs]);
+
+    // Two distinct groups that happen to share the label "a".
+    expect(group.subgroups).toEqual([
+      { key: 'docs/a', label: 'a', skills: [fromDocs] },
+      { key: 'plugins/a', label: 'a', skills: [fromPlugins] },
     ]);
   });
 
@@ -102,7 +156,7 @@ describe('groupSkillsByRepo', () => {
     ]);
   });
 
-  it('sorts subgroups alphabetically by key', () => {
+  it('sorts subgroups alphabetically by label', () => {
     const skills = [
       skill({
         name: 'z-skill',
@@ -118,7 +172,7 @@ describe('groupSkillsByRepo', () => {
 
     const groups = groupSkillsByRepo(skills);
 
-    expect(groups[0].subgroups.map(g => g.key)).toEqual(['aaa', 'zzz']);
+    expect(groups[0].subgroups.map(g => g.label)).toEqual(['aaa', 'zzz']);
   });
 
   it('returns an empty array for an empty skill list', () => {

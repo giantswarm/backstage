@@ -18,8 +18,13 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { agentsRouteRef, newAgentSkillsRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  newAgentReviewRouteRef,
+  newAgentSkillsRouteRef,
+} from '../../routes';
 import { useAgentChart } from '../../hooks/useAgentChart';
+import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
@@ -60,6 +65,14 @@ function NewAgentPageContent() {
   const navigate = useNavigate();
   const agentsLink = useRouteRef(agentsRouteRef);
   const skillsLink = useRouteRef(newAgentSkillsRouteRef);
+  const reviewLink = useRouteRef(newAgentReviewRouteRef);
+  // Called here for two reasons beyond this page's own rendering: it starts the
+  // (backend, git-tree-walking) skill discovery while the user is still filling
+  // in this form, so step 2 usually has its catalogue ready instead of showing
+  // "Discovering skills…"; and `hasRepositories` decides whether step 2 exists
+  // at all. The query key doesn't depend on any form state, so the warm-up is
+  // never wasted, and it doesn't fire when no repositories are configured.
+  const { hasRepositories } = useSkillCatalog();
   const {
     state,
     setName,
@@ -93,15 +106,20 @@ function NewAgentPageContent() {
   // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
   const errorCount = validationErrors.length;
+  // Skip the skills step when no repositories are configured — it would be an
+  // empty page whose only advice is admin-side app-config the person creating
+  // an agent usually can't change.
+  const nextLink = hasRepositories ? skillsLink : reviewLink;
+  const totalSteps = hasRepositories ? 3 : 2;
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
       setShowValidation(true);
       return;
     }
-    if (skillsLink) {
-      navigate(skillsLink());
+    if (nextLink) {
+      navigate(nextLink());
     }
-  }, [errorCount, skillsLink, navigate]);
+  }, [errorCount, nextLink, navigate]);
 
   // Memoized so the header actions slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -135,7 +153,7 @@ function NewAgentPageContent() {
           color="secondary"
           className={classes.stepLabel}
         >
-          Step 1 of 3: Details
+          Step 1 of {totalSteps}: Details
         </Text>
         <Text
           as="h2"
@@ -232,8 +250,9 @@ function NewAgentPageContent() {
             <CardBody>
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  The next step lets you pick skills for this agent, then review
-                  and deploy it.
+                  {hasRepositories
+                    ? 'The next step lets you pick skills for this agent, then review and deploy it.'
+                    : 'The next step composes the Helm values and manifests so you can review them before the agent is deployed.'}
                 </Text>
                 {showValidation && validationErrors.length > 0 && (
                   <Alert

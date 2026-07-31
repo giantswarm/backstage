@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -101,15 +101,18 @@ function SkillCard({
 
 function SkillGrid({
   skills,
+  ariaLabel,
   selectedIds,
   onToggle,
 }: {
   skills: DiscoveredSkill[];
+  /** Names the group for assistive tech — the subgroup, or the repo when flush. */
+  ariaLabel: string;
   selectedIds: Set<string>;
   onToggle: (skill: DiscoveredSkill) => void;
 }) {
   return (
-    <SelectableCardGrid role="group" ariaLabel="Skills" minWidth={240}>
+    <SelectableCardGrid role="group" ariaLabel={ariaLabel} minWidth={240}>
       {skills.map(skill => (
         <SkillCard
           key={skillId(skill)}
@@ -124,29 +127,42 @@ function SkillGrid({
 
 function GroupedSkills({
   groups,
+  query,
   selectedIds,
   onToggle,
 }: {
   groups: RepoSkillGroup[];
+  /** The active search term; drives when expansion is re-seeded. */
+  query: string;
   selectedIds: Set<string>;
   onToggle: (skill: DiscoveredSkill) => void;
 }) {
   const classes = useStyles();
-  // All repos expanded by default -- unlike muster's tool catalogue, there's
-  // no single "primary" group to default to among configured skill repos.
   const repoKeys = groups.map(group => group.repoUrl);
-  // `defaultExpandedKeys` only applies on mount, so key the group by which
-  // repos it contains: as a search narrows the results to a different set of
-  // repos, the remount re-expands them instead of leaving new matches
-  // collapsed. Keyed on the repo set rather than every keystroke so typing
-  // within the same repos doesn't churn the accordion.
-  const groupSignature = repoKeys.join('|');
+  const repoSignature = repoKeys.join('|');
+
+  // Expansion is controlled rather than seeded via `defaultExpandedKeys` (which
+  // only applies on mount): a search must always reveal its matches, and a repo
+  // the user had collapsed would otherwise keep its matches hidden behind a
+  // trigger that advertises a non-zero count.
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+  // Re-seed to "everything shown is open" whenever the query changes or the set
+  // of matching repos changes (the latter also covers the initial load, where
+  // skills arrive asynchronously while the query stays empty). Within a stable
+  // query and repo set, a collapse the user performs sticks.
+  useEffect(() => {
+    setExpandedKeys(new Set(repoKeys));
+    // repoSignature stands in for repoKeys (a new array each render); query is
+    // read only to retrigger on search changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, repoSignature]);
 
   return (
     <AccordionGroup
-      key={groupSignature}
       allowsMultiple
-      defaultExpandedKeys={repoKeys}
+      expandedKeys={expandedKeys}
+      onExpandedChange={keys => setExpandedKeys(new Set(keys as Set<string>))}
     >
       {groups.map(group => {
         const total =
@@ -162,22 +178,26 @@ function GroupedSkills({
                 {group.ungrouped.length > 0 && (
                   <SkillGrid
                     skills={group.ungrouped}
+                    ariaLabel={`Skills in ${group.repoSlug}`}
                     selectedIds={selectedIds}
                     onToggle={onToggle}
                   />
                 )}
                 {group.subgroups.map(subgroup => (
                   <div key={subgroup.key}>
+                    {/* A real heading, so the grouping is reachable by heading
+                        navigation and not just visible styling. */}
                     <Text
-                      as="p"
+                      as="h4"
                       weight="bold"
                       variant="body-small"
                       className={classes.subgroupHeading}
                     >
-                      {subgroup.key}
+                      {subgroup.label}
                     </Text>
                     <SkillGrid
                       skills={subgroup.skills}
+                      ariaLabel={`Skills in ${group.repoSlug} / ${subgroup.label}`}
                       selectedIds={selectedIds}
                       onToggle={onToggle}
                     />
@@ -261,12 +281,24 @@ export function NewAgentSkillsPage() {
     [newAgentLink, reviewLink, navigate],
   );
 
-  useProvidePageHeaderActions(actions);
+  // Guarded like NewAgentReviewPage: when this render only produces a redirect,
+  // pushing this step's actions into the shared section header would flash
+  // controls for a page the user never sees.
+  const isRedirecting = !isComplete || !hasRepositories;
+  useProvidePageHeaderActions(isRedirecting ? null : actions);
 
   // A direct deep link with required step-1 fields missing can't be fixed on
   // this page -- send the user back to fill those in first.
   if (!isComplete) {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
+  }
+
+  // Without configured repositories there is nothing to pick and no action the
+  // agent's creator could take (the fix is admin-side app-config), so this step
+  // doesn't exist: step 1 sends them straight to review, and a deep link here
+  // follows. `hasRepositories` is pure config, so this needs no fetch.
+  if (!hasRepositories) {
+    return <Navigate to={reviewLink ? reviewLink() : '..'} replace />;
   }
 
   return (
@@ -298,19 +330,11 @@ export function NewAgentSkillsPage() {
           <Card>
             <CardBody>
               <Flex direction="column" gap="3">
-                {!hasRepositories && (
-                  <Alert
-                    status="info"
-                    title="No skill repositories configured"
-                    description="Set agentPlatform.skills.repositories in app-config to let users pick skills. New agents start without any skills."
-                  />
-                )}
-
-                {hasRepositories && isLoading && skills.length === 0 && (
+                {isLoading && skills.length === 0 && (
                   <Text color="secondary">Discovering skills…</Text>
                 )}
 
-                {hasRepositories && error && skills.length === 0 && (
+                {error && skills.length === 0 && (
                   <Alert
                     status="warning"
                     title="Couldn't discover skills"
@@ -334,29 +358,42 @@ export function NewAgentSkillsPage() {
                   />
                 )}
 
-                {hasRepositories &&
-                  !isLoading &&
-                  !error &&
-                  skills.length === 0 && (
-                    <Alert
-                      status="info"
-                      title="No skills found"
-                      description="No SKILL.md files were found in the configured repositories."
-                    />
-                  )}
+                {!isLoading && !error && skills.length === 0 && (
+                  <Alert
+                    status="info"
+                    title="No skills found"
+                    description="No SKILL.md files were found in the configured repositories."
+                  />
+                )}
 
                 {skills.length > 0 && (
                   <>
-                    <SearchField
-                      aria-label="Search skills"
-                      placeholder="Search by name, description, or path…"
-                      value={query}
-                      onChange={setQuery}
-                    />
+                    <Flex
+                      align="center"
+                      justify="between"
+                      gap="2"
+                      style={{ flexWrap: 'wrap' }}
+                    >
+                      <Flex grow basis="240px" direction="column">
+                        <SearchField
+                          aria-label="Search skills"
+                          placeholder="Search by name, description, or path…"
+                          value={query}
+                          onChange={setQuery}
+                        />
+                      </Flex>
+                      {/* The only place the step reports its own output: a
+                          search can hide every selected card, and the review
+                          summary lists them only inside the values YAML. */}
+                      <Text variant="body-small" color="secondary">
+                        {selectedIds.size} selected
+                      </Text>
+                    </Flex>
 
                     {visibleSkills.length > 0 ? (
                       <GroupedSkills
                         groups={groups}
+                        query={trimmed}
                         selectedIds={selectedIds}
                         onToggle={toggleSkill}
                       />
