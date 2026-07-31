@@ -18,19 +18,21 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { agentsRouteRef, newAgentReviewRouteRef } from '../../routes';
+import { agentsRouteRef, newAgentSkillsRouteRef } from '../../routes';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
-import { SkillPicker } from '../SkillPicker';
 import { TextAreaField } from './TextAreaField';
 
 const useStyles = makeStyles(theme => ({
   column: {
     maxWidth: 960,
+  },
+  stepLabel: {
+    marginBottom: theme.spacing(0.5),
   },
   pageTitle: {
     marginBottom: theme.spacing(1),
@@ -57,7 +59,7 @@ function NewAgentPageContent() {
   const classes = useStyles();
   const navigate = useNavigate();
   const agentsLink = useRouteRef(agentsRouteRef);
-  const reviewLink = useRouteRef(newAgentReviewRouteRef);
+  const skillsLink = useRouteRef(newAgentSkillsRouteRef);
   const {
     state,
     setName,
@@ -91,15 +93,15 @@ function NewAgentPageContent() {
   // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
   const errorCount = validationErrors.length;
-  const onReview = useCallback(() => {
+  const onContinue = useCallback(() => {
     if (errorCount > 0) {
       setShowValidation(true);
       return;
     }
-    if (reviewLink) {
-      navigate(reviewLink());
+    if (skillsLink) {
+      navigate(skillsLink());
     }
-  }, [errorCount, reviewLink, navigate]);
+  }, [errorCount, skillsLink, navigate]);
 
   // Memoized so the header actions slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -112,12 +114,12 @@ function NewAgentPageContent() {
         >
           Cancel
         </Button>
-        <Button variant="primary" onPress={onReview}>
-          Review & deploy
+        <Button variant="primary" onPress={onContinue}>
+          Continue
         </Button>
       </Flex>
     ),
-    [agentsLink, navigate, onReview],
+    [agentsLink, navigate, onContinue],
   );
 
   // Surface the actions in the section's single header (Agent Platform) rather
@@ -127,6 +129,14 @@ function NewAgentPageContent() {
   return (
     <Content>
       <div className={classes.column}>
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          className={classes.stepLabel}
+        >
+          Step 1 of 3: Details
+        </Text>
         <Text
           as="h2"
           variant="title-large"
@@ -196,7 +206,7 @@ function NewAgentPageContent() {
             <CardBody>
               <SectionHeader
                 title="Configuration"
-                description="What powers the agent and shapes how it behaves: which model it uses, its system prompt, and its skills."
+                description="What powers the agent and shapes how it behaves: which model it uses and its system prompt."
               />
               <Flex direction="column" gap="5">
                 <TextAreaField
@@ -214,7 +224,6 @@ function NewAgentPageContent() {
                   description="The agent's system message. Pre-filled from the chart's default — edit it to fit the role, or leave it empty to keep the default."
                 />
                 <ModelConfigPicker />
-                <SkillPicker />
               </Flex>
             </CardBody>
           </Card>
@@ -223,8 +232,8 @@ function NewAgentPageContent() {
             <CardBody>
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  The next step composes the Helm values and manifests so you
-                  can review them before the agent is deployed.
+                  The next step lets you pick skills for this agent, then review
+                  and deploy it.
                 </Text>
                 {showValidation && validationErrors.length > 0 && (
                   <Alert

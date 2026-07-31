@@ -359,6 +359,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/muster/tools',
       '/agent-platform',
       '/agent-platform/agents/new',
+      '/agent-platform/agents/new/skills',
       '/agent-platform/agents/new/review',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',

@@ -12,7 +12,7 @@ import { CHART_NAME, composeManifests } from '../../lib/composeManifests';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useDeployAgent } from '../../hooks/useDeployAgent';
-import { newAgentRouteRef } from '../../routes';
+import { newAgentRouteRef, newAgentSkillsRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CodeBlock } from '../CodeBlock';
 
@@ -22,6 +22,9 @@ const taskPath = (taskId: string) => `/create/tasks/${taskId}`;
 const useStyles = makeStyles(theme => ({
   column: {
     maxWidth: 960,
+  },
+  stepLabel: {
+    marginBottom: theme.spacing(0.5),
   },
   pageTitle: {
     marginBottom: theme.spacing(1),
@@ -97,6 +100,7 @@ export function NewAgentReviewPage() {
   const navigate = useNavigate();
   const configApi = useApi(configApiRef);
   const newAgentLink = useRouteRef(newAgentRouteRef);
+  const skillsLink = useRouteRef(newAgentSkillsRouteRef);
   const { state, isComplete } = useNewAgentForm();
   const { deploy, status } = useDeployAgent();
   const [deployError, setDeployError] = useState<string | undefined>();
@@ -205,7 +209,7 @@ export function NewAgentReviewPage() {
         <Button
           variant="tertiary"
           isDisabled={isDeploying}
-          onPress={() => navigate(newAgentLink ? newAgentLink() : '..')}
+          onPress={() => navigate(skillsLink ? skillsLink() : '..')}
         >
           Back to edit
         </Button>
@@ -214,7 +218,7 @@ export function NewAgentReviewPage() {
         </Button>
       </Flex>
     ),
-    [isDeploying, newAgentLink, navigate, onDeploy, deployLabel],
+    [isDeploying, skillsLink, navigate, onDeploy, deployLabel],
   );
 
   // Surface the actions in the section's single header (Agent Platform) rather
@@ -231,6 +235,14 @@ export function NewAgentReviewPage() {
   return (
     <Content>
       <div className={classes.column}>
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          className={classes.stepLabel}
+        >
+          Step 3 of 3: Review & deploy
+        </Text>
         <Text
           as="h2"
           variant="title-large"
