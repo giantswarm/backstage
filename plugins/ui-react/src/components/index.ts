@@ -15,6 +15,7 @@ export * from './MultiplePicker';
 export * from './MultipleSelect';
 export * from './NotAvailable';
 export * from './PageHeaderActions';
+export * from './SectionHeader';
 export * from './SingleSelect';
 export * from './StackedBarChart';
 export * from './StructuredMetadataList';
