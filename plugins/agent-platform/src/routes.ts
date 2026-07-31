@@ -17,6 +17,11 @@ export const newAgentRouteRef = createSubRouteRef({
   parent: agentsRouteRef,
 });
 
+export const newAgentSkillsRouteRef = createSubRouteRef({
+  path: '/new/skills',
+  parent: agentsRouteRef,
+});
+
 export const newAgentReviewRouteRef = createSubRouteRef({
   path: '/new/review',
   parent: agentsRouteRef,

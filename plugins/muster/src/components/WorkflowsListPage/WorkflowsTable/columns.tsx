@@ -2,9 +2,11 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Box, Typography } from '@material-ui/core';
-import { isTableColumnHidden } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isTableColumnHidden,
+  matchesQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { workflowDetailRouteRef } from '../../../routes';
-import { matchesQuery } from '../../../lib/workflowSearch';
 import { AvailabilityBadge, StateBadge } from '../../shared';
 import { WorkflowRow } from '../WorkflowsDataProvider';
 
@@ -79,7 +81,7 @@ export const getInitialColumns = ({
       render: row => <WorkflowNameCell row={row} />,
       // The description is shown under the name, so keep it searchable here.
       // Token-boundary matching ("dex" must not match "index"); see
-      // workflowSearch.ts.
+      // ui-react's tokenSearch.ts.
       customFilterAndSearch: (query, row) =>
         matchesQuery(query, `${row.name} ${row.description}`),
     },

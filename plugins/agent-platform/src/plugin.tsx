@@ -17,6 +17,7 @@ import {
   agentsRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
+  newAgentSkillsRouteRef,
   rootRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
@@ -42,8 +43,8 @@ const agentPlatformPage = PageBlueprint.make({
 });
 
 // The "Agents" tab. Its content is a stub landing plus the create flow
-// (`/agent-platform/agents/new` and `.../new/review`), driven by an internal
-// react-router in AgentsRouter.
+// (`/agent-platform/agents/new`, `.../new/skills` and `.../new/review`), driven
+// by an internal react-router in AgentsRouter.
 const agentsSubPage = SubPageBlueprint.make({
   name: 'agents',
   params: {
@@ -100,6 +101,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     root: rootRouteRef,
     agents: agentsRouteRef,
     newAgent: newAgentRouteRef,
+    newAgentSkills: newAgentSkillsRouteRef,
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,

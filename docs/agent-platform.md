@@ -6,19 +6,32 @@ It is a re-implementation of the APUI (Agent Platform User Interface) prototype
 as native, real-data Backstage pages.
 
 This page documents the **agent-creation flow** (`/agents/new` →
-`/agents/new/review`) as it stands, and the open work still ahead.
+`/agents/new/skills` → `/agents/new/review`) as it stands, and the open work
+still ahead.
 
 ## Overview of the create flow
 
-Two custom in-context pages, built with **bui** (`@backstage/ui`), driving the
+Three custom in-context pages, built with **bui** (`@backstage/ui`), driving the
 scaffolder engine underneath ("Hybrid C"):
 
-1. **`/agents/new`** — the form (`NewAgentPage`). Identity (name, auto-derived
-   slug, description) and configuration (installation, model, system prompt,
-   skills).
-2. **`/agents/new/review`** — review and deploy (`NewAgentReviewPage`). Shows the
+1. **`/agents/new`** — the form (`NewAgentPage`). Installation, identity (name,
+   auto-derived slug, description) and configuration (model, system prompt).
+2. **`/agents/new/skills`** — skill selection (`NewAgentSkillsPage`). Optional;
+   see "Skill discovery" below.
+3. **`/agents/new/review`** — review and deploy (`NewAgentReviewPage`). Shows the
    composed manifests, deploys them directly, and offers a manual-install
    fallback.
+
+Each page carries a "Step X of N" label. Only step 1 validates (name, slug,
+installation, model); steps 2 and 3 redirect back to it if those are missing, so
+a deep link into the middle of the flow can't strand the user.
+
+**Step 2 is conditional.** With no `agentPlatform.skills.repositories`
+configured there is nothing to pick and nothing the agent's creator can do about
+it (the fix is admin-side config), so the step is skipped: step 1's Continue
+goes straight to review, the labels read "of 2", review's "Back" returns to step
+1, and a deep link to `/agents/new/skills` redirects to review. `hasRepositories`
+comes from config alone, so this decision costs no request.
 
 Cross-page form state lives in `NewAgentFormProvider`. The set of installations
 and their models is loaded once by `ModelConfigsProvider`.
@@ -64,7 +77,38 @@ Discovery runs **backend-side** in `gs-backend` (`GET /agent-skills?repoUrl=…`
 with the configured GitHub integration (public repos also work
 unauthenticated). The frontend `useSkillCatalog` hook aggregates results across
 all configured repositories (one failing repo doesn't fail the rest), and
-`SkillPicker` renders them as multi-select cards.
+`NewAgentSkillsPage` renders them as multi-select cards.
+
+Skill selection is its own step because these repositories get large — one
+internal repo alone holds 100+ skills across a dozen plugins, which swamped the
+create form when the picker was inlined there. The step therefore:
+
+- **Groups by repository, then by subfolder.** `src/lib/skillGrouping.ts` derives
+  the subgroup from a skill's path by dropping the skill's own directory, then
+  dropping structural container segments (`skills`) — so
+  `plugins/gs-base/skills/registries` groups under `gs-base`, while a repo whose
+  skills sit at the root has no subgroups and renders flush (no synthetic
+  "General" heading). This needs no per-repo configuration.
+- **Filters within that grouping.** The search field matches name, description,
+  path and repo slug using `matchesQuery` from `ui-react` (token-boundary
+  prefix matching, AND semantics — client-side, since the whole catalogue is
+  already loaded). Repos and subgroups without matches disappear and the header
+  counts show matches, but the structure stays put, so results keep their
+  origin as context and the page doesn't relayout on the first keystroke.
+  Expansion is **controlled** (`expandedKeys`/`onExpandedChange`) and re-seeded
+  to "everything shown is open" whenever the query or the matching repo set
+  changes, because bui's `defaultExpandedKeys` only applies on mount. Without
+  that, a repo the user had collapsed would keep its matches hidden behind a
+  trigger advertising a non-zero count. Between those re-seeds a manual collapse
+  sticks.
+- **Reports its own output.** A "N selected" count sits next to the search field
+  and the review summary names the selected skills, since a query can hide every
+  selected card and the values YAML is otherwise the only evidence of them.
+
+`NewAgentPage` also calls `useSkillCatalog()` — not to render anything, but to
+start discovery while the user is still filling in step 1 (the query key doesn't
+depend on form state, so it's never wasted) and to decide whether step 2 exists.
+It is the reason the step usually opens with its catalogue already loaded.
 
 A selected skill maps to a kagent **`spec.skills.gitRefs`** entry — `{ url: repo,
 path: <skill dir>, ref: <branch>, name }` — which is what `composeManifests`

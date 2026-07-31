@@ -1,4 +1,4 @@
-import { matchesQuery, tokenize } from './workflowSearch';
+import { matchesQuery, tokenize } from './tokenSearch';
 
 describe('tokenize', () => {
   it('lowercases and splits on non-alphanumeric boundaries', () => {

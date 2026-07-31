@@ -5,6 +5,7 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { NewAgentFormProvider } from '../NewAgentFormProvider';
 import { AgentsIndexPage } from '../AgentsIndexPage';
 import { NewAgentPage } from '../NewAgentPage';
+import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentReviewPage } from '../NewAgentReviewPage';
 
 // react-router keeps the window scroll position across client-side navigation,
@@ -18,9 +19,10 @@ function ScrollToTop() {
   return null;
 }
 
-// Content of the "Agents" tab. The index is a stub landing; the form and review
-// screens share one NewAgentFormProvider so the composed agent survives
-// navigation between `/agent-platform/agents/new` and `.../new/review`.
+// Content of the "Agents" tab. The index is a stub landing; the three create
+// steps share one NewAgentFormProvider so the composed agent survives
+// navigation across `/agent-platform/agents/new`, `.../new/skills` and
+// `.../new/review`.
 //
 // This router is mounted as the tab's content (a descendant `<Routes>`), so the
 // paths here are relative — no leading slash — matching muster's WorkflowsRouter.
@@ -32,6 +34,7 @@ export const AgentsRouter = () => {
         <Routes>
           <Route index element={<AgentsIndexPage />} />
           <Route path="new" element={<NewAgentPage />} />
+          <Route path="new/skills" element={<NewAgentSkillsPage />} />
           <Route path="new/review" element={<NewAgentReviewPage />} />
         </Routes>
       </NewAgentFormProvider>
