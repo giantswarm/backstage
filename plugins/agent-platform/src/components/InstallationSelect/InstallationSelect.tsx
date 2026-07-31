@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Alert, Card, CardBody, Flex, Select } from '@backstage/ui';
+import { useEffect, type ReactNode } from 'react';
+import { Alert, Card, CardBody, Flex, Select, Text } from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
 import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
@@ -8,12 +8,29 @@ import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
-const description =
+const DESCRIPTION =
   'The management cluster this agent runs on. Determines which models are available and where the agent is deployed.';
+
+/**
+ * Card shell, so every branch below gets the same heading and description. The
+ * heading names the field, so the controls inside use `aria-label` rather than a
+ * visible label that would repeat it.
+ */
+function InstallationCard({ children }: { children: ReactNode }) {
+  return (
+    <Card>
+      <CardBody>
+        <SectionHeader title="Installation" description={DESCRIPTION} />
+        {children}
+      </CardBody>
+    </Card>
+  );
+}
 
 export function InstallationSelect() {
   const { state, setInstallation } = useNewAgentForm();
-  const { installations } = useInstallations();
+  const { installations, isLoading: isLoadingInstallations } =
+    useInstallations();
   const {
     isLoading,
     hasInstallations,
@@ -21,12 +38,14 @@ export function InstallationSelect() {
     unreachableInstallations,
   } = useModelConfigs();
 
-  // With only one installation configured for access, there's nothing to
-  // choose — auto-select it and skip the field entirely rather than showing a
-  // single-option dropdown. `installations` is empty while useInstallations()
-  // is still loading, so this never fires on partial data.
+  // The sole installation on a single-management-cluster instance: there is
+  // nothing to choose, so pick it for the user instead of offering a one-option
+  // dropdown. Keyed on the configured list rather than the narrower "has a
+  // usable model" one, so the choice lands as soon as it is knowable.
   const singleInstallation =
-    installations.length === 1 ? installations[0].name : undefined;
+    !isLoadingInstallations && installations.length === 1
+      ? installations[0].name
+      : undefined;
 
   useEffect(() => {
     if (singleInstallation && state.installation !== singleInstallation) {
@@ -34,7 +53,18 @@ export function InstallationSelect() {
     }
   }, [singleInstallation, state.installation, setInstallation]);
 
-  if (singleInstallation) {
+  // Until the installations config resolves we don't know whether this field
+  // belongs on the page at all — render nothing rather than a loading card that
+  // would vanish a moment later on a single-installation instance.
+  if (isLoadingInstallations) {
+    return null;
+  }
+
+  // Hide the field only once the sole installation proves usable. While the
+  // fleet query is still settling we can't tell yet, so stay out of the way; if
+  // it turns out to be unreachable or model-less we fall through, because the
+  // guidance below is then the only thing that explains why the form is stuck.
+  if (singleInstallation && (isLoading || availableInstallations.length > 0)) {
     return null;
   }
 
@@ -51,66 +81,63 @@ export function InstallationSelect() {
   if (availableInstallations.length === 0) {
     if (isLoading) {
       return (
-        <Card>
-          <CardBody>
-            <SectionHeader title="Installation" description={description} />
-            <Select
-              label="Installation"
-              isRequired
-              isDisabled
-              icon={<CircularProgress size={16} color="inherit" />}
-              options={[]}
-              placeholder="Finding installations with models…"
-            />
-          </CardBody>
-        </Card>
+        <InstallationCard>
+          <Select
+            aria-label="Installation"
+            isRequired
+            isDisabled
+            icon={<CircularProgress size={16} color="inherit" />}
+            options={[]}
+            placeholder="Finding installations with models…"
+          />
+        </InstallationCard>
       );
     }
 
     if (hasInstallations) {
       return (
-        <Card>
-          <CardBody>
-            <SectionHeader title="Installation" description={description} />
-            <Flex direction="column" gap="2">
-              {/* If every queried installation errored, the warning explains it;
-                  only claim "no models" when reads actually succeeded. */}
-              {unreachableNote}
-              {unreachableInstallations.length === 0 && (
-                <Alert
-                  status="info"
-                  title="No installations with models"
-                  description="None of the reachable installations have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
-                />
-              )}
-            </Flex>
-          </CardBody>
-        </Card>
+        <InstallationCard>
+          <Flex direction="column" gap="2">
+            {/* If every queried installation errored, the warning explains it;
+                only claim "no models" when reads actually succeeded. */}
+            {unreachableNote}
+            {unreachableInstallations.length === 0 && (
+              <Alert
+                status="info"
+                title="No installations with models"
+                description="None of the reachable installations have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
+              />
+            )}
+          </Flex>
+        </InstallationCard>
       );
     }
   }
 
   return (
-    <Card>
-      <CardBody>
-        <SectionHeader title="Installation" description={description} />
-        <Flex direction="column" gap="2">
-          <Select
-            label="Installation"
-            secondaryLabel={isLoading ? 'still checking…' : undefined}
-            isRequired
-            options={availableInstallations.map(name => ({
-              id: name,
-              label: name,
-            }))}
-            selectedKey={state.installation ?? null}
-            onSelectionChange={key =>
-              setInstallation(key ? String(key) : undefined)
-            }
-          />
-          {unreachableNote}
-        </Flex>
-      </CardBody>
-    </Card>
+    <InstallationCard>
+      <Flex direction="column" gap="2">
+        <Select
+          aria-label="Installation"
+          isRequired
+          options={availableInstallations.map(name => ({
+            id: name,
+            label: name,
+          }))}
+          selectedKey={state.installation ?? null}
+          onSelectionChange={key =>
+            setInstallation(key ? String(key) : undefined)
+          }
+        />
+        {/* The list grows as slower installations respond, so say so rather than
+            letting a short list look complete. */}
+        {isLoading && (
+          <Text variant="body-small" color="secondary">
+            Still checking the remaining installations…
+          </Text>
+        )}
+        {unreachableNote}
+      </Flex>
+    </InstallationCard>
   );
 }

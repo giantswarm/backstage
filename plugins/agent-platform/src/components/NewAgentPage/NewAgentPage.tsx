@@ -196,7 +196,7 @@ function NewAgentPageContent() {
             <CardBody>
               <SectionHeader
                 title="Configuration"
-                description="What powers the agent and shapes how it behaves: where it runs, which model it uses, its system prompt, and its skills."
+                description="What powers the agent and shapes how it behaves: which model it uses, its system prompt, and its skills."
               />
               <Flex direction="column" gap="5">
                 <TextAreaField
