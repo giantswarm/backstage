@@ -13,7 +13,10 @@ import {
   TextField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  SectionHeader,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { agentsRouteRef, newAgentReviewRouteRef } from '../../routes';
 import { useAgentChart } from '../../hooks/useAgentChart';
@@ -36,43 +39,11 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '70ch',
     marginBottom: theme.spacing(3),
   },
-  sectionTitle: {
-    marginBottom: theme.spacing(0.5),
-  },
-  sectionDescription: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
   footerNote: {
     maxWidth: '70ch',
     marginBottom: theme.spacing(2),
   },
 }));
-
-function SectionHeader({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  const classes = useStyles();
-  return (
-    <div>
-      <Text
-        as="h3"
-        variant="title-small"
-        weight="bold"
-        className={classes.sectionTitle}
-      >
-        {title}
-      </Text>
-      <Text as="p" color="secondary" className={classes.sectionDescription}>
-        {description}
-      </Text>
-    </div>
-  );
-}
 
 export function NewAgentPage() {
   return (
@@ -170,6 +141,8 @@ function NewAgentPageContent() {
         </Text>
 
         <Flex direction="column" gap="4">
+          <InstallationSelect />
+
           <Card>
             <CardBody>
               <SectionHeader
@@ -223,7 +196,7 @@ function NewAgentPageContent() {
             <CardBody>
               <SectionHeader
                 title="Configuration"
-                description="What powers the agent and shapes how it behaves: where it runs, which model it uses, its system prompt, and its skills."
+                description="What powers the agent and shapes how it behaves: which model it uses, its system prompt, and its skills."
               />
               <Flex direction="column" gap="5">
                 <TextAreaField
@@ -240,7 +213,6 @@ function NewAgentPageContent() {
                   }
                   description="The agent's system message. Pre-filled from the chart's default — edit it to fit the role, or leave it empty to keep the default."
                 />
-                <InstallationSelect />
                 <ModelConfigPicker />
                 <SkillPicker />
               </Flex>
