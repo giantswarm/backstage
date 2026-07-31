@@ -135,9 +135,19 @@ function GroupedSkills({
   // All repos expanded by default -- unlike muster's tool catalogue, there's
   // no single "primary" group to default to among configured skill repos.
   const repoKeys = groups.map(group => group.repoUrl);
+  // `defaultExpandedKeys` only applies on mount, so key the group by which
+  // repos it contains: as a search narrows the results to a different set of
+  // repos, the remount re-expands them instead of leaving new matches
+  // collapsed. Keyed on the repo set rather than every keystroke so typing
+  // within the same repos doesn't churn the accordion.
+  const groupSignature = repoKeys.join('|');
 
   return (
-    <AccordionGroup allowsMultiple defaultExpandedKeys={repoKeys}>
+    <AccordionGroup
+      key={groupSignature}
+      allowsMultiple
+      defaultExpandedKeys={repoKeys}
+    >
       {groups.map(group => {
         const total =
           group.ungrouped.length +
@@ -208,9 +218,9 @@ export function NewAgentSkillsPage() {
   // Client-side only: the whole catalogue is already loaded (unlike muster's
   // tool search, which delegates ranking to a backend BM25 endpoint), so a
   // simple token-boundary filter is enough and needs no debounce.
-  const filteredSkills = useMemo(() => {
+  const visibleSkills = useMemo(() => {
     if (trimmed === '') {
-      return [];
+      return skills;
     }
     return skills.filter(skill =>
       matchesQuery(
@@ -222,10 +232,14 @@ export function NewAgentSkillsPage() {
     );
   }, [skills, trimmed]);
 
-  // Grouping is only meaningful when browsing the full catalogue; while
-  // searching, show a flat ranked-by-relevance-free list instead (mirrors
-  // muster's Tool Explorer: grouping bypassed while a query is active).
-  const groups = useMemo(() => groupSkillsByRepo(skills), [skills]);
+  // Search filters within the grouping rather than replacing it with a flat
+  // list: the repo/subfolder a match came from is part of what identifies a
+  // skill, and keeping the structure means the page doesn't relayout on the
+  // first keystroke. Empty repos and subgroups simply don't appear.
+  const groups = useMemo(
+    () => groupSkillsByRepo(visibleSkills),
+    [visibleSkills],
+  );
 
   const actions = useMemo(
     () => (
@@ -340,21 +354,13 @@ export function NewAgentSkillsPage() {
                       onChange={setQuery}
                     />
 
-                    {trimmed === '' && (
+                    {visibleSkills.length > 0 ? (
                       <GroupedSkills
                         groups={groups}
                         selectedIds={selectedIds}
                         onToggle={toggleSkill}
                       />
-                    )}
-                    {trimmed !== '' && filteredSkills.length > 0 && (
-                      <SkillGrid
-                        skills={filteredSkills}
-                        selectedIds={selectedIds}
-                        onToggle={toggleSkill}
-                      />
-                    )}
-                    {trimmed !== '' && filteredSkills.length === 0 && (
+                    ) : (
                       <Text color="secondary">
                         No skills match &quot;{trimmed}&quot;.
                       </Text>
