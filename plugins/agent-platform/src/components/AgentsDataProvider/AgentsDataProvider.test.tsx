@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 
@@ -41,6 +42,7 @@ type AgentSpec = {
   name: string;
   resourceVersion?: string;
   description?: string;
+  readiness?: AgentReadiness;
 };
 
 // Duck-typed stand-in for an Agent instance — only the getters toAgentRow uses.
@@ -53,6 +55,9 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getDescription: () => spec.description ?? '',
     getModelConfigName: () => undefined,
     getSkillCount: () => 0,
+    getReadiness: () => spec.readiness ?? 'ready',
+    getReadinessMessage: () => undefined,
+    getUnsupportedFeaturesWarning: () => undefined,
   };
 }
 
@@ -213,8 +218,12 @@ describe('AgentsDataProvider', () => {
   });
 
   it('surfaces failing installations without dropping loaded rows', async () => {
+    // Every reachable installation reports, so the fleet is genuinely settled and
+    // `isLoadingMore` is false. beta is included (with no agents) deliberately:
+    // an installation that has reported neither data nor an error still has a
+    // query in flight, which *is* "loading more" — see the test above.
     mockUseResources.mockReturnValue(
-      result({ succeeded: { alpha: ['a1'] }, failed: ['gaggle'] }),
+      result({ succeeded: { alpha: ['a1'], beta: [] }, failed: ['gaggle'] }),
     );
 
     const { result: hook } = renderUseAgents();
@@ -225,6 +234,36 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.rows).toHaveLength(1);
     expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  // Regression: the list polls, and the cluster-access probe independently
+  // returns installations to `connecting`. Deriving "loading more" from that
+  // activity flashed the progress bar during steady state, and because the bar
+  // sits above the table it pushed the table down on every poll.
+  it('does not report loading more while a settled fleet refetches or reprobes', async () => {
+    const settled = {
+      succeeded: { alpha: ['a1'], beta: ['b1'], gaggle: ['g1'] },
+    };
+    mockUseResources.mockReturnValue(result(settled));
+
+    const { result: hook, rerender } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(3));
+    expect(hook.current.isLoadingMore).toBe(false);
+
+    // A background poll is in flight for every installation.
+    mockUseResources.mockReturnValue(result({ ...settled, isLoading: true }));
+    rerender();
+    expect(hook.current.isLoadingMore).toBe(false);
+
+    // ...and the access probe has put an installation back to `connecting`.
+    mockReachable = {
+      installations: ['alpha', 'beta', 'gaggle'],
+      isProbing: true,
+    };
+    rerender();
+    expect(hook.current.isLoadingMore).toBe(false);
+    expect(hook.current.rows).toHaveLength(3);
   });
 
   it('treats a 404 (kagent not installed) as zero agents, not a failure', async () => {

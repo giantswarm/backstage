@@ -14,7 +14,12 @@ import {
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useModelConfigs } from '../ModelConfigsProvider';
-import { AgentRow, sortAgentRows, toAgentRow } from './helpers';
+import {
+  AgentRow,
+  getAgentsRefetchInterval,
+  sortAgentRows,
+  toAgentRow,
+} from './helpers';
 
 export type AgentsContextValue = {
   /** Agents flattened into plain rows, ordered by installation + name. */
@@ -68,11 +73,15 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // round-trips per cluster for no benefit here. `clustersData` is the raw
   // per-cluster list result (present, and possibly empty, only for clusters that
   // responded successfully); `resources` are those hydrated into Agent instances.
+  // The refetch interval is two-tier and evaluated per installation — see
+  // `getAgentsRefetchInterval`. It keeps agent readiness fresh without polling
+  // the whole fleet fast: only installations with an agent that is still
+  // converging get the short interval.
   const { resources, clustersData, isLoading, errors } = useResources(
     reachableInstallations,
     Agent,
     {},
-    { enableDiscovery: false },
+    { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
   );
 
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately
@@ -221,10 +230,27 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // pin isLoading true and hide the "no installations configured" empty state.
     const hasInstallations = allInstallations.length > 0;
     const isBusy = hasInstallations && (isProbing || isLoading);
+
+    // "More rows may still arrive" means an installation has not reported its
+    // first result yet — deliberately *not* "some query is fetching".
+    //
+    // Now that the list polls, every installation refetches on an interval, and
+    // the cluster-access probe independently returns installations to
+    // `connecting` every few seconds. Deriving this from fetch/probe activity
+    // therefore flashed the progress bar during steady state, and because the bar
+    // sits above the table in a flex column, each flash pushed the table down.
+    // Once an installation has an entry — even an empty one — it can only ever
+    // *replace* its rows, never contribute the first ones, so it is settled.
+    const pendingInstallations = reachableInstallations.filter(
+      cluster =>
+        !(cluster in agentsByInstallation) &&
+        !erroredInstallations.includes(cluster),
+    );
+
     return {
       rows,
       isLoading: isBusy && rows.length === 0,
-      isLoadingMore: isBusy && rows.length > 0,
+      isLoadingMore: rows.length > 0 && pendingInstallations.length > 0,
       hasInstallations,
       unreachableInstallations,
     };

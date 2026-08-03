@@ -87,6 +87,7 @@ describe('AgentsIndexPage', () => {
           description: 'Triages incidents',
           model: 'Claude Sonnet 4.6',
           skillCount: 3,
+          readiness: 'ready' as const,
         },
       ],
     });
@@ -111,6 +112,7 @@ describe('AgentsIndexPage', () => {
           description: '',
           model: undefined,
           skillCount: 0,
+          readiness: 'ready' as const,
         },
       ],
     });

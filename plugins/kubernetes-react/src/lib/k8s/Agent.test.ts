@@ -1,5 +1,5 @@
 import { crds } from '@giantswarm/k8s-types';
-import { Agent } from './Agent';
+import { Agent, getAgentStatusChangedAt, isAgentTransitional } from './Agent';
 
 type AgentInterface = crds.kagent.v1alpha2.Agent;
 
@@ -83,6 +83,237 @@ describe('Agent', () => {
       expect(agent.getType()).toBe('BYO');
       expect(agent.getModelConfigName()).toBeUndefined();
       expect(agent.getSkillCount()).toBe(0);
+    });
+  });
+
+  describe('readiness', () => {
+    const AT = '2026-07-31T10:00:00Z';
+
+    function condition(
+      type: string,
+      status: 'True' | 'False' | 'Unknown',
+      reason: string,
+      message = '',
+    ) {
+      return { type, status, reason, message, lastTransitionTime: AT };
+    }
+
+    function withStatus(
+      conditions: ReturnType<typeof condition>[],
+      { generation, observedGeneration } = {
+        generation: 1,
+        observedGeneration: 1,
+      },
+    ): Agent {
+      return makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a', generation },
+        status: { conditions, observedGeneration },
+      } as Partial<AgentInterface>);
+    }
+
+    const accepted = () =>
+      condition(
+        'Accepted',
+        'True',
+        'Reconciled',
+        'Agent configuration accepted',
+      );
+
+    it('is ready when accepted and the deployment is ready', () => {
+      const agent = withStatus([
+        accepted(),
+        condition('Ready', 'True', 'DeploymentReady', 'Deployment is ready'),
+      ]);
+
+      expect(agent.getReadiness()).toBe('ready');
+      expect(agent.getReadinessMessage()).toBeUndefined();
+    });
+
+    it('treats a sandbox WorkloadReady agent as ready', () => {
+      const agent = withStatus([
+        accepted(),
+        condition('Ready', 'True', 'WorkloadReady', 'Workload is ready'),
+      ]);
+
+      expect(agent.getReadiness()).toBe('ready');
+    });
+
+    it('is notReady when the deployment has no available replica', () => {
+      const agent = withStatus([
+        accepted(),
+        condition(
+          'Ready',
+          'False',
+          'DeploymentNotReady',
+          'Deployment is not ready, 0/1 pods are ready',
+        ),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notReady');
+      expect(agent.getReadinessMessage()).toBe(
+        'Deployment is not ready, 0/1 pods are ready',
+      );
+    });
+
+    // The controller reports a missing Deployment as Ready=Unknown, and kagent's
+    // REST API keys readiness on the *reason*, so this must not read as ready.
+    it('is notReady when the deployment is missing (Ready=Unknown)', () => {
+      const agent = withStatus([
+        accepted(),
+        condition('Ready', 'Unknown', 'DeploymentNotFound', 'not found'),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notReady');
+    });
+
+    it('is notReady when Ready=True carries an unrecognised reason', () => {
+      const agent = withStatus([
+        accepted(),
+        condition('Ready', 'True', 'SomethingElse'),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notReady');
+    });
+
+    it('is notAccepted when reconciliation failed, and surfaces the error', () => {
+      const agent = withStatus([
+        condition(
+          'Accepted',
+          'False',
+          'ReconcileFailed',
+          'model config "missing" not found',
+        ),
+        condition('Ready', 'True', 'DeploymentReady'),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadinessMessage()).toBe(
+        'model config "missing" not found',
+      );
+    });
+
+    it('is pending when the controller has written no status yet', () => {
+      expect(makeAgent().getReadiness()).toBe('pending');
+    });
+
+    it('is pending when the status lags the current generation', () => {
+      const agent = withStatus(
+        [
+          accepted(),
+          condition('Ready', 'True', 'DeploymentReady', 'Deployment is ready'),
+        ],
+        { generation: 4, observedGeneration: 3 },
+      );
+
+      // The conditions still say ready, but they describe the previous spec.
+      expect(agent.getReadiness()).toBe('pending');
+    });
+
+    it('is not pending once the controller observes the current generation', () => {
+      const agent = withStatus(
+        [
+          accepted(),
+          condition('Ready', 'True', 'DeploymentReady', 'Deployment is ready'),
+        ],
+        { generation: 4, observedGeneration: 4 },
+      );
+
+      expect(agent.getReadiness()).toBe('ready');
+    });
+
+    // The controller stamps observedGeneration even when reconciliation fails,
+    // so a rejected spec must settle on notAccepted rather than stick at pending.
+    it('reports a rejected current generation as notAccepted, not pending', () => {
+      const agent = withStatus(
+        [condition('Accepted', 'False', 'ReconcileFailed', 'bad spec')],
+        { generation: 2, observedGeneration: 2 },
+      );
+
+      expect(agent.getReadiness()).toBe('notAccepted');
+    });
+  });
+
+  describe('getUnsupportedFeaturesWarning', () => {
+    it('returns the warning message when the condition is True', () => {
+      const agent = makeAgent({
+        status: {
+          observedGeneration: 1,
+          conditions: [
+            {
+              type: 'UnsupportedFeatures',
+              status: 'True',
+              reason: 'UnsupportedFeatures',
+              message: 'memory is not supported by the go runtime',
+              lastTransitionTime: '2026-07-31T10:00:00Z',
+            },
+          ],
+        },
+      } as Partial<AgentInterface>);
+
+      expect(agent.getUnsupportedFeaturesWarning()).toBe(
+        'memory is not supported by the go runtime',
+      );
+    });
+
+    it('returns undefined when no warning is set', () => {
+      expect(makeAgent().getUnsupportedFeaturesWarning()).toBeUndefined();
+    });
+  });
+
+  describe('getAgentStatusChangedAt', () => {
+    it('returns the most recent condition transition time', () => {
+      const agent = makeAgent({
+        status: {
+          observedGeneration: 1,
+          conditions: [
+            {
+              type: 'Accepted',
+              status: 'True',
+              reason: 'Reconciled',
+              message: '',
+              lastTransitionTime: '2026-07-31T10:00:00Z',
+            },
+            {
+              type: 'Ready',
+              status: 'False',
+              reason: 'DeploymentNotReady',
+              message: '',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ],
+        },
+      } as Partial<AgentInterface>);
+
+      expect(getAgentStatusChangedAt(agent.jsonData)).toBe(
+        Date.parse('2026-07-31T10:05:00Z'),
+      );
+    });
+
+    it('falls back to the creation timestamp when there are no conditions', () => {
+      const agent = makeAgent({
+        metadata: {
+          name: 'my-agent',
+          namespace: 'team-a',
+          creationTimestamp: '2026-07-31T09:00:00Z',
+        },
+      } as Partial<AgentInterface>);
+
+      expect(getAgentStatusChangedAt(agent.jsonData)).toBe(
+        Date.parse('2026-07-31T09:00:00Z'),
+      );
+    });
+
+    it('returns undefined when neither is available', () => {
+      expect(getAgentStatusChangedAt(makeAgent().jsonData)).toBeUndefined();
+    });
+  });
+
+  describe('isAgentTransitional', () => {
+    it('treats every non-ready state as transitional', () => {
+      expect(isAgentTransitional('ready')).toBe(false);
+      expect(isAgentTransitional('notReady')).toBe(true);
+      expect(isAgentTransitional('notAccepted')).toBe(true);
+      expect(isAgentTransitional('pending')).toBe(true);
     });
   });
 });

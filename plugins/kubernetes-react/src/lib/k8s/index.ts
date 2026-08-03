@@ -6,7 +6,14 @@ export * from './versionUtils';
 export * from './CustomResourceMatcher';
 export * from './errorMessages';
 
-export { Agent } from './Agent';
+export {
+  Agent,
+  AgentConditionType,
+  deriveAgentReadiness,
+  getAgentStatusChangedAt,
+  isAgentTransitional,
+} from './Agent';
+export type { AgentReadiness } from './Agent';
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
 export { ConfigMap } from './ConfigMap';

@@ -22,6 +22,7 @@ const rows: AgentRow[] = [
     description: 'Triages incidents',
     model: 'Claude Sonnet 4.6',
     skillCount: 3,
+    readiness: 'ready',
   },
   {
     id: 'inst-1/dev/byo',
@@ -32,6 +33,8 @@ const rows: AgentRow[] = [
     description: '',
     model: undefined,
     skillCount: 0,
+    readiness: 'notReady',
+    readinessMessage: 'Deployment is not ready, 0/1 pods are ready',
   },
 ];
 
@@ -47,6 +50,42 @@ describe('AgentsTable', () => {
     expect(screen.getByText('Namespace')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('Skills')).toBeInTheDocument();
+    expect(screen.getByText('Status')).toBeInTheDocument();
+  });
+
+  it('renders each row readiness, explaining a non-ready one on hover', async () => {
+    await renderInTestApp(<AgentsTable rows={rows} />);
+
+    expect(screen.getByText('Ready')).toBeInTheDocument();
+    expect(screen.getByText('Not ready')).toBeInTheDocument();
+    expect(
+      screen.getByTitle('Deployment is not ready, 0/1 pods are ready'),
+    ).toBeInTheDocument();
+  });
+
+  it('labels a rejected agent distinctly from a not-ready one', async () => {
+    await renderInTestApp(
+      <AgentsTable
+        rows={[
+          {
+            ...rows[0],
+            readiness: 'notAccepted',
+            readinessMessage: 'bad spec',
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Not accepted')).toBeInTheDocument();
+    expect(screen.getByTitle('bad spec')).toBeInTheDocument();
+  });
+
+  it('shows an unreconciled agent as pending', async () => {
+    await renderInTestApp(
+      <AgentsTable rows={[{ ...rows[0], readiness: 'pending' }]} />,
+    );
+
+    expect(screen.getByText('Pending')).toBeInTheDocument();
   });
 
   it('renders agent rows with resolved model and skill count', async () => {
