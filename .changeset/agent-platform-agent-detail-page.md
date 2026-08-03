@@ -16,6 +16,13 @@ from, and deleting one must remove only that release and never the `OCIRepositor
 namespace's agents share — so neither is a menu item yet, and neither is "Launch
 session".
 
+Two columns from `lg` up, one below: the **status card takes a third of the width,
+beside the configuration**, and everything under that row spans the full width.
+Status is the one section that does not want the whole page — a rejected spec's
+admission-webhook message is several hundred words of prose, and across a full-width
+card it runs to line lengths nobody can follow. The sections below it do use the
+width: three skill cards per row, four columns in the sessions table.
+
 The page has seven sections:
 
 - **Header** — avatar, display name, derived readiness, technical name,

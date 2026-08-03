@@ -7,7 +7,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Flex, Text } from '@backstage/ui';
+import { Alert, Avatar, Flex, Grid, Text } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
@@ -206,8 +206,33 @@ function AgentDetailPageContent() {
           <GitOpsCard resource={agent} installationName={installation} />
         )}
 
-        <AgentStatusCard agent={agent} />
-        <AgentConfigurationCard agent={agent} modelConfig={modelConfig} />
+        {/* Status sits in a third of the width, beside the configuration. A
+            controller message is prose — a rejected spec can carry several
+            hundred words of admission-webhook output — and across the full page
+            it runs to line lengths nobody can follow. A narrower column is the
+            fix, so the status card is the one thing that does not want the whole
+            width.
+
+            The sections below it do, and take it: a skills grid fits three cards
+            per row, and the sessions table has four columns to place. One column
+            below `lg`, where there is no width to divide. */}
+        <Grid.Root columns={{ initial: '1', lg: '3' }} gap="4">
+          {/* Status comes first in the DOM and is placed into the right-hand
+              column explicitly. Stacked into one column it is then the first
+              thing under the header, which is the right priority on a narrow
+              screen: someone opening a broken agent came for the status, not to
+              scroll past its configuration to reach it. */}
+          <Grid.Item colSpan="1" colStart={{ initial: '1', lg: '3' }}>
+            <AgentStatusCard agent={agent} />
+          </Grid.Item>
+          <Grid.Item
+            colSpan={{ initial: '1', lg: '2' }}
+            colStart={{ initial: '1', lg: '1' }}
+          >
+            <AgentConfigurationCard agent={agent} modelConfig={modelConfig} />
+          </Grid.Item>
+        </Grid.Root>
+
         <AgentSystemPromptCard agent={agent} />
         <AgentSkillsCard agent={agent} />
         <AgentSessionsCard sessions={sessions} />

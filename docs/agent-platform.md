@@ -558,6 +558,18 @@ list's `AgentsDataProvider`, so a deep link works without the list having loaded
 It polls on the same two tiers as the list (`isAgentConverging` is now shared):
 5 s while an agent is converging, 60 s once it settles or stays durably broken.
 
+### Layout
+
+Two columns from `lg` (1024px) up, one below. The **status card takes a third of
+the width, beside the configuration**; everything under that row spans the full
+width.
+
+Status is the one section that does not want the whole page. A controller message
+is prose — a rejected spec carries several hundred words of admission-webhook
+output — and across a full-width card it runs to line lengths nobody can follow. A
+narrower column is the fix. The sections below it genuinely use the width: the
+skills grid fits three cards per row, and the sessions table has four columns.
+
 ### Sections
 
 - **Header** — avatar, display name, derived readiness, technical name,
