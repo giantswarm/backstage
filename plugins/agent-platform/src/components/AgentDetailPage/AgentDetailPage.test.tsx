@@ -17,11 +17,9 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResource: (...args: unknown[]) => mockUseResource(...args),
 }));
 
-// The card resolves a chain of Flux resources; the page's own job is only to
-// decide whether it renders at all.
-jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
-  GitOpsCard: () => <div data-testid="gitops-card">Managed through GitOps</div>,
-}));
+// `GitOpsCard` is deliberately *not* mocked. It reports its Flux lookups through
+// `useShowErrors`, which throws without an `ErrorsProvider` — a real crash that a
+// stubbed card hid until the page was opened in the browser.
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () =>
@@ -167,11 +165,25 @@ function stubResources(agent?: ResourceOutcome, modelConfig?: ResourceOutcome) {
     isLoading: outcome.isLoading ?? false,
     error: outcome.error ?? null,
     errors: outcome.errors ?? [],
+    // Part of `useResource`'s real shape, and read by GitOpsCard.
+    incompatibilities: [],
+    discoveryErrors: [],
+    clientOutdatedStates: [],
   });
 
+  // Matched per resource class, so the Flux chain GitOpsCard walks
+  // (HelmRelease → Kustomization → GitRepository) resolves to nothing rather than
+  // to whichever stub happened to be last.
   mockUseResource.mockImplementation(
-    (_cluster: string, ResourceClass: unknown) =>
-      ResourceClass === Agent ? fill(agent) : fill(modelConfig),
+    (_cluster: string, ResourceClass: unknown) => {
+      if (ResourceClass === Agent) {
+        return fill(agent);
+      }
+      if (ResourceClass === ModelConfig) {
+        return fill(modelConfig);
+      }
+      return fill();
+    },
   );
 }
 
@@ -427,12 +439,14 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
   });
 
+  // Renders the real card, so this also guards the ErrorsProvider it needs — the
+  // page crashed without one, and a stubbed card would not have noticed.
   it('shows the GitOps card for a reconciled agent', async () => {
     stubResources({ resource: makeAgent() });
 
     await renderPage();
 
-    expect(screen.getByTestId('gitops-card')).toBeInTheDocument();
+    expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
   });
 
   it('omits the GitOps card for an agent no reconciler owns', async () => {
@@ -449,7 +463,9 @@ describe('AgentDetailPage', () => {
 
     await renderPage();
 
-    expect(screen.queryByTestId('gitops-card')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Managed through GitOps'),
+    ).not.toBeInTheDocument();
   });
 
   it('says an unset system prompt is unset, not empty', async () => {

@@ -136,6 +136,30 @@ describe('toAgentManifestYaml', () => {
     expect(yaml).toContain('observedGeneration: 1');
   });
 
+  // The view exists to be compared against `kubectl get -o yaml`, so it prints the
+  // same key order.
+  it('orders keys apiVersion, kind, metadata, spec, status', () => {
+    const yaml = toAgentManifestYaml(
+      makeAgent({
+        spec: { type: 'Declarative' },
+        status: { observedGeneration: 1, conditions: [] },
+      } as Partial<AgentInterface>),
+    );
+
+    const topLevelKeys = yaml
+      .split('\n')
+      .filter(line => /^\S/.test(line))
+      .map(line => line.split(':')[0]);
+
+    expect(topLevelKeys).toEqual([
+      'apiVersion',
+      'kind',
+      'metadata',
+      'spec',
+      'status',
+    ]);
+  });
+
   // Server-side-apply bookkeeping is the bulk of a reconciled Agent and pushes
   // the spec off the screen; kubectl hides it too.
   it('drops managedFields', () => {

@@ -81,7 +81,7 @@ export function skillLabel(ref: SkillRef): string {
  * to see the fields the page does not surface.
  */
 export function toAgentManifestYaml(agent: Agent): string {
-  const { metadata, ...rest } = agent.jsonData;
+  const { apiVersion, kind, metadata, ...rest } = agent.jsonData;
   const {
     managedFields: _managedFields,
     annotations,
@@ -94,14 +94,20 @@ export function toAgentManifestYaml(agent: Agent): string {
   } = annotations ?? {};
 
   return dump(
+    // Key order is `apiVersion, kind, metadata, spec, status`, matching what
+    // `kubectl get -o yaml` prints — this view exists to be compared against that,
+    // and object spread order is what decides it (`sortKeys` is off deliberately:
+    // alphabetical would put `status` before `spec`).
     {
-      ...rest,
+      apiVersion,
+      kind,
       metadata: {
         ...restMetadata,
         ...(Object.keys(restAnnotations).length > 0
           ? { annotations: restAnnotations }
           : {}),
       },
+      ...rest,
     },
     // Long system messages and controller messages are the reason to open this,
     // so don't let js-yaml fold them at 80 columns.

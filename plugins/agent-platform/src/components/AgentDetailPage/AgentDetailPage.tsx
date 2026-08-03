@@ -10,6 +10,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Avatar, Flex, Text } from '@backstage/ui';
 import {
   Agent,
+  ErrorsProvider,
   isGitOpsManaged,
   isNotFoundError,
   ModelConfig,
@@ -54,20 +55,7 @@ function BackToAgents({ children }: { children: ReactNode }) {
   return <Link to={agentsRoute()}>{children}</Link>;
 }
 
-/**
- * One kagent agent: what it is, whether it works, and what it has been used for.
- *
- * Read-only. kagent agents are deployed from a Helm chart, so editing one means
- * changing the release's values — a write path this plugin does not have yet, and
- * one that has to respect the shared `OCIRepository` a namespace's agents share.
- *
- * What the APUI prototype shows and this deliberately does not, because there is
- * no data behind it: sessions all-time, sessions in the last 30 days, a success
- * rate, and "last activity" across the fleet. kagent keeps no per-agent counters
- * and scopes its session list to the calling user, so any of those would be a
- * number invented from one person's history. Please don't add them speculatively.
- */
-export function AgentDetailPage() {
+function AgentDetailPageContent() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
 
@@ -224,5 +212,31 @@ export function AgentDetailPage() {
         <AgentSessionsCard sessions={sessions} />
       </Flex>
     </Content>
+  );
+}
+
+/**
+ * One kagent agent: what it is, whether it works, and what it has been used for.
+ *
+ * Read-only. kagent agents are deployed from a Helm chart, so editing one means
+ * changing the release's values — a write path this plugin does not have yet, and
+ * one that has to respect the shared `OCIRepository` a namespace's agents share.
+ *
+ * What the APUI prototype shows and this deliberately does not, because there is
+ * no data behind it: sessions all-time, sessions in the last 30 days, a success
+ * rate, and "last activity" across the fleet. kagent keeps no per-agent counters
+ * and scopes its session list to the calling user, so any of those would be a
+ * number invented from one person's history. Please don't add them speculatively.
+ *
+ * `ErrorsProvider` is required, not decorative: the shared `GitOpsCard` reports
+ * the failures of its Flux lookups through `useShowErrors`, which throws without
+ * this context. Every gs details page wraps its content the same way, and it also
+ * gives this page the standard retry/dismiss notice for a failed read.
+ */
+export function AgentDetailPage() {
+  return (
+    <ErrorsProvider>
+      <AgentDetailPageContent />
+    </ErrorsProvider>
   );
 }
