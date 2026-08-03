@@ -16,6 +16,20 @@ const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
 
 /**
+ * How often the cache may be written to localStorage, raised from the library
+ * default of 1s.
+ *
+ * Every write dehydrates the *whole* agent-platform cache and `JSON.stringify`s
+ * it synchronously on the main thread. That was near-free while these queries
+ * only ran on page visits, but the agents list now polls — as often as every 5s
+ * for an installation with a converging agent — so at the default throttle a
+ * large fleet's cache would be re-serialised and rewritten for as long as a tab
+ * stays open. Persistence here exists to make a *reload* cheap, not to be
+ * durable to the second, so coalescing writes costs nothing that matters.
+ */
+const PERSIST_THROTTLE_MS = 1000 * 30;
+
+/**
  * Query keys whose data belongs to one *user* rather than to the fleet, and which
  * must therefore never be written to localStorage.
  *
@@ -93,7 +107,11 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const persister = useMemo(
-    () => createAsyncStoragePersister({ storage: window.localStorage }),
+    () =>
+      createAsyncStoragePersister({
+        storage: window.localStorage,
+        throttleTime: PERSIST_THROTTLE_MS,
+      }),
     [],
   );
 

@@ -236,11 +236,10 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.isLoadingMore).toBe(false);
   });
 
-  // Regression: the list polls, and the cluster-access probe independently
-  // returns installations to `connecting`. Deriving "loading more" from that
-  // activity flashed the progress bar during steady state, and because the bar
-  // sits above the table it pushed the table down on every poll.
-  it('does not report loading more while a settled fleet refetches or reprobes', async () => {
+  // A settled fleet must not claim to be loading just because a poll is in
+  // flight: every installation refetches on an interval now, and the bar sits
+  // above the table.
+  it('does not report loading more while a settled fleet refetches', async () => {
     const settled = {
       succeeded: { alpha: ['a1'], beta: ['b1'], gaggle: ['g1'] },
     };
@@ -255,15 +254,26 @@ describe('AgentsDataProvider', () => {
     mockUseResources.mockReturnValue(result({ ...settled, isLoading: true }));
     rerender();
     expect(hook.current.isLoadingMore).toBe(false);
-
-    // ...and the access probe has put an installation back to `connecting`.
-    mockReachable = {
-      installations: ['alpha', 'beta', 'gaggle'],
-      isProbing: true,
-    };
-    rerender();
-    expect(hook.current.isLoadingMore).toBe(false);
     expect(hook.current.rows).toHaveLength(3);
+  });
+
+  // The converse, and the reason `isProbing` stays in the signal: an
+  // installation still `connecting` is absent from the healthy-only reachable
+  // set, so it can never show up as a "pending installation" — but it may
+  // resolve and contribute rows. Dropping the probe switched the bar off during
+  // exactly this fan-in.
+  it('reports loading more while installations are still being probed', async () => {
+    // Only alpha is healthy so far; beta and gaggle are still connecting.
+    mockReachable = { installations: ['alpha'], isProbing: true };
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+
+    const { result: hook } = renderUseAgents();
+
+    await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+    // alpha has reported, so nothing is "pending" — the probe is the only signal
+    // that more rows are coming.
+    expect(hook.current.isLoading).toBe(false);
+    expect(hook.current.isLoadingMore).toBe(true);
   });
 
   it('treats a 404 (kagent not installed) as zero agents, not a failure', async () => {

@@ -166,13 +166,16 @@ describe('Agent', () => {
       expect(agent.getReadiness()).toBe('notReady');
     });
 
-    it('is notReady when Ready=True carries an unrecognised reason', () => {
+    // Deliberate divergence from kagent's REST API, which also requires the
+    // reason to be DeploymentReady/WorkloadReady. A future kagent adding a third
+    // ready reason must not make a healthy fleet read as broken.
+    it('is ready when Ready=True carries an unrecognised reason', () => {
       const agent = withStatus([
         accepted(),
-        condition('Ready', 'True', 'SomethingElse'),
+        condition('Ready', 'True', 'StatefulSetReady', 'StatefulSet is ready'),
       ]);
 
-      expect(agent.getReadiness()).toBe('notReady');
+      expect(agent.getReadiness()).toBe('ready');
     });
 
     it('is notAccepted when reconciliation failed, and surfaces the error', () => {
@@ -219,6 +222,42 @@ describe('Agent', () => {
       );
 
       expect(agent.getReadiness()).toBe('ready');
+    });
+
+    // observedGeneration is optional in the CRD while metadata.generation always
+    // exists, so treating "absent" as "stale" would make every agent on such an
+    // installation read pending — hiding both healthy and broken agents.
+    it('does not report pending when observedGeneration is absent', () => {
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a', generation: 3 },
+        status: {
+          conditions: [
+            accepted(),
+            condition(
+              'Ready',
+              'True',
+              'DeploymentReady',
+              'Deployment is ready',
+            ),
+          ],
+        },
+      } as Partial<AgentInterface>);
+
+      expect(agent.getReadiness()).toBe('ready');
+    });
+
+    it('still surfaces a failure when observedGeneration is absent', () => {
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a', generation: 3 },
+        status: {
+          conditions: [
+            condition('Accepted', 'False', 'ReconcileFailed', 'bad spec'),
+          ],
+        },
+      } as Partial<AgentInterface>);
+
+      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadinessMessage()).toBe('bad spec');
     });
 
     // The controller stamps observedGeneration even when reconciliation fails,

@@ -19,16 +19,26 @@ export const AgentConditionType = {
 } as const;
 
 /**
- * Reasons the controller uses for `Ready=True`: `DeploymentReady` for a
- * Deployment-backed agent, `WorkloadReady` for a sandbox workload.
+ * Note on readiness and condition *reasons*.
  *
- * kagent's own REST API keys its `deploymentReady` flag on this reason set
- * rather than on `Ready=True` alone, so any other reason — notably
- * `Ready=Unknown` / `DeploymentNotFound`, which is what a missing Deployment
- * produces — counts as not ready. We match that deliberately, so this list and
- * kagent's UI agree on what "ready" means.
+ * kagent's own REST API gates its `deploymentReady` flag on both
+ * `Ready=True` *and* the reason being one of `DeploymentReady` (a
+ * Deployment-backed agent) or `WorkloadReady` (a sandbox workload). We
+ * deliberately do **not** copy that allowlist, and key on the condition's status
+ * alone.
+ *
+ * The allowlist's apparent purpose is to reject a missing Deployment, which the
+ * controller reports as `Ready=Unknown` / `DeploymentNotFound` — but that is
+ * already excluded by the status check, so the allowlist adds nothing for the
+ * case that motivates it. What it does add is a failure mode on version skew: a
+ * kagent that introduces a third ready reason (say `StatefulSetReady`) would make
+ * a healthy fleet render as "not ready", with a tooltip showing that condition's
+ * own message ("Deployment is ready") and thus contradicting the label.
+ *
+ * Trusting `Ready=True` fails in the opposite direction — a kagent that sets
+ * `Ready=True` to mean something other than ready — which would be a bug
+ * upstream rather than an expected evolution.
  */
-const READY_REASONS: string[] = ['DeploymentReady', 'WorkloadReady'];
 
 /**
  * Readiness of an agent, derived from its status conditions.
@@ -65,14 +75,22 @@ export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
     return 'pending';
   }
 
-  // The controller stamps `status.observedGeneration` on every status write,
-  // including when reconciliation *fails* — so a spec it genuinely rejects
-  // settles on `notAccepted` rather than sticking at `pending` forever.
+  // Staleness is only claimed when observedGeneration is actually present and
+  // behind. The controller stamps it on every status write (including when
+  // reconciliation *fails*, so a rejected spec settles on `notAccepted` rather
+  // than sticking at `pending`), but the CRD marks it optional — whereas
+  // `metadata.generation` is always set by the apiserver. Treating "absent" as
+  // "stale" would therefore fail closed: against a build that writes conditions
+  // but not `status.observedGeneration`, *every* agent on that installation would
+  // read `pending`, hiding healthy and broken agents behind the same
+  // explanation-free label. Absent means "cannot tell", so fall through and
+  // report what the conditions actually say.
   const { generation } = json.metadata ?? {};
   const observedGeneration = json.status?.observedGeneration;
   if (
     typeof generation === 'number' &&
-    (typeof observedGeneration !== 'number' || observedGeneration < generation)
+    typeof observedGeneration === 'number' &&
+    observedGeneration < generation
   ) {
     return 'pending';
   }
@@ -83,8 +101,8 @@ export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
     return 'notAccepted';
   }
 
-  const ready = findAgentCondition(json, AgentConditionType.Ready);
-  if (ready?.status !== 'True' || !READY_REASONS.includes(ready.reason)) {
+  // Status only, not reason — see the note above READY_REASONS' removal.
+  if (findAgentCondition(json, AgentConditionType.Ready)?.status !== 'True') {
     return 'notReady';
   }
 

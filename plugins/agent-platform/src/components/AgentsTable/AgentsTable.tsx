@@ -125,16 +125,24 @@ export function AgentsTable({ rows }: AgentsTableProps) {
     [buildAvatarUrl],
   );
 
-  // Client-side sorting, same shape as SessionsTable. The initial sort is
-  // installation-then-name, which is the ordering this list had before it was
-  // sortable (see `sortAgentsBy`), so enabling sorting doesn't change the default
-  // view. Sorting by Status once puts the agents needing attention on top.
+  // Client-side sorting. The initial sort is installation-then-name, which is the
+  // ordering this list had before it was sortable (see `sortAgentsBy`), so
+  // enabling sorting doesn't change the default view. Sorting by Status once puts
+  // the agents needing attention on top.
+  //
+  // Pagination stays off, unlike SessionsTable. `useCompletePagination` only
+  // resets its offset when the page size or the sort/filter/search query changes
+  // — never when the data shrinks. Since this list polls, a deletion elsewhere
+  // (or an installation dropping out of the reachable set, which prunes its
+  // cached rows) could leave the offset past the end of a shrunken list, slicing
+  // to nothing and showing "No agents found." while agents exist, recoverable
+  // only by paging back. `type: 'none'` skips the slice entirely.
   const { tableProps } = useTable<AgentRow>({
     mode: 'complete',
     data: rows,
     sortFn: sortAgentsBy,
     initialSort: { column: 'installation', direction: 'ascending' },
-    paginationOptions: { pageSize: 25, pageSizeOptions: [25, 50, 100] },
+    paginationOptions: { type: 'none' },
   });
 
   return (

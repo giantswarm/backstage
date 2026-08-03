@@ -47,9 +47,19 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  *
  * `useResources` applies this to each installation's list query separately, and
  * react-query re-evaluates it after every fetch resolves — so this needs no
- * provider state and is self-correcting: the installation an agent was just
- * created on tightens to the fast interval, converges, and relaxes on its own,
- * while installations whose agents are all ready never leave the baseline.
+ * provider state and is self-correcting: an installation whose agents are all
+ * ready stays on the baseline, and one whose agent starts converging tightens to
+ * the fast interval and relaxes again once it settles.
+ *
+ * What this does **not** do is accelerate the first sighting of a *newly created*
+ * agent. The decision is made from the data already in hand, so an installation
+ * whose cached list predates the new agent stays on the baseline until the next
+ * poll reveals it. Nothing invalidates the Agent list after creation (the flow
+ * hands off to the scaffolder task page, and the agent does not exist yet at that
+ * point), and `staleTime` suppresses a refetch on mount for a cache entry under a
+ * minute old — so a new agent can take up to the baseline interval to appear, and
+ * only then does the fast tier engage. Invalidating on creation would be the fix
+ * if that wait proves annoying in practice.
  *
  * Note that interval refetches only fire while the tab is focused
  * (`refetchIntervalInBackground` defaults to `false`), which is the same
