@@ -55,9 +55,8 @@ jest.mock('react-router-dom', () => ({
   useParams: () => mockParams,
 }));
 
-const { Agent, ModelConfig } = jest.requireActual(
-  '@giantswarm/backstage-plugin-kubernetes-react',
-);
+const { Agent, GitRepository, HelmRelease, Kustomization, ModelConfig } =
+  jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
 
 const READY_CONDITIONS = [
   {
@@ -159,7 +158,22 @@ type ResourceOutcome = {
   errors?: unknown[];
 };
 
-function stubResources(agent?: ResourceOutcome, modelConfig?: ResourceOutcome) {
+/**
+ * The Flux chain `GitOpsCard` walks to decide whether the agent's desired state is
+ * in Git: Agent → HelmRelease → Kustomization → GitRepository. Left empty by
+ * default, which is the shape of an agent deployed by this plugin's own flow.
+ */
+type FluxChain = {
+  helmRelease?: unknown;
+  kustomization?: unknown;
+  gitRepository?: unknown;
+};
+
+function stubResources(
+  agent?: ResourceOutcome,
+  modelConfig?: ResourceOutcome,
+  flux: FluxChain = {},
+) {
   const fill = (outcome: ResourceOutcome = {}) => ({
     resource: outcome.resource,
     isLoading: outcome.isLoading ?? false,
@@ -171,19 +185,78 @@ function stubResources(agent?: ResourceOutcome, modelConfig?: ResourceOutcome) {
     clientOutdatedStates: [],
   });
 
-  // Matched per resource class, so the Flux chain GitOpsCard walks
-  // (HelmRelease → Kustomization → GitRepository) resolves to nothing rather than
-  // to whichever stub happened to be last.
+  // Matched per resource class, so each hop of the Flux chain resolves to its own
+  // fixture rather than to whichever stub happened to be last.
   mockUseResource.mockImplementation(
     (_cluster: string, ResourceClass: unknown) => {
-      if (ResourceClass === Agent) {
-        return fill(agent);
+      switch (ResourceClass) {
+        case Agent:
+          return fill(agent);
+        case ModelConfig:
+          return fill(modelConfig);
+        case HelmRelease:
+          return fill({ resource: flux.helmRelease });
+        case Kustomization:
+          return fill({ resource: flux.kustomization });
+        case GitRepository:
+          return fill({ resource: flux.gitRepository });
+        default:
+          return fill();
       }
-      if (ResourceClass === ModelConfig) {
-        return fill(modelConfig);
-      }
-      return fill();
     },
+  );
+}
+
+/** A HelmRelease, optionally carrying the Kustomization labels that put it in Git. */
+function makeHelmRelease(kustomization?: { name: string; namespace: string }) {
+  return new HelmRelease(
+    {
+      apiVersion: 'helm.toolkit.fluxcd.io/v2',
+      kind: 'HelmRelease',
+      metadata: {
+        name: 'pr-reviewer',
+        namespace: 'agentic-platform',
+        ...(kustomization
+          ? {
+              labels: {
+                'kustomize.toolkit.fluxcd.io/name': kustomization.name,
+                'kustomize.toolkit.fluxcd.io/namespace':
+                  kustomization.namespace,
+              },
+            }
+          : {}),
+      },
+      spec: {},
+    },
+    'gazelle',
+  );
+}
+
+function makeKustomization() {
+  return new Kustomization(
+    {
+      apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+      kind: 'Kustomization',
+      metadata: { name: 'agents', namespace: 'flux-giantswarm' },
+      spec: {
+        path: 'management-clusters/gazelle/extras',
+        sourceRef: { kind: 'GitRepository', name: 'management-clusters' },
+      },
+    },
+    'gazelle',
+  );
+}
+
+function makeGitRepository() {
+  return new GitRepository(
+    {
+      apiVersion: 'source.toolkit.fluxcd.io/v1',
+      kind: 'GitRepository',
+      metadata: { name: 'management-clusters', namespace: 'flux-giantswarm' },
+      spec: { url: 'https://github.com/giantswarm/management-clusters' },
+      status: { artifact: { revision: 'main@sha1:abc123' } },
+    },
+    'gazelle',
   );
 }
 
@@ -239,8 +312,33 @@ describe('AgentDetailPage', () => {
     expect(screen.getByText('claude-opus-4-7 · Anthropic')).toBeInTheDocument();
 
     expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
+
+    // One skill card: the label, its repo as a link, and the ref it is pinned to.
     expect(screen.getByText('PR review conventions')).toBeInTheDocument();
-    expect(screen.getByText('at v2.0.0')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'giantswarm/skills' }),
+    ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
+    expect(screen.getByText('v2.0.0')).toBeInTheDocument();
+    // Read-only: the picker's checkbox affordance must not come along.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('says when a skill is unpinned, since it then changes under the agent', async () => {
+    stubResources({
+      resource: makeAgent({
+        spec: {
+          skills: {
+            gitRefs: [
+              { url: 'https://github.com/giantswarm/skills', path: 'demo' },
+            ],
+          },
+        },
+      } as Partial<AgentInterface>),
+    });
+
+    await renderPage();
+
+    expect(screen.getByText('default branch (unpinned)')).toBeInTheDocument();
   });
 
   it('falls back to the bare ModelConfig reference when it cannot be read', async () => {
@@ -439,33 +537,67 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  // Renders the real card, so this also guards the ErrorsProvider it needs — the
-  // page crashed without one, and a stubbed card would not have noticed.
-  it('shows the GitOps card for a reconciled agent', async () => {
-    stubResources({ resource: makeAgent() });
+  describe('GitOps provenance', () => {
+    // Renders the real card, so this also guards the ErrorsProvider it needs — the
+    // page crashed without one, and a stubbed card would not have noticed.
+    it('claims GitOps, with a source link, when the chain reaches Git', async () => {
+      stubResources({ resource: makeAgent() }, undefined, {
+        helmRelease: makeHelmRelease({
+          name: 'agents',
+          namespace: 'flux-giantswarm',
+        }),
+        kustomization: makeKustomization(),
+        gitRepository: makeGitRepository(),
+      });
 
-    await renderPage();
+      await renderPage();
 
-    expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
-  });
-
-  it('omits the GitOps card for an agent no reconciler owns', async () => {
-    stubResources({
-      resource: makeAgent({
-        // Explicitly empty: applied directly, with no Flux or Helm markers.
-        metadata: {
-          name: 'pr-reviewer',
-          namespace: 'agentic-platform',
-          labels: {},
-        },
-      } as Partial<AgentInterface>),
+      expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Source/ })).toHaveAttribute(
+        'href',
+        expect.stringContaining('management-clusters/gazelle/extras'),
+      );
     });
 
-    await renderPage();
+    // The case that matters: an agent created through this plugin is deployed by a
+    // HelmRelease the scaffolder applied, so it is Flux-reconciled but its desired
+    // state is not in Git. Claiming GitOps there sends the reader looking for a
+    // file that does not exist.
+    it('makes no GitOps claim when the owning HelmRelease is not in Git', async () => {
+      stubResources({ resource: makeAgent() }, undefined, {
+        // No Kustomization labels: applied directly, not from a Git source.
+        helmRelease: makeHelmRelease(),
+      });
 
-    expect(
-      screen.queryByText('Managed through GitOps'),
-    ).not.toBeInTheDocument();
+      await renderPage();
+
+      expect(
+        screen.queryByText('Managed through GitOps'),
+      ).not.toBeInTheDocument();
+      // The honest statement about where it came from stays.
+      expect(
+        screen.getByText('HelmRelease agentic-platform/pr-reviewer'),
+      ).toBeInTheDocument();
+    });
+
+    it('makes no GitOps claim for an agent no reconciler owns', async () => {
+      stubResources({
+        resource: makeAgent({
+          // Explicitly empty: applied directly, with no Flux or Helm markers.
+          metadata: {
+            name: 'pr-reviewer',
+            namespace: 'agentic-platform',
+            labels: {},
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage();
+
+      expect(
+        screen.queryByText('Managed through GitOps'),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('says an unset system prompt is unset, not empty', async () => {

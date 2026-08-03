@@ -194,13 +194,14 @@ function AgentDetailPageContent() {
           {description && <Text variant="body-medium">{description}</Text>}
         </Flex>
 
-        {/* Shown whenever a reconciler owns the agent — which for anything created
-            through this plugin means a Flux HelmRelease. The card itself walks
-            Agent → HelmRelease → Kustomization → GitRepository for the source link
-            and omits it when there is no Kustomization, i.e. when the release was
-            applied directly rather than committed to Git. Nothing here is a health
-            signal: it is provenance, and it is why an agent will be read-only
-            wherever write actions are added later. */}
+        {/* A cheap pre-check only: no Flux or Helm marker at all means there is
+            nothing to resolve, so skip the lookups entirely. Whether the agent is
+            *actually* GitOps-managed is the card's own decision — it walks
+            Agent → HelmRelease → Kustomization → GitRepository and renders nothing
+            unless that ends in Git. An agent created by this plugin's own flow is
+            reconciled by a HelmRelease the scaffolder applied, which is not in Git,
+            so it correctly shows no card; the "Deployed by" row above is the whole
+            truth about where it came from. */}
         {isGitOpsManaged(agent) && (
           <GitOpsCard resource={agent} installationName={installation} />
         )}

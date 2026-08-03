@@ -77,7 +77,18 @@ function getColumnConfig(
                     onPointerUp={stopRowPress}
                     onClick={stopRowPress}
                   >
-                    <Text as="p" variant="body-medium" truncate>
+                    {/* `Text` is here for its truncation (single line, ellipsis,
+                        matching CellText), but it sets its own colour — which
+                        would silently strip the anchor's, leaving a link that
+                        doesn't look like one. `inherit` hands the colour back to
+                        the anchor, so this reads like the Sessions table's title
+                        link. bui `Text` has no `color="inherit"`. */}
+                    <Text
+                      as="p"
+                      variant="body-medium"
+                      truncate
+                      style={{ color: 'inherit' }}
+                    >
                       {row.name}
                     </Text>
                   </Link>

@@ -34,6 +34,20 @@ type GitOpsCardProps = {
   installationName: string;
 };
 
+/**
+ * "Managed through GitOps", with a link to the resource's definition in Git.
+ *
+ * Renders **nothing** for a resource whose desired state is not actually in Git.
+ * Being reconciled by Flux is not the same as being GitOps-managed: a HelmRelease
+ * applied by hand — or by a scaffolder action, which is how the agent-platform
+ * create flow deploys an agent — produces a resource with Flux labels and no Git
+ * source at all. Claiming GitOps there is wrong in the way that matters, because
+ * it tells the reader to go and edit a file that does not exist.
+ *
+ * The test for "in Git" is a `Kustomization` somewhere up the chain, since that is
+ * what carries a source reference. Callers that have already established this (the
+ * gs cluster and deployment pages gate on `isManagedByFlux`) are unaffected.
+ */
 export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
   // A resource applied by a Kustomization carries the link to its source
   // directly. One rendered by a Helm chart does not — the helm-controller only
@@ -172,12 +186,13 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
   });
 
   // No Kustomization anywhere up the chain means the resource is reconciled but
-  // its desired state is not in Git — a HelmRelease applied by hand or by a
-  // scaffolder action, for instance. Rendering "Source · n/a" there implies a
-  // link we failed to load, so say nothing at all instead. While the HelmRelease
-  // hop is still resolving we don't know yet, so keep the slot.
-  const hasGitSource =
-    Boolean(kustomizationName) || (needsHelmReleaseHop && helmReleaseIsLoading);
+  // its desired state is not in Git, so there is no GitOps claim to make and no
+  // source to link — render nothing at all rather than a claim the reader cannot
+  // act on. Rendering nothing while the HelmRelease hop resolves, rather than a
+  // card that then disappears, keeps us from asserting it and taking it back.
+  if (!kustomizationName) {
+    return null;
+  }
 
   return (
     <InfoCard>
@@ -186,27 +201,25 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
           <GitOpsIcon />
         </Box>
         <Typography variant="inherit">Managed through GitOps</Typography>
-        {hasGitSource && (
-          <Box marginLeft={1.5} minWidth={75}>
-            <AsyncValue
-              isLoading={isLoading}
-              value={sourceUrl}
-              errorMessage={errorMessage}
-              renderError={message => (
-                <ErrorStatus errorMessage={message} notAvailable={false} />
-              )}
-            >
-              {value => (
-                <Box display="flex" alignItems="center">
-                  <Box marginLeft={-0.5} marginRight={1}>
-                    <Typography variant="inherit">·</Typography>
-                  </Box>
-                  <ExternalLink href={value}>Source</ExternalLink>
+        <Box marginLeft={1.5} minWidth={75}>
+          <AsyncValue
+            isLoading={isLoading}
+            value={sourceUrl}
+            errorMessage={errorMessage}
+            renderError={message => (
+              <ErrorStatus errorMessage={message} notAvailable={false} />
+            )}
+          >
+            {value => (
+              <Box display="flex" alignItems="center">
+                <Box marginLeft={-0.5} marginRight={1}>
+                  <Typography variant="inherit">·</Typography>
                 </Box>
-              )}
-            </AsyncValue>
-          </Box>
-        )}
+                <ExternalLink href={value}>Source</ExternalLink>
+              </Box>
+            )}
+          </AsyncValue>
+        </Box>
       </Box>
     </InfoCard>
   );

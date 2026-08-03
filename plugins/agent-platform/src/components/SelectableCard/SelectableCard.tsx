@@ -36,6 +36,20 @@ const useStyles = makeStyles(theme => ({
       outlineOffset: 1,
     },
   },
+  // Same shell as `card`, minus the affordances: nothing to click, so no pointer
+  // cursor and no hover feedback. Kept next to `card` so the two stay visually
+  // identical as that one evolves.
+  cardStatic: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: '100%',
+    textAlign: 'left',
+    padding: theme.spacing(1.5),
+    borderRadius: theme.shape.borderRadius,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.paper,
+    color: theme.palette.text.primary,
+  },
   selected: {
     borderColor: theme.palette.primary.main,
     outline: `1px solid ${theme.palette.primary.main}`,
@@ -59,8 +73,11 @@ const useStyles = makeStyles(theme => ({
 export const useSelectableCardStyles = useStyles;
 
 type SelectableCardGridProps = {
-  /** `radiogroup` for single-select, `group` for multi-select. */
-  role: 'radiogroup' | 'group';
+  /**
+   * `radiogroup` for single-select, `group` for multi-select, `list` for a
+   * read-only grid of {@link StaticCard}s.
+   */
+  role: 'radiogroup' | 'group' | 'list';
   ariaLabel: string;
   /** Minimum card width for the auto-fill grid. */
   minWidth?: number;
@@ -97,6 +114,27 @@ type SelectableCardProps = {
   onSelect: () => void;
   children: ReactNode;
 };
+
+/**
+ * The same card, read-only: no selection indicator, no press affordance.
+ *
+ * For displaying the things the pickers select — an agent's mounted skills, say —
+ * so the two surfaces look like one system. Deliberately a `<div>` with `role`
+ * `listitem` rather than a `SelectableCard` with the indicator hidden: a
+ * `role="checkbox"` button that does nothing is announced as an operable control
+ * and invites a click that has no effect.
+ */
+export function StaticCard({ children }: { children: ReactNode }) {
+  const classes = useStyles();
+
+  return (
+    <div role="listitem" className={classes.cardStatic}>
+      <Flex direction="column" gap="1">
+        {children}
+      </Flex>
+    </div>
+  );
+}
 
 /** A full-area selectable card with a selection indicator icon. */
 export function SelectableCard({

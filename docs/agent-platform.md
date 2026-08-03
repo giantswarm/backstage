@@ -567,8 +567,8 @@ It polls on the same two tiers as the list (`isAgentConverging` is now shared):
   reconciled Agent) and the `last-applied-configuration` annotation. That dialog is
   the escape hatch for everything the page does not surface — `deployment`,
   `sandbox`, `a2aConfig`, labels.
-- **GitOps** — the shared `GitOpsCard` from `flux-react`, shown whenever a
-  reconciler owns the agent. See "GitOps provenance" below.
+- **GitOps** — the shared `GitOpsCard` from `flux-react`, shown only when the
+  agent's desired state really is in Git. See "GitOps provenance" below.
 - **Status** — the readiness label, the controller's own explanation, an
   `UnsupportedFeatures` warning when present, a note naming both generations when
   the status is stale, and every condition verbatim through the new
@@ -580,8 +580,13 @@ It polls on the same two tiers as the list (`isAgentConverging` is now shared):
 - **System prompt** — `spec.declarative.systemMessage`, copyable. An unset value
   says so explicitly: the agent still has a prompt, just not one configured here.
 - **Skills** — each `spec.skills.gitRefs` entry with its repository, path and
-  `ref`. Unpinned refs are labelled "default branch (unpinned)", because that is
-  what makes an agent's behaviour change without its spec changing.
+  `ref`, in the **same card grid the create flow's skill picker uses**, so an
+  agent's skills look like the things that were picked. Read-only, via a new
+  `StaticCard` sharing the picker's card shell: deliberately not a `SelectableCard`
+  with the indicator hidden, since a `role="checkbox"` button that does nothing is
+  announced as operable and invites a click with no effect. Unpinned refs are
+  labelled "default branch (unpinned)", because that is what makes an agent's
+  behaviour change without its spec changing.
 - **Recent sessions** — see below.
 
 ### The model is read directly, not from the fleet list
@@ -609,10 +614,18 @@ label of its own it resolves the owning `HelmRelease` and follows _its_ labels t
 the Kustomization and GitRepository. It now takes any `KubeObject` as `resource`
 rather than an `App`/`HelmRelease` as `deployment`.
 
-Where that chain ends without a Kustomization, the card renders **without** a
-Source link rather than a dead one. That is exactly the case for an agent created
-by this plugin: the create flow applies its HelmRelease through the scaffolder, so
-the agent is Flux-reconciled but its desired state is not in Git.
+**Reconciled by Flux is not the same as GitOps-managed**, and the card now draws
+that line: where the chain ends without a Kustomization it renders **nothing**. An
+agent created through this plugin is exactly that case — the create flow applies its
+`HelmRelease` and `OCIRepository` through the scaffolder, so Flux reconciles the
+agent but no file in Git describes it. Claiming GitOps there is wrong in the way
+that matters, because it tells the reader to go and edit something that does not
+exist. The "Deployed by" row stays, and is the whole truth for such an agent.
+
+The page still pre-gates on `isGitOpsManaged`: with no Flux or Helm marker at all
+there is nothing to resolve, so the lookups are skipped entirely. The gs cluster and
+deployment pages gate on `isManagedByFlux` and therefore always have a Kustomization
+already, so their behaviour is unchanged.
 
 ### Recent sessions are yours, not a usage metric
 

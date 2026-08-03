@@ -147,6 +147,21 @@ describe('AgentsTable', () => {
     );
   });
 
+  // The name is wrapped in a bui `Text` for its truncation, which sets its own
+  // colour — without an override the link renders in body text colour and stops
+  // looking like a link, diverging from the Sessions table.
+  it('lets the agent name inherit the link colour', async () => {
+    await renderTable(<AgentsTable rows={rows} />);
+
+    const anchor = screen.getByRole('link', { name: 'Incident triager' });
+    const label = anchor.querySelector('p')!;
+
+    // Asserted as "same colour as the anchor" rather than the literal `inherit`:
+    // that is the property that matters, and jsdom resolves `inherit` through the
+    // cascade anyway.
+    expect(getComputedStyle(label).color).toBe(getComputedStyle(anchor).color);
+  });
+
   it('navigates on a whole-row click', async () => {
     await renderTable(<AgentsTable rows={rows} />);
 

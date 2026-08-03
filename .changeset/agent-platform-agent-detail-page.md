@@ -16,7 +16,7 @@ from, and deleting one must remove only that release and never the `OCIRepositor
 namespace's agents share — so neither is a menu item yet, and neither is "Launch
 session".
 
-The page has six sections:
+The page has seven sections:
 
 - **Header** — avatar, display name, derived readiness, technical name,
   installation/namespace, creation age, description. A kebab in the shared plugin
@@ -25,7 +25,8 @@ The page has six sections:
   reconciled Agent) and the `last-applied-configuration` annotation. That dialog is
   the escape hatch for what the page does not surface — `deployment`, `sandbox`,
   `a2aConfig`, labels.
-- **GitOps** — the shared `GitOpsCard`, whenever a reconciler owns the agent.
+- **GitOps** — the shared `GitOpsCard`, but only when the agent's desired state
+  really is in Git.
 - **Status** — readiness, the controller's explanation, an `UnsupportedFeatures`
   warning when present, a note naming both generations when the status is stale, and
   every condition verbatim. This is what makes a broken agent debuggable without
@@ -36,6 +37,12 @@ The page has six sections:
   links to muster's Tool Explorer with the installation preselected.
 - **System prompt** — copyable. An unset value says so explicitly: the agent still
   has a prompt, just not one configured here.
+- **Skills** — the same card grid the create flow's picker uses, so an agent's
+  skills look like the things that were picked, plus the `ref` each is pinned to
+  (the picker has no equivalent: it always reads a repo's default branch). Via a new
+  read-only `StaticCard` sharing the picker's card shell — deliberately not a
+  `SelectableCard` with the indicator hidden, since a `role="checkbox"` button that
+  does nothing is announced as operable and invites a click with no effect.
 - **Recent sessions** — the newest few, over a single-installation query sharing the
   Sessions tab's cache key.
 
@@ -76,10 +83,16 @@ which is rendered by a Helm chart and so carries `helm.toolkit.fluxcd.io/*` rath
 than Kustomization labels. `GitOpsCard` therefore gained a hop — with no
 Kustomization label of its own it resolves the owning `HelmRelease` and follows
 _its_ labels to the Kustomization and GitRepository — and now takes any `KubeObject`
-as `resource` instead of an `App`/`HelmRelease` as `deployment`. Where that chain
-ends without a Kustomization it renders **without** a Source link rather than a dead
-one, which is exactly an agent created by this plugin: applied through the
-scaffolder, so Flux-reconciled but not in Git.
+as `resource` instead of an `App`/`HelmRelease` as `deployment`.
+
+It also stops equating "reconciled by Flux" with "GitOps-managed": where that chain
+ends without a Kustomization it now renders **nothing**. An agent created through
+this plugin is exactly that case, since the create flow applies its `HelmRelease` and
+`OCIRepository` through the scaffolder — Flux reconciles the agent, but no file in
+Git describes it, and saying otherwise sends the reader looking for something that
+does not exist. The "Deployed by" row remains, and is the whole truth for such an
+agent. The gs cluster and deployment pages gate on `isManagedByFlux` and so always
+have a Kustomization already; their behaviour is unchanged.
 
 **New in `ui-react`: `ConditionsList`** — a bui renderer for a resource's status
 conditions. One collapsible entry per condition with its type, satisfaction, relative
