@@ -7,6 +7,21 @@ type AgentCondition = NonNullable<
 >[number];
 
 /**
+ * One entry of `spec.declarative.tools` — a reference to something the agent may
+ * call. The CRD models the list as a union of fixed-length tuples (its
+ * `maxItems: 20`), so it is indexed here to recover the element type.
+ */
+export type AgentTool = NonNullable<
+  NonNullable<NonNullable<AgentInterface['spec']>['declarative']>['tools']
+>[number];
+
+/** An `McpServer` tool reference: a `RemoteMCPServer`/`MCPServer` and, optionally, which of its tools to expose. */
+export type AgentMcpServerRef = NonNullable<AgentTool['mcpServer']>;
+
+/** An `Agent` tool reference: another agent invoked as a tool over A2A. */
+export type AgentToolAgentRef = NonNullable<AgentTool['agent']>;
+
+/**
  * Condition types the kagent controller sets on an Agent. `Accepted` reports
  * whether the spec reconciled, `Ready` whether the backing workload is up, and
  * `UnsupportedFeatures` is a soft warning that does not block reconciliation
@@ -67,6 +82,32 @@ function findAgentCondition(
  * callback, which sees `KubeObjectInterface[]` and not hydrated instances — can
  * reuse the exact same derivation instead of reimplementing it.
  */
+/**
+ * Whether the reported status describes an *older* spec than the one currently
+ * stored — the controller has seen the object but not yet caught up.
+ *
+ * Staleness is only claimed when observedGeneration is actually present and
+ * behind. The controller stamps it on every status write (including when
+ * reconciliation *fails*, so a rejected spec settles on `notAccepted` rather
+ * than sticking at `pending`), but the CRD marks it optional — whereas
+ * `metadata.generation` is always set by the apiserver. Treating "absent" as
+ * "stale" would therefore fail closed: against a build that writes conditions
+ * but not `status.observedGeneration`, *every* agent on that installation would
+ * read `pending`, hiding healthy and broken agents behind the same
+ * explanation-free label. Absent means "cannot tell", so this reports `false`
+ * and callers report what the conditions actually say.
+ */
+export function isAgentStatusStale(json: AgentInterface): boolean {
+  const { generation } = json.metadata ?? {};
+  const observedGeneration = json.status?.observedGeneration;
+
+  return (
+    typeof generation === 'number' &&
+    typeof observedGeneration === 'number' &&
+    observedGeneration < generation
+  );
+}
+
 export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
   const conditions = json.status?.conditions;
 
@@ -75,23 +116,7 @@ export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
     return 'pending';
   }
 
-  // Staleness is only claimed when observedGeneration is actually present and
-  // behind. The controller stamps it on every status write (including when
-  // reconciliation *fails*, so a rejected spec settles on `notAccepted` rather
-  // than sticking at `pending`), but the CRD marks it optional — whereas
-  // `metadata.generation` is always set by the apiserver. Treating "absent" as
-  // "stale" would therefore fail closed: against a build that writes conditions
-  // but not `status.observedGeneration`, *every* agent on that installation would
-  // read `pending`, hiding healthy and broken agents behind the same
-  // explanation-free label. Absent means "cannot tell", so fall through and
-  // report what the conditions actually say.
-  const { generation } = json.metadata ?? {};
-  const observedGeneration = json.status?.observedGeneration;
-  if (
-    typeof generation === 'number' &&
-    typeof observedGeneration === 'number' &&
-    observedGeneration < generation
-  ) {
+  if (isAgentStatusStale(json)) {
     return 'pending';
   }
 
@@ -199,8 +224,55 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.getSkillRefs().length;
   }
 
+  /**
+   * Everything the agent may call: MCP servers and other agents. Spread into a
+   * plain array because the CRD types the field as a union of tuples.
+   */
+  getTools(): AgentTool[] {
+    return [...(this.jsonData.spec?.declarative?.tools ?? [])];
+  }
+
+  /**
+   * The MCP servers the agent draws tools from.
+   *
+   * Discriminated on the presence of `mcpServer` rather than on `type`, which is
+   * optional in the CRD — a hand-written or chart-rendered tool entry commonly
+   * omits it and lets the controller infer the kind.
+   */
+  getMcpServerRefs(): AgentMcpServerRef[] {
+    return this.getTools()
+      .map(tool => tool.mcpServer)
+      .filter((ref): ref is AgentMcpServerRef => Boolean(ref));
+  }
+
+  /** Other agents this agent invokes as tools (A2A). */
+  getAgentRefs(): AgentToolAgentRef[] {
+    return this.getTools()
+      .map(tool => tool.agent)
+      .filter((ref): ref is AgentToolAgentRef => Boolean(ref));
+  }
+
   getConditions() {
     return this.jsonData.status?.conditions;
+  }
+
+  /** Spec revision currently stored, bumped by the apiserver on every change. */
+  getGeneration(): number | undefined {
+    return this.jsonData.metadata?.generation;
+  }
+
+  /** Spec revision the reported status was computed from, when the controller records it. */
+  getObservedGeneration(): number | undefined {
+    return this.jsonData.status?.observedGeneration;
+  }
+
+  /**
+   * Whether the reported status is known to describe an older spec. See
+   * {@link isAgentStatusStale} — notably, this is `false` when the controller
+   * records no `observedGeneration` at all.
+   */
+  isStale(): boolean {
+    return isAgentStatusStale(this.jsonData);
   }
 
   getCondition(type: string) {

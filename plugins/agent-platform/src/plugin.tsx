@@ -14,7 +14,10 @@ import AndroidIcon from '@material-ui/icons/Android';
 
 import { KagentApiClient, kagentApiRef } from './apis';
 import {
+  agentDetailRouteRef,
   agentsRouteRef,
+  deploymentDetailsExternalRouteRef,
+  musterToolExplorerExternalRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
@@ -42,9 +45,10 @@ const agentPlatformPage = PageBlueprint.make({
   },
 });
 
-// The "Agents" tab. Its content is a stub landing plus the create flow
-// (`/agent-platform/agents/new`, `.../new/skills` and `.../new/review`), driven
-// by an internal react-router in AgentsRouter.
+// The "Agents" tab. Its content is the agent list, one agent's details
+// (`/agent-platform/agents/<installation>/<namespace>/<name>`) and the create
+// flow (`/agent-platform/agents/new`, `.../new/skills` and `.../new/review`),
+// all driven by an internal react-router in AgentsRouter.
 const agentsSubPage = SubPageBlueprint.make({
   name: 'agents',
   params: {
@@ -100,10 +104,18 @@ export const agentPlatformPlugin = createFrontendPlugin({
   routes: {
     root: rootRouteRef,
     agents: agentsRouteRef,
+    agentDetail: agentDetailRouteRef,
     newAgent: newAgentRouteRef,
     newAgentSkills: newAgentSkillsRouteRef,
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
+  },
+  // Both carry a `defaultTarget`, so they resolve without an app-config binding
+  // and are simply unbound when the target plugin is disabled. Every call site
+  // must handle `useRouteRef` returning undefined.
+  externalRoutes: {
+    musterToolExplorer: musterToolExplorerExternalRouteRef,
+    deploymentDetails: deploymentDetailsExternalRouteRef,
   },
 });

@@ -13,6 +13,6 @@ export const DeploymentGitOpsCard = () => {
   }
 
   return (
-    <GitOpsCard deployment={deployment} installationName={installationName} />
+    <GitOpsCard resource={deployment} installationName={installationName} />
   );
 };

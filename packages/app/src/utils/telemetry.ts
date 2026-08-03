@@ -154,6 +154,18 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Session detail' };
       break;
 
+    // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`.
+    // Deliberately carries no `view`, for the same reason as Session detail: those
+    // segments name an installation and an agent, so including them would emit a
+    // distinct page name per agent and record which installations a user reads.
+    //
+    // Matched on exactly three segments so it cannot swallow the create flow's
+    // `agents/new`, `agents/new/skills` or `agents/new/review`, which keep
+    // reporting through the generic case below.
+    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
+      payload = { page: 'Agent detail' };
+      break;
+
     case pathname === '/agent-platform':
       payload = { page: 'Agents index' };
       break;

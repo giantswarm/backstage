@@ -13,6 +13,6 @@ export const ClusterGitOpsCard = () => {
   }
 
   return (
-    <GitOpsCard deployment={clusterApp} installationName={installationName} />
+    <GitOpsCard resource={clusterApp} installationName={installationName} />
   );
 };

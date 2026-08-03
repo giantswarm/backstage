@@ -300,6 +300,31 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for one agent', () => {
+    // No `view`: the path names an installation, a namespace and an agent, so
+    // echoing them would emit a page name per agent — and record which
+    // installations a user reads.
+    const result = getTelemetryPageViewPayload(
+      '/agent-platform/agents/gazelle/agentic-platform/pr-reviewer',
+    );
+    expect(result).toEqual({
+      page: 'Agent detail',
+      path: '/agent-platform/agents/gazelle/agentic-platform/pr-reviewer',
+    });
+  });
+
+  // The agent-detail pattern matches exactly three segments under `agents/`, so
+  // the create flow must keep reporting through the generic agent-platform case.
+  it('should not treat the create flow as an agent detail page', () => {
+    expect(
+      getTelemetryPageViewPayload('/agent-platform/agents/new/review'),
+    ).toEqual({
+      page: 'Agents',
+      view: 'agents/new/review',
+      path: '/agent-platform/agents/new/review',
+    });
+  });
+
   it('should return correct payload for metrics page', () => {
     const result = getTelemetryPageViewPayload('/metrics');
     expect(result).toEqual({
@@ -361,6 +386,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/skills',
       '/agent-platform/agents/new/review',
+      '/agent-platform/agents/gazelle/agentic-platform/pr-reviewer',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/metrics',
