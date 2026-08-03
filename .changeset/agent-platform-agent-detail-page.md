@@ -99,11 +99,14 @@ bottom padding bui's accordion trigger lacks, so an expanded header does not sit
 flush against its panel. Four places had composed bui's accordion primitives
 directly and fixed that locally in three different ways — one of them with a
 selector scoped to the trigger element rather than the button that actually carries
-`aria-expanded`, so it matched nothing. gs's `SimpleAccordion` re-exports this one
-and gains the fix; `useSimpleAccordionStyles` exposes the rule for cases needing
-controlled or exclusive expansion. `plans`' `MergedTab`, agent-platform's
-`TimelineEntry` and muster's `DisclosureAccordion` still carry their own and could
-adopt it.
+`aria-expanded`, so it matched nothing. `useSimpleAccordionStyles` exposes the rule
+on its own, for cases needing controlled or exclusive expansion.
+
+gs's own `SimpleAccordion` is removed in favour of this one — its two call sites
+(the cluster access card and the workload details pane) import from `ui-react`
+directly and gain the spacing they never had. `plans`' `MergedTab`,
+agent-platform's `TimelineEntry` and muster's `DisclosureAccordion` still carry
+their own copies of the fix and could adopt it.
 
 **New in `ui-react`: `ConditionsList`** — a bui renderer for a resource's status
 conditions. One collapsible entry per condition with its type, satisfaction, relative

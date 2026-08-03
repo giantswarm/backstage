@@ -5,14 +5,10 @@ import {
   DetailsPane,
   InfoCard,
   JsonHighlight,
+  SimpleAccordion,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
-import {
-  ContentRow,
-  ClusterLink,
-  DateComponent,
-  SimpleAccordion,
-} from '../../UI';
+import { ContentRow, ClusterLink, DateComponent } from '../../UI';
 import { Labels } from '../../LabelsCard/Labels';
 import { ClusterTypes } from '../../clusters/utils';
 import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';

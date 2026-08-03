@@ -15,7 +15,6 @@ export { JsonSchemaViewer } from './JsonSchemaViewer';
 export { KubernetesVersion } from './KubernetesVersion';
 export { NotAvailable } from './NotAvailable';
 export { ScrollContainer } from './ScrollContainer';
-export { SimpleAccordion } from './SimpleAccordion';
 export { StatusMessage } from './StatusMessage';
 export { StructuredMetadataList } from './StructuredMetadataList';
 export { Toolkit, type Tool } from './Toolkit';
