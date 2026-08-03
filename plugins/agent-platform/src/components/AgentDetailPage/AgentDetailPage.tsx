@@ -216,20 +216,22 @@ function AgentDetailPageContent() {
             The sections below it do, and take it: a skills grid fits three cards
             per row, and the sessions table has four columns to place. One column
             below `lg`, where there is no width to divide. */}
+        {/* Document order is the layout order — no `colStart`. Grid's sparse
+            auto-placement moves the cursor to the next row whenever an item's
+            definite column-start is before the cursor's current column, so
+            placing the status in column 3 first and then pinning the
+            configuration to column 1 drops the configuration to a second row and
+            leaves the top-left of the page empty.
+
+            The consequence is that stacking below `lg` puts the configuration
+            above the status. Acceptable: the readiness label is already in the
+            page header, so the state is visible before either card. */}
         <Grid.Root columns={{ initial: '1', lg: '3' }} gap="4">
-          {/* Status comes first in the DOM and is placed into the right-hand
-              column explicitly. Stacked into one column it is then the first
-              thing under the header, which is the right priority on a narrow
-              screen: someone opening a broken agent came for the status, not to
-              scroll past its configuration to reach it. */}
-          <Grid.Item colSpan="1" colStart={{ initial: '1', lg: '3' }}>
-            <AgentStatusCard agent={agent} />
-          </Grid.Item>
-          <Grid.Item
-            colSpan={{ initial: '1', lg: '2' }}
-            colStart={{ initial: '1', lg: '1' }}
-          >
+          <Grid.Item colSpan={{ initial: '1', lg: '2' }}>
             <AgentConfigurationCard agent={agent} modelConfig={modelConfig} />
+          </Grid.Item>
+          <Grid.Item colSpan="1">
+            <AgentStatusCard agent={agent} />
           </Grid.Item>
         </Grid.Root>
 
