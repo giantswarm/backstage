@@ -23,11 +23,13 @@ jest.mock('../ModelConfigsProvider', () => ({
   ),
 }));
 
-// Only the header-actions hook is used from ui-react here; stub it so the test
-// doesn't need the PageHeaderActionsProvider (supplied by GSPageLayout in the
-// real app).
+// Stub ui-react so the test doesn't need the PageHeaderActionsProvider (supplied
+// by GSPageLayout in the real app). `StatusLabel` is stubbed to its label only —
+// this suite covers the page's state branches, and the real status rendering is
+// exercised in AgentsTable.test.tsx, which uses the actual component.
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   useProvidePageHeaderActions: jest.fn(),
+  StatusLabel: ({ label }: { label: string }) => <span>{label}</span>,
 }));
 
 const renderPage = () =>

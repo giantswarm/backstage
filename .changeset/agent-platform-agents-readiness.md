@@ -1,6 +1,7 @@
 ---
 '@giantswarm/backstage-plugin-agent-platform': minor
 '@giantswarm/backstage-plugin-kubernetes-react': minor
+'@giantswarm/backstage-plugin-ui-react': minor
 ---
 
 Show readiness for each agent in the Agent Platform agents list
@@ -32,6 +33,15 @@ Show readiness for each agent in the Agent Platform agents list
   meaning made the bar flash during steady state, and since it sits above the
   table it pushed the table down on every poll. Its slot is also a fixed height
   now, so toggling it can never shift the table.
+- `ui-react`: new shared `StatusLabel` — an icon plus a label describing the
+  state of something, built on bui (`Flex`/`Text` plus a `--bui-fg-*` intent
+  token) rather than on `@backstage/core-components`' `Status*`. Each intent has a
+  distinct silhouette as well as a distinct colour, so a status survives
+  greyscale and colour blindness, and the label is a sibling of the icon so
+  assistive tech reads it (`Status*` puts `aria-hidden` on a span wrapping both
+  its icon _and_ its children, which silently hides any label passed as a child).
+  The agents list is the first consumer; `gs`, `muster` and `flux-react` each
+  still have their own implementation and can migrate as their pages move to bui.
 - `kubernetes-react`: add readiness to `Agent` — `getReadiness()`,
   `getReadinessMessage()`, `getUnsupportedFeaturesWarning()`, `getConditions()`,
   `getCondition()` — plus the free functions `deriveAgentReadiness()`,

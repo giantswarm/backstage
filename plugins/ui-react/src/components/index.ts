@@ -18,6 +18,7 @@ export * from './PageHeaderActions';
 export * from './SectionHeader';
 export * from './SingleSelect';
 export * from './StackedBarChart';
+export * from './StatusLabel';
 export * from './StructuredMetadataList';
 export * from './YamlEditor';
 export * from './YamlEditorFormField';
