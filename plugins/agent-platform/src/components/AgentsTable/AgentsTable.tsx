@@ -7,10 +7,12 @@ import {
   Flex,
   Table,
   Text,
+  useTable,
 } from '@backstage/ui';
-import { AgentRow } from '../AgentsDataProvider';
+import { AgentRow, sortAgentsBy } from '../AgentsDataProvider';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { AgentReadinessCell } from './readinessStatus';
 
 /**
  * The avatar spans roughly two lines of text (`large` = 40px). Request 2× that
@@ -25,6 +27,7 @@ function getColumnConfig(
     {
       id: 'name',
       label: 'Agent',
+      isSortable: true,
       isRowHeader: true,
       // Hand-rolled (rather than CellProfile) so the avatar can be larger than
       // CellProfile's fixed x-small and stay top-aligned, and so it always
@@ -66,23 +69,33 @@ function getColumnConfig(
       ),
     },
     {
+      id: 'readiness',
+      label: 'Status',
+      isSortable: true,
+      cell: row => <AgentReadinessCell row={row} />,
+    },
+    {
       id: 'installation',
       label: 'Installation',
+      isSortable: true,
       cell: row => <CellText title={row.installation} />,
     },
     {
       id: 'namespace',
       label: 'Namespace',
+      isSortable: true,
       cell: row => <CellText title={row.namespace || '—'} />,
     },
     {
       id: 'model',
       label: 'Model',
+      isSortable: true,
       cell: row => <CellText title={row.model ?? '—'} />,
     },
     {
       id: 'skills',
       label: 'Skills',
+      isSortable: true,
       width: '10%',
       cell: row => (
         <Cell>
@@ -112,11 +125,30 @@ export function AgentsTable({ rows }: AgentsTableProps) {
     [buildAvatarUrl],
   );
 
+  // Client-side sorting. The initial sort is installation-then-name, which is the
+  // ordering this list had before it was sortable (see `sortAgentsBy`), so
+  // enabling sorting doesn't change the default view. Sorting by Status once puts
+  // the agents needing attention on top.
+  //
+  // Pagination stays off, unlike SessionsTable. `useCompletePagination` only
+  // resets its offset when the page size or the sort/filter/search query changes
+  // — never when the data shrinks. Since this list polls, a deletion elsewhere
+  // (or an installation dropping out of the reachable set, which prunes its
+  // cached rows) could leave the offset past the end of a shrunken list, slicing
+  // to nothing and showing "No agents found." while agents exist, recoverable
+  // only by paging back. `type: 'none'` skips the slice entirely.
+  const { tableProps } = useTable<AgentRow>({
+    mode: 'complete',
+    data: rows,
+    sortFn: sortAgentsBy,
+    initialSort: { column: 'installation', direction: 'ascending' },
+    paginationOptions: { type: 'none' },
+  });
+
   return (
     <Table<AgentRow>
+      {...tableProps}
       columnConfig={columnConfig}
-      data={rows}
-      pagination={{ type: 'none' }}
       emptyState={
         <Text variant="body-medium" color="secondary">
           No agents found.

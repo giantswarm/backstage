@@ -22,6 +22,7 @@ function agent(overrides: Partial<AgentRow> = {}): AgentRow {
     technicalName: 'sre-agent',
     description: '',
     skillCount: 0,
+    readiness: 'ready',
     ...overrides,
   };
 }

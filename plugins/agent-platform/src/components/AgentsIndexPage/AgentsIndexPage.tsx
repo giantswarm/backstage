@@ -13,6 +13,13 @@ import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { AgentsTable } from '../AgentsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
+/**
+ * Height reserved for the "loading more" bar, matching MUI's `LinearProgress`
+ * default track height. Reserved permanently so toggling the bar never shifts
+ * the table.
+ */
+const LOADING_BAR_SLOT_HEIGHT = '4px';
+
 // Content of the "Agents" tab. The section header + tabs are provided by the
 // Agent Platform page (GSPageLayout), so this renders content only — no
 // PluginHeader of its own, and the "New agent" action is surfaced in that shared
@@ -69,10 +76,16 @@ function AgentsIndexPageContent() {
           <>
             {/* Rows are in, but more installations are still resolving. A thin
                 bar signals background activity without a blocking skeleton or
-                extra text. */}
-            {isLoadingMore && (
-              <LinearProgress aria-label="Loading more agents" />
-            )}
+                extra text.
+
+                The slot is always rendered at a fixed height and only its
+                contents toggle, so the bar appearing or disappearing can never
+                move the table underneath it. */}
+            <Box height={LOADING_BAR_SLOT_HEIGHT}>
+              {isLoadingMore && (
+                <LinearProgress aria-label="Loading more agents" />
+              )}
+            </Box>
 
             <Box>
               <AgentsTable rows={rows} />

@@ -14,7 +14,12 @@ import {
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useModelConfigs } from '../ModelConfigsProvider';
-import { AgentRow, sortAgentRows, toAgentRow } from './helpers';
+import {
+  AgentRow,
+  getAgentsRefetchInterval,
+  sortAgentRows,
+  toAgentRow,
+} from './helpers';
 
 export type AgentsContextValue = {
   /** Agents flattened into plain rows, ordered by installation + name. */
@@ -68,11 +73,15 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // round-trips per cluster for no benefit here. `clustersData` is the raw
   // per-cluster list result (present, and possibly empty, only for clusters that
   // responded successfully); `resources` are those hydrated into Agent instances.
+  // The refetch interval is two-tier and evaluated per installation — see
+  // `getAgentsRefetchInterval`. It keeps agent readiness fresh without polling
+  // the whole fleet fast: only installations with an agent that is still
+  // converging get the short interval.
   const { resources, clustersData, isLoading, errors } = useResources(
     reachableInstallations,
     Agent,
     {},
-    { enableDiscovery: false },
+    { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
   );
 
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately
@@ -221,10 +230,34 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // pin isLoading true and hide the "no installations configured" empty state.
     const hasInstallations = allInstallations.length > 0;
     const isBusy = hasInstallations && (isProbing || isLoading);
+
+    // "More rows may still arrive", from two independent sources.
+    //
+    // `pendingInstallations` covers an installation we already know is healthy
+    // but which has not reported its first result yet. Once it has an entry —
+    // even an empty one — it can only ever *replace* its rows, never contribute
+    // the first ones, so it is settled and a background refetch of it is not
+    // "loading more".
+    //
+    // `isProbing` covers the other half, and is why it cannot be dropped: an
+    // installation still `connecting` is not in `reachableInstallations` at all
+    // (that set is `healthy`-only), so it cannot appear in `pendingInstallations`
+    // — yet it may resolve to healthy and contribute rows seconds later. Without
+    // it the bar switches off during exactly the cold-load fan-in it exists for.
+    // It does not churn: the cluster-access connector only seeds `connecting` for
+    // installations it is not already tracking, so this settles once and stays
+    // settled across re-probes.
+    const pendingInstallations = reachableInstallations.filter(
+      cluster =>
+        !(cluster in agentsByInstallation) &&
+        !erroredInstallations.includes(cluster),
+    );
+
     return {
       rows,
       isLoading: isBusy && rows.length === 0,
-      isLoadingMore: isBusy && rows.length > 0,
+      isLoadingMore:
+        rows.length > 0 && (pendingInstallations.length > 0 || isProbing),
       hasInstallations,
       unreachableInstallations,
     };
