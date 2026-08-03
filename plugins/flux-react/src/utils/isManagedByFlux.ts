@@ -1,10 +1,9 @@
 /**
  * Flux provenance helpers.
  *
- * The implementation lives in `kubernetes-react` alongside `KubeObject`, next to
- * the broader Helm/Flux provenance helpers (`isGitOpsManaged`, `readProvenance`)
- * it used to be duplicated by. Re-exported here so the flux-react public API —
- * and its consumers in `gs` — stay unchanged.
+ * Implemented in `kubernetes-react`, alongside `KubeObject` and the broader
+ * Helm/Flux provenance helpers (`isGitOpsManaged`, `readProvenance`) that read the
+ * same labels. Re-exported here as part of the flux-react public API.
  */
 export {
   getKustomizationName,

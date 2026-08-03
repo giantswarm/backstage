@@ -94,6 +94,17 @@ does not exist. The "Deployed by" row remains, and is the whole truth for such a
 agent. The gs cluster and deployment pages gate on `isManagedByFlux` and so always
 have a Kustomization already; their behaviour is unchanged.
 
+**New in `ui-react`: `SimpleAccordion`** — one collapsible section, carrying the
+bottom padding bui's accordion trigger lacks, so an expanded header does not sit
+flush against its panel. Four places had composed bui's accordion primitives
+directly and fixed that locally in three different ways — one of them with a
+selector scoped to the trigger element rather than the button that actually carries
+`aria-expanded`, so it matched nothing. gs's `SimpleAccordion` re-exports this one
+and gains the fix; `useSimpleAccordionStyles` exposes the rule for cases needing
+controlled or exclusive expansion. `plans`' `MergedTab`, agent-platform's
+`TimelineEntry` and muster's `DisclosureAccordion` still carry their own and could
+adopt it.
+
 **New in `ui-react`: `ConditionsList`** — a bui renderer for a resource's status
 conditions. One collapsible entry per condition with its type, satisfaction, relative
 transition time, reason and message; newest transition first, and the first failing

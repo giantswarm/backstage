@@ -17,6 +17,7 @@ export * from './MultipleSelect';
 export * from './NotAvailable';
 export * from './PageHeaderActions';
 export * from './SectionHeader';
+export * from './SimpleAccordion';
 export * from './SingleSelect';
 export * from './StackedBarChart';
 export * from './StatusLabel';

@@ -1,27 +1,9 @@
 import { ReactNode } from 'react';
-import {
-  Accordion,
-  AccordionPanel,
-  AccordionTrigger,
-  Box,
-  Flex,
-  Text,
-} from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { Box, Flex, Text } from '@backstage/ui';
 import { ConditionMessage } from '../display/ConditionMessage';
 import { DateComponent } from '../DateComponent';
+import { SimpleAccordion } from '../SimpleAccordion';
 import { StatusLabel, StatusLabelIntent } from '../StatusLabel';
-
-const useStyles = makeStyles(theme => ({
-  // bui's AccordionTrigger has no bottom padding, so an expanded header sits
-  // flush against its panel and reads as top-heavy. Only add the gap when the
-  // panel is actually open, or collapsed rows in a list drift apart.
-  trigger: {
-    '&[aria-expanded="true"]': {
-      paddingBottom: theme.spacing(1),
-    },
-  },
-}));
 
 /**
  * The subset of a Kubernetes status condition this renders. Structurally typed
@@ -127,8 +109,6 @@ export const ConditionsList = ({
   renderActions,
   emptyContent,
 }: ConditionsListProps) => {
-  const classes = useStyles();
-
   if (conditions.length === 0) {
     return <>{emptyContent}</>;
   }
@@ -143,11 +123,12 @@ export const ConditionsList = ({
         const actions = renderActions?.(condition);
 
         return (
-          <Accordion
+          <SimpleAccordion
+            // Keyed on the transition time as well as the type, so a condition
+            // that flips re-mounts and `defaultExpanded` is re-seeded.
             key={`${condition.type}-${condition.lastTransitionTime ?? ''}`}
             defaultExpanded={condition === firstFailing}
-          >
-            <AccordionTrigger className={classes.trigger}>
+            title={
               <Box grow>
                 <Flex align="center" justify="between" gap="2">
                   <StatusLabel
@@ -164,34 +145,33 @@ export const ConditionsList = ({
                   )}
                 </Flex>
               </Box>
-            </AccordionTrigger>
-            <AccordionPanel>
-              <Flex direction="column" gap="2" pb="2">
-                <Flex align="center" gap="2">
-                  <Text variant="body-small" color="secondary">
-                    Status
-                  </Text>
-                  <Text variant="body-small">{condition.status}</Text>
-                  {condition.reason && (
-                    <>
-                      <Text variant="body-small" color="secondary">
-                        Reason
-                      </Text>
-                      <Text variant="body-small">{condition.reason}</Text>
-                    </>
-                  )}
-                </Flex>
-
-                {condition.message && (
-                  <Box>
-                    <ConditionMessage message={condition.message} />
-                  </Box>
+            }
+          >
+            <Flex direction="column" gap="2" pb="2">
+              <Flex align="center" gap="2">
+                <Text variant="body-small" color="secondary">
+                  Status
+                </Text>
+                <Text variant="body-small">{condition.status}</Text>
+                {condition.reason && (
+                  <>
+                    <Text variant="body-small" color="secondary">
+                      Reason
+                    </Text>
+                    <Text variant="body-small">{condition.reason}</Text>
+                  </>
                 )}
-
-                {actions && <Box>{actions}</Box>}
               </Flex>
-            </AccordionPanel>
-          </Accordion>
+
+              {condition.message && (
+                <Box>
+                  <ConditionMessage message={condition.message} />
+                </Box>
+              )}
+
+              {actions && <Box>{actions}</Box>}
+            </Flex>
+          </SimpleAccordion>
         );
       })}
     </Flex>

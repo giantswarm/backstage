@@ -64,6 +64,7 @@
     "@storybook/react": "^10.5.3",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/qs": "^6",
     "@types/semver": "^7",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"

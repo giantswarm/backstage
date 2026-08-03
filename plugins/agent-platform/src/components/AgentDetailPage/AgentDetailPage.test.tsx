@@ -17,9 +17,9 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResource: (...args: unknown[]) => mockUseResource(...args),
 }));
 
-// `GitOpsCard` is deliberately *not* mocked. It reports its Flux lookups through
-// `useShowErrors`, which throws without an `ErrorsProvider` — a real crash that a
-// stubbed card hid until the page was opened in the browser.
+// `GitOpsCard` is deliberately *not* mocked: it reports its Flux lookups through
+// `useShowErrors`, which throws without an `ErrorsProvider`, so a stub here would
+// hide whether the page actually provides one.
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () =>
@@ -538,8 +538,8 @@ describe('AgentDetailPage', () => {
   });
 
   describe('GitOps provenance', () => {
-    // Renders the real card, so this also guards the ErrorsProvider it needs — the
-    // page crashed without one, and a stubbed card would not have noticed.
+    // Renders the real card, so this also covers the ErrorsProvider it needs:
+    // without one the page throws rather than rendering anything at all.
     it('claims GitOps, with a source link, when the chain reaches Git', async () => {
       stubResources({ resource: makeAgent() }, undefined, {
         helmRelease: makeHelmRelease({

@@ -1,15 +1,14 @@
 import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /**
- * Provenance detection now lives in `kubernetes-react` (it only reads labels and
- * annotations off a `KubeObject`, and the agent-platform plugin needs the same
- * answers for kagent `Agent`s). Re-exported here so muster's own call sites keep
- * importing provenance and manifest helpers from one place.
+ * Provenance detection is implemented in `kubernetes-react`: it only reads labels
+ * and annotations off a `KubeObject`, and other plugins need the same answers for
+ * their own CRs. Re-exported here so muster's call sites get provenance and
+ * manifest helpers from one place.
  *
- * The safety model these encode is unchanged: GitOps-managed resources are
- * read-only in the app and produce a PR/manifest to commit; ad-hoc resources
- * (created through muster's own store) allow live
- * `core_*_create`/`_update`/`_delete` CRUD.
+ * The safety model these encode: GitOps-managed resources are read-only in the app
+ * and produce a PR/manifest to commit; ad-hoc resources (created through muster's
+ * own store) allow live `core_*_create`/`_update`/`_delete` CRUD.
  */
 export {
   isGitOpsManaged,
