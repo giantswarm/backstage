@@ -106,3 +106,6 @@ if (process.env.PAGERDUTY_TOKEN) {
 }
 
 backend.start();
+
+// Touched to exercise the warm layer cache (see PR #2012). Changes the built
+// bundle but not any package.json, so skeleton.tar.gz stays byte-identical.
