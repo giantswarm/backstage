@@ -1,4 +1,4 @@
-import { SyntheticEvent, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   Avatar,
   Cell,
@@ -17,6 +17,7 @@ import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { stopRowPress } from '../../lib/rowPress';
 import {
   SessionRow,
   sessionSearchFn,
@@ -25,27 +26,6 @@ import {
 
 /** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
 const ROW_AVATAR_SIZE: AvatarSize = 48;
-
-/**
- * Keep a press on the title anchor from also reaching the row.
- *
- * The row's `onClick` is react-aria's `onAction`, which fires for a press anywhere
- * inside the row — the anchor included, since `usePress` has no exemption for
- * interactive descendants. So a single click on the title used to navigate
- * *twice*: once through the anchor, once through the row. On a plain click that
- * pushed the same path onto the history stack twice, and Back needed two presses
- * to return to the list; with cmd held it was worse, because react-router leaves a
- * modified event to the browser, so the session opened in a new tab *and* the
- * current tab navigated away — defeating the reason the anchor exists.
- *
- * `usePress` works off pointer events rather than `click`, so `pointerdown` and
- * `pointerup` are the ones that have to be stopped; `click` is stopped too, for
- * the synthetic-click path. Stopping propagation does not set `defaultPrevented`,
- * so the anchor's own react-router navigation still happens.
- */
-function stopRowPress(event: SyntheticEvent) {
-  event.stopPropagation();
-}
 
 /** Dash shown where a value is genuinely unknown. */
 function Unknown() {
@@ -173,12 +153,30 @@ function getColumnConfig(
   ];
 }
 
+/** Columns an embedding page may drop because its context already implies them. */
+export type HideableSessionColumn = 'agentName' | 'installation';
+
 export type SessionsTableProps = {
   rows: SessionRow[];
   /** True only while no rows exist yet, so the skeleton replaces the table. */
   isLoading?: boolean;
   /** Search debounce; set to 0 in tests so typing takes effect immediately. */
   searchDebounceMs?: number;
+  /**
+   * Columns to leave out. For an agent's own sessions the agent and installation
+   * are fixed by the surrounding page, so repeating them in every row is noise.
+   */
+  hideColumns?: ReadonlyArray<HideableSessionColumn>;
+  /**
+   * Whether to render the search field. Off for a short embedded list, where
+   * there is nothing to search through and the field competes with the page's
+   * own controls.
+   */
+  showSearch?: boolean;
+  /** Whether to paginate. Off for a short embedded list. */
+  showPagination?: boolean;
+  /** Replaces the default "No sessions found." message. */
+  emptyMessage?: string;
 };
 
 /**
@@ -192,6 +190,10 @@ export function SessionsTable({
   rows,
   isLoading,
   searchDebounceMs = 150,
+  hideColumns,
+  showSearch = true,
+  showPagination = true,
+  emptyMessage = 'No sessions found.',
 }: SessionsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
   const navigate = useNavigate();
@@ -209,10 +211,14 @@ export function SessionsTable({
     [sessionDetailRoute],
   );
 
-  const columnConfig = useMemo(
-    () => getColumnConfig(buildAvatarUrl, hrefFor),
-    [buildAvatarUrl, hrefFor],
-  );
+  const hiddenKey = hideColumns?.join(',') ?? '';
+  const columnConfig = useMemo(() => {
+    const hidden = new Set<string>(hiddenKey ? hiddenKey.split(',') : []);
+
+    return getColumnConfig(buildAvatarUrl, hrefFor).filter(
+      column => !hidden.has(String(column.id)),
+    );
+  }, [buildAvatarUrl, hrefFor, hiddenKey]);
 
   const { tableProps, search } = useTable<SessionRow>({
     mode: 'complete',
@@ -224,17 +230,21 @@ export function SessionsTable({
     searchDebounceMs,
     sortFn: sortSessionsBy,
     initialSort: { column: 'updatedAt', direction: 'descending' },
-    paginationOptions: { pageSize: 25, pageSizeOptions: [25, 50, 100] },
+    paginationOptions: showPagination
+      ? { pageSize: 25, pageSizeOptions: [25, 50, 100] }
+      : { type: 'none' },
   });
 
   return (
     <Flex direction="column" gap="3">
-      <SearchField
-        aria-label="Search sessions"
-        placeholder="Search by session, agent, or installation"
-        value={search.value}
-        onChange={search.onChange}
-      />
+      {showSearch && (
+        <SearchField
+          aria-label="Search sessions"
+          placeholder="Search by session, agent, or installation"
+          value={search.value}
+          onChange={search.onChange}
+        />
+      )}
       <Table<SessionRow>
         {...tableProps}
         columnConfig={columnConfig}
@@ -251,7 +261,7 @@ export function SessionsTable({
         }}
         emptyState={
           <Text variant="body-medium" color="secondary">
-            No sessions found.
+            {emptyMessage}
           </Text>
         }
       />

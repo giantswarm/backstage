@@ -11,9 +11,15 @@ export {
   AgentConditionType,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
+  isAgentStatusStale,
   isAgentTransitional,
 } from './Agent';
-export type { AgentReadiness } from './Agent';
+export type {
+  AgentMcpServerRef,
+  AgentReadiness,
+  AgentTool,
+  AgentToolAgentRef,
+} from './Agent';
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
 export { ConfigMap } from './ConfigMap';
@@ -35,6 +41,17 @@ export { Release, RELEASE_VERSION_PREFIXES } from './Release';
 export { Secret } from './Secret';
 export { SecretStore } from './SecretStore';
 export * from './KubeObject';
+export {
+  getHelmReleaseName,
+  getHelmReleaseNamespace,
+  getKustomizationName,
+  getKustomizationNamespace,
+  isGitOpsManaged,
+  isManagedByFlux,
+  provenanceReleaseId,
+  readProvenance,
+} from './provenance';
+export type { Provenance } from './provenance';
 export * from './FluxObject';
 export * from './FluxResourceStatusManager';
 export * from './FluxResourceMixin';

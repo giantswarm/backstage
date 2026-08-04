@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   Avatar,
   Cell,
@@ -9,9 +9,14 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
+import { Link } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { useNavigate } from 'react-router-dom';
 import { AgentRow, sortAgentsBy } from '../AgentsDataProvider';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { agentDetailRouteRef } from '../../routes';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { stopRowPress } from '../../lib/rowPress';
 import { AgentReadinessCell } from './readinessStatus';
 
 /**
@@ -22,6 +27,7 @@ const LIST_AVATAR_SIZE: AvatarSize = 96;
 
 function getColumnConfig(
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>,
+  hrefFor: (row: AgentRow) => string | undefined,
 ): ColumnConfig<AgentRow>[] {
   return [
     {
@@ -36,37 +42,76 @@ function getColumnConfig(
       // technical name, not the display name. The text mirrors CellText's
       // truncation (single-line, ellipsis, full text on hover) so this column
       // wraps/overflows consistently with the others.
-      cell: row => (
-        <Cell>
-          <Flex align="start" gap="3">
-            <Avatar
-              size="large"
-              purpose="decoration"
-              name={row.name}
-              src={
-                buildAvatarUrl(row.installation, row.technicalName, {
-                  size: LIST_AVATAR_SIZE,
-                }) ?? ''
-              }
-            />
-            <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
-              <Text as="p" variant="body-medium" truncate title={row.name}>
-                {row.name}
-              </Text>
-              {row.description && (
-                <Text
-                  variant="body-medium"
-                  color="secondary"
-                  truncate
-                  title={row.description}
-                >
-                  {row.description}
-                </Text>
-              )}
+      cell: row => {
+        const href = hrefFor(row);
+
+        // A real anchor on the name, *as well as* the whole-row onClick below.
+        // The anchor is what makes cmd/middle-click open a new tab and what gives
+        // keyboard users something focusable; the row click is the convenience
+        // affordance. `Link` from core-components routes client-side, which
+        // `rowConfig.getHref` would not: BUIProvider is not mounted in this app,
+        // so react-aria's RouterProvider is inactive and a bui `href` would
+        // trigger a full page reload.
+        //
+        // The two affordances must not both fire for one click — see
+        // {@link stopRowPress}.
+        return (
+          <Cell>
+            <Flex align="start" gap="3">
+              <Avatar
+                size="large"
+                purpose="decoration"
+                name={row.name}
+                src={
+                  buildAvatarUrl(row.installation, row.technicalName, {
+                    size: LIST_AVATAR_SIZE,
+                  }) ?? ''
+                }
+              />
+              <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
+                {href ? (
+                  <Link
+                    to={href}
+                    title={row.name}
+                    onPointerDown={stopRowPress}
+                    onPointerUp={stopRowPress}
+                    onClick={stopRowPress}
+                  >
+                    {/* `Text` is here for its truncation (single line, ellipsis,
+                        matching CellText), but it sets its own colour — which
+                        would silently strip the anchor's, leaving a link that
+                        doesn't look like one. `inherit` hands the colour back to
+                        the anchor, so this reads like the Sessions table's title
+                        link. bui `Text` has no `color="inherit"`. */}
+                    <Text
+                      as="p"
+                      variant="body-medium"
+                      truncate
+                      style={{ color: 'inherit' }}
+                    >
+                      {row.name}
+                    </Text>
+                  </Link>
+                ) : (
+                  <Text as="p" variant="body-medium" truncate title={row.name}>
+                    {row.name}
+                  </Text>
+                )}
+                {row.description && (
+                  <Text
+                    variant="body-medium"
+                    color="secondary"
+                    truncate
+                    title={row.description}
+                  >
+                    {row.description}
+                  </Text>
+                )}
+              </Flex>
             </Flex>
-          </Flex>
-        </Cell>
-      ),
+          </Cell>
+        );
+      },
     },
     {
       id: 'readiness',
@@ -120,9 +165,25 @@ export type AgentsTableProps = {
  */
 export function AgentsTable({ rows }: AgentsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
+  const navigate = useNavigate();
+  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
+
+  // All three parameters are needed: an Agent name is only unique within a
+  // namespace on one installation. Undefined when the route isn't bound, in which
+  // case rows render as plain text rather than as links that go nowhere.
+  const hrefFor = useCallback(
+    (row: AgentRow) =>
+      agentDetailRoute?.({
+        installation: row.installation,
+        namespace: row.namespace,
+        name: row.technicalName,
+      }),
+    [agentDetailRoute],
+  );
+
   const columnConfig = useMemo(
-    () => getColumnConfig(buildAvatarUrl),
-    [buildAvatarUrl],
+    () => getColumnConfig(buildAvatarUrl, hrefFor),
+    [buildAvatarUrl, hrefFor],
   );
 
   // Client-side sorting. The initial sort is installation-then-name, which is the
@@ -149,6 +210,17 @@ export function AgentsTable({ rows }: AgentsTableProps) {
     <Table<AgentRow>
       {...tableProps}
       columnConfig={columnConfig}
+      rowConfig={{
+        // Whole-row click as a convenience, on top of the anchor on the name.
+        // `onClick` + navigate rather than `getHref`, because without BUIProvider
+        // a bui href does a full page reload (see the name cell).
+        onClick: row => {
+          const href = hrefFor(row);
+          if (href) {
+            navigate(href);
+          }
+        },
+      }}
       emptyState={
         <Text variant="body-medium" color="secondary">
           No agents found.

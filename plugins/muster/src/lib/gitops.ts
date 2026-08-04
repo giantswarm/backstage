@@ -1,72 +1,21 @@
 import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /**
- * GitOps provenance recovered from a CR's labels/annotations. Both the Helm
- * (`meta.helm.sh/*`) and Flux HelmRelease/Kustomization
- * (`*.toolkit.fluxcd.io/*`) conventions are checked, so a resource deployed by
- * either path shows where it comes from. Works for any muster CR carrying the
- * standard markers (MCPServer, Workflow).
- */
-export interface Provenance {
-  managedBy?: string;
-  helmRelease?: string;
-  helmNamespace?: string;
-  fluxHelmRelease?: string;
-  fluxHelmNamespace?: string;
-  fluxKustomization?: string;
-  fluxKustomizationNamespace?: string;
-}
-
-export function readProvenance(obj: KubeObject): Provenance {
-  const labels = obj.getLabels() ?? {};
-  const annotations = obj.getAnnotations() ?? {};
-  return {
-    managedBy: labels['app.kubernetes.io/managed-by'],
-    helmRelease: annotations['meta.helm.sh/release-name'],
-    helmNamespace: annotations['meta.helm.sh/release-namespace'],
-    fluxHelmRelease: labels['helm.toolkit.fluxcd.io/name'],
-    fluxHelmNamespace: labels['helm.toolkit.fluxcd.io/namespace'],
-    fluxKustomization: labels['kustomize.toolkit.fluxcd.io/name'],
-    fluxKustomizationNamespace: labels['kustomize.toolkit.fluxcd.io/namespace'],
-  };
-}
-
-/**
- * Whether the resource is owned by GitOps (Flux/Helm) and therefore read-only
- * in the app: editing it live via the muster store would be reverted by the
- * reconciler. Ad-hoc resources (created through muster's own store, no
- * Flux/Helm/Helm-managed-by markers) return false and may be mutated live.
+ * Provenance detection is implemented in `kubernetes-react`: it only reads labels
+ * and annotations off a `KubeObject`, and other plugins need the same answers for
+ * their own CRs. Re-exported here so muster's call sites get provenance and
+ * manifest helpers from one place.
  *
- * Provenance is the only UI restriction: GitOps-managed resources produce a
- * PR/manifest to commit; ad-hoc (manually added) resources allow live
- * core_*_create/_update/_delete CRUD. Applies identically to MCPServer and
- * Workflow CRs. See the provenance-only safety model ADR in klaus-lab.
+ * The safety model these encode: GitOps-managed resources are read-only in the app
+ * and produce a PR/manifest to commit; ad-hoc resources (created through muster's
+ * own store) allow live `core_*_create`/`_update`/`_delete` CRUD.
  */
-export function isGitOpsManaged(obj: KubeObject): boolean {
-  const p = readProvenance(obj);
-  return Boolean(
-    p.fluxHelmRelease ||
-    p.fluxKustomization ||
-    p.helmRelease ||
-    p.managedBy === 'Helm' ||
-    p.managedBy === 'flux',
-  );
-}
-
-/** The HelmRelease (or Kustomization) that owns the server, `ns/name` form. */
-export function provenanceReleaseId(p: Provenance): string | undefined {
-  const release = p.helmRelease ?? p.fluxHelmRelease;
-  const namespace = p.helmNamespace ?? p.fluxHelmNamespace;
-  if (release) {
-    return namespace ? `${namespace}/${release}` : release;
-  }
-  if (p.fluxKustomization) {
-    return p.fluxKustomizationNamespace
-      ? `${p.fluxKustomizationNamespace}/${p.fluxKustomization}`
-      : p.fluxKustomization;
-  }
-  return undefined;
-}
+export {
+  isGitOpsManaged,
+  provenanceReleaseId,
+  readProvenance,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+export type { Provenance } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /**
  * Flatten an MCPServer CR's spec into the argument shape muster's

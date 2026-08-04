@@ -1,9 +1,5 @@
 import { MusterWorkflow } from './k8s';
-import {
-  isGitOpsManaged,
-  toManifestYaml,
-  toWorkflowDefinition,
-} from './gitops';
+import { toManifestYaml, toWorkflowDefinition } from './gitops';
 
 function makeWorkflow(
   overrides: Record<string, unknown> = {},
@@ -28,21 +24,9 @@ function makeWorkflow(
   );
 }
 
-describe('workflow provenance (gitops.ts)', () => {
-  it('treats a Flux HelmRelease-labelled workflow as GitOps-managed', () => {
-    const managed = makeWorkflow({
-      metadata: {
-        name: 'deploy',
-        labels: { 'helm.toolkit.fluxcd.io/name': 'agentic-platform' },
-      },
-    });
-    expect(isGitOpsManaged(managed)).toBe(true);
-  });
-
-  it('treats a workflow with no Flux/Helm markers as ad-hoc (live CRUD)', () => {
-    expect(isGitOpsManaged(makeWorkflow())).toBe(false);
-  });
-
+// Provenance detection itself is tested where it lives, in
+// kubernetes-react's `provenance.test.ts`.
+describe('workflow definitions (gitops.ts)', () => {
   it('flattens the spec into the core_workflow_* argument shape', () => {
     const def = toWorkflowDefinition(makeWorkflow());
     expect(def).toEqual({

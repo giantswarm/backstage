@@ -23,7 +23,7 @@ import type { AgentRow } from '../AgentsDataProvider';
  * controller has not caught up with the current spec yet, which is "not known
  * yet", not "broken".
  */
-const READINESS_PRESENTATION: Record<
+export const READINESS_PRESENTATION: Record<
   AgentReadiness,
   { label: string; intent: StatusLabelIntent; icon: typeof CheckCircleIcon }
 > = {

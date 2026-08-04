@@ -541,6 +541,125 @@ three minutes, and printed "1 day ago" identically on every turn marker — hidi
 the progression the timeline exists to show. The list keeps the relative form,
 where scanning for recency is the point.
 
+## The agent detail page
+
+`/agent-platform/agents/<installation>/<namespace>/<name>`, reached by clicking an
+agent in the list. All three segments are in the path because all three are part of
+the agent's identity — an `Agent` name is only unique within a namespace on one
+installation.
+
+Read-only. Editing an agent means changing the values its HelmRelease renders from,
+and deleting one must remove only that release and never the `OCIRepository` a
+namespace's agents share (see "Shared OCIRepository per namespace"), so neither is
+a menu item yet.
+
+The agent is fetched with a **single targeted `useResource`**, not read out of the
+list's `AgentsDataProvider`, so a deep link works without the list having loaded.
+It polls on the same two tiers as the list (`isAgentConverging` is now shared):
+5 s while an agent is converging, 60 s once it settles or stays durably broken.
+
+### Layout
+
+Two columns from `lg` (1024px) up, one below. The **status card takes a third of
+the width, beside the configuration**; everything under that row spans the full
+width.
+
+Status is the one section that does not want the whole page. A controller message
+is prose — a rejected spec carries several hundred words of admission-webhook
+output — and across a full-width card it runs to line lengths nobody can follow. A
+narrower column is the fix. The sections below it genuinely use the width: the
+skills grid fits three cards per row, and the sessions table has four columns.
+
+### Sections
+
+- **Header** — avatar, display name, derived readiness, technical name,
+  installation/namespace, creation age, description. A kebab in the shared plugin
+  header opens the **manifest dialog**: the Agent CR as read-only YAML, minus
+  `metadata.managedFields` (server-side-apply bookkeeping, and the bulk of a
+  reconciled Agent) and the `last-applied-configuration` annotation. That dialog is
+  the escape hatch for everything the page does not surface — `deployment`,
+  `sandbox`, `a2aConfig`, labels.
+- **GitOps** — the shared `GitOpsCard` from `flux-react`, shown only when the
+  agent's desired state really is in Git. See "GitOps provenance" below.
+- **Status** — the readiness label, the controller's own explanation, an
+  `UnsupportedFeatures` warning when present, a note naming both generations when
+  the status is stale, and every condition verbatim through the new
+  `ConditionsList` in `ui-react`. This is what makes a broken agent debuggable
+  without `kubectl`, so it leads the page.
+- **Configuration** — type, model, installation, namespace, created, the owning
+  HelmRelease (linked to the gs deployment details page, where the release's Flux
+  status already lives), and the agent's MCP-server and agent tool references.
+- **System prompt** — `spec.declarative.systemMessage`, copyable. An unset value
+  says so explicitly: the agent still has a prompt, just not one configured here.
+- **Skills** — each `spec.skills.gitRefs` entry with its repository, path and
+  `ref`, in the **same card grid the create flow's skill picker uses**, so an
+  agent's skills look like the things that were picked. Read-only, via a new
+  `StaticCard` sharing the picker's card shell: deliberately not a `SelectableCard`
+  with the indicator hidden, since a `role="checkbox"` button that does nothing is
+  announced as operable and invites a click with no effect. Unpinned refs are
+  labelled "default branch (unpinned)", because that is what makes an agent's
+  behaviour change without its spec changing.
+- **Recent sessions** — see below.
+
+### The model is read directly, not from the fleet list
+
+The ModelConfig is fetched by name in the agent's own namespace, rather than
+reusing `ModelConfigsProvider`. That provider lists ModelConfigs **across all
+namespaces**, which is admin-only (see "Installation / ModelConfig querying"), so
+reusing it here would deny a non-admin the model name on a page they can otherwise
+read in full. When the read fails the bare reference name is shown — never an
+implication that the agent has no model.
+
+### GitOps provenance
+
+Provenance detection is now **one implementation** in `kubernetes-react`
+(`lib/k8s/provenance.ts`): `readProvenance` / `isGitOpsManaged` /
+`provenanceReleaseId` (previously in `muster`) alongside `isManagedByFlux` and the
+Kustomization label readers (previously in `flux-react`), plus new
+`getHelmReleaseName`/`getHelmReleaseNamespace`. `flux-react` and `muster` re-export
+from it, so their public APIs are unchanged.
+
+`isManagedByFlux` (Kustomization labels only) is **false for our Agents**: they are
+rendered by a Helm chart, so they carry `helm.toolkit.fluxcd.io/*` instead. The
+shared `GitOpsCard` therefore gained a hop — when a resource has no Kustomization
+label of its own it resolves the owning `HelmRelease` and follows _its_ labels to
+the Kustomization and GitRepository. It now takes any `KubeObject` as `resource`
+rather than an `App`/`HelmRelease` as `deployment`.
+
+**Reconciled by Flux is not the same as GitOps-managed**, and the card now draws
+that line: where the chain ends without a Kustomization it renders **nothing**. An
+agent created through this plugin is exactly that case — the create flow applies its
+`HelmRelease` and `OCIRepository` through the scaffolder, so Flux reconciles the
+agent but no file in Git describes it. Claiming GitOps there is wrong in the way
+that matters, because it tells the reader to go and edit something that does not
+exist. The "Deployed by" row stays, and is the whole truth for such an agent.
+
+The page still pre-gates on `isGitOpsManaged`: with no Flux or Helm marker at all
+there is nothing to resolve, so the lookups are skipped entirely. The gs cluster and
+deployment pages gate on `isManagedByFlux` and therefore always have a Kustomization
+already, so their behaviour is unchanged.
+
+### Recent sessions are yours, not a usage metric
+
+The section reuses `SessionsTable` (with the agent and installation columns hidden
+— the page already fixes both) over a **single-installation** query that shares the
+Sessions tab's cache key, so no fleet fan-out happens and arriving from that tab
+renders instantly.
+
+kagent scopes its session list to the caller, so this can only ever show your own
+conversations with the agent, and the copy says so. On an installation running
+kagent in `unsecure` mode the list is everyone's, which the existing `/me` probe
+already detects — the copy switches rather than claiming ownership it cannot.
+
+### What it cannot show
+
+The prototype's stats strip — sessions all-time, sessions in the last 30 days, a
+success rate — has **no data behind it**. kagent keeps no per-agent counters and
+scopes sessions to the caller, so every one of those would be a number invented
+from one person's history, wrong by orders of magnitude on a shared agent. There is
+deliberately no stats strip; creation age moved into the header instead. Please
+don't add them speculatively.
+
 ## Configuration
 
 All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
@@ -635,19 +754,21 @@ above). What remains is a separate, deeper concern:
   `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD/chart but the
   create flow doesn't set it); (2) discovery reads a repo's **default branch** and
   doesn't expose per-skill version/`ref` selection in the UI.
-- **Agent management actions.** The agent list exists; management does not. A
-  delete action must respect the shared `OCIRepository/agent` (see "Shared
-  OCIRepository per namespace") — delete only the agent's `HelmRelease`, not the
-  shared source.
+- **Agent write actions.** The list and the detail page exist; every write path
+  does not. Editing an agent means changing the values its HelmRelease renders
+  from — so it needs the create flow's form driven from an existing agent, plus a
+  decision about whether that produces a live apply or a PR (GitOps-managed agents
+  are read-only, see "GitOps provenance"). A delete action must respect the shared
+  `OCIRepository/agent` (see "Shared OCIRepository per namespace") — delete only
+  the agent's `HelmRelease`, not the shared source. "Launch session" also has no
+  write path today.
 - **Session management + detail.** The Sessions tab is read-only. kagent supports
   deleting (soft) and renaming sessions, and exposes a session's events and A2A
   tasks — enough for a detail view. Deliberately deferred: rename in particular
   deviates from the prototype, where sessions are never user-named.
-- **Main menu entry + landing page.** The plugin is not yet surfaced in the main
-  sidebar menu. Adding it requires deciding **what page the entry leads to** —
-  there is no landing page yet (only the create flow and a minimal index). The
-  natural target is the agent list/management view above; until that exists the
-  entry could point straight at the create flow. Decision needed.
+- **Landing page.** The section still opens on the Agents tab. Whether the
+  platform wants a proper landing page above the tabs — fleet health, recent
+  activity — is an open product question, not a gap in the tabs themselves.
 
 ### UX
 

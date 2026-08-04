@@ -86,6 +86,94 @@ describe('Agent', () => {
     });
   });
 
+  describe('tool references', () => {
+    const agentWithTools = () =>
+      makeAgent({
+        spec: {
+          declarative: {
+            tools: [
+              // The chart's muster gateway entry: an MCP server, all its tools.
+              {
+                type: 'McpServer',
+                mcpServer: { name: 'muster', namespace: 'agentic-platform' },
+              },
+              // A restricted server, and one that omits `type` entirely — which
+              // the CRD allows and the controller infers.
+              {
+                mcpServer: {
+                  name: 'grafana',
+                  toolNames: ['query', 'dashboards'],
+                },
+              },
+              {
+                type: 'Agent',
+                agent: { name: 'sre-agent', namespace: 'kagent' },
+              },
+            ],
+          },
+        },
+      } as Partial<AgentInterface>);
+
+    it('returns every tool entry', () => {
+      expect(agentWithTools().getTools()).toHaveLength(3);
+    });
+
+    // Keyed on the presence of `mcpServer`, not on `type`, which is optional.
+    it('splits MCP server references out, including entries with no type', () => {
+      const refs = agentWithTools().getMcpServerRefs();
+
+      expect(refs.map(ref => ref.name)).toEqual(['muster', 'grafana']);
+      expect(refs[0].namespace).toBe('agentic-platform');
+      expect(refs[1].toolNames).toEqual(['query', 'dashboards']);
+    });
+
+    it('splits agent references out', () => {
+      const refs = agentWithTools().getAgentRefs();
+
+      expect(refs).toHaveLength(1);
+      expect(refs[0].name).toBe('sre-agent');
+    });
+
+    it('returns empty lists when the agent declares no tools', () => {
+      expect(makeAgent().getTools()).toEqual([]);
+      expect(makeAgent().getMcpServerRefs()).toEqual([]);
+      expect(makeAgent().getAgentRefs()).toEqual([]);
+    });
+  });
+
+  describe('generation tracking', () => {
+    it('reports the stored and observed generations', () => {
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a', generation: 4 },
+        status: { observedGeneration: 3, conditions: [] },
+      } as Partial<AgentInterface>);
+
+      expect(agent.getGeneration()).toBe(4);
+      expect(agent.getObservedGeneration()).toBe(3);
+      expect(agent.isStale()).toBe(true);
+    });
+
+    it('is not stale once the controller catches up', () => {
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a', generation: 4 },
+        status: { observedGeneration: 4, conditions: [] },
+      } as Partial<AgentInterface>);
+
+      expect(agent.isStale()).toBe(false);
+    });
+
+    // "Cannot tell" must not read as "stale" — see isAgentStatusStale.
+    it('is not stale when the controller records no observedGeneration', () => {
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a', generation: 4 },
+        status: { conditions: [] },
+      } as Partial<AgentInterface>);
+
+      expect(agent.getObservedGeneration()).toBeUndefined();
+      expect(agent.isStale()).toBe(false);
+    });
+  });
+
   describe('readiness', () => {
     const AT = '2026-07-31T10:00:00Z';
 

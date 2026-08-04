@@ -5,7 +5,10 @@ import {
   TSH_LOGIN_COMMAND,
   getKubernetesAPIAccessCommand,
 } from './utils';
-import { CodeBlock, SimpleAccordion } from '../../../../../UI';
+import {
+  CodeBlock,
+  SimpleAccordion,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type ClusterAccessProps = {

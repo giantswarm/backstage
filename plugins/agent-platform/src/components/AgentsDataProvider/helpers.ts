@@ -43,6 +43,50 @@ const TRANSITIONAL_REFETCH_INTERVAL_MS = 5_000;
 const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
 
 /**
+ * Whether one agent is worth re-checking sooner than the rest: not settled into a
+ * healthy state, and its status still moving (or too new to tell).
+ *
+ * Shared by the fleet list and the single-agent detail page so both back off from
+ * a *permanently* broken agent on the same terms — see
+ * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
+ */
+function isAgentConverging(
+  json: crds.kagent.v1alpha2.Agent,
+  now: number,
+): boolean {
+  if (!isAgentTransitional(deriveAgentReadiness(json))) {
+    return false;
+  }
+
+  const changedAt = getAgentStatusChangedAt(json);
+
+  // No usable timestamp: treat the agent as just-changed rather than as stuck,
+  // so a genuinely new agent is still picked up quickly.
+  return changedAt === undefined || now - changedAt < TRANSITIONAL_MAX_AGE_MS;
+}
+
+/**
+ * Refetch interval for a single agent, for the detail page.
+ *
+ * Same two tiers as the list below, decided from this one agent's own status: it
+ * tightens while the agent is converging and relaxes once it settles or stays
+ * broken. The detail page is exactly where someone watches an agent come up, so
+ * the fast tier matters more here than in the list.
+ */
+export function getAgentRefetchInterval(
+  query: Query<KubeObjectInterface>,
+): number {
+  const json = query.state.data as crds.kagent.v1alpha2.Agent | undefined;
+  if (!json) {
+    return BASELINE_REFETCH_INTERVAL_MS;
+  }
+
+  return isAgentConverging(json, Date.now())
+    ? TRANSITIONAL_REFETCH_INTERVAL_MS
+    : BASELINE_REFETCH_INTERVAL_MS;
+}
+
+/**
  * Per-installation refetch interval for the agent list.
  *
  * `useResources` applies this to each installation's list query separately, and
@@ -77,17 +121,9 @@ export function getAgentsRefetchInterval(
 
   // This query lists Agents, so its items are Agent JSON — narrow to read the
   // status conditions the shared derivation expects.
-  const isConverging = (items as crds.kagent.v1alpha2.Agent[]).some(json => {
-    if (!isAgentTransitional(deriveAgentReadiness(json))) {
-      return false;
-    }
-
-    const changedAt = getAgentStatusChangedAt(json);
-
-    // No usable timestamp: treat the agent as just-changed rather than as stuck,
-    // so a genuinely new agent is still picked up quickly.
-    return changedAt === undefined || now - changedAt < TRANSITIONAL_MAX_AGE_MS;
-  });
+  const isConverging = (items as crds.kagent.v1alpha2.Agent[]).some(json =>
+    isAgentConverging(json, now),
+  );
 
   return isConverging
     ? TRANSITIONAL_REFETCH_INTERVAL_MS

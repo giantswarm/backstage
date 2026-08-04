@@ -1,4 +1,5 @@
 import {
+  createExternalRouteRef,
   createRouteRef,
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
@@ -27,6 +28,19 @@ export const newAgentReviewRouteRef = createSubRouteRef({
   parent: agentsRouteRef,
 });
 
+// One agent (`/agent-platform/agents/<installation>/<namespace>/<name>`).
+//
+// All three segments are part of the path because all three are part of the
+// agent's identity: an `Agent` name is only unique within a namespace on one
+// installation. Same reasoning as `sessionDetailRouteRef` below.
+//
+// Three segments also keeps this clear of the create flow's `/new`,
+// `/new/skills` and `/new/review`, which are one and two segments deep.
+export const agentDetailRouteRef = createSubRouteRef({
+  path: '/:installation/:namespace/:name',
+  parent: agentsRouteRef,
+});
+
 // The "Sessions" tab (`/agent-platform/sessions`).
 export const sessionsRouteRef = createRouteRef();
 
@@ -39,4 +53,28 @@ export const sessionsRouteRef = createRouteRef();
 export const sessionDetailRouteRef = createSubRouteRef({
   path: '/:installation/:sessionId',
   parent: sessionsRouteRef,
+});
+
+/**
+ * muster's Tool Explorer, where an agent's Muster-provided tools can actually be
+ * inspected and tried.
+ *
+ * Resolves automatically when the muster plugin is enabled (it registers this
+ * target), and is unbound otherwise — in which case the agent details page names
+ * the MCP server without linking anywhere.
+ */
+export const musterToolExplorerExternalRouteRef = createExternalRouteRef({
+  defaultTarget: 'muster.toolExplorer',
+});
+
+/**
+ * The gs plugin's deployment details page.
+ *
+ * An agent created through this plugin is deployed as a Flux `HelmRelease`, and
+ * that page already carries the release's Flux status, conditions and GitOps
+ * source — so the agent page links to it rather than reproducing any of it.
+ */
+export const deploymentDetailsExternalRouteRef = createExternalRouteRef({
+  params: ['installationName', 'kind', 'namespace', 'name'],
+  defaultTarget: 'gs.deploymentDetails',
 });

@@ -26,6 +26,7 @@ import ApartmentIcon from '@material-ui/icons/Apartment';
 import {
   appDeploymentTemplateRouteRef,
   clustersRouteRef,
+  deploymentDetailsRouteRef,
   deploymentsRouteRef,
   entityDeploymentsRouteRef,
   fluxOverviewExternalRouteRef,
@@ -647,6 +648,10 @@ export const gsPlugin = createFrontendPlugin({
     root: rootRouteRef,
     clustersPage: clustersRouteRef,
     deploymentsPage: deploymentsRouteRef,
+    // Exposed so other plugins can deep-link to one deployment — the
+    // agent-platform detail page links a kagent Agent to the HelmRelease that
+    // deployed it, where the Flux status and GitOps source already live.
+    deploymentDetails: deploymentDetailsRouteRef,
     entityContent: entityDeploymentsRouteRef,
   },
   externalRoutes: {
