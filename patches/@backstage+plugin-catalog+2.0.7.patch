@@ -7,7 +7,7 @@ index f3fb7e0..1abb9fa 100644
 +import { useRouteRefParams } from '@backstage/core-plugin-api';
 +import { entityRouteRef, useEntityRefLink } from '@backstage/plugin-catalog-react';
  import { useSelectedSubRoute } from './EntityTabs.esm.js';
- 
+
 +// GIANT SWARM PATCH -- see patches/README.md.
 +//
 +// buildHeaderTabs below builds *relative* tab hrefs ("", "deployments", ...).
