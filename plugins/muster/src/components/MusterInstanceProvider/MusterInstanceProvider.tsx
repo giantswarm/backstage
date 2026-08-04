@@ -163,6 +163,13 @@ export const MusterInstanceProvider = ({
 
   // Once installations resolve, write the chosen default back to the URL +
   // localStorage so the picker reflects it and deep links stay stable.
+  //
+  // NOTE: keep route-level redirects OUT of this provider's subtree. This is a
+  // search-only navigation, so react-router resolves it against the pathname of
+  // the render that created it; if a redirect below fires in the same commit,
+  // this write lands on the pre-redirect path and silently undoes it. See the
+  // note in MusterSection, which mounts its redirects as siblings for that
+  // reason.
   useEffect(() => {
     if (!activeInstallation) {
       return;
