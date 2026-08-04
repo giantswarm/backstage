@@ -2,9 +2,11 @@
 
 Patches in this directory are applied to `node_modules` by
 [`patch-package`](https://github.com/ds300/patch-package) from the root
-`postinstall` script. A patch that no longer applies **fails the install**, so a
-dependency bump that touches patched code surfaces immediately rather than
-silently dropping the fix.
+`postinstall` script. It runs with `--error-on-fail`, so a patch that no longer
+applies **fails the install** — a dependency bump that touches patched code
+surfaces immediately instead of silently dropping the fix. (Without that flag
+`patch-package` only exits non-zero in CI, so a local `yarn install` would print a
+red line and carry on, leaving a developer running without the fix.)
 
 The version in a patch filename is informational — `patch-package` warns (but
 still applies the patch) when the installed version differs. Re-check the patches
@@ -31,10 +33,12 @@ the route's base. So on any tab other than Overview, every tab href gains the
 active tab segment (`…/my-component/circleci/deployments`), and Overview's `''`
 resolves to the current URL — clicking it does nothing.
 
-The patch resolves each href against the entity's own base path (current pathname
-minus the matched splat remainder). Upstream still emits relative hrefs on
-`master`, so this cannot be dropped until that changes. Our own plugin pages
-avoid the same trap in `packages/app/src/modules/app/GSPageLayout.tsx`, which
+The patch resolves each href against the entity's own base path, built from
+`entityRouteRef` via `useEntityRefLink()` — the same helper every other entity
+link in the catalog goes through, so the params are encoded identically and no
+pathname/splat arithmetic is involved. Upstream still emits relative hrefs on
+`master`, so this cannot be dropped until that changes. Our own plugin pages avoid
+the same trap in `packages/app/src/modules/app/GSPageLayout.tsx`, which
 absolutizes `SubPageBlueprint` tab hrefs via `useSplatBasePath()`.
 
 ## `codemirror-json-schema+0.8.1.patch`

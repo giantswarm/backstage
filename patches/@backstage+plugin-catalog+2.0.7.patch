@@ -1,10 +1,11 @@
 diff --git a/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js b/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js
-index f3fb7e0..75438d4 100644
+index f3fb7e0..1abb9fa 100644
 --- a/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js
 +++ b/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js
-@@ -1,6 +1,47 @@
+@@ -1,6 +1,45 @@
  import { useMemo } from 'react';
-+import { useLocation, useParams } from 'react-router-dom';
++import { useRouteRefParams } from '@backstage/core-plugin-api';
++import { entityRouteRef, useEntityRefLink } from '@backstage/plugin-catalog-react';
  import { useSelectedSubRoute } from './EntityTabs.esm.js';
  
 +// GIANT SWARM PATCH -- see patches/README.md.
@@ -18,17 +19,14 @@ index f3fb7e0..75438d4 100644
 +// the active tab segment prefixed (".../my-component/circleci/deployments"), and
 +// Overview's "" resolves to the current URL -- clicking it does nothing.
 +//
-+// Resolve the hrefs against the entity's own base path instead. Drop this patch
-+// once upstream emits absolute tab hrefs.
++// Resolve the hrefs against the entity's own base path instead, built from the
++// entity route ref so the params are encoded the same way every other entity link
++// in the catalog is (entityRouteParams -> encodeParams). Drop this patch once
++// upstream emits absolute tab hrefs.
 +function useEntityBasePath() {
-+  const { pathname } = useLocation();
-+  const params = useParams();
-+  // Compare by segment count: pathname stays percent-encoded while the splat
-+  // param is decoded, so lengths would differ on encoded characters -- the "/"
-+  // count does not.
-+  const splatSegments = (params["*"] ?? "").split("/").filter(Boolean).length;
-+  const segments = pathname.split("/").filter(Boolean);
-+  return `/${segments.slice(0, Math.max(0, segments.length - splatSegments)).join("/")}`;
++  const routeParams = useRouteRefParams(entityRouteRef);
++  const entityLink = useEntityRefLink();
++  return entityLink(routeParams);
 +}
 +function absoluteTabHref(basePath, href) {
 +  if (!href) return basePath;
@@ -50,7 +48,7 @@ index f3fb7e0..75438d4 100644
  function tabHrefFromPath(path) {
    return path.replace(/\/\*$/, "").replace(/^\//, "");
  }
-@@ -47,9 +88,13 @@ function buildHeaderTabs(routes, groupDefinitions, defaultContentOrder) {
+@@ -47,9 +86,13 @@ function buildHeaderTabs(routes, groupDefinitions, defaultContentOrder) {
  function useEntityTabs(props) {
    const { routes, groupDefinitions, defaultContentOrder } = props;
    const { route, element } = useSelectedSubRoute(routes);
