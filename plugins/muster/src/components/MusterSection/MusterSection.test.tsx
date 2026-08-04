@@ -37,9 +37,11 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useShowErrors: () => jest.fn(),
 }));
 
+// Two installations, so a redirect that drops `?installation=` is visible as the
+// default (`gazelle`, the first entry) replacing an explicitly requested one.
 const musterApi = {
   listInstallations: jest.fn(async () => ({
-    installations: [{ name: 'gazelle' }],
+    installations: [{ name: 'gazelle' }, { name: 'alpha' }],
   })),
 } as unknown as MusterApi;
 
@@ -70,6 +72,10 @@ function renderSection(path: string) {
 }
 
 describe('MusterSection', () => {
+  // The active installation is persisted, so each case has to start from a clean
+  // slate to exercise the default resolution rather than the previous test's pick.
+  beforeEach(() => window.localStorage.clear());
+
   it('redirects the section index to the dashboard view', async () => {
     renderSection('/agent-platform/muster');
 
@@ -100,6 +106,17 @@ describe('MusterSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
         '/agent-platform/muster/dashboard?installation=gazelle',
+      );
+    });
+  });
+
+  it('keeps an explicit installation across the index redirect', async () => {
+    renderSection('/agent-platform/muster?installation=alpha');
+
+    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/muster/dashboard?installation=alpha',
       );
     });
   });

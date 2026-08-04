@@ -14,4 +14,7 @@ cached), it replaced `/muster/dashboard` back with `/muster`.
 
 The index redirect and the legacy `workflows/:name/run` redirect are now mounted
 as siblings of the views, outside `MusterProviders`, so they can no longer be
-overwritten by the installation-param write.
+overwritten by the installation-param write. The index redirect also keeps the
+query string, so a deep link like `/agent-platform/muster?installation=alpha` no
+longer loses the requested installation to the default on the way to the
+dashboard.

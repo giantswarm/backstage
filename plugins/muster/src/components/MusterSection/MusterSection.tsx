@@ -28,16 +28,31 @@ const VIEWS = [
 ] as const;
 
 /**
+ * Sends the section index to the first view. Keeps the query string: an explicit
+ * `?installation=` in a deep link to the section root has to survive the
+ * redirect, or MusterInstanceProvider mounts on a location without the param and
+ * falls back to localStorage / the first installation.
+ */
+const IndexRedirect = () => {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: 'dashboard', search }} replace />;
+};
+
+/**
  * The bespoke `/workflows/:name/run` route was removed when Run was unified with
  * the tool explorer; a lingering deep link used to silently resolve to the full
  * workflows list. Redirect it to the workflow detail (preserving the query
  * string, e.g. `?installation=`) so the named workflow is not dropped.
+ *
+ * The fallback is spelled `../workflows` rather than `..`: this route is matched
+ * relative to the section root, so a bare `..` would land on the index (and from
+ * there on the Dashboard) instead of the workflows list.
  */
 const LegacyRunRedirect = () => {
   const { name = '' } = useParams();
   const { search } = useLocation();
   const detailLink = useRouteRef(workflowDetailRouteRef);
-  const to = detailLink ? detailLink({ name }) : '..';
+  const to = detailLink ? detailLink({ name }) : '../workflows';
   return <Navigate to={`${to}${search}`} replace />;
 };
 
@@ -99,7 +114,7 @@ const MusterViews = () => {
 // commits. Same reason the legacy `workflows/:name/run` redirect lives here.
 export const MusterSection = () => (
   <Routes>
-    <Route index element={<Navigate to="dashboard" replace />} />
+    <Route index element={<IndexRedirect />} />
     <Route path="workflows/:name/run" element={<LegacyRunRedirect />} />
     <Route path="*" element={<MusterViews />} />
   </Routes>
