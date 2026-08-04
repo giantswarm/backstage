@@ -136,9 +136,13 @@ function ToolsValue({ agent }: { agent: Agent }) {
 
   return (
     <Flex direction="column" gap="3">
-      {mcpServers.map(serverRef => (
+      {mcpServers.map((serverRef, index) => (
         <McpServerRow
-          key={mcpServerRefId(serverRef)}
+          // `namespace/name` is not unique: nothing stops two entries referencing
+          // the same server with different `toolNames`/`requireApproval`, which is
+          // how you express "these tools need approval, those don't" for one
+          // server. Same reasoning as the skill cards.
+          key={`${mcpServerRefId(serverRef)}#${index}`}
           server={serverRef}
           installation={agent.cluster}
         />

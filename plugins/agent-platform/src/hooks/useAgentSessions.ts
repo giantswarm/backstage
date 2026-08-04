@@ -27,9 +27,9 @@ export type AgentSessionsView = {
    */
   isNotUserScoped: boolean;
   /**
-   * kagent could not be read on this installation. Distinguishes "no sessions"
-   * from "we don't know", without spelling out which failure it was — the
-   * sessions list already reports those in detail.
+   * kagent could not be read on this installation **and** nothing was read
+   * earlier. Distinguishes "no sessions" from "we don't know", without spelling
+   * out which failure it was — the sessions list already reports those in detail.
    */
   isUnavailable: boolean;
 };
@@ -97,6 +97,11 @@ export function useAgentSessions(
     rows,
     isLoading,
     isNotUserScoped: capabilities.isUserScoped === false,
-    isUnavailable: isError,
+    // Only unavailable when there is genuinely nothing to show. react-query keeps
+    // `data` and sets `error` on a failed *refetch*, and this query is shared with
+    // the Sessions tab — so arriving from that tab after its entry went stale
+    // triggers a background refetch whose failure would otherwise hide sessions
+    // that were already read and are still correct.
+    isUnavailable: isError && !sessions,
   };
 }

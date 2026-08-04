@@ -58,21 +58,17 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
   const needsHelmReleaseHop =
     !getKustomizationName(resource) && Boolean(ownHelmReleaseName);
 
-  const {
-    resource: ownerHelmRelease,
-    errors: helmReleaseErrors,
-    isLoading: helmReleaseIsLoading,
-    error: helmReleaseError,
-    incompatibilities: helmReleaseIncompatibilities,
-  } = useResource(
-    installationName,
-    HelmRelease,
-    {
-      name: ownHelmReleaseName!,
-      namespace: ownHelmReleaseNamespace,
-    },
-    { enabled: needsHelmReleaseHop },
-  );
+  // The hop's failures are deliberately unread — see the note above `errors`.
+  const { resource: ownerHelmRelease, isLoading: helmReleaseIsLoading } =
+    useResource(
+      installationName,
+      HelmRelease,
+      {
+        name: ownHelmReleaseName!,
+        namespace: ownHelmReleaseNamespace,
+      },
+      { enabled: needsHelmReleaseHop },
+    );
 
   const kustomizationOwner = needsHelmReleaseHop ? ownerHelmRelease : resource;
   const kustomizationName = kustomizationOwner
@@ -134,25 +130,22 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
     (Boolean(kustomizationName) && kustomizationIsLoading) ||
     gitRepositoryIsLoading;
 
+  // The HelmRelease hop's failures are deliberately not reported. It is a lookup
+  // this card starts on its own initiative to find out *whether* there is a Git
+  // source, and if it fails the card renders nothing at all — so a global "Failed
+  // to load HelmRelease" notice would be an error about a card the reader never
+  // sees, on a page that is otherwise fine. A reader without RBAC on HelmReleases
+  // would get it on every agent they open.
+  //
+  // The other two are reported: they only fail once a Kustomization is known, which
+  // means the card *is* rendering and can show the failure in place of its link.
   const errors = useMemo(() => {
-    return [
-      ...helmReleaseErrors,
-      ...kustomizationErrors,
-      ...gitRepositoryErrors,
-    ];
-  }, [gitRepositoryErrors, helmReleaseErrors, kustomizationErrors]);
+    return [...kustomizationErrors, ...gitRepositoryErrors];
+  }, [gitRepositoryErrors, kustomizationErrors]);
 
   useShowErrors(errors);
 
   let errorMessage;
-  if (helmReleaseError) {
-    errorMessage = getErrorMessage({
-      error: helmReleaseError,
-      resourceKind: HelmRelease.kind,
-      resourceName: ownHelmReleaseName!,
-      resourceNamespace: ownHelmReleaseNamespace,
-    });
-  }
   if (kustomizationError) {
     errorMessage = getErrorMessage({
       error: kustomizationError,
@@ -168,9 +161,6 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
       resourceName: gitRepositoryName!,
       resourceNamespace: gitRepositoryNamespace,
     });
-  }
-  if (helmReleaseIncompatibilities[0]) {
-    errorMessage = getIncompatibilityMessage(helmReleaseIncompatibilities[0]);
   }
   if (kustomizationIncompatibilities[0]) {
     errorMessage = getIncompatibilityMessage(kustomizationIncompatibilities[0]);
@@ -190,6 +180,12 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
   // source to link — render nothing at all rather than a claim the reader cannot
   // act on. Rendering nothing while the HelmRelease hop resolves, rather than a
   // card that then disappears, keeps us from asserting it and taking it back.
+  //
+  // A *failed* hop lands here too, which means "we could not tell" renders
+  // identically to "definitely not in Git". That is the conservative side to err
+  // on: the card's only job is to assert a Git source, and a failed lookup is no
+  // basis for asserting one. Claiming GitOps off the Helm label alone would be
+  // wrong for every agent this plugin deploys.
   if (!kustomizationName) {
     return null;
   }

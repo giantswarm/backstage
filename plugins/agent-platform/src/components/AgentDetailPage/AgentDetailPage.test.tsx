@@ -513,6 +513,49 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
     });
 
+    // Two entries may reference the same server with different scopes — that is
+    // how "these tools need approval, those don't" is expressed for one server —
+    // so `namespace/name` alone is not a usable React key.
+    it('renders two entries for the same server without a duplicate key', async () => {
+      const consoleError = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            declarative: {
+              tools: [
+                { mcpServer: { name: 'muster', toolNames: ['list_tools'] } },
+                {
+                  mcpServer: {
+                    name: 'muster',
+                    toolNames: ['call_tool'],
+                    requireApproval: ['call_tool'],
+                  },
+                },
+              ],
+            },
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage();
+
+      expect(screen.getByText('1 tool: list_tools')).toBeInTheDocument();
+      expect(screen.getByText('1 tool: call_tool')).toBeInTheDocument();
+      expect(
+        screen.getByText('Requires approval: call_tool'),
+      ).toBeInTheDocument();
+      expect(consoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining('same key'),
+        expect.anything(),
+        expect.anything(),
+      );
+
+      consoleError.mockRestore();
+    });
+
     // Must not imply Muster access the agent does not have.
     it('says so when the agent declares no tool servers', async () => {
       stubResources({
@@ -708,6 +751,58 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByRole('link', { name: 'Back to agents' }),
       ).toBeInTheDocument();
+    });
+
+    // The page polls every 5 s while an agent converges, and react-query keeps
+    // `data` while setting `error` on a failed refetch — so treating `error` as
+    // "we have nothing" would let one un-retried 503 blank an agent that is
+    // rendered and correct.
+    it('keeps the agent rendered when a background poll fails', async () => {
+      stubResources({
+        resource: makeAgent(),
+        error: Object.assign(new Error('service unavailable'), {
+          name: 'ServiceUnavailableError',
+        }),
+        errors: [
+          {
+            type: 'error',
+            cluster: 'gazelle',
+            error: Object.assign(new Error('service unavailable'), {
+              name: 'ServiceUnavailableError',
+            }),
+          },
+        ],
+      });
+
+      await renderPage();
+
+      expect(screen.getByText('PR reviewer')).toBeInTheDocument();
+      expect(sectionTitle('Status')).toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not load this agent'),
+      ).not.toBeInTheDocument();
+    });
+
+    // Same for a 404 mid-poll: it must not swap a rendered agent for "not found".
+    it('keeps the agent rendered when a background poll 404s', async () => {
+      stubResources({
+        resource: makeAgent(),
+        error: Object.assign(new Error('not found'), { name: 'NotFoundError' }),
+        errors: [
+          {
+            type: 'error',
+            cluster: 'gazelle',
+            error: Object.assign(new Error('not found'), {
+              name: 'NotFoundError',
+            }),
+          },
+        ],
+      });
+
+      await renderPage();
+
+      expect(screen.getByText('PR reviewer')).toBeInTheDocument();
+      expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
     });
   });
 });

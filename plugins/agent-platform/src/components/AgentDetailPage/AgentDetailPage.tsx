@@ -15,6 +15,7 @@ import {
   isNotFoundError,
   ModelConfig,
   useResource,
+  useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { GitOpsCard } from '@giantswarm/backstage-plugin-flux-react';
 import {
@@ -103,6 +104,24 @@ function AgentDetailPageContent() {
   );
   useProvidePageHeaderActions(actions);
 
+  // A failed read while an agent is already in hand is reported through the
+  // ErrorsProvider notice, not by replacing the page.
+  //
+  // This page polls every 5 s while an agent converges, and the plugin's query
+  // client deliberately does not retry ServiceUnavailableError / Unauthorized /
+  // Forbidden. react-query keeps `data` and sets `error` on a failed *refetch*, so
+  // reading `error` as "we have nothing" would let one proxy hiccup blank a fully
+  // rendered agent until the next successful poll — up to a minute once polling has
+  // backed off. The rendered data is still correct; only its freshness is in doubt.
+  //
+  // Not-found is excluded because it has its own explanation below, and reporting
+  // it twice would be noise.
+  const reportableErrors = useMemo(
+    () => errors.filter(errorInfo => !isNotFoundError(errorInfo)),
+    [errors],
+  );
+  useShowErrors(reportableErrors);
+
   if (isLoading) {
     return (
       <Content>
@@ -111,25 +130,27 @@ function AgentDetailPageContent() {
     );
   }
 
-  // A 404 is an expected outcome here — a stale bookmark, a deleted or renamed
-  // agent — so it gets an explanation rather than an error banner. Also covers
-  // "kagent isn't installed on this installation", which answers 404 for the CRD.
-  if (errors.some(isNotFoundError)) {
-    return (
-      <Content>
-        <EmptyState
-          missing="data"
-          title="Agent not found"
-          description={`No agent named "${name}" exists in namespace "${namespace}" on ${
-            installation || 'that installation'
-          }. It may have been deleted or renamed, or kagent may not be installed there.`}
-          action={<BackToAgents>Back to agents</BackToAgents>}
-        />
-      </Content>
-    );
-  }
+  // Every branch below is gated on there being no agent to show. With one in hand
+  // the page renders, whatever the last read did.
+  if (!agent) {
+    // A 404 is an expected outcome here — a stale bookmark, a deleted or renamed
+    // agent — so it gets an explanation rather than an error banner. Also covers
+    // "kagent isn't installed on this installation", which answers 404 for the CRD.
+    if (errors.some(isNotFoundError)) {
+      return (
+        <Content>
+          <EmptyState
+            missing="data"
+            title="Agent not found"
+            description={`No agent named "${name}" exists in namespace "${namespace}" on ${
+              installation || 'that installation'
+            }. It may have been deleted or renamed, or kagent may not be installed there.`}
+            action={<BackToAgents>Back to agents</BackToAgents>}
+          />
+        </Content>
+      );
+    }
 
-  if (error || !agent) {
     return (
       <Content>
         <Flex direction="column" gap="3">

@@ -169,6 +169,36 @@ describe('GitOpsCard', () => {
       ).not.toBeInTheDocument();
       expect(container).toBeEmptyDOMElement();
     });
+
+    // A reader without RBAC on HelmReleases would otherwise get a global "Failed to
+    // load HelmRelease" notice on every agent they open — an error about a card
+    // they never see, on a page that is otherwise fine. The card asserts a Git
+    // source; a failed lookup is no basis for asserting one, so it stays silent.
+    it('reports nothing when the hop itself fails', async () => {
+      const helmReleaseError = new Error(
+        'helmreleases.helm.toolkit.fluxcd.io is forbidden',
+      );
+      mockUseResource.mockImplementation(
+        (_cluster: string, ResourceClass: unknown) => ({
+          resource: undefined,
+          isLoading: false,
+          error: ResourceClass === HelmRelease ? helmReleaseError : null,
+          errors:
+            ResourceClass === HelmRelease
+              ? [{ type: 'error', cluster: 'gazelle', error: helmReleaseError }]
+              : [],
+          incompatibilities: [],
+          discoveryErrors: [],
+          clientOutdatedStates: [],
+        }),
+      );
+
+      const { container } = await renderCard(makeResource(HELM_LABELS));
+
+      expect(container).toBeEmptyDOMElement();
+      // Nothing reached the ErrorsProvider notice either.
+      expect(screen.queryByText(/forbidden/)).not.toBeInTheDocument();
+    });
   });
 
   it('renders nothing for a resource with no Flux labels at all', async () => {
