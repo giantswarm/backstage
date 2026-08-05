@@ -40,6 +40,21 @@ jest.mock('../../hooks/useAgentSessions', () => ({
   useAgentSessions: (...args: unknown[]) => mockUseAgentSessions(...args),
 }));
 
+// The page calls this on the menu's behalf, because the menu renders in the shared
+// header — outside the plugin's QueryClientProvider — and so cannot call it itself.
+// Stubbed for the same reason `useAgentSessions` is: this page's react-query client
+// is not part of the test, and the menu is not rendered here anyway.
+jest.mock('../../hooks/useDeleteAgent', () => ({
+  useDeleteAgent: () => ({
+    isDeletable: false,
+    isCheckingDeletable: false,
+    deleteAgent: jest.fn(),
+    isDeleting: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+
 const mockParams: {
   installation: string;
   namespace: string;

@@ -4,6 +4,7 @@ export * from './AsyncValue';
 export * from './Autocomplete';
 export * from './CodeBlock';
 export * from './ConditionsList';
+export * from './ConfirmDialog';
 export * from './ContentRow';
 export * from './DateComponent';
 export * from './DetailsPane';
