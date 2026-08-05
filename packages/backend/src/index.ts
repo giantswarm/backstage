@@ -111,3 +111,5 @@ backend.start();
 // bundle but not any package.json, so skeleton.tar.gz stays byte-identical.
 
 // Re-run against the reviewed orb (stable cache ref + export-failure warning).
+
+// Warm-cache validation run: base image stable since 08:39 UTC.
