@@ -21,6 +21,15 @@ between releases and it is **not** a full replacement for core-components yet.
 When unsure whether a bui component exists or what props it takes, check the
 Storybook source (see below) rather than guessing.
 
+### Picking an MUI v4 icon
+
+`references/mui-v4-icons.md` lists all 1,120 `@material-ui/icons` base names
+with search synonyms (e.g. `AccountBalance — bank building court money payment
+structure temple transaction`), generated from the installed package version
+merged with MUI's own docs-search synonym data. Grep it by concept when you
+need an icon name but don't know it (e.g. `grep -i wallet` finds
+`AccountBalanceWallet`) instead of guessing or opening the MUI v4 docs site.
+
 ## bui setup (already done)
 
 - The plugin's `package.json` must declare `"@backstage/ui": "backstage:^"`
