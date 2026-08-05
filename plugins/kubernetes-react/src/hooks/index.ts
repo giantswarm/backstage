@@ -5,6 +5,7 @@ export * from './useResource';
 export * from './useResources';
 export * from './useApiDiscovery';
 export * from './useSelfSubjectAccessReview';
+export * from './utils/deleteResource';
 export * from './utils/patchResource';
 export * from './utils/queries';
 export * from './utils/queryPersistence';

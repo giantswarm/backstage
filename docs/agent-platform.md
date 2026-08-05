@@ -189,10 +189,11 @@ range, so the shared source is uniform.
 
 Two consequences to keep in mind:
 
-- **Deletion must not remove the shared OCIRepository.** A future "delete agent"
-  flow should only delete that agent's `HelmRelease`; `OCIRepository/agent` is
-  still referenced by any other agents in the namespace. Remove it only when the
-  last agent in the namespace is gone (or leave it).
+- **Deletion must not remove the shared OCIRepository** while others still use it.
+  Deleting an agent removes only that agent's `HelmRelease`, and takes
+  `OCIRepository/agent` with it only after confirming no other `HelmRelease` in
+  the source's namespace references it (see "Deleting an agent"). Every
+  uncertainty resolves to keeping it.
 - **Per-agent chart versions aren't expressible.** The sharing relies on every
   agent tracking the same range. If a specific agent ever needed a different
   chart version, it would need its own OCIRepository (e.g. named after the slug).
@@ -548,10 +549,9 @@ agent in the list. All three segments are in the path because all three are part
 the agent's identity — an `Agent` name is only unique within a namespace on one
 installation.
 
-Read-only. Editing an agent means changing the values its HelmRelease renders from,
-and deleting one must remove only that release and never the `OCIRepository` a
-namespace's agents share (see "Shared OCIRepository per namespace"), so neither is
-a menu item yet.
+An agent can be **deleted** from the kebab menu (see "Deleting an agent"), but not
+edited: editing means changing the values its HelmRelease renders from, so it needs
+a re-release rather than a menu item.
 
 The agent is fetched with a **single targeted `useResource`**, not read out of the
 list's `AgentsDataProvider`, so a deep link works without the list having loaded.
@@ -600,6 +600,71 @@ skills grid fits three cards per row, and the sessions table has four columns.
   labelled "default branch (unpinned)", because that is what makes an agent's
   behaviour change without its spec changing.
 - **Recent sessions** — see below.
+
+### Deleting an agent
+
+`useDeleteAgent` + `AgentDeleteDialog`, offered as a `Delete agent…` item in the
+kebab. It deletes the agent's **`HelmRelease`**, which is what makes
+helm-controller uninstall the release and take the `Agent` CR with it — an `Agent`
+rendered by a chart cannot meaningfully be deleted on its own, since the release
+would just render it again.
+
+The owner is resolved through `getHelmReleaseName`/`getHelmReleaseNamespace`
+(provenance labels), not by assuming the release is named after the agent, so this
+also works for agents created outside the wizard.
+
+**The delete is only offered when three things hold**, and is withheld while any of
+them is still being established, so it never appears and then disappears:
+
+1. A `SelfSubjectAccessReview` says the signed-in user may `delete` `helmreleases`
+   by that name in that namespace. `useSelfSubjectAccessReview` fails closed, does
+   not retry, and is never persisted, so a verdict cannot be rehydrated for a
+   different user. The review decides what is _shown_; authorization itself is the
+   apiserver's, since the proxy forwards the user's own OIDC token — a bypassed
+   menu item still gets a real 403.
+2. The owning `HelmRelease` was found (an `Agent` applied by hand has no labels and
+   nothing to delete).
+3. The release is **not** applied by a Kustomization. Those have their desired state
+   in Git and would be recreated on the next reconciliation, so they stay read-only
+   (see "GitOps provenance").
+
+The shared `OCIRepository` goes only when it is provably unused: the
+`HelmRelease`es in the source's namespace are listed, and any _other_ release whose
+`chartRef` resolves to the same object keeps it. A failed list read keeps it too —
+an empty list because the read failed is not the same answer as an empty list
+because nothing references it. The check does not cover cross-namespace
+`chartRef`s, which would need a cluster-wide list a tenant user does not have; the
+cost of being wrong is a chart source that the next agent creation re-applies. A
+failure to delete the source is swallowed for the same reason: the agent is gone,
+which is what was asked for, and this is why the permission gate does not require
+`delete` on `ocirepositories`.
+
+**The dialog says one thing:** that this ends any session currently running with the
+agent, including ones started by other people that are not shown. That is the only
+thing the person clicking cannot work out for themselves — kagent scopes its session
+list to the caller, so a quiet sessions list is not evidence that an agent is idle.
+
+Everything mechanical is deliberately kept out of it: which `HelmRelease` goes, what
+happens to the shared chart source, and the fact that a **suspended** release is not
+uninstalled at all (Flux drops the finalizer without running the uninstall, leaving
+the agent's resources behind). All true, all noise at the moment of deciding, and all
+documented here instead.
+
+Note what the dialog does _not_ claim, because an earlier draft got it wrong in both
+directions: session history is **not** lost. Sessions live in kagent's own store
+keyed by `user_id`, not in the `Agent` CR, and both the list and a session's detail
+are fetched by session id — see `toSessionRow`'s `decodeAgentIdLabel` fallback, which
+labels a session from its `agent_id` precisely when no `Agent` matches. Nor is a
+re-created agent a clean slate: `toAgentIdentifier` derives `agent_id` from
+`namespace/name` alone, so re-creating under the same name in the same namespace
+re-associates it with those very sessions.
+
+On success the user lands back on the agents list with a toast (`toastApiRef`, not
+the deprecated `alertApi`) that says "Deleting", not "Deleted": the `HelmRelease`
+has a finalizer, so all that is certain is that the apiserver accepted the request.
+The agent can still be in the list for a few seconds. On failure the dialog stays
+open and shows the message — there is no toast, because the user is still looking
+at the modal.
 
 ### The model is read directly, not from the fleet list
 
@@ -754,14 +819,11 @@ above). What remains is a separate, deeper concern:
   `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD/chart but the
   create flow doesn't set it); (2) discovery reads a repo's **default branch** and
   doesn't expose per-skill version/`ref` selection in the UI.
-- **Agent write actions.** The list and the detail page exist; every write path
-  does not. Editing an agent means changing the values its HelmRelease renders
-  from — so it needs the create flow's form driven from an existing agent, plus a
-  decision about whether that produces a live apply or a PR (GitOps-managed agents
-  are read-only, see "GitOps provenance"). A delete action must respect the shared
-  `OCIRepository/agent` (see "Shared OCIRepository per namespace") — delete only
-  the agent's `HelmRelease`, not the shared source. "Launch session" also has no
-  write path today.
+- **Editing an agent.** Create and delete exist; edit does not. Editing means
+  changing the values its HelmRelease renders from — so it needs the create flow's
+  form driven from an existing agent, plus a decision about whether that produces
+  a live apply or a PR (GitOps-managed agents are read-only, see "GitOps
+  provenance"). "Launch session" also has no write path today.
 - **Session management + detail.** The Sessions tab is read-only. kagent supports
   deleting (soft) and renaming sessions, and exposes a session's events and A2A
   tasks — enough for a detail view. Deliberately deferred: rename in particular

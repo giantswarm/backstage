@@ -26,6 +26,7 @@ import {
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
+import { useDeleteAgent } from '../../hooks/useDeleteAgent';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { agentsRouteRef } from '../../routes';
 import { getAgentRefetchInterval, toAgentRow } from '../AgentsDataProvider';
@@ -95,12 +96,19 @@ function AgentDetailPageContent() {
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
-  // `agent` is memoized on the fetched JSON, so this element's identity only
-  // changes when the agent actually does — which is what keeps the header slot
-  // from re-registering (and re-rendering) on every poll.
+  // Called here rather than inside the menu: the menu is rendered in the shared
+  // plugin header, which is outside this plugin's `QueryClientProvider`, so its
+  // react-query reads and mutation would have no client there.
+  const deletion = useDeleteAgent(agent);
+
+  // `agent` is memoized on the fetched JSON and `deletion` is memoized on its own
+  // contents, so this element's identity only changes when one of them actually
+  // does — which is what keeps the header slot from re-registering (and
+  // re-rendering) on every poll.
   const actions = useMemo(
-    () => (agent ? <AgentActionsMenu agent={agent} /> : null),
-    [agent],
+    () =>
+      agent ? <AgentActionsMenu agent={agent} deletion={deletion} /> : null,
+    [agent, deletion],
   );
   useProvidePageHeaderActions(actions);
 
@@ -267,9 +275,9 @@ function AgentDetailPageContent() {
 /**
  * One kagent agent: what it is, whether it works, and what it has been used for.
  *
- * Read-only. kagent agents are deployed from a Helm chart, so editing one means
- * changing the release's values — a write path this plugin does not have yet, and
- * one that has to respect the shared `OCIRepository` a namespace's agents share.
+ * The agent can be deleted from the header's actions menu. It cannot be edited:
+ * an agent's settings are its Helm release's values, so changing one means
+ * re-releasing the chart, which this plugin has no write path for yet.
  *
  * What the APUI prototype shows and this deliberately does not, because there is
  * no data behind it: sessions all-time, sessions in the last 30 days, a success
