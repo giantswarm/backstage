@@ -128,5 +128,24 @@
       ],
       allowedVersions: '<19',
     },
+    {
+      // Every @backstage/* package peer-requires react-router-dom "^6.30.2",
+      // and there is a single hoisted copy, so a v7 in packages/app puts all of
+      // Backstage on a router it is not built for. React Router 7 turns on
+      // `v7_relativeSplatPath`, which resolves a *relative* link inside a splat
+      // route against the full current pathname instead of the route's base --
+      // so relative tab hrefs gain the active tab segment. Upstream tried v7
+      // (backstage/backstage#31818), immediately hit duplicated routes and dead
+      // entity tabs (#32805, #27894), and reverted to ^6.30.2 (#32809); their
+      // migration issue (#27927) is closed as stale.
+      //
+      // We lived through exactly that: Renovate's v7 major (#1892, merged
+      // 2026-07-09) broke every entity page tab from any tab other than
+      // Overview, which needed a plugin-catalog patch until this hold + the
+      // downgrade landed. Keep v7 held until upstream's peer range allows it --
+      // then bump both together in one reviewed PR. Minor/patch still flow.
+      matchPackageNames: ['react-router', 'react-router-dom'],
+      allowedVersions: '<7',
+    },
   ],
 }
