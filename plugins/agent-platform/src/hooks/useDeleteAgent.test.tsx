@@ -15,17 +15,17 @@ import { useDeleteAgent } from './useDeleteAgent';
 // classes are the real ones, so the label reading and GVK resolution under test
 // are the real thing.
 const mockUseResource = jest.fn();
-const mockUseResources = jest.fn();
 const mockUseSelfSubjectAccessReview = jest.fn();
 const mockDeleteResource = jest.fn();
+const mockFetchResourceList = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResource: (...args: unknown[]) => mockUseResource(...args),
-  useResources: (...args: unknown[]) => mockUseResources(...args),
   useSelfSubjectAccessReview: (...args: unknown[]) =>
     mockUseSelfSubjectAccessReview(...args),
   deleteResource: (...args: unknown[]) => mockDeleteResource(...args),
+  fetchResourceList: (...args: unknown[]) => mockFetchResourceList(...args),
 }));
 
 const CLUSTER = 'gazelle';
@@ -95,8 +95,8 @@ function makeChartSource(): OCIRepository {
 /**
  * @param helmRelease the agent's owning release, or undefined if it was not read
  * @param allowed the SelfSubjectAccessReview verdict for deleting it
- * @param namespaceReleases every release in the chart source's namespace
- * @param didReadNamespaceReleases whether that list read succeeded at all
+ * @param namespaceReleases every release the fresh sibling list returns
+ * @param didReadNamespaceReleases whether that list read succeeds at all
  */
 function setup({
   agent = makeAgent(),
@@ -107,7 +107,8 @@ function setup({
   chartSource = makeChartSource(),
 }: {
   agent?: Agent;
-  helmRelease?: HelmRelease;
+  /** `null` means the read returned nothing (undefined re-triggers the default). */
+  helmRelease?: HelmRelease | null;
   allowed?: boolean;
   namespaceReleases?: HelmRelease[];
   didReadNamespaceReleases?: boolean;
@@ -127,32 +128,25 @@ function setup({
 
       return {
         resource:
-          ResourceClass.kind === 'HelmRelease' ? helmRelease : chartSource,
+          ResourceClass.kind === 'HelmRelease'
+            ? (helmRelease ?? undefined)
+            : chartSource,
         isLoading: false,
       };
     },
   );
 
-  mockUseResources.mockImplementation(
-    (
-      _clusters: string,
-      _ResourceClass: unknown,
-      _options: unknown,
-      queryOptions?: { enabled?: boolean },
-    ) => {
-      if (queryOptions?.enabled === false) {
-        return { resources: [], clustersData: [], isLoading: false };
-      }
+  // The sibling list is fetched fresh at mutation time, so it is a promise here
+  // rather than a hook return. A failure means "cannot tell".
+  mockFetchResourceList.mockImplementation(async () => {
+    if (!didReadNamespaceReleases) {
+      const error = new Error('helmreleases is forbidden');
+      error.name = 'ForbiddenError';
+      throw error;
+    }
 
-      return {
-        resources: namespaceReleases,
-        clustersData: didReadNamespaceReleases
-          ? [{ cluster: CLUSTER, data: [] }]
-          : [],
-        isLoading: false,
-      };
-    },
-  );
+    return namespaceReleases.map(release => release.jsonData);
+  });
 
   mockUseSelfSubjectAccessReview.mockReturnValue({
     allowed,
@@ -176,10 +170,10 @@ function setup({
 
 beforeEach(() => {
   mockUseResource.mockReset();
-  mockUseResources.mockReset();
   mockUseSelfSubjectAccessReview.mockReset();
   mockDeleteResource.mockReset();
   mockDeleteResource.mockResolvedValue(undefined);
+  mockFetchResourceList.mockReset();
 });
 
 describe('useDeleteAgent', () => {
@@ -221,6 +215,18 @@ describe('useDeleteAgent', () => {
     expect(result.current.isCheckingDeletable).toBe(false);
   });
 
+  it('refuses when the owning release could not be read', () => {
+    // Regression: `isDeletable` used to key on the provenance *label*, so an
+    // unreadable release (a proxy 5xx that is not retried, or RBAC granting
+    // `delete` without `get`) still offered the action — which then failed, and
+    // silently switched off the Kustomization guard, since a release that cannot
+    // be read also reads as not-GitOps-owned.
+    const { result } = setup({ helmRelease: null });
+
+    expect(result.current.isDeletable).toBe(false);
+    expect(result.current.isCheckingDeletable).toBe(false);
+  });
+
   it('refuses when the release is applied by a Kustomization', () => {
     // Its desired state is in Git, so Flux would put it straight back.
     const { result } = setup({
@@ -233,6 +239,21 @@ describe('useDeleteAgent', () => {
     });
 
     expect(result.current.isDeletable).toBe(false);
+  });
+
+  it('refuses to delete a suspended release rather than claim an uninstall', async () => {
+    // Flux drops the finalizer on a suspended release without running the
+    // uninstall, so the HelmRelease would go and the Agent would stay — with no
+    // owner left, and no way back through this path.
+    const { result } = setup({
+      helmRelease: makeHelmRelease({ suspend: true }),
+    });
+
+    await act(async () => {
+      await expect(result.current.deleteAgent()).rejects.toThrow(/suspended/);
+    });
+
+    expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
   it('deletes the release and the chart source when nothing else uses it', async () => {
@@ -317,6 +338,25 @@ describe('useDeleteAgent', () => {
     expect(mockDeleteResource).toHaveBeenCalledTimes(1);
   });
 
+  it('reads the sibling list fresh, scoped to the chart source namespace', async () => {
+    // Regression: this used to come from `useResources`, whose cache key omitted
+    // the namespace — so another namespace's list could answer the question, and
+    // a <=60s cache could miss a sibling created moments ago in another tab. The
+    // destructive decision must rest on a request made now, for this namespace.
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.deleteAgent();
+    });
+
+    expect(mockFetchResourceList).toHaveBeenCalledTimes(1);
+    expect(mockFetchResourceList.mock.calls[0][0]).toMatchObject({
+      cluster: CLUSTER,
+      namespace: NAMESPACE,
+      gvk: expect.objectContaining({ plural: 'helmreleases' }),
+    });
+  });
+
   it('treats an already-deleted release as success', async () => {
     const notFound = new Error('helmreleases "pr-reviewer" not found');
     notFound.name = 'NotFoundError';
@@ -366,12 +406,15 @@ describe('useDeleteAgent', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('fails when there is no release to delete', async () => {
-    const { result } = setup({ agent: makeAgent({}), helmRelease: undefined });
+  it('fails with an accurate message when the release is not in hand', async () => {
+    // Not "it was applied directly": the agent carries the provenance label, so
+    // the release exists — we just could not read it. Pointing the user at
+    // deleting it by hand would be wrong.
+    const { result } = setup({ helmRelease: null });
 
     await act(async () => {
       await expect(result.current.deleteAgent()).rejects.toThrow(
-        /no HelmRelease to delete/,
+        /could not be read/,
       );
     });
 

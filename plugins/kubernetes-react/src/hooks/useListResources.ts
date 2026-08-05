@@ -38,6 +38,17 @@ export function useListResources<T>(
           gvk.group,
           gvk.apiVersion,
           gvk.plural,
+          // The scope — namespace and label selector — lives in the path, not in
+          // the segments above, so it has to be part of the key too. Without it,
+          // two lists of the same kind on one cluster differing only by namespace
+          // are *one* query, and the second caller is served the first one's
+          // items with no request made at all (`staleTime` is 60s in several
+          // plugins, and the cache is persisted to localStorage). `useGetResource`
+          // has always keyed on its namespace and name; this brings lists in line.
+          //
+          // Appended last so the existing 6-segment prefix still matches, which
+          // is how both invalidation call sites use this key.
+          path,
         ].filter(Boolean),
         queryFn: async () => {
           const response = await kubernetesApi.proxy({

@@ -622,22 +622,43 @@ them is still being established, so it never appears and then disappears:
    different user. The review decides what is _shown_; authorization itself is the
    apiserver's, since the proxy forwards the user's own OIDC token — a bypassed
    menu item still gets a real 403.
-2. The owning `HelmRelease` was found (an `Agent` applied by hand has no labels and
-   nothing to delete).
+2. The owning `HelmRelease` is **in hand** — the object, not just the label naming
+   it. Keying on the label would treat a release that could not be _read_ as "no
+   owner": the affordance would appear and then fail, and because an unreadable
+   release also reads as not-Kustomization-owned, it would quietly switch off the
+   guard below. Reachable via a proxy 5xx (`ServiceUnavailableError` is not retried
+   and this read does not poll) or RBAC granting `delete` without `get`.
 3. The release is **not** applied by a Kustomization. Those have their desired state
    in Git and would be recreated on the next reconciliation, so they stay read-only
    (see "GitOps provenance").
 
+**A suspended release is refused, not deleted.** Flux drops the finalizer on a
+suspended `HelmRelease` without running the uninstall, so deleting it would remove
+the release and leave the `Agent` and everything else the chart rendered behind —
+with no owner, so this path could not clean them up afterwards either. The mutation
+throws with an explanation instead of reporting an uninstall that will not happen.
+
 The shared `OCIRepository` goes only when it is provably unused: the
 `HelmRelease`es in the source's namespace are listed, and any _other_ release whose
-`chartRef` resolves to the same object keeps it. A failed list read keeps it too —
-an empty list because the read failed is not the same answer as an empty list
-because nothing references it. The check does not cover cross-namespace
-`chartRef`s, which would need a cluster-wide list a tenant user does not have; the
-cost of being wrong is a chart source that the next agent creation re-applies. A
-failure to delete the source is swallowed for the same reason: the agent is gone,
-which is what was asked for, and this is why the permission gate does not require
-`delete` on `ocirepositories`.
+`chartRef` resolves to the same object keeps it.
+
+That list is read **fresh, at mutation time**, through `fetchResourceList` rather
+than `useResources` — deliberately bypassing the query cache. Two reasons, both
+learned the hard way in review. A cached list is up to `staleTime` (60s here) old,
+so a sibling agent created moments ago in another tab would be invisible; and
+`useListResources` used to key its query without the namespace, which meant a list
+for a _different_ namespace could answer the question while looking perfectly
+certain. The second is now fixed at the source (the namespace is part of the key),
+but a destructive decision should not rest on a cache either way.
+
+Every failure resolves to keeping the source: a failed list read means "cannot
+tell", never "nothing found", and a failed delete is swallowed. The agent is gone
+by then, which is what was asked for, and an unreferenced chart source is inert and
+re-applied identically by the next agent creation. This is also why the permission
+gate does not require `delete` on `ocirepositories`. The check does not cover
+cross-namespace `chartRef`s, which would need a cluster-wide list a tenant user does
+not have; the cost of being wrong that way is a chart source the next agent creation
+re-applies.
 
 **The dialog says one thing:** that this ends any session currently running with the
 agent, including ones started by other people that are not shown. That is the only

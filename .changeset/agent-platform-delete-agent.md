@@ -18,19 +18,40 @@ runs first, and the menu item is withheld while the checks are still in flight, 
 it never appears and then disappears. The review decides what is _shown_;
 authorization stays the apiserver's, since the proxy forwards the user's own OIDC
 token — a bypassed menu item still gets a real 403. Two further conditions hide it:
-no resolvable owner (an `Agent` applied by hand has no release to delete), and a
-release applied by a Kustomization, whose desired state is in Git and which would
-be recreated on the next reconciliation.
+the owning release not being **in hand** (the object, not merely a label naming it —
+a release that could not be read is "cannot decide", not "no owner"), and a release
+applied by a Kustomization, whose desired state is in Git and which would be
+recreated on the next reconciliation.
+
+**A suspended release is refused rather than deleted.** Flux drops the finalizer on
+a suspended `HelmRelease` without running the uninstall, so deleting it would remove
+the release and leave the agent and the rest of the chart's objects behind, with no
+owner left to clean them up. The mutation explains that instead of reporting an
+uninstall that will not happen.
 
 **The shared `OCIRepository` goes only when it is provably unused.** Every agent in
 a namespace shares one `agent` chart source, so the `HelmRelease`es in the source's
 namespace are listed first and any other release referencing the same object keeps
-it. A failed list read keeps it too — an empty list because the read failed is not
-the same answer as an empty list because nothing references it. A failure to delete
-the source is swallowed: the agent is gone, which is what was asked for, and a
-chart source nobody references is inert and re-applied identically by the next
-agent creation. This is also why the permission gate does not require `delete` on
-`ocirepositories`.
+it. That list is read fresh at mutation time via the new `fetchResourceList`, not
+from the query cache: a cached list is up to `staleTime` (60s) old, so a sibling
+created moments ago in another tab would be invisible while looking perfectly
+certain. Every failure resolves to keeping the source — a failed list read means
+"cannot tell", never "nothing found", and a failed delete is swallowed, since the
+agent is gone by then and an unreferenced chart source is inert and re-applied
+identically by the next agent creation. This is also why the permission gate does
+not require `delete` on `ocirepositories`.
+
+**Bug fix in `kubernetes-react`: `useListResources` keyed its query without the
+namespace**, while the namespace lived in the request path. Two lists of the same
+kind on one cluster differing only by namespace were therefore _one_ query, and the
+second caller was served the first one's items with no request made at all — silent,
+because `staleTime` is 60s in several plugins and the cache is persisted to
+localStorage. `useGetResource` has always keyed on its namespace; lists now match.
+Found while reviewing this PR's own use of it, where the collision could have
+answered "nothing else references this chart source" from a different namespace and
+deleted a source other agents still needed. Also latent for
+`useNodePoolsForAWSCluster` and `SecretStoreSelector`. The scope is appended last so
+the existing 6-segment prefix still matches for invalidation.
 
 **The confirmation modal says one thing**: that this ends any session currently
 running with the agent, including ones started by other people that are not shown.

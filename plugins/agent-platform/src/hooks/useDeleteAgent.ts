@@ -6,13 +6,13 @@ import {
   Agent,
   CustomResourceMatcher,
   deleteResource,
+  fetchResourceList,
   HelmRelease,
   getHelmReleaseName,
   getHelmReleaseNamespace,
   isManagedByFlux,
   OCIRepository,
   useResource,
-  useResources,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
@@ -103,49 +103,9 @@ export function useDeleteAgent(agent: Agent | undefined) {
       ? { name: chartRef.name, namespace: chartRef.namespace }
       : undefined;
 
-  // Everything else in the source's namespace that could be holding on to it.
-  const { resources: namespaceReleases, clustersData } = useResources(
-    cluster,
-    HelmRelease,
-    { [cluster]: { namespace: chartSource?.namespace ?? '' } },
-    { enableDiscovery: false, enabled: Boolean(chartSource) },
-  );
-
-  // `clustersData` only carries clusters whose read succeeded, which is the
-  // distinction that matters here: an empty list because nothing else references
-  // the source is not the same answer as an empty list because the read failed.
-  const hasReadNamespaceReleases = clustersData.some(
-    entry => entry.cluster === cluster,
-  );
-
-  const isChartSourceShared =
-    chartSource !== undefined &&
-    namespaceReleases.some(release => {
-      // Our own release does not count as another user of the source.
-      if (
-        isSameObject(
-          { name: release.getName(), namespace: release.getNamespace() },
-          { name: helmReleaseName, namespace: helmReleaseNamespace },
-        )
-      ) {
-        return false;
-      }
-
-      const ref = release.getChartRef();
-
-      return ref?.kind === 'OCIRepository' && isSameObject(ref, chartSource);
-    });
-
-  // Deliberately not a check on the whole cluster: `HelmRelease`s in other
-  // namespaces can reference this source cross-namespace, but listing them needs
-  // a cluster-wide read a tenant user does not have. Getting this wrong costs a
-  // chart source that the next agent creation re-applies.
-  const willRemoveChartSource =
-    Boolean(chartSource) && hasReadNamespaceReleases && !isChartSourceShared;
-
-  // Read at its served version so the delete addresses a version the cluster
+  // Read at its served version so a delete addresses a version the cluster
   // actually has — `OCIRepository` exists as both v1beta2 and v1, so discovery
-  // stays on here. No object means there is nothing left to remove.
+  // stays on here. No object means there is nothing to remove.
   const { resource: chartSourceResource } = useResource(
     cluster,
     OCIRepository,
@@ -153,8 +113,56 @@ export function useDeleteAgent(agent: Agent | undefined) {
       name: chartSource?.name ?? '',
       namespace: chartSource?.namespace ?? '',
     },
-    { enabled: willRemoveChartSource },
+    { enabled: Boolean(chartSource) },
   );
+
+  /**
+   * Whether anything other than this agent's own release still renders from the
+   * chart source — answered from a **fresh** list, not the query cache.
+   *
+   * Deliberately not `useResources`: this decides whether to destroy a shared
+   * object, and a cached list is the wrong basis for that. `staleTime` is 60s
+   * here and the cache is persisted, so a sibling agent created moments ago in
+   * another tab would be invisible — and the answer would look certain.
+   *
+   * Throws if the list cannot be read, which the caller turns into "keep the
+   * source". An empty list because the read failed is not the same answer as an
+   * empty list because nothing references it.
+   *
+   * Scoped to the source's own namespace. A cross-namespace `chartRef` from
+   * elsewhere would not be seen, but listing cluster-wide needs a read a tenant
+   * user does not have, and the cost of being wrong that way is a chart source
+   * the next agent creation re-applies.
+   */
+  const isChartSourceShared = async (
+    source: ChartSourceRef,
+    releaseGVK: CustomResourceMatcher,
+  ) => {
+    const items = await fetchResourceList<HelmRelease['jsonData']>({
+      kubernetesApi,
+      cluster,
+      gvk: releaseGVK,
+      namespace: source.namespace,
+    });
+
+    return items
+      .map(item => new HelmRelease(item, cluster))
+      .some(release => {
+        // Our own release does not count as another user of the source.
+        if (
+          isSameObject(
+            { name: release.getName(), namespace: release.getNamespace() },
+            { name: helmReleaseName, namespace: helmReleaseNamespace },
+          )
+        ) {
+          return false;
+        }
+
+        const ref = release.getChartRef();
+
+        return ref?.kind === 'OCIRepository' && isSameObject(ref, source);
+      });
+  };
 
   const invalidateReads = async (gvks: CustomResourceMatcher[]) => {
     // Prefixes of the keys the read hooks register (see `useListResources` /
@@ -184,7 +192,18 @@ export function useDeleteAgent(agent: Agent | undefined) {
     mutationFn: async () => {
       if (!agent || !helmRelease || !helmReleaseName) {
         throw new Error(
-          'This agent has no HelmRelease to delete. It was applied directly, so it has to be removed the same way.',
+          'The HelmRelease that reconciles this agent could not be read, so it cannot be deleted from here. Try reloading the page.',
+        );
+      }
+
+      // Deleting a suspended release removes the release and nothing else: Flux
+      // drops its finalizer without running the uninstall, leaving the Agent and
+      // the rest of the chart's objects behind — and with no owner, so this path
+      // could not clean them up afterwards either. Refuse rather than report an
+      // uninstall that will not happen.
+      if (helmRelease.isSuspended()) {
+        throw new Error(
+          `HelmRelease ${helmReleaseNamespace}/${helmReleaseName} is suspended. Flux would remove it without uninstalling the agent, leaving its resources behind. Resume the release first, then delete the agent.`,
         );
       }
 
@@ -211,24 +230,29 @@ export function useDeleteAgent(agent: Agent | undefined) {
         agent.getResolvedGVK(),
       ];
 
-      if (willRemoveChartSource && chartSourceResource) {
-        const chartSourceGVK = chartSourceResource.getResolvedGVK();
-
+      // Everything from here is best-effort cleanup of the shared chart source,
+      // after the point where the agent is already gone. Every failure — an
+      // unreadable sibling list, a denied delete — leaves the source in place,
+      // which is always the safe outcome: it is inert on its own, and the next
+      // agent created in the namespace re-applies an identical one. That is also
+      // why the permission gate does not require `delete` on `ocirepositories`.
+      if (chartSource && chartSourceResource) {
         try {
-          await deleteResource({
-            kubernetesApi,
-            cluster,
-            gvk: chartSourceGVK,
-            name: chartSourceResource.getName(),
-            namespace: chartSourceResource.getNamespace(),
-          });
-          invalidated.push(chartSourceGVK);
+          if (!(await isChartSourceShared(chartSource, helmReleaseGVK))) {
+            const chartSourceGVK = chartSourceResource.getResolvedGVK();
+
+            await deleteResource({
+              kubernetesApi,
+              cluster,
+              gvk: chartSourceGVK,
+              name: chartSourceResource.getName(),
+              namespace: chartSourceResource.getNamespace(),
+            });
+            invalidated.push(chartSourceGVK);
+          }
         } catch {
-          // Swallowed on purpose. The agent is gone, which is what was asked
-          // for, and a chart source nobody references does nothing on its own —
-          // failing the whole operation over its cleanup would report a
-          // successful deletion as an error. This is also why the permission
-          // gate does not require `delete` on `ocirepositories`.
+          // Keep the source. Failing the whole operation here would report a
+          // successful deletion as an error.
         }
       }
 
@@ -247,10 +271,20 @@ export function useDeleteAgent(agent: Agent | undefined) {
   return useMemo(
     () => ({
       /**
-       * Whether to offer the deletion: an owner we can act on, not declaratively
-       * owned by Flux, and the cluster says this user may delete it.
+       * Whether to offer the deletion: the owning release is **in hand** (not
+       * merely named by a label), it is not declaratively owned by Flux, and the
+       * cluster says this user may delete it.
+       *
+       * Keyed on the object rather than on `hasOwner`, so that a release we could
+       * not read is "cannot decide" instead of "no owner". Those differ: an
+       * unreadable release also reads as not-GitOps-owned, which would quietly
+       * switch off the Kustomization guard, and the mutation needs the object
+       * anyway — offering an action that is certain to fail is worse than not
+       * offering it. Reachable via a proxy 5xx (not retried for
+       * `ServiceUnavailableError`, and this read does not poll) or RBAC granting
+       * `delete` without `get`.
        */
-      isDeletable: hasOwner && !isGitOpsOwned && isAllowed,
+      isDeletable: Boolean(helmRelease) && !isGitOpsOwned && isAllowed,
       /** Still establishing the above. Withhold the affordance rather than guess. */
       isCheckingDeletable:
         hasOwner && (isLoadingHelmRelease || isCheckingPermission),
@@ -259,11 +293,11 @@ export function useDeleteAgent(agent: Agent | undefined) {
       error: mutation.error as Error | null,
       reset,
     }),
-    // `helmRelease` and `willRemoveChartSource` are deliberately not returned:
-    // the confirmation dialog says nothing mechanical, so they are internal to the
-    // mutation now. Both still decide what actually gets deleted.
+    // `helmRelease` itself is deliberately not returned: the confirmation dialog
+    // says nothing mechanical, so it is internal to the mutation now.
     [
       hasOwner,
+      helmRelease,
       isGitOpsOwned,
       isAllowed,
       isLoadingHelmRelease,
