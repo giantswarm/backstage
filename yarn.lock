@@ -10887,8 +10887,8 @@ __metadata:
   linkType: hard
 
 "@giantswarm-io/pro@npm:^1.7.0":
-  version: 1.7.0
-  resolution: "@giantswarm-io/pro@npm:1.7.0"
+  version: 1.7.7
+  resolution: "@giantswarm-io/pro@npm:1.7.7"
   dependencies:
     "@modelcontextprotocol/sdk": "npm:^1.24.3"
     "@octokit/graphql": "npm:^9.0.3"
@@ -10896,7 +10896,7 @@ __metadata:
     express: "npm:^5.2.1"
   bin:
     pro: bin/index.js
-  checksum: 10c0/1b21769e46de4905756ef90806e0e4ba18670258aaef6e2010bc1320bccc5fd68273bd7bcc69dc29c895adbc6f6e64c555df59d91b181480bdd21eb6e2422993
+  checksum: 10c0/9a9490752dde7a8aa39a7df6cf495a637579cf15718311489fa0d2c4fd2df32d7b2368c091c14fa185887d36f69f31ab78c15021745a5dff9ba4b2308333242f
   languageName: node
   linkType: hard
 
