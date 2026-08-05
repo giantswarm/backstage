@@ -20,27 +20,6 @@ patch as soon as its upstream fix lands.
 > and verify it with a `yarn patch-package` run against a restored, unpatched
 > copy of the file.
 
-## `@backstage/plugin-catalog+2.0.7.patch`
-
-Makes the entity page's header tab hrefs absolute.
-
-`useEntityTabs`/`buildHeaderTabs` build them relative (`''`, `'deployments'`, …).
-The bui `Header` renders them through react-aria's `RouterProvider`, which
-resolves them with react-router's `useHref` — and react-router 7 resolves a
-relative link inside a splat route (the entity page is mounted at
-`/catalog/:namespace/:kind/:name/*`) against the **full current pathname**, not
-the route's base. So on any tab other than Overview, every tab href gains the
-active tab segment (`…/my-component/circleci/deployments`), and Overview's `''`
-resolves to the current URL — clicking it does nothing.
-
-The patch resolves each href against the entity's own base path, built from
-`entityRouteRef` via `useEntityRefLink()` — the same helper every other entity
-link in the catalog goes through, so the params are encoded identically and no
-pathname/splat arithmetic is involved. Upstream still emits relative hrefs on
-`master`, so this cannot be dropped until that changes. Our own plugin pages avoid
-the same trap in `packages/app/src/modules/app/GSPageLayout.tsx`, which
-absolutizes `SubPageBlueprint` tab hrefs via `useSplatBasePath()`.
-
 ## `codemirror-json-schema+0.8.1.patch`
 
 Adds a YAML block-style fallback to schema completion: when typing the first
