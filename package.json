@@ -31,7 +31,7 @@
     "storybook:build": "storybook build -o storybook-static",
     "storybook:coverage": "tsx scripts/check-story-coverage.mts",
     "typecheck:storybook": "tsc -p tsconfig.storybook.json",
-    "postinstall": "yarn patch-package",
+    "postinstall": "yarn patch-package --error-on-fail",
     "prepare": "husky"
   },
   "workspaces": {

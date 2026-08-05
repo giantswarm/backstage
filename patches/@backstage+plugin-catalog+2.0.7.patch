@@ -1,0 +1,66 @@
+diff --git a/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js b/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js
+index f3fb7e0..1abb9fa 100644
+--- a/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js
++++ b/node_modules/@backstage/plugin-catalog/dist/alpha/components/EntityTabs/useEntityTabs.esm.js
+@@ -1,6 +1,45 @@
+ import { useMemo } from 'react';
++import { useRouteRefParams } from '@backstage/core-plugin-api';
++import { entityRouteRef, useEntityRefLink } from '@backstage/plugin-catalog-react';
+ import { useSelectedSubRoute } from './EntityTabs.esm.js';
+
++// GIANT SWARM PATCH -- see patches/README.md.
++//
++// buildHeaderTabs below builds *relative* tab hrefs ("", "deployments", ...).
++// The bui Header renders them through react-aria's RouterProvider, which resolves
++// them with react-router's useHref -- and react-router 7 resolves a relative link
++// inside a splat route (the entity page is mounted at
++// "/catalog/:namespace/:kind/:name/*") against the full current pathname rather
++// than the route's base. So on any tab other than Overview every tab href gets
++// the active tab segment prefixed (".../my-component/circleci/deployments"), and
++// Overview's "" resolves to the current URL -- clicking it does nothing.
++//
++// Resolve the hrefs against the entity's own base path instead, built from the
++// entity route ref so the params are encoded the same way every other entity link
++// in the catalog is (entityRouteParams -> encodeParams). Drop this patch once
++// upstream emits absolute tab hrefs.
++function useEntityBasePath() {
++  const routeParams = useRouteRefParams(entityRouteRef);
++  const entityLink = useEntityRefLink();
++  return entityLink(routeParams);
++}
++function absoluteTabHref(basePath, href) {
++  if (!href) return basePath;
++  if (href.startsWith("/")) return href;
++  return `${basePath}/${href}`;
++}
++function withAbsoluteTabHrefs(tabs, basePath) {
++  return tabs.map(
++    (tab) => "items" in tab ? {
++      ...tab,
++      items: tab.items.map((item) => ({
++        ...item,
++        href: absoluteTabHref(basePath, item.href)
++      }))
++    } : { ...tab, href: absoluteTabHref(basePath, tab.href) }
++  );
++}
++
+ function tabHrefFromPath(path) {
+   return path.replace(/\/\*$/, "").replace(/^\//, "");
+ }
+@@ -47,9 +86,13 @@ function buildHeaderTabs(routes, groupDefinitions, defaultContentOrder) {
+ function useEntityTabs(props) {
+   const { routes, groupDefinitions, defaultContentOrder } = props;
+   const { route, element } = useSelectedSubRoute(routes);
++  const basePath = useEntityBasePath();
+   const tabs = useMemo(
+-    () => buildHeaderTabs(routes, groupDefinitions, defaultContentOrder),
+-    [routes, groupDefinitions, defaultContentOrder]
++    () => withAbsoluteTabHrefs(
++      buildHeaderTabs(routes, groupDefinitions, defaultContentOrder),
++      basePath
++    ),
++    [routes, groupDefinitions, defaultContentOrder, basePath]
+   );
+   return {
+     tabs,
