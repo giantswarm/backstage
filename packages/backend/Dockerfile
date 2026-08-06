@@ -12,7 +12,15 @@
 # Alternatively, there is also a multi-stage Dockerfile documented here:
 # https://backstage.io/docs/deployment/docker#multi-stage-build
 
-FROM node:24-trixie-slim
+# Pinned to a full version plus digest, not a floating `24-trixie-slim`.
+#
+# The floating tag is republished whenever Debian ships security updates into
+# the -slim base, which silently changes what we deploy and — because a moved
+# FROM digest invalidates every layer beneath it — makes any Docker layer cache
+# useless on that build. Renovate keeps both the version and the digest current
+# (the dockerfile manager is enabled by the shared preset), so bumps arrive as
+# reviewable PRs instead of appearing unannounced.
+FROM node:24.19.0-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d
 
 # Set Python interpreter for `node-gyp` to use
 ENV PYTHON=/usr/bin/python3
