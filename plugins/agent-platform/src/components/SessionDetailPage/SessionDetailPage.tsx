@@ -9,13 +9,19 @@ import {
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Avatar, Badge, Box, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateComponent,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
+import { useDeleteSession } from '../../hooks/useDeleteSession';
+import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { sessionsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
+import { SessionActionsMenu } from './SessionActionsMenu';
 import {
   buildAgentIndex,
   SESSION_TITLE_FALLBACK,
@@ -78,9 +84,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 /**
  * One kagent session: what it was, how it ended, and what the agent did.
  *
- * Read-only. kagent supports renaming, deleting and continuing a session, and the
- * prototype offers all three — none are wired up here, deliberately, so this
- * screen can ship without a write path.
+ * The session can be **deleted** from the header's actions menu (see "Deleting a
+ * session" in docs/agent-platform.md). kagent also supports renaming and continuing
+ * a session, and the prototype offers both — neither is wired up here.
  *
  * What the prototype shows and this cannot, because kagent stores none of it:
  * cost, tokens-per-second, context-window usage, the owning team, the trigger that
@@ -111,6 +117,32 @@ export function SessionDetailPage() {
     () => (detail ? toSessionRow(detail.session, agentIndex) : undefined),
     [detail, agentIndex],
   );
+
+  // Both called here rather than inside the menu: the menu is rendered in the
+  // shared plugin header, which is outside this plugin's `QueryClientProvider`, so
+  // a mutation or a query has no client there. The capabilities probe is a cached
+  // `/me` read with an hour's staleTime, so asking for it on this page is free.
+  const deletion = useDeleteSession(installation, sessionId);
+  const { isUserScoped } = useKagentCapabilities(installation);
+
+  /** Shared by the heading, the actions menu and its dialog, so all three agree. */
+  const sessionTitle = row?.title || SESSION_TITLE_FALLBACK;
+
+  // `deletion` is memoized on its own contents and `sessionTitle` is a string, so this
+  // element's identity only changes when one of them actually does — which is what
+  // keeps the header slot from re-registering (and re-rendering) on every poll.
+  const actions = useMemo(
+    () =>
+      row ? (
+        <SessionActionsMenu
+          title={sessionTitle}
+          deletion={deletion}
+          isUserScoped={isUserScoped}
+        />
+      ) : null,
+    [row, sessionTitle, deletion, isUserScoped],
+  );
+  useProvidePageHeaderActions(actions);
 
   if (isLoading) {
     return (
@@ -165,9 +197,7 @@ export function SessionDetailPage() {
         <Flex direction="column" gap="2">
           <BackToSessions>← Sessions</BackToSessions>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <Text variant="title-medium">
-              {row.title || SESSION_TITLE_FALLBACK}
-            </Text>
+            <Text variant="title-medium">{sessionTitle}</Text>
             {/* The raw A2A state is kept as the label for anything we don't
                 recognise, so a future kagent state shows as itself. */}
             {state && <Badge size="small">{state.label}</Badge>}

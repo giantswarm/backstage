@@ -366,6 +366,109 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('deleteSession', () => {
+    /** kagent's actual success response: a 200 carrying its usual envelope. */
+    function deleted() {
+      return jsonResponse({
+        error: false,
+        data: {},
+        message: 'Session deleted successfully',
+      });
+    }
+
+    it('sends a DELETE for the session, with the minted token', async () => {
+      fetchMock.mockResolvedValue(deleted());
+
+      await buildClient().deleteSession('gazelle', 'abc123');
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123?installation=gazelle',
+      );
+      expect(init.method).toBe('DELETE');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+    });
+
+    it('escapes a session id that is not URL-safe', async () => {
+      fetchMock.mockResolvedValue(deleted());
+
+      await buildClient().deleteSession('gazelle', 'a/b?c=d');
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb%3Fc%3Dd?installation=gazelle',
+      );
+    });
+
+    it('leaves the reads on GET', async () => {
+      // The transport now takes a method. Nothing else would catch a change that
+      // sent every read as a DELETE.
+      fetchMock.mockImplementation(async () => jsonResponse({ error: false }));
+      const client = buildClient();
+
+      await client.listSessions('gazelle');
+      await client.getIdentity('gazelle');
+
+      for (const [, init] of fetchMock.mock.calls) {
+        expect(init.method).toBeUndefined();
+      }
+    });
+
+    it('succeeds on a 2xx with no body', async () => {
+      // kagent answers 200 with an envelope today, but nothing here needs it. A
+      // version answering 204 (or an empty body) has still done the delete, and
+      // demanding JSON would report that as a failure.
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 204,
+        json: async () => {
+          throw new SyntaxError('Unexpected end of JSON input');
+        },
+      } as unknown as Response);
+
+      await expect(
+        buildClient().deleteSession('gazelle', 'abc123'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws on an error reported in-band on a 200', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          error: true,
+          message: 'failed to delete session: database connection lost',
+        }),
+      );
+
+      await expect(
+        buildClient().deleteSession('gazelle', 'abc123'),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: 'failed to delete session: database connection lost',
+      });
+    });
+
+    it('still throws when an in-band error says nothing', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: true }));
+
+      await expect(
+        buildClient().deleteSession('gazelle', 'abc123'),
+      ).rejects.toMatchObject({ name: 'UpstreamError' });
+    });
+
+    it.each([
+      [403, 'ForbiddenError'],
+      [404, 'NotFoundError'],
+      [500, 'Error'],
+    ])('maps a %s to %s', async (status, expectedName) => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'nope' } }, status),
+      );
+
+      await expect(
+        buildClient().deleteSession('gazelle', 'abc123'),
+      ).rejects.toMatchObject({ name: expectedName, message: 'nope' });
+    });
+  });
+
   describe('getIdentity', () => {
     it('reads the subject kagent resolved', async () => {
       fetchMock.mockResolvedValue(
