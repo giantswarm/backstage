@@ -24,10 +24,16 @@ export function useDeleteSession(installation: string, sessionId: string) {
     mutationFn: async () => {
       await kagentApi.deleteSession(installation, sessionId);
 
-      // The one key that matters, and it is shared: `SessionsDataProvider` and
-      // `useAgentSessions` read the fleet list under it, so this corrects both the
-      // sessions list the user is about to land on and the agent page's recent
-      // sessions card.
+      // The fleet list `SessionsDataProvider` reads — the page the caller is about
+      // to navigate back to.
+      //
+      // Only within this tab. `useAgentSessions` reads the same *key* for the agent
+      // page's recent-sessions card, but the Agents tab mounts its own
+      // `QueryClientProvider` (a fresh `new QueryClient` per mount), so that cache
+      // is not this one and nothing here can invalidate it. It needs no help: a
+      // fresh client starts empty, and these keys are excluded from persistence, so
+      // the card refetches when the tab mounts. Do not read cross-tab correctness
+      // into this call.
       await queryClient.invalidateQueries({
         queryKey: ['agent-platform', 'kagent', 'sessions', installation],
       });

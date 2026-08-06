@@ -366,6 +366,20 @@ describe('KagentClient', () => {
       expect(result).toEqual(body);
     });
 
+    it('treats a 204 as an empty success, not a sign-in page', async () => {
+      // kagent returns 200 with its envelope today. If a version ever answered 204,
+      // the deletion has *happened* — and without this the missing content-type
+      // hits the sign-in-page guard, so the frontend would keep the confirmation
+      // dialog open reporting an auth failure for a session that is already gone.
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 204 }));
+
+      await expect(
+        build(fetchFn).deleteSession('abc', { userToken: 't' }),
+      ).resolves.toBeUndefined();
+    });
+
     it('reports an absent route as a version problem', async () => {
       // Defensive only — the route has existed since v0.9.x — but the plain-text
       // 404 must not read as "that session is gone", which is exactly the outcome a

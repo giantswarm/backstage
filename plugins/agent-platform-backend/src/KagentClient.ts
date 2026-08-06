@@ -484,6 +484,19 @@ export class KagentClient {
       );
     }
 
+    // `204 No Content` is a success with nothing to parse, and must be handled
+    // before the guards below: it carries no content-type, so the sign-in-page
+    // check would call it an authentication failure, and `response.json()` would
+    // throw on the empty body. Nothing kagent serves today answers 204 — its
+    // delete returns 200 with the usual envelope on both v0.9.9 and v0.10 — but
+    // getting this wrong is expensive in one specific direction: a future version
+    // that answered 204 to the DELETE would have *performed* the deletion while
+    // this told the user a sign-in page was served, and the frontend would leave
+    // the confirmation dialog open on an error for a session that is already gone.
+    if (response.status === 204) {
+      return undefined;
+    }
+
     // A 2xx with a non-JSON body is oauth2-proxy serving its sign-in page
     // rather than kagent answering.
     const contentType = response.headers.get('content-type') ?? '';

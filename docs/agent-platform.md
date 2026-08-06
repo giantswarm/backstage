@@ -586,9 +586,13 @@ call either way, and the person reading is the one who knows whose session it is
 An unresolved probe claims nothing.
 
 **Cache handling has one non-obvious half.** The sessions list key
-(`['agent-platform', 'kagent', 'sessions', <installation>]`) is invalidated normally
-— it is shared with `useAgentSessions`, so the fleet list and the agent page's recent
-sessions card both correct themselves. This session's own two reads are invalidated
+(`['agent-platform', 'kagent', 'sessions', <installation>]`) is invalidated normally,
+so the list the user lands back on is correct. Note this reaches the Sessions tab
+only: `useAgentSessions` reads the same key for the agent page's recent-sessions
+card, but each tab's router mounts its own `QueryClientProvider` with a fresh
+`QueryClient`, so that is a different cache. It needs nothing — a fresh client starts
+empty and these keys are never persisted, so the card refetches when the Agents tab
+mounts. This session's own two reads are invalidated
 with **`refetchType: 'none'`**: the detail page is still mounted at that moment, so
 refetching would race the navigation with a request that now 404s and flash "Session
 not found" at someone who just deleted it deliberately. Stale-without-refetch leaves

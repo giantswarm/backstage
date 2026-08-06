@@ -229,8 +229,13 @@ export class KagentApiClient implements KagentApi {
     // `{error, data, message}` envelope, and the envelope carries nothing worth
     // returning — but a `200 error: true` would be a failure reported in-band, the
     // same shape the session and list readers already refuse to treat as success.
-    // A version that answered 204, or an empty body, still counts as a success:
-    // requiring JSON here would fail a delete that actually happened.
+    //
+    // An empty body still counts as a success: requiring JSON here would fail a
+    // delete that actually happened. That tolerance only reaches all the way
+    // through because `KagentClient.request` in agent-platform-backend has the
+    // matching half — it returns an upstream 204 as an empty success instead of
+    // reporting a missing content-type as a sign-in page, and the route passes it
+    // on as a 204. Both halves are needed; neither is any use alone.
     const body = await response.json().catch(() => undefined);
     if (isErrorEnvelope(body)) {
       throw upstreamError(

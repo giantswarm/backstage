@@ -462,6 +462,20 @@ describe('createRouter', () => {
       expect(deleteSession).not.toHaveBeenCalled();
     });
 
+    it('passes an empty upstream success through as a 204', async () => {
+      // Rather than `res.json(undefined)`, which sends an empty body under a JSON
+      // content-type — the frontend would then have to parse nothing as something.
+      deleteSession.mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
+    });
+
     it('requires the installation query parameter', async () => {
       const response = await request(app)
         .delete('/kagent/sessions/abc')

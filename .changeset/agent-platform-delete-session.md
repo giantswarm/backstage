@@ -35,8 +35,11 @@ is what shows the truth a moment later. It also means there is no 404 path and n
 "already gone" case on the write side.
 
 **One non-obvious piece of cache handling.** The sessions list key is invalidated
-normally — it is shared with `useAgentSessions`, so the fleet list and the agent
-page's recent-sessions card both correct themselves. This session's own two reads are
+normally, so the list the user lands back on is correct. That reaches the Sessions tab
+only — each tab's router mounts its own `QueryClientProvider`, so the agent page's
+recent-sessions card reads the same key from a different cache, and needs no help
+because a fresh client starts empty and these keys are never persisted. This
+session's own two reads are
 invalidated with `refetchType: 'none'`: the detail page is still mounted at that
 moment, so refetching would race the navigation with a request that now 404s and
 flash "Session not found" at someone who just deleted it deliberately. Marked stale

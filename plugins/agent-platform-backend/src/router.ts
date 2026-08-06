@@ -218,6 +218,15 @@ export async function createRouter(
     const result = await client.deleteSession(readSessionId(req), {
       userToken: readUserToken(req, { required: true }),
     });
+
+    // Pass an empty upstream success through as one, rather than as `res.json()`'s
+    // empty body with a JSON content-type. Only reachable if a future kagent
+    // answers 204 to the delete; today it returns its envelope with a 200.
+    if (result === undefined) {
+      res.status(204).end();
+      return;
+    }
+
     res.json(result);
   });
 
