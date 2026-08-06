@@ -3758,18 +3758,18 @@ __metadata:
   linkType: hard
 
 "@backstage-community/plugin-github-actions@npm:^1.0.0":
-  version: 1.2.0
-  resolution: "@backstage-community/plugin-github-actions@npm:1.2.0"
+  version: 1.3.0
+  resolution: "@backstage-community/plugin-github-actions@npm:1.3.0"
   dependencies:
     "@backstage/catalog-model": "npm:^1.9.0"
-    "@backstage/core-compat-api": "npm:^0.5.12"
-    "@backstage/core-components": "npm:^0.18.11"
-    "@backstage/core-plugin-api": "npm:^1.12.7"
-    "@backstage/frontend-plugin-api": "npm:^0.17.2"
+    "@backstage/core-compat-api": "npm:^0.5.13"
+    "@backstage/core-components": "npm:^0.18.12"
+    "@backstage/core-plugin-api": "npm:^1.12.8"
+    "@backstage/frontend-plugin-api": "npm:^0.17.3"
     "@backstage/integration": "npm:^2.0.3"
-    "@backstage/integration-react": "npm:^1.2.19"
-    "@backstage/plugin-catalog-react": "npm:^3.1.0"
-    "@backstage/ui": "npm:^0.16.0"
+    "@backstage/integration-react": "npm:^1.2.20"
+    "@backstage/plugin-catalog-react": "npm:^3.2.0"
+    "@backstage/ui": "npm:^0.17.0"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/lab": "npm:4.0.0-alpha.61"
     "@octokit/rest": "npm:^19.0.3"
@@ -3784,7 +3784,7 @@ __metadata:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: 6.0.0-beta.0 || ^6.3.0
-  checksum: 10c0/dc02afa6552a48bc3ca671976b8f80d32c98a6da74a48325c14c57190aa923fb0faeb6c00008bd0b870a4355fa85bfd3dcf7512a77820a301d0a744b5ad039cb
+  checksum: 10c0/45b18642ed4f595ec5abb76e78dd971dcb8a1966315dba130bfb45c9ee8666da1452ff82980547c75756fdd7e072534e47540f74182ea2d73b383dfecf666ba2
   languageName: node
   linkType: hard
 
