@@ -98,8 +98,25 @@ export function SessionDetailPage() {
   const { installation = '', sessionId = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
 
-  const { detail, timeline, state, taskCount, isLoading, isNotFound, error } =
-    useSessionDetail(installation, sessionId);
+  // Before the reads, because it gates them: a delete is in flight from this very
+  // page, and an interval landing between "kagent accepted the delete" and the
+  // caller's `navigate()` would 404 and flash "Session not found" at someone who
+  // just deleted it deliberately.
+  const deletion = useDeleteSession(installation, sessionId);
+  const { isUserScoped } = useKagentCapabilities(installation);
+
+  const {
+    detail,
+    timeline,
+    state,
+    taskCount,
+    hasConversation,
+    isLoading,
+    isNotFound,
+    error,
+  } = useSessionDetail(installation, sessionId, {
+    enabled: !deletion.isDeleting && !deletion.isDeleted,
+  });
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.
@@ -118,12 +135,11 @@ export function SessionDetailPage() {
     [detail, agentIndex],
   );
 
-  // Both called here rather than inside the menu: the menu is rendered in the
-  // shared plugin header, which is outside this plugin's `QueryClientProvider`, so
-  // a mutation or a query has no client there. The capabilities probe is a cached
-  // `/me` read with an hour's staleTime, so asking for it on this page is free.
-  const deletion = useDeleteSession(installation, sessionId);
-  const { isUserScoped } = useKagentCapabilities(installation);
+  // Both `useDeleteSession` and `useKagentCapabilities` are called here rather than
+  // inside the menu: the menu is rendered in the shared plugin header, which is
+  // outside this plugin's `QueryClientProvider`, so a mutation or a query has no
+  // client there. The capabilities probe is a cached `/me` read with an hour's
+  // staleTime, so asking for it on this page is free.
 
   /** Shared by the heading, the actions menu and its dialog, so all three agree. */
   const sessionTitle = row?.title || SESSION_TITLE_FALLBACK;
@@ -167,7 +183,19 @@ export function SessionDetailPage() {
     );
   }
 
-  if (error || !detail || !row) {
+  // Deliberately not `error ||`: these reads poll, and react-query keeps `data`
+  // while setting `error` on a failed *refetch* — which the query client does not
+  // retry for ServiceUnavailable/Unauthorized/Forbidden. Treating any error as
+  // fatal would let one proxy hiccup replace a rendered conversation with an
+  // alert until the next successful poll. With both reads in hand the page renders
+  // whatever the last one did, and says so in the notice below.
+  //
+  // `hasConversation` is not redundant with `!detail`. The two reads fail
+  // independently, and a tasks read that fails on *first* load leaves the timeline,
+  // turn count and token stats at their zero values while the session read
+  // succeeds — which would render "no activity", `Turns 0` and "no messages yet"
+  // over a session that has a full conversation. Absent is not empty.
+  if (!detail || !row || !hasConversation) {
     return (
       <Content>
         <Flex direction="column" gap="3">
@@ -194,6 +222,17 @@ export function SessionDetailPage() {
   return (
     <Content>
       <Flex direction="column" gap="4">
+        {/* A refresh that failed after the page had loaded. Shown rather than
+            thrown: the conversation on screen is still real, it has just stopped
+            keeping up, and the user needs to know which of the two it is. */}
+        {error && (
+          <Alert
+            status="warning"
+            title="This session may be out of date"
+            description={`The last refresh failed: ${error.message}`}
+          />
+        )}
+
         <Flex direction="column" gap="2">
           <BackToSessions>← Sessions</BackToSessions>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>

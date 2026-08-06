@@ -205,12 +205,12 @@ Two consequences to keep in mind:
 `kube:apply` (tagged `hidden` so it stays out of the `/create` list). It applies
 the manifest verbatim, so what the review page shows is exactly what is applied.
 
-> **Note:** `/catalog` is gitignored — this template is a **local-dev artifact**
-> only, like `app-deployment`. Real deployments load templates from the external
-> `giantswarm/backstage-catalogs` repo, so **the template must also be added
-> there** for the deploy button to work outside local development. Register it
-> for local dev via `catalog.locations` in `app-config.local.yaml` (see
-> `app-config.local.yaml.example`).
+> **Note:** `/catalog` is gitignored — the copy there is a **local-dev artifact**
+> only, like `app-deployment`; register it via `catalog.locations` in
+> `app-config.local.yaml` (see `app-config.local.yaml.example`). Real deployments
+> load the template from the external
+> [`giantswarm/backstage-catalogs`](https://github.com/giantswarm/backstage-catalogs/tree/main/templates/agent-deployment)
+> repo, where it is published. Keep the two in sync when changing it.
 
 ### Namespace
 
@@ -457,6 +457,113 @@ timestamp is the finest granularity that exists, so the timeline shows it once p
 turn rather than repeating it on every entry, which would imply precision we do not
 have.
 
+### Refreshing
+
+Both reads poll, on different cadences (`lib/kagentSessionPolling.ts`):
+
+| Read             | Interval                                                                            |
+| ---------------- | ----------------------------------------------------------------------------------- |
+| the session      | a flat 60 s                                                                         |
+| the conversation | **10 s** while the newest task is in an active A2A state and recent, 60 s otherwise |
+
+The session object is title, agent and timestamps, none of which move while an agent
+works, so it gets no fast tier — it polls at all only so a session renamed or deleted
+elsewhere stops looking current. The conversation gets the two tiers, decided from
+the data already in hand, exactly as `getAgentRefetchInterval` does for one agent
+(see "The agent detail page").
+
+**There is nothing cheaper to poll.** kagent's API serves no `HEAD` — every route is
+registered for a single method on a gorilla/mux router, which matches methods
+exactly — and sets no `ETag`, `Last-Modified` or `Cache-Control` (`RespondWithJSON`
+in `go/core/internal/httpserver/handlers/helpers.go` marshals and writes; the
+middleware chain only sets `Content-Type`). So there is no conditional GET to make
+"has this changed?" cheap, and a full re-read is the only probe available. The
+closest thing is the session object's `updated_at`, which tracks task-status writes
+to the millisecond — a future optimisation could gate the expensive read on it, but
+only once someone has confirmed kagent bumps it per appended event rather than only
+on state transitions. If it is the latter, a gated design would show nothing for the
+whole duration of a turn.
+
+That is also why the fast tier is **10 s and not the agents' 5 s**: this one moves
+the whole conversation, ~500 KB for a four-turn session, re-parsed row by row
+through `a2aTaskWireSchema` and then deep-compared on the main thread. A turn takes
+tens of seconds, so nothing reads as less live for it.
+
+**The age bound is 5 minutes, against the agents' 3.** Both exist for the same
+reason — an agent that died mid-turn without writing a terminal state would
+otherwise pin the fast tier for as long as the tab stays open — but they are
+calibrated to different things: the agents' bound tracks a controller reconcile
+loop, this one tracks an agent _turn_, which routinely runs minutes when there are
+many tool calls. A 3-minute bound would back off in the middle of exactly the run
+the page was opened to watch.
+
+The bound is also what handles `input-required` and `auth-required`. Those states
+are active — the session may still produce output — but they wait on a human, and
+this page offers no way to reply. They start on the fast tier, relax once nobody has
+answered inside the window, and re-engage on their own when someone answers
+elsewhere and the newest task's timestamp advances.
+
+**A terminal session relaxes to 60 s rather than stopping.** Unlike a finished
+workflow execution, a kagent session is not immutable: it can be continued, renamed
+or deleted from another client. Stopping would freeze the page for exactly the case
+this polling exists to fix. 60 s equals the query client's `staleTime`, so nothing
+is refetched that the client still considers fresh.
+
+Polls only fire while the tab is **visible** — `refetchIntervalInBackground` defaults
+to `false`, and react-query's focus manager keys off `document.visibilityState`, not
+window focus, so a visible-but-unfocused window keeps polling. Verified on gazelle:
+nothing was requested across 80 s hidden, and the interval resumed by itself
+afterwards.
+
+Going **offline** is different again, and quieter than it looks: react-query's
+default `networkMode: 'online'` _pauses_ these queries rather than failing them, so a
+disconnected browser makes no request, raises no error and shows no warning — the
+page just stops updating until the connection returns, at which point the interval
+resumes on its own. Also verified on gazelle.
+
+An unchanged response costs no re-render: react-query's structural sharing returns
+the previous reference when the payload is deep-equal, so the `useMemo`s that rebuild
+the timeline do not re-run.
+
+**A failed refresh does not replace the page.** react-query keeps `data` and sets
+`error` on a failed _refetch_, and the query client deliberately does not retry
+`ServiceUnavailable`/`Unauthorized`/`Forbidden` — so treating any error as fatal
+would let one proxy hiccup blank a conversation someone is reading, for up to a
+minute. The fatal branch is gated on having no session at all; an error with one in
+hand shows a warning notice above the page instead. That notice is a local `Alert`
+rather than the shared `ErrorsProvider`/`useShowErrors` notice the agent detail page
+uses, because the sessions router mounts no `ErrorsProvider` and adding one would
+mean splitting this page into wrapper and content for a one-line message.
+
+**"Keep what you have" is not the same as "render whatever is in hand", and three
+cases pull them apart.** The two reads fail independently, so each needed its own
+answer:
+
+- **The conversation never loaded.** A tasks read that fails on _first_ load leaves
+  the timeline, turn count and tokens at their zero values while the session read
+  succeeds. Rendering that would state "no activity", `Turns 0` and "no messages
+  yet" about a session with a full conversation. The hook exposes `hasConversation`
+  (`tasksQuery.data !== undefined`) and the page keeps the fatal branch when it is
+  false — absent is not empty. A session that genuinely never ran reads as `[]`,
+  which is data, and still renders as "no activity".
+- **A poll returns a 200 with no readable session.** `getSessionDetail` resolves
+  `undefined` for that, and react-query _rejects_ an `undefined` resolve — the query
+  errors with `[…query key…] data is undefined`, which leaked a raw query key into
+  the UI and made the `isSuccess && !data` branch unreachable. The query function
+  now coerces to `null`, which react-query stores. On top of that, an empty read
+  only means "no such session" **before** one has been read: once the page is
+  showing a conversation, the same answer means unreadable, not deleted — an expired
+  oauth2-proxy serving an HTML sign-in page under a 200 is the realistic trigger,
+  and telling someone their session "may have been deleted" for that would be a lie.
+  A genuine 404 still counts at any point, since that is how a delete elsewhere
+  shows up.
+- **A delete is in flight.** `refetchType: 'none'` governs invalidation-driven
+  refetches only; a scheduled interval tick is neither, so it could land in the
+  window between kagent accepting the delete and the caller navigating away, 404 and
+  flash "Session not found" at someone who just deleted the session deliberately.
+  The page passes `enabled: !isDeleting && !isDeleted` into the hook, which stops
+  both reads outright for the duration.
+
 ### What the timeline shows
 
 Built by `lib/kagentTimeline.ts` from task history. Conversation messages render in
@@ -623,7 +730,9 @@ a re-release rather than a menu item.
 The agent is fetched with a **single targeted `useResource`**, not read out of the
 list's `AgentsDataProvider`, so a deep link works without the list having loaded.
 It polls on the same two tiers as the list (`isAgentConverging` is now shared):
-5 s while an agent is converging, 60 s once it settles or stays durably broken.
+5 s while an agent is converging, 60 s once it settles or stays durably broken. The
+session detail page follows the same policy with different constants, and
+"Refreshing" above explains why they differ.
 
 ### Layout
 
@@ -887,9 +996,6 @@ above). What remains is a separate, deeper concern:
 - **muster defaults.** The chart wires the muster gateway by default; the create
   flow doesn't set the per-installation `muster.stsWellKnownUri` (or opt out via
   `extraAgentSpec`/config), so this needs revisiting once agents actually run.
-- **Production template registration.** The `agent-deployment` template must be
-  added to `giantswarm/backstage-catalogs` for the deploy button to work outside
-  local development.
 
 ### Features
 
@@ -917,6 +1023,25 @@ above). What remains is a separate, deeper concern:
   no UI. Rename in particular deviates from the prototype, where sessions are never
   user-named. Deleting from a list row is also unimplemented — deliberately, since a
   destructive action on a row someone is scanning past is easy to hit by accident.
+- **An unanswered question is not shown.** When a task is `input-required`, the
+  question the agent is waiting on lives in `status.message` — the wire schema
+  already parses it and says so — but `buildTimeline` only ever reads
+  `status.timestamp`, so nothing renders it. The page shows a "Waiting for input"
+  badge above a conversation that just stops, with no indication of what was asked.
+  Observed live on gazelle. The fix is a timeline entry (or a panel above it) for the
+  pending prompt; note it is not part of task `history`, so it needs handling of its
+  own rather than falling out of the existing walk. Answering it is a separate gap —
+  see "Renaming and continuing a session" for the missing write path.
+- **No manual refresh on the session detail page.** The page polls now (see
+  "Refreshing"), so staleness is capped at 60 s and there is nothing frozen to
+  rescue — but there is still no way to say "check again, now", which is the one
+  thing polling cannot answer for a session past the age bound. The reason it was
+  left out is cost, not doubt: the control belongs in the page header, which renders
+  outside this plugin's `QueryClientProvider`, so it needs `refresh` and
+  `isRefreshing` on `SessionDetailView`, threaded through the `actions` memo whose
+  whole job is to keep the header slot from re-registering on every poll.
+  `plugins/muster`'s `FreshnessIndicator` is the shape to copy, ported to bui and
+  promoted to `ui-react`.
 - **Landing page.** The section still opens on the Agents tab. Whether the
   platform wants a proper landing page above the tabs — fleet health, recent
   activity — is an open product question, not a gap in the tabs themselves.

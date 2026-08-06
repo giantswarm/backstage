@@ -71,6 +71,7 @@ const loadedView: SessionDetailView = {
   timeline,
   state: deriveSessionState(tasks),
   taskCount: tasks.length,
+  hasConversation: true,
   isLoading: false,
   isNotFound: false,
   error: undefined,
@@ -205,6 +206,8 @@ describe('SessionDetailPage', () => {
   });
 
   it('surfaces a genuine read failure with its message', async () => {
+    // Specifically the *no data* case — an error with a session already in hand is
+    // a stale-refresh notice instead, see the test below. The two are a pair.
     const error = new Error('kagent returned status 500');
     error.name = 'UpstreamError';
     mockUseSessionDetail.mockReturnValue({
@@ -218,6 +221,57 @@ describe('SessionDetailPage', () => {
 
     expect(screen.getByText('Could not load this session')).toBeInTheDocument();
     expect(screen.getByText(/status 500/)).toBeInTheDocument();
+  });
+
+  it('keeps the session on screen when a refresh fails', async () => {
+    // These reads poll, so an error can arrive on a page that is already showing a
+    // perfectly real conversation. Replacing it would mean one proxy hiccup blanks
+    // the session someone is reading, for up to a minute.
+    const error = new Error('kagent is unavailable');
+    error.name = 'ServiceUnavailableError';
+    mockUseSessionDetail.mockReturnValue({ ...loadedView, error });
+
+    await render();
+
+    expect(screen.getByText('Which GitHub issues...')).toBeInTheDocument();
+    expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not load this session'),
+    ).not.toBeInTheDocument();
+
+    // Said out loud, so a conversation that has quietly stopped keeping up does
+    // not read as an agent that stopped producing output.
+    expect(
+      screen.getByText('This session may be out of date'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/kagent is unavailable/)).toBeInTheDocument();
+
+    // A failed poll must not strip the kebab either.
+    expect(lastProvidedActions()).not.toBeNull();
+  });
+
+  it('does not fabricate an empty session when the conversation never loaded', async () => {
+    // The two reads fail independently. With the session read fine and the tasks
+    // read failing on *first* load, the timeline/turns/tokens are absent, not empty
+    // — rendering them would claim "no activity", "Turns 0" and "no messages yet"
+    // about a session that has a full conversation.
+    const error = new Error('kagent is unavailable');
+    error.name = 'ServiceUnavailableError';
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: emptyTimeline,
+      taskCount: 0,
+      state: undefined,
+      hasConversation: false,
+      error,
+    });
+
+    await render();
+
+    expect(screen.getByText('Could not load this session')).toBeInTheDocument();
+    expect(screen.getByText(/kagent is unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText('no activity')).not.toBeInTheDocument();
+    expect(screen.queryByText('Turns')).not.toBeInTheDocument();
   });
 
   it('shows progress while loading', async () => {

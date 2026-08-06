@@ -45,6 +45,14 @@ export function useDeleteSession(installation: string, sessionId: string) {
       // someone who already knows. `refetchType: 'none'` leaves the entries stale
       // instead, so a later visit to the same URL revalidates and lands on the
       // not-found state properly.
+      //
+      // This alone is **not** enough now that both reads carry a refetch interval:
+      // `refetchType` governs invalidation-driven refetches only, and a scheduled
+      // tick is neither invalidation-driven nor stopped by it. The window is real —
+      // the `invalidateQueries` above does refetch the fleet list, so a full round
+      // trip separates the delete from the caller's `navigate()`. What actually
+      // holds the race off is the page disabling both reads for the duration; see
+      // `isDeleted` below and its use in `SessionDetailPage`.
       await Promise.all(
         [
           sessionQueryKey(installation, sessionId),
@@ -68,10 +76,22 @@ export function useDeleteSession(installation: string, sessionId: string) {
     () => ({
       deleteSession,
       isDeleting: mutation.isPending,
+      /**
+       * Stays true after the mutation settles, unlike `isDeleting`. The page keeps
+       * its reads switched off through the gap between success and the caller's
+       * navigation, which `isDeleting` alone would reopen.
+       */
+      isDeleted: mutation.isSuccess,
       error: mutation.error as Error | null,
       reset,
     }),
-    [deleteSession, mutation.isPending, mutation.error, reset],
+    [
+      deleteSession,
+      mutation.isPending,
+      mutation.isSuccess,
+      mutation.error,
+      reset,
+    ],
   );
 }
 

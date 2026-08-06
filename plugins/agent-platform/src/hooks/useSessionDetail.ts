@@ -1,10 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentSessionDetail } from '../lib/kagentSessionDetail';
 import { buildTimeline, SessionTimeline } from '../lib/kagentTimeline';
 import { deriveSessionState, SessionState } from '../lib/kagentSessionState';
+import {
+  BASELINE_REFETCH_INTERVAL_MS,
+  getSessionTasksRefetchInterval,
+} from '../lib/kagentSessionPolling';
 
 /** Query key for one session's metadata. */
 export function sessionQueryKey(installation: string, sessionId: string) {
@@ -24,6 +28,15 @@ export type SessionDetailView = {
   state?: SessionState;
   /** Number of A2A tasks — the session's turn count. */
   taskCount: number;
+  /**
+   * Whether the conversation has ever been read.
+   *
+   * False means the timeline, turn count and token stats are **absent, not empty**,
+   * and must not be rendered: a tasks read that fails on first load leaves them at
+   * their zero values while the session read succeeds, which would otherwise show
+   * "no activity", `Turns 0` and "no messages yet" over a session that has plenty.
+   */
+  hasConversation: boolean;
   isLoading: boolean;
   /**
    * True when the session is not readable: it does not exist, was deleted, or
@@ -42,6 +55,14 @@ const EMPTY_TIMELINE: SessionTimeline = {
 };
 
 /**
+ * Stands in for a 200 that carried no readable session, once one has already been
+ * read. A module constant so its identity is stable across renders.
+ */
+const UNREADABLE_SESSION_ERROR = new Error(
+  'kagent returned a session response we could not read.',
+);
+
+/**
  * Read one session: its metadata and its conversation.
  *
  * Two queries rather than one because they are two kagent endpoints serving
@@ -52,21 +73,46 @@ const EMPTY_TIMELINE: SessionTimeline = {
  * They are deliberately **not** chained. Firing both immediately halves the
  * time-to-first-paint, and the cost of a wasted tasks request when the session
  * turns out not to exist is one 404 on a page the user explicitly navigated to.
+ *
+ * Both poll, on different cadences — see `lib/kagentSessionPolling.ts`. Note that
+ * this leaves the two reads out of step during an active session: the conversation
+ * updates on the fast tier while the header's "last activity" and the duration stat
+ * come from the session read a minute behind. Both render as absolute timestamps,
+ * so the lag reads as older rather than as wrong.
  */
 export function useSessionDetail(
   installation: string,
   sessionId: string,
+  options: { enabled?: boolean } = {},
 ): SessionDetailView {
+  // `enabled: false` stops the intervals dead, which is the only thing that
+  // actually holds off a poll landing mid-delete — see `useDeleteSession`.
+  const { enabled = true } = options;
   const kagentApi = useApi(kagentApiRef);
 
   const sessionQuery = useQuery({
     queryKey: sessionQueryKey(installation, sessionId),
-    queryFn: () => kagentApi.getSessionDetail(installation, sessionId),
+    // `?? null` matters. `getSessionDetail` resolves `undefined` for a 200 that
+    // carried no readable session, and react-query rejects an `undefined` resolve
+    // outright — the query lands in `error` with the message
+    // `["agent-platform","kagent","session",…] data is undefined`, which is both a
+    // raw query key shown to a user and a classification we cannot act on. It also
+    // made the `isSuccess && !data` branch below unreachable. `null` is a value
+    // react-query stores, so an empty read stays an expected outcome.
+    queryFn: async () =>
+      (await kagentApi.getSessionDetail(installation, sessionId)) ?? null,
+    enabled,
+    // A flat baseline, not the tasks' two tiers: this object is the title, the
+    // agent and the timestamps, none of which move while an agent works. It polls
+    // at all so a session renamed or deleted elsewhere stops looking current.
+    refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
   });
 
   const tasksQuery = useQuery({
     queryKey: sessionTasksQueryKey(installation, sessionId),
     queryFn: () => kagentApi.listSessionTasks(installation, sessionId),
+    enabled,
+    refetchInterval: getSessionTasksRefetchInterval,
   });
 
   const tasks = tasksQuery.data;
@@ -83,23 +129,51 @@ export function useSessionDetail(
     [tasks],
   );
 
+  // The last session we read successfully. `getSessionDetail` resolves `undefined`
+  // for any 200 whose body does not parse — an expired oauth2-proxy answering with
+  // an HTML sign-in page is the realistic case — and react-query stores that
+  // `undefined` as the query's data, discarding what we had. Holding the previous
+  // value means one malformed poll degrades to a staleness notice instead of
+  // erasing a live conversation.
+  const lastGoodDetail = useRef<KagentSessionDetail | undefined>(undefined);
+  if (sessionQuery.data) {
+    lastGoodDetail.current = sessionQuery.data;
+  }
+  const detail = sessionQuery.data ?? lastGoodDetail.current;
+
+  const sessionError = (sessionQuery.error as Error | null) ?? undefined;
+
   // The session read is what decides "not found": the tasks endpoint 404s for the
   // same session, but it also 404s on a kagent too old to serve it, and the two
   // must not look the same to the user.
+  //
+  // An empty 200 only means "no such session" *before* we have read one. Once the
+  // page is showing a real conversation, the same response means the answer was
+  // unreadable, not that the session is gone — telling someone it "may have been
+  // deleted" because a proxy served a sign-in page would be a lie. A genuine 404
+  // still counts at any point, since that is how a delete elsewhere shows up.
   const isNotFound =
-    (sessionQuery.isSuccess && !sessionQuery.data) ||
-    (sessionQuery.error as Error | null)?.name === 'NotFoundError';
+    (sessionQuery.isSuccess &&
+      !sessionQuery.data &&
+      lastGoodDetail.current === undefined) ||
+    sessionError?.name === 'NotFoundError';
+
+  const unreadableSession =
+    sessionQuery.isSuccess && !sessionQuery.data && lastGoodDetail.current
+      ? UNREADABLE_SESSION_ERROR
+      : undefined;
 
   // A 404 is an expected outcome, not an error to report.
   const error = isNotFound
     ? undefined
-    : (((sessionQuery.error ?? tasksQuery.error) as Error | null) ?? undefined);
+    : (sessionError ?? (tasksQuery.error as Error | null) ?? unreadableSession);
 
   return {
-    detail: sessionQuery.data ?? undefined,
+    detail,
     timeline,
     state,
     taskCount: tasks?.length ?? 0,
+    hasConversation: tasks !== undefined,
     // `isNotFound` short-circuits loading, because it is decided by the session
     // read alone and the page checks `isLoading` first. Without this, a session
     // that 404s immediately — `NotFoundError` is not retried, so that read settles
@@ -107,6 +181,9 @@ export function useSessionDetail(
     // the full retry ladder (2s/4s/8s) for a non-404 failure, or the fetch timeout
     // on an unreachable installation. The answer was already known; nothing the
     // tasks read can return would change it.
+    //
+    // `isLoading`, deliberately, not `isFetching`: it is false during a refetch,
+    // which is what keeps a poll from flashing the spinner over a rendered page.
     isLoading: !isNotFound && (sessionQuery.isLoading || tasksQuery.isLoading),
     isNotFound,
     error,
