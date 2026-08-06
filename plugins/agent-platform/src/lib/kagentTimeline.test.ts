@@ -278,11 +278,100 @@ describe('buildTimeline', () => {
       ]);
     });
 
+    it('renders one approval, not two, once the question is answered', () => {
+      // The post-answer shape, from kagent's resume path: a HITL decision resumes
+      // the *stored* task (`executor.go` — `StoredTask != nil` emits `working` on
+      // it and appends the decision to its history), so the asking task leaves
+      // `input-required` and its confirmation is now in history with a verdict.
+      // The concern this pins down is the overlap: if the prompt were still
+      // emitted from `status` while the answered copy renders from history, the
+      // same question would appear twice, one of them "Awaiting a reply" forever.
+      // Typed loosely on purpose: the entries appended below are shapes the JSON
+      // fixture's inferred element type does not have, and they are exactly what
+      // kagent writes on resume.
+      const answered = structuredClone(askUserPending) as unknown as {
+        data: { status: { state: string }; history: unknown[] }[];
+      };
+      const task = answered.data[1];
+      task.status.state = 'completed';
+      task.history.push(
+        {
+          kind: 'message',
+          messageId: 'm-confirm-1',
+          role: 'agent',
+          metadata: { adk_author: 'sre_agent' },
+          parts: [
+            {
+              kind: 'data',
+              metadata: {
+                adk_type: 'function_call',
+                adk_is_long_running: true,
+              },
+              data: {
+                id: 'adk-pending-1',
+                name: 'adk_request_confirmation',
+                args: {
+                  originalFunctionCall: {
+                    id: 'call-ask-pending-1',
+                    name: 'ask_user',
+                    args: {
+                      questions: [
+                        {
+                          question:
+                            'What would you like to investigate next on the management cluster?',
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        {
+          kind: 'message',
+          messageId: 'm-answer-1',
+          role: 'user',
+          parts: [
+            { kind: 'data', data: { decision_type: 'approve' } },
+            { kind: 'text', text: 'The muster auth config, please.' },
+          ],
+        },
+      );
+
+      const { items } = timelineFor(answered);
+
+      expect(items.filter(item => item.kind === 'approval')).toHaveLength(1);
+      expect(kinds(items)).toEqual([
+        'user-message',
+        'agent-message',
+        'user-message',
+        'approval',
+        'user-message',
+      ]);
+      expect(items[3]).toMatchObject({ kind: 'approval', verdict: 'approved' });
+    });
+
     it('ignores a status message on a task that is not waiting', () => {
       const terminal = structuredClone(askUserPending) as typeof askUserPending;
       terminal.data[1].status.state = 'failed';
 
       expect(kinds(timelineFor(terminal).items)).not.toContain('approval');
+    });
+
+    it('does not report an unreadable status message as data loss', () => {
+      // `status.message` is `z.unknown()` at the parse boundary, so a kagent
+      // version putting a bare string there (an auth-required hint, say) must not
+      // reach the message parser — it would count as `skippedMessages` and the UI
+      // would tell the user "1 message could not be read" about a healthy session.
+      const hint = structuredClone(askUserPending) as typeof askUserPending;
+      (hint.data[1].status as { message?: unknown }).message =
+        'Sign in to continue';
+
+      const { items, skippedMessages } = timelineFor(hint);
+
+      expect(skippedMessages).toBe(0);
+      expect(kinds(items)).not.toContain('approval');
     });
 
     it('reads a prompt on auth-required too', () => {

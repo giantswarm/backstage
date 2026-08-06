@@ -24,12 +24,17 @@ passes that are then concatenated; one list keeps the question in its chronologi
 place instead of at the end.
 
 Gated on the state (`input-required` / `auth-required`) rather than merely on the
-message being present, which is what makes the card self-clearing. Once the user
-answers elsewhere the task reaches a terminal state, the prompt stops being emitted
-from `status`, and the now-answered confirmation renders from history with its
-verdict — so a question cannot linger on screen after it has been answered. The
-alternative, emitting whenever `status.message` exists, would also risk duplicating a
-terminal task's final text if kagent ever put it there.
+message being present, which is what makes the card self-clearing. kagent's resume
+path settles this: a HITL decision resumes the **stored** task — `executor.go` takes
+the `StoredTask != nil` branch, emits `working` on that same task and appends the
+decision to its history, and `BuildResumeHITLMessage` will not even build a resume
+unless that task is currently `input-required`. So the asking task always leaves
+`input-required` once answered, the prompt stops being emitted from `status`, and the
+now-answered confirmation renders from history with its verdict. The question cannot
+appear twice, and cannot linger as "Awaiting a reply" after it has been answered;
+there is a test for exactly that overlap. The alternative — emitting whenever
+`status.message` exists — would also risk duplicating a terminal task's final message,
+which is what `status.message` holds once a task completes.
 
 **The question itself now renders as prose.** Making the row appear was not quite
 enough: `ask_user` arguments were only reachable by expanding the row, where they

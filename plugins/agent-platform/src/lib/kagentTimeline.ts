@@ -150,12 +150,24 @@ const AWAITING_INPUT_STATES = new Set(['input-required', 'auth-required']);
  * (`extractMessagesFromTasks` skips unresolved confirmations in history;
  * `extractApprovalMessagesFromTasks` reads `status.message`). One list keeps the
  * question in its chronological place instead of appending it to the end.
+ *
+ * Only an object-shaped message is appended. `status.message` is `z.unknown()` at
+ * the parse boundary, so a kagent version putting a bare string there — an
+ * `auth-required` hint, say — would otherwise reach `parseHistoryEntry`, fail
+ * `a2aMessageWireSchema` and count as `skippedMessages`, which the UI reports as
+ * "1 message could not be read" on a session that is in fact perfectly healthy.
+ * A shape we cannot render should be invisible, not announced as data loss.
  */
 function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
   const history = Array.isArray(task.history) ? task.history : [];
   const state = task.status?.state?.toLowerCase();
   const pending = task.status?.message;
-  if (!pending || !state || !AWAITING_INPUT_STATES.has(state)) {
+  if (
+    !pending ||
+    typeof pending !== 'object' ||
+    !state ||
+    !AWAITING_INPUT_STATES.has(state)
+  ) {
     return history;
   }
   return [...history, pending];
@@ -560,6 +572,24 @@ function makeCallItem(input: {
  * kagent wraps it as `args.originalFunctionCall` on the `adk_request_confirmation`
  * call (`buildApprovalMessage` in kagent's UI reads the same field).
  */
+function readProposedCall(
+  args: unknown,
+): { name?: string; args?: unknown } | undefined {
+  if (!args || typeof args !== 'object') {
+    return undefined;
+  }
+  const original = (args as { originalFunctionCall?: unknown })
+    .originalFunctionCall;
+  if (!original || typeof original !== 'object') {
+    return undefined;
+  }
+  const record = original as { name?: unknown; args?: unknown };
+  return {
+    name: typeof record.name === 'string' ? record.name : undefined,
+    args: record.args,
+  };
+}
+
 /**
  * The questions an `ask_user` call is putting to the user.
  *
@@ -591,24 +621,6 @@ function readAskUserQuestions(args: unknown): string[] {
       return undefined;
     })
     .filter((text): text is string => Boolean(text && text.trim()));
-}
-
-function readProposedCall(
-  args: unknown,
-): { name?: string; args?: unknown } | undefined {
-  if (!args || typeof args !== 'object') {
-    return undefined;
-  }
-  const original = (args as { originalFunctionCall?: unknown })
-    .originalFunctionCall;
-  if (!original || typeof original !== 'object') {
-    return undefined;
-  }
-  const record = original as { name?: unknown; args?: unknown };
-  return {
-    name: typeof record.name === 'string' ? record.name : undefined,
-    args: record.args,
-  };
 }
 
 /**
