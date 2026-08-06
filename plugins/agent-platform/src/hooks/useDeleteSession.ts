@@ -44,7 +44,9 @@ export function useDeleteSession(installation: string, sessionId: string) {
       // with a request that now 404s, flashing "Session not found" underneath
       // someone who already knows. `refetchType: 'none'` leaves the entries stale
       // instead, so a later visit to the same URL revalidates and lands on the
-      // not-found state properly.
+      // not-found state properly. Note this is now the only thing holding that
+      // race off: both reads carry a refetch interval, so changing `refetchType`
+      // here would reintroduce the flash the next time a tick lands mid-navigation.
       await Promise.all(
         [
           sessionQueryKey(installation, sessionId),

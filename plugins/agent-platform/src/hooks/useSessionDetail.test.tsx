@@ -1,10 +1,15 @@
 import { PropsWithChildren } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
-import { useSessionDetail } from './useSessionDetail';
+import { ACTIVE_REFETCH_INTERVAL_MS } from '../lib/kagentSessionPolling';
+import {
+  sessionQueryKey,
+  sessionTasksQueryKey,
+  useSessionDetail,
+} from './useSessionDetail';
 
 const getSessionDetail = jest.fn();
 const listSessionTasks = jest.fn();
@@ -25,6 +30,32 @@ function neverSettles() {
   return new Promise(() => {});
 }
 
+const SESSION = {
+  session: {
+    id: 'gazelle/abc',
+    sessionId: 'abc',
+    installation: 'gazelle',
+    title: 'Chat',
+  },
+};
+
+/** One A2A task, enough for `buildTimeline` and the polling predicate. */
+function workingTask() {
+  return {
+    id: 'task-1',
+    contextId: 'abc',
+    kind: 'task',
+    status: { state: 'working', timestamp: new Date().toISOString() },
+    history: [
+      {
+        role: 'user',
+        parts: [{ kind: 'text', text: 'hello' }],
+        kind: 'message',
+      },
+    ],
+  };
+}
+
 function renderWith() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -34,7 +65,10 @@ function renderWith() {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
-  return renderHook(() => useSessionDetail('gazelle', 'abc'), { wrapper });
+  return {
+    ...renderHook(() => useSessionDetail('gazelle', 'abc'), { wrapper }),
+    queryClient,
+  };
 }
 
 beforeEach(() => {
@@ -72,14 +106,7 @@ describe('useSessionDetail', () => {
   it('keeps loading while a readable session’s tasks are still in flight', async () => {
     // The other side of that short-circuit: with the session present there is
     // nothing to show until its conversation arrives.
-    getSessionDetail.mockResolvedValue({
-      session: {
-        id: 'gazelle/abc',
-        sessionId: 'abc',
-        installation: 'gazelle',
-        title: 'Chat',
-      },
-    });
+    getSessionDetail.mockResolvedValue(SESSION);
     listSessionTasks.mockImplementation(neverSettles);
 
     const { result } = renderWith();
@@ -87,5 +114,86 @@ describe('useSessionDetail', () => {
     await waitFor(() => expect(getSessionDetail).toHaveBeenCalled());
     expect(result.current.isNotFound).toBe(false);
     expect(result.current.isLoading).toBe(true);
+  });
+
+  it('keeps the conversation on a failed refetch', async () => {
+    // Now that these reads poll, a single failure is no longer "we have nothing":
+    // react-query keeps `data` and sets `error`, and the plugin's client does not
+    // retry ServiceUnavailable/Unauthorized/Forbidden. The page renders from
+    // `detail`, so this is what stops one proxy hiccup blanking a live session.
+    getSessionDetail.mockResolvedValue(SESSION);
+    listSessionTasks
+      .mockResolvedValueOnce([workingTask()])
+      .mockRejectedValue(new Error('proxy hiccup'));
+
+    const { result, queryClient } = renderWith();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    const itemCount = result.current.timeline.items.length;
+    expect(itemCount).toBeGreaterThan(0);
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: sessionTasksQueryKey('gazelle', 'abc'),
+      });
+    });
+
+    // Through `waitFor`: react-query batches its notifications, so the render
+    // carrying the failure lands a tick after `refetchQueries` resolves.
+    await waitFor(() =>
+      expect(result.current.error?.message).toBe('proxy hiccup'),
+    );
+    expect(result.current.detail).toBeDefined();
+    expect(result.current.timeline.items).toHaveLength(itemCount);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('reports not found when the session is deleted elsewhere', async () => {
+    // A poll is now how the page learns that someone deleted this session in
+    // another client — it must reach the not-found state, not the error one.
+    getSessionDetail
+      .mockResolvedValueOnce(SESSION)
+      .mockRejectedValue(notFoundError());
+    listSessionTasks.mockResolvedValue([workingTask()]);
+
+    const { result, queryClient } = renderWith();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: sessionQueryKey('gazelle', 'abc'),
+      });
+    });
+
+    await waitFor(() => expect(result.current.isNotFound).toBe(true));
+    expect(result.current.error).toBeUndefined();
+  });
+
+  // The only timer-dependent test here: the cadence rules themselves are covered
+  // purely in `lib/kagentSessionPolling.test.ts`, but a pure test cannot prove the
+  // interval is actually passed to `useQuery`. If this ever turns flaky it can go
+  // without losing coverage of the logic.
+  it('refetches the conversation on its own while a task is working', async () => {
+    getSessionDetail.mockResolvedValue(SESSION);
+    listSessionTasks.mockResolvedValue([workingTask()]);
+
+    // Fake timers from before the render: the interval is scheduled at mount, so
+    // switching afterwards would leave a real timer nothing can advance.
+    jest.useFakeTimers();
+    try {
+      const { result } = renderWith();
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(listSessionTasks).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        jest.advanceTimersByTime(ACTIVE_REFETCH_INTERVAL_MS);
+      });
+
+      await waitFor(() => expect(listSessionTasks).toHaveBeenCalledTimes(2));
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

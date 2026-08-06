@@ -167,7 +167,13 @@ export function SessionDetailPage() {
     );
   }
 
-  if (error || !detail || !row) {
+  // Deliberately not `error ||`: these reads poll, and react-query keeps `data`
+  // while setting `error` on a failed *refetch* — which the query client does not
+  // retry for ServiceUnavailable/Unauthorized/Forbidden. Treating any error as
+  // fatal would let one proxy hiccup replace a rendered conversation with an
+  // alert until the next successful poll. With a session in hand the page renders
+  // whatever the last read did, and says so in the notice below.
+  if (!detail || !row) {
     return (
       <Content>
         <Flex direction="column" gap="3">
@@ -194,6 +200,17 @@ export function SessionDetailPage() {
   return (
     <Content>
       <Flex direction="column" gap="4">
+        {/* A refresh that failed after the page had loaded. Shown rather than
+            thrown: the conversation on screen is still real, it has just stopped
+            keeping up, and the user needs to know which of the two it is. */}
+        {error && (
+          <Alert
+            status="warning"
+            title="This session may be out of date"
+            description={`The last refresh failed: ${error.message}`}
+          />
+        )}
+
         <Flex direction="column" gap="2">
           <BackToSessions>← Sessions</BackToSessions>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>

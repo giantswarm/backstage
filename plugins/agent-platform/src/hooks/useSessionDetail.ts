@@ -5,6 +5,10 @@ import { kagentApiRef } from '../apis';
 import { KagentSessionDetail } from '../lib/kagentSessionDetail';
 import { buildTimeline, SessionTimeline } from '../lib/kagentTimeline';
 import { deriveSessionState, SessionState } from '../lib/kagentSessionState';
+import {
+  BASELINE_REFETCH_INTERVAL_MS,
+  getSessionTasksRefetchInterval,
+} from '../lib/kagentSessionPolling';
 
 /** Query key for one session's metadata. */
 export function sessionQueryKey(installation: string, sessionId: string) {
@@ -52,6 +56,12 @@ const EMPTY_TIMELINE: SessionTimeline = {
  * They are deliberately **not** chained. Firing both immediately halves the
  * time-to-first-paint, and the cost of a wasted tasks request when the session
  * turns out not to exist is one 404 on a page the user explicitly navigated to.
+ *
+ * Both poll, on different cadences — see `lib/kagentSessionPolling.ts`. Note that
+ * this leaves the two reads out of step during an active session: the conversation
+ * updates on the fast tier while the header's "last activity" and the duration stat
+ * come from the session read a minute behind. Both render as absolute timestamps,
+ * so the lag reads as older rather than as wrong.
  */
 export function useSessionDetail(
   installation: string,
@@ -62,11 +72,16 @@ export function useSessionDetail(
   const sessionQuery = useQuery({
     queryKey: sessionQueryKey(installation, sessionId),
     queryFn: () => kagentApi.getSessionDetail(installation, sessionId),
+    // A flat baseline, not the tasks' two tiers: this object is the title, the
+    // agent and the timestamps, none of which move while an agent works. It polls
+    // at all so a session renamed or deleted elsewhere stops looking current.
+    refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
   });
 
   const tasksQuery = useQuery({
     queryKey: sessionTasksQueryKey(installation, sessionId),
     queryFn: () => kagentApi.listSessionTasks(installation, sessionId),
+    refetchInterval: getSessionTasksRefetchInterval,
   });
 
   const tasks = tasksQuery.data;
@@ -107,6 +122,9 @@ export function useSessionDetail(
     // the full retry ladder (2s/4s/8s) for a non-404 failure, or the fetch timeout
     // on an unreachable installation. The answer was already known; nothing the
     // tasks read can return would change it.
+    //
+    // `isLoading`, deliberately, not `isFetching`: it is false during a refetch,
+    // which is what keeps a poll from flashing the spinner over a rendered page.
     isLoading: !isNotFound && (sessionQuery.isLoading || tasksQuery.isLoading),
     isNotFound,
     error,
