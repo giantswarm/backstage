@@ -9,6 +9,7 @@ import { SessionTimeline } from './SessionTimeline';
 import tasksV099 from '../../lib/__fixtures__/tasks.v0-9-9.json';
 import tasksApproval from '../../lib/__fixtures__/tasks.approval.json';
 import tasksAskUser from '../../lib/__fixtures__/tasks.ask-user.json';
+import tasksAskUserPending from '../../lib/__fixtures__/tasks.ask-user-pending.json';
 import tasksEmpty from '../../lib/__fixtures__/tasks.empty-no-data.json';
 
 function timelineFor(fixture: unknown) {
@@ -183,16 +184,36 @@ describe('SessionTimeline', () => {
       expect(screen.queryByText('Approved')).not.toBeInTheDocument();
     });
 
-    it('calls the payload questions, and omits the redundant tool name', async () => {
+    it('shows the question as prose, with nothing to expand', async () => {
+      // The question is the last thing the agent said, so it belongs in the
+      // conversation rather than behind an expander as a JSON payload. With the
+      // questions on the row there is nothing left to reveal, so the row offers
+      // no expander at all.
       await render(tasksAskUser, 'SRE Agent');
 
-      await userEvent.click(
-        screen.getByRole('button', { name: /User input requested/ }),
-      );
-
-      expect(screen.getByText('Questions')).toBeInTheDocument();
+      expect(
+        screen.getByText('Which management cluster should I look at?'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /User input requested/ }),
+      ).not.toBeInTheDocument();
       // `ask_user` on every such row carries no information.
       expect(screen.queryByText('ask_user')).not.toBeInTheDocument();
+    });
+
+    it('shows a question the session is still waiting on', async () => {
+      // The unanswered confirmation lives only on `task.status.message`, and the
+      // raw `ask_user` call in history is skipped as ADK plumbing — so a session
+      // ending in a question used to render as if the agent had stopped talking
+      // mid-conversation.
+      await render(tasksAskUserPending, 'SRE Agent');
+
+      expect(
+        screen.getByText(
+          'What would you like to investigate next on the management cluster?',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Awaiting a reply')).toBeInTheDocument();
     });
 
     it('shows what the user actually replied', async () => {

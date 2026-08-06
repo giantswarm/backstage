@@ -1,0 +1,120 @@
+{
+  "comment": "A session whose last turn is still WAITING on an ask_user question. Shapes taken from a live gazelle session (session id and wording replaced): the unanswered confirmation lives only on status.message, with a messageId that appears nowhere in history, while history carries the raw ask_user calls that the timeline skips as ADK plumbing. status.message has no message-level metadata, so it contributes no token usage.",
+  "error": false,
+  "data": [
+    {
+      "id": "task-1",
+      "kind": "task",
+      "status": {
+        "state": "completed",
+        "timestamp": "2026-08-06T06:40:00.000Z"
+      },
+      "history": [
+        {
+          "kind": "message",
+          "messageId": "m-user-1",
+          "role": "user",
+          "parts": [{ "kind": "text", "text": "What is running on gazelle?" }]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-agent-1",
+          "role": "agent",
+          "metadata": { "adk_author": "sre_agent" },
+          "parts": [
+            {
+              "kind": "text",
+              "text": "The management cluster looks healthy — all Helm releases are reconciled."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "comment": "The pending turn. kagent repeats the user's message under one messageId, as it does on every turn.",
+      "id": "task-2",
+      "kind": "task",
+      "status": {
+        "state": "input-required",
+        "timestamp": "2026-08-06T06:49:30.635Z",
+        "message": {
+          "kind": "message",
+          "messageId": "m-pending-ask",
+          "role": "agent",
+          "taskId": "",
+          "contextId": "",
+          "parts": [
+            {
+              "kind": "data",
+              "metadata": {
+                "adk_type": "function_call",
+                "adk_is_long_running": true
+              },
+              "data": {
+                "id": "adk-pending-1",
+                "name": "adk_request_confirmation",
+                "args": {
+                  "originalFunctionCall": {
+                    "id": "call-ask-pending-1",
+                    "name": "ask_user",
+                    "args": {
+                      "questions": [
+                        {
+                          "question": "What would you like to investigate next on the management cluster?"
+                        }
+                      ]
+                    }
+                  },
+                  "toolConfirmation": {
+                    "confirmed": false,
+                    "hint": "What would you like to investigate next on the management cluster?",
+                    "payload": null
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "history": [
+        {
+          "kind": "message",
+          "messageId": "m-user-2",
+          "role": "user",
+          "parts": [{ "kind": "text", "text": "Anything else worth checking?" }]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-user-2",
+          "role": "user",
+          "parts": [{ "kind": "text", "text": "Anything else worth checking?" }]
+        },
+        {
+          "comment": "The raw ask_user call, skipped as ADK plumbing — the approval path is what renders the question.",
+          "kind": "message",
+          "messageId": "m-raw-ask-1",
+          "role": "agent",
+          "metadata": { "adk_author": "sre_agent" },
+          "parts": [
+            {
+              "kind": "data",
+              "metadata": { "adk_type": "function_call" },
+              "data": {
+                "id": "call-ask-pending-1",
+                "name": "ask_user",
+                "args": {
+                  "questions": [
+                    {
+                      "question": "What would you like to investigate next on the management cluster?"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "message": "Successfully retrieved session tasks"
+}

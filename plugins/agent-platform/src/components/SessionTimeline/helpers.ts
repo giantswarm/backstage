@@ -48,6 +48,12 @@ export function expandablePayloads(
   ) {
     return undefined;
   }
+  // A question's args *are* the questions, and those now render as prose on the
+  // row itself. Repeating them as a JSON payload behind an expander would offer a
+  // click that reveals a worse copy of what is already on screen.
+  if (item.kind === 'approval' && item.questions?.length) {
+    return undefined;
+  }
   const args = formatPayload(item.args);
   // An approval has no result — it carries the *proposed* call, which never ran as
   // this item.

@@ -78,6 +78,16 @@ export type TimelineItem =
       asks: 'approval' | 'input';
       /** The tool the agent proposed to run, when the payload named one. */
       toolName?: string;
+      /**
+       * The questions themselves, when this is an `ask_user`.
+       *
+       * Extracted here rather than left for the UI to dig out of {@link args},
+       * because a question is the last thing the agent *said* — it belongs in the
+       * conversation as prose, not behind an expander as JSON. Empty when the
+       * payload used a shape we don't recognise, in which case the raw args remain
+       * the only record and the UI falls back to showing them.
+       */
+      questions?: string[];
       args?: unknown;
       /** Undefined while the request is still unanswered. */
       verdict?: 'approved' | 'rejected';
@@ -102,6 +112,54 @@ export type SessionTimeline = {
 type OpenCall = { callId: string; itemIndex: number };
 
 const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
+
+/**
+ * The A2A states in which `status.message` is a prompt the task is *waiting on*,
+ * rather than incidental status text.
+ *
+ * The legacy (v0) spellings, which is what this client reads: `listSessionTasks`
+ * deliberately sends no `A2A-Version` header, and kagent treats a missing header
+ * as the legacy wire.
+ */
+const AWAITING_INPUT_STATES = new Set(['input-required', 'auth-required']);
+
+/**
+ * A task's history, plus the question it is currently waiting on.
+ *
+ * kagent puts an *unanswered* confirmation on `task.status.message` and **not** in
+ * `history`, so a session that ends by asking the user something rendered as if
+ * the agent had simply stopped talking. The raw `ask_user` call does appear in
+ * history, but it is deliberately skipped as ADK plumbing (`INTERNAL_TOOL_NAMES`)
+ * because the approval path is supposed to render it — and that path only ever
+ * looked at history. The question fell between the two.
+ *
+ * Verified against a live gazelle session: the pending `status.message` carries a
+ * distinct `messageId` that appears nowhere in `history`, wrapping the question in
+ * the same `adk_request_confirmation` shape an answered one has. So appending it
+ * as a final entry gets the existing approval handling — including the
+ * `ask_user` -> `asks: 'input'` discrimination — for free.
+ *
+ * Gated on the state rather than merely on the message being present. Two reasons:
+ * it is the documented contract (`status.message` "carries the pending prompt
+ * while a task waits for input"), and it makes the item self-clearing — once the
+ * user answers elsewhere and the task reaches a terminal state, the prompt stops
+ * being emitted here and the answered confirmation renders from history instead,
+ * so the card cannot linger as a question that has already been answered.
+ *
+ * kagent's own UI splits the same problem across two passes
+ * (`extractMessagesFromTasks` skips unresolved confirmations in history;
+ * `extractApprovalMessagesFromTasks` reads `status.message`). One list keeps the
+ * question in its chronological place instead of appending it to the end.
+ */
+function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
+  const history = Array.isArray(task.history) ? task.history : [];
+  const state = task.status?.state?.toLowerCase();
+  const pending = task.status?.message;
+  if (!pending || !state || !AWAITING_INPUT_STATES.has(state)) {
+    return history;
+  }
+  return [...history, pending];
+}
 
 /**
  * Turn kagent's A2A tasks into a flat, renderable timeline.
@@ -166,14 +224,14 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // because this is now the *only* timestamp source — it becomes `at` for every
     // item in the task.
     const taskTimestamp = normalizeTimestamp(task.status?.timestamp);
-    const history = Array.isArray(task.history) ? task.history : [];
+    const entries = historyWithPendingPrompt(task);
 
     // Open calls are per task: a response never answers a call from another turn,
     // and letting them match across tasks would attach a result to the wrong call
     // when a tool is used repeatedly.
     const openCalls: OpenCall[] = [];
 
-    history.forEach((entry, entryIndex) => {
+    entries.forEach((entry, entryIndex) => {
       const parsed = parseHistoryEntry(entry);
       if (parsed.kind === 'unparseable') {
         skippedMessages += 1;
@@ -400,6 +458,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         // sufficient and can't degrade like that.
         if (call.name === CONFIRMATION_TOOL_NAME) {
           const proposed = readProposedCall(call.args);
+          const isQuestion = proposed?.name === ASK_USER_TOOL_NAME;
           openApprovalIndex = items.length;
           items.push({
             kind: 'approval',
@@ -407,8 +466,11 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             at,
             author,
             taskIndex,
-            asks: proposed?.name === ASK_USER_TOOL_NAME ? 'input' : 'approval',
+            asks: isQuestion ? 'input' : 'approval',
             toolName: proposed?.name,
+            questions: isQuestion
+              ? readAskUserQuestions(proposed?.args)
+              : undefined,
             args: proposed?.args,
           });
           return;
@@ -498,6 +560,39 @@ function makeCallItem(input: {
  * kagent wraps it as `args.originalFunctionCall` on the `adk_request_confirmation`
  * call (`buildApprovalMessage` in kagent's UI reads the same field).
  */
+/**
+ * The questions an `ask_user` call is putting to the user.
+ *
+ * Shape on the wire, from a live gazelle session:
+ * `args: { questions: [{ question: "…" }] }` — one entry per question, and a real
+ * `ask_user` can ask several at once.
+ *
+ * Anything that doesn't match is skipped rather than coerced: a question rendered
+ * from a guessed field would put words in the agent's mouth, and the raw args are
+ * still shown when nothing here matches.
+ */
+function readAskUserQuestions(args: unknown): string[] {
+  if (!args || typeof args !== 'object') {
+    return [];
+  }
+  const { questions } = args as { questions?: unknown };
+  if (!Array.isArray(questions)) {
+    return [];
+  }
+  return questions
+    .map(entry => {
+      if (typeof entry === 'string') {
+        return entry;
+      }
+      if (entry && typeof entry === 'object') {
+        const { question } = entry as { question?: unknown };
+        return typeof question === 'string' ? question : undefined;
+      }
+      return undefined;
+    })
+    .filter((text): text is string => Boolean(text && text.trim()));
+}
+
 function readProposedCall(
   args: unknown,
 ): { name?: string; args?: unknown } | undefined {
