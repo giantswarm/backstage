@@ -264,11 +264,26 @@ export function TimelineEntry({
   // No expander when there is nothing behind it. An accordion that opens onto an
   // empty panel invites a click and answers with nothing.
   if (!hasExpandableDetail(item)) {
+    const questions =
+      item.kind === 'approval' ? (item.questions ?? []) : undefined;
     return (
       <div className={classes.entry} data-testid={`timeline-${item.kind}`}>
         <div className={classes.inertSummary}>
           <CollapsedSummary item={item} />
         </div>
+        {/* A question is the last thing the agent said, so it reads as prose in
+            the conversation rather than as a payload to go looking for. Several
+            questions can arrive in one `ask_user`; they are numbered so a reply
+            can refer to them. */}
+        {questions && questions.length > 0 && (
+          <MessageBody
+            text={
+              questions.length === 1
+                ? questions[0]
+                : questions.map((text, i) => `${i + 1}. ${text}`).join('\n\n')
+            }
+          />
+        )}
       </div>
     );
   }
