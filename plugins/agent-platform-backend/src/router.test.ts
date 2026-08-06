@@ -21,11 +21,14 @@ describe('createRouter', () => {
   const getSession = jest.fn();
   const listSessionTasks = jest.fn();
 
+  const deleteSession = jest.fn();
+
   const mockClient = {
     listSessions,
     getMe,
     getSession,
     listSessionTasks,
+    deleteSession,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -56,6 +59,7 @@ describe('createRouter', () => {
     getMe.mockReset();
     getSession.mockReset();
     listSessionTasks.mockReset();
+    deleteSession.mockReset();
     app = await buildApp();
   });
 
@@ -415,6 +419,131 @@ describe('createRouter', () => {
 
       const response = await request(app)
         .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+  });
+
+  describe('DELETE /kagent/sessions/:sessionId', () => {
+    const deletedBody = {
+      error: false,
+      data: {},
+      message: 'Session deleted successfully',
+    };
+
+    it('forwards the id and token and echoes the body verbatim', async () => {
+      deleteSession.mockResolvedValue(deletedBody);
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(deletedBody);
+      expect(deleteSession).toHaveBeenCalledWith('abc', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('does not answer a GET on the same path', async () => {
+      // Express routes by method, so the read route above must keep handling GET —
+      // asserted because both live on the same path.
+      getSession.mockResolvedValue({ error: false, data: {} });
+
+      await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(getSession).toHaveBeenCalledTimes(1);
+      expect(deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('passes an empty upstream success through as a 204', async () => {
+      // Rather than `res.json(undefined)`, which sends an empty body under a JSON
+      // content-type — the frontend would then have to parse nothing as something.
+      deleteSession.mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
+    });
+
+    it('requires the installation query parameter', async () => {
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(400);
+      expect(deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      // The token is the whole authorization story here: kagent derives the user
+      // from it, and without one an `unsecure` controller would delete the shared
+      // default user's session.
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown installation', async () => {
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
+        .query({ installation: 'nope' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(400);
+      expect(deleteSession).not.toHaveBeenCalled();
+    });
+
+    it('passes an opaque id through undecorated', async () => {
+      deleteSession.mockResolvedValue(deletedBody);
+
+      await request(app)
+        .delete('/kagent/sessions/%20abc%20')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(deleteSession).toHaveBeenCalledWith(' abc ', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('reports an unreachable installation as 404, not a 5xx', async () => {
+      // Same reasoning as the reads: expected outcomes stay below the threshold
+      // at which MiddlewareFactory logs at error and Sentry gets an issue.
+      const notFound = new Error('The kagent API is not available');
+      notFound.name = 'NotFoundError';
+      deleteSession.mockRejectedValue(notFound);
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+    });
+
+    it('still reports a failed delete as a 5xx', async () => {
+      // A delete that kagent accepted and could not perform is genuinely
+      // actionable, unlike a read that found nothing.
+      const upstream = new Error('kagent returned status 500');
+      upstream.name = 'UpstreamError';
+      deleteSession.mockRejectedValue(upstream);
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc')
         .query({ installation: 'gazelle' })
         .set(KAGENT_AUTH_HEADER, 'user-token');
 

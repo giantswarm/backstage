@@ -198,6 +198,38 @@ export async function createRouter(
     res.json(result);
   });
 
+  /**
+   * Delete one session. kagent soft-deletes it, scoped to the forwarded token's
+   * user id — the same scoping the reads rely on.
+   *
+   * The token is **required**, and it is the whole authorization story for this
+   * route: kagent decides who the caller is from it, and a controller running in
+   * `unsecure` mode would otherwise delete the shared default user's session on
+   * behalf of nobody in particular.
+   *
+   * Nothing expected reaches a 5xx here. kagent answers 200 even when the session
+   * does not exist or belongs to somebody else (its statement matches no rows), and
+   * `KagentClient` maps an unreachable installation to a 404 — so this route should
+   * never hit `MiddlewareFactory.error()`'s `>= 500` branch, which forwards to
+   * Sentry.
+   */
+  router.delete('/kagent/sessions/:sessionId', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.deleteSession(readSessionId(req), {
+      userToken: readUserToken(req, { required: true }),
+    });
+
+    // Pass an empty upstream success through as one, rather than as `res.json()`'s
+    // empty body with a JSON content-type. Only reachable if a future kagent
+    // answers 204 to the delete; today it returns its envelope with a 200.
+    if (result === undefined) {
+      res.status(204).end();
+      return;
+    }
+
+    res.json(result);
+  });
+
   /** The session's A2A tasks — the conversation, its state and token usage. */
   router.get('/kagent/sessions/:sessionId/tasks', async (req, res) => {
     const { client } = resolveInstallation(req);

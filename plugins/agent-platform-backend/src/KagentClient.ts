@@ -244,10 +244,12 @@ export class KagentClient {
       )}?limit=1`,
       options,
       {
-        // The id is left out on purpose: it is opaque and high-cardinality, and
-        // the user already has it in the URL they followed.
-        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
-        endpoint: 'session detail',
+        notFound: {
+          // The id is left out on purpose: it is opaque and high-cardinality, and
+          // the user already has it in the URL they followed.
+          missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+          endpoint: 'session detail',
+        },
       },
     );
   }
@@ -272,8 +274,50 @@ export class KagentClient {
       )}/tasks`,
       options,
       {
-        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
-        endpoint: 'session tasks',
+        notFound: {
+          missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+          endpoint: 'session tasks',
+        },
+      },
+    );
+  }
+
+  /**
+   * `DELETE <apiBaseUrl>/sessions/<id>` — kagent's session delete.
+   *
+   * Scoped to the forwarded token's user, and **soft**: kagent sets `deleted_at`
+   * on the row (`UPDATE session SET deleted_at = NOW() WHERE id = $1 AND
+   * user_id = $2`) and every read filters `deleted_at IS NULL`, so the session and
+   * its events stay in the database while disappearing from the API.
+   *
+   * Identical on v0.9.9 and v0.10, including two things worth knowing:
+   *
+   * - **Deleting something that is not there succeeds.** The statement is an
+   *   `:exec`, so zero affected rows is not an error — a session that never
+   *   existed, was already deleted, or belongs to another user all answer 200.
+   *   There is no 404 to handle here, and no "already gone" case to special-case.
+   * - **The response is a 200 with kagent's usual JSON envelope**, not a 204.
+   *
+   * Returned verbatim like every other response: this client is transport only.
+   */
+  async deleteSession(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    return this.request(
+      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
+        sessionId,
+      )}`,
+      options,
+      {
+        method: 'DELETE',
+        notFound: {
+          // Only reachable for a `text/plain` 404, i.e. no such route — kagent's
+          // own handler never 404s here (see above). The route has existed since
+          // v0.9.x, so this wording is purely defensive.
+          missingResource: `That session does not exist on installation '${this.installation.name}'.`,
+          endpoint: 'session delete',
+        },
       },
     );
   }
@@ -309,11 +353,18 @@ export class KagentClient {
   private async request(
     url: string,
     options: KagentRequestOptions,
-    notFound?: NotFoundContext,
+    extra: {
+      /** Defaults to GET; the reads leave it out. */
+      method?: 'GET' | 'DELETE';
+      notFound?: NotFoundContext;
+    } = {},
   ): Promise<unknown> {
+    const { method = 'GET', notFound } = extra;
+
     let response: Response;
     try {
       response = await this.fetchFn(url, {
+        method,
         headers: {
           Accept: 'application/json',
           ...(options.userToken && {
@@ -431,6 +482,19 @@ export class KagentClient {
       throw upstreamError(
         `The kagent API for installation '${this.installation.name}' returned status ${response.status}.`,
       );
+    }
+
+    // `204 No Content` is a success with nothing to parse, and must be handled
+    // before the guards below: it carries no content-type, so the sign-in-page
+    // check would call it an authentication failure, and `response.json()` would
+    // throw on the empty body. Nothing kagent serves today answers 204 — its
+    // delete returns 200 with the usual envelope on both v0.9.9 and v0.10 — but
+    // getting this wrong is expensive in one specific direction: a future version
+    // that answered 204 to the DELETE would have *performed* the deletion while
+    // this told the user a sign-in page was served, and the frontend would leave
+    // the confirmation dialog open on an error for a session that is already gone.
+    if (response.status === 204) {
+      return undefined;
     }
 
     // A 2xx with a non-JSON body is oauth2-proxy serving its sign-in page

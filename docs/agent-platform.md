@@ -233,7 +233,9 @@ the open TODOs.
 ## The Sessions tab
 
 `/agent-platform/sessions` lists the signed-in user's kagent chat sessions across
-the fleet. Read-only: no create, delete, rename, or detail view.
+the fleet. The list itself carries no actions: a session opens into its detail page,
+where it can be **deleted** (see "Deleting a session"), but nothing here creates or
+renames one.
 
 ### Why it needs a backend proxy
 
@@ -428,8 +430,9 @@ than active filtering today.
 stats strip, and the conversation. The installation is in the path because it is
 part of the session's identity — kagent ids are only unique within one.
 
-**Read-only.** kagent can rename, delete and continue a session, and the prototype
-offers all three. None are wired up, so this screen ships without a write path.
+A session can be **deleted** from the kebab menu (see "Deleting a session"). kagent
+can also rename and continue a session, and the prototype offers both — neither is
+wired up.
 
 ### Two reads, and why the events are ignored
 
@@ -541,6 +544,70 @@ rendered "Started 1 day ago · last activity 1 day ago" for a session that took
 three minutes, and printed "1 day ago" identically on every turn marker — hiding
 the progression the timeline exists to show. The list keeps the relative form,
 where scanning for recency is the point.
+
+### Deleting a session
+
+`useDeleteSession` + `SessionDeleteDialog`, offered as a `Delete session…` item in
+the kebab — the first write path on the kagent REST side, so
+`agent-platform-backend` grew a `DELETE /kagent/sessions/:sessionId` route and its
+client a method parameter to go with it. Everything about the transport is otherwise
+the reads' machinery reused: same installation resolution, same forwarded Dex token,
+same status mapping.
+
+**There is no permission check to make, which is why there is no gating.** Unlike
+the agent delete — three conditions and a `SelfSubjectAccessReview` — a session is
+not a Kubernetes object, and kagent derives the acting user from the forwarded token
+alone (`GetUserID` → `GetPrincipal`). There is nothing to ask in advance and nothing
+to withhold the affordance for, so the item is always offered on a session that
+loaded. The forwarded token is correspondingly **required** by the backend route:
+without one, a controller in `unsecure` mode would delete the shared default user's
+session on behalf of nobody.
+
+**kagent's delete is soft, and both halves of that matter.** The statement is
+`UPDATE session SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at
+IS NULL`, and every read filters `deleted_at IS NULL` — the session's row, events and
+tasks all survive on kagent's side while disappearing from every API response. So
+"deleted" is total as far as this UI is concerned and there is no undo anywhere in
+it, but it is not erasure, and the dialog says exactly that rather than picking one
+of the two and being wrong about the other.
+
+**A delete that changed nothing still answers 200.** The statement is an `:exec`, so
+zero affected rows is not an error: a session that never existed, was already
+deleted, or belongs to another user all succeed silently. Nothing here tries to
+detect that — a resolved promise means "kagent accepted this", and the invalidated
+list is what shows the truth a moment later. It also means there is no 404 path to
+handle on the write side, and no "already gone" case to special-case.
+
+**On a non-user-scoped deployment the dialog adds a line.** `isUserScoped === false`
+(from the `/me` probe — see "User scoping") means kagent ignores the forwarded
+identity and serves one shared user, so the session on screen may have been started
+by someone else. It warns rather than withholding the action: kagent authorizes the
+call either way, and the person reading is the one who knows whose session it is.
+An unresolved probe claims nothing.
+
+**Cache handling has one non-obvious half.** The sessions list key
+(`['agent-platform', 'kagent', 'sessions', <installation>]`) is invalidated normally,
+so the list the user lands back on is correct. Note this reaches the Sessions tab
+only: `useAgentSessions` reads the same key for the agent page's recent-sessions
+card, but each tab's router mounts its own `QueryClientProvider` with a fresh
+`QueryClient`, so that is a different cache. It needs nothing — a fresh client starts
+empty and these keys are never persisted, so the card refetches when the Agents tab
+mounts. This session's own two reads are invalidated
+with **`refetchType: 'none'`**: the detail page is still mounted at that moment, so
+refetching would race the navigation with a request that now 404s and flash "Session
+not found" at someone who just deleted it deliberately. Stale-without-refetch leaves
+a later visit to the same URL to revalidate and land on the not-found state properly.
+
+On success the user goes back to the sessions list with a toast that says
+**"deleted"**, in the past tense — unlike the agent's "Deleting", because kagent's
+delete is synchronous and nothing is still settling behind it. On failure the dialog
+stays open and shows the message, with no toast, since the user is still looking at
+the modal. The confirmation itself is `ConfirmDialog` from `ui-react`, the same
+component the agent delete uses.
+
+Verified against the kagent source at both `v0.9.9` (what the fleet runs) and
+`v0.10.0-rc1`: the handler, the SQL and the 200-with-envelope response are identical
+in both.
 
 ## The agent detail page
 
@@ -845,10 +912,11 @@ above). What remains is a separate, deeper concern:
   form driven from an existing agent, plus a decision about whether that produces
   a live apply or a PR (GitOps-managed agents are read-only, see "GitOps
   provenance"). "Launch session" also has no write path today.
-- **Session management + detail.** The Sessions tab is read-only. kagent supports
-  deleting (soft) and renaming sessions, and exposes a session's events and A2A
-  tasks — enough for a detail view. Deliberately deferred: rename in particular
-  deviates from the prototype, where sessions are never user-named.
+- **Renaming and continuing a session.** The detail view and delete exist (see
+  "Deleting a session"); kagent's `PUT /api/sessions/:id` and its chat endpoint have
+  no UI. Rename in particular deviates from the prototype, where sessions are never
+  user-named. Deleting from a list row is also unimplemented — deliberately, since a
+  destructive action on a row someone is scanning past is easy to hit by accident.
 - **Landing page.** The section still opens on the Agents tab. Whether the
   platform wants a proper landing page above the tabs — fleet health, recent
   activity — is an open product question, not a gap in the tabs themselves.

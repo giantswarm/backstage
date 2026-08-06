@@ -25,7 +25,7 @@ export interface KagentApi {
    * The signed-in user's sessions on one installation, already parsed and
    * normalized.
    *
-   * Read-only and user-scoped: kagent lists sessions with
+   * User-scoped: kagent lists sessions with
    * `WHERE user_id = <sub of the forwarded token>`, and exposes no cross-user
    * listing at all.
    *
@@ -60,6 +60,20 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
   ): Promise<A2aTaskWire[]>;
+
+  /**
+   * Delete one session.
+   *
+   * kagent scopes this by the forwarded token's user id and deletes **softly**:
+   * the row keeps its events and tasks, but every read filters it out, so the
+   * session is gone as far as this plugin can tell.
+   *
+   * Resolves for anything kagent accepts, which includes deleting a session that
+   * was already deleted or belongs to somebody else — its statement simply matches
+   * no rows and still answers 200. So a resolved promise means "kagent accepted
+   * this", not "a session was definitely removed".
+   */
+  deleteSession(installation: string, sessionId: string): Promise<void>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;

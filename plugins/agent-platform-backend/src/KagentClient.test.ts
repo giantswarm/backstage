@@ -298,6 +298,108 @@ describe('KagentClient', () => {
     });
   });
 
+  describe('session delete', () => {
+    it('sends a DELETE to the session path, with the forwarded token', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(
+        jsonResponse({
+          error: false,
+          data: {},
+          message: 'Session deleted successfully',
+        }),
+      );
+
+      await build(fetchFn).deleteSession('abc123', {
+        userToken: 'user-token',
+      });
+
+      const [url, init] = fetchFn.mock.calls[0];
+      // No `limit` here: unlike the read, nothing comes back that needs trimming.
+      expect(url).toBe('https://kagent.gazelle.example.io/api/sessions/abc123');
+      expect(init.method).toBe('DELETE');
+      expect(init.headers).toEqual({
+        Accept: 'application/json',
+        Authorization: 'Bearer user-token',
+      });
+      expect(init.redirect).toBe('manual');
+    });
+
+    it('leaves the reads on GET', async () => {
+      // The method is now a parameter, so this pins the default: a typo that sent
+      // every read as a DELETE would otherwise be caught by nothing here.
+      const fetchFn = jest
+        .fn()
+        .mockImplementation(async () => jsonResponse({}));
+      const client = build(fetchFn);
+
+      await client.listSessions({ userToken: 't' });
+      await client.getSession('abc', { userToken: 't' });
+      await client.listSessionTasks('abc', { userToken: 't' });
+      await client.getMe({ userToken: 't' });
+
+      for (const [, init] of fetchFn.mock.calls) {
+        expect(init.method).toBe('GET');
+      }
+    });
+
+    it('escapes a session id that is not URL-safe', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).deleteSession('a/b?c=d', { userToken: 't' });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/a%2Fb%3Fc%3Dd',
+      );
+    });
+
+    it('returns kagent’s envelope verbatim', async () => {
+      const body = {
+        error: false,
+        data: {},
+        message: 'Session deleted successfully',
+      };
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse(body));
+
+      const result = await build(fetchFn).deleteSession('abc123', {
+        userToken: 't',
+      });
+
+      expect(result).toEqual(body);
+    });
+
+    it('treats a 204 as an empty success, not a sign-in page', async () => {
+      // kagent returns 200 with its envelope today. If a version ever answered 204,
+      // the deletion has *happened* — and without this the missing content-type
+      // hits the sign-in-page guard, so the frontend would keep the confirmation
+      // dialog open reporting an auth failure for a session that is already gone.
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(new Response(null, { status: 204 }));
+
+      await expect(
+        build(fetchFn).deleteSession('abc', { userToken: 't' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('reports an absent route as a version problem', async () => {
+      // Defensive only — the route has existed since v0.9.x — but the plain-text
+      // 404 must not read as "that session is gone", which is exactly the outcome a
+      // user would then stop worrying about.
+      const fetchFn = jest.fn().mockResolvedValue(
+        new Response('404 page not found', {
+          status: 404,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        }),
+      );
+
+      await expect(
+        build(fetchFn).deleteSession('abc', { userToken: 't' }),
+      ).rejects.toMatchObject({
+        name: 'NotFoundError',
+        message: expect.stringContaining('has no session delete endpoint'),
+      });
+    });
+  });
+
   it('requests /me under the API base URL', async () => {
     const fetchFn = jest.fn().mockResolvedValue(jsonResponse({ sub: 'a@b.c' }));
 

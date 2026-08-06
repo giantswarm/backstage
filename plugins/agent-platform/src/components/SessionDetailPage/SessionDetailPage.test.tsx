@@ -38,6 +38,30 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
 
+// The page calls both of these on the menu's behalf, because the menu renders in
+// the shared header — outside the plugin's QueryClientProvider — and so cannot call
+// them itself. This test mounts no query client, which is why they are stubbed.
+const mockDeleteSession = jest.fn();
+jest.mock('../../hooks/useDeleteSession', () => ({
+  useDeleteSession: () => ({
+    deleteSession: mockDeleteSession,
+    isDeleting: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+
+jest.mock('../../hooks/useKagentCapabilities', () => ({
+  useKagentCapabilities: () => ({ isUserScoped: true }),
+}));
+
+/** What the page handed to the shared header slot on the last render. */
+const providedActions = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  useProvidePageHeaderActions: (actions: ReactNode) => providedActions(actions),
+}));
+
 const tasks = normalizeTaskList(tasksV099).tasks;
 const timeline = buildTimeline(tasks);
 const detail = normalizeSessionDetail(detailV099, 'gazelle').detail!;
@@ -64,8 +88,15 @@ async function render() {
   });
 }
 
+/** The last element the page provided as header actions. */
+function lastProvidedActions() {
+  const calls = providedActions.mock.calls;
+  return calls[calls.length - 1]?.[0];
+}
+
 describe('SessionDetailPage', () => {
   beforeEach(() => {
+    providedActions.mockClear();
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
       rows: [
@@ -93,6 +124,30 @@ describe('SessionDetailPage', () => {
     // twice on purpose: in the header, and as the author of its messages.
     expect(screen.getAllByText('Issue tracker').length).toBeGreaterThan(0);
     expect(screen.getByText('on gazelle')).toBeInTheDocument();
+  });
+
+  it('offers the actions menu once the session is loaded', async () => {
+    await render();
+
+    expect(lastProvidedActions()).not.toBeNull();
+  });
+
+  it.each([
+    ['a missing session', { detail: undefined, isNotFound: true }],
+    ['a failed read', { detail: undefined, error: new Error('nope') }],
+    ['a load in flight', { detail: undefined, isLoading: true }],
+  ])('offers no actions for %s', async (_label, view) => {
+    // A delete needs a session to delete. Registering the menu regardless would put
+    // a kebab in the header of a page that is showing "Session not found".
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: emptyTimeline,
+      ...view,
+    });
+
+    await render();
+
+    expect(lastProvidedActions()).toBeNull();
   });
 
   it('shows the state from the most recent task', async () => {

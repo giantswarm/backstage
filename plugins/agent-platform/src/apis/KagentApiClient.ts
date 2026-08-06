@@ -55,6 +55,21 @@ function upstreamError(message: string): Error {
   return error;
 }
 
+/**
+ * A kagent envelope reporting a failure in-band on an otherwise successful
+ * response.
+ *
+ * Deliberately narrow — `error === true` and nothing else. The reads go through
+ * the zod layer for this; the write path has no payload to parse, so it checks the
+ * one field that can turn a 200 into a failure.
+ */
+function isErrorEnvelope(body: unknown): body is Record<string, unknown> {
+  if (typeof body !== 'object' || body === null) {
+    return false;
+  }
+  return (body as { error?: unknown }).error === true;
+}
+
 /** Which read produced the drift — part of the dedupe key and of the message. */
 type DriftSource = 'sessions' | 'session' | 'session tasks';
 
@@ -198,6 +213,39 @@ export class KagentApiClient implements KagentApi {
     return tasks;
   }
 
+  async deleteSession(installation: string, sessionId: string): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'DELETE',
+      headers,
+    });
+
+    await this.throwIfNotOk(response);
+
+    // The body is read but not required. kagent answers 200 with its usual
+    // `{error, data, message}` envelope, and the envelope carries nothing worth
+    // returning — but a `200 error: true` would be a failure reported in-band, the
+    // same shape the session and list readers already refuse to treat as success.
+    //
+    // An empty body still counts as a success: requiring JSON here would fail a
+    // delete that actually happened. That tolerance only reaches all the way
+    // through because `KagentClient.request` in agent-platform-backend has the
+    // matching half — it returns an upstream 204 as an empty success instead of
+    // reporting a missing content-type as a sign-in page, and the route passes it
+    // on as a 204. Both halves are needed; neither is any use alone.
+    const body = await response.json().catch(() => undefined);
+    if (isErrorEnvelope(body)) {
+      throw upstreamError(
+        typeof body.message === 'string' && body.message
+          ? body.message
+          : 'kagent reported an error while deleting the session, without saying what.',
+      );
+    }
+  }
+
   async getIdentity(installation: string): Promise<KagentIdentity> {
     // Best-effort token: the backend reads it as optional here, so a broker or
     // Dex-session failure must not stop the probe. This is the one installation
@@ -211,8 +259,24 @@ export class KagentApiClient implements KagentApi {
     return { sub: parsed.success ? parsed.data.sub : undefined };
   }
 
+  /** GET a backend route, forwarding the target installation's Dex token. */
+  private async get<T>(
+    path: string,
+    installation?: string,
+    options: { tokenRequired?: boolean } = {},
+  ): Promise<T> {
+    const { url, headers } = await this.prepare(
+      path,
+      installation,
+      options.tokenRequired ?? true,
+    );
+    const response = await this.fetchApi.fetch(url, { headers });
+    return this.handleResponse<T>(response);
+  }
+
   /**
-   * GET a backend route, forwarding the target installation's Dex token.
+   * Resolve a backend route to a URL and headers, minting the installation's Dex
+   * token on the way.
    *
    * The token is minted lazily, per call: a mint failure then fails only this
    * installation's request, which is what lets the fleet fan-out degrade one
@@ -222,12 +286,11 @@ export class KagentApiClient implements KagentApi {
    * optionally — the request still goes out without it rather than failing
    * before it is sent.
    */
-  private async get<T>(
+  private async prepare(
     path: string,
     installation?: string,
-    options: { tokenRequired?: boolean } = {},
-  ): Promise<T> {
-    const { tokenRequired = true } = options;
+    tokenRequired: boolean = true,
+  ): Promise<{ url: string; headers: Record<string, string> }> {
     const baseUrl = await this.discoveryApi.getBaseUrl('agent-platform');
     const url = new URL(`${baseUrl}${path}`);
 
@@ -240,8 +303,7 @@ export class KagentApiClient implements KagentApi {
       }
     }
 
-    const response = await this.fetchApi.fetch(url.toString(), { headers });
-    return this.handleResponse<T>(response);
+    return { url: url.toString(), headers };
   }
 
   private async mintToken(
@@ -275,6 +337,12 @@ export class KagentApiClient implements KagentApi {
    * couldn't read it" (everything else, surfaced).
    */
   private async handleResponse<T>(response: Response): Promise<T> {
+    await this.throwIfNotOk(response);
+    return response.json() as Promise<T>;
+  }
+
+  /** {@link handleResponse}'s status handling, shared with the write path. */
+  private async throwIfNotOk(response: Response): Promise<void> {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const message =
@@ -306,6 +374,5 @@ export class KagentApiClient implements KagentApi {
       }
       throw error;
     }
-    return response.json() as Promise<T>;
   }
 }
