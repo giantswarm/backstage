@@ -121,6 +121,27 @@
       allowedVersions: '<4',
     },
     {
+      // minimatch is only ever a transitive dependency here, resolved across
+      // four majors at once (3.x, 5.x, 7.x/9.x, 10.x). From v7 on it ships via
+      // tshy, so its CommonJS entry is a namespace object and
+      // `require('minimatch')` is no longer callable -- but eslint-plugin-react,
+      // test-exclude (jest coverage), @stoplight/spectral-core and
+      // @humanwhocodes/config-array all still call it as a function. A v10 major
+      // applied to the 3.x/5.x lines therefore breaks lint and coverage at
+      // runtime, and there is no single version that works for the whole tree.
+      //
+      // This is not security debt: upstream backports fixes to every legacy line
+      // and publishes them as that line's newest release (legacy-v3, legacy-v5,
+      // legacy-v7, legacy-v9 dist-tags), so the caret ranges in the tree pick up
+      // the patched version on their own -- which is why root package.json no
+      // longer pins them and keeps only the one exact-version override
+      // (@stoplight/spectral-core requires minimatch 3.1.2). Minor/patch still
+      // flow.
+      matchPackageNames: ['minimatch'],
+      matchUpdateTypes: ['major'],
+      enabled: false,
+    },
+    {
       // global-agent v4 is ESM-only and removed the CommonJS
       // `global-agent/bootstrap` entrypoint that packages/backend/src/index.ts
       // imports. v4 crashes the backend container at startup with
