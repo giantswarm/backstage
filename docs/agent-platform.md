@@ -535,6 +535,35 @@ rather than the shared `ErrorsProvider`/`useShowErrors` notice the agent detail 
 uses, because the sessions router mounts no `ErrorsProvider` and adding one would
 mean splitting this page into wrapper and content for a one-line message.
 
+**"Keep what you have" is not the same as "render whatever is in hand", and three
+cases pull them apart.** The two reads fail independently, so each needed its own
+answer:
+
+- **The conversation never loaded.** A tasks read that fails on _first_ load leaves
+  the timeline, turn count and tokens at their zero values while the session read
+  succeeds. Rendering that would state "no activity", `Turns 0` and "no messages
+  yet" about a session with a full conversation. The hook exposes `hasConversation`
+  (`tasksQuery.data !== undefined`) and the page keeps the fatal branch when it is
+  false — absent is not empty. A session that genuinely never ran reads as `[]`,
+  which is data, and still renders as "no activity".
+- **A poll returns a 200 with no readable session.** `getSessionDetail` resolves
+  `undefined` for that, and react-query _rejects_ an `undefined` resolve — the query
+  errors with `[…query key…] data is undefined`, which leaked a raw query key into
+  the UI and made the `isSuccess && !data` branch unreachable. The query function
+  now coerces to `null`, which react-query stores. On top of that, an empty read
+  only means "no such session" **before** one has been read: once the page is
+  showing a conversation, the same answer means unreadable, not deleted — an expired
+  oauth2-proxy serving an HTML sign-in page under a 200 is the realistic trigger,
+  and telling someone their session "may have been deleted" for that would be a lie.
+  A genuine 404 still counts at any point, since that is how a delete elsewhere
+  shows up.
+- **A delete is in flight.** `refetchType: 'none'` governs invalidation-driven
+  refetches only; a scheduled interval tick is neither, so it could land in the
+  window between kagent accepting the delete and the caller navigating away, 404 and
+  flash "Session not found" at someone who just deleted the session deliberately.
+  The page passes `enabled: !isDeleting && !isDeleted` into the hook, which stops
+  both reads outright for the duration.
+
 ### What the timeline shows
 
 Built by `lib/kagentTimeline.ts` from task history. Conversation messages render in

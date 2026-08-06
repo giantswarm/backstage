@@ -56,7 +56,7 @@ function workingTask() {
   };
 }
 
-function renderWith() {
+function renderHookWith(options?: { enabled?: boolean }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -66,9 +66,15 @@ function renderWith() {
     </TestApiProvider>
   );
   return {
-    ...renderHook(() => useSessionDetail('gazelle', 'abc'), { wrapper }),
+    ...renderHook(() => useSessionDetail('gazelle', 'abc', options), {
+      wrapper,
+    }),
     queryClient,
   };
+}
+
+function renderWith() {
+  return renderHookWith();
 }
 
 beforeEach(() => {
@@ -168,6 +174,85 @@ describe('useSessionDetail', () => {
 
     await waitFor(() => expect(result.current.isNotFound).toBe(true));
     expect(result.current.error).toBeUndefined();
+  });
+
+  it('reports no conversation when the tasks read fails on first load', async () => {
+    // The session read succeeding does not mean the conversation is empty. Callers
+    // need to tell "absent" from "empty" or they render a fabricated blank session.
+    getSessionDetail.mockResolvedValue(SESSION);
+    listSessionTasks.mockRejectedValue(new Error('kagent is unavailable'));
+
+    const { result } = renderWith();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.hasConversation).toBe(false);
+    expect(result.current.detail).toBeDefined();
+    expect(result.current.taskCount).toBe(0);
+    expect(result.current.error?.message).toBe('kagent is unavailable');
+  });
+
+  it('reports a conversation that is genuinely empty', async () => {
+    // The other side of it: a session created but never run reads as `[]`, which is
+    // data, and must render as "no activity" rather than as a failure.
+    getSessionDetail.mockResolvedValue(SESSION);
+    listSessionTasks.mockResolvedValue([]);
+
+    const { result } = renderWith();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.hasConversation).toBe(true);
+    expect(result.current.error).toBeUndefined();
+  });
+
+  it('keeps a loaded session when a poll returns an unreadable 200', async () => {
+    // `getSessionDetail` resolves undefined for any 200 that does not parse — an
+    // expired oauth2-proxy serving an HTML sign-in page is the realistic trigger.
+    // Nothing was deleted, so the user must not be told the session is gone.
+    getSessionDetail
+      .mockResolvedValueOnce(SESSION)
+      .mockResolvedValue(undefined);
+    listSessionTasks.mockResolvedValue([workingTask()]);
+
+    const { result, queryClient } = renderWith();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: sessionQueryKey('gazelle', 'abc'),
+      });
+    });
+
+    await waitFor(() => expect(result.current.error).toBeDefined());
+    expect(result.current.isNotFound).toBe(false);
+    expect(result.current.detail).toBeDefined();
+  });
+
+  it('still reports not found for an empty read before anything loaded', async () => {
+    // The gate above must not swallow the real case: a 200 with no session, on a
+    // page that never had one, is exactly how kagent says "no such session".
+    getSessionDetail.mockResolvedValue(undefined);
+    listSessionTasks.mockResolvedValue([]);
+
+    const { result } = renderWith();
+
+    await waitFor(() => expect(result.current.isNotFound).toBe(true));
+    expect(result.current.error).toBeUndefined();
+  });
+
+  it('stops both reads while a delete is in flight', async () => {
+    getSessionDetail.mockResolvedValue(SESSION);
+    listSessionTasks.mockResolvedValue([workingTask()]);
+
+    const { result } = renderHookWith({ enabled: false });
+
+    // Nothing is requested at all, so no scheduled tick can land mid-delete and
+    // 404 under the caller's navigation.
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(getSessionDetail).not.toHaveBeenCalled();
+    expect(listSessionTasks).not.toHaveBeenCalled();
   });
 
   // The only timer-dependent test here: the cadence rules themselves are covered

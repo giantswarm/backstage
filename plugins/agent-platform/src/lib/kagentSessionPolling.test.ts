@@ -29,16 +29,21 @@ describe('getSessionTasksRefetchInterval', () => {
 
   function task(
     state: string | undefined,
-    { ageMs = 0, timestamp }: { ageMs?: number; timestamp?: string } = {},
+    options: { ageMs?: number; timestamp?: string } = {},
   ): A2aTaskWire {
+    const { ageMs = 0 } = options;
+    // Passing `timestamp` explicitly wins even when it is `undefined` — that is how
+    // these cases express "the task carries no timestamp at all".
+    const timestamp =
+      'timestamp' in options
+        ? options.timestamp
+        : new Date(NOW - ageMs).toISOString();
+
     return {
       id: `task-${state ?? 'none'}-${ageMs}`,
       contextId: 'abc',
       kind: 'task',
-      status: {
-        state,
-        timestamp: timestamp ?? new Date(NOW - ageMs).toISOString(),
-      },
+      status: { state, timestamp },
     } as unknown as A2aTaskWire;
   }
 
@@ -117,11 +122,34 @@ describe('getSessionTasksRefetchInterval', () => {
     ['no timestamp at all', undefined],
     ['Go zero time', '0001-01-01T00:00:00Z'],
     ['an unparseable timestamp', 'not-a-date'],
-  ])('polls fast when an active task has %s', (_label, timestamp) => {
-    // Treated as just-changed rather than as stuck, mirroring `isAgentConverging`.
-    const noAge = task('working', { timestamp });
+  ])(
+    'uses the baseline when the only active task has %s',
+    (_label, timestamp) => {
+      // Nothing in the conversation can bound the fast tier, so it must not engage:
+      // an unconditional fast tier here would re-read ~500 KB every 10 s forever for
+      // an agent that died mid-turn — the exact failure ACTIVE_MAX_AGE_MS prevents.
+      const noAge = task('working', { timestamp });
 
-    expect(getSessionTasksRefetchInterval(query([noAge]))).toBe(FAST);
+      expect(getSessionTasksRefetchInterval(query([noAge]))).toBe(BASELINE);
+    },
+  );
+
+  it('falls back to the newest usable timestamp when the active task has none', () => {
+    // Costs the "same task" property on purpose — an age basis that exists beats a
+    // fast tier nothing can stop.
+    const earlier = task('completed', { ageMs: 30_000 });
+    const active = task('working', { timestamp: undefined });
+
+    expect(getSessionTasksRefetchInterval(query([earlier, active]))).toBe(FAST);
+  });
+
+  it('still ages out via the fallback timestamp', () => {
+    const earlier = task('completed', { ageMs: 10 * 60_000 });
+    const active = task('working', { timestamp: undefined });
+
+    expect(getSessionTasksRefetchInterval(query([earlier, active]))).toBe(
+      BASELINE,
+    );
   });
 
   it('reads the state and its timestamp from the same task', () => {

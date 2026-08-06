@@ -52,6 +52,17 @@ when the refetched payload is deep-equal, and `normalizeTaskList` yields plain
 objects out of zod, so the `useMemo`s that rebuild the timeline never re-run. No
 `select`, memoisation or content hashing was needed.
 
+**The age bound applies on every path, including the one where it is most needed.**
+`status.timestamp` is optional at the parse boundary, and `normalizeTimestamp` also
+rejects Go zero time and anything unparseable — so an active task can carry no usable
+time of its own. Treating that as "just changed" (which is what `isAgentConverging`
+does, safely, because a Kubernetes object always has `lastTransitionTime`) would make
+the fast tier _unbounded_ on exactly the case the bound exists for: an agent that died
+mid-turn. The interval falls back to the newest usable timestamp anywhere in the
+conversation, and drops to the baseline when nothing in it carries one — losing the
+"state and timestamp from the same task" property on purpose, because an age basis
+that exists beats a fast tier nothing can stop.
+
 **Polling also made an existing condition wrong, so that is fixed here too.** The
 page treated any error as fatal. react-query keeps `data` and sets `error` on a
 failed _refetch_, and the query client deliberately does not retry
@@ -62,6 +73,19 @@ error with one in hand shows a warning notice above the page instead. A local `A
 rather than the shared `ErrorsProvider` notice the agent detail page uses, because
 the sessions router mounts no `ErrorsProvider` and adding one would mean splitting
 this page into wrapper and content for a one-line message.
+
+Keeping the page up needed three further distinctions, because the two reads fail
+independently. A tasks read that fails on **first** load leaves the timeline, turns
+and tokens at zero while the session read succeeds, so the hook now reports
+`hasConversation` and the page keeps the fatal branch when the conversation is
+_absent_ rather than empty. A poll answering 200 with no readable session no longer
+claims the session was deleted once one has already been read — and the query function
+coerces that case to `null`, because react-query rejects an `undefined` resolve, which
+was surfacing `[…query key…] data is undefined` to the user and had quietly made the
+`isSuccess && !data` branch unreachable. And a delete in flight now disables both
+reads (`enabled: !isDeleting && !isDeleted`): `refetchType: 'none'` governs
+invalidation-driven refetches only, so it never held off a scheduled interval tick
+landing mid-navigation.
 
 Manual refresh is deliberately still absent. Staleness is capped at 60 s now, and the
 control would have to live in the page header, which renders outside this plugin's

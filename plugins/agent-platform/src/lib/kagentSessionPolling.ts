@@ -60,6 +60,32 @@ export const ACTIVE_REFETCH_INTERVAL_MS = 10_000;
 export const ACTIVE_MAX_AGE_MS = 5 * 60_000;
 
 /**
+ * The most recent usable `status.timestamp` anywhere in the conversation.
+ *
+ * The age basis of last resort. `timestamp` is optional at the parse boundary, and
+ * `normalizeTimestamp` also rejects Go zero time and anything unparseable — so the
+ * newest task can perfectly well carry no usable time of its own, which would
+ * otherwise leave {@link ACTIVE_MAX_AGE_MS} with nothing to measure against.
+ */
+function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
+  // Compared as parsed instants, not as strings: kagent's timestamps are UTC ISO
+  // today, but string order stops matching time order the moment a value arrives
+  // with an offset or a different fractional precision.
+  let newest: number | undefined;
+  for (const task of tasks) {
+    const at = normalizeTimestamp(task?.status?.timestamp);
+    if (at === undefined) {
+      continue;
+    }
+    const parsed = Date.parse(at);
+    if (newest === undefined || parsed > newest) {
+      newest = parsed;
+    }
+  }
+  return newest;
+}
+
+/**
  * Refetch interval for one session's tasks — the conversation.
  *
  * Two tiers decided from the data already in hand, like the agent views: fast
@@ -98,15 +124,26 @@ export function getSessionTasksRefetchInterval(
       return BASELINE_REFETCH_INTERVAL_MS;
     }
 
-    const changedAt = normalizeTimestamp(status?.timestamp);
+    const own = normalizeTimestamp(status?.timestamp);
+    // Falling back to the conversation's newest usable timestamp costs the "state
+    // and timestamp from the same task" property, deliberately. `isAgentConverging`
+    // can treat a missing timestamp as just-changed because a Kubernetes object
+    // always carries `lastTransitionTime`; here `timestamp` is genuinely optional,
+    // so an unconditional fast tier would be *unbounded* — the exact failure
+    // ACTIVE_MAX_AGE_MS exists to prevent, on the one path where it is most likely
+    // (an agent that died mid-turn, or a kagent that stops emitting the field).
+    const changedAt =
+      own === undefined ? newestUsableTimestamp(tasks) : Date.parse(own);
 
-    // No usable timestamp — absent, or Go zero time. Treat the task as
-    // just-changed rather than as stuck, mirroring `isAgentConverging`.
+    // Nothing in the whole conversation carries a usable time, so there is no way
+    // to bound the fast tier at all. Poll on the baseline: a task genuinely new
+    // this second is seen within a minute, where the alternative is re-reading the
+    // conversation every 10 s for as long as the tab stays open.
     if (changedAt === undefined) {
-      return ACTIVE_REFETCH_INTERVAL_MS;
+      return BASELINE_REFETCH_INTERVAL_MS;
     }
 
-    return now - Date.parse(changedAt) < ACTIVE_MAX_AGE_MS
+    return now - changedAt < ACTIVE_MAX_AGE_MS
       ? ACTIVE_REFETCH_INTERVAL_MS
       : BASELINE_REFETCH_INTERVAL_MS;
   }
