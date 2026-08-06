@@ -325,6 +325,50 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for plans index page', () => {
+    const result = getTelemetryPageViewPayload('/plans');
+    expect(result).toEqual({
+      page: 'Plans index',
+      path: '/plans',
+    });
+  });
+
+  it('should return correct payload for one plan', () => {
+    // No `view`: the only varying segment is a pull request number, so echoing
+    // it would emit a page name per plan.
+    const result = getTelemetryPageViewPayload('/plans/pr/22');
+    expect(result).toEqual({
+      page: 'Plan detail',
+      path: '/plans/pr/22',
+    });
+  });
+
+  it('should return correct payload for roadmap index page', () => {
+    const result = getTelemetryPageViewPayload('/roadmap');
+    expect(result).toEqual({
+      page: 'Roadmap index',
+      path: '/roadmap',
+    });
+  });
+
+  it('should return correct payload for one roadmap item', () => {
+    const result = getTelemetryPageViewPayload('/roadmap/items/PVTI_abc123');
+    expect(result).toEqual({
+      page: 'Roadmap item',
+      path: '/roadmap/items/PVTI_abc123',
+    });
+  });
+
+  // Seen in Sentry: the item route is navigated to with an empty id while the
+  // board is still resolving. It must not fall through to 'Unknown page'.
+  it('should return correct payload for the item route with no id', () => {
+    const result = getTelemetryPageViewPayload('/roadmap/items/');
+    expect(result).toEqual({
+      page: 'Roadmap item',
+      path: '/roadmap/items/',
+    });
+  });
+
   it('should return correct payload for metrics page', () => {
     const result = getTelemetryPageViewPayload('/metrics');
     expect(result).toEqual({
@@ -389,6 +433,10 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agentic-platform/pr-reviewer',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
+      '/plans',
+      '/plans/pr/22',
+      '/roadmap',
+      '/roadmap/items/PVTI_abc123',
       '/metrics',
       '/search',
     ];

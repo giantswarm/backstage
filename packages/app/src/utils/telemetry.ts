@@ -179,6 +179,28 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    case pathname === '/plans':
+      payload = { page: 'Plans index' };
+      break;
+
+    // One plan: `/plans/pr/<number>`. Deliberately carries no `view`: the only
+    // varying segment is a pull request number, which would emit a distinct
+    // page name per plan — useless as a metric. The full path is reported
+    // separately as `path` either way.
+    case pathname.startsWith('/plans'):
+      payload = { page: 'Plan detail' };
+      break;
+
+    case pathname === '/roadmap':
+      payload = { page: 'Roadmap index' };
+      break;
+
+    // One roadmap item: `/roadmap/items/<id>`. No `view`, for the same reason
+    // as Plan detail — the varying segment is an opaque item id.
+    case pathname.startsWith('/roadmap'):
+      payload = { page: 'Roadmap item' };
+      break;
+
     case pathname === '/metrics':
       payload = { page: 'Metrics' };
       break;
