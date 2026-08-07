@@ -572,15 +572,15 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(renamedBody);
-      expect(updateSessionName).toHaveBeenCalledWith(
-        'abc',
-        'New name',
-        { agentRef: undefined, source: undefined },
-        { userToken: 'user-token' },
-      );
+      expect(updateSessionName).toHaveBeenCalledWith('abc', 'New name', {
+        userToken: 'user-token',
+      });
     });
 
-    it('passes the agent and source through for the old-kagent path', async () => {
+    it('takes only the name, leaving the workaround to the client', async () => {
+      // agentRef/source used to ride along here for the kagent v0.9.x upsert.
+      // They do not any more: the client reads the session back and echoes
+      // kagent's own values, so a stale one from a browser cannot blank a column.
       updateSessionName.mockResolvedValue(renamedBody);
 
       await request(app)
@@ -589,16 +589,13 @@ describe('createRouter', () => {
         .set(KAGENT_AUTH_HEADER, 'user-token')
         .send({
           name: 'New name',
-          agentRef: 'kagent__NS__sre_agent',
-          source: 'user',
+          agentRef: 'kagent__NS__ignored',
+          source: 'ignored',
         });
 
-      expect(updateSessionName).toHaveBeenCalledWith(
-        'abc',
-        'New name',
-        { agentRef: 'kagent__NS__sre_agent', source: 'user' },
-        { userToken: 'user-token' },
-      );
+      expect(updateSessionName).toHaveBeenCalledWith('abc', 'New name', {
+        userToken: 'user-token',
+      });
     });
 
     it('trims the name before storing it', async () => {
@@ -610,12 +607,9 @@ describe('createRouter', () => {
         .set(KAGENT_AUTH_HEADER, 'user-token')
         .send({ name: '  New name  ' });
 
-      expect(updateSessionName).toHaveBeenCalledWith(
-        'abc',
-        'New name',
-        expect.anything(),
-        expect.anything(),
-      );
+      expect(updateSessionName).toHaveBeenCalledWith('abc', 'New name', {
+        userToken: 'user-token',
+      });
     });
 
     it.each([
@@ -700,12 +694,9 @@ describe('createRouter', () => {
         .set(KAGENT_AUTH_HEADER, 'user-token')
         .send({ name: 'New name' });
 
-      expect(updateSessionName).toHaveBeenCalledWith(
-        ' abc ',
-        'New name',
-        expect.anything(),
-        expect.anything(),
-      );
+      expect(updateSessionName).toHaveBeenCalledWith(' abc ', 'New name', {
+        userToken: 'user-token',
+      });
     });
 
     it('reports a session that is not there as a 404, not a 5xx', async () => {

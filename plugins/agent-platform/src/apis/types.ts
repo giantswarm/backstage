@@ -78,22 +78,19 @@ export interface KagentApi {
   /**
    * Rename one session.
    *
-   * `fallback` carries what the backend needs to rename on a kagent that cannot
-   * do it properly — the session's own `agentId` and `source`, straight off the
-   * record being renamed. It is ignored on v0.10+, where the rename endpoint
-   * works; see `KagentClient.updateSessionName` in agent-platform-backend for
-   * why the older path needs them.
-   *
    * The caller is expected to have trimmed and length-checked the name; the
-   * backend rejects anything else with a 400.
+   * backend rejects anything else with a 400. Note that unlike the reads, a 400
+   * here does **not** mean "kagent isn't available on this installation".
    *
-   * TODO(kagent-0.9): drop `fallback` when no installation runs kagent v0.9.x.
+   * Renaming on a kagent too old to support it is handled entirely in the
+   * backend, which reads the session back and rewrites it — nothing about that
+   * needs anything from here. See `KagentClient.updateSessionName` in
+   * agent-platform-backend.
    */
   renameSession(
     installation: string,
     sessionId: string,
     name: string,
-    fallback?: { agentRef?: string; source?: string },
   ): Promise<void>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */

@@ -487,21 +487,46 @@ describe('KagentApiClient', () => {
       expect(JSON.parse(init.body)).toEqual({ name: 'New name' });
     });
 
-    it('sends the agent and source only when the caller has them', async () => {
-      // They exist for the backend's kagent v0.9.x workaround. Sending the keys
-      // unconditionally would put nulls in the body for the common case.
+    it('sends only the name', async () => {
+      // agentRef/source used to ride along for the backend's kagent v0.9.x
+      // workaround. The backend now reads them from kagent itself, so a stale
+      // value from here can no longer blank a column.
       fetchMock.mockResolvedValue(jsonResponse({ error: false }));
 
-      await buildClient().renameSession('gazelle', 'abc123', 'New name', {
-        agentRef: 'kagent__NS__sre_agent',
-        source: 'user',
-      });
+      await buildClient().renameSession('gazelle', 'abc123', 'New name');
 
-      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-        name: 'New name',
-        agentRef: 'kagent__NS__sre_agent',
-        source: 'user',
+      expect(Object.keys(JSON.parse(fetchMock.mock.calls[0][1].body))).toEqual([
+        'name',
+      ]);
+    });
+
+    it('does not label a rejected name as a missing kagent', async () => {
+      // `throwIfNotOk` renames a 400 to `NotFoundError` for the reads, where the
+      // only 400 the proxy produces means "this installation has no kagent
+      // endpoint" and is meant to be silent. This route also answers 400 for a
+      // name it refuses, which is nothing like that — and the plugin's retry
+      // predicate and the sessions provider both branch on the name.
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'name must not be empty' } }, 400),
+      );
+
+      await expect(
+        buildClient().renameSession('gazelle', 'abc123', ' '),
+      ).rejects.toMatchObject({
+        name: 'Error',
+        message: 'name must not be empty',
       });
+    });
+
+    it('still labels a read’s 400 as a missing kagent', async () => {
+      // The other half of the same guard: the reads must keep the old mapping.
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'unknown installation' } }, 400),
+      );
+
+      await expect(buildClient().listSessions('gazelle')).rejects.toMatchObject(
+        { name: 'NotFoundError' },
+      );
     });
 
     it('encodes an awkward session id into the path', async () => {

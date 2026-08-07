@@ -685,31 +685,42 @@ v0.9.9 and v0.10.0-rc1. Echoing the session's own `agent_id` back as `agent_ref`
 round-trips exactly, because kagent's `ConvertToPythonIdentifier` only rewrites `-`
 and `/`, neither of which survives in an already-encoded id.
 
-**Which status triggers the fallback is the safety property.** Only a 400 does:
+**Only a 400 enters the fallback, and it means "this kagent predates the fix" —
+nothing more.** It is tempting to also read the PUT's status as telling us whether
+the session still exists. It does not: v0.9.x rejects the missing `agent_ref`
+_before_ it looks anything up, so a live session and a deleted one both answer 400,
+and the 404 that would separate them is reachable only on v0.10+ — which is to say,
+never on today's fleet. Everything else (401, 403, 404, 5xx) is a real failure and is
+surfaced as one.
 
-| Upstream | Meaning                         | Action                           |
-| -------- | ------------------------------- | -------------------------------- |
-| 2xx      | renamed (v0.10+)                | done                             |
-| **400**  | this kagent predates the fix    | retry via the upsert             |
-| **404**  | the session really is not there | surface it — **never** fall back |
+**The read-back, not the status, is what enforces "never create".** Before writing,
+the fallback fetches the session (`GET /sessions/{id}?limit=1`) and gives up if it is
+not there. Without it the upsert — which _inserts_ when nothing conflicts — would
+resurrect a session someone had just deleted, under its old id.
 
-A 404 must not fall back, because the upsert _inserts_ when nothing conflicts: it
-would quietly create a new empty session for someone renaming one that had already
-been deleted. Everything else (401, 403, 5xx) is a real failure and is surfaced as
-one. Every way the fallback can still fail, it fails before writing — no `agentRef`
-to send, an agent kagent cannot resolve (400), or a sandbox-workload agent that
-already has a session (409).
+That read is also what makes the echoed fields trustworthy. The upsert overwrites
+`agent_id` and `source` from whatever it is sent, so both are taken from kagent
+rather than from the browser: a stale, unparsed or simply absent client value would
+otherwise blank a column the user never asked to touch. Note v0.9.9 _does_ serialize
+`source` when it is set (`Source *SessionSource` with `json:"source,omitempty"`), so
+its absence from our fixtures means those sessions have it null — not that the
+version cannot report it.
 
-`source` is echoed back because the upsert overwrites it from what it is sent; v0.9.9
-omits it from its reads, in which case the column is already null and sending nothing
-changes nothing. `updated_at` does move, so a renamed session rises to the top of the
-list — correct for an edit.
+Every way the fallback can still fail, it fails before writing, and each is a **4xx**
+rather than an upstream failure: the session is gone (404), it has no agent (409),
+kagent cannot resolve that agent (409), or a sandbox-workload agent already holds a
+session (409). None is actionable, and on a fleet where every installation takes this
+branch a 5xx would mean a standing Sentry issue per case — see "Logging & error
+reporting" in CLAUDE.md.
+
+`updated_at` does move, so a renamed session rises to the top of the list — correct
+for an edit.
 
 **All of this is temporary.** The fallback — `KagentClient.updateSessionName`'s POST
-branch, the `badRequest` opt-in, the `agentRef`/`source` fields on our own
-`PUT /kagent/sessions/:sessionId` route, and the tests covering them — comes out when
-no installation runs kagent v0.9.x, leaving the PUT alone. It is marked
-`TODO(kagent-0.9)` throughout, so removing it is one grep.
+branch, its `getSessionRecord` read-back, the `badRequest`/`conflict` opt-ins, and
+the tests covering them — comes out when no installation runs kagent v0.9.x, leaving
+the PUT alone. It is marked `TODO(kagent-0.9)` throughout, so removing it is one grep.
+Our own route takes nothing but the name, so it needs no change when that happens.
 
 Unlike the delete, the invalidations **refetch** rather than using
 `refetchType: 'none'`: nothing navigates away, so the page has to show the new name.

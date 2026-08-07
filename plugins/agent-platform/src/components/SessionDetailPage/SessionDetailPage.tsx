@@ -161,13 +161,7 @@ export function SessionDetailPage() {
   // header, which is outside this plugin's `QueryClientProvider`, so a mutation or a
   // query has no client there. The capabilities probe is a cached `/me` read with an
   // hour's staleTime, so asking for it on this page is free.
-  //
-  // The rename carries the session's own agent and source, which the backend needs
-  // only on a kagent too old to rename properly — see `KagentApi.renameSession`.
-  const rename = useRenameSession(installation, sessionId, {
-    agentRef: detail?.session.agentId,
-    source: detail?.session.source,
-  });
+  const rename = useRenameSession(installation, sessionId);
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.

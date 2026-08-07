@@ -53,22 +53,13 @@ jest.mock('../../hooks/useDeleteSession', () => ({
 }));
 
 const mockRenameSession = jest.fn();
-/** The fallback the page passed the rename hook on the last render. */
-const renameFallback = jest.fn();
 jest.mock('../../hooks/useRenameSession', () => ({
-  useRenameSession: (
-    _installation: string,
-    _sessionId: string,
-    fallback: unknown,
-  ) => {
-    renameFallback(fallback);
-    return {
-      renameSession: mockRenameSession,
-      isRenaming: false,
-      error: null,
-      reset: jest.fn(),
-    };
-  },
+  useRenameSession: () => ({
+    renameSession: mockRenameSession,
+    isRenaming: false,
+    error: null,
+    reset: jest.fn(),
+  }),
 }));
 
 jest.mock('../../hooks/useKagentCapabilities', () => ({
@@ -118,7 +109,6 @@ function lastProvidedActions() {
 describe('SessionDetailPage', () => {
   beforeEach(() => {
     providedActions.mockClear();
-    renameFallback.mockClear();
     mockRenameSession.mockReset();
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
@@ -347,17 +337,6 @@ describe('SessionDetailPage', () => {
       expect(
         await screen.findByRole('textbox', { name: /Session name/ }),
       ).toHaveValue('Which GitHub issues...');
-    });
-
-    it('hands the rename the session’s own agent and source', async () => {
-      // The backend needs both for its kagent v0.9.x workaround, and taking them
-      // off the record being renamed is what makes that round trip lossless.
-      await render();
-
-      expect(renameFallback).toHaveBeenLastCalledWith({
-        agentRef: 'kagent__NS__issue_tracker',
-        source: undefined,
-      });
     });
 
     it('submits the new name and closes', async () => {

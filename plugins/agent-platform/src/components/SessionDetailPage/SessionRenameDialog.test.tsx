@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   SESSION_NAME_MAX_LENGTH,
@@ -125,6 +125,62 @@ describe('SessionRenameDialog', () => {
 
     expect(screen.getByRole('button', { name: /Cancel/ })).toBeDisabled();
     expect(screen.getByText('Saving…')).toBeInTheDocument();
+  });
+
+  it('cannot be closed by the header’s own X while the rename is in flight', async () => {
+    // `isDismissable`/`isKeyboardDismissDisabled` reach the outside click and
+    // Escape, but not the close button bui's DialogHeader always renders. Closing
+    // there mid-flight would leave the mutation running with nowhere to report a
+    // failure, and the user on the old title believing the rename worked.
+    await renderDialog({ isRenaming: true });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('can be closed by the header’s X when nothing is in flight', async () => {
+    // The other half: the guard must not make the dialog permanently sticky.
+    await renderDialog();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('does not overwrite an edit in progress when the title changes upstream', async () => {
+    // `title` is live data — the session read polls, so it moves under an open
+    // dialog whenever the session is renamed in another tab, on another device or
+    // from kagent's own UI. Re-seeding on that would wipe what the user is typing,
+    // mid-sentence and with no explanation.
+    // Driven through the captured setter rather than a button: the dialog is
+    // modal, so anything rendered beside it is unreachable from the DOM while it
+    // is open — which is the situation being reproduced.
+    let simulatePoll: (title: string) => void = () => {};
+    function Harness() {
+      const [title, setTitle] = useState('Original name');
+      simulatePoll = setTitle;
+      return (
+        <SessionRenameDialog
+          title={title}
+          isOpen
+          onOpenChange={onOpenChange}
+          isRenaming={false}
+          onConfirm={onConfirm}
+        />
+      );
+    }
+
+    await renderInTestApp(<Harness />);
+
+    await userEvent.clear(nameField());
+    await userEvent.type(nameField(), 'my edit in progress');
+
+    await act(async () => {
+      simulatePoll('Renamed elsewhere');
+    });
+
+    expect(nameField()).toHaveValue('my edit in progress');
   });
 
   it('warns when the deployment does not scope sessions per user', async () => {

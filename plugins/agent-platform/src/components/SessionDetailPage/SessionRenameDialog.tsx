@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -67,10 +67,18 @@ export function SessionRenameDialog({
 }: SessionRenameDialogProps) {
   const [value, setValue] = useState(title);
 
+  // Seeded on the closed → open transition only, never on a `title` change.
+  //
+  // `title` is live data: the session read polls, so it moves under an open
+  // dialog whenever the session is renamed elsewhere — kagent's own UI, another
+  // tab, another device. Depending on it here would replace whatever the user
+  // has typed, mid-sentence and with no indication anything happened.
+  const wasOpen = useRef(isOpen);
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpen.current) {
       setValue(title);
     }
+    wasOpen.current = isOpen;
   }, [isOpen, title]);
 
   const trimmed = value.trim();
@@ -87,7 +95,17 @@ export function SessionRenameDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
+      // Gated here rather than only through `isDismissable` /
+      // `isKeyboardDismissDisabled`, which reach the outside click and Escape but
+      // not `DialogHeader`'s own close button — bui renders that unconditionally,
+      // and it routes through this callback. Without the gate, closing mid-flight
+      // leaves the mutation running with nowhere to report a failure, and the user
+      // looking at the old title believing the rename worked.
+      onOpenChange={next => {
+        if (!isRenaming) {
+          onOpenChange(next);
+        }
+      }}
       isDismissable={!isRenaming}
       isKeyboardDismissDisabled={isRenaming}
       width="min(90vw, 520px)"

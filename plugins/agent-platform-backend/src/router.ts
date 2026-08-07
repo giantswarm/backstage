@@ -239,17 +239,14 @@ export async function createRouter(
    * `unsecure` mode this would otherwise rename the shared default user's
    * session on behalf of nobody in particular.
    *
-   * `agentRef` and `source` are the caller's copy of what it already read, and
-   * exist only for the v0.9.x workaround in `KagentClient.updateSessionName` —
-   * they are ignored on a kagent that can rename properly. The frontend has them
-   * parsed already, which keeps this proxy from having to read the session back
-   * and understand its shape.
+   * The name is all this takes. On a kagent too old to rename properly the
+   * client reads the session back and echoes its own agent and source into the
+   * upsert — deliberately not something the caller supplies, since those fields
+   * are overwritten by that write and a stale value from a browser would blank a
+   * column nobody asked to touch.
    *
    * A rejected name is the caller's mistake and answers 400, not a 5xx —
    * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
-   *
-   * TODO(kagent-0.9): drop `agentRef`/`source` from this route's contract when
-   * the fallback goes.
    */
   router.put('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -272,15 +269,9 @@ export async function createRouter(
       );
     }
 
-    const result = await client.updateSessionName(
-      readSessionId(req),
-      name,
-      {
-        agentRef: typeof body.agentRef === 'string' ? body.agentRef : undefined,
-        source: typeof body.source === 'string' ? body.source : undefined,
-      },
-      { userToken: readUserToken(req, { required: true }) },
-    );
+    const result = await client.updateSessionName(readSessionId(req), name, {
+      userToken: readUserToken(req, { required: true }),
+    });
 
     // As on the delete: pass an empty upstream success through as one rather
     // than as an empty body with a JSON content-type.

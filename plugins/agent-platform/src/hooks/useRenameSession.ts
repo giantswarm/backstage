@@ -4,13 +4,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { sessionQueryKey } from './useSessionDetail';
 
-/** What the caller must hand over for the backend's v0.9.x rename workaround. */
-export type RenameSessionFallback = {
-  /** The session's `agentId`, verbatim — kagent's encoded `ns__NS__name`. */
-  agentRef?: string;
-  source?: string;
-};
-
 /**
  * Rename one kagent session.
  *
@@ -27,25 +20,16 @@ export type RenameSessionFallback = {
  * hold the detail page's reads off through the gap between success and
  * navigation, and nothing here navigates.
  *
- * `fallback` is passed straight through to the backend, which needs it only on a
- * kagent too old to rename properly — see `KagentApi.renameSession`.
+ * Renaming on a kagent too old to support it is handled entirely in the backend,
+ * so there is nothing to detect or pass along from here.
  */
-export function useRenameSession(
-  installation: string,
-  sessionId: string,
-  fallback: RenameSessionFallback = {},
-) {
+export function useRenameSession(installation: string, sessionId: string) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
 
-  const { agentRef, source } = fallback;
-
   const mutation = useMutation({
     mutationFn: async (name: string) => {
-      await kagentApi.renameSession(installation, sessionId, name, {
-        agentRef,
-        source,
-      });
+      await kagentApi.renameSession(installation, sessionId, name);
 
       // This session's own read, so the heading and timestamps update in place.
       // The tasks read is deliberately left alone: a rename touches no task, and

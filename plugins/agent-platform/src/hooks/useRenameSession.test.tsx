@@ -8,15 +8,13 @@ import {
 } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
-import { RenameSessionFallback, useRenameSession } from './useRenameSession';
+import { useRenameSession } from './useRenameSession';
 
 const renameSession = jest.fn();
 
 const kagentApi = { renameSession } as unknown as KagentApi;
 
-function renderWith(
-  fallback: RenameSessionFallback = { agentRef: 'kagent__NS__sre_agent' },
-) {
+function renderWith() {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -29,9 +27,7 @@ function renderWith(
   );
 
   return {
-    ...renderHook(() => useRenameSession('gazelle', 'abc', fallback), {
-      wrapper,
-    }),
+    ...renderHook(() => useRenameSession('gazelle', 'abc'), { wrapper }),
     invalidateQueries,
   };
 }
@@ -65,31 +61,6 @@ describe('useRenameSession', () => {
       'gazelle',
       'abc',
       'Quarterly capacity review',
-      { agentRef: 'kagent__NS__sre_agent', source: undefined },
-    );
-  });
-
-  it('passes the session’s own agent and source through for the old-kagent path', async () => {
-    // Not decoration: on kagent v0.9.x the rename goes through the session upsert,
-    // which needs an `agent_ref` and overwrites `source` from what it is sent. Both
-    // come off the record being renamed, so the round trip changes neither.
-    const { result } = renderWith({
-      agentRef: 'kagent__NS__k8s_agent',
-      source: 'user',
-    });
-
-    await act(async () => {
-      await result.current.renameSession('Cluster upgrade');
-    });
-
-    expect(renameSession).toHaveBeenCalledWith(
-      'gazelle',
-      'abc',
-      expect.any(String),
-      {
-        agentRef: 'kagent__NS__k8s_agent',
-        source: 'user',
-      },
     );
   });
 
