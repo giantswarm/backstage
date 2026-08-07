@@ -105,8 +105,13 @@
     {
       // Opt Giant Swarm-owned npm packages out of the 14-day minimumReleaseAge
       // supply-chain delay from renovate-presets default.json5.
+      //
+      // Both name forms are needed: `matchPackageNames` matches `packageName`,
+      // and a `github:giantswarm/<repo>#<tag>` dependency resolves through the
+      // github-tags datasource, so its packageName is the bare repo slug rather
+      // than the `@giantswarm/...` name it is declared under.
       matchManagers: ['npm'],
-      matchPackageNames: ['@giantswarm{/,}**'],
+      matchPackageNames: ['@giantswarm{/,}**', 'giantswarm{/,}**'],
       minimumReleaseAge: null,
     },
     {
