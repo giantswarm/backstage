@@ -51,7 +51,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          # Derived from .nvmrc, the repo's single Node version pin, rather than
+          # a second copy here -- this step had silently drifted to 22 while the
+          # rest of the repo moved to 24.
+          node-version-file: .nvmrc
           cache: yarn
       - name: Install dependencies
         run: yarn install --immutable
