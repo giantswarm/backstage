@@ -10765,7 +10765,7 @@ __metadata:
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
-    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.7.0"
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.6.1"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
     "@tanstack/query-async-storage-persister": "npm:^5.86.0"
@@ -11141,7 +11141,7 @@ __metadata:
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
-    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.7.0"
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.6.1"
     "@material-ui/core": "npm:^4.9.13"
     "@material-ui/icons": "npm:^4.11.3"
     "@testing-library/jest-dom": "npm:^6.0.0"
@@ -11384,10 +11384,10 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/k8s-types@github:giantswarm/k8s-typescript-types#v0.7.0":
+"@giantswarm/k8s-types@github:giantswarm/k8s-typescript-types#v0.6.1":
   version: 0.1.0
-  resolution: "@giantswarm/k8s-types@https://github.com/giantswarm/k8s-typescript-types.git#commit=b14293a78c820c64f7d50186df13888400a63414"
-  checksum: 10c0/fe7a8936e3118e435ee90a9f77e7c0c3153978ea37a0fbff5daf46689af716b768ce0855b76c620712660dbf82e7ee9bf10a0132f117def70840ee8b38b605cd
+  resolution: "@giantswarm/k8s-types@https://github.com/giantswarm/k8s-typescript-types.git#commit=4b3df6f3af887b21c49406e99c32d3f397361f5c"
+  checksum: 10c0/12c6e52fbe1ec631d1fd9a41147d63b4883c33a53e734fe41f4f3e0033d5c4215e4ba10879e5fb1ad9ae58a551734c688b57d38bcdb8dc343a76542bd729332c
   languageName: node
   linkType: hard
 
