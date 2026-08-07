@@ -15,7 +15,7 @@ jobs:
   # repo redirects its bespoke toolchain by editing those scripts, not this job.
   node-build:
     docker:
-    - image: cimg/node:24.18.0
+    - image: cimg/node:24.19.0
     resource_class: large
     steps:
     - checkout
