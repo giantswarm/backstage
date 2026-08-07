@@ -7,6 +7,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
+import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
@@ -49,15 +50,22 @@ const MENU_WIDTH = '12rem';
  * means rendering **outside the plugin's `QueryClientProvider`**, so anything backed
  * by react-query — every read, probe or mutation — has to be called by the page and
  * passed down. Calling `useDeleteSession` here throws "No QueryClient set".
+ *
+ * Rename is the exception to the self-contained-unit rule above, and takes an
+ * `onRename` callback instead of owning its dialog: the page title opens the same
+ * dialog, so its state has to live somewhere both can reach — which is the page.
  */
 export function SessionActionsMenu({
   title,
   deletion,
+  onRename,
   isUserScoped,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
   deletion: UseDeleteSessionResult;
+  /** Opens the page's rename dialog. */
+  onRename: () => void;
   isUserScoped?: boolean;
 }) {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
@@ -112,6 +120,9 @@ export function SessionActionsMenu({
           variant="tertiary"
         />
         <Menu maxWidth={MENU_WIDTH}>
+          <MenuItem iconStart={<EditOutlinedIcon />} onAction={onRename}>
+            Rename session…
+          </MenuItem>
           <MenuItem
             color="danger"
             iconStart={<DeleteOutlineIcon />}

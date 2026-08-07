@@ -22,6 +22,7 @@ describe('createRouter', () => {
   const listSessionTasks = jest.fn();
 
   const deleteSession = jest.fn();
+  const updateSessionName = jest.fn();
 
   const mockClient = {
     listSessions,
@@ -29,6 +30,7 @@ describe('createRouter', () => {
     getSession,
     listSessionTasks,
     deleteSession,
+    updateSessionName,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -60,6 +62,7 @@ describe('createRouter', () => {
     getSession.mockReset();
     listSessionTasks.mockReset();
     deleteSession.mockReset();
+    updateSessionName.mockReset();
     app = await buildApp();
   });
 
@@ -548,6 +551,188 @@ describe('createRouter', () => {
         .set(KAGENT_AUTH_HEADER, 'user-token');
 
       expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+  });
+
+  describe('PUT /kagent/sessions/:sessionId', () => {
+    const renamedBody = {
+      error: false,
+      data: { id: 'abc', name: 'New name' },
+      message: 'Successfully updated session',
+    };
+
+    it('forwards the id, name and token and echoes the body verbatim', async () => {
+      updateSessionName.mockResolvedValue(renamedBody);
+
+      const response = await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ name: 'New name' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(renamedBody);
+      expect(updateSessionName).toHaveBeenCalledWith(
+        'abc',
+        'New name',
+        { agentRef: undefined, source: undefined },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('passes the agent and source through for the old-kagent path', async () => {
+      updateSessionName.mockResolvedValue(renamedBody);
+
+      await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({
+          name: 'New name',
+          agentRef: 'kagent__NS__sre_agent',
+          source: 'user',
+        });
+
+      expect(updateSessionName).toHaveBeenCalledWith(
+        'abc',
+        'New name',
+        { agentRef: 'kagent__NS__sre_agent', source: 'user' },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('trims the name before storing it', async () => {
+      updateSessionName.mockResolvedValue(renamedBody);
+
+      await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ name: '  New name  ' });
+
+      expect(updateSessionName).toHaveBeenCalledWith(
+        'abc',
+        'New name',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      ['missing', {}],
+      ['not a string', { name: 42 }],
+      ['empty', { name: '' }],
+      ['only whitespace', { name: '   ' }],
+      ['longer than the limit', { name: 'x'.repeat(256) }],
+    ])('rejects a name that is %s with a 400', async (_label, body) => {
+      // A 400 rather than a 5xx: this is the caller's mistake, and anything >= 500
+      // is logged at error and forwarded to Sentry.
+      const response = await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body);
+
+      expect(response.status).toBe(400);
+      expect(updateSessionName).not.toHaveBeenCalled();
+    });
+
+    it('accepts a name of exactly the maximum length', async () => {
+      updateSessionName.mockResolvedValue(renamedBody);
+
+      const response = await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ name: 'x'.repeat(255) });
+
+      expect(response.status).toBe(200);
+    });
+
+    it('does not answer a GET or a DELETE on the same path', async () => {
+      // Three methods now share this path, so each must keep its own handler.
+      getSession.mockResolvedValue({ error: false, data: {} });
+      deleteSession.mockResolvedValue({ error: false });
+
+      await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+      await request(app)
+        .delete('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(getSession).toHaveBeenCalledTimes(1);
+      expect(deleteSession).toHaveBeenCalledTimes(1);
+      expect(updateSessionName).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      // Same reasoning as the delete: kagent derives the user from the token, so
+      // without one an `unsecure` controller would rename the shared default
+      // user's session.
+      const response = await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .send({ name: 'New name' });
+
+      expect(response.status).toBe(401);
+      expect(updateSessionName).not.toHaveBeenCalled();
+    });
+
+    it('requires the installation query parameter', async () => {
+      const response = await request(app)
+        .put('/kagent/sessions/abc')
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ name: 'New name' });
+
+      expect(response.status).toBe(400);
+      expect(updateSessionName).not.toHaveBeenCalled();
+    });
+
+    it('passes an opaque id through undecorated', async () => {
+      updateSessionName.mockResolvedValue(renamedBody);
+
+      await request(app)
+        .put('/kagent/sessions/%20abc%20')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ name: 'New name' });
+
+      expect(updateSessionName).toHaveBeenCalledWith(
+        ' abc ',
+        'New name',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('reports a session that is not there as a 404, not a 5xx', async () => {
+      const notFound = new Error('That session does not exist');
+      notFound.name = 'NotFoundError';
+      updateSessionName.mockRejectedValue(notFound);
+
+      const response = await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ name: 'New name' });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('passes an empty upstream success through as a 204', async () => {
+      updateSessionName.mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .put('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ name: 'New name' });
+
+      expect(response.status).toBe(204);
+      expect(response.text).toBe('');
     });
   });
 

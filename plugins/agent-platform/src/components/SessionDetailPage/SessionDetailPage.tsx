@@ -1,4 +1,4 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Content,
@@ -16,12 +16,14 @@ import {
 
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
+import { useRenameSession } from '../../hooks/useRenameSession';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { sessionsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { SessionActionsMenu } from './SessionActionsMenu';
+import { SessionRenameDialog } from './SessionRenameDialog';
 import {
   buildAgentIndex,
   SESSION_TITLE_FALLBACK,
@@ -48,6 +50,24 @@ const useStyles = makeStyles(theme => ({
   },
   statValue: {
     fontVariantNumeric: 'tabular-nums',
+  },
+  // A real <button>, stripped of its chrome, rather than a click handler on the
+  // heading: the title is an editing affordance, and only a button is reachable
+  // by keyboard and announced as actionable. Everything visual is inherited so
+  // it still reads as the heading it replaced.
+  titleButton: {
+    appearance: 'none',
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    margin: 0,
+    font: 'inherit',
+    color: 'inherit',
+    textAlign: 'left',
+    cursor: 'pointer',
+    '&:hover': {
+      textDecoration: 'underline',
+    },
   },
 }));
 
@@ -84,9 +104,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 /**
  * One kagent session: what it was, how it ended, and what the agent did.
  *
- * The session can be **deleted** from the header's actions menu (see "Deleting a
- * session" in docs/agent-platform.md). kagent also supports renaming and continuing
- * a session, and the prototype offers both — neither is wired up here.
+ * The session can be **renamed** — from the header's actions menu or by clicking the
+ * title — and **deleted** from that menu (see "Renaming a session" and "Deleting a
+ * session" in docs/agent-platform.md). Continuing a session, which the prototype also
+ * offers, is not wired up here.
  *
  * What the prototype shows and this cannot, because kagent stores none of it:
  * cost, tokens-per-second, context-window usage, the owning team, the trigger that
@@ -135,28 +156,48 @@ export function SessionDetailPage() {
     [detail, agentIndex],
   );
 
-  // Both `useDeleteSession` and `useKagentCapabilities` are called here rather than
-  // inside the menu: the menu is rendered in the shared plugin header, which is
-  // outside this plugin's `QueryClientProvider`, so a mutation or a query has no
-  // client there. The capabilities probe is a cached `/me` read with an hour's
-  // staleTime, so asking for it on this page is free.
+  // `useDeleteSession`, `useRenameSession` and `useKagentCapabilities` are all called
+  // here rather than inside the menu: the menu is rendered in the shared plugin
+  // header, which is outside this plugin's `QueryClientProvider`, so a mutation or a
+  // query has no client there. The capabilities probe is a cached `/me` read with an
+  // hour's staleTime, so asking for it on this page is free.
+  //
+  // The rename carries the session's own agent and source, which the backend needs
+  // only on a kagent too old to rename properly — see `KagentApi.renameSession`.
+  const rename = useRenameSession(installation, sessionId, {
+    agentRef: detail?.session.agentId,
+    source: detail?.session.source,
+  });
 
-  /** Shared by the heading, the actions menu and its dialog, so all three agree. */
+  // Owned by the page, unlike the delete dialog's state, because two things open
+  // this one: the menu item and the title.
+  const [isRenameOpen, setRenameOpen] = useState(false);
+  const { reset: resetRename } = rename;
+  const openRename = useCallback(() => {
+    // Clear a previous attempt's error, so the dialog does not open still showing
+    // it.
+    resetRename();
+    setRenameOpen(true);
+  }, [resetRename]);
+
+  /** Shared by the heading, the actions menu and both dialogs, so all of them agree. */
   const sessionTitle = row?.title || SESSION_TITLE_FALLBACK;
 
-  // `deletion` is memoized on its own contents and `sessionTitle` is a string, so this
-  // element's identity only changes when one of them actually does — which is what
-  // keeps the header slot from re-registering (and re-rendering) on every poll.
+  // `deletion` is memoized on its own contents, `sessionTitle` is a string and
+  // `openRename` is stable, so this element's identity only changes when one of them
+  // actually does — which is what keeps the header slot from re-registering (and
+  // re-rendering) on every poll.
   const actions = useMemo(
     () =>
       row ? (
         <SessionActionsMenu
           title={sessionTitle}
           deletion={deletion}
+          onRename={openRename}
           isUserScoped={isUserScoped}
         />
       ) : null,
-    [row, sessionTitle, deletion, isUserScoped],
+    [row, sessionTitle, deletion, openRename, isUserScoped],
   );
   useProvidePageHeaderActions(actions);
 
@@ -236,7 +277,20 @@ export function SessionDetailPage() {
         <Flex direction="column" gap="2">
           <BackToSessions>← Sessions</BackToSessions>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <Text variant="title-medium">{sessionTitle}</Text>
+            <button
+              type="button"
+              className={classes.titleButton}
+              onClick={openRename}
+              // The accessible name has to say what pressing this does, since the
+              // visible text is the session's name and says nothing about renaming.
+              aria-label={`Rename session "${sessionTitle}"`}
+            >
+              {/* `as="span"`: Text renders a <p> by default, which is not valid
+                  inside a button. */}
+              <Text as="span" variant="title-medium">
+                {sessionTitle}
+              </Text>
+            </button>
             {/* The raw A2A state is kept as the label for anything we don't
                 recognise, so a future kagent state shows as itself. */}
             {state && <Badge size="small">{state.label}</Badge>}
@@ -302,6 +356,27 @@ export function SessionDetailPage() {
 
         <SessionTimeline timeline={timeline} agentName={row.agentName} />
       </Flex>
+
+      {/* One dialog for both entry points, rendered here rather than inside the
+          menu — react-aria unmounts the menu on selection, and the title could not
+          reach it there anyway. */}
+      <SessionRenameDialog
+        title={sessionTitle}
+        isOpen={isRenameOpen}
+        onOpenChange={setRenameOpen}
+        isRenaming={rename.isRenaming}
+        error={rename.error?.message}
+        onConfirm={async name => {
+          try {
+            await rename.renameSession(name);
+          } catch {
+            // Left to the dialog, which stays open and renders the hook's `error`.
+            return;
+          }
+          setRenameOpen(false);
+        }}
+        isUserScoped={isUserScoped}
+      />
     </Content>
   );
 }

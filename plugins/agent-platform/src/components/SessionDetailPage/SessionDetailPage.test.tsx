@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 
 import { sessionsRouteRef } from '../../routes';
@@ -38,7 +39,7 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
 
-// The page calls both of these on the menu's behalf, because the menu renders in
+// The page calls all of these on the menu's behalf, because the menu renders in
 // the shared header — outside the plugin's QueryClientProvider — and so cannot call
 // them itself. This test mounts no query client, which is why they are stubbed.
 const mockDeleteSession = jest.fn();
@@ -49,6 +50,25 @@ jest.mock('../../hooks/useDeleteSession', () => ({
     error: null,
     reset: jest.fn(),
   }),
+}));
+
+const mockRenameSession = jest.fn();
+/** The fallback the page passed the rename hook on the last render. */
+const renameFallback = jest.fn();
+jest.mock('../../hooks/useRenameSession', () => ({
+  useRenameSession: (
+    _installation: string,
+    _sessionId: string,
+    fallback: unknown,
+  ) => {
+    renameFallback(fallback);
+    return {
+      renameSession: mockRenameSession,
+      isRenaming: false,
+      error: null,
+      reset: jest.fn(),
+    };
+  },
 }));
 
 jest.mock('../../hooks/useKagentCapabilities', () => ({
@@ -98,6 +118,8 @@ function lastProvidedActions() {
 describe('SessionDetailPage', () => {
   beforeEach(() => {
     providedActions.mockClear();
+    renameFallback.mockClear();
+    mockRenameSession.mockReset();
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
       rows: [
@@ -307,5 +329,82 @@ describe('SessionDetailPage', () => {
     expect(
       screen.getByText('This session has no messages yet.'),
     ).toBeInTheDocument();
+  });
+
+  describe('renaming', () => {
+    it('makes the title a way in, not just a label', async () => {
+      // The kebab is the discoverable route; the title is the obvious one. It is a
+      // real button rather than a click handler on the heading, so it is reachable
+      // by keyboard and announced as something you can press.
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+
+      expect(
+        await screen.findByRole('textbox', { name: /Session name/ }),
+      ).toHaveValue('Which GitHub issues...');
+    });
+
+    it('hands the rename the session’s own agent and source', async () => {
+      // The backend needs both for its kagent v0.9.x workaround, and taking them
+      // off the record being renamed is what makes that round trip lossless.
+      await render();
+
+      expect(renameFallback).toHaveBeenLastCalledWith({
+        agentRef: 'kagent__NS__issue_tracker',
+        source: undefined,
+      });
+    });
+
+    it('submits the new name and closes', async () => {
+      mockRenameSession.mockResolvedValue(undefined);
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+      const field = await screen.findByRole('textbox', {
+        name: /Session name/,
+      });
+      await userEvent.clear(field);
+      await userEvent.type(field, 'Issues assigned to me');
+      await userEvent.click(screen.getByRole('button', { name: /Save/ }));
+
+      await waitFor(() =>
+        expect(mockRenameSession).toHaveBeenCalledWith('Issues assigned to me'),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('textbox', { name: /Session name/ }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it('keeps the dialog open when the rename fails', async () => {
+      // Unlike the delete, nothing navigates away — so the dialog is where the
+      // failure has to be reported, and closing it would hide it.
+      mockRenameSession.mockRejectedValue(new Error('kagent said no'));
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', { name: /Save/ }),
+      );
+
+      await waitFor(() => expect(mockRenameSession).toHaveBeenCalled());
+      expect(
+        screen.getByRole('textbox', { name: /Session name/ }),
+      ).toBeInTheDocument();
+    });
   });
 });

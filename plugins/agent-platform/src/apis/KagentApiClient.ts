@@ -246,6 +246,43 @@ export class KagentApiClient implements KagentApi {
     }
   }
 
+  async renameSession(
+    installation: string,
+    sessionId: string,
+    name: string,
+    fallback: { agentRef?: string; source?: string } = {},
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        // Read only by the backend's v0.9.x workaround; see
+        // `KagentApi.renameSession`.
+        ...(fallback.agentRef && { agentRef: fallback.agentRef }),
+        ...(fallback.source && { source: fallback.source }),
+      }),
+    });
+
+    await this.throwIfNotOk(response);
+
+    // Same tolerance as the delete: the envelope carries nothing worth
+    // returning and an empty body is still a success, but a `200 error: true` is
+    // a failure reported in-band and must not pass for one.
+    const body = await response.json().catch(() => undefined);
+    if (isErrorEnvelope(body)) {
+      throw upstreamError(
+        typeof body.message === 'string' && body.message
+          ? body.message
+          : 'kagent reported an error while renaming the session, without saying what.',
+      );
+    }
+  }
+
   async getIdentity(installation: string): Promise<KagentIdentity> {
     // Best-effort token: the backend reads it as optional here, so a broker or
     // Dex-session failure must not stop the probe. This is the one installation

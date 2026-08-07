@@ -469,6 +469,93 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('renameSession', () => {
+    it('PUTs the new name as JSON, with the installation and the token', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().renameSession('gazelle', 'abc123', 'New name');
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123?installation=gazelle',
+      );
+      expect(init.method).toBe('PUT');
+      // Without this the backend's `express.json()` never parses the body, and the
+      // route rejects a perfectly good name as missing.
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({ name: 'New name' });
+    });
+
+    it('sends the agent and source only when the caller has them', async () => {
+      // They exist for the backend's kagent v0.9.x workaround. Sending the keys
+      // unconditionally would put nulls in the body for the common case.
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().renameSession('gazelle', 'abc123', 'New name', {
+        agentRef: 'kagent__NS__sre_agent',
+        source: 'user',
+      });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        name: 'New name',
+        agentRef: 'kagent__NS__sre_agent',
+        source: 'user',
+      });
+    });
+
+    it('encodes an awkward session id into the path', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().renameSession('gazelle', 'a/b?c=d', 'New name');
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb%3Fc%3Dd?installation=gazelle',
+      );
+    });
+
+    it('succeeds on a 2xx with no body', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 204,
+        json: async () => {
+          throw new SyntaxError('Unexpected end of JSON input');
+        },
+      } as unknown as Response);
+
+      await expect(
+        buildClient().renameSession('gazelle', 'abc123', 'New name'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws on an error reported in-band on a 200', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, message: 'failed to update session' }),
+      );
+
+      await expect(
+        buildClient().renameSession('gazelle', 'abc123', 'New name'),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: 'failed to update session',
+      });
+    });
+
+    it.each([
+      [403, 'ForbiddenError'],
+      [404, 'NotFoundError'],
+      [500, 'Error'],
+    ])('maps a %s to %s', async (status, expectedName) => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'nope' } }, status),
+      );
+
+      await expect(
+        buildClient().renameSession('gazelle', 'abc123', 'New name'),
+      ).rejects.toMatchObject({ name: expectedName, message: 'nope' });
+    });
+  });
+
   describe('getIdentity', () => {
     it('reads the subject kagent resolved', async () => {
       fetchMock.mockResolvedValue(

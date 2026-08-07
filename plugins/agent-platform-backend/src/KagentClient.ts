@@ -21,6 +21,21 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 /** Default per-request timeout toward a kagent API. */
 export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
 
+/**
+ * Longest session name this proxy will store.
+ *
+ * kagent imposes no limit of its own — `session.name` is Postgres `TEXT`
+ * (`go/core/pkg/migrations/core/000001_initial.up.sql`) and no handler validates
+ * it — so this bound is ours, chosen to match the conversation titles in the
+ * ai-chat plugin. Enforced here as well as in the dialog, because a client-side
+ * `maxLength` is a nicety and not a guard.
+ *
+ * Reads stay unbounded: a longer name set by kagent's own UI must still render.
+ *
+ * Must match SESSION_NAME_MAX_LENGTH in plugins/agent-platform.
+ */
+export const SESSION_NAME_MAX_LENGTH = 255;
+
 /** One installation's kagent endpoint. */
 export interface KagentInstallationConfig {
   /** Installation name, as in `gs.installations`. */
@@ -105,6 +120,34 @@ function upstreamError(message: string): Error {
   const error = new Error(message);
   error.name = 'UpstreamError';
   return error;
+}
+
+/**
+ * Name of the error thrown for a kagent 400, for the one caller that opts into
+ * seeing them.
+ *
+ * Name-based rather than a subclass, matching {@link upstreamError} — nothing
+ * crosses a package boundary with it, and `instanceof` buys nothing here.
+ */
+const BAD_REQUEST_ERROR_NAME = 'KagentBadRequestError';
+
+/**
+ * kagent rejected the request itself.
+ *
+ * Only thrown when a caller passes `badRequest: true`, because for every other
+ * endpoint a 400 is a coding error on our side and belongs on the generic
+ * upstream-failure path. {@link KagentClient.updateSessionName} opts in because
+ * there a 400 is *diagnostic*: it is how a kagent too old to rename announces
+ * itself. See that method.
+ */
+function badRequestError(message: string): Error {
+  const error = new Error(message);
+  error.name = BAD_REQUEST_ERROR_NAME;
+  return error;
+}
+
+function isBadRequestError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === BAD_REQUEST_ERROR_NAME;
 }
 
 /** Whether a configured URL is absolute and http(s), so `fetch` can use it. */
@@ -322,6 +365,98 @@ export class KagentClient {
     );
   }
 
+  /**
+   * Rename one session, across two incompatible kagent generations.
+   *
+   * The endpoint meant for this is `PUT <apiBaseUrl>/sessions/<id>` with
+   * `{name}`, and on **v0.10+** that is all this does.
+   *
+   * On **v0.9.x it cannot rename at all**, which is not obvious and is worth
+   * stating precisely, because the docs and the route table both suggest
+   * otherwise. `HandleUpdateSession` there
+   * (`go/core/internal/httpserver/handlers/sessions.go`):
+   *
+   * - requires `name` *and* `agent_ref`, rejecting either omission with a 400;
+   * - never reads the `{session_id}` path param — it looks the session up by
+   *   `*sessionRequest.Name`, i.e. it treats the new name as the id;
+   * - assigns only `session.AgentID`. `session.Name` is never written.
+   *
+   * So the fallback below goes through `POST <apiBaseUrl>/sessions` instead,
+   * whose `StoreSession` is an upsert on `(id, user_id)` that does write `name`.
+   * The SQL is identical in v0.9.9 and v0.10.0-rc1
+   * (`go/core/internal/database/queries/sessions.sql`), and echoing the
+   * session's own `agent_id` back as `agent_ref` round-trips exactly, because
+   * kagent's `ConvertToPythonIdentifier` only rewrites `-` and `/` — neither of
+   * which survives in an already-encoded id, making it idempotent.
+   *
+   * **Which status triggers the fallback is the safety property here.** Only a
+   * 400 does. v0.9.9 registers the route (`.Methods(http.MethodPut)`) and
+   * rejects our `agent_ref`-less body before looking anything up, so its 400 is
+   * deterministic and means "this kagent predates the fix". A 404 means the
+   * session genuinely is not there — and because the upsert *inserts* when
+   * nothing conflicts, falling back on a 404 would quietly create a new empty
+   * session for someone renaming one that was already deleted. Never widen this
+   * to catch 404.
+   *
+   * Every way the fallback can fail, it fails before writing: no `agentRef` to
+   * send, an agent kagent cannot resolve (400), or a sandbox-workload agent that
+   * already has a session (409).
+   *
+   * TODO(kagent-0.9): delete the fallback — this method's `fallback` parameter,
+   * the POST branch, the `badRequest` opt-in on the PUT, and their tests — once
+   * no installation runs kagent v0.9.x. The PUT alone is then correct.
+   */
+  async updateSessionName(
+    sessionId: string,
+    name: string,
+    fallback: { agentRef?: string; source?: string },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const notFound: NotFoundContext = {
+      missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+      endpoint: 'session update',
+    };
+
+    try {
+      return await this.request(
+        `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
+          sessionId,
+        )}`,
+        options,
+        { method: 'PUT', body: { name }, badRequest: true, notFound },
+      );
+    } catch (error) {
+      if (!isBadRequestError(error)) {
+        throw error;
+      }
+    }
+
+    // TODO(kagent-0.9): remove from here to the end of the method.
+    this.logger.debug(
+      `kagent rejected the session rename on installation '${this.installation.name}'; retrying via the session upsert`,
+    );
+
+    if (!fallback.agentRef) {
+      throw upstreamError(
+        `The kagent API for installation '${this.installation.name}' is running a version that cannot rename a session, and the workaround needs the session's agent, which this session does not have.`,
+      );
+    }
+
+    return this.request(`${this.installation.apiBaseUrl}/sessions`, options, {
+      method: 'POST',
+      // `source` is echoed back because the upsert overwrites it from what we
+      // send. v0.9.9 omits it from its reads, in which case it is already null
+      // and sending nothing changes nothing.
+      body: {
+        id: sessionId,
+        name,
+        agent_ref: fallback.agentRef,
+        ...(fallback.source && { source: fallback.source }),
+      },
+      notFound,
+    });
+  }
+
   // There is deliberately no version probe. kagent serves `/version` at the
   // server root (`APIPathVersion`), not under `/api`, and neither door we
   // support routes the root to the controller:
@@ -355,11 +490,19 @@ export class KagentClient {
     options: KagentRequestOptions,
     extra: {
       /** Defaults to GET; the reads leave it out. */
-      method?: 'GET' | 'DELETE';
+      method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+      /** JSON request body. Adds the matching `Content-Type` when present. */
+      body?: unknown;
+      /**
+       * Surface a kagent 400 as {@link badRequestError} instead of folding it
+       * into the generic upstream failure. Opt-in, so no existing endpoint
+       * changes behaviour.
+       */
+      badRequest?: boolean;
       notFound?: NotFoundContext;
     } = {},
   ): Promise<unknown> {
-    const { method = 'GET', notFound } = extra;
+    const { method = 'GET', body, badRequest, notFound } = extra;
 
     let response: Response;
     try {
@@ -367,10 +510,12 @@ export class KagentClient {
         method,
         headers: {
           Accept: 'application/json',
+          ...(body !== undefined && { 'Content-Type': 'application/json' }),
           ...(options.userToken && {
             Authorization: `Bearer ${options.userToken}`,
           }),
         },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
         // Do NOT follow oauth2-proxy's redirect into Dex: a 3xx here means the
         // forwarded token was not accepted, and following it would yield an
         // HTML sign-in page with a 200.
@@ -431,6 +576,15 @@ export class KagentClient {
     if (response.status === 403) {
       throw new NotAllowedError(
         `Not authorized to read the kagent API for installation '${this.installation.name}'.`,
+      );
+    }
+
+    // Only for the caller that asked. Deliberately above the 404 handling and
+    // the generic `!response.ok` branch, both of which would otherwise claim
+    // this one.
+    if (response.status === 400 && badRequest) {
+      throw badRequestError(
+        `The kagent API for installation '${this.installation.name}' rejected the request.`,
       );
     }
 

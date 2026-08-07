@@ -400,6 +400,189 @@ describe('KagentClient', () => {
     });
   });
 
+  describe('session rename', () => {
+    const fallback = { agentRef: 'kagent__NS__sre_agent' };
+
+    it('PUTs the name to the session path, with the forwarded token', async () => {
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: false }));
+
+      await build(fetchFn).updateSessionName('abc123', 'New name', fallback, {
+        userToken: 'user-token',
+      });
+
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchFn.mock.calls[0];
+      expect(url).toBe('https://kagent.gazelle.example.io/api/sessions/abc123');
+      expect(init.method).toBe('PUT');
+      expect(init.headers).toEqual({
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer user-token',
+      });
+      expect(JSON.parse(init.body)).toEqual({ name: 'New name' });
+    });
+
+    it('escapes a session id that is not URL-safe', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).updateSessionName('a/b?c=d', 'New name', fallback, {
+        userToken: 't',
+      });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/a%2Fb%3Fc%3Dd',
+      );
+    });
+
+    it('leaves the reads without a body or a content type', async () => {
+      // The transport now sends bodies. A read that started sending one would be
+      // caught by nothing else here.
+      const fetchFn = jest
+        .fn()
+        .mockImplementation(async () => jsonResponse({}));
+      const client = build(fetchFn);
+
+      await client.listSessions({ userToken: 't' });
+      await client.getSession('abc', { userToken: 't' });
+
+      for (const [, init] of fetchFn.mock.calls) {
+        expect(init.body).toBeUndefined();
+        expect(init.headers['Content-Type']).toBeUndefined();
+      }
+    });
+
+    // TODO(kagent-0.9): delete this block with the fallback it covers.
+    describe('the kagent v0.9.x fallback', () => {
+      /** A 400, which on v0.9.x means "this kagent cannot rename". */
+      const rejected = () =>
+        jsonResponse({ error: true, message: 'agent_ref is required' }, 400);
+
+      it('retries through the session upsert when kagent rejects the PUT', async () => {
+        // v0.9.x requires `agent_ref`, looks the session up by the *name* it was
+        // given, and never writes the name — so the PUT is answered 400 and the
+        // rename has to go through POST /sessions, whose upsert does write it.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(jsonResponse({ error: false }));
+
+        await build(fetchFn).updateSessionName(
+          'abc123',
+          'New name',
+          { agentRef: 'kagent__NS__sre_agent', source: 'user' },
+          { userToken: 'user-token' },
+        );
+
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+        const [url, init] = fetchFn.mock.calls[1];
+        expect(url).toBe('https://kagent.gazelle.example.io/api/sessions');
+        expect(init.method).toBe('POST');
+        expect(JSON.parse(init.body)).toEqual({
+          id: 'abc123',
+          name: 'New name',
+          // Echoed back verbatim: kagent's ConvertToPythonIdentifier is idempotent
+          // on an already-encoded id, so this resolves to the same agent.
+          agent_ref: 'kagent__NS__sre_agent',
+          // The upsert overwrites `source` from what it is sent, so not echoing it
+          // would quietly null it.
+          source: 'user',
+        });
+      });
+
+      it('omits source when the session has none', async () => {
+        // v0.9.9 omits `source` from its reads, in which case the column is already
+        // null and sending nothing changes nothing.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(jsonResponse({ error: false }));
+
+        await build(fetchFn).updateSessionName('abc123', 'New name', fallback, {
+          userToken: 't',
+        });
+
+        expect(JSON.parse(fetchFn.mock.calls[1][1].body)).toEqual({
+          id: 'abc123',
+          name: 'New name',
+          agent_ref: 'kagent__NS__sre_agent',
+        });
+      });
+
+      it('does NOT fall back on a 404', async () => {
+        // The safety property of the whole design. A 404 means the session is not
+        // there, and the upsert *inserts* when nothing conflicts — so falling back
+        // here would silently create a new empty session for someone renaming one
+        // that had already been deleted.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValue(jsonResponse({ error: true }, 404));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', fallback, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'NotFoundError' });
+
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        [401, 'AuthenticationError'],
+        [403, 'NotAllowedError'],
+        [500, 'UpstreamError'],
+      ])('does not fall back on a %s either', async (status, name) => {
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValue(jsonResponse({ error: true }, status));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', fallback, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name });
+
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+      });
+
+      it('refuses to send a request that could create a session', async () => {
+        // With no agent to name, kagent could not resolve the upsert anyway — it
+        // requires `agent_ref` to create. Failing here keeps a rename that cannot
+        // work from turning into a write that does something else.
+        const fetchFn = jest.fn().mockResolvedValue(rejected());
+
+        await expect(
+          build(fetchFn).updateSessionName(
+            'abc123',
+            'New name',
+            {},
+            { userToken: 't' },
+          ),
+        ).rejects.toMatchObject({
+          name: 'UpstreamError',
+          message: expect.stringContaining('cannot rename a session'),
+        });
+
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+      });
+
+      it('surfaces a failure from the fallback itself', async () => {
+        // A sandbox agent that already holds a session answers 409 here.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(jsonResponse({ error: true }, 409));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', fallback, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'UpstreamError' });
+      });
+    });
+  });
+
   it('requests /me under the API base URL', async () => {
     const fetchFn = jest.fn().mockResolvedValue(jsonResponse({ sub: 'a@b.c' }));
 
