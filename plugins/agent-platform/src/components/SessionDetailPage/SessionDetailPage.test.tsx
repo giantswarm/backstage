@@ -339,6 +339,21 @@ describe('SessionDetailPage', () => {
       ).toHaveValue('Which GitHub issues...');
     });
 
+    it('says what clicking the title does, on hover', async () => {
+      // The hover underline signals "clickable" but not "renames". Everything else
+      // on this page is inert text, so without a label the affordance is only
+      // findable by clicking a heading on the off chance.
+      await render();
+
+      await userEvent.hover(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+
+      expect(await screen.findByText('Rename session')).toBeInTheDocument();
+    });
+
     it('submits the new name and closes', async () => {
       mockRenameSession.mockResolvedValue(undefined);
       await render();

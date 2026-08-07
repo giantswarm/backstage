@@ -661,6 +661,13 @@ and announced as something you can press. Both open the **same** dialog, which i
 its open state lives on the page rather than inside the actions menu the way the
 delete's does.
 
+The title carries a **"Rename session" tooltip**, because the hover underline says
+"this does something" without saying what, and every other thing on the page is inert
+text. It uses MUI's tooltip rather than bui's: bui wraps react-aria's
+`TooltipTrigger`, which only wires up its own focusable components, and this trigger
+is a bare `<button>` so it can inherit the heading's typography. Same fallback
+`CodeBlock/CopyButton` already makes.
+
 Worth doing because kagent's titles are derived from the first message and truncated
 to 20 characters, so a session that mattered is filed under half a sentence.
 

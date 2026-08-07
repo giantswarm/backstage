@@ -51,6 +51,8 @@ runs kagent v0.9.x, leaving the plain PUT.
 
 Smaller decisions:
 
+- The title carries a "Rename session" tooltip: the hover underline says "this does
+  something" but not what, and everything else on the page is inert text.
 - The invalidations **refetch**, unlike the delete's `refetchType: 'none'` — nothing
   navigates away, so the page has to show the new name. Both are awaited inside the
   mutation, so the dialog closes onto data that has caught up rather than onto the old

@@ -8,7 +8,7 @@ import {
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Avatar, Badge, Box, Flex, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { makeStyles, Tooltip } from '@material-ui/core';
 import {
   DateComponent,
   useProvidePageHeaderActions,
@@ -271,20 +271,32 @@ export function SessionDetailPage() {
         <Flex direction="column" gap="2">
           <BackToSessions>← Sessions</BackToSessions>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className={classes.titleButton}
-              onClick={openRename}
-              // The accessible name has to say what pressing this does, since the
-              // visible text is the session's name and says nothing about renaming.
-              aria-label={`Rename session "${sessionTitle}"`}
-            >
-              {/* `as="span"`: Text renders a <p> by default, which is not valid
-                  inside a button. */}
-              <Text as="span" variant="title-medium">
-                {sessionTitle}
-              </Text>
-            </button>
+            {/* The underline on hover says "this does something"; it does not say
+                what. Everything else on this page is inert text, so without a label
+                the affordance is only findable by clicking a heading on the off
+                chance — which nobody does.
+
+                MUI's tooltip rather than bui's: bui wraps react-aria's
+                `TooltipTrigger`, which only wires up its own focusable components,
+                and this trigger is a bare <button> so it can inherit the heading's
+                typography. Same fallback the plugin's `CopyButton` makes. */}
+            <Tooltip title="Rename session">
+              <button
+                type="button"
+                className={classes.titleButton}
+                onClick={openRename}
+                // The accessible name has to say what pressing this does, since the
+                // visible text is the session's name and says nothing about
+                // renaming. The tooltip is the sighted equivalent of this.
+                aria-label={`Rename session "${sessionTitle}"`}
+              >
+                {/* `as="span"`: Text renders a <p> by default, which is not valid
+                    inside a button. */}
+                <Text as="span" variant="title-medium">
+                  {sessionTitle}
+                </Text>
+              </button>
+            </Tooltip>
             {/* The raw A2A state is kept as the label for anything we don't
                 recognise, so a future kagent state shows as itself. */}
             {state && <Badge size="small">{state.label}</Badge>}
