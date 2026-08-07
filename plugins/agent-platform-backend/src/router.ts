@@ -13,6 +13,7 @@ import {
   KagentClient,
   KagentInstallationConfig,
   readKagentInstallationsFromConfig,
+  SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
 
 export interface RouterOptions {
@@ -222,6 +223,58 @@ export async function createRouter(
     // Pass an empty upstream success through as one, rather than as `res.json()`'s
     // empty body with a JSON content-type. Only reachable if a future kagent
     // answers 204 to the delete; today it returns its envelope with a 200.
+    if (result === undefined) {
+      res.status(204).end();
+      return;
+    }
+
+    res.json(result);
+  });
+
+  /**
+   * Rename one session.
+   *
+   * The token is **required** for the same reason the delete route requires it:
+   * kagent decides whose session this is from the token alone, and under
+   * `unsecure` mode this would otherwise rename the shared default user's
+   * session on behalf of nobody in particular.
+   *
+   * The name is all this takes. On a kagent too old to rename properly the
+   * client reads the session back and echoes its own agent and source into the
+   * upsert — deliberately not something the caller supplies, since those fields
+   * are overwritten by that write and a stale value from a browser would blank a
+   * column nobody asked to touch.
+   *
+   * A rejected name is the caller's mistake and answers 400, not a 5xx —
+   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
+   */
+  router.put('/kagent/sessions/:sessionId', async (req, res) => {
+    const { client } = resolveInstallation(req);
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const rawName = body.name;
+    if (typeof rawName !== 'string') {
+      throw new InputError('name must be a string');
+    }
+
+    // Trimmed before the emptiness check so a name of pure whitespace is
+    // rejected rather than stored as a title nothing can display.
+    const name = rawName.trim();
+    if (!name) {
+      throw new InputError('name must not be empty');
+    }
+    if (name.length > SESSION_NAME_MAX_LENGTH) {
+      throw new InputError(
+        `name must be at most ${SESSION_NAME_MAX_LENGTH} characters`,
+      );
+    }
+
+    const result = await client.updateSessionName(readSessionId(req), name, {
+      userToken: readUserToken(req, { required: true }),
+    });
+
+    // As on the delete: pass an empty upstream success through as one rather
+    // than as an empty body with a JSON content-type.
     if (result === undefined) {
       res.status(204).end();
       return;

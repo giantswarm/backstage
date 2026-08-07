@@ -246,6 +246,39 @@ export class KagentApiClient implements KagentApi {
     }
   }
 
+  async renameSession(
+    installation: string,
+    sessionId: string,
+    name: string,
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+
+    // `badRequestIsMissing: false` — this route answers 400 for a rejected name,
+    // which is nothing like "kagent is absent from this installation". See
+    // `throwIfNotOk`.
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // Same tolerance as the delete: the envelope carries nothing worth
+    // returning and an empty body is still a success, but a `200 error: true` is
+    // a failure reported in-band and must not pass for one.
+    const body = await response.json().catch(() => undefined);
+    if (isErrorEnvelope(body)) {
+      throw upstreamError(
+        typeof body.message === 'string' && body.message
+          ? body.message
+          : 'kagent reported an error while renaming the session, without saying what.',
+      );
+    }
+  }
+
   async getIdentity(installation: string): Promise<KagentIdentity> {
     // Best-effort token: the backend reads it as optional here, so a broker or
     // Dex-session failure must not stop the probe. This is the one installation
@@ -341,8 +374,19 @@ export class KagentApiClient implements KagentApi {
     return response.json() as Promise<T>;
   }
 
-  /** {@link handleResponse}'s status handling, shared with the write path. */
-  private async throwIfNotOk(response: Response): Promise<void> {
+  /**
+   * {@link handleResponse}'s status handling, shared with the write paths.
+   *
+   * `badRequestIsMissing` governs the 400 mapping below, and defaults to the
+   * reads' behaviour. Writes that validate their input have to turn it off: they
+   * answer 400 for a bad *request*, which must not borrow the name the plugin
+   * reserves for "kagent isn't deployed here".
+   */
+  private async throwIfNotOk(
+    response: Response,
+    options: { badRequestIsMissing?: boolean } = {},
+  ): Promise<void> {
+    const { badRequestIsMissing = true } = options;
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const message =
@@ -357,7 +401,10 @@ export class KagentApiClient implements KagentApi {
       // ordinary operation, not a coding error, and belongs on the same silent
       // "kagent isn't available here" path as a 404. Left unmapped it would be
       // retried with backoff and surfaced to the user as a read failure.
-      if (response.status === 400) {
+      //
+      // Only for callers that cannot produce a 400 of their own — see
+      // `badRequestIsMissing`.
+      if (response.status === 400 && badRequestIsMissing) {
         error.name = 'NotFoundError';
       }
       if (response.status === 401) {

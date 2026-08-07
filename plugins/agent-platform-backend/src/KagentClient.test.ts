@@ -400,6 +400,242 @@ describe('KagentClient', () => {
     });
   });
 
+  describe('session rename', () => {
+    it('PUTs the name to the session path, with the forwarded token', async () => {
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: false }));
+
+      await build(fetchFn).updateSessionName('abc123', 'New name', {
+        userToken: 'user-token',
+      });
+
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchFn.mock.calls[0];
+      expect(url).toBe('https://kagent.gazelle.example.io/api/sessions/abc123');
+      expect(init.method).toBe('PUT');
+      expect(init.headers).toEqual({
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer user-token',
+      });
+      expect(JSON.parse(init.body)).toEqual({ name: 'New name' });
+    });
+
+    it('escapes a session id that is not URL-safe', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse({}));
+
+      await build(fetchFn).updateSessionName('a/b?c=d', 'New name', {
+        userToken: 't',
+      });
+
+      expect(fetchFn.mock.calls[0][0]).toBe(
+        'https://kagent.gazelle.example.io/api/sessions/a%2Fb%3Fc%3Dd',
+      );
+    });
+
+    it('leaves the reads without a body or a content type', async () => {
+      // The transport now sends bodies. A read that started sending one would be
+      // caught by nothing else here.
+      const fetchFn = jest
+        .fn()
+        .mockImplementation(async () => jsonResponse({}));
+      const client = build(fetchFn);
+
+      await client.listSessions({ userToken: 't' });
+      await client.getSession('abc', { userToken: 't' });
+
+      for (const [, init] of fetchFn.mock.calls) {
+        expect(init.body).toBeUndefined();
+        expect(init.headers['Content-Type']).toBeUndefined();
+      }
+    });
+
+    // TODO(kagent-0.9): delete this block with the fallback it covers.
+    describe('the kagent v0.9.x fallback', () => {
+      /** A 400, which on v0.9.x means "this kagent cannot rename". */
+      const rejected = () =>
+        jsonResponse({ error: true, message: 'agent_ref is required' }, 400);
+
+      /** The session read the fallback makes before it writes anything. */
+      const readBack = (session: unknown) =>
+        jsonResponse({ error: false, data: { session, events: [] } });
+
+      const liveSession = {
+        id: 'abc123',
+        name: 'Old name',
+        agent_id: 'kagent__NS__sre_agent',
+      };
+
+      it('reads the session back and upserts it under its own agent', async () => {
+        // v0.9.x requires `agent_ref`, looks the session up by the *name* it was
+        // given, and never writes the name — so the PUT is answered 400 and the
+        // rename has to go through POST /sessions, whose upsert does write it.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(readBack(liveSession))
+          .mockResolvedValueOnce(jsonResponse({ error: false }));
+
+        await build(fetchFn).updateSessionName('abc123', 'New name', {
+          userToken: 'user-token',
+        });
+
+        expect(fetchFn).toHaveBeenCalledTimes(3);
+
+        // The read is trimmed the same way `getSession` is: the events dominate
+        // this payload and nothing here reads them.
+        expect(fetchFn.mock.calls[1][0]).toBe(
+          'https://kagent.gazelle.example.io/api/sessions/abc123?limit=1',
+        );
+
+        const [url, init] = fetchFn.mock.calls[2];
+        expect(url).toBe('https://kagent.gazelle.example.io/api/sessions');
+        expect(init.method).toBe('POST');
+        expect(JSON.parse(init.body)).toEqual({
+          id: 'abc123',
+          name: 'New name',
+          // Echoed from the read, not from the caller: kagent's
+          // ConvertToPythonIdentifier is idempotent on an already-encoded id, so
+          // this resolves to the same agent.
+          agent_ref: 'kagent__NS__sre_agent',
+        });
+      });
+
+      it('echoes the session own source, so the upsert cannot blank it', async () => {
+        // The upsert overwrites `source` from what it is sent, so it has to come
+        // from kagent rather than from whatever the caller happened to hold.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(readBack({ ...liveSession, source: 'user' }))
+          .mockResolvedValueOnce(jsonResponse({ error: false }));
+
+        await build(fetchFn).updateSessionName('abc123', 'New name', {
+          userToken: 't',
+        });
+
+        expect(JSON.parse(fetchFn.mock.calls[2][1].body)).toMatchObject({
+          source: 'user',
+        });
+      });
+
+      it('omits source when the session genuinely has none', async () => {
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(readBack(liveSession))
+          .mockResolvedValueOnce(jsonResponse({ error: false }));
+
+        await build(fetchFn).updateSessionName('abc123', 'New name', {
+          userToken: 't',
+        });
+
+        expect(JSON.parse(fetchFn.mock.calls[2][1].body)).not.toHaveProperty(
+          'source',
+        );
+      });
+
+      it('never writes when the session is already gone', async () => {
+        // The safety property of the whole design, and the reason the read-back
+        // exists at all: on v0.9.x the PUT answers 400 whether or not the session
+        // is there, so its status cannot be trusted to mean "it exists". The
+        // upsert *inserts* when nothing conflicts, so without this the rename
+        // would resurrect a session someone had just deleted, under its old id.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(jsonResponse({ error: true }, 404));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'NotFoundError' });
+
+        // Two calls: the PUT and the read. Emphatically not a third.
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+        expect(
+          fetchFn.mock.calls.some(([, init]) => init?.method === 'POST'),
+        ).toBe(false);
+      });
+
+      it('never writes when the read comes back without a session', async () => {
+        // A readable 200 carrying no session is the same condition as a 404, and
+        // falling through would put us straight back to inserting one.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(jsonResponse({ error: false, data: {} }));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'NotFoundError' });
+
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+      });
+
+      it('reports a session with no agent as a conflict, not a server error', async () => {
+        // `agent_id` is nullable and kagent needs one to accept the upsert. A 5xx
+        // here would be a standing Sentry issue on every installation, for
+        // something nobody can act on.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(readBack({ id: 'abc123', name: 'Old name' }));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({
+          name: 'ConflictError',
+          message: expect.stringContaining('has none'),
+        });
+
+        expect(fetchFn).toHaveBeenCalledTimes(2);
+      });
+
+      it.each([
+        ['an unresolvable agent (400)', 400],
+        ['a sandbox agent that already has a session (409)', 409],
+      ])('reports %s as a conflict, not a server error', async (_l, status) => {
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(rejected())
+          .mockResolvedValueOnce(readBack(liveSession))
+          .mockResolvedValueOnce(jsonResponse({ error: true }, status));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'ConflictError' });
+      });
+
+      it.each([
+        [401, 'AuthenticationError'],
+        [403, 'NotAllowedError'],
+        [404, 'NotFoundError'],
+        [500, 'UpstreamError'],
+      ])('does not enter the fallback on a %s', async (status, name) => {
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValue(jsonResponse({ error: true }, status));
+
+        await expect(
+          build(fetchFn).updateSessionName('abc123', 'New name', {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name });
+
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
   it('requests /me under the API base URL', async () => {
     const fetchFn = jest.fn().mockResolvedValue(jsonResponse({ sub: 'a@b.c' }));
 

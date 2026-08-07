@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 
 import { sessionsRouteRef } from '../../routes';
@@ -38,7 +39,7 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
 
-// The page calls both of these on the menu's behalf, because the menu renders in
+// The page calls all of these on the menu's behalf, because the menu renders in
 // the shared header — outside the plugin's QueryClientProvider — and so cannot call
 // them itself. This test mounts no query client, which is why they are stubbed.
 const mockDeleteSession = jest.fn();
@@ -46,6 +47,16 @@ jest.mock('../../hooks/useDeleteSession', () => ({
   useDeleteSession: () => ({
     deleteSession: mockDeleteSession,
     isDeleting: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+
+const mockRenameSession = jest.fn();
+jest.mock('../../hooks/useRenameSession', () => ({
+  useRenameSession: () => ({
+    renameSession: mockRenameSession,
+    isRenaming: false,
     error: null,
     reset: jest.fn(),
   }),
@@ -98,6 +109,7 @@ function lastProvidedActions() {
 describe('SessionDetailPage', () => {
   beforeEach(() => {
     providedActions.mockClear();
+    mockRenameSession.mockReset();
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
       rows: [
@@ -307,5 +319,86 @@ describe('SessionDetailPage', () => {
     expect(
       screen.getByText('This session has no messages yet.'),
     ).toBeInTheDocument();
+  });
+
+  describe('renaming', () => {
+    it('makes the title a way in, not just a label', async () => {
+      // The kebab is the discoverable route; the title is the obvious one. It is a
+      // real button rather than a click handler on the heading, so it is reachable
+      // by keyboard and announced as something you can press.
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+
+      expect(
+        await screen.findByRole('textbox', { name: /Session name/ }),
+      ).toHaveValue('Which GitHub issues...');
+    });
+
+    it('says what clicking the title does, on hover', async () => {
+      // The hover underline signals "clickable" but not "renames". Everything else
+      // on this page is inert text, so without a label the affordance is only
+      // findable by clicking a heading on the off chance.
+      await render();
+
+      await userEvent.hover(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+
+      expect(await screen.findByText('Rename session')).toBeInTheDocument();
+    });
+
+    it('submits the new name and closes', async () => {
+      mockRenameSession.mockResolvedValue(undefined);
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+      const field = await screen.findByRole('textbox', {
+        name: /Session name/,
+      });
+      await userEvent.clear(field);
+      await userEvent.type(field, 'Issues assigned to me');
+      await userEvent.click(screen.getByRole('button', { name: /Save/ }));
+
+      await waitFor(() =>
+        expect(mockRenameSession).toHaveBeenCalledWith('Issues assigned to me'),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('textbox', { name: /Session name/ }),
+        ).not.toBeInTheDocument(),
+      );
+    });
+
+    it('keeps the dialog open when the rename fails', async () => {
+      // Unlike the delete, nothing navigates away — so the dialog is where the
+      // failure has to be reported, and closing it would hide it.
+      mockRenameSession.mockRejectedValue(new Error('kagent said no'));
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', { name: /Save/ }),
+      );
+
+      await waitFor(() => expect(mockRenameSession).toHaveBeenCalled());
+      expect(
+        screen.getByRole('textbox', { name: /Session name/ }),
+      ).toBeInTheDocument();
+    });
   });
 });

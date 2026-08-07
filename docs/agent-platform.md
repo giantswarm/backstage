@@ -652,6 +652,92 @@ three minutes, and printed "1 day ago" identically on every turn marker — hidi
 the progression the timeline exists to show. The list keeps the relative form,
 where scanning for recency is the point.
 
+### Renaming a session
+
+`useRenameSession` + `SessionRenameDialog`, reachable two ways: a `Rename session…`
+item in the kebab, and the page title itself, which is a real `<button>` stripped of
+its chrome rather than a click handler on the heading — so it is keyboard-reachable
+and announced as something you can press. Both open the **same** dialog, which is why
+its open state lives on the page rather than inside the actions menu the way the
+delete's does.
+
+The title carries a **"Rename session" tooltip**, because the hover underline says
+"this does something" without saying what, and every other thing on the page is inert
+text. It uses MUI's tooltip rather than bui's: bui wraps react-aria's
+`TooltipTrigger`, which only wires up its own focusable components, and this trigger
+is a bare `<button>` so it can inherit the heading's typography. Same fallback
+`CodeBlock/CopyButton` already makes.
+
+Worth doing because kagent's titles are derived from the first message and truncated
+to 20 characters, so a session that mattered is filed under half a sentence.
+
+**kagent's rename endpoint does not rename on the version the fleet runs.** This is
+the whole reason the implementation looks the way it does, and neither the route table
+nor kagent's own docs give it away. `PUT /api/sessions/{session_id}` exists on v0.9.x
+and is registered (`.Methods(http.MethodPut)`), but `HandleUpdateSession` there:
+
+- requires **both** `name` and `agent_ref`, rejecting either omission with a 400;
+- never reads `{session_id}` — it looks the session up by `*sessionRequest.Name`,
+  i.e. it treats the new name as the id;
+- assigns only `session.AgentID`. `session.Name` is never written.
+
+It was fixed in v0.10.0-rc1, which reads the path param and applies a partial update.
+GS pins **0.9.9** (`agentic-platform`'s `values.yaml`), so on every installation we
+run today, the correct endpoint is inert.
+
+**So the write goes through the session upsert instead, but only after the PUT has
+said it must.** `POST /api/sessions` with an existing `id` lands on `StoreSession`,
+an upsert on `(id, user_id)` that does write `name` — and the SQL is identical in
+v0.9.9 and v0.10.0-rc1. Echoing the session's own `agent_id` back as `agent_ref`
+round-trips exactly, because kagent's `ConvertToPythonIdentifier` only rewrites `-`
+and `/`, neither of which survives in an already-encoded id.
+
+**Only a 400 enters the fallback, and it means "this kagent predates the fix" —
+nothing more.** It is tempting to also read the PUT's status as telling us whether
+the session still exists. It does not: v0.9.x rejects the missing `agent_ref`
+_before_ it looks anything up, so a live session and a deleted one both answer 400,
+and the 404 that would separate them is reachable only on v0.10+ — which is to say,
+never on today's fleet. Everything else (401, 403, 404, 5xx) is a real failure and is
+surfaced as one.
+
+**The read-back, not the status, is what enforces "never create".** Before writing,
+the fallback fetches the session (`GET /sessions/{id}?limit=1`) and gives up if it is
+not there. Without it the upsert — which _inserts_ when nothing conflicts — would
+resurrect a session someone had just deleted, under its old id.
+
+That read is also what makes the echoed fields trustworthy. The upsert overwrites
+`agent_id` and `source` from whatever it is sent, so both are taken from kagent
+rather than from the browser: a stale, unparsed or simply absent client value would
+otherwise blank a column the user never asked to touch. Note v0.9.9 _does_ serialize
+`source` when it is set (`Source *SessionSource` with `json:"source,omitempty"`), so
+its absence from our fixtures means those sessions have it null — not that the
+version cannot report it.
+
+Every way the fallback can still fail, it fails before writing, and each is a **4xx**
+rather than an upstream failure: the session is gone (404), it has no agent (409),
+kagent cannot resolve that agent (409), or a sandbox-workload agent already holds a
+session (409). None is actionable, and on a fleet where every installation takes this
+branch a 5xx would mean a standing Sentry issue per case — see "Logging & error
+reporting" in CLAUDE.md.
+
+`updated_at` does move, so a renamed session rises to the top of the list — correct
+for an edit.
+
+**All of this is temporary.** The fallback — `KagentClient.updateSessionName`'s POST
+branch, its `getSessionRecord` read-back, the `badRequest`/`conflict` opt-ins, and
+the tests covering them — comes out when no installation runs kagent v0.9.x, leaving
+the PUT alone. It is marked `TODO(kagent-0.9)` throughout, so removing it is one grep.
+Our own route takes nothing but the name, so it needs no change when that happens.
+
+Unlike the delete, the invalidations **refetch** rather than using
+`refetchType: 'none'`: nothing navigates away, so the page has to show the new name.
+Both are awaited inside the mutation, so the dialog closes onto data that has caught
+up. The name is trimmed, required, and capped at 255 characters — a bound of ours,
+not kagent's (`session.name` is unbounded `TEXT`), enforced in the backend route as
+well as the dialog.
+
+Verified against the kagent source at both `v0.9.9` and `v0.10.0-rc1`.
+
 ### Deleting a session
 
 `useDeleteSession` + `SessionDeleteDialog`, offered as a `Delete session…` item in
@@ -1018,11 +1104,17 @@ above). What remains is a separate, deeper concern:
   form driven from an existing agent, plus a decision about whether that produces
   a live apply or a PR (GitOps-managed agents are read-only, see "GitOps
   provenance"). "Launch session" also has no write path today.
-- **Renaming and continuing a session.** The detail view and delete exist (see
-  "Deleting a session"); kagent's `PUT /api/sessions/:id` and its chat endpoint have
-  no UI. Rename in particular deviates from the prototype, where sessions are never
-  user-named. Deleting from a list row is also unimplemented — deliberately, since a
-  destructive action on a row someone is scanning past is easy to hit by accident.
+- **Continuing a session.** The detail view, rename and delete exist (see "Renaming a
+  session" and "Deleting a session"); kagent's chat endpoint still has no UI, so a
+  session can be read and named but not carried on. Deleting from a list row is also
+  unimplemented — deliberately, since a destructive action on a row someone is
+  scanning past is easy to hit by accident. Renaming from a list row is merely
+  unbuilt, and would be reasonable.
+- **The rename fallback is waiting on a kagent bump.** Rename works on v0.9.x only
+  through the session upsert, because `HandleUpdateSession` there cannot rename at all
+  (see "Renaming a session"). Everything propping that up is marked
+  `TODO(kagent-0.9)` and should be deleted once no installation runs v0.9.x, leaving
+  the plain `PUT /api/sessions/:id`.
 - **An unanswered question is not shown.** When a task is `input-required`, the
   question the agent is waiting on lives in `status.message` — the wire schema
   already parses it and says so — but `buildTimeline` only ever reads
@@ -1031,7 +1123,7 @@ above). What remains is a separate, deeper concern:
   Observed live on gazelle. The fix is a timeline entry (or a panel above it) for the
   pending prompt; note it is not part of task `history`, so it needs handling of its
   own rather than falling out of the existing walk. Answering it is a separate gap —
-  see "Renaming and continuing a session" for the missing write path.
+  see "Continuing a session" for the missing write path.
 - **No manual refresh on the session detail page.** The page polls now (see
   "Refreshing"), so staleness is capped at 60 s and there is nothing frozen to
   rescue — but there is still no way to say "check again, now", which is the one

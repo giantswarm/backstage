@@ -75,6 +75,24 @@ export interface KagentApi {
    */
   deleteSession(installation: string, sessionId: string): Promise<void>;
 
+  /**
+   * Rename one session.
+   *
+   * The caller is expected to have trimmed and length-checked the name; the
+   * backend rejects anything else with a 400. Note that unlike the reads, a 400
+   * here does **not** mean "kagent isn't available on this installation".
+   *
+   * Renaming on a kagent too old to support it is handled entirely in the
+   * backend, which reads the session back and rewrites it — nothing about that
+   * needs anything from here. See `KagentClient.updateSessionName` in
+   * agent-platform-backend.
+   */
+  renameSession(
+    installation: string,
+    sessionId: string,
+    name: string,
+  ): Promise<void>;
+
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
   getIdentity(installation: string): Promise<KagentIdentity>;
 }

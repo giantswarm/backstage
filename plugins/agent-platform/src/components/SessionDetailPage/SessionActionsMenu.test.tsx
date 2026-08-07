@@ -33,6 +33,7 @@ jest.mock('@backstage/frontend-plugin-api', () => {
 
 const deleteSession = jest.fn();
 const reset = jest.fn();
+const onRename = jest.fn();
 
 let deletion: UseDeleteSessionResult;
 
@@ -51,6 +52,7 @@ const renderMenu = (isUserScoped?: boolean) =>
     <SessionActionsMenu
       title="What issues are assigned to me?"
       deletion={deletion}
+      onRename={onRename}
       isUserScoped={isUserScoped}
     />,
     { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
@@ -75,6 +77,7 @@ beforeEach(() => {
   deleteSession.mockReset();
   deleteSession.mockResolvedValue(undefined);
   reset.mockReset();
+  onRename.mockReset();
   setDeleteState();
 });
 
@@ -213,5 +216,34 @@ describe('SessionActionsMenu', () => {
     await openDeleteDialog();
 
     expect(reset).toHaveBeenCalled();
+  });
+
+  it('hands the rename back to the page instead of opening a dialog itself', async () => {
+    // Rename is the one action whose dialog the menu does not own: the page title
+    // opens the same dialog, so the state lives on the page. All this item does is
+    // call back.
+    await renderMenu();
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Rename session/ }),
+    );
+
+    expect(onRename).toHaveBeenCalledTimes(1);
+    // Nothing destructive is anywhere near it.
+    expect(deleteSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps the destructive action below the safe one', async () => {
+    // Ordering is a safety property, not a style choice: the delete sits under the
+    // pointer's resting position if it comes first, and this menu is opened far more
+    // often to rename than to delete.
+    await renderMenu();
+    await openMenu();
+
+    const items = screen.getAllByRole('menuitem').map(item => item.textContent);
+    expect(items).toEqual([
+      expect.stringMatching(/Rename session/),
+      expect.stringMatching(/Delete session/),
+    ]);
   });
 });
