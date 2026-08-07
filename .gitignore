@@ -26,13 +26,6 @@ node_modules/
 !.yarn/sdks
 !.yarn/versions
 
-# Node version directives
-# .nvmrc is deliberately NOT ignored here. The Backstage create-app scaffold
-# ignores it, treating it as a per-developer preference; for us it is the repo's
-# single Node version pin -- Renovate's nvm manager owns it, `devctl gen
-# circleci` reads it for the CI executor image and its cache-key salt, and
-# setup-node consumes it via node-version-file. None of that works untracked.
-
 # dotenv environment variables file
 .env
 .env.*
