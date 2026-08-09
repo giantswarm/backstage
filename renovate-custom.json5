@@ -157,6 +157,24 @@
       allowedVersions: '<4',
     },
     {
+      // path-to-regexp is resolved on two independent lines here. The 0.1.x
+      // resolution pins the copy express 4 requires (@backstage/backend-defaults
+      // bundles express 4, whose router/layer.js does
+      // `require('path-to-regexp')(path, keys, opts)`). That line is a
+      // maintenance branch carrying security backports onto express 4's API
+      // (CVE-2024-45296, CVE-2024-52798), so anything semver-newer regresses it:
+      // 0.2.5 was published in 2014, predates both fixes, and makes `*` a
+      // literal so wildcard routes stop matching (#2057); 8.x is named-exports
+      // only, so the call above throws and the backend container dies at startup
+      // with "pathRegexp is not a function" (#2061, caught only by
+      // execute-chart-tests). Keep it on the 0.1.x line -- patches still flow --
+      // while the 8.x resolutions update freely. Lift when backend-defaults
+      // ships express 5.
+      matchPackageNames: ['path-to-regexp'],
+      matchCurrentVersion: '<0.2.0',
+      allowedVersions: '<0.2.0',
+    },
+    {
       // Backstage core packages (v1.52) peer-require react "^17 || ^18" -- no
       // React 19. A key blocker is MUI v4, still used by Backstage core, which
       // doesn't support React 19 (upstream tracking:
