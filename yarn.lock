@@ -26703,9 +26703,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"assistant-stream@npm:0.3.26":
-  version: 0.3.26
-  resolution: "assistant-stream@npm:0.3.26"
+"assistant-stream@npm:0.3.27":
+  version: 0.3.27
+  resolution: "assistant-stream@npm:0.3.27"
   dependencies:
     "@standard-schema/spec": "npm:^1.1.0"
     nanoid: "npm:^6.0.0"
@@ -26718,7 +26718,7 @@ __metadata:
       optional: true
     redis:
       optional: true
-  checksum: 10c0/df3c90ee97d7e48bc03e9b543e3921d80241640bd3aa28000d16426cd93cd73071f4d0b2b3ae1b944b487580097f7b5f871c893820e74ba402f901879aa6109f
+  checksum: 10c0/36b0133e19ac5430f9bc0407584a0a1e81ebe4a840e0e5c33f3e198a6bccf05b90d26776f04f3c6820e17d7c5e2cd39d25e3febd63e7bbdb503d700c6bf68873
   languageName: node
   linkType: hard
 
