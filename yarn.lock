@@ -24623,7 +24623,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^22, @types/node@npm:^22.0.0":
+"@types/node@npm:^22.0.0":
   version: 22.20.1
   resolution: "@types/node@npm:22.20.1"
   dependencies:
@@ -45595,7 +45595,7 @@ __metadata:
     "@storybook/addon-docs": "npm:^10.5.3"
     "@storybook/react-vite": "npm:^10.5.3"
     "@types/jest": "npm:^30.0.0"
-    "@types/node": "npm:^22"
+    "@types/node": "npm:^24.0.0"
     "@types/react": "npm:^18"
     "@types/react-dom": "npm:^18"
     concurrently: "npm:^10.0.0"
