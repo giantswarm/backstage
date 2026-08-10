@@ -113,3 +113,5 @@ backend.start();
 // Re-run against the reviewed orb (stable cache ref + export-failure warning).
 
 // Warm-cache validation run: base image stable since 08:39 UTC.
+
+// Warm-run probe: pinned base, cache populated by the preceding run.
