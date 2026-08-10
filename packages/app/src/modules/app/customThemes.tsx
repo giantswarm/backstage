@@ -2,12 +2,6 @@
  * Custom theme providers that layer optional `app.branding.theme` palette
  * overrides on top of Backstage's built-in light/dark palettes.
  *
- * The palettes themselves are Backstage's defaults. Giant Swarm branding is
- * currently limited to identity and typography -- the logo (see
- * `../../assets/logo`) and Roboto (`BRAND_FONT_FAMILY` below, plus
- * `--bui-font-regular` in `bui-overrides.css`) -- so that adopting the brand
- * colors can be evaluated as a separate change.
- *
  * Wired up in {@link AppOverrides} via `ThemeBlueprint.make({ name: 'light' })`
  * and `name: 'dark'`, which override the built-in `theme:app/light` and
  * `theme:app/dark` extensions provided by `@backstage/plugin-app`.

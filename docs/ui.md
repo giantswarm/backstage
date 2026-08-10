@@ -21,11 +21,9 @@ There are three UI layers in this repo, in order of preference for new work:
 Mixing all three in one file is normal during the migration. Reach for bui
 first and fall back only when a piece is missing.
 
-The two libraries are themed independently — bui reads its own `--bui-*` CSS
-variables and none of the Material UI palette — so anything global (the brand
-typeface, palette overrides) has to be declared for both. See the
-[branding docs](branding.md) for how that is wired and what is currently
-branded.
+The libraries are themed independently — bui reads its own `--bui-*` CSS
+variables and none of the Material UI palette — so anything global has to be
+declared for both. See the [branding docs](branding.md).
 
 ## Page headers and tabs (New Frontend System)
 

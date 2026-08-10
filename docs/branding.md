@@ -1,6 +1,6 @@
 # Custom Branding
 
-The Dev Portal ships with the Giant Swarm logo and typeface by default (see [Default branding](#default-branding) below); its colors are Backstage's defaults.
+The Dev Portal ships with the Giant Swarm logo and typeface by default (see [Default branding](#default-branding) below).
 
 Every part of it can be overridden: sidebar logos, home page logo, and browser tab favicon via custom assets, without committing them to the source repository or loading them from external URLs; and individual palette colors of the light and dark themes via app config, so deployments can match a customer's brand without rebuilding the frontend.
 
@@ -116,13 +116,11 @@ base64 -w0 favicon-32x32.png
 
 ## Default branding
 
-Giant Swarm branding currently covers **identity and typography only**:
+Giant Swarm branding covers identity and typography:
 
-- **Logo** — the horizontal lockup from [`giantswarm/brand`](https://github.com/giantswarm/brand) (`logo/standard`), vendored as React components in `packages/app/src/assets/logo/`. `GiantSwarmLogoFull` keeps the ant's brand gradient and renders the wordmark in `currentColor`, so one asset works on both the dark sidebar and light content surfaces. `GiantSwarmMark` is the single-color ant used where the lockup does not fit and color is not available: the collapsed sidebar rail, and `safari-pinned-tab.svg` (which Safari renders as a flat silhouette in the `color` given on the `<link>` tag — set to Giant Swarm Orange). Per the styleguide the lockup must not be stretched, recolored, or given effects.
-- **Favicons and app icons** — the full-color ant from the lockup, centred on a full-bleed Giant Swarm Blue tile. The mark is scaled to 92% of the tile width — the widest it goes while keeping some clear space — because at 16px anything smaller loses the eye markings and stops reading as the logo. The crop comes from the ant group's measured bounding box (`99.98, 95.29, 68.74 × 61.45` in the lockup's user space). The tile is deliberately square rather than rounded: the icons are rasterised with `qlmanage`, which composites onto an opaque white background, so any area outside a rounded rect becomes solid white and shows as white corners on a dark browser tab. Browsers and operating systems apply their own corner masking anyway. If you regenerate these, check that the corner pixels are `#002645` and not white.
-- **Typography** — Roboto, self-hosted via `@fontsource/roboto` and imported in `packages/app/src/index.tsx`. It is bundled rather than loaded from Google Fonts because the app's CSP has no `font-src` allowlist for external hosts. It is applied twice, because the two component libraries are themed independently: `fontFamily` in `createUnifiedTheme` (Material UI and `@backstage/core-components`) and `--bui-font-regular` in `packages/app/src/bui-overrides.css` (`@backstage/ui`).
-
-**Colors are still Backstage's defaults.** Adopting the [styleguide](https://www.giantswarm.io/styleguide) palette — Giant Swarm Blue surfaces, a blue-tinted neutral scale, brand accents — is deliberately held back as a separate change so it can be evaluated on its own. Until then the only way to change colors is the `app.branding.theme` config below.
+- **Logo** — the horizontal lockup from [`giantswarm/brand`](https://github.com/giantswarm/brand) (`logo/standard`), vendored as React components in `packages/app/src/assets/logo/`. `GiantSwarmLogoFull` keeps the ant's brand gradient and renders the wordmark in `currentColor`, so one asset works on both the dark sidebar and light content surfaces. `GiantSwarmMark` is the single-color ant, used in the collapsed sidebar rail and in `safari-pinned-tab.svg` (which Safari fills with the `color` set on the `<link>` tag — Giant Swarm Orange). Per the styleguide the lockup must not be stretched, recolored, or given effects.
+- **Favicons and app icons** — the full-color ant on a full-bleed Giant Swarm Blue tile, cropped from the ant group's bounding box (`99.98, 95.29, 68.74 × 61.45` in the lockup's user space) and scaled to 92% of the tile width, below which the eye markings stop reading at 16px. Keep the tile square: `qlmanage` rasterises onto an opaque white background, so a rounded rect bakes white corners into the PNG. After regenerating, check the corner pixels are `#002645`.
+- **Typography** — Roboto, self-hosted via `@fontsource/roboto` and imported in `packages/app/src/index.tsx`, because the app's CSP has no `font-src` allowlist for external hosts. It is set in two places, since the component libraries are themed independently: `fontFamily` in `createUnifiedTheme` (Material UI and `@backstage/core-components`) and `--bui-font-regular` in `packages/app/src/bui-overrides.css` (`@backstage/ui`).
 
 ## Theme colors
 
@@ -170,7 +168,7 @@ app:
 
 `linkColor` sets hyperlinks. It updates the MUI `link` and `linkHover` tokens, and `--bui-ring` (bui has no link token of its own; the focus ring is its closest interactive accent).
 
-`accentColor` and `accentTextColor` set the background and text of solid/primary actions (`--bui-accent-bg` / `--bui-accent-fg`). Note that the hover shade `--bui-accent-bg-hover` is not configurable and keeps bui's default, so a custom `accentColor` should be paired with a check of the hover state.
+`accentColor` and `accentTextColor` set the background and text of solid/primary actions (`--bui-accent-bg` / `--bui-accent-fg`). The hover shade `--bui-accent-bg-hover` is not configurable, so check the hover state after setting a custom `accentColor`.
 
 `border1` and `border2` set the subtle and stronger border colors (`--bui-border-1` / `--bui-border-2`). Neither has a MUI palette equivalent.
 

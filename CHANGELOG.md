@@ -14,7 +14,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Changed
 
-- Branding: the app now carries Giant Swarm's identity instead of Backstage's — the horizontal lockup in the sidebar and on the home page, the ant mark in the collapsed rail and in the favicons and app icons, and Roboto as the typeface (self-hosted, since the CSP allows no external font hosts). Theme colors are deliberately left as Backstage's defaults so the styleguide palette can be evaluated as a separate change. Deployments that mount their own branding assets are unaffected — custom assets still take precedence — and `app.branding.theme` gains `secondaryTextColor`, `linkColor`, `accentColor`, `accentTextColor`, `border1` and `border2` to close gaps in the override surface (#2077).
+- Branding: the app now carries Giant Swarm's identity — the horizontal lockup in the sidebar and on the home page, the ant mark in the collapsed rail and in the favicons and app icons, and Roboto as the typeface (self-hosted, since the CSP allows no external font hosts). Deployments that mount their own branding assets are unaffected: custom assets still take precedence. `app.branding.theme` gains `secondaryTextColor`, `linkColor`, `accentColor`, `accentTextColor`, `border1` and `border2` to close gaps in the override surface (#2077).
 
 ### Fixed
 

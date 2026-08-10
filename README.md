@@ -6,4 +6,4 @@ This is Giant Swarm's app for [Backstage](https://backstage.io/), tailored to ru
 
 Check out the [development docs](docs/development.md) to learn about how to add/change functionality and how to run this application locally.
 
-The app carries Giant Swarm's logo and typeface by default; its colors are Backstage's. See the [branding docs](docs/branding.md) for what is branded, and for how a customer portal overrides the logos, favicons and theme colors without a rebuild.
+See the [branding docs](docs/branding.md) for the Giant Swarm logo and typeface the app ships with, and for how a customer portal overrides the logos, favicons and theme colors without a rebuild.
