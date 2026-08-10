@@ -386,11 +386,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@assistant-ui/core@npm:0.2.22":
-  version: 0.2.22
-  resolution: "@assistant-ui/core@npm:0.2.22"
+"@assistant-ui/core@npm:^0.2.0":
+  version: 0.2.23
+  resolution: "@assistant-ui/core@npm:0.2.23"
   dependencies:
-    assistant-stream: "npm:^0.3.27"
+    assistant-stream: "npm:^0.3.28"
     nanoid: "npm:^6.0.0"
   peerDependencies:
     "@assistant-ui/store": ^0.2.13
@@ -408,7 +408,7 @@ __metadata:
       optional: true
     zustand:
       optional: true
-  checksum: 10c0/b0db4c5e288fb0dba5085f1127874685a6ed69d3dd7347b27359009b35fa6cb1de7a9877e95112027ae649946a8e5815e75ad740cc63158a3c988478dbe8086c
+  checksum: 10c0/aadaf8d6a309bdb3d65d7dbda85f48a8fb7ab3336e7bcaecf8529fd0a47f52b19f0b518d0bfae637047bc903d968e8946df967714a2c862d041c70b10d8982f9
   languageName: node
   linkType: hard
 
@@ -26660,12 +26660,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"assistant-stream@npm:0.3.27":
-  version: 0.3.27
-  resolution: "assistant-stream@npm:0.3.27"
+"assistant-stream@npm:^0.3.0":
+  version: 0.3.36
+  resolution: "assistant-stream@npm:0.3.36"
   dependencies:
     "@standard-schema/spec": "npm:^1.1.0"
-    nanoid: "npm:^6.0.0"
+    nanoid: "npm:^6.0.1"
     secure-json-parse: "npm:^4.1.0"
   peerDependencies:
     ioredis: ^5.10.1
@@ -26675,7 +26675,7 @@ __metadata:
       optional: true
     redis:
       optional: true
-  checksum: 10c0/36b0133e19ac5430f9bc0407584a0a1e81ebe4a840e0e5c33f3e198a6bccf05b90d26776f04f3c6820e17d7c5e2cd39d25e3febd63e7bbdb503d700c6bf68873
+  checksum: 10c0/38efcbdb817fb49931ba9b040b8e1def3087771c3ad580c1385671488ca17067036471a3f56a31c5cdc271da15962e065361012d4ea27717e544139f1ca174c6
   languageName: node
   linkType: hard
 
@@ -40234,6 +40234,15 @@ __metadata:
   bin:
     nanoid: bin/nanoid.js
   checksum: 10c0/45bc79b7fc3f8f7110986fee7ac8acc2dc673b4c9ebe0c28a05fd0b2c2bb7a0b9942e43a558e39ea3c41a7fb74c7de1a0f8b73263b025f82e87cdb4a769188c3
+  languageName: node
+  linkType: hard
+
+"nanoid@npm:^6.0.1":
+  version: 6.0.1
+  resolution: "nanoid@npm:6.0.1"
+  bin:
+    nanoid: bin/nanoid.js
+  checksum: 10c0/5b362ad9822388dfebdf655849c76d3539e074d1003fbe6eb5dff8687faf93a9abbb19bdc5d134b9b8599f875f9b091feacfd7099b34b5fef23bc3f5be41dd10
   languageName: node
   linkType: hard
 
