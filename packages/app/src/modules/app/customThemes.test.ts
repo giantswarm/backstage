@@ -9,7 +9,7 @@ describe('buildPalette', () => {
     expect(buildPalette(config, 'dark')).toEqual(palettes.dark);
   });
 
-  it('overrides primary, secondary, background, text, and navigation colors when set', () => {
+  it('overrides primary, secondary, background, text, link, and navigation colors when set', () => {
     const config = new ConfigReader({
       app: {
         branding: {
@@ -19,6 +19,8 @@ describe('buildPalette', () => {
               secondaryColor: '#222222',
               backgroundColor: '#777777',
               textColor: '#888888',
+              secondaryTextColor: '#999999',
+              linkColor: '#aabbcc',
               navigation: {
                 background: '#333333',
                 indicator: '#444444',
@@ -33,7 +35,7 @@ describe('buildPalette', () => {
 
     const palette = buildPalette(config, 'light') as ReturnType<
       typeof buildPalette
-    > & { text: { primary: string } };
+    > & { text: { primary: string; secondary: string } };
 
     expect(palette.primary.main).toBe('#111111');
     expect(palette.secondary.main).toBe('#222222');
@@ -41,6 +43,9 @@ describe('buildPalette', () => {
     // background.paper is preserved from the built-in palette.
     expect(palette.background.paper).toBe(palettes.light.background.paper);
     expect(palette.text.primary).toBe('#888888');
+    expect(palette.text.secondary).toBe('#999999');
+    expect(palette.link).toBe('#aabbcc');
+    expect(palette.linkHover).toBe('#aabbcc');
     expect(palette.navigation.background).toBe('#333333');
     expect(palette.navigation.indicator).toBe('#444444');
     expect(palette.navigation.color).toBe('#555555');
@@ -100,43 +105,6 @@ describe('buildPalette', () => {
     );
   });
 
-  it('emits CSS variable overrides for backgroundColor, textColor, and neutralBackgrounds', () => {
-    const config = new ConfigReader({
-      app: {
-        branding: {
-          theme: {
-            dark: {
-              backgroundColor: '#101010',
-              textColor: '#eeeeee',
-              neutralBackground1: '#202020',
-              neutralBackground2: '#303030',
-              neutralBackground3: '#404040',
-              neutralBackground4: '#505050',
-            },
-            light: {},
-          },
-        },
-      },
-    });
-
-    const css = getCssVariableOverrides(config, 'dark');
-    expect(css).toContain("body[data-theme-mode='dark']");
-    expect(css).toContain('--bui-bg-app: #101010;');
-    expect(css).toContain('--bui-fg-primary: #eeeeee;');
-    expect(css).toContain('--bui-bg-neutral-1: #202020;');
-    expect(css).toContain('--bui-bg-neutral-2: #303030;');
-    expect(css).toContain('--bui-bg-neutral-3: #404040;');
-    expect(css).toContain('--bui-bg-neutral-4: #505050;');
-
-    // No declarations for an empty variant.
-    expect(getCssVariableOverrides(config, 'light')).toBeUndefined();
-
-    // No config at all yields undefined.
-    expect(
-      getCssVariableOverrides(new ConfigReader({}), 'dark'),
-    ).toBeUndefined();
-  });
-
   it('isolates light and dark variants', () => {
     const config = new ConfigReader({
       app: {
@@ -152,5 +120,62 @@ describe('buildPalette', () => {
     expect(buildPalette(config, 'dark').primary.main).toBe(
       palettes.dark.primary.main,
     );
+  });
+});
+
+describe('getCssVariableOverrides', () => {
+  it('emits a declaration for every configured key', () => {
+    const config = new ConfigReader({
+      app: {
+        branding: {
+          theme: {
+            dark: {
+              backgroundColor: '#101010',
+              textColor: '#eeeeee',
+              secondaryTextColor: '#cccccc',
+              neutralBackground1: '#202020',
+              neutralBackground2: '#303030',
+              neutralBackground3: '#404040',
+              neutralBackground4: '#505050',
+              accentColor: '#606060',
+              accentTextColor: '#707070',
+              linkColor: '#808080',
+              border1: '#909090',
+              border2: '#a0a0a0',
+            },
+            light: {},
+          },
+        },
+      },
+    });
+
+    const css = getCssVariableOverrides(config, 'dark');
+    expect(css).toContain("body[data-theme-mode='dark']");
+
+    const expected: [string, string][] = [
+      ['--bui-bg-app', '#101010'],
+      ['--bui-fg-primary', '#eeeeee'],
+      ['--bui-fg-secondary', '#cccccc'],
+      ['--bui-bg-neutral-1', '#202020'],
+      ['--bui-bg-neutral-2', '#303030'],
+      ['--bui-bg-neutral-3', '#404040'],
+      ['--bui-bg-neutral-4', '#505050'],
+      ['--bui-accent-bg', '#606060'],
+      ['--bui-accent-fg', '#707070'],
+      ['--bui-ring', '#808080'],
+      ['--bui-border-1', '#909090'],
+      ['--bui-border-2', '#a0a0a0'],
+    ];
+    for (const [variable, value] of expected) {
+      expect(css).toContain(`${variable}: ${value};`);
+    }
+
+    // No declarations for an empty variant.
+    expect(getCssVariableOverrides(config, 'light')).toBeUndefined();
+
+    // No config at all yields undefined, leaving bui's own defaults in place.
+    expect(
+      getCssVariableOverrides(new ConfigReader({}), 'dark'),
+    ).toBeUndefined();
   });
 });

@@ -52,6 +52,7 @@
     "@backstage/plugin-user-settings": "backstage:^",
     "@backstage/theme": "backstage:^",
     "@backstage/ui": "backstage:^",
+    "@fontsource/roboto": "^5.2.5",
     "@giantswarm/backstage-plugin-agent-platform": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",

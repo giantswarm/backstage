@@ -61,6 +61,30 @@ export interface Config {
            * variable used by `@backstage/ui` components.
            */
           neutralBackground4?: string;
+          /**
+           * Secondary/muted text color. Sets both the MUI `text.secondary`
+           * palette token and the `--bui-fg-secondary` CSS variable.
+           */
+          secondaryTextColor?: string;
+          /**
+           * Hyperlink color. Sets the MUI `link`/`linkHover` palette tokens and
+           * the `--bui-ring` focus-ring CSS variable.
+           */
+          linkColor?: string;
+          /**
+           * Background of solid/primary actions. Sets the `--bui-accent-bg`
+           * CSS variable used by `@backstage/ui` components.
+           */
+          accentColor?: string;
+          /**
+           * Text color on solid/primary actions. Sets the `--bui-accent-fg`
+           * CSS variable used by `@backstage/ui` components.
+           */
+          accentTextColor?: string;
+          /** Subtle border color. Sets the `--bui-border-1` CSS variable. */
+          border1?: string;
+          /** Stronger border color. Sets the `--bui-border-2` CSS variable. */
+          border2?: string;
           /** Sidebar / navigation palette overrides. */
           navigation?: {
             /** Background color of the sidebar. */
@@ -110,6 +134,30 @@ export interface Config {
            * variable used by `@backstage/ui` components.
            */
           neutralBackground4?: string;
+          /**
+           * Secondary/muted text color. Sets both the MUI `text.secondary`
+           * palette token and the `--bui-fg-secondary` CSS variable.
+           */
+          secondaryTextColor?: string;
+          /**
+           * Hyperlink color. Sets the MUI `link`/`linkHover` palette tokens and
+           * the `--bui-ring` focus-ring CSS variable.
+           */
+          linkColor?: string;
+          /**
+           * Background of solid/primary actions. Sets the `--bui-accent-bg`
+           * CSS variable used by `@backstage/ui` components.
+           */
+          accentColor?: string;
+          /**
+           * Text color on solid/primary actions. Sets the `--bui-accent-fg`
+           * CSS variable used by `@backstage/ui` components.
+           */
+          accentTextColor?: string;
+          /** Subtle border color. Sets the `--bui-border-1` CSS variable. */
+          border1?: string;
+          /** Stronger border color. Sets the `--bui-border-2` CSS variable. */
+          border2?: string;
           /** Sidebar / navigation palette overrides. */
           navigation?: {
             /** Background color of the sidebar. */

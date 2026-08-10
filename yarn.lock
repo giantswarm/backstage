@@ -10626,6 +10626,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fontsource/roboto@npm:^5.2.5":
+  version: 5.3.0
+  resolution: "@fontsource/roboto@npm:5.3.0"
+  checksum: 10c0/68420d2c669ba05f0ea466343151c6d2efff85b05cedbf0f990c58635d86035cae5e7c4904db9abc7b9fd21c5ad179788243ec9dff0c30dfab90679ae2d226f9
+  languageName: node
+  linkType: hard
+
 "@formatjs/ecma402-abstract@npm:2.3.4":
   version: 2.3.4
   resolution: "@formatjs/ecma402-abstract@npm:2.3.4"
@@ -26300,6 +26307,7 @@ __metadata:
     "@backstage/plugin-user-settings": "backstage:^"
     "@backstage/theme": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@fontsource/roboto": "npm:^5.2.5"
     "@giantswarm/backstage-plugin-agent-platform": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"

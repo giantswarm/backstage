@@ -1,6 +1,8 @@
 # Custom Branding
 
-The Dev Portal supports overriding the default sidebar logos, home page logo, and browser tab favicon with custom assets, without committing them to the source repository or loading them from external URLs. It also supports overriding individual palette colors of the light and dark themes via app config, so deployments can match a customer's brand without rebuilding the frontend.
+The Dev Portal ships with the Giant Swarm logo and typeface by default (see [Default branding](#default-branding) below); its colors are Backstage's defaults.
+
+Every part of it can be overridden: sidebar logos, home page logo, and browser tab favicon via custom assets, without committing them to the source repository or loading them from external URLs; and individual palette colors of the light and dark themes via app config, so deployments can match a customer's brand without rebuilding the frontend.
 
 Assets are placed into a directory on the backend's filesystem and served by the built-in `branding` backend plugin (defined in `packages/backend/src/branding/`). On the frontend, components check which assets are available and swap in the custom versions, falling back to the built-in defaults when none are provided.
 
@@ -112,6 +114,16 @@ Generate the base64 content with:
 base64 -w0 favicon-32x32.png
 ```
 
+## Default branding
+
+Giant Swarm branding currently covers **identity and typography only**:
+
+- **Logo** — the horizontal lockup from [`giantswarm/brand`](https://github.com/giantswarm/brand) (`logo/standard`), vendored as React components in `packages/app/src/assets/logo/`. `GiantSwarmLogoFull` keeps the ant's brand gradient and renders the wordmark in `currentColor`, so one asset works on both the dark sidebar and light content surfaces. `GiantSwarmMark` is the single-color ant used where the lockup does not fit and color is not available: the collapsed sidebar rail, and `safari-pinned-tab.svg` (which Safari renders as a flat silhouette in the `color` given on the `<link>` tag — set to Giant Swarm Orange). Per the styleguide the lockup must not be stretched, recolored, or given effects.
+- **Favicons and app icons** — the full-color ant from the lockup, centred on a full-bleed Giant Swarm Blue tile. The mark is scaled to 92% of the tile width — the widest it goes while keeping some clear space — because at 16px anything smaller loses the eye markings and stops reading as the logo. The crop comes from the ant group's measured bounding box (`99.98, 95.29, 68.74 × 61.45` in the lockup's user space). The tile is deliberately square rather than rounded: the icons are rasterised with `qlmanage`, which composites onto an opaque white background, so any area outside a rounded rect becomes solid white and shows as white corners on a dark browser tab. Browsers and operating systems apply their own corner masking anyway. If you regenerate these, check that the corner pixels are `#002645` and not white.
+- **Typography** — Roboto, self-hosted via `@fontsource/roboto` and imported in `packages/app/src/index.tsx`. It is bundled rather than loaded from Google Fonts because the app's CSP has no `font-src` allowlist for external hosts. It is applied twice, because the two component libraries are themed independently: `fontFamily` in `createUnifiedTheme` (Material UI and `@backstage/core-components`) and `--bui-font-regular` in `packages/app/src/bui-overrides.css` (`@backstage/ui`).
+
+**Colors are still Backstage's defaults.** Adopting the [styleguide](https://www.giantswarm.io/styleguide) palette — Giant Swarm Blue surfaces, a blue-tinted neutral scale, brand accents — is deliberately held back as a separate change so it can be evaluated on its own. Until then the only way to change colors is the `app.branding.theme` config below.
+
 ## Theme colors
 
 Light and dark theme palette colors can be customized via `app.branding.theme.<variant>` in app config. Any unset key falls back to the Backstage default for that variant — overrides are merged on top of the built-in palette, not replacing it.
@@ -125,6 +137,12 @@ app:
         secondaryColor: '#005B86'
         backgroundColor: '#FFFFFF'
         textColor: '#222222'
+        secondaryTextColor: '#666666'
+        linkColor: '#1F5493'
+        accentColor: '#1F5493'
+        accentTextColor: '#FFFFFF'
+        border1: '#E5E5E5'
+        border2: '#737373'
         navigation:
           background: '#171717'
           indicator: '#9BF0E1'
@@ -148,6 +166,16 @@ app:
 
 `neutralBackground1` through `neutralBackground4` set the four tiers of neutral surface backgrounds used by `@backstage/ui` components (cards, panels, hover surfaces). They map to the `--bui-bg-neutral-1` through `--bui-bg-neutral-4` CSS variables and have no MUI palette equivalent.
 
+`secondaryTextColor` sets muted/secondary text — the MUI `text.secondary` token and `--bui-fg-secondary`.
+
+`linkColor` sets hyperlinks. It updates the MUI `link` and `linkHover` tokens, and `--bui-ring` (bui has no link token of its own; the focus ring is its closest interactive accent).
+
+`accentColor` and `accentTextColor` set the background and text of solid/primary actions (`--bui-accent-bg` / `--bui-accent-fg`). Note that the hover shade `--bui-accent-bg-hover` is not configurable and keeps bui's default, so a custom `accentColor` should be paired with a check of the hover state.
+
+`border1` and `border2` set the subtle and stronger border colors (`--bui-border-1` / `--bui-border-2`). Neither has a MUI palette equivalent.
+
+Note that overrides are appended _after_ the brand defaults in the same CSS rule, so a configured key wins and every unset key keeps its Giant Swarm value.
+
 The customization is wired into the New Frontend System: the built-in `theme:app/light` and `theme:app/dark` extensions are overridden in `packages/app/src/modules/app/AppOverrides.tsx`, and palette merging happens in `packages/app/src/modules/app/customThemes.tsx`. Theme variant `id`s match upstream so the theme switcher and persisted user selections continue to work.
 
 To preview overrides locally, drop a `theme:` block under `app.branding` in `app-config.local.yaml` and restart `yarn start`.
@@ -161,6 +189,12 @@ To preview overrides locally, drop a `theme:` block under `app.branding` in `app
 | `app.branding.theme.light.secondaryColor`           | Backstage default      | Secondary accent color in the light theme                   |
 | `app.branding.theme.light.backgroundColor`          | Backstage default      | Page background color in the light theme                    |
 | `app.branding.theme.light.textColor`                | Backstage default      | Default body text color in the light theme                  |
+| `app.branding.theme.light.secondaryTextColor`       | Backstage default      | Muted/secondary text color in the light theme               |
+| `app.branding.theme.light.linkColor`                | Backstage default      | Hyperlink and focus-ring color in the light theme           |
+| `app.branding.theme.light.accentColor`              | Backstage default      | Background of solid/primary actions in the light theme      |
+| `app.branding.theme.light.accentTextColor`          | Backstage default      | Text color on solid/primary actions in the light theme      |
+| `app.branding.theme.light.border1`                  | Backstage default      | Subtle border color in the light theme                      |
+| `app.branding.theme.light.border2`                  | Backstage default      | Stronger border color in the light theme                    |
 | `app.branding.theme.light.neutralBackground1`       | Backstage default      | Tier 1 neutral surface background in the light theme        |
 | `app.branding.theme.light.neutralBackground2`       | Backstage default      | Tier 2 neutral surface background in the light theme        |
 | `app.branding.theme.light.neutralBackground3`       | Backstage default      | Tier 3 neutral surface background in the light theme        |
