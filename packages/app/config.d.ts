@@ -1,5 +1,13 @@
 export interface Config {
   app: {
+    /**
+     * Short description of this portal, used as the `<meta name="description">`
+     * of the served page. Keep it deployment-specific: it shows up in search
+     * results and link previews.
+     * @visibility frontend
+     */
+    description?: string;
+
     branding?: {
       /**
        * Filesystem path where custom branding assets (logos, favicons) are stored.

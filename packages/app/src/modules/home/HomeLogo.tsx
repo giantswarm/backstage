@@ -1,9 +1,7 @@
-import {
-  HomePageCompanyLogo,
-  TemplateBackstageLogo,
-} from '@backstage/plugin-home';
+import { HomePageCompanyLogo } from '@backstage/plugin-home';
 import { makeStyles, useTheme } from '@material-ui/core';
 import { useBranding } from '../branding';
+import { GiantSwarmLogoFull } from '../../assets/logo';
 
 const useStyles = makeStyles(theme => ({
   container: {
@@ -11,14 +9,17 @@ const useStyles = makeStyles(theme => ({
   },
   svg: {
     width: 'auto',
-    height: 100,
+    // The lockup is ~5.3:1, so height drives a much wider footprint than the
+    // square Backstage logo this replaced; cap the width on narrow viewports.
+    height: 96,
+    maxWidth: '100%',
+    // The wordmark is `currentColor`. On light surfaces the brand form is Giant
+    // Swarm Blue; on a dark background it flips to white.
+    color: theme.palette.type === 'dark' ? '#ffffff' : '#002645',
   },
   img: {
     width: 'auto',
     height: 100,
-  },
-  path: {
-    fill: '#7df3e1',
   },
 }));
 
@@ -55,11 +56,7 @@ export const HomeLogo = () => {
   return (
     <HomePageCompanyLogo
       className={classes.container}
-      logo={
-        <TemplateBackstageLogo
-          classes={{ svg: classes.svg, path: classes.path }}
-        />
-      }
+      logo={<GiantSwarmLogoFull className={classes.svg} />}
     />
   );
 };
