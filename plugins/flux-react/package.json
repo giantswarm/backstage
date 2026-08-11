@@ -68,7 +68,7 @@
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/test-utils": "backstage:^",
     "@tanstack/react-query": "^5.82.0",
-    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",
     "@types/qs": "^6",
