@@ -5,7 +5,10 @@
 # workflow in .circleci/config.yml merges into this file at pipeline runtime.
 version: 2.1
 orbs:
-  architect: giantswarm/architect@9.6.0
+  # TEST-ONLY (do not merge): dev orb from giantswarm/architect-orb#871, which adds
+  # the `cache` parameter used by push-to-registries below. Revert to a released
+  # `giantswarm/architect@9.x` before merging.
+  architect: giantswarm/architect@dev:buildkit-registry-cache
 
 jobs:
   # Self-contained Node build/test on a cimg/node executor (architect ships no
@@ -97,6 +100,13 @@ workflows:
         name: push-to-registries
         dockerfile: packages/backend/Dockerfile
         platforms: linux/amd64
+        # TEST-ONLY (do not merge): persist BuildKit's layer cache to
+        # gsoci.azurecr.io/giantswarm/backstage:buildcache. Without it every build
+        # re-runs the whole Dockerfile — apt build-essential, pip mkdocs, and a full
+        # `yarn workspaces focus --all --production` with node-gyp native compiles.
+        # Landing this permanently needs a devctl gen.ci.image change, since this file
+        # is generated.
+        cache: registry
         requires:
         - node-build
         filters:
