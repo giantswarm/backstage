@@ -4,9 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#002645" />
+    <!--
+      Config values below use lodash's escaping delimiter, not the interpolating
+      one: this template is compiled with the unescaped delimiter left at its
+      default, so a value containing a quote would otherwise close the attribute
+      early and the rest of it would land in the head as markup. Keep literal
+      delimiter syntax out of this file, including comments - an empty one is
+      compiled as an expression and fails the build.
+    -->
     <meta
       name="description"
-      content="<%= config.getOptionalString('app.description') ?? 'A developer portal built on Backstage' %>"
+      content="<%- config.getOptionalString('app.description') ?? 'A developer portal built on Backstage' %>"
     />
     <!--
       manifest.json provides metadata used when your web app is installed on a
@@ -41,7 +49,7 @@
       href="<%= publicPath %>/safari-pinned-tab.svg"
       color="#e86d00"
     />
-    <title><%= config.getOptionalString('app.title') ?? 'Backstage' %></title>
+    <title><%- config.getOptionalString('app.title') ?? 'Backstage' %></title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
