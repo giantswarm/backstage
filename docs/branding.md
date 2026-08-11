@@ -1,6 +1,8 @@
 # Custom Branding
 
-The Dev Portal supports overriding the default sidebar logos, home page logo, and browser tab favicon with custom assets, without committing them to the source repository or loading them from external URLs. It also supports overriding individual palette colors of the light and dark themes via app config, so deployments can match a customer's brand without rebuilding the frontend.
+The Dev Portal ships with the Giant Swarm logo by default (see [Default branding](#default-branding) below).
+
+Every part of it can be overridden: sidebar logos, home page logo, and browser tab favicon via custom assets, without committing them to the source repository or loading them from external URLs; and individual palette colors of the light and dark themes via app config, so deployments can match a customer's brand without rebuilding the frontend.
 
 Assets are placed into a directory on the backend's filesystem and served by the built-in `branding` backend plugin (defined in `packages/backend/src/branding/`). On the frontend, components check which assets are available and swap in the custom versions, falling back to the built-in defaults when none are provided.
 
@@ -112,6 +114,25 @@ Generate the base64 content with:
 base64 -w0 favicon-32x32.png
 ```
 
+## Default branding
+
+Giant Swarm branding covers the app's visual identity:
+
+- **Logo** — the horizontal lockup from [`giantswarm/brand`](https://github.com/giantswarm/brand) (`logo/standard`), vendored as React components in `packages/app/src/assets/logo/`. `GiantSwarmLogoFull` keeps the ant's brand colors and renders the wordmark in `currentColor`, so one asset works on both the dark sidebar and light content surfaces. `GiantSwarmMark` is the ant on its own, for the collapsed sidebar rail. Both crop the same artwork (`GiantSwarmAntPaths`) using the same vertical framing, so the ant does not move when the sidebar expands — see the note on `ANT_VIEW_BOX` before re-cropping it. Per the styleguide the lockup must not be stretched, recolored, or given effects.
+- **Icon glyph** — `GiantSwarmIconPaths` is a separate single-color ant that renders in `currentColor`, used by `GiantSwarmIcon` for places where the ant is a UI icon rather than a logo: the auth provider list in settings and the app's icon bundle. `safari-pinned-tab.svg` is a single-color mask too, which Safari fills with the `color` set on its `<link>` tag (Giant Swarm Orange).
+- **Favicons and app icons** — the full-color ant on a full-bleed Giant Swarm Blue tile, cropped from the ant group's bounding box (`99.98, 95.29, 68.74 × 61.45` in the lockup's user space) and scaled to 92% of the tile width, below which the eye markings stop reading at 16px. Keep the tile square: `qlmanage` rasterises onto an opaque white background, so a rounded rect bakes white corners into the PNG. After regenerating, check the corner pixels are `#002645`.
+
+The sidebar wordmark is white, which assumes a dark sidebar. A deployment that sets a light `navigation.background` should supply its own `logo-full.svg`/`logo-icon.svg` rather than expect the Giant Swarm lockup to recolor itself.
+
+### Deployment-specific text
+
+Two bits of page metadata are not logos but ship with every deployment, so keep them deployment-specific rather than Giant Swarm-specific:
+
+- `app.title` sets the browser tab title.
+- `app.description` sets the `<meta name="description">` used in search results and link previews.
+
+`manifest.json` (the PWA name and icon list) is a static asset and cannot read app config, so its `name`/`short_name` are deliberately generic. A deployment that needs its own PWA identity has to ship a patched `manifest.json`.
+
 ## Theme colors
 
 Light and dark theme palette colors can be customized via `app.branding.theme.<variant>` in app config. Any unset key falls back to the Backstage default for that variant — overrides are merged on top of the built-in palette, not replacing it.
@@ -156,6 +177,7 @@ To preview overrides locally, drop a `theme:` block under `app.branding` in `app
 
 | Key                                                 | Default                | Description                                                 |
 | --------------------------------------------------- | ---------------------- | ----------------------------------------------------------- |
+| `app.description`                                   | generic fallback       | `<meta name="description">` of the served page              |
 | `app.branding.assetsPath`                           | `/app/branding-assets` | Filesystem path where the backend looks for branding assets |
 | `app.branding.theme.light.primaryColor`             | Backstage default      | Primary brand color in the light theme                      |
 | `app.branding.theme.light.secondaryColor`           | Backstage default      | Secondary accent color in the light theme                   |
