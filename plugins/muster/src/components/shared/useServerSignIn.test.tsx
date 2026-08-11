@@ -171,7 +171,10 @@ describe('useServerSignIn', () => {
       () =>
         useServerSignIn('pro', 'gazelle', {
           pollIntervalMs: 20,
-          timeoutMs: 60,
+          // Long enough that `authUrl` is still observable below: the deadline
+          // clears it, so a window measured in tens of milliseconds can elapse
+          // before the first `waitFor` poll on a loaded CI worker.
+          timeoutMs: 750,
         }),
       { wrapper: wrapper(api, queryClient) },
     );
@@ -180,7 +183,9 @@ describe('useServerSignIn', () => {
     await act(async () => result.current.signIn());
     await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
 
-    await waitFor(() => expect(result.current.authUrl).toBeUndefined());
+    await waitFor(() => expect(result.current.authUrl).toBeUndefined(), {
+      timeout: 3_000,
+    });
     expect(result.current.isWaiting).toBe(false);
     // Nothing left in the cache pinning the row open.
     expect(
