@@ -14,7 +14,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Changed
 
-- Branding: the app now ships Giant Swarm's logo as its default identity — the horizontal lockup in the expanded sidebar and on the home page, and the ant mark in the collapsed rail, the favicons and the app icons. Deployments that mount their own branding assets are unaffected: custom assets still take precedence. The page description now comes from the new `app.description` config key instead of being hardcoded, and `manifest.json`'s PWA name is generic so no deployment ships another company's name (#2077).
+- Branding: the app now ships Giant Swarm's logo as its default identity — the horizontal lockup in the expanded sidebar and on the home page, and the ant mark in the collapsed rail, the favicons and the app icons. Deployments that mount their own branding assets are unaffected: custom assets still take precedence. The page description now comes from the new `app.description` config key instead of being hardcoded, and `manifest.json`'s PWA name is generic so no deployment ships another company's name (#2081).
 
 ### Fixed
 

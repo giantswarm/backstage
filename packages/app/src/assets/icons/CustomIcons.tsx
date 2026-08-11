@@ -1,5 +1,5 @@
 import { SvgIcon, SvgIconProps } from '@material-ui/core';
-import { GiantSwarmIconPaths } from '../logo/GiantSwarmMark';
+import { GiantSwarmIconPaths } from '../logo';
 
 export const GiantSwarmIcon = (props: SvgIconProps) => (
   <SvgIcon {...props} viewBox="0 0 354.3 354.3">
