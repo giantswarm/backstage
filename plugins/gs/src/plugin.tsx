@@ -37,6 +37,7 @@ import {
 import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
+  isEntityReadinessAvailable,
   isEntityKlausPersonality,
   isEntityWithOciRepository,
 } from './components/utils/entity';
@@ -267,6 +268,21 @@ const helmChartVersionHistoryEntityCard = EntityCardBlueprint.make({
       const { EntityHelmChartVersionHistoryCard } =
         await import('./components/catalog/EntityHelmChartVersionHistoryCard');
       return <EntityHelmChartVersionHistoryCard />;
+    },
+  },
+});
+
+const appReadinessEntityCard = EntityCardBlueprint.make({
+  name: 'app-readiness',
+  params: {
+    type: 'info',
+    // Written by AppReadinessProcessor, so the card is absent on instances that
+    // do not run it rather than rendering an empty shell.
+    filter: entity => isEntityReadinessAvailable(entity),
+    loader: async () => {
+      const { EntityAppReadinessCard } =
+        await import('./components/catalog/EntityAppReadinessCard');
+      return <EntityAppReadinessCard />;
     },
   },
 });
@@ -614,6 +630,7 @@ export const gsPlugin = createFrontendPlugin({
     mimirApi,
     // Entity cards
     appDeploymentEntityCard,
+    appReadinessEntityCard,
     installationDetailsEntityCard,
     readmeEntityCard,
     soulEntityCard,
