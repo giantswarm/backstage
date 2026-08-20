@@ -81,7 +81,7 @@ interface NotFoundContext {
 /**
  * Derive the kagent API base URL for an installation from its base domain.
  *
- * The hostname pattern matches the `agentic-platform-connectivity` chart's
+ * The hostname pattern matches the `agent-platform-connectivity` chart's
  * `kagent.uiRoute.hostname` (`kagent.<codename>.<base>`), which is exactly
  * `kagent.<baseDomain>` — the same derivation `useAgentAvatarUrl` uses for
  * `avatars.<baseDomain>`. That host is fronted by oauth2-proxy, whose nginx

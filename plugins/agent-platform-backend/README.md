@@ -188,7 +188,7 @@ deployed-but-degraded kagent is rare and genuinely worth an alert.
 
 The base URL is **derived**, not configured per installation:
 `https://kagent.<baseDomain>/api`, where `baseDomain` comes from
-`gs.installations`. That matches the `agentic-platform-connectivity` chart's
+`gs.installations`. That matches the `agent-platform-connectivity` chart's
 `kagent.uiRoute.hostname` (`kagent.<codename>.<base>`), which is fronted by
 oauth2-proxy and whose nginx sidecar proxies `/api/` to `kagent-controller:8083`.
 

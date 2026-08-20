@@ -11,7 +11,7 @@ function makeWorkflow(
       kind: 'Workflow',
       metadata: {
         name: 'deploy',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         ...(overrides.metadata as object),
       },
       spec: (overrides.spec as object) ?? {
