@@ -22,6 +22,7 @@ import { columnFactories, hiddenColumn, noWrapColumn } from '../columns';
 import {
   isEntityHelmChartsAvailable,
   isEntityLatestReleaseAvailable,
+  isEntityReadinessAvailable,
 } from '../../utils/entity';
 
 const YellowStar = withStyles({
@@ -63,6 +64,11 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       if (entities.some(entity => isEntityLatestReleaseAvailable(entity))) {
         baseColumns.push(columnFactories.createLatestReleaseColumn());
         baseColumns.push(columnFactories.createLastReleasedColumn());
+      }
+      // Absent on instances that do not run AppReadinessProcessor, so the
+      // column only appears where there is something to show.
+      if (entities.some(entity => isEntityReadinessAvailable(entity))) {
+        baseColumns.push(noWrapColumn(columnFactories.createReadinessColumn()));
       }
       if (entities.some(entity => isEntityHelmChartsAvailable(entity))) {
         baseColumns.push(columnFactories.createHelmChartsColunm());
