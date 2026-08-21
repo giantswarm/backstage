@@ -3418,7 +3418,7 @@
             "properties": {
                 "salt": {
                     "type": "string",
-                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var)"
+                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml."
                 }
             }
         },
