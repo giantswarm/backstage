@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/68cb36b1a342d440a7cdc1e5b65336a1895cd013/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#    https://github.com/giantswarm/devctl/blob/46c5eecfea36d39d54cef44f44ec7b965d08f865/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
@@ -91,7 +91,7 @@ repos:
       - id: helm-schema-backstage
         name: "generate + fix + normalize helm/backstage/values.schema.json"
         language: golang
-        additional_dependencies: ['github.com/giantswarm/schemalint/v2@v2.6.2']
+        additional_dependencies: ['github.com/giantswarm/schemalint/v2@v2.6.3']
         files: ^helm/backstage/(values\.yaml|\.schema\.yaml|values\.schema\.json)$
         pass_filenames: false
         require_serial: true
@@ -99,7 +99,7 @@ repos:
         args:
           - 'helm plugin list | grep -q "^schema[[:space:]]" || { echo "helm schema plugin missing, install it with: helm plugin install https://github.com/losisin/helm-values-schema-json"; exit 1; }; helm schema --config helm/backstage/.schema.yaml && python3 -c ''import json,sys; h=lambda o: {**{k:v for k,v in o.items() if k!="additionalProperties"},"unevaluatedProperties":False} if ("$ref" in o and o.get("additionalProperties") is False) else o; p=sys.argv[1]; f=open(p,encoding="utf-8"); d=json.load(f,object_hook=h); f.close(); f=open(p,"w",encoding="utf-8"); json.dump(d,f); f.close()'' helm/backstage/values.schema.json && schemalint normalize helm/backstage/values.schema.json -o helm/backstage/values.schema.json --force'
   - repo: https://github.com/giantswarm/schemalint
-    rev: v2.6.2
+    rev: v2.6.3
     hooks:
       - id: schemalint-verify
         pass_filenames: false
