@@ -11,6 +11,13 @@ export const GS_HELMCHARTS = 'giantswarm.io/helmcharts';
 export const GS_LATEST_RELEASE_DATE = 'giantswarm.io/latest-release-date';
 export const GS_LATEST_RELEASE_TAG = 'giantswarm.io/latest-release-tag';
 
+export const GS_READINESS = 'giantswarm.io/readiness';
+export const GS_READINESS_STANDARDS = 'giantswarm.io/readiness-standards';
+export const GS_READINESS_FLAGS = 'giantswarm.io/readiness-flags';
+export const GS_READINESS_ADVISORY = 'giantswarm.io/readiness-advisory';
+export const GS_READINESS_CHECKED = 'giantswarm.io/readiness-checked';
+export const GS_CHART_METADATA_STYLE = 'giantswarm.io/chart-metadata-style';
+
 export const GS_APP_DEPLOYMENT_ACTION = 'giantswarm.io/app-deployment-action';
 export const GS_KLAUS_SOUL_URL = 'giantswarm.io/klaus-soul-url';
 export const GS_OCI_REPOSITORY = 'giantswarm.io/oci-repository';
@@ -50,6 +57,45 @@ export const getLatestReleaseTagFromEntity = (entity: Entity) => {
 
   return latestReleaseTag ? formatVersion(latestReleaseTag) : undefined;
 };
+
+/**
+ * Whether the release-readiness verdict is available. Written by
+ * `AppReadinessProcessor`, so it is absent on instances that do not run it.
+ */
+export const isEntityReadinessAvailable = (entity: Entity) =>
+  Boolean(entity.metadata.labels?.[GS_READINESS]);
+
+export const getReadinessFromEntity = (entity: Entity) =>
+  entity.metadata.labels?.[GS_READINESS];
+
+export const getReadinessStandardsFromEntity = (entity: Entity) =>
+  entity.metadata.labels?.[GS_READINESS_STANDARDS];
+
+const splitFlags = (raw?: string) =>
+  (raw ?? '')
+    .split(',')
+    .map(flag => flag.trim())
+    .filter(Boolean);
+
+/**
+ * Gaps that fail a build today. Rendering these as problems is fair.
+ */
+export const getReadinessFlagsFromEntity = (entity: Entity) =>
+  splitFlags(entity.metadata.annotations?.[GS_READINESS_FLAGS]);
+
+/**
+ * Gaps documented in the chart metadata standard but gated nowhere. Four charts
+ * in five carry at least one, so these describe a rollout that has not happened
+ * and must never be rendered as failure.
+ */
+export const getReadinessAdvisoryFromEntity = (entity: Entity) =>
+  splitFlags(entity.metadata.annotations?.[GS_READINESS_ADVISORY]);
+
+export const getReadinessCheckedFromEntity = (entity: Entity) =>
+  entity.metadata.annotations?.[GS_READINESS_CHECKED];
+
+export const getChartMetadataStyleFromEntity = (entity: Entity) =>
+  entity.metadata.annotations?.[GS_CHART_METADATA_STYLE];
 
 export const isEntityHelmChartsAvailable = (entity: Entity) =>
   Boolean(entity.metadata.annotations?.[GS_HELMCHARTS]);
