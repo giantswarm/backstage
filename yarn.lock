@@ -11226,6 +11226,7 @@ __metadata:
     "@testing-library/jest-dom": "npm:^7.0.0"
     "@testing-library/react": "npm:^16.0.0"
     "@testing-library/user-event": "npm:^14.0.0"
+    ajv: "npm:^8.17.1"
     js-yaml: "npm:^5.0.0"
     lodash: "npm:^4.17.21"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
