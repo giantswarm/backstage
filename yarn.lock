@@ -458,8 +458,8 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-markdown@npm:^0.14.0":
-  version: 0.14.8
-  resolution: "@assistant-ui/react-markdown@npm:0.14.8"
+  version: 0.14.11
+  resolution: "@assistant-ui/react-markdown@npm:0.14.11"
   dependencies:
     "@radix-ui/react-primitive": "npm:^2.1.10"
     "@radix-ui/react-use-callback-ref": "npm:^1.1.4"
@@ -472,7 +472,7 @@ __metadata:
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/d5600c9ef673e6d0c5b4687ed1bddb15e7ba9eaa49b5344ede2a4d077fb9b74c0489d4d320f2f6dbd8e60f0f60acc083325c4f8f8d2791f19b63a0ce21faeb13
+  checksum: 10c0/4cd71df0c3687e172631172e825117ab43652e0180c313654724e892fa5bdca4018b0e75ae58e966bd028a14172cc1a74e0fee943c6dbf814935b627ba5c648b
   languageName: node
   linkType: hard
 
@@ -546,15 +546,17 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/tap@npm:^0.9.2":
-  version: 0.9.9
-  resolution: "@assistant-ui/tap@npm:0.9.9"
+  version: 0.9.13
+  resolution: "@assistant-ui/tap@npm:0.9.13"
   peerDependencies:
     "@types/react": "*"
     react: ^18 || ^19
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/99bc90860d64f02fca783e90ee377784f750c5775f6e77fcdf033779d7c16cf309297d2f54d2a78415b7dd383a87b76237255f7cfdbbc7875a3bef8b789129ce
+    react:
+      optional: true
+  checksum: 10c0/a81fac0afe75554d551d337d25001c01278ce9e3df9fdcf650615b9717b09f9864dab0422307afbc9942036dbac8e5dfb962b8195eff711b8689304aec3f8ec7
   languageName: node
   linkType: hard
 
