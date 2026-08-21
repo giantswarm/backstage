@@ -39,6 +39,24 @@ export interface Config {
          */
         cacheTtlSeconds?: number;
       };
+      appReadiness?: {
+        /**
+         * Enables the app readiness processor, which annotates Component
+         * entities carrying `giantswarm.io/helmcharts` with whether their
+         * newest GitHub release reached the chart registry. Sets the
+         * `giantswarm.io/readiness` label to `releasable`, `blocked` or
+         * `unknown`, and merges any blockers into
+         * `giantswarm.io/readiness-flags`.
+         * @visibility backend
+         */
+        enabled?: boolean;
+        /**
+         * Optional TTL for the in-memory tags cache, in seconds.
+         * Defaults to 3600 (1 hour).
+         * @visibility backend
+         */
+        cacheTtlSeconds?: number;
+      };
       latestOciRelease?: {
         /**
          * Enables the latest-release processor that annotates Component
