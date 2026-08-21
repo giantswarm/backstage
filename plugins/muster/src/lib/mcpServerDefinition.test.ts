@@ -105,6 +105,20 @@ describe('composeMcpServerDefinition', () => {
       composeMcpServerDefinition(state({ description: '   ' })),
     ).not.toHaveProperty('description');
   });
+
+  // muster owns `ui.giantswarm.io/registered-by`: it stamps the authenticated
+  // subject on create and preserves it on update. A client-side stamp would not
+  // just be redundant, it would break registration — the create tool rejects
+  // unknown fields, and it has no annotations argument to put it in.
+  it('carries no attribution or metadata of its own', () => {
+    for (const authMode of ['none', 'own-account', 'platform-sso'] as const) {
+      const definition = composeMcpServerDefinition(state({ authMode }));
+      expect(Object.keys(definition).sort()).toEqual(
+        expect.not.arrayContaining(['annotations', 'labels', 'metadata']),
+      );
+      expect(JSON.stringify(definition)).not.toContain('registered-by');
+    }
+  });
 });
 
 describe('deriveSlug', () => {
