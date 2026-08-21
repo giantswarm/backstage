@@ -86,6 +86,7 @@ export function NewMcpServerPage() {
     setUrl,
     setTransport,
     detailsErrors,
+    registeredName,
   } = useNewMcpServerForm();
 
   // The wizard registers onto the section's active installation — the same
@@ -186,12 +187,22 @@ export function NewMcpServerPage() {
                   <Grid.Item>
                     <TextField
                       label="Technical name"
-                      secondaryLabel="auto-derived"
+                      secondaryLabel={
+                        registeredName ? 'registered' : 'auto-derived'
+                      }
                       isRequired
+                      // Locked once registered: this is the CR's name, and a
+                      // rename here would make the save target a different CR
+                      // instead of updating the one just created.
+                      isDisabled={Boolean(registeredName)}
                       value={state.slug}
                       onChange={setSlug}
                       placeholder="weather"
-                      description="Becomes the server's resource name and its tools' prefix."
+                      description={
+                        registeredName
+                          ? 'The server is already registered under this name; changes are saved as an update to it.'
+                          : "Becomes the server's resource name and its tools' prefix."
+                      }
                     />
                   </Grid.Item>
                 </Grid.Root>

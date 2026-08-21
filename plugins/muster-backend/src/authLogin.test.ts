@@ -1,21 +1,25 @@
 import { isInfrastructureError, parseAuthLoginResult } from './authLogin';
 
 describe('parseAuthLoginResult', () => {
-  it('extracts the sign-in URL from an auth challenge', () => {
+  it('takes the sign-in URL from structuredContent.authUrl', () => {
     const message = [
       'Authentication Required',
       '',
       'Server: pro',
-      'Status: Authentication required for pro. Please visit the link below to authenticate.',
-      '',
       'Please sign in to connect to this server:',
       '',
       'https://muster.gazelle.example.io/oauth/proxy/start?state=abc123',
-      '',
-      'After signing in, run this tool again to complete the connection.',
     ].join('\n');
 
-    expect(parseAuthLoginResult(message)).toEqual({
+    expect(
+      parseAuthLoginResult({
+        text: message,
+        structuredContent: {
+          authUrl:
+            'https://muster.gazelle.example.io/oauth/proxy/start?state=abc123',
+        },
+      }),
+    ).toEqual({
       status: 'auth_required',
       authUrl:
         'https://muster.gazelle.example.io/oauth/proxy/start?state=abc123',
@@ -23,8 +27,26 @@ describe('parseAuthLoginResult', () => {
     });
   });
 
+  /**
+   * The URL is read from structuredContent ONLY (muster#1025). A URL that
+   * merely appears in the prose — a success answer listing the server's
+   * endpoint, a docs link — must not be mistaken for a challenge, which is why
+   * the old line-scanning fallback was retired.
+   */
+  it('does not scan the prose for URLs', () => {
+    const message = [
+      'New answer with a link:',
+      'https://pro.gazelle.example.io/mcp',
+    ].join('\n');
+
+    expect(parseAuthLoginResult({ text: message })).toEqual({
+      status: 'unknown',
+      message,
+    });
+  });
+
   // The three api.AuthMsg* markers muster's own CLI matches on, plus the
-  // "no auth needed" answer.
+  // "no auth needed" answer. Connection outcomes carry no structuredContent.
   it.each([
     "Server 'pro' is already authenticated and connected.",
     "Server 'pro' is already authenticated.",
@@ -32,46 +54,50 @@ describe('parseAuthLoginResult', () => {
     "Successfully connected to 'pro'!\n\nAvailable capabilities:\n- Tools: 12\n",
     'Already Connected',
   ])('classifies %j as connected', message => {
-    expect(parseAuthLoginResult(message)).toEqual({
+    expect(parseAuthLoginResult({ text: message })).toEqual({
       status: 'connected',
       message,
     });
   });
 
-  /**
-   * The markers are the specific signal; a bare URL line is only the fallback.
-   * A success answer that grows an endpoint or docs link must not be read as a
-   * fresh challenge, or the UI offers a non-challenge link and polls for a
-   * transition that already happened.
-   */
-  it('prefers a connected marker over a URL appearing in the same answer', () => {
-    const message = [
-      "Successfully connected to 'pro'!",
-      '',
-      'Available capabilities:',
-      '- Tools: 12',
-      '',
-      'https://pro.gazelle.example.io/mcp',
-    ].join('\n');
-
-    expect(parseAuthLoginResult(message)).toEqual({
-      status: 'connected',
-      message,
+  it('prefers structuredContent over a connected marker in the prose', () => {
+    // Both present is a fresh challenge by contract: muster only sets
+    // structuredContent.authUrl when it issued one.
+    expect(
+      parseAuthLoginResult({
+        text: 'Already Connected',
+        structuredContent: { authUrl: 'https://example.com/start' },
+      }),
+    ).toEqual({
+      status: 'auth_required',
+      authUrl: 'https://example.com/start',
+      message: 'Already Connected',
     });
   });
 
   it('flags an unrecognised answer instead of guessing', () => {
-    expect(parseAuthLoginResult('Something entirely new happened.')).toEqual({
+    expect(
+      parseAuthLoginResult({ text: 'Something entirely new happened.' }),
+    ).toEqual({
       status: 'unknown',
       message: 'Something entirely new happened.',
     });
   });
 
-  it('serialises a non-string payload so the message is still shown', () => {
-    expect(parseAuthLoginResult({ unexpected: true })).toEqual({
+  it('handles a result with no text at all', () => {
+    expect(parseAuthLoginResult({})).toEqual({
       status: 'unknown',
-      message: '{"unexpected":true}',
+      message: '',
     });
+  });
+
+  it('ignores a non-string authUrl', () => {
+    expect(
+      parseAuthLoginResult({
+        text: 'odd',
+        structuredContent: { authUrl: 42 },
+      }),
+    ).toEqual({ status: 'unknown', message: 'odd' });
   });
 });
 

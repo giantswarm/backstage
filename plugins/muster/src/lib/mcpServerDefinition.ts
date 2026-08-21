@@ -18,6 +18,7 @@
 // request parsing rejects unknown fields.
 
 import type { MCPServerAuth } from './k8s';
+import { toYaml } from './gitops';
 
 /**
  * Transports the wizard offers. `stdio` is a CRD option but not a wizard one:
@@ -251,6 +252,74 @@ export function validateNewMcpServerForm(
   state: NewMcpServerFormState,
 ): string[] {
   return [...validateMcpServerDetails(state), ...validateMcpServerAuth(state)];
+}
+
+/**
+ * The composed definition as an MCPServer manifest — the review step's manual
+ * fallback for users who prefer to commit the CR to a GitOps repo instead of
+ * registering live. Same namespace default as the GitOps dialog's
+ * `toManifestYaml`.
+ */
+export function toMcpServerManifestYaml(
+  definition: McpServerDefinition,
+  namespace = 'agent-platform',
+): string {
+  const { name, ...spec } = definition;
+  return toYaml({
+    apiVersion: 'muster.giantswarm.io/v1alpha1',
+    kind: 'MCPServer',
+    metadata: { name, namespace },
+    spec,
+  });
+}
+
+// Quote a CLI argument value for a POSIX shell when it needs it.
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9@%+=:,./_-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The composed definition as a `muster create mcpserver` invocation — the
+ * review step's CLI fallback. Flag names follow muster's cmd/create.go
+ * (auth flags landed with muster#1026).
+ */
+export function toMusterCliCommand(definition: McpServerDefinition): string {
+  const parts = [
+    'muster create mcpserver',
+    definition.name,
+    `--type=${definition.type}`,
+    `--url=${shellQuote(definition.url)}`,
+    `--auto-start=${definition.autoStart}`,
+  ];
+  if (definition.description) {
+    parts.push(`--description=${shellQuote(definition.description)}`);
+  }
+  const auth = definition.auth;
+  if (auth?.type === 'oauth') {
+    parts.push('--auth-type=oauth');
+    if (auth.authorizationServer) {
+      parts.push(
+        `--auth-issuer=${shellQuote(auth.authorizationServer.issuer)}`,
+      );
+      if (auth.authorizationServer.scopes) {
+        parts.push(
+          `--auth-scopes=${shellQuote(auth.authorizationServer.scopes)}`,
+        );
+      }
+    }
+  }
+  if (auth?.forwardToken) {
+    parts.push('--forward-token');
+    if (auth.requiredAudiences?.length) {
+      parts.push(
+        `--required-audiences=${shellQuote(auth.requiredAudiences.join(','))}`,
+      );
+    }
+  }
+  return parts.join(' ');
 }
 
 export type FieldAvailability = {

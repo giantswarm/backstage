@@ -5,6 +5,8 @@ import {
   composeMcpServerDefinition,
   deriveSlug,
   emptyFormState,
+  toMcpServerManifestYaml,
+  toMusterCliCommand,
   validateNewMcpServerForm,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
@@ -511,5 +513,77 @@ describe('CRD conformance', () => {
     expect(validateNewMcpServerForm(state({ url: 'mcp.example.com' }))).toEqual(
       [expect.stringContaining('URL must be an http(s) URL')],
     );
+  });
+});
+
+describe('toMcpServerManifestYaml', () => {
+  it('renders the definition as an MCPServer manifest', () => {
+    const yaml = toMcpServerManifestYaml(
+      composeMcpServerDefinition(
+        state({ authMode: 'own-account', issuer: 'https://auth.example.com' }),
+      ),
+    );
+
+    expect(yaml).toContain('apiVersion: muster.giantswarm.io/v1alpha1');
+    expect(yaml).toContain('kind: MCPServer');
+    expect(yaml).toContain('name: weather-mcp');
+    expect(yaml).toContain('namespace: agent-platform');
+    expect(yaml).toContain('type: streamable-http');
+    // toYaml quotes scalars containing YAML-special characters (the colon).
+    expect(yaml).toContain('url: "https://weather.example.com/mcp"');
+    expect(yaml).toContain('issuer: "https://auth.example.com"');
+    // The name lives in metadata, not the spec (unlike the tool argument shape).
+    expect(yaml).not.toMatch(/spec:[\s\S]*name: weather-mcp/);
+  });
+});
+
+describe('toMusterCliCommand', () => {
+  it('renders a create command for a no-auth server', () => {
+    expect(toMusterCliCommand(composeMcpServerDefinition(state()))).toBe(
+      'muster create mcpserver weather-mcp --type=streamable-http ' +
+        '--url=https://weather.example.com/mcp --auto-start=true ' +
+        "--description='Forecasts and observations'",
+    );
+  });
+
+  it('adds the oauth flags for an own-account server with issuer override', () => {
+    const cmd = toMusterCliCommand(
+      composeMcpServerDefinition(
+        state({
+          description: '',
+          authMode: 'own-account',
+          issuer: 'https://auth.example.com',
+          scopes: 'read write',
+        }),
+      ),
+    );
+
+    expect(cmd).toContain('--auth-type=oauth');
+    expect(cmd).toContain('--auth-issuer=https://auth.example.com');
+    expect(cmd).toContain("--auth-scopes='read write'");
+  });
+
+  it('adds the forward-token flags for a platform-sso server', () => {
+    const cmd = toMusterCliCommand(
+      composeMcpServerDefinition(
+        state({
+          description: '',
+          authMode: 'platform-sso',
+          requiredAudiences: ['aud-a', 'aud-b'],
+        }),
+      ),
+    );
+
+    expect(cmd).toContain('--forward-token');
+    expect(cmd).toContain('--required-audiences=aud-a,aud-b');
+    expect(cmd).not.toContain('--auth-type');
+  });
+
+  it('shell-quotes values that need it', () => {
+    const cmd = toMusterCliCommand(
+      composeMcpServerDefinition(state({ description: "it's; rm -rf /" })),
+    );
+
+    expect(cmd).toContain(`--description='it'\\''s; rm -rf /'`);
   });
 });

@@ -38,31 +38,26 @@ const CONNECTED_MARKERS = [
 ];
 
 /**
- * Classify `core_auth_login`'s free-text answer. Muster has no structured
- * result for this tool, so we mirror its CLI's detection: an authorization
- * challenge puts the sign-in URL on its own line, and connection outcomes carry
- * one of the `api.AuthMsg*` markers.
+ * Classify `core_auth_login`'s answer. An authorization challenge carries the
+ * sign-in URL as `structuredContent.authUrl` (muster#1025) — the prose-parsing
+ * fallback that used to scan the text for a URL line is retired. Connection
+ * outcomes have no structured content and are still recognised by their
+ * `api.AuthMsg*` markers, the same way muster's own CLI does.
  */
-export function parseAuthLoginResult(payload: unknown): AuthLoginResult {
-  const message =
-    typeof payload === 'string' ? payload : JSON.stringify(payload ?? null);
+export function parseAuthLoginResult(result: {
+  text?: string;
+  structuredContent?: unknown;
+}): AuthLoginResult {
+  const message = result.text ?? '';
 
-  // Markers first: they are the specific signal, a bare URL line is only the
-  // fallback. A connection answer that happens to carry a URL (muster's success
-  // text lists the server's capabilities, and could grow an endpoint or docs
-  // link) must not be mistaken for a fresh challenge -- that would offer a
-  // non-challenge link and poll for a transition that already happened.
-  if (CONNECTED_MARKERS.some(marker => message.includes(marker))) {
-    return { status: 'connected', message };
+  const authUrl = (result.structuredContent as { authUrl?: unknown } | null)
+    ?.authUrl;
+  if (typeof authUrl === 'string' && authUrl !== '') {
+    return { status: 'auth_required', authUrl, message };
   }
 
-  const authUrl = message
-    .split('\n')
-    .map(line => line.trim())
-    .find(line => line.startsWith('https://') || line.startsWith('http://'));
-
-  if (authUrl) {
-    return { status: 'auth_required', authUrl, message };
+  if (CONNECTED_MARKERS.some(marker => message.includes(marker))) {
+    return { status: 'connected', message };
   }
 
   return { status: 'unknown', message };

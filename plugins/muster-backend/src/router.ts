@@ -337,9 +337,9 @@ export async function createRouter(
 
   /**
    * Start (or complete) the OAuth flow for one aggregated MCP server via
-   * muster's `core_auth_login`. Muster answers with free text -- either "already
-   * connected" or a challenge carrying a sign-in URL the user must visit -- so
-   * the response is normalised here.
+   * muster's `core_auth_login`. A challenge carries the sign-in URL as
+   * `structuredContent.authUrl`; "already connected" outcomes are prose-only.
+   * The response is normalised here.
    *
    * Muster reports refusals (SSO-managed server, rate limit, undiscoverable
    * issuer) as MCP tool errors, which the client turns into a thrown Error.
@@ -366,9 +366,13 @@ export async function createRouter(
 
     const callOptions = readCallOptions(req, installation);
 
-    let payload: unknown;
+    let payload: { text?: string; structuredContent?: unknown };
     try {
-      payload = await client.callTool(AUTH_LOGIN_TOOL, { server }, callOptions);
+      payload = await client.callToolWithStructured(
+        AUTH_LOGIN_TOOL,
+        { server },
+        callOptions,
+      );
     } catch (error) {
       if (isInfrastructureError(error)) {
         throw error;

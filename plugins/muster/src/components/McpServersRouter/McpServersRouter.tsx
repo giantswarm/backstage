@@ -5,6 +5,8 @@ import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
 import { McpServersPage } from '../McpServersPage';
 import { NewMcpServerPage } from '../NewMcpServerPage';
 import { NewMcpServerAuthPage } from '../NewMcpServerAuthPage';
+import { NewMcpServerReviewPage } from '../NewMcpServerReviewPage';
+import { NewMcpServerVerifyPage } from '../NewMcpServerVerifyPage';
 
 // react-router keeps the window scroll position across client-side navigation,
 // so moving between wizard steps would otherwise land mid-page. Reset to the
@@ -21,12 +23,9 @@ function ScrollToTop() {
  * Routing within the Servers view: the server manager and the registration
  * wizard's steps. The steps are sub-routes sharing one NewMcpServerFormProvider
  * so the composed definition survives navigation across
- * `/agent-platform/muster/servers/new` and `.../new/auth` — the same shape as
- * agent creation's AgentsRouter. Mounted inside MusterProviders by
+ * `/agent-platform/muster/servers/new` and its step sub-routes — the same
+ * shape as agent creation's AgentsRouter. Mounted inside MusterProviders by
  * MusterSection, so the wizard shares the section's active installation.
- *
- * Steps 3 (review & register) and 4 (verify) land with the increment that also
- * wires the "Register server" entry point into the page header.
  */
 export const McpServersRouter = () => {
   return (
@@ -36,6 +35,8 @@ export const McpServersRouter = () => {
         <Route index element={<McpServersPage />} />
         <Route path="new" element={<NewMcpServerPage />} />
         <Route path="new/auth" element={<NewMcpServerAuthPage />} />
+        <Route path="new/review" element={<NewMcpServerReviewPage />} />
+        <Route path="new/verify" element={<NewMcpServerVerifyPage />} />
       </Routes>
     </NewMcpServerFormProvider>
   );

@@ -32,6 +32,14 @@ export type NewMcpServerFormContextValue = {
   setIssuer: (issuer: string) => void;
   setScopes: (scopes: string) => void;
   setRequiredAudiences: (requiredAudiences: string[]) => void;
+  /**
+   * The CR name this wizard run has already registered, set by the review
+   * step's successful create. While set, saving again is an update to that CR
+   * (never a delete-and-recreate) and the technical name is locked — a rename
+   * would target a different CR and orphan the registered one.
+   */
+  registeredName: string | undefined;
+  setRegisteredName: (name: string | undefined) => void;
   reset: () => void;
   /** True when the form has no validation errors. */
   isComplete: boolean;
@@ -81,6 +89,7 @@ export function NewMcpServerFormProvider({
   // The technical name auto-derives from the display name until the user edits
   // it by hand (same rule as agent creation).
   const [slugEdited, setSlugEdited] = useState(false);
+  const [registeredName, setRegisteredName] = useState<string | undefined>();
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     const detailsErrors = validateMcpServerDetails(state);
@@ -95,7 +104,8 @@ export function NewMcpServerFormProvider({
         setState(prev => ({
           ...prev,
           name,
-          slug: slugEdited ? prev.slug : deriveSlug(name),
+          // Once registered the slug is the CR's name and must not drift.
+          slug: slugEdited || registeredName ? prev.slug : deriveSlug(name),
         })),
       setSlug: slug => {
         setSlugEdited(true);
@@ -122,8 +132,11 @@ export function NewMcpServerFormProvider({
       setScopes: scopes => setState(prev => ({ ...prev, scopes })),
       setRequiredAudiences: requiredAudiences =>
         setState(prev => ({ ...prev, requiredAudiences })),
+      registeredName,
+      setRegisteredName,
       reset: () => {
         setSlugEdited(false);
+        setRegisteredName(undefined);
         setState(emptyFormState);
       },
       isComplete: validationErrors.length === 0,
@@ -132,7 +145,7 @@ export function NewMcpServerFormProvider({
       authFields: authFieldAvailability(state),
       definition: composeMcpServerDefinition(state),
     };
-  }, [state, slugEdited]);
+  }, [state, slugEdited, registeredName]);
 
   return (
     <NewMcpServerFormContext.Provider value={value}>

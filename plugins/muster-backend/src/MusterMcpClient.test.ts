@@ -206,6 +206,7 @@ describe('MusterMcpClient', () => {
   function callToolEnvelope(inner: {
     content: { type: string; text: string }[];
     isError?: boolean;
+    structuredContent?: unknown;
   }) {
     return {
       content: [{ type: 'text', text: JSON.stringify(inner) }],
@@ -350,6 +351,62 @@ describe('MusterMcpClient', () => {
     await expect(
       client.callTool('core_workflow_get', { name: 'missing' }),
     ).rejects.toThrow('workflow not found');
+  });
+
+  /**
+   * `core_auth_login` puts the sign-in URL in the wrapped tool's MCP
+   * structuredContent (muster#1025), which call_tool preserves inside its JSON
+   * envelope. callToolWithStructured surfaces it next to the prose text.
+   */
+  it('preserves structuredContent alongside the text', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: 'Authentication Required' }],
+        isError: false,
+        structuredContent: { authUrl: 'https://muster/oauth/start?state=abc' },
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callToolWithStructured('core_auth_login', { server: 'pro' }),
+    ).resolves.toEqual({
+      text: 'Authentication Required',
+      structuredContent: { authUrl: 'https://muster/oauth/start?state=abc' },
+    });
+  });
+
+  it('returns text-only results without structuredContent', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [
+          { type: 'text', text: "Server 'pro' is already authenticated." },
+        ],
+        isError: false,
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callToolWithStructured('core_auth_login', { server: 'pro' }),
+    ).resolves.toEqual({
+      text: "Server 'pro' is already authenticated.",
+      structuredContent: undefined,
+    });
+  });
+
+  it('throws tool-level errors from callToolWithStructured', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: 'Rate limit exceeded.' }],
+        isError: true,
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callToolWithStructured('core_auth_login', { server: 'pro' }),
+    ).rejects.toThrow('Rate limit exceeded.');
   });
 
   it('returns raw text when the inner payload is not JSON', async () => {
