@@ -9,7 +9,6 @@ import {
 import {
   authFieldAvailability,
   composeMcpServerDefinition,
-  composeMcpServerManifest,
   deriveSlug,
   emptyFormState,
   validateNewMcpServerForm,
@@ -51,11 +50,6 @@ export type NewMcpServerFormContextValue = {
   };
   /** The definition passed to muster's validate/create tools. */
   definition: McpServerDefinition;
-  /** The MCPServer CR, for the review step's manual fallback. */
-  manifest: (options?: {
-    namespace?: string;
-    registeredBy?: string;
-  }) => Record<string, unknown>;
 };
 
 const NewMcpServerFormContext = createContext<
@@ -125,7 +119,6 @@ export function NewMcpServerFormProvider({
       validationErrors,
       authFields: authFieldAvailability(state),
       definition: composeMcpServerDefinition(state),
-      manifest: options => composeMcpServerManifest(state, options),
     };
   }, [state, slugEdited]);
 

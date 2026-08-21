@@ -3,10 +3,8 @@ import mcpServersCrd from './__fixtures__/mcpservers.crd.json';
 import {
   authFieldAvailability,
   composeMcpServerDefinition,
-  composeMcpServerManifest,
   deriveSlug,
   emptyFormState,
-  REGISTERED_BY_ANNOTATION,
   validateNewMcpServerForm,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
@@ -106,42 +104,6 @@ describe('composeMcpServerDefinition', () => {
     expect(
       composeMcpServerDefinition(state({ description: '   ' })),
     ).not.toHaveProperty('description');
-  });
-});
-
-describe('composeMcpServerManifest', () => {
-  it('stamps the registered-by annotation for the manual fallback', () => {
-    const manifest = composeMcpServerManifest(state(), {
-      registeredBy: 'timo@giantswarm.io',
-    });
-
-    expect(manifest).toEqual({
-      apiVersion: 'muster.giantswarm.io/v1alpha1',
-      kind: 'MCPServer',
-      metadata: {
-        name: 'weather-mcp',
-        namespace: 'agent-platform',
-        annotations: { 'ui.giantswarm.io/registered-by': 'timo@giantswarm.io' },
-      },
-      spec: {
-        type: 'streamable-http',
-        url: 'https://weather.example.com/mcp',
-        autoStart: true,
-        description: 'Forecasts and observations',
-      },
-    });
-    expect(REGISTERED_BY_ANNOTATION).toBe('ui.giantswarm.io/registered-by');
-  });
-
-  it('omits annotations when the signed-in user is unknown', () => {
-    expect(
-      composeMcpServerManifest(state(), { registeredBy: '  ' }),
-    ).toMatchObject({
-      metadata: { name: 'weather-mcp', namespace: 'agent-platform' },
-    });
-    expect(
-      (composeMcpServerManifest(state()) as { metadata: object }).metadata,
-    ).not.toHaveProperty('annotations');
   });
 });
 
@@ -440,6 +402,26 @@ const validateStructure = new Ajv({
   validateFormats: false,
 }).compile(openApiSchema);
 
+/**
+ * The custom resource the API server would see for this form state: muster's
+ * create tool turns the flat definition into exactly this (api_adapter.go
+ * convertRequestToCRD), so validating it validates what the wizard causes.
+ */
+function customResource(formState: NewMcpServerFormState): Record<
+  string,
+  unknown
+> & {
+  spec: { auth?: unknown };
+} {
+  const { name, ...spec } = composeMcpServerDefinition(formState);
+  return {
+    apiVersion: 'muster.giantswarm.io/v1alpha1',
+    kind: 'MCPServer',
+    metadata: { name, namespace: 'agent-platform' },
+    spec,
+  };
+}
+
 describe('CRD conformance', () => {
   const cases: [string, NewMcpServerFormState][] = [
     ['no auth', state()],
@@ -467,19 +449,16 @@ describe('CRD conformance', () => {
   ];
 
   it.each(cases)('%s: matches the CRD structural schema', (_, formState) => {
-    const manifest = composeMcpServerManifest(formState);
-    expect(validateStructure(manifest)).toBe(true);
+    expect(validateStructure(customResource(formState))).toBe(true);
     expect(validateStructure.errors).toBeNull();
   });
 
   it.each(cases)('%s: satisfies every CEL rule', (_, formState) => {
-    const manifest = composeMcpServerManifest(formState) as {
-      spec: { auth?: unknown };
-    };
-    expect(celViolations(openApiSchema, manifest)).toEqual([]);
-    expect(
-      manifest.spec.auth ? celViolations(authSchema, manifest.spec.auth) : [],
-    ).toEqual([]);
+    const cr = customResource(formState);
+    expect(celViolations(openApiSchema, cr)).toEqual([]);
+    expect(cr.spec.auth ? celViolations(authSchema, cr.spec.auth) : []).toEqual(
+      [],
+    );
   });
 
   // Guards the guard: an evaluator that accepted everything would make the
@@ -512,8 +491,9 @@ describe('CRD conformance', () => {
   });
 
   it('rejects a URL the CRD pattern refuses (so validation must catch it first)', () => {
-    const bad = composeMcpServerManifest(state({ url: 'mcp.example.com' }));
-    expect(validateStructure(bad)).toBe(false);
+    expect(
+      validateStructure(customResource(state({ url: 'mcp.example.com' }))),
+    ).toBe(false);
     expect(validateNewMcpServerForm(state({ url: 'mcp.example.com' }))).toEqual(
       [expect.stringContaining('URL must be an http(s) URL')],
     );

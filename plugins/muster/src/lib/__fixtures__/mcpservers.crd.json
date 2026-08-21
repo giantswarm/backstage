@@ -14,9 +14,7 @@
       "kind": "MCPServer",
       "listKind": "MCPServerList",
       "plural": "mcpservers",
-      "shortNames": [
-        "mcps"
-      ],
+      "shortNames": ["mcps"],
       "singular": "mcpserver"
     },
     "scope": "Namespaced",
@@ -91,9 +89,7 @@
                             "type": "string"
                           }
                         },
-                        "required": [
-                          "issuer"
-                        ],
+                        "required": ["issuer"],
                         "type": "object"
                       },
                       "forwardToken": {
@@ -133,9 +129,7 @@
                                 "type": "string"
                               }
                             },
-                            "required": [
-                              "name"
-                            ],
+                            "required": ["name"],
                             "type": "object"
                           },
                           "connectorId": {
@@ -169,10 +163,7 @@
                       "type": {
                         "default": "none",
                         "description": "Type specifies the authentication type.\nSupported values:\n  - \"oauth\": OAuth 2.0/OIDC authentication\n  - \"none\": No authentication",
-                        "enum": [
-                          "oauth",
-                          "none"
-                        ],
+                        "enum": ["oauth", "none"],
                         "type": "string"
                       }
                     },
@@ -227,10 +218,7 @@
                         "type": "string"
                       }
                     },
-                    "required": [
-                      "instanceArg",
-                      "name"
-                    ],
+                    "required": ["instanceArg", "name"],
                     "type": "object"
                   },
                   "headers": {
@@ -254,11 +242,7 @@
                   },
                   "type": {
                     "description": "Type specifies how this MCP server should be executed.\nSupported values: \"stdio\" for local processes, \"streamable-http\" for HTTP-based servers, \"sse\" for Server-Sent Events",
-                    "enum": [
-                      "stdio",
-                      "streamable-http",
-                      "sse"
-                    ],
+                    "enum": ["stdio", "streamable-http", "sse"],
                     "type": "string"
                   },
                   "url": {
@@ -267,9 +251,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "type"
-                ],
+                "required": ["type"],
                 "type": "object"
               },
               "status": {
@@ -305,11 +287,7 @@
                         },
                         "status": {
                           "description": "status of the condition, one of True, False, Unknown.",
-                          "enum": [
-                            "True",
-                            "False",
-                            "Unknown"
-                          ],
+                          "enum": ["True", "False", "Unknown"],
                           "type": "string"
                         },
                         "type": {

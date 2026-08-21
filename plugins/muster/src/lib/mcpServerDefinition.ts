@@ -1,41 +1,23 @@
 // Composes and validates the MCPServer definition behind the registration
 // wizard (details → auth → review & register).
 //
-// Two outputs, one form state:
-//
-//   composeMcpServerDefinition  → the flat argument shape muster's
-//     `core_mcpserver_validate`/`_create`/`_update` tools take (see
-//     internal/mcpserver/api_adapter.go). This is the live write path the
-//     wizard uses, the same one the raw-JSON dialog uses today.
-//   composeMcpServerManifest    → the MCPServer custom resource, for the
-//     review step's manual fallback (kubectl apply / commit to GitOps).
-//
-// The auth block is composed here rather than driven off the tool's advertised
-// schema: that schema is truncated (muster#1018) while the handler already
-// accepts the full block.
+// `composeMcpServerDefinition` produces the flat argument shape muster's
+// `core_mcpserver_validate`/`_create`/`_update` tools take (see
+// internal/mcpserver/api_adapter.go) — the live write path the wizard uses, the
+// same one the raw-JSON dialog uses today.
 //
 // Validation mirrors the CRD's own rules — the type/url dependency and the auth
 // mutual exclusions its CEL rules enforce — so the wizard cannot compose a
 // definition the API server would reject. The mutual exclusions are exposed as
 // field *availability* (a verdict plus a reason) so the UI can disable a field
 // with an explanation instead of failing on submit.
+//
+// Attribution needs nothing from here: muster stamps the authenticated subject
+// into `ui.giantswarm.io/registered-by` itself on create (muster#1021). Sending
+// annotations through the create tool would in fact fail the registration — its
+// request parsing rejects unknown fields.
 
 import type { MCPServerAuth } from './k8s';
-
-/**
- * Annotation recording who registered a server. muster stamps the
- * authenticated subject itself on `core_mcpserver_create` (muster#1021, shipped
- * in muster#1028), so the live path needs nothing from us — the wizard only
- * writes it into the manual-fallback manifest, where nothing else can.
- *
- * The wizard deliberately does NOT put it in the create arguments: muster's
- * request parsing rejects unknown fields, and the create request carries no
- * annotations, so sending it would fail the registration outright.
- */
-export const REGISTERED_BY_ANNOTATION = 'ui.giantswarm.io/registered-by';
-
-/** Namespace muster watches for MCPServer CRs. */
-export const DEFAULT_NAMESPACE = 'agent-platform';
 
 /**
  * Transports the wizard offers. `stdio` is a CRD option but not a wizard one:
@@ -103,13 +85,13 @@ export const emptyFormState: NewMcpServerFormState = {
 };
 
 /** `spec.url` pattern from the CRD. */
-export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/;
+const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/;
 
 /** `spec.auth.authorizationServer.issuer` pattern from the CRD. */
-export const ISSUER_PATTERN = /^https:\/\/[^/?#]+(\/[^?#]*[^/?#])?$/;
+const ISSUER_PATTERN = /^https:\/\/[^/?#]+(\/[^?#]*[^/?#])?$/;
 
 /** `spec.description` maxLength from the CRD. */
-export const DESCRIPTION_MAX_LENGTH = 500;
+const DESCRIPTION_MAX_LENGTH = 500;
 
 // RFC1123 DNS label: the slug becomes the MCPServer CR name, so it must be a
 // valid k8s object name. Same rule (and same reason) as agent creation.
@@ -194,32 +176,6 @@ export function composeMcpServerDefinition(
     definition.auth = auth;
   }
   return definition;
-}
-
-/**
- * Wizard state → the MCPServer custom resource, for the review step's manual
- * fallback (`kubectl apply` or a GitOps commit). This is the one path where the
- * client stamps {@link REGISTERED_BY_ANNOTATION} — the live path gets it from
- * muster.
- */
-export function composeMcpServerManifest(
-  state: NewMcpServerFormState,
-  options: { namespace?: string; registeredBy?: string } = {},
-): Record<string, unknown> {
-  const { name, ...spec } = composeMcpServerDefinition(state);
-  const registeredBy = options.registeredBy?.trim();
-  return {
-    apiVersion: 'muster.giantswarm.io/v1alpha1',
-    kind: 'MCPServer',
-    metadata: {
-      name,
-      namespace: options.namespace ?? DEFAULT_NAMESPACE,
-      ...(registeredBy
-        ? { annotations: { [REGISTERED_BY_ANNOTATION]: registeredBy } }
-        : {}),
-    },
-    spec,
-  };
 }
 
 /**

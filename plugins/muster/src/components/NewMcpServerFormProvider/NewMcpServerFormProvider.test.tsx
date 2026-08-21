@@ -148,7 +148,7 @@ describe('NewMcpServerFormProvider', () => {
     ]);
   });
 
-  it('exposes the composed definition and manifest for the review step', () => {
+  it('exposes the composed definition for the review step', () => {
     const { result, fillDetails } = renderForm();
     fillDetails();
     act(() => {
@@ -167,16 +167,6 @@ describe('NewMcpServerFormProvider', () => {
       auth: {
         forwardToken: true,
         requiredAudiences: ['dex-k8s-authenticator'],
-      },
-    });
-    expect(
-      result.current.manifest({ registeredBy: 'timo@giantswarm.io' }),
-    ).toMatchObject({
-      kind: 'MCPServer',
-      metadata: {
-        name: 'weather-mcp',
-        namespace: 'agent-platform',
-        annotations: { 'ui.giantswarm.io/registered-by': 'timo@giantswarm.io' },
       },
     });
   });

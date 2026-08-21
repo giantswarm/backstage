@@ -4,8 +4,8 @@
 
 Add the composition + validation core of the MCP server registration wizard:
 `lib/mcpServerDefinition` turns wizard form state into the definition muster's
-`core_mcpserver_*` tools take (and into an `MCPServer` manifest for the manual
-fallback), and `NewMcpServerFormProvider` holds the wizard's shared state.
+`core_mcpserver_*` tools take, and `NewMcpServerFormProvider` holds the
+wizard's shared state.
 
 The three auth choices map one-to-one onto muster's auth spec — no
 authentication omits `auth`, "sign in with your own account" composes
