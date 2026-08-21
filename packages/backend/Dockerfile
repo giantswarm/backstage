@@ -82,11 +82,13 @@ COPY --chown=node:node packages/backend-headless-service/dist/bundle.tar.gz ./ba
 RUN tar xzf backend-bundle.tar.gz && rm backend-bundle.tar.gz
 RUN tar xzf backend-headless-service-bundle.tar.gz && rm backend-headless-service-bundle.tar.gz
 
-# Drop the frontend source maps. app-backend serves everything under this
-# directory, so shipping them means publicly serving the un-minified app and
-# whatever was inlined into it at build time (giantswarm/giantswarm#37469).
-# Backend maps are left alone -- they are never served, only read locally for
-# stack traces.
+# Drop the frontend source maps: 115 MB of the 147 MB packages/app/dist, which
+# app-backend serves verbatim. This is payload we have no reason to ship, NOT a
+# leak fix -- this repo is public, and values inlined at build time sit in the
+# minified bundle and the runtime app config regardless. (Checked against the
+# live devportal map: all 114 sources were byte-identical to this repo at the
+# deployed tag.) Requested in giantswarm/giantswarm#37469.
+# Backend maps are left alone: never served, only read locally for stack traces.
 RUN find packages/app/dist -name '*.map' -delete
 
 CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]
