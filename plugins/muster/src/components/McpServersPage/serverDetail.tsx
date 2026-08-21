@@ -308,6 +308,9 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       {runtime.toolsCount !== undefined && (
         <DefRow label="Tools (session)">{runtime.toolsCount}</DefRow>
       )}
+      {runtime.registeredBy && (
+        <DefRow label="Registered by">{runtime.registeredBy}</DefRow>
+      )}
       {runtime.consecutiveFailures ? (
         <DefRow label="Consecutive failures">
           {runtime.consecutiveFailures}

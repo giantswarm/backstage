@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -11,7 +12,12 @@ import Dns from '@material-ui/icons/Dns';
 import Power from '@material-ui/icons/Power';
 import Build from '@material-ui/icons/Build';
 import Lock from '@material-ui/icons/Lock';
+import AddIcon from '@material-ui/icons/Add';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Button as UiButton } from '@backstage/ui';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import { newMcpServerRouteRef } from '../../routes';
 import { InstallationPicker } from '../InstallationPicker';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
@@ -94,6 +100,25 @@ export function McpServersPage() {
     () => partitionServers(mcpServers),
     [mcpServers],
   );
+
+  // "Register server" in the shared Agent Platform page header (agent-flow
+  // convention) — the primary path for bringing a remote MCP server onto the
+  // platform, ahead of the raw-JSON ad-hoc dialog below.
+  const navigate = useNavigate();
+  const newServerLink = useRouteRef(newMcpServerRouteRef);
+  const headerActions = useMemo(
+    () => (
+      <UiButton
+        variant="primary"
+        iconStart={<AddIcon />}
+        onPress={() => newServerLink && navigate(newServerLink())}
+      >
+        Register server
+      </UiButton>
+    ),
+    [newServerLink, navigate],
+  );
+  useProvidePageHeaderActions(headerActions);
 
   const targetMcs = useMemo(
     () =>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -17,7 +17,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newMcpServerRouteRef } from '../../routes';
+import { newMcpServerRouteRef, newMcpServerReviewRouteRef } from '../../routes';
 import type { McpServerAuthMode } from '../../lib/mcpServerDefinition';
 import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
 import { useMusterInstance } from '../MusterInstanceProvider';
@@ -118,13 +118,27 @@ export function NewMcpServerAuthPage() {
   };
 
   const callbackUrl = musterOAuthCallbackUrl(activeInstallationInfo?.endpoint);
+  const reviewLink = useRouteRef(newMcpServerReviewRouteRef);
 
   // Auth-only problems (the issuer override): everything in validationErrors
-  // that isn't a details problem. Surfaced inline — there is no Continue on
-  // this step yet (review & register lands with the wizard's entry point).
+  // that isn't a details problem. Surfaced inline and checked on Continue.
   const authErrors = validationErrors.filter(
     error => !detailsErrors.includes(error),
   );
+
+  // Show auth validation feedback only once the user tries to proceed, same
+  // rule as step 1.
+  const [showValidation, setShowValidation] = useState(false);
+  const authErrorCount = authErrors.length;
+  const onContinue = useCallback(() => {
+    if (authErrorCount > 0) {
+      setShowValidation(true);
+      return;
+    }
+    if (reviewLink) {
+      navigate(reviewLink());
+    }
+  }, [authErrorCount, reviewLink, navigate]);
 
   const actions = useMemo(
     () => (
@@ -135,9 +149,12 @@ export function NewMcpServerAuthPage() {
         >
           Back
         </Button>
+        <Button variant="primary" onPress={onContinue}>
+          Continue
+        </Button>
       </Flex>
     ),
-    [detailsLink, navigate],
+    [detailsLink, navigate, onContinue],
   );
 
   // Guarded like the agent flow's later steps: when this render only produces
@@ -292,10 +309,16 @@ export function NewMcpServerAuthPage() {
             <CardBody>
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  Next you review the composed server definition and register
-                  it. That step is on its way — for now, this is the end of the
-                  flow.
+                  Next you review the composed server definition, register it,
+                  and watch it connect.
                 </Text>
+                {showValidation && authErrors.length > 0 && (
+                  <Alert
+                    status="danger"
+                    title="Please fix the following before continuing"
+                    description={authErrors.join('. ')}
+                  />
+                )}
                 {actions}
               </Flex>
             </CardBody>

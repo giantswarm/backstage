@@ -174,6 +174,12 @@ export interface McpServerRuntime {
   sessionStatus?: string;
   sessionAuth?: string;
   toolsCount?: number;
+  /**
+   * The authenticated subject that registered this server through muster
+   * (`ui.giantswarm.io/registered-by`, stamped server-side on create --
+   * muster#1021). Empty for GitOps-managed servers.
+   */
+  registeredBy?: string;
 }
 
 export interface McpServerListResponse {

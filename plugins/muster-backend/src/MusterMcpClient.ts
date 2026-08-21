@@ -198,6 +198,16 @@ export class MusterMcpClient {
     args: Record<string, unknown>,
     options?: { authToken?: string },
   ): Promise<unknown> {
+    const result = await this.executeMetaTool(metaTool, args, options);
+    return this.parseResult(result, metaTool);
+  }
+
+  /** Run a meta-tool and return its raw MCP result (no envelope parsing). */
+  private async executeMetaTool(
+    metaTool: MetaToolName,
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
     if (!META_TOOLS.includes(metaTool)) {
       throw new NotFoundError(`Unknown muster meta-tool: ${metaTool}`);
     }
@@ -229,7 +239,7 @@ export class MusterMcpClient {
       throw error;
     }
 
-    return this.parseResult(result, metaTool);
+    return result;
   }
 
   /**
@@ -281,6 +291,53 @@ export class MusterMcpClient {
       { name: toolName, arguments: args },
       options,
     );
+  }
+
+  /**
+   * Like {@link callTool}, but preserves the wrapped tool's MCP
+   * `structuredContent` alongside its text payload. `call_tool` serialises the
+   * target tool's full result (`{isError, content, structuredContent}`) as a
+   * JSON envelope, which {@link callTool}'s parsing reduces to the text alone —
+   * fine for tools whose payload IS that JSON text, lossy for tools like
+   * `core_auth_login` that put the machine-readable part (the sign-in URL) in
+   * `structuredContent` (muster#1025). Tool-level errors throw, same as
+   * callTool.
+   */
+  async callToolWithStructured(
+    toolName: string,
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<{ text?: string; structuredContent?: unknown }> {
+    const result = await this.executeMetaTool(
+      CALL_TOOL,
+      { name: toolName, arguments: args },
+      options,
+    );
+
+    const envelope = this.unwrapTextContent(result, toolName);
+    if (envelope === undefined) {
+      return {};
+    }
+
+    let inner: unknown;
+    try {
+      inner = JSON.parse(envelope);
+    } catch {
+      return { text: envelope };
+    }
+    if (
+      inner === null ||
+      typeof inner !== 'object' ||
+      !Array.isArray((inner as { content?: unknown }).content)
+    ) {
+      return { text: envelope };
+    }
+
+    return {
+      text: this.unwrapTextContent(inner, toolName),
+      structuredContent: (inner as { structuredContent?: unknown })
+        .structuredContent,
+    };
   }
 
   async listTools(options?: { authToken?: string }): Promise<unknown> {

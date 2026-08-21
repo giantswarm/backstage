@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "app",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["start", "app"],
+      "port": 3000
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["start", "backend"],
+      "port": 7007
+    }
+  ]
+}

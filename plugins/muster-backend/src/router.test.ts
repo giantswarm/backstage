@@ -8,6 +8,7 @@ import { createRouter, MUSTER_AUTH_HEADER, RouterOptions } from './router';
 
 describe('createRouter', () => {
   const callTool = jest.fn();
+  const callToolWithStructured = jest.fn();
   const listTools = jest.fn();
   const filterTools = jest.fn();
   const describeTool = jest.fn();
@@ -16,6 +17,7 @@ describe('createRouter', () => {
 
   const mockClient = {
     callTool,
+    callToolWithStructured,
     listTools,
     filterTools,
     describeTool,
@@ -59,6 +61,7 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     callTool.mockReset();
+    callToolWithStructured.mockReset();
     listTools.mockReset();
     filterTools.mockReset();
     describeTool.mockReset();
@@ -327,21 +330,14 @@ describe('createRouter', () => {
       });
     });
 
-    it('returns the sign-in URL from an auth challenge', async () => {
-      callTool.mockResolvedValue(
-        [
-          'Authentication Required',
-          '',
-          'Server: pro',
-          'Status: Authentication required for pro. Please visit the link below to authenticate.',
-          '',
-          'Please sign in to connect to this server:',
-          '',
-          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
-          '',
-          'After signing in, run this tool again to complete the connection.',
-        ].join('\n'),
-      );
+    it('returns the sign-in URL from the challenge structuredContent', async () => {
+      callToolWithStructured.mockResolvedValue({
+        text: 'Authentication Required\n\nServer: pro',
+        structuredContent: {
+          authUrl:
+            'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+        },
+      });
 
       const response = await login({ server: 'pro' });
 
@@ -351,7 +347,7 @@ describe('createRouter', () => {
         authUrl:
           'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
       });
-      expect(callTool).toHaveBeenCalledWith(
+      expect(callToolWithStructured).toHaveBeenCalledWith(
         'core_auth_login',
         { server: 'pro' },
         { authToken: TOKEN },
@@ -359,9 +355,9 @@ describe('createRouter', () => {
     });
 
     it('reports an already-connected server as connected', async () => {
-      callTool.mockResolvedValue(
-        "Server 'pro' is already authenticated and connected.",
-      );
+      callToolWithStructured.mockResolvedValue({
+        text: "Server 'pro' is already authenticated and connected.",
+      });
 
       const response = await login({ server: 'pro' });
 
@@ -376,7 +372,7 @@ describe('createRouter', () => {
      * to Sentry regardless of our own log level).
      */
     it('returns a tool-level refusal as a structured 200', async () => {
-      callTool.mockRejectedValue(
+      callToolWithStructured.mockRejectedValue(
         new Error("Server 'pro' uses SSO and is connected automatically."),
       );
 
@@ -416,7 +412,7 @@ describe('createRouter', () => {
         }),
       ],
     ])('lets %s keep its 5xx', async (_label, thrown) => {
-      callTool.mockRejectedValue(thrown);
+      callToolWithStructured.mockRejectedValue(thrown);
 
       const response = await login({ server: 'pro' });
 
@@ -427,7 +423,7 @@ describe('createRouter', () => {
       const response = await login({});
 
       expect(response.status).toBe(400);
-      expect(callTool).not.toHaveBeenCalled();
+      expect(callToolWithStructured).not.toHaveBeenCalled();
     });
 
     it('fails with 401 when the user token is missing', async () => {
@@ -436,7 +432,7 @@ describe('createRouter', () => {
         .send({ server: 'pro' });
 
       expect(response.status).toBe(401);
-      expect(callTool).not.toHaveBeenCalled();
+      expect(callToolWithStructured).not.toHaveBeenCalled();
     });
 
     /**
@@ -461,7 +457,7 @@ describe('createRouter', () => {
         expect(response.status).toBe(200);
         expect(response.body.status).toBe('error');
         expect(response.body.message).toContain('without an authProvider');
-        expect(callTool).not.toHaveBeenCalled();
+        expect(callToolWithStructured).not.toHaveBeenCalled();
       });
     });
   });
