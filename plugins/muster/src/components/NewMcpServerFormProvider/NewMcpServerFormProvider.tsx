@@ -11,7 +11,8 @@ import {
   composeMcpServerDefinition,
   deriveSlug,
   emptyFormState,
-  validateNewMcpServerForm,
+  validateMcpServerAuth,
+  validateMcpServerDetails,
   type FieldAvailability,
   type McpServerAuthMode,
   type McpServerDefinition,
@@ -39,6 +40,12 @@ export type NewMcpServerFormContextValue = {
    * valid. Drives the Continue/submit-time feedback.
    */
   validationErrors: string[];
+  /**
+   * Problems in the Details step's fields only. The auth step's deep-link
+   * guard checks these — not `validationErrors`, which would bounce a user
+   * back to step 1 for an issuer they are typing on the auth step itself.
+   */
+  detailsErrors: string[];
   /**
    * Which auth fields this state may set, with an explanation for the ones it
    * may not — the CRD's auth mutual exclusions as disabled states.
@@ -76,7 +83,11 @@ export function NewMcpServerFormProvider({
   const [slugEdited, setSlugEdited] = useState(false);
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
-    const validationErrors = validateNewMcpServerForm(state);
+    const detailsErrors = validateMcpServerDetails(state);
+    const validationErrors = [
+      ...detailsErrors,
+      ...validateMcpServerAuth(state),
+    ];
 
     return {
       state,
@@ -117,6 +128,7 @@ export function NewMcpServerFormProvider({
       },
       isComplete: validationErrors.length === 0,
       validationErrors,
+      detailsErrors,
       authFields: authFieldAvailability(state),
       definition: composeMcpServerDefinition(state),
     };

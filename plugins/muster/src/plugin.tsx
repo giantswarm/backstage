@@ -15,6 +15,8 @@ import {
 } from './apis';
 import {
   mcpServersRouteRef,
+  newMcpServerAuthRouteRef,
+  newMcpServerRouteRef,
   rootRouteRef,
   toolExplorerRouteRef,
   workflowDetailRouteRef,
@@ -80,6 +82,8 @@ export const musterPlugin = createFrontendPlugin({
   routes: {
     root: rootRouteRef,
     mcpServers: mcpServersRouteRef,
+    newMcpServer: newMcpServerRouteRef,
+    newMcpServerAuth: newMcpServerAuthRouteRef,
     workflows: workflowsRouteRef,
     toolExplorer: toolExplorerRouteRef,
     workflowDetail: workflowDetailRouteRef,

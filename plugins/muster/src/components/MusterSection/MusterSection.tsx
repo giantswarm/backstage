@@ -12,7 +12,7 @@ import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 import { workflowDetailRouteRef } from '../../routes';
 import { MusterProviders } from '../MusterProviders';
 import { DashboardPage } from '../DashboardPage';
-import { McpServersPage } from '../McpServersPage';
+import { McpServersRouter } from '../McpServersRouter';
 import { WorkflowsRouter } from '../WorkflowsRouter';
 import { ToolExplorerPage } from '../ToolExplorerPage';
 
@@ -91,7 +91,7 @@ const MusterViews = () => {
       </Box>
       <Routes>
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="servers" element={<McpServersPage />} />
+        <Route path="servers/*" element={<McpServersRouter />} />
         <Route path="workflows/*" element={<WorkflowsRouter />} />
         <Route path="tools" element={<ToolExplorerPage />} />
       </Routes>
