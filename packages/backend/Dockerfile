@@ -82,4 +82,11 @@ COPY --chown=node:node packages/backend-headless-service/dist/bundle.tar.gz ./ba
 RUN tar xzf backend-bundle.tar.gz && rm backend-bundle.tar.gz
 RUN tar xzf backend-headless-service-bundle.tar.gz && rm backend-headless-service-bundle.tar.gz
 
+# Drop the frontend source maps. app-backend serves everything under this
+# directory, so shipping them means publicly serving the un-minified app and
+# whatever was inlined into it at build time (giantswarm/giantswarm#37469).
+# Backend maps are left alone -- they are never served, only read locally for
+# stack traces.
+RUN find packages/app/dist -name '*.map' -delete
+
 CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]
