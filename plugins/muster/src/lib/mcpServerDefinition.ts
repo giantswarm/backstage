@@ -179,13 +179,12 @@ export function composeMcpServerDefinition(
 }
 
 /**
- * Human-readable validation problems, in form order. Empty when the state is
- * valid. Mirrors the CRD's structural rules so nothing fails later at apply
- * time; the auth mutual exclusions are handled by {@link authFieldAvailability}
- * instead, since the wizard's exclusive auth modes make them unreachable rather
- * than merely invalid.
+ * Validation problems of the Details step's fields only, in form order. Split
+ * from {@link validateMcpServerAuth} so the auth step can guard "may I be
+ * shown?" on the details alone — a bad issuer typed on the auth step must not
+ * bounce the user back to step 1.
  */
-export function validateNewMcpServerForm(
+export function validateMcpServerDetails(
   state: NewMcpServerFormState,
 ): string[] {
   const errors: string[] = [];
@@ -218,6 +217,14 @@ export function validateNewMcpServerForm(
       'URL must be an http(s) URL without spaces, e.g. https://mcp.example.com/mcp',
     );
   }
+
+  return errors;
+}
+
+/** Validation problems of the Authentication step's fields only. */
+export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
+  const errors: string[] = [];
+
   if (state.authMode === 'own-account') {
     const issuer = state.issuer.trim();
     if (issuer && !ISSUER_PATTERN.test(issuer)) {
@@ -231,6 +238,19 @@ export function validateNewMcpServerForm(
   }
 
   return errors;
+}
+
+/**
+ * Human-readable validation problems, in form order. Empty when the state is
+ * valid. Mirrors the CRD's structural rules so nothing fails later at apply
+ * time; the auth mutual exclusions are handled by {@link authFieldAvailability}
+ * instead, since the wizard's exclusive auth modes make them unreachable rather
+ * than merely invalid.
+ */
+export function validateNewMcpServerForm(
+  state: NewMcpServerFormState,
+): string[] {
+  return [...validateMcpServerDetails(state), ...validateMcpServerAuth(state)];
 }
 
 export type FieldAvailability = {

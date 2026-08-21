@@ -13,8 +13,8 @@ import { MusterSection } from './MusterSection';
 jest.mock('../DashboardPage', () => ({
   DashboardPage: () => <div>dashboard-view</div>,
 }));
-jest.mock('../McpServersPage', () => ({
-  McpServersPage: () => <div>servers-view</div>,
+jest.mock('../McpServersRouter', () => ({
+  McpServersRouter: () => <div>servers-view</div>,
 }));
 jest.mock('../WorkflowsRouter', () => ({
   WorkflowsRouter: () => <div>workflows-view</div>,

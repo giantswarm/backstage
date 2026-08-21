@@ -10,6 +10,20 @@ export const mcpServersRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
+// The MCP server registration wizard, sub-routes of the servers view — the
+// same shape as agent creation's `/new` + `/new/skills` + `/new/review` under
+// the agents tab. Steps 3 (review & register) and 4 (verify) follow in the
+// increment that wires up the entry point.
+export const newMcpServerRouteRef = createSubRouteRef({
+  path: '/servers/new',
+  parent: rootRouteRef,
+});
+
+export const newMcpServerAuthRouteRef = createSubRouteRef({
+  path: '/servers/new/auth',
+  parent: rootRouteRef,
+});
+
 export const workflowsRouteRef = createSubRouteRef({
   path: '/workflows',
   parent: rootRouteRef,
