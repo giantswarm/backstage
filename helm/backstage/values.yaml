@@ -176,7 +176,7 @@ sentry:
 # -- TelemetryDeck analytics settings
 telemetrydeck:
   # @schema type:string
-  # -- TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var)
+  # -- TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml.
   salt: ''
 
 # -- AWS credentials for S3 and other AWS service integrations

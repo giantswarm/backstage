@@ -72,7 +72,7 @@ Backstage app provided by Giant Swarm
 | sentry.backend.dsn | string | `""` | Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var) |
 | sentry.reportURI | string | `""` | Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var) |
 | telemetrydeck | object | `{"salt":""}` | TelemetryDeck analytics settings |
-| telemetrydeck.salt | string | `""` | TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var) |
+| telemetrydeck.salt | string | `""` | TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml. |
 | aws | object | `{"accessKeyID":"","secretAccessKey":""}` | AWS credentials for S3 and other AWS service integrations |
 | aws.accessKeyID | string | `""` | AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var) |
 | aws.secretAccessKey | string | `""` | AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var) |
