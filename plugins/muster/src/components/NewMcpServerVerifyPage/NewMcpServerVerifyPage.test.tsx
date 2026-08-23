@@ -147,6 +147,25 @@ describe('NewMcpServerVerifyPage', () => {
     expect(screen.getByText('timo@giantswarm.io')).toBeInTheDocument();
   });
 
+  it('decodes a dex protobuf subject in the attribution, raw value as tooltip', async () => {
+    listServers.mockResolvedValue({
+      mcpServers: [
+        runtime({
+          state: 'Connected',
+          registeredBy: 'CgUzMjQ4OBIRZ2lhbnRzd2FybS1naXRodWI',
+        }),
+      ],
+    });
+
+    await renderVerifyStep();
+
+    const attribution = await screen.findByText('giantswarm-github user 32488');
+    expect(attribution).toHaveAttribute(
+      'title',
+      'CgUzMjQ4OBIRZ2lhbnRzd2FybS1naXRodWI',
+    );
+  });
+
   it('treats Auth Required as normal and offers the inline sign-in', async () => {
     listServers.mockResolvedValue({
       mcpServers: [runtime({ state: 'Auth Required', toolsCount: 0 })],

@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
 import { readProvenance, provenanceReleaseId } from '../../lib/gitops';
+import { decodeDexSubject } from '../../lib/dexSubject';
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -309,7 +310,11 @@ export function RuntimeState({ server }: { server: MCPServer }) {
         <DefRow label="Tools (session)">{runtime.toolsCount}</DefRow>
       )}
       {runtime.registeredBy && (
-        <DefRow label="Registered by">{runtime.registeredBy}</DefRow>
+        <DefRow label="Registered by">
+          <span title={runtime.registeredBy}>
+            {decodeDexSubject(runtime.registeredBy) ?? runtime.registeredBy}
+          </span>
+        </DefRow>
       )}
       {runtime.consecutiveFailures ? (
         <DefRow label="Consecutive failures">
