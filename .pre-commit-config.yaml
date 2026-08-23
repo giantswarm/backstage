@@ -2,23 +2,30 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/46c5eecfea36d39d54cef44f44ec7b965d08f865/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#    https://github.com/giantswarm/devctl/blob/bf24cde246ae924a8f2a208f497e18ccb50678a0/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 repos:
   # base hooks
+  #
+  # helm/<chart>/charts/ holds vendored upstream subcharts (vendir-synced).
+  # Those files are not repo-authored: the auto-fixing hooks would rewrite
+  # them on every vendir bump and the next vendir sync would revert the fix,
+  # so the whitespace/shebang hooks skip the vendored subtree.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable
+        exclude: "^helm/[^/]+/charts/.*"
       - id: detect-private-key
       - id: end-of-file-fixer
-        exclude: "(.*testdata/.*|^\\.yarn/.*)"
+        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*)"
       - id: mixed-line-ending
+        exclude: "^helm/[^/]+/charts/.*"
       - id: trailing-whitespace
-        exclude: "(.*testdata/.*|^\\.yarn/.*)"
+        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*)"
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
