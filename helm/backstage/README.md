@@ -15,6 +15,7 @@ Backstage app provided by Giant Swarm
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | name | string | `"backstage"` | Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.) |
+| replicas | int | `1` | Number of Backstage backend replicas |
 | backstageDiscovery | object | `{"kubernetesId":"backstage"}` | Backstage service discovery settings |
 | backstageDiscovery.kubernetesId | string | `"backstage"` | Value to set for the backstage.io/kubernetes-id label on all resources, used for entity discovery in Backstage |
 | userID | int | `1000` | User ID for the pod security context (runAsUser) |

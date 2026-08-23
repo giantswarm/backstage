@@ -3129,6 +3129,11 @@
                 }
             }
         },
+        "replicas": {
+            "type": "integer",
+            "description": "Number of Backstage backend replicas",
+            "minimum": 1
+        },
         "resources": {
             "type": "object",
             "description": "Resource requests, limits, and autoscaler settings for the Backstage container",

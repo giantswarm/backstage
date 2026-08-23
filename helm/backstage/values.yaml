@@ -4,6 +4,10 @@
 # -- Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.)
 name: backstage
 
+# @schema type:integer;minimum:1
+# -- Number of Backstage backend replicas
+replicas: 1
+
 # -- Backstage service discovery settings
 backstageDiscovery:
   # @schema type:string
