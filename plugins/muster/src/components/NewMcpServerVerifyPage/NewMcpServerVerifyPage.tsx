@@ -11,6 +11,7 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
 import { mcpServerStateSeverity, type MCPServerState } from '../../lib/k8s';
+import { decodeDexSubject } from '../../lib/dexSubject';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ServerSignIn, StateBadge, severityTone } from '../shared';
@@ -220,7 +221,10 @@ export function NewMcpServerVerifyPage() {
                   )}
                   {runtime?.registeredBy && (
                     <DefRow label="Registered by">
-                      {runtime.registeredBy}
+                      <span title={runtime.registeredBy}>
+                        {decodeDexSubject(runtime.registeredBy) ??
+                          runtime.registeredBy}
+                      </span>
                     </DefRow>
                   )}
                 </Box>
