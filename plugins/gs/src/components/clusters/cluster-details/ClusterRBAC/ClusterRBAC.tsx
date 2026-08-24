@@ -106,7 +106,7 @@ export const ClusterRBAC = () => {
 
   return (
     <>
-      <Box display="flex" alignItems="center" marginBottom={2}>
+      <Box display="flex" alignItems="center" gridGap={24} marginBottom={2}>
         <Typography variant="body2" style={{ flexGrow: 1 }}>
           Who can do what in this cluster: every user, group and service
           account granted access through a RoleBinding or ClusterRoleBinding,
@@ -114,6 +114,7 @@ export const ClusterRBAC = () => {
           individual bindings.
         </Typography>
         <FormControlLabel
+          style={{ flexShrink: 0, marginRight: 0 }}
           control={
             <Switch
               checked={showSystem}
