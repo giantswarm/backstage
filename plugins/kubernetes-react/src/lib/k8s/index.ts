@@ -37,6 +37,8 @@ export { ModelConfig } from './ModelConfig';
 export { OCIRepository } from './OCIRepository';
 export { Organization } from './Organization';
 export { ProviderConfig } from './ProviderConfig';
+export { ClusterRole, ClusterRoleBinding, Role, RoleBinding } from './Rbac';
+export type { RbacPolicyRule, RbacRoleRef, RbacSubject } from './Rbac';
 export { Release, RELEASE_VERSION_PREFIXES } from './Release';
 export { Secret } from './Secret';
 export { SecretStore } from './SecretStore';
