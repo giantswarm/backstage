@@ -5,6 +5,7 @@ helm/*/templates
 helm/backstage/.schema.yaml
 helm/backstage/README.md
 helm/backstage/values.schema.json
+helm/backstage/zz_generated.app-platform.values.yaml
 .vscode
 .github
 # CI config: .circleci/{config,workflows}.yml are devctl-generated (DO NOT EDIT)
