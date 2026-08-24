@@ -25,8 +25,9 @@ const BindingsDetailPanel = ({ row }: { row: RbacSubjectRow }) => {
           variant="body2"
         >
           {binding.bindingKind} <b>{binding.bindingName}</b>
-          {binding.namespace ? ` in namespace ${binding.namespace}` : ''} grants{' '}
-          {binding.roleKind} <b>{binding.roleName}</b>
+          {binding.namespace
+            ? ` in namespace ${binding.namespace}`
+            : ''} grants {binding.roleKind} <b>{binding.roleName}</b>
         </Typography>
       ))}
     </Box>
@@ -38,8 +39,7 @@ const columns: TableColumn<RbacSubjectRow>[] = [
     title: 'Subject',
     field: 'name',
     highlight: true,
-    render: row =>
-      row.namespace ? `${row.namespace}/${row.name}` : row.name,
+    render: row => (row.namespace ? `${row.namespace}/${row.name}` : row.name),
   },
   {
     title: 'Kind',
@@ -108,9 +108,9 @@ export const ClusterRBAC = () => {
     <>
       <Box display="flex" alignItems="center" gridGap={24} marginBottom={2}>
         <Typography variant="body2" style={{ flexGrow: 1 }}>
-          Who can do what in this cluster: every user, group and service
-          account granted access through a RoleBinding or ClusterRoleBinding,
-          with the roles it holds and where they apply. Expand a row to see the
+          Who can do what in this cluster: every user, group and service account
+          granted access through a RoleBinding or ClusterRoleBinding, with the
+          roles it holds and where they apply. Expand a row to see the
           individual bindings.
         </Typography>
         <FormControlLabel
@@ -124,8 +124,7 @@ export const ClusterRBAC = () => {
           }
           label={
             <Typography variant="body2">
-              Show system subjects (
-              {rows.filter(row => row.isSystem).length})
+              Show system subjects ({rows.filter(row => row.isSystem).length})
             </Typography>
           }
         />

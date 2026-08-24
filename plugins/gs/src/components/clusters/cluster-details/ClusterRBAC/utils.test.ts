@@ -11,7 +11,11 @@ const clusterRoleBinding = new ClusterRoleBinding(
     metadata: { name: 'customer-admins' },
     subjects: [
       { kind: 'Group', apiGroup: 'rbac.authorization.k8s.io', name: 'admins' },
-      { kind: 'Group', apiGroup: 'rbac.authorization.k8s.io', name: 'system:masters' },
+      {
+        kind: 'Group',
+        apiGroup: 'rbac.authorization.k8s.io',
+        name: 'system:masters',
+      },
     ],
     roleRef: {
       apiGroup: 'rbac.authorization.k8s.io',
