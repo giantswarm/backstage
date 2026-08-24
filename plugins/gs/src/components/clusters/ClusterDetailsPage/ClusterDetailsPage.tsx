@@ -3,7 +3,9 @@ import { ClusterLayout } from '../ClusterLayout';
 import { ClusterApps } from '../cluster-details/ClusterApps';
 import { ClusterNodePools } from '../cluster-details/ClusterNodePools';
 import { ClusterOverview } from '../cluster-details/ClusterOverview';
+import { ClusterRBAC } from '../cluster-details/ClusterRBAC';
 import { ClusterSSHAccess } from '../cluster-details/ClusterSSHAccess';
+import { isManagementCluster } from '../utils';
 import { QueryClientProvider } from '../../QueryClientProvider';
 import {
   AWSCluster,
@@ -40,6 +42,15 @@ export const ClusterDetailsPage = () => {
           >
             <ErrorsProvider>
               <ClusterNodePools />
+            </ErrorsProvider>
+          </ClusterLayout.Route>
+          <ClusterLayout.Route
+            path="/rbac"
+            title="RBAC"
+            if={({ cluster }) => isManagementCluster(cluster)}
+          >
+            <ErrorsProvider>
+              <ClusterRBAC />
             </ErrorsProvider>
           </ClusterLayout.Route>
           <ClusterLayout.Route
