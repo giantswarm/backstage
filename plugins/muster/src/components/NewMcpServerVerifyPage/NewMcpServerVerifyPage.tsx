@@ -222,7 +222,8 @@ export function NewMcpServerVerifyPage() {
                   {runtime?.registeredBy && (
                     <DefRow label="Registered by">
                       <span title={runtime.registeredBy}>
-                        {decodeDexSubject(runtime.registeredBy) ??
+                        {runtime.registeredByEmail ??
+                          decodeDexSubject(runtime.registeredBy) ??
                           runtime.registeredBy}
                       </span>
                     </DefRow>

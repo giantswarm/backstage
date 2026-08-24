@@ -166,6 +166,29 @@ describe('NewMcpServerVerifyPage', () => {
     );
   });
 
+  it('prefers the registered-by email over the decoded subject', async () => {
+    listServers.mockResolvedValue({
+      mcpServers: [
+        runtime({
+          state: 'Connected',
+          registeredBy: 'CgUzMjQ4OBIRZ2lhbnRzd2FybS1naXRodWI',
+          registeredByEmail: 'timo@giantswarm.io',
+        }),
+      ],
+    });
+
+    await renderVerifyStep();
+
+    const attribution = await screen.findByText('timo@giantswarm.io');
+    expect(attribution).toHaveAttribute(
+      'title',
+      'CgUzMjQ4OBIRZ2lhbnRzd2FybS1naXRodWI',
+    );
+    expect(
+      screen.queryByText('giantswarm-github user 32488'),
+    ).not.toBeInTheDocument();
+  });
+
   it('treats Auth Required as normal and offers the inline sign-in', async () => {
     listServers.mockResolvedValue({
       mcpServers: [runtime({ state: 'Auth Required', toolsCount: 0 })],

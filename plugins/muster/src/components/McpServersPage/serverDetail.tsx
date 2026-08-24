@@ -312,7 +312,9 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       {runtime.registeredBy && (
         <DefRow label="Registered by">
           <span title={runtime.registeredBy}>
-            {decodeDexSubject(runtime.registeredBy) ?? runtime.registeredBy}
+            {runtime.registeredByEmail ??
+              decodeDexSubject(runtime.registeredBy) ??
+              runtime.registeredBy}
           </span>
         </DefRow>
       )}

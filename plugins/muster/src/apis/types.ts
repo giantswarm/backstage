@@ -180,6 +180,12 @@ export interface McpServerRuntime {
    * muster#1021). Empty for GitOps-managed servers.
    */
   registeredBy?: string;
+  /**
+   * The email claim of the identity that registered this server
+   * (`ui.giantswarm.io/registered-by-email`, stamped since muster v1.8.0 --
+   * muster#1050). Servers registered earlier only carry `registeredBy`.
+   */
+  registeredByEmail?: string;
 }
 
 export interface McpServerListResponse {
