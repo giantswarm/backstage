@@ -1,0 +1,1 @@
+export { NamespaceResourcesTable } from './NamespaceResourcesTable';

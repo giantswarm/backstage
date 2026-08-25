@@ -64,6 +64,7 @@
     "@giantswarm/backstage-plugin-plans": "workspace:^",
     "@giantswarm/backstage-plugin-roadmap": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
+    "@internal/backstage-plugin-policy-reporter-ui": "workspace:^",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "@pagerduty/backstage-plugin": "^0.21.0",

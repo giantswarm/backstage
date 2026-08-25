@@ -1,0 +1,148 @@
+app:
+  baseUrl: https://localhost:3000
+  https:
+    $include: certificate.yaml
+  errorReporter: null
+  telemetrydeck: null
+
+backend:
+  actions:
+    pluginSources:
+      - auth
+      - catalog
+      - gs
+  baseUrl: https://localhost:7007
+  listen:
+    port: 7007
+  cors:
+    origin: https://localhost:3000
+  https:
+    $include: certificate.yaml
+  errorReporter: null
+  auth:
+    externalAccess:
+      - type: static
+        options:
+          token: ${EXTERNAL_ACCESS_MCP_TOKEN}
+          subject: mcp-clients
+        accessRestrictions:
+          - plugin: mcp-actions
+          - plugin: catalog
+          - plugin: gs
+
+auth:
+  providers:
+    # The single main login -- the only oidc-<mc> provider you need.
+    oidc-graveler:
+      development:
+        metadataUrl: https://dex.graveler.gaws2.gigantic.io/.well-known/openid-configuration
+        clientId: ${AUTH_DEX_GRAVELER_CLIENT_ID}
+        clientSecret: ${AUTH_DEX_GRAVELER_CLIENT_SECRET}
+  session:
+    secret: ${AUTH_SESSION_SECRET}
+  environment: development
+
+gs:
+  authProvider: oidc-graveler
+  clusterTokenBroker:
+    tokenUrl: ${CLUSTER_TOKEN_BROKER_URL}
+    clientId: ${CLUSTER_TOKEN_BROKER_CLIENT_ID}
+    clientSecret: ${CLUSTER_TOKEN_BROKER_CLIENT_SECRET}
+  installations:
+    graveler:
+      pipeline: stable-testing
+      providers: [capa]
+      authProvider: oidc
+      oidcTokenProvider: oidc-graveler
+      # Broker-covered: token minted silently from the main session.
+      clusterTokenAudience: graveler
+      baseDomain: dex.graveler.gaws2.gigantic.io
+      region: eu-central-1
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'docker'
+  publisher:
+    type: 'local'
+
+# flux:
+#   gitRepositoryPatterns:
+#     - targetUrl: 'https://${{HOSTNAME}}/projects/${{PROJECT_NAME}}/repos/${{REPOSITORY_NAME}}/browse/${{PATH}}?at=${{REVISION}}'
+#       gitRepositoryUrlPattern: '^https:\/\/(?<HOSTNAME>bitbucket.+?)\/scm\/(?<PROJECT_NAME>.+?)\/(?<REPOSITORY_NAME>.+?)(\.git)?$'
+
+# Cluster access uses the broker-only model: one main Dex login, and every
+# other cluster's Kubernetes token is minted silently by the muster
+# cluster-token broker from that session -- no per-cluster login popups and no
+# per-cluster auth.providers blocks. A full annotated example lives in
+# /app-config.example.yaml.
+#
+# auth:
+#   providers:
+#     # The single main login -- the only oidc-<mc> provider you need.
+#     oidc-main:
+#       development:
+#         metadataUrl: ${MAIN_OIDC_METADATA_URL}
+#         clientId: ${MAIN_OIDC_CLIENT_ID}
+#         clientSecret: ${MAIN_OIDC_CLIENT_SECRET}
+
+# gs:
+#   authProvider: oidc-main
+#   clusterTokenBroker:
+#     tokenUrl: ${CLUSTER_TOKEN_BROKER_URL}
+#     clientId: ${CLUSTER_TOKEN_BROKER_CLIENT_ID}
+#     clientSecret: ${CLUSTER_TOKEN_BROKER_CLIENT_SECRET}
+#   installations:
+#     mcname:
+#       pipeline: stable-testing
+#       providers: [capa]
+#       authProvider: oidc
+#       oidcTokenProvider: oidc-mcname
+#       # Broker-covered: token minted silently from the main session.
+#       clusterTokenAudience: mcname
+#       baseDomain: mcname.example.gigantic.io
+#       region: eu-central-1
+
+# Allow the agent-platform avatar icons (served from avatars.<baseDomain>) to
+# load past the Content-Security-Policy while developing locally. Add one entry
+# per installation you connect to. `img-src` is replaced (not merged), so re-list
+# the base entries from app-config.yaml alongside your avatars host(s).
+# backend:
+#   csp:
+#     img-src:
+#       - "'self'"
+#       - 'data:'
+#       - 'https://avatars.githubusercontent.com'
+#       - 'https://avatars.mcname.example.gigantic.io'
+
+# kubernetes:
+#   clusterLocatorMethods:
+#     - type: 'config'
+#       clusters:
+#         - name: mcname
+#           url: https://happaapi.mcname.example.gigantic.io
+#           authProvider: oidc
+#           oidcTokenProvider: oidc-mcname
+
+# For local development purposes, you can add/change catalog sources here.
+#
+# To add a local YAML file as a source, uncomment the entry of type 'file'.
+# The relative path '../../catalog/catalog.yaml' translates to
+# 'catalog/catalog.yaml' seen from the repository root.
+#
+# Note: When multiple entities with the same metadata.name property are discovered,
+# one will be processed and all others will be skipped.
+#
+# See https://backstage.io/docs/features/software-catalog/configuration/ for more info.
+
+catalog:
+  locations:
+    - type: url
+      target: https://github.com/giantswarm/backstage-catalogs/tree/main/catalogs/*.yaml
+    # - type: file
+    #   target: ../../catalog/*.yaml
+    # Hidden template the Agent Platform create flow (/agents/new) applies via
+    # kube:apply. In real deployments it is registered from the
+    # giantswarm/backstage-catalogs repo; uncomment to work on it locally.
+    # - type: file
+    #   target: ../../catalog/templates/agent-deployment/template.yaml

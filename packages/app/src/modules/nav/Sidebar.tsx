@@ -126,6 +126,8 @@ export const SidebarContent = NavContentBlueprint.make({
           </SidebarGroup>
           <SidebarSpace />
           <SidebarDivider />
+          {nav.take('page:policy-reporter-ui/cluster-list')}
+          <SidebarDivider />
           <ClusterAccessConnector />
           <ClusterAccessStatusSidebarItem />
           <SidebarDivider />

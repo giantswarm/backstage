@@ -104,4 +104,6 @@ if (process.env.PAGERDUTY_TOKEN) {
   backend.add(import('@pagerduty/backstage-plugin-backend'));
 }
 
+backend.add(import('@internal/backstage-plugin-policy-reporter-backend'));
+
 backend.start();

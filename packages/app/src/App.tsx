@@ -36,6 +36,7 @@ import { apiDocsPluginOverrides } from './modules/api-docs';
 import githubActionsPlugin from '@backstage-community/plugin-github-actions/alpha';
 import pagerDutyPlugin from '@pagerduty/backstage-plugin/alpha';
 import signalsPlugin from '@backstage/plugin-signals/alpha';
+import policyReporterUiPlugin from '@internal/backstage-plugin-policy-reporter-ui';
 
 // Legacy plugins (compat-converted for NFS route ref discovery):
 import {
@@ -88,6 +89,7 @@ const app = createApp({
     githubActionsPlugin,
     pagerDutyPlugin,
     signalsPlugin,
+    policyReporterUiPlugin,
 
     // Legacy plugins (compat-converted for NFS route ref discovery):
     circleCINfsPlugin,

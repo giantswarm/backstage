@@ -1,0 +1,1 @@
+export { ClusterResourcesTable } from './ClusterResourcesTable';
