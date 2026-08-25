@@ -437,8 +437,8 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-devtools@npm:^1.0.0":
-  version: 1.2.12
-  resolution: "@assistant-ui/react-devtools@npm:1.2.12"
+  version: 1.2.15
+  resolution: "@assistant-ui/react-devtools@npm:1.2.15"
   dependencies:
     clsx: "npm:^2.1.1"
     zod: "npm:^4.4.3"
@@ -454,7 +454,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/b6350dfb31aa7480b9f4ffc9c6f4c078ff0417ef9ae7363c7505f2fc626da24f897cd4462549c7545c0fed70fa1443a4a657c3912f7c5afdd74ff46fb80c7ab2
+  checksum: 10c0/67f35cc1c07bbd6b08efcb88eb1b053b4a7a6eee7ff851b753a1024f7db6684e16fe6008bc56a21e28cc3256f6ac224669d1c85c9590ae27716900148edc618e
   languageName: node
   linkType: hard
 
