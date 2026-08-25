@@ -15,9 +15,9 @@ type HistoryEntry = {
 };
 
 const UPGRADE_ERROR =
-  'Helm upgrade failed for release agentic-platform/muster-runbooks with chart muster-runbooks@0.2.15+800a0275a0f0: cannot patch "failing-pods" with kind Workflow: Workflow.muster.giantswarm.io "failing-pods" is invalid: [spec.description: Too long: may not be more than 1000 bytes]';
+  'Helm upgrade failed for release agent-platform/muster-runbooks with chart muster-runbooks@0.2.15+800a0275a0f0: cannot patch "failing-pods" with kind Workflow: Workflow.muster.giantswarm.io "failing-pods" is invalid: [spec.description: Too long: may not be more than 1000 bytes]';
 const ROLLBACK_MESSAGE =
-  'Helm rollback to previous release agentic-platform/muster-runbooks.v53 with chart muster-runbooks@0.2.14+6a5dea276262 succeeded';
+  'Helm rollback to previous release agent-platform/muster-runbooks.v53 with chart muster-runbooks@0.2.14+6a5dea276262 succeeded';
 
 function createHelmRelease(
   options: {
@@ -110,7 +110,7 @@ describe('HelmRelease.findFailureCauseCondition', () => {
           type: 'Ready',
           status: 'False',
           reason: 'UninstallSucceeded',
-          message: 'Helm uninstall for release agentic-platform/app succeeded',
+          message: 'Helm uninstall for release agent-platform/app succeeded',
           lastTransitionTime: '2026-07-30T09:26:44Z',
         },
         {
@@ -124,7 +124,7 @@ describe('HelmRelease.findFailureCauseCondition', () => {
           type: 'Remediated',
           status: 'True',
           reason: 'UninstallSucceeded',
-          message: 'Helm uninstall for release agentic-platform/app succeeded',
+          message: 'Helm uninstall for release agent-platform/app succeeded',
           lastTransitionTime: '2026-07-30T09:26:44Z',
         },
       ],
@@ -179,7 +179,7 @@ describe('HelmRelease.findFailureCauseCondition', () => {
           type: 'Released',
           status: 'True',
           reason: 'UpgradeSucceeded',
-          message: 'Helm upgrade succeeded for release agentic-platform/app',
+          message: 'Helm upgrade succeeded for release agent-platform/app',
           lastTransitionTime: '2026-07-30T09:25:00Z',
         },
         {
@@ -187,7 +187,7 @@ describe('HelmRelease.findFailureCauseCondition', () => {
           status: 'False',
           reason: 'TestFailed',
           message:
-            'Helm test failed for release agentic-platform/app: pod smoke-test failed',
+            'Helm test failed for release agent-platform/app: pod smoke-test failed',
           lastTransitionTime: '2026-07-30T09:25:31Z',
         },
         {

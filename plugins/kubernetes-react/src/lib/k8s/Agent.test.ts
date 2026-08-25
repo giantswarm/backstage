@@ -95,7 +95,7 @@ describe('Agent', () => {
               // The chart's muster gateway entry: an MCP server, all its tools.
               {
                 type: 'McpServer',
-                mcpServer: { name: 'muster', namespace: 'agentic-platform' },
+                mcpServer: { name: 'muster', namespace: 'agent-platform' },
               },
               // A restricted server, and one that omits `type` entirely — which
               // the CRD allows and the controller infers.
@@ -123,7 +123,7 @@ describe('Agent', () => {
       const refs = agentWithTools().getMcpServerRefs();
 
       expect(refs.map(ref => ref.name)).toEqual(['muster', 'grafana']);
-      expect(refs[0].namespace).toBe('agentic-platform');
+      expect(refs[0].namespace).toBe('agent-platform');
       expect(refs[1].toolNames).toEqual(['query', 'dashboards']);
     });
 

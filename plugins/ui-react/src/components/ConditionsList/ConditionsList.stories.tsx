@@ -130,7 +130,7 @@ export const LongMessage: Story = {
           'failed to reconcile agent: admission webhook',
           '"validation.kagent.dev" denied the request:',
           'spec.declarative.modelConfig: modelconfigs.kagent.dev "opus-4-7"',
-          'not found in namespace "agentic-platform"',
+          'not found in namespace "agent-platform"',
         ].join('\n'),
         lastTransitionTime: '2026-07-31T10:05:00Z',
       },

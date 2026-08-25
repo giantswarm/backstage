@@ -5,9 +5,9 @@ import {
 import { buildResourceAiChatPrompt } from './buildResourceAiChatPrompt';
 
 const UPGRADE_ERROR =
-  'Helm upgrade failed for release agentic-platform/muster-runbooks: cannot patch "failing-pods" with kind Workflow';
+  'Helm upgrade failed for release agent-platform/muster-runbooks: cannot patch "failing-pods" with kind Workflow';
 const ROLLBACK_MESSAGE =
-  'Helm rollback to previous release agentic-platform/muster-runbooks.v53 succeeded';
+  'Helm rollback to previous release agent-platform/muster-runbooks.v53 succeeded';
 
 function createFailedUpgrade(): HelmRelease {
   const json = {

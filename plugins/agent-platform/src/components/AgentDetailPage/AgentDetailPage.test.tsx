@@ -61,7 +61,7 @@ const mockParams: {
   name: string;
 } = {
   installation: 'gazelle',
-  namespace: 'agentic-platform',
+  namespace: 'agent-platform',
   name: 'pr-reviewer',
 };
 
@@ -97,13 +97,13 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
       kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         generation: 1,
         creationTimestamp: '2026-07-21T09:00:00Z',
         annotations: { 'ui.giantswarm.io/display-name': 'PR reviewer' },
         labels: {
           'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
-          'helm.toolkit.fluxcd.io/namespace': 'agentic-platform',
+          'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
         },
         ...(overrides.metadata as object),
       },
@@ -116,7 +116,7 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
           tools: [
             {
               type: 'McpServer',
-              mcpServer: { name: 'muster', namespace: 'agentic-platform' },
+              mcpServer: { name: 'muster', namespace: 'agent-platform' },
             },
           ],
         },
@@ -149,7 +149,7 @@ function makeModelConfig() {
       kind: 'ModelConfig',
       metadata: {
         name: 'opus-4-7',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         annotations: { 'ui.giantswarm.io/display-name': 'Claude Opus 4.7' },
       },
       spec: { model: 'claude-opus-4-7', provider: 'Anthropic' },
@@ -230,7 +230,7 @@ function makeHelmRelease(kustomization?: { name: string; namespace: string }) {
       kind: 'HelmRelease',
       metadata: {
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         ...(kustomization
           ? {
               labels: {
@@ -428,7 +428,7 @@ describe('AgentDetailPage', () => {
         resource: makeAgent({
           metadata: {
             name: 'pr-reviewer',
-            namespace: 'agentic-platform',
+            namespace: 'agent-platform',
             generation: 5,
           },
           status: { observedGeneration: 4, conditions: READY_CONDITIONS },
@@ -495,7 +495,7 @@ describe('AgentDetailPage', () => {
       // and that a non-muster server gets no link (below) — the binding itself is
       // muster's to provide.
       expect(
-        screen.getByText('RemoteMCPServer agentic-platform/muster'),
+        screen.getByText('RemoteMCPServer agent-platform/muster'),
       ).toBeInTheDocument();
       expect(
         screen.getByText('All tools from this server'),
@@ -591,7 +591,7 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     expect(
-      screen.getByText('HelmRelease agentic-platform/pr-reviewer'),
+      screen.getByText('HelmRelease agent-platform/pr-reviewer'),
     ).toBeInTheDocument();
   });
 
@@ -634,7 +634,7 @@ describe('AgentDetailPage', () => {
       ).not.toBeInTheDocument();
       // The honest statement about where it came from stays.
       expect(
-        screen.getByText('HelmRelease agentic-platform/pr-reviewer'),
+        screen.getByText('HelmRelease agent-platform/pr-reviewer'),
       ).toBeInTheDocument();
     });
 
@@ -644,7 +644,7 @@ describe('AgentDetailPage', () => {
           // Explicitly empty: applied directly, with no Flux or Helm markers.
           metadata: {
             name: 'pr-reviewer',
-            namespace: 'agentic-platform',
+            namespace: 'agent-platform',
             labels: {},
           },
         } as Partial<AgentInterface>),
