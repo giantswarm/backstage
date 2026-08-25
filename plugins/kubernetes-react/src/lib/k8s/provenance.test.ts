@@ -20,7 +20,7 @@ function makeObject(
       kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         ...metadata,
       },
     } as never,
@@ -57,7 +57,7 @@ describe('provenance', () => {
       const object = makeObject({
         labels: {
           'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
-          'helm.toolkit.fluxcd.io/namespace': 'agentic-platform',
+          'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
         },
       });
 
@@ -71,12 +71,12 @@ describe('provenance', () => {
       const object = makeObject({
         labels: {
           'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
-          'helm.toolkit.fluxcd.io/namespace': 'agentic-platform',
+          'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
         },
       });
 
       expect(getHelmReleaseName(object)).toBe('pr-reviewer');
-      expect(getHelmReleaseNamespace(object)).toBe('agentic-platform');
+      expect(getHelmReleaseNamespace(object)).toBe('agent-platform');
     });
 
     it('returns undefined when the object carries no Helm labels', () => {
@@ -90,7 +90,7 @@ describe('provenance', () => {
       expect(
         isGitOpsManaged(
           makeObject({
-            labels: { 'helm.toolkit.fluxcd.io/name': 'agentic-platform' },
+            labels: { 'helm.toolkit.fluxcd.io/name': 'agent-platform' },
           }),
         ),
       ).toBe(true);

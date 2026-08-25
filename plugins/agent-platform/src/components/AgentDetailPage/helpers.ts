@@ -7,7 +7,7 @@ import {
 /**
  * Name of the `RemoteMCPServer` the `agent` chart points every agent at for its
  * tools (`muster.enabled: true` by default, referencing `muster` in
- * `agentic-platform`). Matching on the name alone, not the namespace, because the
+ * `agent-platform`). Matching on the name alone, not the namespace, because the
  * namespace is a chart value and installations may place the gateway elsewhere.
  *
  * A name match is a heuristic, so it only ever *adds* a link to the Tool

@@ -15,9 +15,9 @@ type Condition = {
 };
 
 const UPGRADE_ERROR =
-  'Helm upgrade failed for release agentic-platform/muster-runbooks with chart muster-runbooks@0.2.15+800a0275a0f0: cannot patch "failing-pods" with kind Workflow';
+  'Helm upgrade failed for release agent-platform/muster-runbooks with chart muster-runbooks@0.2.15+800a0275a0f0: cannot patch "failing-pods" with kind Workflow';
 const ROLLBACK_MESSAGE =
-  'Helm rollback to previous release agentic-platform/muster-runbooks.v53 with chart muster-runbooks@0.2.14+6a5dea276262 succeeded';
+  'Helm rollback to previous release agent-platform/muster-runbooks.v53 with chart muster-runbooks@0.2.14+6a5dea276262 succeeded';
 
 function createHelmRelease(options: {
   conditions?: Condition[];

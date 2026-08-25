@@ -29,7 +29,7 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 }));
 
 const CLUSTER = 'gazelle';
-const NAMESPACE = 'agentic-platform';
+const NAMESPACE = 'agent-platform';
 
 function makeAgent(labels?: Record<string, string>): Agent {
   return new Agent(

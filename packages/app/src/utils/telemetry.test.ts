@@ -305,11 +305,11 @@ describe('getTelemetryPageViewPayload', () => {
     // echoing them would emit a page name per agent — and record which
     // installations a user reads.
     const result = getTelemetryPageViewPayload(
-      '/agent-platform/agents/gazelle/agentic-platform/pr-reviewer',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
     );
     expect(result).toEqual({
       page: 'Agent detail',
-      path: '/agent-platform/agents/gazelle/agentic-platform/pr-reviewer',
+      path: '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
     });
   });
 
@@ -430,7 +430,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/skills',
       '/agent-platform/agents/new/review',
-      '/agent-platform/agents/gazelle/agentic-platform/pr-reviewer',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/plans',

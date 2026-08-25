@@ -23,7 +23,7 @@ const KUSTOMIZE_LABELS = {
 
 const HELM_LABELS = {
   'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
-  'helm.toolkit.fluxcd.io/namespace': 'agentic-platform',
+  'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
 };
 
 /** Any reconciled object; only its labels matter to the card. */
@@ -32,7 +32,7 @@ function makeResource(labels: Record<string, string>): KubeObject {
     {
       apiVersion: 'kagent.dev/v1alpha2',
       kind: 'Agent',
-      metadata: { name: 'pr-reviewer', namespace: 'agentic-platform', labels },
+      metadata: { name: 'pr-reviewer', namespace: 'agent-platform', labels },
     } as never,
     'gazelle',
   );
@@ -43,7 +43,7 @@ function makeHelmRelease(labels: Record<string, string> = {}) {
     {
       apiVersion: 'helm.toolkit.fluxcd.io/v2',
       kind: 'HelmRelease',
-      metadata: { name: 'pr-reviewer', namespace: 'agentic-platform', labels },
+      metadata: { name: 'pr-reviewer', namespace: 'agent-platform', labels },
       spec: {},
     } as never,
     'gazelle',

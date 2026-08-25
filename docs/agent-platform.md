@@ -682,7 +682,7 @@ and is registered (`.Methods(http.MethodPut)`), but `HandleUpdateSession` there:
 - assigns only `session.AgentID`. `session.Name` is never written.
 
 It was fixed in v0.10.0-rc1, which reads the path param and applies a partial update.
-GS pins **0.9.9** (`agentic-platform`'s `values.yaml`), so on every installation we
+GS pins **0.9.9** (`agent-platform`'s `values.yaml`), so on every installation we
 run today, the correct endpoint is inert.
 
 **So the write goes through the session upsert instead, but only after the PUT has
@@ -1043,7 +1043,7 @@ the published chart at runtime (see "Chart resolution"). What is still
 provisional:
 
 - The chart enables the **muster gateway by default** (`muster.enabled: true`),
-  which references a `RemoteMCPServer` named `muster` in `agentic-platform` and
+  which references a `RemoteMCPServer` named `muster` in `agent-platform` and
   expects a per-installation `muster.stsWellKnownUri`. The create flow does not
   set these, so it relies on the chart defaults — a reconcile-time dependency to
   revisit.

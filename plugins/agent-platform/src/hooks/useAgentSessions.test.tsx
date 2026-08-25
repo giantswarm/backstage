@@ -13,7 +13,7 @@ jest.mock('./useKagentCapabilities', () => ({
 const SESSIONS_KEY = ['agent-platform', 'kagent', 'sessions', 'gazelle'];
 
 /** kagent encodes an agent id as `namespace/name` with `-` → `_`, `/` → `__NS__`. */
-const AGENT_ID = 'agentic_platform__NS__pr_reviewer';
+const AGENT_ID = 'agent_platform__NS__pr_reviewer';
 
 function session(id: string): KagentSession {
   return {
@@ -47,7 +47,7 @@ function renderAgentSessions(listSessions: jest.Mock, seed?: KagentSession[]) {
   );
 
   return renderHook(
-    () => useAgentSessions('gazelle', 'agentic-platform', 'pr-reviewer'),
+    () => useAgentSessions('gazelle', 'agent-platform', 'pr-reviewer'),
     { wrapper },
   );
 }
