@@ -16,13 +16,14 @@ export interface Config {
     auth?: {
       /**
        * OIDC scopes requested on top of the fixed `openid profile email groups
-       * offline_access` set. Applies to every login provider.
+       * offline_access` set. Applies to every login provider, and has no
+       * default: an issuer-specific scope belongs to the deployment.
        *
-       * Unset keeps the Dex defaults: the cross-client
-       * `audience:server:client_id:dex-k8s-authenticator` scope for every
-       * provider, plus `federated:id` for all but the `mcp-*` providers. Set it
-       * to `[]` for an issuer that rejects unknown scopes, such as Keycloak or
-       * Entra ID.
+       * A Dex deployment needs `federated:id`, which carries the
+       * `federated_claims` the sign-in resolver maps onto a catalog entity, and
+       * a cross-client `audience:server:client_id:<client>` scope for every
+       * client whose audience a forwarded token must satisfy. Keycloak and
+       * Entra ID reject both, and need no extra scope at all.
        */
       extraScopes?: string[];
     };

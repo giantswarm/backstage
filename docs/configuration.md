@@ -107,33 +107,40 @@ gs:
 
 Every Giant Swarm OIDC provider requests `openid profile email groups
 offline_access`. That base set is fixed and no configuration removes a scope
-from it. On top of it, each provider requests a set of extra scopes, which
-default to the Dex-specific ones:
-
-- `federated:id`, which adds the `federated_claims` the main sign-in resolver
-  reads to map a user onto a catalog entity. Only the main sign-in provider and
-  the per-installation cluster-access providers request it.
-- `audience:server:client_id:dex-k8s-authenticator`, a cross-client scope that
-  makes Dex issue a token the `dex-k8s-authenticator` client also accepts. It
-  needs that Dex client to list the requesting client in its `trustedPeers`.
-  Every provider requests it, the `mcp-*` providers included.
-
-Other issuers reject these scopes. Keycloak answers `invalid_scope` and shows no
-login page, so a deployment on Keycloak or Entra ID must set the extra scopes to
-an empty list:
+from it. Every other scope comes from `gs.auth.extraScopes`, which has no
+default, because a scope beyond the base set is a property of the issuer and of
+the clients that must accept the token:
 
 ```yaml
 gs:
   auth:
-    # Applies to every login provider, the `mcp-*` ones included. Unset keeps
-    # the Dex defaults above.
-    extraScopes: []
+    # Applies to every login provider, the `mcp-*` ones included.
+    extraScopes:
+      - federated:id
+      - audience:server:client_id:dex-k8s-authenticator
 ```
 
-Keycloak needs one more step, on the IdP side: it has no built-in `groups` scope.
-Add a client scope named `groups` with a Group Membership mapper (claim `groups`,
-full path off) and attach it to the client as a default scope, or the login fails
-with `invalid_scope` on the base set as well.
+A Dex deployment needs both of the scopes above:
+
+- `federated:id` adds the `federated_claims` the main sign-in resolver reads to
+  map a user onto a catalog entity. Without it the resolver falls back to the
+  email of the token and the `giantswarm-ad` and `giantswarm-github` connector
+  lookups never run, which changes which catalog user a person signs in as.
+- `audience:server:client_id:dex-k8s-authenticator` is a cross-client scope that
+  makes Dex name the `dex-k8s-authenticator` client in the audience of the
+  token. Add one such scope per client whose audience a forwarded token must
+  satisfy, and list the requesting client in the `trustedPeers` of that Dex
+  client. A muster that trusts the `dex-k8s-authenticator` audience needs this
+  scope, or it rejects the token the portal forwards to it.
+
+Keycloak and Entra ID need no extra scope. They reject both scopes above with
+`invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
+set it to `[]`.
+
+Keycloak needs one more step, on the IdP side: it has no built-in `groups`
+scope. Add a client scope named `groups` with a Group Membership mapper (claim
+`groups`, full path off) and attach it to the client as a default scope, or the
+login fails with `invalid_scope` on the base set as well.
 
 ## Cluster details page resources
 

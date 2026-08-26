@@ -13,50 +13,18 @@ const BASE_SCOPES = [
 ] as const;
 
 /**
- * A cross-client scope that makes Dex issue a token the
- * `dex-k8s-authenticator` client also accepts. It needs that client to list
- * the requesting client in its `trustedPeers`.
- */
-const DEX_AUDIENCE_SCOPE = 'audience:server:client_id:dex-k8s-authenticator';
-
-/**
- * Adds the `federated_claims` the main sign-in resolver reads to map a user
- * onto a catalog entity. Dex accepts it from any client.
- */
-const DEX_FEDERATED_ID_SCOPE = 'federated:id';
-
-/**
- * Extra scopes requested when `gs.auth.extraScopes` is unset, per kind of
- * provider. Both defaults are Dex-specific, and an issuer other than Dex
- * rejects them: Keycloak answers `invalid_scope` and shows no login page, so it
- * needs `gs.auth.extraScopes: []`.
+ * Assembles the scope list for a login provider: the base scopes plus
+ * `gs.auth.extraScopes`, in that order and without duplicates.
  *
- * The `mcp-*` providers authenticate against the authorization server of an MCP
- * server, which forwards a requested scope upstream unchanged. They get no
- * `federated:id`, because nothing reads `federated_claims` from their token and
- * an upstream that validates scopes strictly would reject it.
+ * An issuer-specific scope has no default here and must come from the
+ * deployment: a Dex deployment needs `federated:id`, which carries the
+ * `federated_claims` the sign-in resolver maps onto a catalog entity, and the
+ * cross-client `audience:server:client_id:<client>` scope for every client
+ * whose audience a forwarded token must satisfy.
  */
-const DEFAULT_EXTRA_SCOPES = {
-  kubernetes: [DEX_FEDERATED_ID_SCOPE, DEX_AUDIENCE_SCOPE],
-  mcp: [DEX_AUDIENCE_SCOPE],
-} as const;
-
-/** The kinds of login provider that request their own set of extra scopes. */
-export type OIDCProviderKind = keyof typeof DEFAULT_EXTRA_SCOPES;
-
-/**
- * Assembles the scope list for a login provider: the base scopes plus the extra
- * scopes, in that order and without duplicates. `gs.auth.extraScopes` replaces
- * the defaults of every provider kind. An empty list is a valid value and drops
- * the extra scopes.
- */
-export function getOIDCScopes(
-  providerKind: OIDCProviderKind,
-  configApi?: ConfigApi,
-): string[] {
+export function getOIDCScopes(configApi?: ConfigApi): string[] {
   const extraScopes =
-    configApi?.getOptionalStringArray('gs.auth.extraScopes') ??
-    DEFAULT_EXTRA_SCOPES[providerKind];
+    configApi?.getOptionalStringArray('gs.auth.extraScopes') ?? [];
 
   return [...new Set([...BASE_SCOPES, ...extraScopes])];
 }

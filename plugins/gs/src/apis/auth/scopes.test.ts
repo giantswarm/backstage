@@ -2,56 +2,46 @@ import { mockApis } from '@backstage/frontend-test-utils';
 import { getOIDCScopes } from './scopes';
 
 const BASE = ['openid', 'profile', 'email', 'groups', 'offline_access'];
-const DEX_AUDIENCE = 'audience:server:client_id:dex-k8s-authenticator';
 
-function scopes(providerKind: 'kubernetes' | 'mcp', data: object) {
-  return getOIDCScopes(providerKind, mockApis.config({ data }));
+function scopes(data: object) {
+  return getOIDCScopes(mockApis.config({ data }));
 }
 
 describe('getOIDCScopes', () => {
-  it('appends the Dex default extra scopes for a kubernetes provider', () => {
-    expect(scopes('kubernetes', {})).toEqual([
-      ...BASE,
-      'federated:id',
-      DEX_AUDIENCE,
-    ]);
-  });
-
-  it('leaves federated:id out for an mcp provider', () => {
-    expect(scopes('mcp', {})).toEqual([...BASE, DEX_AUDIENCE]);
+  it('requests the base scopes when gs.auth.extraScopes is unset', () => {
+    expect(scopes({})).toEqual(BASE);
   });
 
   it('works without a config api', () => {
-    expect(getOIDCScopes('kubernetes')).toEqual([
+    expect(getOIDCScopes()).toEqual(BASE);
+  });
+
+  it('requests the base scopes when gs.auth.extraScopes is empty', () => {
+    expect(scopes({ gs: { auth: { extraScopes: [] } } })).toEqual(BASE);
+  });
+
+  it('appends the configured extra scopes', () => {
+    expect(
+      scopes({
+        gs: {
+          auth: {
+            extraScopes: [
+              'federated:id',
+              'audience:server:client_id:dex-k8s-authenticator',
+            ],
+          },
+        },
+      }),
+    ).toEqual([
       ...BASE,
       'federated:id',
-      DEX_AUDIENCE,
+      'audience:server:client_id:dex-k8s-authenticator',
     ]);
-  });
-
-  it('drops every extra scope when gs.auth.extraScopes is empty', () => {
-    const data = { gs: { auth: { extraScopes: [] } } };
-
-    expect(scopes('kubernetes', data)).toEqual(BASE);
-    expect(scopes('mcp', data)).toEqual(BASE);
-  });
-
-  it('replaces the default extra scopes with the configured ones', () => {
-    const data = { gs: { auth: { extraScopes: ['roles', 'organization'] } } };
-
-    expect(scopes('kubernetes', data)).toEqual([
-      ...BASE,
-      'roles',
-      'organization',
-    ]);
-    expect(scopes('mcp', data)).toEqual([...BASE, 'roles', 'organization']);
   });
 
   it('does not repeat a scope already in the base set', () => {
     expect(
-      scopes('kubernetes', {
-        gs: { auth: { extraScopes: ['groups', 'roles'] } },
-      }),
+      scopes({ gs: { auth: { extraScopes: ['groups', 'roles'] } } }),
     ).toEqual([...BASE, 'roles']);
   });
 });
