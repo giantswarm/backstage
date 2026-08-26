@@ -106,14 +106,17 @@ gs:
 ## Login provider scopes
 
 Every Giant Swarm OIDC provider requests `openid profile email groups
-offline_access`, plus a set of extra scopes. The extra scopes default to the
-Dex-specific ones:
+offline_access`. That base set is fixed and no configuration removes a scope
+from it. On top of it, each provider requests a set of extra scopes, which
+default to the Dex-specific ones:
 
 - `federated:id`, which adds the `federated_claims` the main sign-in resolver
-  reads to map a user onto a catalog entity.
+  reads to map a user onto a catalog entity. Only the main sign-in provider and
+  the per-installation cluster-access providers request it.
 - `audience:server:client_id:dex-k8s-authenticator`, a cross-client scope that
   makes Dex issue a token the `dex-k8s-authenticator` client also accepts. It
   needs that Dex client to list the requesting client in its `trustedPeers`.
+  Every provider requests it, the `mcp-*` providers included.
 
 Other issuers reject these scopes. Keycloak answers `invalid_scope` and shows no
 login page, so a deployment on Keycloak or Entra ID must set the extra scopes to
@@ -122,7 +125,8 @@ an empty list:
 ```yaml
 gs:
   auth:
-    # Applies to every login provider. Unset keeps the Dex defaults above.
+    # Applies to every login provider, the `mcp-*` ones included. Unset keeps
+    # the Dex defaults above.
     extraScopes: []
 ```
 
@@ -252,7 +256,9 @@ app:
   rootRedirect: /agent-platform
 ```
 
-The value is a path inside the app, not a URL. Unset keeps the home page.
+The value is a path inside the app, not a URL. Unset keeps the home page. A
+value that does not start with `/`, or that is `/` itself, is ignored: the home
+page renders and the browser console logs a warning.
 
 Two constraints:
 

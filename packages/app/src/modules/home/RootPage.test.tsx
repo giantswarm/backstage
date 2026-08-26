@@ -8,6 +8,16 @@ jest.mock('./HomePage', () => ({
   HomePage: () => <div data-testid="home-page" />,
 }));
 
+let warn: jest.SpyInstance;
+
+beforeEach(() => {
+  warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  warn.mockRestore();
+});
+
 function renderRootPage(data: object) {
   return render(
     <TestApiProvider apis={[[configApiRef, mockApis.config({ data })]]}>
@@ -37,5 +47,20 @@ describe('RootPage', () => {
 
     expect(screen.getByTestId('agent-platform-page')).toBeInTheDocument();
     expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
+  });
+
+  it('ignores app.rootRedirect when it points at the root path', () => {
+    renderRootPage({ app: { rootRedirect: '/' } });
+
+    expect(screen.getByTestId('home-page')).toBeInTheDocument();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('ignores app.rootRedirect without a leading slash', () => {
+    renderRootPage({ app: { rootRedirect: 'agent-platform' } });
+
+    expect(screen.getByTestId('home-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-platform-page')).not.toBeInTheDocument();
+    expect(warn).toHaveBeenCalled();
   });
 });
