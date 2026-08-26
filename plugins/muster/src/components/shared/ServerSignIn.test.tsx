@@ -97,6 +97,80 @@ describe('ServerSignIn', () => {
   });
 
   /**
+   * muster#1083: the challenge names how muster identifies itself to the
+   * authorization server. `cimd-fallback` is the one case where the AS may
+   * reject the sign-in as an unregistered client, so it gets a warning up
+   * front instead of an opaque failure on the IdP's page.
+   */
+  it('warns when the AS supports neither CIMD nor client registration', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'auth_required',
+        authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=x',
+        message: CHALLENGE,
+        clientIdMethod: 'cimd-fallback',
+      },
+    });
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(
+      await screen.findByText(/may be rejected as an unregistered client/),
+    ).toBeInTheDocument();
+    // The sign-in link still works — the fallback often succeeds.
+    expect(
+      screen.getByRole('link', { name: /Open sign-in page/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('notes when muster registered itself via Dynamic Client Registration', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'auth_required',
+        authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=x',
+        message: CHALLENGE,
+        clientIdMethod: 'dcr',
+      },
+    });
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(
+      await screen.findByText(/Dynamic Client Registration/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/may be rejected as an unregistered client/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows neither note when the AS advertises CIMD support', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'auth_required',
+        authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=x',
+        message: CHALLENGE,
+        clientIdMethod: 'cimd',
+      },
+    });
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await screen.findByRole('link', { name: /Open sign-in page/ });
+    expect(
+      screen.queryByText(/may be rejected as an unregistered client/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Dynamic Client Registration/),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
    * muster answering "already connected" while the alert still lists the server
    * is a real combination (the two come from different muster state). Saying
    * nothing there is indistinguishable from the no-op click this feature fixes.

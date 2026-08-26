@@ -316,6 +316,15 @@ export interface ServerSignInResult {
   status: 'connected' | 'auth_required' | 'error' | 'unknown';
   authUrl?: string;
   message: string;
+  /**
+   * How muster identifies itself to the server's authorization server, on
+   * `auth_required` challenges from musters that report it (muster#1083):
+   * `cimd` — the AS accepts muster's CIMD URL as client_id; `dcr` — muster
+   * registered itself via RFC 7591 Dynamic Client Registration;
+   * `cimd-fallback` — the AS advertises neither mechanism and may reject the
+   * sign-in with a client-not-registered error.
+   */
+  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback';
 }
 
 export interface MusterApi {
