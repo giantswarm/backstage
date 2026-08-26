@@ -15,11 +15,7 @@ import {
   DefaultAuthConnector,
 } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
-import {
-  DEFAULT_KUBERNETES_EXTRA_SCOPES,
-  DEFAULT_MCP_EXTRA_SCOPES,
-  resolveOIDCScopes,
-} from './scopes';
+import { getOIDCScopes } from './scopes';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { getInstallationsConfig } from '../installations';
 
@@ -419,11 +415,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
     return OAuth2.create({
       authConnector,
-      defaultScopes: resolveOIDCScopes({
-        configApi: this.configApi,
-        providerName,
-        defaultExtraScopes: DEFAULT_KUBERNETES_EXTRA_SCOPES,
-      }),
+      // Dex-specific defaults. `federated:id` supplies the `federated_claims`
+      // the main sign-in resolver reads; the cross-client audience scope makes
+      // Dex issue a token `dex-k8s-authenticator` also accepts.
+      defaultScopes: getOIDCScopes(this.configApi, [
+        'federated:id',
+        'audience:server:client_id:dex-k8s-authenticator',
+      ]),
     });
   }
 
@@ -501,11 +499,11 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           providerName,
           OAuth2.create({
             authConnector,
-            defaultScopes: resolveOIDCScopes({
-              configApi: this.configApi,
-              providerName,
-              defaultExtraScopes: DEFAULT_MCP_EXTRA_SCOPES,
-            }),
+            // Dex-specific default. These providers have no sign-in resolver,
+            // so they need no `federated:id`.
+            defaultScopes: getOIDCScopes(this.configApi, [
+              'audience:server:client_id:dex-k8s-authenticator',
+            ]),
           }),
         ];
       },

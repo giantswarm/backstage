@@ -109,10 +109,11 @@ Every Giant Swarm OIDC provider requests `openid profile email groups
 offline_access`, plus a set of extra scopes. The extra scopes default to the
 Dex-specific ones:
 
-- `federated:id`, which adds the upstream connector identity.
 - `audience:server:client_id:dex-k8s-authenticator`, a cross-client scope that
-  makes Dex issue a token the `dex-k8s-authenticator` client also accepts. Only
-  the cluster-access providers request it.
+  makes Dex issue a token the `dex-k8s-authenticator` client also accepts.
+- `federated:id`, which adds the `federated_claims` the main sign-in resolver
+  reads to map a user onto a catalog entity. Only the cluster-access providers
+  request it; the `mcp-*` providers have no sign-in resolver.
 
 Other issuers reject these scopes. Keycloak answers `invalid_scope` and shows no
 login page, so a deployment on Keycloak or Entra ID must set the extra scopes to
@@ -121,22 +122,8 @@ an empty list:
 ```yaml
 gs:
   auth:
-    # Applies to every provider without its own `providers` entry.
-    # Unset keeps the Dex defaults above.
+    # Applies to every login provider. Unset keeps the Dex defaults above.
     extraScopes: []
-```
-
-Override one provider only with `gs.auth.providers.<providerName>.extraScopes`.
-The key is the provider name under `auth.providers`:
-
-```yaml
-gs:
-  auth:
-    extraScopes: []
-    providers:
-      oidc-main:
-        extraScopes:
-          - federated:id
 ```
 
 Keycloak needs one more step, on the IdP side: it has no built-in `groups` scope.
