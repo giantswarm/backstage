@@ -15,6 +15,11 @@ import {
   DefaultAuthConnector,
 } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import {
+  DEFAULT_KUBERNETES_EXTRA_SCOPES,
+  DEFAULT_MCP_EXTRA_SCOPES,
+  resolveOIDCScopes,
+} from './scopes';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { getInstallationsConfig } from '../installations';
 
@@ -414,15 +419,11 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
     return OAuth2.create({
       authConnector,
-      defaultScopes: [
-        'openid',
-        'profile',
-        'email',
-        'groups',
-        'offline_access',
-        'federated:id',
-        'audience:server:client_id:dex-k8s-authenticator',
-      ],
+      defaultScopes: resolveOIDCScopes({
+        configApi: this.configApi,
+        providerName,
+        defaultExtraScopes: DEFAULT_KUBERNETES_EXTRA_SCOPES,
+      }),
     });
   }
 
@@ -500,14 +501,11 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           providerName,
           OAuth2.create({
             authConnector,
-            defaultScopes: [
-              'openid',
-              'profile',
-              'email',
-              'groups',
-              'offline_access',
-              'audience:server:client_id:dex-k8s-authenticator',
-            ],
+            defaultScopes: resolveOIDCScopes({
+              configApi: this.configApi,
+              providerName,
+              defaultExtraScopes: DEFAULT_MCP_EXTRA_SCOPES,
+            }),
           }),
         ];
       },
