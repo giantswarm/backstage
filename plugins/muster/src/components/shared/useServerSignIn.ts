@@ -36,6 +36,8 @@ interface PendingSignIn {
   authUrl: string;
   /** Epoch ms after which polling gives up. Survives remounts with the entry. */
   deadline: number;
+  /** How muster identifies itself to the AS, when it reported one. */
+  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback';
 }
 
 function pendingKey(installation: string | undefined, serverName: string) {
@@ -65,6 +67,13 @@ export interface ServerSignInState {
   isPending: boolean;
   /** Muster's sign-in URL, once it has issued a challenge for this server. */
   authUrl?: string;
+  /**
+   * How muster identifies itself to the server's authorization server, when
+   * the challenge reported it (muster#1083). `cimd-fallback` means the AS
+   * advertises neither CIMD support nor dynamic client registration, so the
+   * sign-in may be rejected as an unregistered client — worth warning about.
+   */
+  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback';
   /** True while polling for the browser sign-in to complete. */
   isWaiting: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
@@ -133,6 +142,7 @@ export function useServerSignIn(
   );
 
   const authUrl = pending?.authUrl;
+  const clientIdMethod = pending?.clientIdMethod;
   const isWaiting = Boolean(authUrl);
 
   const { data, error: statusError } = useQuery({
@@ -168,6 +178,7 @@ export function useServerSignIn(
         setPending({
           authUrl: result.authUrl,
           deadline: Date.now() + timeoutMs,
+          clientIdMethod: result.clientIdMethod,
         });
         return;
       }
@@ -232,6 +243,7 @@ export function useServerSignIn(
     status,
     isPending: signIn.isPending,
     authUrl,
+    clientIdMethod,
     isWaiting,
     // Muster's own words for a refusal, or the mutation's transport error. A
     // failed status read is only worth showing while a sign-in is outstanding:

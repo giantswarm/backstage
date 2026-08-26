@@ -24,6 +24,47 @@ describe('parseAuthLoginResult', () => {
       authUrl:
         'https://muster.gazelle.example.io/oauth/proxy/start?state=abc123',
       message,
+      clientIdMethod: undefined,
+    });
+  });
+
+  // muster#1083: the challenge says how muster identifies itself to the
+  // authorization server, so the UI can warn when the AS supports neither
+  // CIMD nor DCR.
+  it.each(['cimd', 'dcr', 'cimd-fallback'] as const)(
+    'passes through clientIdMethod %j',
+    method => {
+      expect(
+        parseAuthLoginResult({
+          text: 'Authentication Required',
+          structuredContent: {
+            authUrl: 'https://example.com/start',
+            clientIdMethod: method,
+          },
+        }),
+      ).toEqual({
+        status: 'auth_required',
+        authUrl: 'https://example.com/start',
+        message: 'Authentication Required',
+        clientIdMethod: method,
+      });
+    },
+  );
+
+  it('drops an unrecognised clientIdMethod instead of passing it through', () => {
+    expect(
+      parseAuthLoginResult({
+        text: 'Authentication Required',
+        structuredContent: {
+          authUrl: 'https://example.com/start',
+          clientIdMethod: 'something-new',
+        },
+      }),
+    ).toEqual({
+      status: 'auth_required',
+      authUrl: 'https://example.com/start',
+      message: 'Authentication Required',
+      clientIdMethod: undefined,
     });
   });
 

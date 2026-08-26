@@ -16,12 +16,24 @@ export type AuthLoginStatus =
   /** Muster answered something we don't recognise; re-read auth://status. */
   | 'unknown';
 
+/**
+ * How muster identifies itself to the downstream server's authorization
+ * server (muster#1083): `cimd` — the AS advertises CIMD support and muster's
+ * self-hosted CIMD URL is the client_id; `dcr` — muster registered itself via
+ * RFC 7591 Dynamic Client Registration; `cimd-fallback` — the AS advertises
+ * neither mechanism, muster sends the CIMD URL anyway and the AS may reject
+ * the sign-in with a client-not-registered error.
+ */
+export type ClientIdMethod = 'cimd' | 'dcr' | 'cimd-fallback';
+
 export interface AuthLoginResult {
   status: AuthLoginStatus;
   /** Muster's sign-in URL (its OAuth proxy start endpoint), when challenged. */
   authUrl?: string;
   /** Muster's own message, passed through for display. */
   message: string;
+  /** How muster identifies itself to the authorization server, when reported. */
+  clientIdMethod?: ClientIdMethod;
 }
 
 /**
@@ -37,12 +49,18 @@ const CONNECTED_MARKERS = [
   'does not require authentication',
 ];
 
+/** The clientIdMethod values muster can report (anything else is dropped). */
+const CLIENT_ID_METHODS: ClientIdMethod[] = ['cimd', 'dcr', 'cimd-fallback'];
+
 /**
  * Classify `core_auth_login`'s answer. An authorization challenge carries the
  * sign-in URL as `structuredContent.authUrl` (muster#1025) — the prose-parsing
- * fallback that used to scan the text for a URL line is retired. Connection
- * outcomes have no structured content and are still recognised by their
- * `api.AuthMsg*` markers, the same way muster's own CLI does.
+ * fallback that used to scan the text for a URL line is retired. Since
+ * muster#1083 the challenge also carries `structuredContent.clientIdMethod`,
+ * saying how muster identifies itself to the authorization server; older
+ * musters omit it. Connection outcomes have no structured content and are
+ * still recognised by their `api.AuthMsg*` markers, the same way muster's own
+ * CLI does.
  */
 export function parseAuthLoginResult(result: {
   text?: string;
@@ -50,10 +68,16 @@ export function parseAuthLoginResult(result: {
 }): AuthLoginResult {
   const message = result.text ?? '';
 
-  const authUrl = (result.structuredContent as { authUrl?: unknown } | null)
-    ?.authUrl;
+  const structured = result.structuredContent as {
+    authUrl?: unknown;
+    clientIdMethod?: unknown;
+  } | null;
+  const authUrl = structured?.authUrl;
   if (typeof authUrl === 'string' && authUrl !== '') {
-    return { status: 'auth_required', authUrl, message };
+    const clientIdMethod = CLIENT_ID_METHODS.find(
+      method => method === structured?.clientIdMethod,
+    );
+    return { status: 'auth_required', authUrl, message, clientIdMethod };
   }
 
   if (CONNECTED_MARKERS.some(marker => message.includes(marker))) {

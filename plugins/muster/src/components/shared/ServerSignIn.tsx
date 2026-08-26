@@ -53,6 +53,7 @@ export function ServerSignIn({
     status,
     isPending,
     authUrl,
+    clientIdMethod,
     error,
     note,
     isSsoManaged,
@@ -130,6 +131,25 @@ export function ServerSignIn({
           <Text variant="body-small" color="secondary">
             Waiting for you to finish signing in…
           </Text>
+          {/* muster#1083: the challenge says how muster identifies itself to
+              the authorization server. Only the fallback deserves a warning —
+              it is the one case where the AS may reject the sign-in as an
+              unregistered client. DCR gets a quiet note because the consent
+              screen will show an auto-registered client rather than a
+              pre-provisioned one, which can otherwise look suspicious. */}
+          {clientIdMethod === 'cimd-fallback' ? (
+            <Text variant="body-small" color="warning">
+              This server's authorization server advertises neither support for
+              muster's client identity (CIMD) nor automatic client registration
+              — the sign-in may be rejected as an unregistered client.
+            </Text>
+          ) : null}
+          {clientIdMethod === 'dcr' ? (
+            <Text variant="body-small" color="secondary">
+              muster registered itself with this server's authorization server
+              automatically (Dynamic Client Registration).
+            </Text>
+          ) : null}
         </>
       ) : (
         <Button
