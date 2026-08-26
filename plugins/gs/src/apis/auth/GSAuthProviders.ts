@@ -415,7 +415,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
     return OAuth2.create({
       authConnector,
-      defaultScopes: getOIDCScopes(this.configApi),
+      defaultScopes: getOIDCScopes('kubernetes', this.configApi),
     });
   }
 
@@ -493,7 +493,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           providerName,
           OAuth2.create({
             authConnector,
-            defaultScopes: getOIDCScopes(this.configApi),
+            defaultScopes: getOIDCScopes('mcp', this.configApi),
           }),
         ];
       },
