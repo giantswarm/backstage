@@ -4,79 +4,17 @@ import {
 } from '@backstage/backend-plugin-api';
 import {
   authProvidersExtensionPoint,
-  AuthResolverContext,
   createOAuthProviderFactory,
-  OAuthAuthenticatorResult,
-  SignInResolver,
 } from '@backstage/plugin-auth-node';
-import { OidcAuthResult } from '@backstage/plugin-auth-backend-module-oidc-provider';
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
 import { createClusterTokenRouter } from './clusterToken/router';
 import { gsOidcAuthenticator } from './oidc/authenticator';
+import { customSignInResolver } from './signInResolver';
 import { waitForIssuerMetadata } from './oidc/issuerMetadata';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
-
-type IdPClaim = {
-  connector_id: string;
-  user_id: string;
-};
-
-function signInWithGuestUser(ctx: AuthResolverContext) {
-  const guestUserRef = 'user:default/guest';
-
-  return ctx.issueToken({
-    claims: {
-      sub: guestUserRef,
-      ent: [guestUserRef],
-    },
-  });
-}
-
-const customSignInResolver: SignInResolver<
-  OAuthAuthenticatorResult<OidcAuthResult>
-> = async (info, ctx) => {
-  const userInfo = info.result.fullProfile.userinfo;
-
-  const idpClaim = userInfo.federated_claims as IdPClaim;
-  const connectorId = idpClaim.connector_id;
-
-  try {
-    if (connectorId === 'giantswarm-ad' && userInfo.email) {
-      return await ctx.signInWithCatalogUser({
-        filter: {
-          'spec.profile.email': userInfo.email,
-        },
-      });
-    }
-
-    if (connectorId === 'giantswarm-github' && userInfo.preferred_username) {
-      return await ctx.signInWithCatalogUser({
-        filter: {
-          'metadata.name': userInfo.preferred_username,
-        },
-      });
-    }
-  } catch (err) {
-    return signInWithGuestUser(ctx);
-  }
-
-  if (userInfo.email) {
-    const username = userInfo.email.split('@')[0];
-    const userRef = `user:default/${username}`;
-
-    return ctx.issueToken({
-      claims: {
-        sub: userRef,
-        ent: [userRef],
-      },
-    });
-  }
-
-  return signInWithGuestUser(ctx);
-};
 
 /** @public */
 export const authModuleGsProviders = createBackendModule({

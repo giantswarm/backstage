@@ -103,6 +103,45 @@ gs:
     proxyMaxConcurrency: 6
 ```
 
+## Login provider scopes
+
+Every Giant Swarm OIDC provider requests `openid profile email groups
+offline_access`. That base set is fixed and no configuration removes a scope
+from it. Every other scope comes from `gs.auth.extraScopes`, which has no
+default, because a scope beyond the base set is a property of the issuer and of
+the clients that must accept the token:
+
+```yaml
+gs:
+  auth:
+    # Applies to every login provider, the `mcp-*` ones included.
+    extraScopes:
+      - federated:id
+      - audience:server:client_id:dex-k8s-authenticator
+```
+
+A Dex deployment needs both of the scopes above:
+
+- `federated:id` adds the `federated_claims` the main sign-in resolver reads to
+  map a user onto a catalog entity. Without it the resolver falls back to the
+  email of the token and the `giantswarm-ad` and `giantswarm-github` connector
+  lookups never run, which changes which catalog user a person signs in as.
+- `audience:server:client_id:dex-k8s-authenticator` is a cross-client scope that
+  makes Dex name the `dex-k8s-authenticator` client in the audience of the
+  token. Add one such scope per client whose audience a forwarded token must
+  satisfy, and list the requesting client in the `trustedPeers` of that Dex
+  client. A muster that trusts the `dex-k8s-authenticator` audience needs this
+  scope, or it rejects the token the portal forwards to it.
+
+Keycloak and Entra ID need no extra scope. They reject both scopes above with
+`invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
+set it to `[]`.
+
+Keycloak needs one more step, on the IdP side: it has no built-in `groups`
+scope. Add a client scope named `groups` with a Group Membership mapper (claim
+`groups`, full path off) and attach it to the client as a default scope, or the
+login fails with `invalid_scope` on the base set as well.
+
 ## Cluster details page resources
 
 The cluster details page allows you to configure resource links that will be displayed in place of the default links.
@@ -213,6 +252,28 @@ The icon parameter can be:
 
 - A custom icon name from the list of [supported icons](https://github.com/giantswarm/backstage/blob/main/plugins/gs/src/assets/icons/CustomIcons.tsx]), e.g. `BackstageIcon`.
 - A [Material UI](https://v4.mui.com/components/material-icons/#material-icons) icon name, e.g. `GitHub`.
+
+## Root redirect
+
+By default `/` renders the home page. A deployment that ships one product
+instead of the whole portal can send `/` to that product's page:
+
+```yaml
+app:
+  rootRedirect: /agent-platform
+```
+
+The value is a path inside the app, not a URL. Unset keeps the home page. A
+value that does not start with `/`, or that is `/` itself, is ignored: the home
+page renders and the browser console logs a warning.
+
+Two constraints:
+
+- Keep the home page extension enabled. It owns the `/` route, so
+  `page:home: false` under `app.extensions` makes `/` a 404 page again and the
+  redirect never runs.
+- The sidebar still shows the "Home" item, which now leads to the redirect
+  target.
 
 ## Optional features
 

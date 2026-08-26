@@ -8,6 +8,27 @@ export interface Config {
     authProvider: string;
 
     /**
+     * Settings shared by the Giant Swarm OIDC login providers (the main sign-in
+     * provider, the per-installation cluster-access providers and the `mcp-*`
+     * providers).
+     * @deepVisibility frontend
+     */
+    auth?: {
+      /**
+       * OIDC scopes requested on top of the fixed `openid profile email groups
+       * offline_access` set. Applies to every login provider, and has no
+       * default: an issuer-specific scope belongs to the deployment.
+       *
+       * A Dex deployment needs `federated:id`, which carries the
+       * `federated_claims` the sign-in resolver maps onto a catalog entity, and
+       * a cross-client `audience:server:client_id:<client>` scope for every
+       * client whose audience a forwarded token must satisfy. Keycloak and
+       * Entra ID reject both, and need no extra scope at all.
+       */
+      extraScopes?: string[];
+    };
+
+    /**
      * Cluster token broker (muster) used to silently mint per-management-cluster
      * tokens from the user's main Dex session, replacing the per-cluster OAuth
      * popups for covered installations.
