@@ -415,13 +415,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
     return OAuth2.create({
       authConnector,
-      // Dex-specific defaults. `federated:id` supplies the `federated_claims`
-      // the main sign-in resolver reads; the cross-client audience scope makes
-      // Dex issue a token `dex-k8s-authenticator` also accepts.
-      defaultScopes: getOIDCScopes(this.configApi, [
-        'federated:id',
-        'audience:server:client_id:dex-k8s-authenticator',
-      ]),
+      defaultScopes: getOIDCScopes(this.configApi),
     });
   }
 
@@ -499,11 +493,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           providerName,
           OAuth2.create({
             authConnector,
-            // Dex-specific default. These providers have no sign-in resolver,
-            // so they need no `federated:id`.
-            defaultScopes: getOIDCScopes(this.configApi, [
-              'audience:server:client_id:dex-k8s-authenticator',
-            ]),
+            defaultScopes: getOIDCScopes(this.configApi),
           }),
         ];
       },

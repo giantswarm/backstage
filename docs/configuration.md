@@ -109,11 +109,11 @@ Every Giant Swarm OIDC provider requests `openid profile email groups
 offline_access`, plus a set of extra scopes. The extra scopes default to the
 Dex-specific ones:
 
-- `audience:server:client_id:dex-k8s-authenticator`, a cross-client scope that
-  makes Dex issue a token the `dex-k8s-authenticator` client also accepts.
 - `federated:id`, which adds the `federated_claims` the main sign-in resolver
-  reads to map a user onto a catalog entity. Only the cluster-access providers
-  request it; the `mcp-*` providers have no sign-in resolver.
+  reads to map a user onto a catalog entity.
+- `audience:server:client_id:dex-k8s-authenticator`, a cross-client scope that
+  makes Dex issue a token the `dex-k8s-authenticator` client also accepts. It
+  needs that Dex client to list the requesting client in its `trustedPeers`.
 
 Other issuers reject these scopes. Keycloak answers `invalid_scope` and shows no
 login page, so a deployment on Keycloak or Entra ID must set the extra scopes to

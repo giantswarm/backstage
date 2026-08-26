@@ -18,10 +18,10 @@ export interface Config {
        * OIDC scopes requested on top of `openid profile email groups
        * offline_access`.
        *
-       * Unset keeps the Dex defaults: the cross-client
-       * `audience:server:client_id:dex-k8s-authenticator` scope, plus
-       * `federated:id` for the cluster-access providers. Set it to `[]` for an
-       * issuer that rejects unknown scopes, such as Keycloak or Entra ID.
+       * Unset keeps the Dex defaults, `federated:id` and the cross-client
+       * `audience:server:client_id:dex-k8s-authenticator` scope. Set it to `[]`
+       * for an issuer that rejects unknown scopes, such as Keycloak or Entra
+       * ID.
        */
       extraScopes?: string[];
     };
