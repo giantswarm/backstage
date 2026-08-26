@@ -8,6 +8,15 @@ export interface Config {
      */
     description?: string;
 
+    /**
+     * In-app path that `/` redirects to, e.g. `/agent-platform`. Unset renders
+     * the home page. Set it for a single-product deployment whose landing page
+     * is one plugin instead of the portal home page. The home page extension
+     * (`page:home`) must stay enabled: it owns the `/` route.
+     * @visibility frontend
+     */
+    rootRedirect?: string;
+
     branding?: {
       /**
        * Filesystem path where custom branding assets (logos, favicons) are stored.

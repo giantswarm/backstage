@@ -214,6 +214,26 @@ The icon parameter can be:
 - A custom icon name from the list of [supported icons](https://github.com/giantswarm/backstage/blob/main/plugins/gs/src/assets/icons/CustomIcons.tsx]), e.g. `BackstageIcon`.
 - A [Material UI](https://v4.mui.com/components/material-icons/#material-icons) icon name, e.g. `GitHub`.
 
+## Root redirect
+
+By default `/` renders the home page. A deployment that ships one product
+instead of the whole portal can send `/` to that product's page:
+
+```yaml
+app:
+  rootRedirect: /agent-platform
+```
+
+The value is a path inside the app, not a URL. Unset keeps the home page.
+
+Two constraints:
+
+- Keep the home page extension enabled. It owns the `/` route, so
+  `page:home: false` under `app.extensions` makes `/` a 404 page again and the
+  redirect never runs.
+- The sidebar still shows the "Home" item, which now leads to the redirect
+  target.
+
 ## Optional features
 
 Some optional features can be enabled and disabled via the app configuration. For example, the configuration snippet below will enable the `installationsPage` feature:
