@@ -201,7 +201,10 @@ describe('MusterMcpClient', () => {
 
   /**
    * Wrap a target tool's MCP result the way muster's call_tool meta-tool
-   * returns it: as a JSON string inside the meta-tool's text content block.
+   * returns it: as a JSON string inside the meta-tool's text content block,
+   * with the wrapped tool's isError mirrored onto the envelope (muster
+   * propagates it so clients inspecting only the top level get an accurate
+   * signal).
    */
   function callToolEnvelope(inner: {
     content: { type: string; text: string }[];
@@ -210,7 +213,7 @@ describe('MusterMcpClient', () => {
   }) {
     return {
       content: [{ type: 'text', text: JSON.stringify(inner) }],
-      isError: false,
+      isError: inner.isError ?? false,
     };
   }
 
@@ -346,6 +349,54 @@ describe('MusterMcpClient', () => {
         isError: true,
       }),
     );
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callTool('core_workflow_get', { name: 'missing' }),
+    ).rejects.toThrow('workflow not found');
+  });
+
+  /**
+   * The thrown message must be the wrapped tool's human-readable text, never
+   * the serialized envelope: the UI renders these messages verbatim (the MCP
+   * servers page showed the raw `{"isError":true,...}` blob for an OAuth
+   * server's refused core_service_start before this was unwrapped).
+   */
+  it('surfaces the inner error text, not the serialized envelope', async () => {
+    const refusal =
+      "Service 'miro' requires OAuth authentication.\n\n" +
+      'To connect to this server, use the core_auth_login tool:\n' +
+      '  core_auth_login(server="miro")\n\n' +
+      'The service start/restart command cannot be used for OAuth-protected ' +
+      'servers because authentication is session-scoped.';
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: refusal }],
+        isError: true,
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callTool('core_service_start', { name: 'miro' }),
+    ).rejects.toThrow(refusal);
+  });
+
+  it('throws the inner error text for envelopes that do not mirror isError', async () => {
+    // Older musters returned the envelope with isError=false even when the
+    // wrapped tool failed; the error then surfaces on the second unwrap.
+    const execute = jest.fn().mockResolvedValue({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            content: [{ type: 'text', text: 'workflow not found' }],
+            isError: true,
+          }),
+        },
+      ],
+      isError: false,
+    });
     const { client } = buildClient(execute);
 
     await expect(
