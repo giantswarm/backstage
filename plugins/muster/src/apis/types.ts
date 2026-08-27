@@ -253,10 +253,17 @@ export interface FilterResourcesResponse {
   resources: ResourceSummary[] | null;
 }
 
-/** One entry from the `filter_prompts` tier. */
+/**
+ * One entry from the `filter_prompts` tier.
+ *
+ * `server` is reported explicitly rather than derived from the name: an
+ * exposed prompt name carries the server's configured `toolPrefix`, not its
+ * name, so the two differ for most servers (muster#1100).
+ */
 export interface PromptSummary {
   name: string;
   description?: string;
+  server: string;
 }
 
 export interface FilterPromptsResponse {

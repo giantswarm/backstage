@@ -585,7 +585,8 @@ export function ServerPrompts({ server }: { server: MCPServer }) {
     );
   }
 
-  const prefix = server.getToolNamePrefix();
+  // Prompts are never family-grouped, so this is not getToolNamePrefix().
+  const prefix = server.getPromptNamePrefix();
 
   return (
     <Box>

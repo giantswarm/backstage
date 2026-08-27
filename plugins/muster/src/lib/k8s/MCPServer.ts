@@ -138,6 +138,19 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
     return `x_${segment}`;
   }
 
+  /**
+   * Prefix muster gives this server's *prompts*.
+   *
+   * Family grouping deduplicates tools across the family's members and so
+   * feeds the tool prefix, but it does not apply to prompts: muster exposes
+   * every prompt as `x_<toolPrefix-or-name>_<prompt>` regardless of family.
+   * Reusing getToolNamePrefix here would fail to match for family servers that
+   * also set a toolPrefix.
+   */
+  getPromptNamePrefix() {
+    return `x_${this.jsonData.spec?.toolPrefix ?? this.getName()}`;
+  }
+
   getLastConnected() {
     return this.jsonData.status?.lastConnected;
   }

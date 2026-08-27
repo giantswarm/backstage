@@ -5,13 +5,17 @@ import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import { ServerPrompts, ServerResources } from './serverDetail';
 
-function makeServer(): MCPServer {
+function makeServer(spec: Record<string, unknown> = {}): MCPServer {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
       metadata: { name: 'pro' },
-      spec: { type: 'streamable-http', url: 'https://pro.example/mcp' },
+      spec: {
+        type: 'streamable-http',
+        url: 'https://pro.example/mcp',
+        ...spec,
+      },
       status: { state: 'Connected' },
     } as never,
     'gazelle',
@@ -106,7 +110,11 @@ describe('ServerPrompts', () => {
       filtered_count: 1,
       truncated: false,
       prompts: [
-        { name: 'x_pro_triage_issue', description: 'Triage an issue.' },
+        {
+          name: 'x_pro_triage_issue',
+          description: 'Triage an issue.',
+          server: 'pro',
+        },
       ],
     });
 
@@ -118,6 +126,32 @@ describe('ServerPrompts', () => {
       server: 'pro',
       limit: 200,
     });
+  });
+
+  it('strips the toolPrefix, not the family name, for a family server', async () => {
+    // Family grouping feeds the *tool* prefix; muster exposes prompts as
+    // `x_<toolPrefix>_<name>` regardless of family, so using the tool prefix
+    // here would leave the name unstripped.
+    const filterPrompts = jest.fn().mockResolvedValue({
+      total: 1,
+      filtered_count: 1,
+      truncated: false,
+      prompts: [
+        { name: 'x_k8s_describe_pod', description: 'Describe.', server: 'pro' },
+      ],
+    });
+
+    await render(
+      <ServerPrompts
+        server={makeServer({
+          family: { name: 'kubernetes' },
+          toolPrefix: 'k8s',
+        })}
+      />,
+      { filterPrompts },
+    );
+
+    expect(await screen.findByText('describe_pod')).toBeInTheDocument();
   });
 
   it('distinguishes an empty result from a broken one', async () => {
