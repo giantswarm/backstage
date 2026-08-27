@@ -259,13 +259,20 @@ describe('createRouter', () => {
     expect(listCoreTools).toHaveBeenCalledWith({ include_schema: false }, {});
   });
 
-  it('lists mcp servers via core_mcpserver_list', async () => {
+  it('lists mcp servers via core_mcpserver_list, keeping failed servers and their errors', async () => {
     callTool.mockResolvedValue({ mcpServers: [] });
 
     const response = await request(app).get('/servers');
 
     expect(response.status).toBe(200);
-    expect(callTool).toHaveBeenCalledWith('core_mcpserver_list', {}, {});
+    // showAll: muster hides Failed servers by default, but the UIs (server
+    // detail, wizard verify panel) exist to show exactly those. verbose keeps
+    // the raw error alongside statusMessage.
+    expect(callTool).toHaveBeenCalledWith(
+      'core_mcpserver_list',
+      { showAll: true, verbose: true },
+      {},
+    );
   });
 
   /**

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -132,6 +132,62 @@ describe('NewMcpServerVerifyPage', () => {
     ).toBeInTheDocument();
     // A fresh CRD read was kicked so the panel doesn't idle on a stale list.
     expect(retry).toHaveBeenCalled();
+  });
+
+  /**
+   * Regression: the server connects during exactly the window where the user
+   * wanders off to another window or tab, and react-query skips interval
+   * refetches for hidden tabs by default -- the panel silently froze on
+   * "Waiting for the server to appear…" while the server was long Connected
+   * (observed on gazelle, 2026-08-27). The poll must run in the background.
+   *
+   * fireEvent + fake timers on purpose: the poll interval only fires from a
+   * timer, so the test controls the clock, and userEvent's async delays do not
+   * mix with a faked clock.
+   */
+  it('keeps polling while the tab is hidden until the server appears', async () => {
+    jest.useFakeTimers();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+
+    try {
+      callTool.mockResolvedValue({});
+      await renderWizard('/agent-platform/muster/servers/new');
+      fireEvent.change(screen.getByLabelText(/^Name/), {
+        target: { value: 'Weather' },
+      });
+      fireEvent.change(screen.getByLabelText(/^URL/), {
+        target: { value: 'https://weather.example.com/mcp' },
+      });
+      fireEvent.click(screen.getAllByRole('button', { name: 'Continue' })[0]);
+      await screen.findByText('Step 2 of 4: Authentication');
+      fireEvent.click(screen.getAllByRole('button', { name: 'Continue' })[0]);
+      await screen.findByText('Step 3 of 4: Review & register');
+      fireEvent.click(
+        screen.getAllByRole('button', { name: 'Register server' })[0],
+      );
+      await screen.findByText('Step 4 of 4: Verify');
+
+      expect(
+        screen.getByText('Waiting for the server to appear…'),
+      ).toBeInTheDocument();
+
+      // The server connects while the tab is hidden; the next poll must pick
+      // it up anyway.
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(6_000);
+      });
+
+      expect(screen.getByText('Connected')).toBeInTheDocument();
+    } finally {
+      delete (document as Record<string, any>).visibilityState;
+      jest.useRealTimers();
+    }
   });
 
   it('shows live state, attribution and session tool count from the runtime list', async () => {

@@ -115,6 +115,14 @@ export function NewMcpServerVerifyPage() {
         ? SETTLED_POLL_INTERVAL_MS
         : VERIFY_POLL_INTERVAL_MS;
     },
+    // The server takes up to a minute to connect -- precisely the window where
+    // the user wanders off to another window or tab, and react-query pauses
+    // interval refetches for unfocused tabs by default
+    // (refetchIntervalInBackground: false). Without this the panel silently
+    // stops following and sits on its last state until refocused; with the
+    // muster QueryClient's refetchOnWindowFocus disabled there is no catch-up
+    // read either. Same opt-out as useServerSignIn's auth-status poll.
+    refetchIntervalInBackground: true,
   });
 
   const runtime = (runtimeData?.mcpServers ?? []).find(

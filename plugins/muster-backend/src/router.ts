@@ -392,11 +392,19 @@ export async function createRouter(
 
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------
 
+  /**
+   * `showAll` because muster hides `Failed` servers from the list by default
+   * (a CLI ergonomic, muster issue #292) -- for the management UI a failing
+   * server disappearing from the runtime view is exactly wrong: the server
+   * detail and the registration wizard's verify panel are where its failure
+   * must show up. `verbose` keeps the raw `error` alongside the friendly
+   * `statusMessage`; both UIs render it.
+   */
   router.get('/servers', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
     const result = await client.callTool(
       'core_mcpserver_list',
-      {},
+      { showAll: true, verbose: true },
       readCallOptions(req, installation),
     );
     res.json(result);
