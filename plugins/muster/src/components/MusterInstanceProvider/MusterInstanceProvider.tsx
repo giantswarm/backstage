@@ -54,7 +54,12 @@ export type MusterInstance = {
   retry: () => void;
 };
 
-const MusterInstanceContext = createContext<MusterInstance | undefined>(
+/**
+ * Exported for hooks that must degrade gracefully outside the provider
+ * (see useMusterMutationRefresh) and for tests; components should use
+ * {@link useMusterInstance}.
+ */
+export const MusterInstanceContext = createContext<MusterInstance | undefined>(
   undefined,
 );
 

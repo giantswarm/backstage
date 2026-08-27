@@ -5,6 +5,10 @@ import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { AuthStatusResponse, musterApiRef } from '../../apis';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import {
+  MusterInstance,
+  MusterInstanceContext,
+} from '../MusterInstanceProvider';
+import {
   OAUTH_SIGN_IN_GATE,
   ServerMutationActions,
 } from './ServerMutationActions';
@@ -40,12 +44,35 @@ function makeServer(options: {
   );
 }
 
+/** Minimal provider value for tests that assert the post-mutation refresh. */
+function makeInstance(retry: () => void): MusterInstance {
+  return {
+    installations: ['gazelle'],
+    isLoadingInstallations: false,
+    activeInstallation: 'gazelle',
+    activeInstallationInfo: undefined,
+    setActiveInstallation: jest.fn(),
+    mcpServers: [],
+    workflows: [],
+    isLoading: false,
+    dataUpdatedAt: undefined,
+    isRefreshing: false,
+    retry,
+  };
+}
+
 async function renderActions(
   server: MCPServer,
-  options: { authenticated?: boolean; authStatus?: AuthStatusResponse } = {},
+  options: {
+    authenticated?: boolean;
+    authStatus?: AuthStatusResponse;
+    /** Provider retry spy; when set, the render is wrapped in the instance context. */
+    retry?: () => void;
+    callTool?: jest.Mock;
+  } = {},
 ) {
   const musterApi = {
-    callTool: jest.fn(),
+    callTool: options.callTool ?? jest.fn(),
     getAuthStatus: jest.fn(() =>
       Promise.resolve(options.authStatus ?? { servers: [] }),
     ),
@@ -55,16 +82,27 @@ async function renderActions(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return renderInTestApp(
+  const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
+  const actions = (
+    <ServerMutationActions
+      server={server}
+      authenticated={options.authenticated}
+    />
+  );
+  await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
-        <ServerMutationActions
-          server={server}
-          authenticated={options.authenticated}
-        />
+        {options.retry ? (
+          <MusterInstanceContext.Provider value={makeInstance(options.retry)}>
+            {actions}
+          </MusterInstanceContext.Provider>
+        ) : (
+          actions
+        )}
       </QueryClientProvider>
     </TestApiProvider>,
   );
+  return { invalidateQueries };
 }
 
 describe('ServerMutationActions lifecycle affordances', () => {
@@ -254,5 +292,61 @@ describe('ServerMutationActions session auth affordances', () => {
     expect(
       screen.queryByRole('button', { name: 'Sign in' }),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A muster mutation writes the CR synchronously, so the UI must refetch the
+ * CRD reads right after a successful call instead of waiting for the next
+ * background poll (up to 30s, longer in an unfocused tab where react-query
+ * pauses `refetchInterval`).
+ */
+describe('ServerMutationActions post-mutation refresh', () => {
+  it('refetches the CRD reads after a successful lifecycle confirm', async () => {
+    const retry = jest.fn();
+    const { invalidateQueries } = await renderActions(
+      makeServer({ state: 'Connected' }),
+      { retry },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(
+      await screen.findByText(/Done\. The server list has been refreshed/),
+    ).toBeInTheDocument();
+    expect(retry).toHaveBeenCalled();
+    // The aggregator's runtime list ("Runtime (live)") is a separate
+    // react-query read and must not stay stale either.
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['muster', 'servers', 'gazelle'],
+    });
+  });
+
+  it('does not refetch when the mutation fails', async () => {
+    const retry = jest.fn();
+    await renderActions(makeServer({ state: 'Connected' }), {
+      retry,
+      callTool: jest.fn(() => Promise.reject(new Error('boom'))),
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it('refetches after saving an ad-hoc server definition', async () => {
+    const retry = jest.fn();
+    await renderActions(makeServer({ state: 'Connected' }), { retry });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText(/Saved\. The server list has been refreshed/),
+    ).toBeInTheDocument();
+    expect(retry).toHaveBeenCalled();
   });
 });

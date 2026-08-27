@@ -31,6 +31,7 @@ import {
   toMcpServerDefinition,
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
+import { useMusterMutationRefresh } from '../MusterInstanceProvider';
 import { ServerAuthActions, StateBadge } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -164,6 +165,7 @@ function ConfirmActionDialog({
 }) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
+  const refresh = useMusterMutationRefresh(server.cluster);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [done, setDone] = useState(false);
@@ -187,6 +189,10 @@ function ConfirmActionDialog({
     setError(undefined);
     try {
       await musterApi.callTool(action.tool, action.args, server.cluster);
+      // muster writes the CR synchronously, so refetching now shows the spec
+      // change (e.g. the Activate/Deactivate swap) instead of waiting for the
+      // next 30s poll.
+      refresh();
       setDone(true);
     } catch (e) {
       setError(mutationErrorMessage(e));
@@ -225,7 +231,8 @@ function ConfirmActionDialog({
         {done && (
           <Box mt={2}>
             <Typography variant="body2" className={classes.ok}>
-              Done. The change may take a moment to reflect in the CRD list.
+              Done. The server list has been refreshed; the connection status
+              may take a few seconds to settle.
             </Typography>
           </Box>
         )}
@@ -278,6 +285,7 @@ export function AdHocServerDialog({
   const musterApi = useApi(musterApiRef);
   const isEdit = Boolean(server);
   const target = server?.cluster ?? installation;
+  const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -337,7 +345,8 @@ export function AdHocServerDialog({
         def,
         target,
       );
-      setMessage('Saved. The CRD list will refresh shortly.');
+      refresh();
+      setMessage('Saved. The server list has been refreshed.');
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {
