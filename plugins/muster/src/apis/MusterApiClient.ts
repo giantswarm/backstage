@@ -6,6 +6,9 @@ import {
 } from '@backstage/core-plugin-api';
 import {
   AuthStatusResponse,
+  FilterCapabilitiesOptions,
+  FilterPromptsResponse,
+  FilterResourcesResponse,
   FilterToolsOptions,
   FilterToolsResponse,
   ListExecutionsOptions,
@@ -22,6 +25,29 @@ import {
   WorkflowListResponse,
   WorkflowStats,
 } from './types';
+
+/**
+ * Serialises the shared `filter_resources` / `filter_prompts` query. `server`
+ * is the meaningful scope for resources, whose scheme'd URIs carry no server
+ * prefix to match a pattern against.
+ */
+function capabilityQuery(options: FilterCapabilitiesOptions): string {
+  const searchParams = new URLSearchParams();
+  if (options.server) {
+    searchParams.set('server', options.server);
+  }
+  if (options.pattern) {
+    searchParams.set('pattern', options.pattern);
+  }
+  if (options.limit !== undefined) {
+    searchParams.set('limit', String(options.limit));
+  }
+  if (options.offset !== undefined) {
+    searchParams.set('offset', String(options.offset));
+  }
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : '';
+}
 
 export const musterApiRef = createApiRef<MusterApi>({
   id: 'plugin.muster.api',
@@ -138,6 +164,24 @@ export class MusterApiClient implements MusterApi {
     return this.get<FilterToolsResponse>(
       `/tools/filter${qs ? `?${qs}` : ''}`,
       installation,
+    );
+  }
+
+  async filterResources(
+    options: FilterCapabilitiesOptions = {},
+  ): Promise<FilterResourcesResponse> {
+    return this.get<FilterResourcesResponse>(
+      `/resources/filter${capabilityQuery(options)}`,
+      options.installation,
+    );
+  }
+
+  async filterPrompts(
+    options: FilterCapabilitiesOptions = {},
+  ): Promise<FilterPromptsResponse> {
+    return this.get<FilterPromptsResponse>(
+      `/prompts/filter${capabilityQuery(options)}`,
+      options.installation,
     );
   }
 

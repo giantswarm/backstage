@@ -53,6 +53,17 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(0.75),
     marginTop: theme.spacing(1),
   },
+  capabilityList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(1),
+    fontSize: 13,
+  },
+  capabilityNote: {
+    display: 'block',
+    color: theme.palette.text.secondary,
+  },
   errorPre: {
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
@@ -357,6 +368,12 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       {runtime.toolsCount !== undefined && (
         <DefRow label="Tools (session)">{runtime.toolsCount}</DefRow>
       )}
+      {runtime.resourcesCount !== undefined && (
+        <DefRow label="Resources (session)">{runtime.resourcesCount}</DefRow>
+      )}
+      {runtime.promptsCount !== undefined && (
+        <DefRow label="Prompts (session)">{runtime.promptsCount}</DefRow>
+      )}
       {runtime.registeredBy && (
         <DefRow label="Registered by">
           <span title={runtime.registeredBy}>
@@ -481,6 +498,168 @@ export function ServerTools({
               title={tool.summary ?? tool.description ?? tool.name}
             />
           </Link>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Per-session capability counts for one server, read from the same
+ * `core_mcpserver_list` query RuntimeState uses (react-query dedupes it, so
+ * this costs no extra request).
+ *
+ * Callers use it to decide whether a Resources or Prompts section is worth
+ * rendering at all: most servers expose neither, and an always-present empty
+ * block reads as broken rather than as informative. A count is absent rather
+ * than `0` when the server exposes none, and absent on aggregators older than
+ * muster#1099 -- in both cases the section is simply not shown.
+ */
+export function useServerCapabilityCounts(server: MCPServer): {
+  resourcesCount?: number;
+  promptsCount?: number;
+} {
+  const musterApi = useApi(musterApiRef);
+  const installation = server.cluster;
+  const name = server.getName();
+
+  const { data } = useQuery({
+    queryKey: ['muster', 'servers', installation],
+    queryFn: () => musterApi.listServers(installation),
+  });
+
+  const runtime = (data?.mcpServers ?? []).find(s => s.name === name);
+  return {
+    resourcesCount: runtime?.resourcesCount,
+    promptsCount: runtime?.promptsCount,
+  };
+}
+
+/**
+ * Resources this server contributes to the aggregated catalogue.
+ *
+ * Unlike tools, resources cannot be discovered by name prefix: a resource URI
+ * carrying a scheme is exposed by the aggregator unchanged, so `x_<server>_*`
+ * has nothing to match and two servers may advertise the same URI. muster
+ * scopes them by source server instead (muster#1096), which is what
+ * `filter_resources` takes here.
+ */
+export function ServerResources({ server }: { server: MCPServer }) {
+  const classes = useStyles();
+  const musterApi = useApi(musterApiRef);
+  const installation = server.cluster;
+  const name = server.getName();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['muster', 'server-resources', installation, name],
+    queryFn: () =>
+      musterApi.filterResources({ installation, server: name, limit: 200 }),
+  });
+
+  if (isLoading) {
+    return <Progress />;
+  }
+  if (error) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        Resources unavailable: {(error as Error).message}
+      </Typography>
+    );
+  }
+
+  const resources = data?.resources ?? [];
+  if (resources.length === 0) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        No resources exposed (server may be down or require authentication).
+      </Typography>
+    );
+  }
+
+  return (
+    <Box>
+      <Typography variant="body2" className={classes.note}>
+        {data?.total ?? resources.length} resource(s)
+        {data?.truncated ? ' (first page)' : ''}
+      </Typography>
+      <Box className={classes.capabilityList}>
+        {resources.map(resource => (
+          <Box key={`${resource.server}:${resource.uri}`}>
+            <span className={classes.mono}>{resource.uri}</span>
+            {resource.name ? ` — ${resource.name}` : ''}
+            {resource.description && (
+              <Typography variant="caption" className={classes.capabilityNote}>
+                {resource.description}
+              </Typography>
+            )}
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Prompts this server contributes. Prompt names *are* prefixed
+ * `x_<server>_<name>`, so these could be filtered by pattern like tools --
+ * the server filter is used for symmetry with resources and to stay correct
+ * if the prefix scheme ever changes.
+ */
+export function ServerPrompts({ server }: { server: MCPServer }) {
+  const classes = useStyles();
+  const musterApi = useApi(musterApiRef);
+  const installation = server.cluster;
+  const name = server.getName();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['muster', 'server-prompts', installation, name],
+    queryFn: () =>
+      musterApi.filterPrompts({ installation, server: name, limit: 200 }),
+  });
+
+  if (isLoading) {
+    return <Progress />;
+  }
+  if (error) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        Prompts unavailable: {(error as Error).message}
+      </Typography>
+    );
+  }
+
+  const prompts = data?.prompts ?? [];
+  if (prompts.length === 0) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        No prompts exposed (server may be down or require authentication).
+      </Typography>
+    );
+  }
+
+  // Prompts are never family-grouped, so this is not getToolNamePrefix().
+  const prefix = server.getPromptNamePrefix();
+
+  return (
+    <Box>
+      <Typography variant="body2" className={classes.note}>
+        {data?.total ?? prompts.length} prompt(s)
+        {data?.truncated ? ' (first page)' : ''}
+      </Typography>
+      <Box className={classes.capabilityList}>
+        {prompts.map(prompt => (
+          <Box key={prompt.name}>
+            <span className={classes.mono}>
+              {prompt.name.startsWith(`${prefix}_`)
+                ? prompt.name.slice(prefix.length + 1)
+                : prompt.name}
+            </span>
+            {prompt.description && (
+              <Typography variant="caption" className={classes.capabilityNote}>
+                {prompt.description}
+              </Typography>
+            )}
+          </Box>
         ))}
       </Box>
     </Box>

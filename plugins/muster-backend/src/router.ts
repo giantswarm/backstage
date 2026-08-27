@@ -228,6 +228,52 @@ export async function createRouter(
     res.json(result);
   });
 
+  // Resources and prompts mirror /tools/filter. `server` matters most for
+  // resources: their scheme'd URIs are exposed unprefixed, so a pattern alone
+  // cannot scope them to one server the way `x_<server>_*` does for tools.
+  const capabilityFilterArgs = (
+    req: express.Request,
+  ): Record<string, unknown> => {
+    const args: Record<string, unknown> = {};
+
+    const server = singleQueryValue(req.query.server, 'server');
+    if (server !== undefined) {
+      args.server = server;
+    }
+    const pattern = singleQueryValue(req.query.pattern, 'pattern');
+    if (pattern !== undefined) {
+      args.pattern = pattern;
+    }
+    const limit = parseOptionalInt(req.query.limit, 'limit');
+    if (limit !== undefined) {
+      args.limit = limit;
+    }
+    const offset = parseOptionalInt(req.query.offset, 'offset');
+    if (offset !== undefined) {
+      args.offset = offset;
+    }
+
+    return args;
+  };
+
+  router.get('/resources/filter', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const result = await client.filterResources(
+      capabilityFilterArgs(req),
+      readCallOptions(req, installation),
+    );
+    res.json(result);
+  });
+
+  router.get('/prompts/filter', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const result = await client.filterPrompts(
+      capabilityFilterArgs(req),
+      readCallOptions(req, installation),
+    );
+    res.json(result);
+  });
+
   router.get('/tools/:name', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
     const result = await client.describeTool(

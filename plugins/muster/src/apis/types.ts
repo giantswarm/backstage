@@ -175,6 +175,13 @@ export interface McpServerRuntime {
   sessionAuth?: string;
   toolsCount?: number;
   /**
+   * Resources and prompts this server contributes to the session, reported
+   * alongside `toolsCount` since muster#1099. Absent on older aggregators,
+   * and absent (rather than `0`) when the server exposes none.
+   */
+  resourcesCount?: number;
+  promptsCount?: number;
+  /**
    * The authenticated subject that registered this server through muster
    * (`ui.giantswarm.io/registered-by`, stamped server-side on create --
    * muster#1021). Empty for GitOps-managed servers.
@@ -219,6 +226,63 @@ export interface FilterToolsOptions {
   pattern?: string;
   query?: string;
   includeSchema?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * One entry from the `filter_resources` tier.
+ *
+ * `server` is always populated and is the only reliable attribution: a
+ * resource URI carrying a scheme is exposed by the aggregator unprefixed, so
+ * unlike a tool or prompt name the URI does not say which server produced it,
+ * and two servers can expose the same one (muster#1096).
+ */
+export interface ResourceSummary {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+  server: string;
+}
+
+export interface FilterResourcesResponse {
+  total: number;
+  filtered_count: number;
+  truncated: boolean;
+  resources: ResourceSummary[] | null;
+}
+
+/**
+ * One entry from the `filter_prompts` tier.
+ *
+ * `server` is reported explicitly rather than derived from the name: an
+ * exposed prompt name carries the server's configured `toolPrefix`, not its
+ * name, so the two differ for most servers (muster#1100).
+ */
+export interface PromptSummary {
+  name: string;
+  description?: string;
+  server: string;
+}
+
+export interface FilterPromptsResponse {
+  total: number;
+  filtered_count: number;
+  truncated: boolean;
+  prompts: PromptSummary[] | null;
+}
+
+/**
+ * Filters for `filter_resources` / `filter_prompts`.
+ *
+ * `server` is the meaningful scope for resources; `pattern` globs the URI (for
+ * resources) or the prefixed name (for prompts).
+ */
+export interface FilterCapabilitiesOptions {
+  installation?: string;
+  server?: string;
+  pattern?: string;
   limit?: number;
   offset?: number;
 }
@@ -347,6 +411,12 @@ export interface MusterApi {
   listServers(installation?: string): Promise<McpServerListResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */
   filterTools(options?: FilterToolsOptions): Promise<FilterToolsResponse>;
+  filterResources(
+    options?: FilterCapabilitiesOptions,
+  ): Promise<FilterResourcesResponse>;
+  filterPrompts(
+    options?: FilterCapabilitiesOptions,
+  ): Promise<FilterPromptsResponse>;
   /**
    * The aggregated tool list plus the servers that still require auth, from the
    * `list_tools` meta-tool (one installation).

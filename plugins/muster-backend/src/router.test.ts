@@ -11,6 +11,8 @@ describe('createRouter', () => {
   const callToolWithStructured = jest.fn();
   const listTools = jest.fn();
   const filterTools = jest.fn();
+  const filterResources = jest.fn();
+  const filterPrompts = jest.fn();
   const describeTool = jest.fn();
   const listCoreTools = jest.fn();
   const getResource = jest.fn();
@@ -20,6 +22,8 @@ describe('createRouter', () => {
     callToolWithStructured,
     listTools,
     filterTools,
+    filterResources,
+    filterPrompts,
     describeTool,
     listCoreTools,
     getResource,
@@ -239,6 +243,38 @@ describe('createRouter', () => {
       { pattern: 'x_*', query: 'pods', limit: 10, include_schema: true },
       {},
     );
+  });
+
+  it('filters resources by server and pattern', async () => {
+    filterResources.mockResolvedValue({ resources: [] });
+
+    const response = await request(app).get(
+      '/resources/filter?server=pro&pattern=board://*&limit=10&offset=5',
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterResources).toHaveBeenCalledWith(
+      { server: 'pro', pattern: 'board://*', limit: 10, offset: 5 },
+      {},
+    );
+  });
+
+  it('filters resources without any scope', async () => {
+    filterResources.mockResolvedValue({ resources: [] });
+
+    const response = await request(app).get('/resources/filter');
+
+    expect(response.status).toBe(200);
+    expect(filterResources).toHaveBeenCalledWith({}, {});
+  });
+
+  it('filters prompts by server', async () => {
+    filterPrompts.mockResolvedValue({ prompts: [] });
+
+    const response = await request(app).get('/prompts/filter?server=pro');
+
+    expect(response.status).toBe(200);
+    expect(filterPrompts).toHaveBeenCalledWith({ server: 'pro' }, {});
   });
 
   it('describes a tool by name', async () => {

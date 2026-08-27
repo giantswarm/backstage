@@ -14,7 +14,10 @@ import {
   Provenance,
   RuntimeState,
   ServerConfig,
+  ServerPrompts,
+  ServerResources,
   ServerTools,
+  useServerCapabilityCounts,
 } from './serverDetail';
 import { ServerMutationActions } from './ServerMutationActions';
 
@@ -63,6 +66,7 @@ export function IntegrationServerDisclosure({
   defaultExpanded,
 }: IntegrationServerDisclosureProps) {
   const classes = useStyles();
+  const { resourcesCount, promptsCount } = useServerCapabilityCounts(server);
   const state = server.getState() ?? 'unknown';
   const severity = mcpServerStateSeverity(server.getState());
   const healthy = severity === 'ok';
@@ -126,6 +130,18 @@ export function IntegrationServerDisclosure({
           <Gate label="Authenticate to muster to inspect this server's tools." />
         )}
       </DetailBlock>
+
+      {authenticated && (resourcesCount ?? 0) > 0 && (
+        <DetailBlock title="Resources">
+          <ServerResources server={server} />
+        </DetailBlock>
+      )}
+
+      {authenticated && (promptsCount ?? 0) > 0 && (
+        <DetailBlock title="Prompts">
+          <ServerPrompts server={server} />
+        </DetailBlock>
+      )}
 
       <DetailBlock title="GitOps provenance">
         <Provenance server={server} />
