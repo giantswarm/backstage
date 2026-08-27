@@ -258,7 +258,9 @@ describe('useServerSignIn', () => {
       wrapper: wrapper(api, queryClient),
     });
 
-    await waitFor(() => expect(result.current.status?.status).toBe('connected'));
+    await waitFor(() =>
+      expect(result.current.status?.status).toBe('connected'),
+    );
     expect(invalidate).not.toHaveBeenCalled();
   });
 });
