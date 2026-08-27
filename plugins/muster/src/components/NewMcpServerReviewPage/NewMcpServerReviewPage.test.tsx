@@ -38,6 +38,13 @@ jest.mock('../McpServersPage', () => ({
   McpServersPage: () => <div>servers-list</div>,
 }));
 
+// Transport detection on the details step would interleave extra callTool
+// invocations with the register-flow assertions below; it has its own tests
+// in NewMcpServerPage.test.tsx.
+jest.mock('../NewMcpServerPage/useTransportDetection', () => ({
+  useTransportDetection: () => ({ detected: undefined, probing: false }),
+}));
+
 const callTool = jest.fn();
 const listServers = jest.fn();
 const getAuthStatus = jest.fn();

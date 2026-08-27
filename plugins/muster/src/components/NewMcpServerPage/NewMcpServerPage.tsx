@@ -24,7 +24,9 @@ import { useMusterInstance } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
+import { StateBadge } from '../shared/StateBadge';
 import { TextAreaField } from './TextAreaField';
+import { useTransportDetection } from './useTransportDetection';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -102,6 +104,27 @@ export function NewMcpServerPage() {
   // Show validation feedback only once the user has tried to proceed, so the
   // form doesn't shout about empty fields before they've done anything.
   const [showValidation, setShowValidation] = useState(false);
+
+  // Transport auto-detection: once the URL looks complete, muster probes it
+  // and the detected transport gets pre-selected. A manual card click wins
+  // until the URL changes again; inconclusive detection changes nothing.
+  const [transportTouched, setTransportTouched] = useState(false);
+  const { detected } = useTransportDetection(state.url, state.installation);
+
+  const onUrlChange = useCallback(
+    (value: string) => {
+      setUrl(value);
+      setTransportTouched(false);
+    },
+    [setUrl],
+  );
+
+  useEffect(() => {
+    if (!detected || transportTouched || state.transport === detected) {
+      return;
+    }
+    setTransport(detected);
+  }, [detected, transportTouched, state.transport, setTransport]);
 
   // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
@@ -230,7 +253,7 @@ export function NewMcpServerPage() {
                   label="URL"
                   isRequired
                   value={state.url}
-                  onChange={setUrl}
+                  onChange={onUrlChange}
                   placeholder="https://mcp.example.com/mcp"
                   description="The server's MCP endpoint."
                 />
@@ -240,9 +263,17 @@ export function NewMcpServerPage() {
                       key={transport.value}
                       selected={state.transport === transport.value}
                       ariaLabel={`Transport ${transport.title}`}
-                      onSelect={() => setTransport(transport.value)}
+                      onSelect={() => {
+                        setTransport(transport.value);
+                        setTransportTouched(true);
+                      }}
                     >
-                      <Text weight="bold">{transport.title}</Text>
+                      <Flex gap="2" align="center">
+                        <Text weight="bold">{transport.title}</Text>
+                        {detected === transport.value && (
+                          <StateBadge tone="info" label="Detected" />
+                        )}
+                      </Flex>
                       <Text variant="body-small" color="secondary">
                         {transport.description}
                       </Text>
