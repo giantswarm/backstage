@@ -322,9 +322,11 @@ export interface ServerSignInResult {
    * `cimd` — the AS accepts muster's CIMD URL as client_id; `dcr` — muster
    * registered itself via RFC 7591 Dynamic Client Registration;
    * `cimd-fallback` — the AS advertises neither mechanism and may reject the
-   * sign-in with a client-not-registered error.
+   * sign-in with a client-not-registered error; `dcr-failed` — the AS
+   * rejected muster's registration request (muster#1086) and muster falls
+   * back to the CIMD URL the same way.
    */
-  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback';
+  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
 }
 
 export interface MusterApi {

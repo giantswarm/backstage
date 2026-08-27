@@ -37,7 +37,7 @@ interface PendingSignIn {
   /** Epoch ms after which polling gives up. Survives remounts with the entry. */
   deadline: number;
   /** How muster identifies itself to the AS, when it reported one. */
-  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback';
+  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
 }
 
 function pendingKey(installation: string | undefined, serverName: string) {
@@ -70,10 +70,12 @@ export interface ServerSignInState {
   /**
    * How muster identifies itself to the server's authorization server, when
    * the challenge reported it (muster#1083). `cimd-fallback` means the AS
-   * advertises neither CIMD support nor dynamic client registration, so the
-   * sign-in may be rejected as an unregistered client — worth warning about.
+   * advertises neither CIMD support nor dynamic client registration, and
+   * `dcr-failed` (muster#1086) that the AS rejected muster's registration; in
+   * both the sign-in may be rejected as an unregistered client — worth
+   * warning about.
    */
-  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback';
+  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
   /** True while polling for the browser sign-in to complete. */
   isWaiting: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
