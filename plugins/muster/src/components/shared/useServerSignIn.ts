@@ -92,7 +92,12 @@ export interface ServerSignInState {
   isSsoManaged: boolean;
   /** Whether muster reports this server as needing a user sign-in. */
   needsLogin: boolean;
+  /** Whether muster reports this server as connected for this session. */
+  isConnected: boolean;
+  /** True while `core_auth_logout` is in flight. */
+  isSigningOut: boolean;
   signIn: () => void;
+  signOut: () => void;
 }
 
 export interface UseServerSignInOptions {
@@ -204,8 +209,23 @@ export function useServerSignIn(
     },
   });
 
+  // The inverse flow. Muster revokes the session's auth for the server
+  // synchronously, so unlike signIn there is nothing to poll for: on any
+  // answer that may have changed auth state ('signed_out', or 'unknown' where
+  // the truth must be re-read), invalidating every muster query is what
+  // re-gates the server's tools and brings the sign-in affordance back. An
+  // 'error' answer is a refusal -- nothing changed, so nothing is refetched.
+  const signOut = useMutation({
+    mutationFn: () => musterApi.signOutServer(serverName, installation),
+    onSuccess: result => {
+      if (result.status !== 'error') {
+        queryClient.invalidateQueries({ queryKey: ['muster'] });
+      }
+    },
+  });
+
   // At the deadline the entry is CLEARED, not rewritten. Keeping it would leave
-  // the row permanently visible (`authUrl` truthy defeats `onlyWhenRequired`)
+  // the row permanently visible (`authUrl` truthy defeats the idle gate)
   // offering a challenge whose `state` is expired or consumed by now. Clearing
   // returns the row to a plain `Sign in`; a flow that completes even later is
   // still picked up by the focus refetch above plus the transition effect
@@ -276,6 +296,9 @@ export function useServerSignIn(
   const signInResult = signIn.data;
   const isFailure =
     signInResult?.status === 'error' || signInResult?.status === 'unknown';
+  const signOutResult = signOut.data;
+  const isSignOutFailure =
+    signOutResult?.status === 'error' || signOutResult?.status === 'unknown';
 
   return {
     status,
@@ -291,16 +314,36 @@ export function useServerSignIn(
     error:
       (isFailure ? signInResult?.message : undefined) ??
       signIn.error?.message ??
+      (isSignOutFailure ? signOutResult?.message : undefined) ??
+      signOut.error?.message ??
       (pending ? statusUnreadable : undefined),
     // 'connected' with the alert still up is a real combination (the two come
     // from different muster state), and silence there is indistinguishable from
-    // the no-op click this feature fixes.
+    // the no-op click this feature fixes. Same for a completed sign-out: the
+    // affordance flips back to "Sign in", and the note is what says why.
     note:
-      signInResult?.status === 'connected' ? signInResult.message : undefined,
+      (signInResult?.status === 'connected'
+        ? signInResult.message
+        : undefined) ??
+      (signOutResult?.status === 'signed_out'
+        ? signOutResult.message
+        : undefined),
     isSsoManaged: Boolean(
       status?.token_forwarding_enabled || status?.token_exchange_enabled,
     ),
     needsLogin: status ? NEEDS_LOGIN.includes(status.status) : false,
-    signIn: () => signIn.mutate(),
+    isConnected: status?.status === 'connected',
+    isSigningOut: signOut.isPending,
+    // Each action resets the other's feedback: after a sign-out, a lingering
+    // "already connected" note from an earlier sign-in would contradict what
+    // just happened (and vice versa) -- only the latest action gets to speak.
+    signIn: () => {
+      signOut.reset();
+      signIn.mutate();
+    },
+    signOut: () => {
+      signIn.reset();
+      signOut.mutate();
+    },
   };
 }

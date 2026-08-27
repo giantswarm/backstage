@@ -18,6 +18,7 @@ import {
   MusterAuthProvidersApi,
   MusterInstallationsResponse,
   ServerSignInResult,
+  ServerSignOutResult,
   ToolDetail,
   WorkflowExecution,
   WorkflowExecutionListResponse,
@@ -221,6 +222,17 @@ export class MusterApiClient implements MusterApi {
   ): Promise<ServerSignInResult> {
     return this.post<ServerSignInResult>(
       '/auth/login',
+      { server },
+      installation,
+    );
+  }
+
+  async signOutServer(
+    server: string,
+    installation?: string,
+  ): Promise<ServerSignOutResult> {
+    return this.post<ServerSignOutResult>(
+      '/auth/logout',
       { server },
       installation,
     );

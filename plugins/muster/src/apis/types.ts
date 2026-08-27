@@ -393,6 +393,18 @@ export interface ServerSignInResult {
   clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
 }
 
+/**
+ * Outcome of a `core_auth_logout` attempt, normalised by the muster-backend.
+ * `signed_out` means muster revoked the session's auth for the server and its
+ * tools re-gate; `error` carries muster's refusal (unknown server, SSO-managed
+ * server); `unknown` means muster answered something unrecognised and
+ * `auth://status` should be re-read.
+ */
+export interface ServerSignOutResult {
+  status: 'signed_out' | 'error' | 'unknown';
+  message: string;
+}
+
 export interface MusterApi {
   /** The muster installations the proxy can target. */
   listInstallations(): Promise<MusterInstallationsResponse>;
@@ -461,6 +473,15 @@ export interface MusterApi {
     server: string,
     installation?: string,
   ): Promise<ServerSignInResult>;
+  /**
+   * Disconnect one aggregated server from the user's muster session via
+   * muster's `core_auth_logout` -- the inverse of `signInServer`. The server's
+   * tools re-gate until the next sign-in.
+   */
+  signOutServer(
+    server: string,
+    installation?: string,
+  ): Promise<ServerSignOutResult>;
 }
 
 export interface MusterAuthCredentials {

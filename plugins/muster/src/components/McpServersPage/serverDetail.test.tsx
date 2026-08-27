@@ -149,7 +149,9 @@ describe('ServerTools with no tools to show', () => {
     expect(
       await screen.findByText(/the server may be down or unreachable/),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Sign in under/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Use “Sign in” in the actions below/),
+    ).not.toBeInTheDocument();
   });
 
   it('still points an OAuth server’s user at the sign-in', async () => {
@@ -160,6 +162,8 @@ describe('ServerTools with no tools to show', () => {
       ),
     );
 
-    expect(await screen.findByText(/Sign in under/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Use “Sign in” in the actions below/),
+    ).toBeInTheDocument();
   });
 });

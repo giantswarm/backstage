@@ -3,6 +3,9 @@ import { isClosedClientError } from '@giantswarm/backstage-plugin-gs-node';
 /** Muster's core tool that starts a downstream MCP server's OAuth flow. */
 export const AUTH_LOGIN_TOOL = 'core_auth_login';
 
+/** Muster's core tool that disconnects a server from the user's session. */
+export const AUTH_LOGOUT_TOOL = 'core_auth_logout';
+
 /** Muster's MCP resource carrying per-session, per-server auth status. */
 export const AUTH_STATUS_RESOURCE = 'auth://status';
 
@@ -91,6 +94,36 @@ export function parseAuthLoginResult(result: {
     return { status: 'connected', message };
   }
 
+  return { status: 'unknown', message };
+}
+
+export interface AuthLogoutResult {
+  /**
+   * `signed_out` -- muster revoked the session's auth for the server;
+   * `error` -- muster refused (unknown server, SSO-managed server);
+   * `unknown` -- muster answered something unrecognised, re-read auth://status.
+   */
+  status: 'signed_out' | 'error' | 'unknown';
+  /** Muster's own message, passed through for display. */
+  message: string;
+}
+
+/**
+ * Marker muster uses for a completed logout ("Successfully logged out from
+ * '<server>'." -- `handleAuthLogout` in the muster repo). Refusals (unknown
+ * server, SSO-managed server) arrive as MCP tool errors and never reach this
+ * parser.
+ */
+const SIGNED_OUT_MARKER = 'Successfully logged out';
+
+/** Classify `core_auth_logout`'s answer. The result is prose-only. */
+export function parseAuthLogoutResult(result: {
+  text?: string;
+}): AuthLogoutResult {
+  const message = result.text ?? '';
+  if (message.includes(SIGNED_OUT_MARKER)) {
+    return { status: 'signed_out', message };
+  }
   return { status: 'unknown', message };
 }
 
