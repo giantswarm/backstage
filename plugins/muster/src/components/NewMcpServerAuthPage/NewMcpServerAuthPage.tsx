@@ -311,6 +311,33 @@ export function NewMcpServerAuthPage() {
             </Card>
           )}
 
+          {state.authMode === 'platform-sso' && (
+            <Card>
+              <CardBody>
+                <Flex direction="column" gap="4">
+                  <Alert
+                    status="warning"
+                    title="This server receives the platform identity token of every user who uses its tools"
+                    description="Only choose this for backends your platform team administers."
+                  />
+                  <TextField
+                    label="Required audiences"
+                    secondaryLabel="optional"
+                    value={audiencesRaw}
+                    onChange={onAudiencesChange}
+                    placeholder="my-backend-audience"
+                    description="Audiences the forwarded token must carry, comma-separated. Leave empty unless the backend checks a specific audience."
+                  />
+                  <Alert
+                    status="info"
+                    title="New audiences need a muster restart"
+                    description="Muster computes its identity-provider scope set from required audiences at startup, so a new audience takes effect only after muster reloads and users re-authenticate. Reusing an audience muster already requests needs no such step."
+                  />
+                </Flex>
+              </CardBody>
+            </Card>
+          )}
+
           {state.authMode === 'sigv4' && (
             <Card>
               <CardBody>
@@ -377,33 +404,6 @@ export function NewMcpServerAuthPage() {
                       description={advisory}
                     />
                   ))}
-                </Flex>
-              </CardBody>
-            </Card>
-          )}
-
-          {state.authMode === 'platform-sso' && (
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="4">
-                  <Alert
-                    status="warning"
-                    title="This server receives the platform identity token of every user who uses its tools"
-                    description="Only choose this for backends your platform team administers."
-                  />
-                  <TextField
-                    label="Required audiences"
-                    secondaryLabel="optional"
-                    value={audiencesRaw}
-                    onChange={onAudiencesChange}
-                    placeholder="my-backend-audience"
-                    description="Audiences the forwarded token must carry, comma-separated. Leave empty unless the backend checks a specific audience."
-                  />
-                  <Alert
-                    status="info"
-                    title="New audiences need a muster restart"
-                    description="Muster computes its identity-provider scope set from required audiences at startup, so a new audience takes effect only after muster reloads and users re-authenticate. Reusing an audience muster already requests needs no such step."
-                  />
                 </Flex>
               </CardBody>
             </Card>

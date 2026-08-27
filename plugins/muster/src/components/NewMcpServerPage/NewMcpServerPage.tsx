@@ -276,15 +276,6 @@ export function NewMcpServerPage() {
                   placeholder="https://mcp.example.com/mcp"
                   description="The server's MCP endpoint."
                 />
-                <TextAreaField
-                  label="Request metadata"
-                  secondaryLabel="optional"
-                  value={metaRaw}
-                  onChange={onMetaChange}
-                  rows={3}
-                  placeholder={`${AWS_REGION_META_KEY}=eu-central-1`}
-                  description={`One NAME=value per line, merged into every request muster sends this server. Most servers need none. AWS-hosted servers read the region they operate in from ${AWS_REGION_META_KEY} — without it they answer about their own default region instead of failing.`}
-                />
                 <SelectableCardGrid ariaLabel="Transport" minWidth={280}>
                   {TRANSPORTS.map(transport => (
                     <SelectableCard
@@ -308,6 +299,15 @@ export function NewMcpServerPage() {
                     </SelectableCard>
                   ))}
                 </SelectableCardGrid>
+                <TextAreaField
+                  label="Request metadata"
+                  secondaryLabel="optional"
+                  value={metaRaw}
+                  onChange={onMetaChange}
+                  rows={3}
+                  placeholder={`${AWS_REGION_META_KEY}=eu-central-1`}
+                  description={`One NAME=value per line, merged into every request muster sends this server. Most servers need none. AWS-hosted servers read the region they operate in from ${AWS_REGION_META_KEY} — without it they answer about their own default region instead of failing.`}
+                />
               </Flex>
             </CardBody>
           </Card>
