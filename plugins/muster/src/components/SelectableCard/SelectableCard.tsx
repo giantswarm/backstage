@@ -40,6 +40,13 @@ const useStyles = makeStyles(theme => ({
     borderColor: theme.palette.primary.main,
     outline: `1px solid ${theme.palette.primary.main}`,
   },
+  disabled: {
+    cursor: 'not-allowed',
+    opacity: 0.6,
+    '&:hover': {
+      borderColor: theme.palette.divider,
+    },
+  },
   indicator: {
     flexShrink: 0,
   },
@@ -84,6 +91,12 @@ type SelectableCardProps = {
   selected: boolean;
   ariaLabel: string;
   onSelect: () => void;
+  /**
+   * Renders the option as unpickable. Used where a rule elsewhere in the form
+   * makes the choice invalid — the card stays visible (and says why in its
+   * body) rather than disappearing, so the option is still discoverable.
+   */
+  disabled?: boolean;
   children: ReactNode;
 };
 
@@ -92,6 +105,7 @@ export function SelectableCard({
   selected,
   ariaLabel,
   onSelect,
+  disabled,
   children,
 }: SelectableCardProps) {
   const classes = useStyles();
@@ -103,8 +117,14 @@ export function SelectableCard({
       role="radio"
       aria-checked={selected}
       aria-label={ariaLabel}
-      onClick={onSelect}
-      className={`${classes.card} ${selected ? classes.selected : ''}`}
+      // aria-disabled, not `disabled`: a disabled button drops out of the tab
+      // order, so a keyboard user would never reach the explanation of why the
+      // option is unavailable.
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? undefined : onSelect}
+      className={`${classes.card} ${selected ? classes.selected : ''} ${
+        disabled ? classes.disabled : ''
+      }`}
     >
       <Flex align="start" justify="between" gap="2">
         <Flex direction="column" gap="1">

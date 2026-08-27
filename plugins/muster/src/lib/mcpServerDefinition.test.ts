@@ -5,6 +5,9 @@ import {
   composeMcpServerDefinition,
   deriveSlug,
   emptyFormState,
+  formatMetaEntries,
+  parseMetaEntries,
+  sigv4Advisories,
   toMcpServerManifestYaml,
   toMusterCliCommand,
   validateNewMcpServerForm,
@@ -23,6 +26,20 @@ function state(
     url: 'https://weather.example.com/mcp',
     ...overrides,
   };
+}
+
+const ROLE_ARN = 'arn:aws:iam::123456789012:role/muster-mcp';
+
+/** A complete, valid AWS SigV4 answer. */
+function sigv4State(
+  overrides: Partial<NewMcpServerFormState> = {},
+): NewMcpServerFormState {
+  return state({
+    url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
+    authMode: 'sigv4',
+    sigv4Region: 'eu-central-1',
+    ...overrides,
+  });
 }
 
 describe('composeMcpServerDefinition', () => {
@@ -102,6 +119,73 @@ describe('composeMcpServerDefinition', () => {
     ).toEqual({ forwardToken: true });
   });
 
+  it('composes AWS request signing as auth.type sigv4 plus the sigv4 block', () => {
+    expect(
+      composeMcpServerDefinition(
+        sigv4State({ sigv4Service: '  aws-mcp ', sigv4RoleArn: ROLE_ARN }),
+      ).auth,
+    ).toEqual({
+      type: 'sigv4',
+      sigv4: {
+        region: 'eu-central-1',
+        service: 'aws-mcp',
+        roleArn: ROLE_ARN,
+      },
+    });
+  });
+
+  it('omits the sigv4 overrides muster derives or defaults itself', () => {
+    // No service → derived from the URL host; no roleArn → muster's own
+    // identity. Sending empty strings would say the same thing less clearly.
+    expect(composeMcpServerDefinition(sigv4State()).auth).toEqual({
+      type: 'sigv4',
+      sigv4: { region: 'eu-central-1' },
+    });
+  });
+
+  it('never composes forwardToken or tokenExchange next to sigv4', () => {
+    // The CRD rejects both alongside sigv4. The exclusive auth modes make that
+    // structural, so a stale Platform SSO answer cannot ride along.
+    const definition = composeMcpServerDefinition(
+      sigv4State({ requiredAudiences: ['dex-k8s-authenticator'] }),
+    );
+    expect(definition.auth).not.toHaveProperty('forwardToken');
+    expect(definition.auth).not.toHaveProperty('tokenExchange');
+    expect(definition.auth).not.toHaveProperty('requiredAudiences');
+  });
+
+  it('composes request metadata as a string map, trimmed and without blanks', () => {
+    expect(
+      composeMcpServerDefinition(
+        state({
+          meta: [
+            { key: ' AWS_REGION ', value: ' eu-north-1 ' },
+            { key: '', value: '' },
+          ],
+        }),
+      ).meta,
+    ).toEqual({ AWS_REGION: 'eu-north-1' });
+  });
+
+  it('omits meta when no entry has a name', () => {
+    expect(
+      composeMcpServerDefinition(state({ meta: [{ key: '  ', value: 'x' }] })),
+    ).not.toHaveProperty('meta');
+  });
+
+  it('carries request metadata for a server without sigv4 too', () => {
+    // `spec.meta` belongs to the endpoint, not to auth: the CRD allows it for
+    // every non-stdio server.
+    expect(
+      composeMcpServerDefinition(
+        state({
+          transport: 'sse',
+          meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }],
+        }),
+      ).meta,
+    ).toEqual({ AWS_REGION: 'eu-north-1' });
+  });
+
   it('omits an empty description', () => {
     expect(
       composeMcpServerDefinition(state({ description: '   ' })),
@@ -113,7 +197,12 @@ describe('composeMcpServerDefinition', () => {
   // just be redundant, it would break registration — the create tool rejects
   // unknown fields, and it has no annotations argument to put it in.
   it('carries no attribution or metadata of its own', () => {
-    for (const authMode of ['none', 'own-account', 'platform-sso'] as const) {
+    for (const authMode of [
+      'none',
+      'own-account',
+      'platform-sso',
+      'sigv4',
+    ] as const) {
       const definition = composeMcpServerDefinition(state({ authMode }));
       expect(Object.keys(definition).sort()).toEqual(
         expect.not.arrayContaining(['annotations', 'labels', 'metadata']),
@@ -209,6 +298,38 @@ describe('validateNewMcpServerForm', () => {
     ).toEqual([expect.stringContaining('Scopes apply to the issuer override')]);
   });
 
+  it('requires a signing region for AWS SigV4', () => {
+    expect(validateNewMcpServerForm(sigv4State({ sigv4Region: '  ' }))).toEqual(
+      ['Signing region is required for AWS SigV4'],
+    );
+  });
+
+  it('rejects AWS SigV4 on the SSE transport, and says where to fix it', () => {
+    expect(validateNewMcpServerForm(sigv4State({ transport: 'sse' }))).toEqual([
+      expect.stringContaining(
+        'AWS SigV4 signing needs the Streamable HTTP transport',
+      ),
+    ]);
+  });
+
+  it('flags request metadata that the composed map would silently swallow', () => {
+    expect(
+      validateNewMcpServerForm(
+        state({ meta: [{ key: '', value: 'eu-north-1' }] }),
+      ),
+    ).toEqual(['Request metadata needs a name for every value']);
+    expect(
+      validateNewMcpServerForm(
+        state({
+          meta: [
+            { key: 'AWS_REGION', value: 'eu-north-1' },
+            { key: 'AWS_REGION', value: 'eu-central-1' },
+          ],
+        }),
+      ),
+    ).toEqual(['Request metadata has AWS_REGION more than once']);
+  });
+
   it('ignores auth-mode-specific fields left over from another mode', () => {
     expect(
       validateNewMcpServerForm(
@@ -219,6 +340,64 @@ describe('validateNewMcpServerForm', () => {
         }),
       ),
     ).toEqual([]);
+  });
+});
+
+describe('sigv4Advisories', () => {
+  it('says nothing for a server that does not sign requests', () => {
+    expect(sigv4Advisories(state({ authMode: 'platform-sso' }))).toEqual([]);
+  });
+
+  it('warns when the signing region is not the endpoint’s region', () => {
+    expect(sigv4Advisories(sigv4State({ sigv4Region: 'us-east-1' }))).toEqual([
+      expect.stringContaining('The URL does not mention us-east-1'),
+      expect.anything(),
+    ]);
+  });
+
+  it('warns when the operating region is missing, the silent-wrong-answer case', () => {
+    expect(sigv4Advisories(sigv4State())).toEqual([
+      expect.stringContaining('No AWS_REGION in request metadata'),
+    ]);
+  });
+
+  it('goes quiet once both are set', () => {
+    expect(
+      sigv4Advisories(
+        sigv4State({ meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }] }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('never blocks: advisories are not validation errors', () => {
+    const advised = sigv4State();
+    expect(sigv4Advisories(advised).length).toBeGreaterThan(0);
+    expect(validateNewMcpServerForm(advised)).toEqual([]);
+  });
+});
+
+describe('request metadata text round trip', () => {
+  it.each([
+    ['AWS_REGION=eu-central-1', [{ key: 'AWS_REGION', value: 'eu-central-1' }]],
+    // A value containing '=' keeps everything after the first separator.
+    ['A=b=c', [{ key: 'A', value: 'b=c' }]],
+    // Half-typed entries survive, so the field doesn't fight the cursor.
+    ['AWS_REGION', [{ key: 'AWS_REGION', value: '' }]],
+    ['  ', []],
+  ])('parses %j', (text, entries) => {
+    expect(parseMetaEntries(text)).toEqual(entries);
+  });
+
+  it('drops blank lines but keeps order', () => {
+    expect(parseMetaEntries('A=1\n\nB=2')).toEqual([
+      { key: 'A', value: '1' },
+      { key: 'B', value: '2' },
+    ]);
+  });
+
+  it('renders entries back to the lines they came from', () => {
+    const text = 'AWS_REGION=eu-central-1\nAWS_PROFILE=default';
+    expect(formatMetaEntries(parseMetaEntries(text))).toBe(text);
   });
 });
 
@@ -262,8 +441,47 @@ describe('authFieldAvailability', () => {
     );
   });
 
+  it('offers the signing configuration only for AWS SigV4', () => {
+    expect(authFieldAvailability(sigv4State()).sigv4.available).toBe(true);
+    expect(authFieldAvailability(state()).sigv4).toEqual({
+      available: false,
+      reason: expect.stringContaining('AWS SigV4 request signing'),
+    });
+  });
+
+  it('withdraws the signing configuration on a transport the CRD forbids', () => {
+    expect(
+      authFieldAvailability(sigv4State({ transport: 'sse' })).sigv4,
+    ).toEqual({
+      available: false,
+      reason: expect.stringContaining(
+        'only with the Streamable HTTP transport',
+      ),
+    });
+  });
+
+  it('disables the per-user auth fields for sigv4, naming the machine identity', () => {
+    // The CRD's other two sigv4 rules — no forwardToken, no authorizationServer
+    // — as field states rather than submit-time errors.
+    const sigv4 = authFieldAvailability(sigv4State());
+    expect(sigv4.authorizationServer).toEqual({
+      available: false,
+      reason: expect.stringContaining("muster's own machine identity"),
+    });
+    expect(sigv4.scopes.available).toBe(false);
+    expect(sigv4.requiredAudiences).toEqual({
+      available: false,
+      reason: expect.stringContaining('AWS SigV4 forwards no token at all'),
+    });
+  });
+
   it('always explains why a field is unavailable', () => {
-    for (const authMode of ['none', 'own-account', 'platform-sso'] as const) {
+    for (const authMode of [
+      'none',
+      'own-account',
+      'platform-sso',
+      'sigv4',
+    ] as const) {
       for (const field of Object.values(
         authFieldAvailability(state({ authMode })),
       )) {
@@ -290,7 +508,8 @@ describe('authFieldAvailability', () => {
 //     ../muster/helm/muster/crds/muster.giantswarm.io_mcpservers.yaml
 
 type CrdSchema = {
-  properties?: Record<string, unknown>;
+  default?: unknown;
+  properties?: Record<string, CrdSchema>;
   'x-kubernetes-validations'?: { rule: string; message: string }[];
 };
 
@@ -302,6 +521,10 @@ const openApiSchema = mcpServersCrd.spec.versions[0].schema
  * `==`, `!=`, parentheses, string and boolean literals — against a candidate
  * object, so the rules can be run as written instead of paraphrased in test
  * assertions.
+ *
+ * Comparison operands are values, not just paths: the sigv4 pairing rule
+ * (`has(self.sigv4) == (self.type == 'sigv4')`) compares two boolean
+ * sub-expressions.
  *
  * ponytail: a hand-rolled evaluator for the shapes this CRD actually carries,
  * deliberately loud (it throws) about anything outside them, so an unsupported
@@ -346,10 +569,17 @@ function evaluateCel(rule: string, self: unknown): boolean {
     throw new Error(`unsupported literal ${token} in: ${rule}`);
   };
 
-  const primary = (): boolean => {
+  const asBoolean = (value: unknown): boolean => {
+    if (typeof value !== 'boolean') {
+      throw new Error(`expected a boolean, got ${String(value)} in: ${rule}`);
+    }
+    return value;
+  };
+
+  const primary = (): unknown => {
     if (peek() === '!') {
       next('!');
-      return !primary();
+      return !asBoolean(primary());
     }
     if (peek() === '(') {
       next('(');
@@ -364,23 +594,27 @@ function evaluateCel(rule: string, self: unknown): boolean {
       next(')');
       return resolve(path) !== undefined;
     }
-    const path = next();
-    const operator = peek();
-    if (operator !== '==' && operator !== '!=') {
-      throw new Error(`expected a comparison after ${path} in: ${rule}`);
+    const token = next();
+    return token.startsWith("'") || token === 'true' || token === 'false'
+      ? literal(token)
+      : resolve(token);
+  };
+
+  const equality = (): unknown => {
+    let value = primary();
+    while (peek() === '==' || peek() === '!=') {
+      const operator = next();
+      const right = primary();
+      value = operator === '==' ? value === right : value !== right;
     }
-    next();
-    const expected = literal(next());
-    return operator === '=='
-      ? resolve(path) === expected
-      : resolve(path) !== expected;
+    return value;
   };
 
   const conjunction = (): boolean => {
-    let value = primary();
+    let value = asBoolean(equality());
     while (peek() === '&&') {
       next('&&');
-      value = primary() && value;
+      value = asBoolean(equality()) && value;
     }
     return value;
   };
@@ -399,6 +633,30 @@ function evaluateCel(rule: string, self: unknown): boolean {
     throw new Error(`trailing tokens in: ${rule}`);
   }
   return result;
+}
+
+/**
+ * Applies the CRD's `default`s the way the API server does — before its CEL
+ * rules run. Without this, a rule that reads a defaulted field (`sigv4 signs as
+ * muster's own machine identity...` checks `self.forwardToken == false`) would
+ * see `undefined` for a field the wizard legitimately omits, and report a
+ * violation the API server never would.
+ */
+function applyCrdDefaults(schema: CrdSchema, value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+  const defaulted = { ...(value as Record<string, unknown>) };
+  for (const [key, property] of Object.entries(schema.properties ?? {})) {
+    if (defaulted[key] === undefined) {
+      if (property.default !== undefined) {
+        defaulted[key] = property.default;
+      }
+    } else {
+      defaulted[key] = applyCrdDefaults(property, defaulted[key]);
+    }
+  }
+  return defaulted;
 }
 
 function celViolations(schema: CrdSchema, self: unknown): string[] {
@@ -459,6 +717,29 @@ describe('CRD conformance', () => {
     ],
     ['sse transport', state({ transport: 'sse' })],
     [
+      'sigv4 (signing region only)',
+      state({
+        url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
+        authMode: 'sigv4',
+        sigv4Region: 'eu-central-1',
+      }),
+    ],
+    [
+      'sigv4 (service, assumed role and operating region)',
+      state({
+        url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
+        authMode: 'sigv4',
+        sigv4Region: 'eu-central-1',
+        sigv4Service: 'aws-mcp',
+        sigv4RoleArn: 'arn:aws:iam::123456789012:role/muster-mcp',
+        meta: [{ key: 'AWS_REGION', value: 'eu-central-1' }],
+      }),
+    ],
+    [
+      'request metadata without sigv4',
+      state({ meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }] }),
+    ],
+    [
       'longest allowed description',
       state({ description: 'x'.repeat(500), url: 'http://mcp:8080/mcp' }),
     ],
@@ -470,7 +751,11 @@ describe('CRD conformance', () => {
   });
 
   it.each(cases)('%s: satisfies every CEL rule', (_, formState) => {
-    const cr = customResource(formState);
+    // Defaulted first, because that is the order the API server works in.
+    const cr = applyCrdDefaults(
+      openApiSchema,
+      customResource(formState),
+    ) as ReturnType<typeof customResource>;
     expect(celViolations(openApiSchema, cr)).toEqual([]);
     expect(cr.spec.auth ? celViolations(authSchema, cr.spec.auth) : []).toEqual(
       [],
@@ -504,6 +789,61 @@ describe('CRD conformance', () => {
     ).toEqual([
       expect.stringContaining('forwardToken bypasses per-backend OAuth'),
     ]);
+    // The sigv4 rules, in both directions of the pairing.
+    expect(
+      celViolations(authSchema, { type: 'sigv4', forwardToken: false }),
+    ).toEqual([
+      expect.stringContaining("type 'sigv4' requires the sigv4 block"),
+    ]);
+    expect(
+      celViolations(authSchema, {
+        type: 'oauth',
+        forwardToken: false,
+        sigv4: { region: 'eu-central-1' },
+      }),
+    ).toEqual([
+      expect.stringContaining("type 'sigv4' requires the sigv4 block"),
+    ]);
+    expect(
+      celViolations(authSchema, {
+        type: 'sigv4',
+        forwardToken: true,
+        sigv4: { region: 'eu-central-1' },
+      }),
+    ).toEqual([
+      expect.stringContaining("sigv4 signs as muster's own machine identity"),
+    ]);
+    expect(
+      celViolations(authSchema, {
+        type: 'sigv4',
+        forwardToken: false,
+        sigv4: { region: 'eu-central-1' },
+        tokenExchange: { enabled: true },
+      }),
+    ).toEqual([
+      expect.stringContaining("sigv4 signs as muster's own machine identity"),
+    ]);
+    // ...and the two spec-level rules sigv4 brought with it.
+    expect(
+      celViolations(openApiSchema, {
+        spec: {
+          type: 'sse',
+          url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
+          auth: { type: 'sigv4', sigv4: { region: 'eu-central-1' } },
+        },
+      }),
+    ).toEqual(['auth.sigv4 is only allowed when type is streamable-http']);
+    expect(
+      celViolations(openApiSchema, {
+        spec: {
+          type: 'stdio',
+          command: 'mcp-server',
+          meta: { AWS_REGION: 'x' },
+        },
+      }),
+    ).toEqual([
+      'meta field is only allowed when type is streamable-http or sse',
+    ]);
   });
 
   it('rejects a URL the CRD pattern refuses (so validation must catch it first)', () => {
@@ -534,6 +874,22 @@ describe('toMcpServerManifestYaml', () => {
     expect(yaml).toContain('issuer: "https://auth.example.com"');
     // The name lives in metadata, not the spec (unlike the tool argument shape).
     expect(yaml).not.toMatch(/spec:[\s\S]*name: weather-mcp/);
+  });
+
+  it('renders the sigv4 block and request metadata for the GitOps path', () => {
+    const yaml = toMcpServerManifestYaml(
+      composeMcpServerDefinition(
+        sigv4State({
+          sigv4RoleArn: ROLE_ARN,
+          meta: [{ key: 'AWS_REGION', value: 'eu-central-1' }],
+        }),
+      ),
+    );
+
+    expect(yaml).toContain('type: sigv4');
+    expect(yaml).toContain('region: eu-central-1');
+    expect(yaml).toContain(`roleArn: "${ROLE_ARN}"`);
+    expect(yaml).toContain('AWS_REGION: eu-central-1');
   });
 });
 
@@ -585,5 +941,20 @@ describe('toMusterCliCommand', () => {
     );
 
     expect(cmd).toContain(`--description='it'\\''s; rm -rf /'`);
+  });
+  it('has no command for a definition the CLI cannot express', () => {
+    // `muster create mcpserver` has no sigv4 or meta flags (cmd/create.go as of
+    // muster v5.4.0). `--auth-type=sigv4` alone would compose a CR the CRD
+    // rejects, so the review step must offer the manifest instead.
+    expect(
+      toMusterCliCommand(composeMcpServerDefinition(sigv4State())),
+    ).toBeUndefined();
+    expect(
+      toMusterCliCommand(
+        composeMcpServerDefinition(
+          state({ meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }] }),
+        ),
+      ),
+    ).toBeUndefined();
   });
 });

@@ -104,6 +104,25 @@
                         },
                         "type": "array"
                       },
+                      "sigv4": {
+                        "description": "SigV4 configures AWS Signature Version 4 request signing. Required when\nType is \"sigv4\", and rejected otherwise.\n\nUnlike the OAuth mechanisms above, this is a machine identity: every\nrequest signs as muster itself, not as the calling user, so it never\ntouches the session-scoped client machinery. Only valid together with\nspec.type \"streamable-http\".\n\nForwardToken and TokenExchange are rejected alongside it by the rule\nabove. AuthorizationServer needs no rule of its own: it already requires\nType \"oauth\", which the sigv4 pairing rule excludes.",
+                        "properties": {
+                          "region": {
+                            "description": "Region is the SigV4 signing region. It must match the region in URL,\nbecause the signature's credential scope is checked against the\nendpoint. This is not the region the backend operates in — that is\nMCPServerSpec.Meta.",
+                            "type": "string"
+                          },
+                          "roleArn": {
+                            "description": "RoleARN, when set, is assumed from the pod's base credentials before\nsigning. Leave empty to sign as the pod's own identity.",
+                            "type": "string"
+                          },
+                          "service": {
+                            "description": "Service is the SigV4 signing service name. It defaults to the first\nhostname label of URL, which is how AWS's own clients derive it:\naws-mcp.eu-central-1.api.aws signs as service \"aws-mcp\".",
+                            "type": "string"
+                          }
+                        },
+                        "required": ["region"],
+                        "type": "object"
+                      },
                       "tokenExchange": {
                         "description": "TokenExchange enables SSO via RFC 8693 Token Exchange for cross-cluster SSO.\nWhen configured, muster exchanges its local token for a token valid on the\nremote cluster's Identity Provider (e.g., Dex).\n\nUse TokenExchange when:\n  - The remote cluster has its own Dex instance\n  - The remote Dex is configured with an OIDC connector for muster's Dex\n  - You need a token issued by the remote cluster's IdP (not just forwarded)\n\nToken exchange takes precedence over ForwardToken if both are configured.",
                         "properties": {
@@ -162,8 +181,8 @@
                       },
                       "type": {
                         "default": "none",
-                        "description": "Type specifies the authentication type.\nSupported values:\n  - \"oauth\": OAuth 2.0/OIDC authentication\n  - \"none\": No authentication",
-                        "enum": ["oauth", "none"],
+                        "description": "Type specifies the authentication type.\nSupported values:\n  - \"oauth\": OAuth 2.0/OIDC authentication\n  - \"none\": No authentication\n  - \"sigv4\": AWS Signature Version 4, signed with muster's own machine\n    identity. See SigV4.",
+                        "enum": ["oauth", "none", "sigv4"],
                         "type": "string"
                       }
                     },
@@ -180,6 +199,14 @@
                       {
                         "message": "tokenExchange has its own issuer/endpoint config; set one or the other, not both",
                         "rule": "!(has(self.tokenExchange) && has(self.tokenExchange.enabled) && self.tokenExchange.enabled == true && has(self.authorizationServer))"
+                      },
+                      {
+                        "message": "type 'sigv4' requires the sigv4 block, and the sigv4 block requires type 'sigv4'",
+                        "rule": "has(self.sigv4) == (self.type == 'sigv4')"
+                      },
+                      {
+                        "message": "sigv4 signs as muster's own machine identity, so forwardToken and tokenExchange do not apply",
+                        "rule": "!has(self.sigv4) || (self.forwardToken == false && !has(self.tokenExchange))"
                       }
                     ]
                   },
@@ -228,6 +255,23 @@
                     "description": "Headers contains HTTP headers to send with requests to remote MCP servers.\nThis field is only relevant when Type is \"streamable-http\" or \"sse\".",
                     "type": "object"
                   },
+                  "meta": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Meta contains entries merged into the `params._meta` object of every\noutbound JSON-RPC request that carries `params`. It carries call-scoped\nconfiguration to a backend that reads it from the MCP metadata field\ninstead of from tool arguments.\n\nAn entry already present in a request's `_meta` wins, so a caller can\nstill override per call. Requests without `params` are left untouched.\n\nThe injection happens in an HTTP round tripper shared by every remote\nclient, so it applies to `streamable-http` and `sse` alike, with or\nwithout auth. For a SigV4 server the round tripper sits in front of the\nsigner, because the body has to be rewritten before it is signed.\n\nA stdio server has no HTTP transport, so the CEL rule above rejects the\nfield there rather than accepting and dropping it.\n\nThe AWS-hosted MCP server is the motivating case: it takes the region it\noperates in from `params._meta.AWS_REGION`, and its tools declare no\nregion argument, so without this a call fails with NoRegionError. That\noperating region is a different value from Auth.SigV4.Region, which is\nthe signing region — the two default to the same string but resolve\nindependently, endpoint-first for signing and config-first for operating.",
+                    "type": "object"
+                  },
+                  "restartRequestedAt": {
+                    "description": "RestartRequestedAt requests a one-shot restart of this server's service.\nRestart is an action, not a steady state, so it cannot be a boolean: the\ncaller writes a timestamp, which doubles as the audit record of when the\nrestart was requested. The reconciler restarts the service only when this\ndiffers from status.lastRestartedAt, then mirrors the processed value\ninto status — repeated reconciles of an already-processed request are\nno-ops (issue #1055).",
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "suspended": {
+                    "default": false,
+                    "description": "Suspended declares the desired lifecycle state of this server's service.\nWhen true, the reconciler stops the service (and refuses to start it)\nuntil the field is set back to false. This is the CR-driven replacement\nfor the imperative start/stop tools: writing it is authorized and\naudited by the apiserver like any other spec mutation (issue #1055).",
+                    "type": "boolean"
+                  },
                   "timeout": {
                     "default": 30,
                     "description": "Timeout specifies the connection timeout for remote operations (in seconds)",
@@ -241,7 +285,7 @@
                     "type": "string"
                   },
                   "type": {
-                    "description": "Type specifies how this MCP server should be executed.\nSupported values: \"stdio\" for local processes, \"streamable-http\" for HTTP-based servers, \"sse\" for Server-Sent Events",
+                    "description": "Type specifies how this MCP server should be executed.\nSupported values: \"stdio\" for local processes, \"streamable-http\" for HTTP-based servers, \"sse\" for Server-Sent Events.\n\n\"stdio\" is CLI-only. A stdio server is started as a subprocess of the muster\nprocess, so a muster running in Kubernetes mode rejects it: the tool handlers\nfail the call, and a CR applied directly through the API server is reconciled\nto state Failed instead of spawning a process in the muster pod. Run the MCP\nserver as its own workload and use \"streamable-http\" or \"sse\" instead.",
                     "enum": ["stdio", "streamable-http", "sse"],
                     "type": "string"
                   },
@@ -326,6 +370,11 @@
                     "description": "LastError contains any error message from the most recent server operation.\nNote: Per-user authentication errors are tracked in the Session Registry,\nnot here. This field only contains infrastructure-level errors.",
                     "type": "string"
                   },
+                  "lastRestartedAt": {
+                    "description": "LastRestartedAt mirrors the spec.restartRequestedAt value most recently\nprocessed by the reconciler. A restart is performed only when the two\ndiffer (spec-is-desired / status-is-observed idiom, issue #1055).",
+                    "format": "date-time",
+                    "type": "string"
+                  },
                   "nextRetryAfter": {
                     "description": "NextRetryAfter indicates the earliest time when the next retry should be attempted.\nThis is calculated based on exponential backoff from ConsecutiveFailures.",
                     "format": "date-time",
@@ -370,6 +419,14 @@
               {
                 "message": "headers field is only allowed when type is streamable-http or sse",
                 "rule": "self.spec.type != 'stdio' || !has(self.spec.headers)"
+              },
+              {
+                "message": "meta field is only allowed when type is streamable-http or sse",
+                "rule": "self.spec.type != 'stdio' || !has(self.spec.meta)"
+              },
+              {
+                "message": "auth.sigv4 is only allowed when type is streamable-http",
+                "rule": "!has(self.spec.auth) || !has(self.spec.auth.sigv4) || self.spec.type == 'streamable-http'"
               }
             ]
           }

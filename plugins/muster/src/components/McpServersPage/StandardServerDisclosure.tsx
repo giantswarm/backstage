@@ -159,15 +159,19 @@ export function StandardServerDisclosure({
             would leave the family's other instances gated with no way to act.
             `onlyWhenRequired` keeps this quiet for the connected majority. */}
         {authenticated &&
-          servers.map(instance => (
-            <ServerSignIn
-              key={instance.getName()}
-              serverName={instance.getName()}
-              installation={instance.cluster}
-              showName
-              onlyWhenRequired
-            />
-          ))}
+          servers
+            // A sigv4 instance has no user sign-in at all; AuthChain above
+            // explains the machine identity instead.
+            .filter(instance => instance.canAuthenticateInteractively())
+            .map(instance => (
+              <ServerSignIn
+                key={instance.getName()}
+                serverName={instance.getName()}
+                installation={instance.cluster}
+                showName
+                onlyWhenRequired
+              />
+            ))}
       </DetailBlock>
 
       <DetailBlock title="GitOps provenance">

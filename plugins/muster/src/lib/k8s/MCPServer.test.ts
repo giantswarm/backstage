@@ -30,6 +30,47 @@ function makeStateServer(state: MCPServerState, name = 'srv'): MCPServer {
   );
 }
 
+describe('MCPServer sigv4 accessors', () => {
+  it('reads the signing configuration and the request metadata', () => {
+    const server = makeServer({
+      type: 'streamable-http',
+      url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
+      auth: {
+        type: 'sigv4',
+        sigv4: { region: 'eu-central-1', service: 'aws-mcp' },
+      },
+      meta: { AWS_REGION: 'eu-central-1' },
+    });
+
+    expect(server.getAuth()?.sigv4).toEqual({
+      region: 'eu-central-1',
+      service: 'aws-mcp',
+    });
+    expect(server.getMeta()).toEqual({ AWS_REGION: 'eu-central-1' });
+  });
+
+  it('reports that a sigv4 server has no sign-in a user could complete', () => {
+    // muster classifies a 401 from a sigv4 server as a connection failure, not
+    // "Auth Required" — the credential is muster's own machine identity, so no
+    // user login could ever fix it.
+    expect(
+      makeServer({
+        type: 'streamable-http',
+        auth: { type: 'sigv4', sigv4: { region: 'eu-central-1' } },
+      }).canAuthenticateInteractively(),
+    ).toBe(false);
+
+    for (const auth of [undefined, { type: 'none' }, { type: 'oauth' }]) {
+      expect(
+        makeServer({
+          type: 'streamable-http',
+          ...(auth ? { auth } : {}),
+        }).canAuthenticateInteractively(),
+      ).toBe(true);
+    }
+  });
+});
+
 describe('MCPServer.getToolNamePrefix', () => {
   it('prefers the family name (family servers share a prefix)', () => {
     const server = makeServer(

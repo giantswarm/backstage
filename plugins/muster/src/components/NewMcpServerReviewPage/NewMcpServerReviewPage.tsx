@@ -83,6 +83,7 @@ const AUTH_MODE_LABELS: Record<McpServerAuthMode, string> = {
   none: 'No authentication',
   'own-account': 'Sign in with your own account (OAuth)',
   'platform-sso': 'Platform SSO (token forwarding)',
+  sigv4: "AWS request signing (SigV4, muster's shared identity)",
 };
 
 function SummaryItem({
@@ -297,7 +298,19 @@ export function NewMcpServerReviewPage() {
                       installation.
                     </Text>
                     <pre className={classes.codeBlock}>{manifestYaml}</pre>
-                    <pre className={classes.codeBlock}>{cliCommand}</pre>
+                    {/* The CLI cannot express every definition this wizard can
+                        compose: `muster create mcpserver` has no flags for
+                        sigv4 signing or request metadata. Saying so beats
+                        printing a command that looks right and is rejected. */}
+                    {cliCommand ? (
+                      <pre className={classes.codeBlock}>{cliCommand}</pre>
+                    ) : (
+                      <Text variant="body-small" color="secondary">
+                        The muster CLI has no flags for this server&apos;s
+                        signing configuration or request metadata — use the
+                        manifest above, or register it here.
+                      </Text>
+                    )}
                   </div>
                 </details>
               </Flex>

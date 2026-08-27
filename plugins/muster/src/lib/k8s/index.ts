@@ -11,6 +11,7 @@ export type {
   MCPServerSeverity,
   MCPServerFamily,
   MCPServerAuth,
+  MCPServerSigV4,
   MCPServerTokenExchange,
   ServersHealthSummary,
 } from './MCPServer';

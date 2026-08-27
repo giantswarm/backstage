@@ -18,7 +18,11 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newMcpServerRouteRef, newMcpServerReviewRouteRef } from '../../routes';
-import type { McpServerAuthMode } from '../../lib/mcpServerDefinition';
+import {
+  SIGV4_SHARED_IDENTITY_WARNING,
+  SIGV4_TRANSPORT_REQUIREMENT,
+  type McpServerAuthMode,
+} from '../../lib/mcpServerDefinition';
 import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
@@ -76,6 +80,12 @@ const AUTH_CHOICES: Array<{
     description:
       'The backend is administered by your platform team and accepts the platform identity token directly.',
   },
+  {
+    value: 'sigv4',
+    title: 'AWS request signing (SigV4)',
+    description:
+      "The backend is AWS-hosted and takes no token. Muster signs every request with its own AWS identity — shared by all users, not the caller's.",
+  },
 ];
 
 /**
@@ -96,7 +106,11 @@ export function NewMcpServerAuthPage() {
     setIssuer,
     setScopes,
     setRequiredAudiences,
+    setSigv4Region,
+    setSigv4Service,
+    setSigv4RoleArn,
     authFields,
+    authAdvisories,
     detailsErrors,
     validationErrors,
   } = useNewMcpServerForm();
@@ -201,19 +215,38 @@ export function NewMcpServerAuthPage() {
                 ariaLabel="How do users authenticate to this server?"
                 minWidth={280}
               >
-                {AUTH_CHOICES.map(choice => (
-                  <SelectableCard
-                    key={choice.value}
-                    selected={state.authMode === choice.value}
-                    ariaLabel={choice.title}
-                    onSelect={() => setAuthMode(choice.value)}
-                  >
-                    <Text weight="bold">{choice.title}</Text>
-                    <Text variant="body-small" color="secondary">
-                      {choice.description}
-                    </Text>
-                  </SelectableCard>
-                ))}
+                {AUTH_CHOICES.map(choice => {
+                  // sigv4 is the one choice a step-1 answer can rule out: the
+                  // CRD only allows it with streamable-http. Shown disabled
+                  // with the reason rather than hidden, so the option stays
+                  // discoverable and the transport link is obvious. An already
+                  // selected sigv4 stays pickable — its own card below carries
+                  // the error, and un-selecting the current choice by disabling
+                  // it would strand the user.
+                  const unavailable =
+                    choice.value === 'sigv4' &&
+                    state.authMode !== 'sigv4' &&
+                    state.transport !== 'streamable-http';
+                  return (
+                    <SelectableCard
+                      key={choice.value}
+                      selected={state.authMode === choice.value}
+                      ariaLabel={choice.title}
+                      disabled={unavailable}
+                      onSelect={() => setAuthMode(choice.value)}
+                    >
+                      <Text weight="bold">{choice.title}</Text>
+                      <Text variant="body-small" color="secondary">
+                        {choice.description}
+                      </Text>
+                      {unavailable && (
+                        <Text variant="body-small" color="warning">
+                          {SIGV4_TRANSPORT_REQUIREMENT}
+                        </Text>
+                      )}
+                    </SelectableCard>
+                  );
+                })}
               </SelectableCardGrid>
             </CardBody>
           </Card>
@@ -273,6 +306,77 @@ export function NewMcpServerAuthPage() {
                       description={authErrors.join('. ')}
                     />
                   )}
+                </Flex>
+              </CardBody>
+            </Card>
+          )}
+
+          {state.authMode === 'sigv4' && (
+            <Card>
+              <CardBody>
+                <Flex direction="column" gap="4">
+                  {/* The point of the whole step for this choice: the other
+                      three modes resolve to the calling user, this one does
+                      not, and nothing in the composed definition says so. */}
+                  <Alert
+                    status="warning"
+                    title="This grants every user the same shared AWS identity"
+                    description={SIGV4_SHARED_IDENTITY_WARNING}
+                  />
+                  <SectionHeader
+                    title="Signing configuration"
+                    description="How muster signs each request. Muster's own AWS credentials come from its pod identity; only the signing parameters are configured here."
+                  />
+                  <TextField
+                    label="Signing region"
+                    isRequired
+                    isDisabled={!authFields.sigv4.available}
+                    value={state.sigv4Region}
+                    onChange={setSigv4Region}
+                    placeholder="eu-central-1"
+                    description={
+                      authFields.sigv4.available
+                        ? "The region in the server's URL. The endpoint checks the signature against it, so a mismatch is rejected. This is not the region the server reads your resources from."
+                        : authFields.sigv4.reason
+                    }
+                  />
+                  <TextField
+                    label="Signing service"
+                    secondaryLabel="optional"
+                    isDisabled={!authFields.sigv4.available}
+                    value={state.sigv4Service}
+                    onChange={setSigv4Service}
+                    placeholder="aws-mcp"
+                    description={
+                      authFields.sigv4.available
+                        ? "Leave empty to derive it from the URL's first hostname label, which is how AWS's own clients do it (aws-mcp.eu-central-1.api.aws signs as aws-mcp)."
+                        : authFields.sigv4.reason
+                    }
+                  />
+                  <TextField
+                    label="Assumed role ARN"
+                    secondaryLabel="optional"
+                    isDisabled={!authFields.sigv4.available}
+                    value={state.sigv4RoleArn}
+                    onChange={setSigv4RoleArn}
+                    placeholder="arn:aws:iam::123456789012:role/muster-mcp"
+                    description={
+                      authFields.sigv4.available
+                        ? "A role muster assumes before signing, to reach another account. Leave empty to sign as muster's own identity."
+                        : authFields.sigv4.reason
+                    }
+                  />
+                  {/* Advisories only: a missing signing region is a validation
+                      error, and the footer surfaces those on Continue rather
+                      than shouting at a card the user just opened. */}
+                  {authAdvisories.map(advisory => (
+                    <Alert
+                      key={advisory}
+                      status="info"
+                      title="Worth checking"
+                      description={advisory}
+                    />
+                  ))}
                 </Flex>
               </CardBody>
             </Card>

@@ -136,6 +136,42 @@ describe('NewMcpServerPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('takes request metadata as NAME=value lines', async () => {
+    await renderWizard('/agent-platform/muster/servers/new');
+
+    await userEvent.type(
+      screen.getByLabelText(/Request metadata/),
+      'AWS_REGION=eu-central-1',
+    );
+
+    expect(screen.getByLabelText(/Request metadata/)).toHaveValue(
+      'AWS_REGION=eu-central-1',
+    );
+  });
+
+  it('flags request metadata the composed map would swallow', async () => {
+    await renderWizard('/agent-platform/muster/servers/new');
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
+    await userEvent.type(
+      screen.getByLabelText(/^URL/),
+      'https://weather.example.com/mcp',
+    );
+    // A value with no name in front of it is dropped silently otherwise.
+    await userEvent.type(
+      screen.getByLabelText(/Request metadata/),
+      '=eu-central-1',
+    );
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Continue' })[0],
+    );
+
+    expect(
+      screen.getByText(/Request metadata needs a name for every value/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 4: Details')).toBeInTheDocument();
+  });
+
   it('pre-selects the detected transport once the URL is entered', async () => {
     callTool.mockResolvedValue({
       transport: 'sse',

@@ -19,7 +19,12 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { mcpServersRouteRef, newMcpServerAuthRouteRef } from '../../routes';
-import type { McpServerTransport } from '../../lib/mcpServerDefinition';
+import {
+  AWS_REGION_META_KEY,
+  formatMetaEntries,
+  parseMetaEntries,
+  type McpServerTransport,
+} from '../../lib/mcpServerDefinition';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
@@ -87,9 +92,23 @@ export function NewMcpServerPage() {
     setInstallation,
     setUrl,
     setTransport,
+    setMeta,
     detailsErrors,
     registeredName,
   } = useNewMcpServerForm();
+
+  // Metadata is a list in the form state but `NAME=value` lines here. The raw
+  // text is local for the same reason the auth step's audiences are: parsing
+  // on every keystroke would rewrite what the user is still typing. Seeded
+  // from the state so stepping back into this page keeps what was entered.
+  const [metaRaw, setMetaRaw] = useState(() => formatMetaEntries(state.meta));
+  const onMetaChange = useCallback(
+    (raw: string) => {
+      setMetaRaw(raw);
+      setMeta(parseMetaEntries(raw));
+    },
+    [setMeta],
+  );
 
   // The wizard registers onto the section's active installation — the same
   // instance every muster view is scoped to, switched via the picker above the
@@ -256,6 +275,15 @@ export function NewMcpServerPage() {
                   onChange={onUrlChange}
                   placeholder="https://mcp.example.com/mcp"
                   description="The server's MCP endpoint."
+                />
+                <TextAreaField
+                  label="Request metadata"
+                  secondaryLabel="optional"
+                  value={metaRaw}
+                  onChange={onMetaChange}
+                  rows={3}
+                  placeholder={`${AWS_REGION_META_KEY}=eu-central-1`}
+                  description={`One NAME=value per line, merged into every request muster sends this server. Most servers need none. AWS-hosted servers read the region they operate in from ${AWS_REGION_META_KEY} — without it they answer about their own default region instead of failing.`}
                 />
                 <SelectableCardGrid ariaLabel="Transport" minWidth={280}>
                   {TRANSPORTS.map(transport => (
