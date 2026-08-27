@@ -156,7 +156,9 @@ describe('NewMcpServerPage', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole('radio', { name: 'Transport SSE' })).toBeChecked(),
+      expect(
+        screen.getByRole('radio', { name: 'Transport SSE' }),
+      ).toBeChecked(),
     );
     expect(screen.getByText('Detected')).toBeInTheDocument();
   });
@@ -174,7 +176,9 @@ describe('NewMcpServerPage', () => {
       'https://legacy.example.com/sse',
     );
     await waitFor(() =>
-      expect(screen.getByRole('radio', { name: 'Transport SSE' })).toBeChecked(),
+      expect(
+        screen.getByRole('radio', { name: 'Transport SSE' }),
+      ).toBeChecked(),
     );
 
     // The user overrides the detection; the choice must stick while the
