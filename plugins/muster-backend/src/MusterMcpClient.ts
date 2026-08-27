@@ -22,6 +22,8 @@ const META_TOOLS = [
   'describe_tool',
   'list_core_tools',
   'filter_tools',
+  'filter_resources',
+  'filter_prompts',
   'call_tool',
 ] as const;
 
@@ -375,6 +377,20 @@ export class MusterMcpClient {
     options?: { authToken?: string },
   ): Promise<unknown> {
     return this.invokeMetaTool('filter_tools', args, options);
+  }
+
+  async filterResources(
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('filter_resources', args, options);
+  }
+
+  async filterPrompts(
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('filter_prompts', args, options);
   }
 
   async describeTool(

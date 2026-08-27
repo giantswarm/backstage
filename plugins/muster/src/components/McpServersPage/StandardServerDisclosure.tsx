@@ -13,7 +13,10 @@ import {
   HealthDetails,
   Provenance,
   ServerConfig,
+  ServerPrompts,
+  ServerResources,
   ServerTools,
+  useServerCapabilityCounts,
 } from './serverDetail';
 import {
   isGitOpsManaged,
@@ -106,6 +109,8 @@ export function StandardServerDisclosure({
     representative.getManagementCluster() ?? representative.getName();
   const qualified = rep?.qualified ?? false;
   const toolPrefix = `x_${family}`;
+  const { resourcesCount, promptsCount } =
+    useServerCapabilityCounts(representative);
   const managed = isGitOpsManaged(representative);
   const releaseId = provenanceReleaseId(readProvenance(representative));
 
@@ -169,6 +174,18 @@ export function StandardServerDisclosure({
             />
           ))}
       </DetailBlock>
+
+      {authenticated && (resourcesCount ?? 0) > 0 && (
+        <DetailBlock title="Resources">
+          <ServerResources server={representative} />
+        </DetailBlock>
+      )}
+
+      {authenticated && (promptsCount ?? 0) > 0 && (
+        <DetailBlock title="Prompts">
+          <ServerPrompts server={representative} />
+        </DetailBlock>
+      )}
 
       <DetailBlock title="GitOps provenance">
         <Provenance server={representative} />
