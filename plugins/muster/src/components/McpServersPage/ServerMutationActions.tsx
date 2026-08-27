@@ -463,8 +463,7 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
   // not `auth.type === 'oauth'` alone — starting a *stopped* OAuth server is a
   // valid CR write and the only way to resume one that was suspended via Stop.
   const oauthSignInGated =
-    server.getAuth()?.type === 'oauth' &&
-    server.getState() === 'Auth Required';
+    server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
   const lifecycleGate = oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined;
 
   const [gitopsIntent, setGitopsIntent] = useState<'edit' | 'delete' | null>(
