@@ -22,9 +22,11 @@ export type AuthLoginStatus =
  * self-hosted CIMD URL is the client_id; `dcr` — muster registered itself via
  * RFC 7591 Dynamic Client Registration; `cimd-fallback` — the AS advertises
  * neither mechanism, muster sends the CIMD URL anyway and the AS may reject
- * the sign-in with a client-not-registered error.
+ * the sign-in with a client-not-registered error; `dcr-failed` — the AS
+ * rejected muster's registration request and muster falls back to the CIMD
+ * URL the same way (muster#1086).
  */
-export type ClientIdMethod = 'cimd' | 'dcr' | 'cimd-fallback';
+export type ClientIdMethod = 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
 
 export interface AuthLoginResult {
   status: AuthLoginStatus;
@@ -50,7 +52,12 @@ const CONNECTED_MARKERS = [
 ];
 
 /** The clientIdMethod values muster can report (anything else is dropped). */
-const CLIENT_ID_METHODS: ClientIdMethod[] = ['cimd', 'dcr', 'cimd-fallback'];
+const CLIENT_ID_METHODS: ClientIdMethod[] = [
+  'cimd',
+  'dcr',
+  'cimd-fallback',
+  'dcr-failed',
+];
 
 /**
  * Classify `core_auth_login`'s answer. An authorization challenge carries the
