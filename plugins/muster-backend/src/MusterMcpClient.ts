@@ -161,6 +161,32 @@ interface ContentItem {
 }
 
 /**
+ * The human-readable message of an errored tool result's text block. When the
+ * text is itself a serialized MCP result (`{"isError":true,"content":[...]}` —
+ * what `call_tool` puts in its envelope for a failed wrapped tool), return the
+ * inner text block's text; otherwise the text already is the message.
+ */
+function errorTextOf(text: string): string {
+  let inner: unknown;
+  try {
+    inner = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (inner === null || typeof inner !== 'object') {
+    return text;
+  }
+  const content = (inner as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return text;
+  }
+  const innerText = (content as ContentItem[]).find(
+    item => item?.type === 'text',
+  )?.text;
+  return innerText ?? text;
+}
+
+/**
  * Thin client around a single muster MCP aggregator. It exposes muster's
  * meta-tools as typed JSON calls: discovery meta-tools are invoked directly,
  * concrete aggregated tools go through `call_tool`. Connections are cached per
@@ -418,6 +444,11 @@ export class MusterMcpClient {
   /**
    * Unwrap an MCP tool result's first text content block. Tool-level errors
    * (isError) surface as exceptions with the error text.
+   *
+   * muster's `call_tool` mirrors the wrapped tool's isError onto its own
+   * envelope, so an errored envelope carries the serialized inner MCP result
+   * as its text — the thrown message must be the inner human-readable text,
+   * not that JSON structure (which the UI would otherwise show verbatim).
    */
   private unwrapTextContent(
     result: unknown,
@@ -432,7 +463,8 @@ export class MusterMcpClient {
 
     if (isError) {
       throw new Error(
-        text ?? `Muster tool ${toolName} failed without an error message`,
+        (text === undefined ? undefined : errorTextOf(text)) ??
+          `Muster tool ${toolName} failed without an error message`,
       );
     }
 

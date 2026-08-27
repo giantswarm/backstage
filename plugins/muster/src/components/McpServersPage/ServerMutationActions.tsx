@@ -405,6 +405,48 @@ export interface ServerMutationActionsProps {
 }
 
 /**
+ * Explanation shown on Start/Restart when muster would refuse them for an
+ * OAuth server waiting on a per-user sign-in (see oauthSignInGated below).
+ */
+export const OAUTH_SIGN_IN_GATE =
+  'This server authenticates per user session (OAuth), and starting or ' +
+  'restarting cannot sign a session in — muster refuses it. Sign in under ' +
+  '“Authentication / token chain” above instead.';
+
+/** A Start/Restart button, disabled with an explanatory tooltip when gated. */
+function LifecycleButton({
+  label,
+  icon,
+  gateReason,
+  onClick,
+}: {
+  label: string;
+  icon: JSX.Element;
+  gateReason?: string;
+  onClick: () => void;
+}) {
+  const button = (
+    <Button
+      size="small"
+      startIcon={icon}
+      onClick={onClick}
+      disabled={Boolean(gateReason)}
+    >
+      {label}
+    </Button>
+  );
+  if (!gateReason) {
+    return button;
+  }
+  return (
+    <Tooltip title={gateReason}>
+      {/* span wrapper so the tooltip still fires over the disabled button */}
+      <span>{button}</span>
+    </Tooltip>
+  );
+}
+
+/**
  * Lifecycle/CRUD affordances for one server, gitops-aware. Provenance is the
  * only restriction: GitOps-managed servers are read-only and route
  * Add/Edit/Delete through a GitOps PR/manifest; manually-added (ad-hoc) servers
@@ -414,6 +456,16 @@ export interface ServerMutationActionsProps {
 export function ServerMutationActions({ server }: ServerMutationActionsProps) {
   const classes = useStyles();
   const managed = isGitOpsManaged(server);
+
+  // muster refuses start/restart for an OAuth server in `Auth Required`:
+  // authentication is session-scoped, so only the sign-in flow
+  // (core_auth_login) can connect it. The gate is deliberately state-scoped,
+  // not `auth.type === 'oauth'` alone — starting a *stopped* OAuth server is a
+  // valid CR write and the only way to resume one that was suspended via Stop.
+  const oauthSignInGated =
+    server.getAuth()?.type === 'oauth' &&
+    server.getState() === 'Auth Required';
+  const lifecycleGate = oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined;
 
   const [gitopsIntent, setGitopsIntent] = useState<'edit' | 'delete' | null>(
     null,
@@ -463,9 +515,10 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
       >
         Edit
       </Button>
-      <Button
-        size="small"
-        startIcon={<PlayArrow />}
+      <LifecycleButton
+        label="Start"
+        icon={<PlayArrow />}
+        gateReason={lifecycleGate}
         onClick={() =>
           setAction({
             label: `Start ${server.getName()}`,
@@ -473,9 +526,7 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
             args: { name: server.getName() },
           })
         }
-      >
-        Start
-      </Button>
+      />
       <Button
         size="small"
         startIcon={<Stop />}
@@ -489,9 +540,10 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
       >
         Stop
       </Button>
-      <Button
-        size="small"
-        startIcon={<Replay />}
+      <LifecycleButton
+        label="Restart"
+        icon={<Replay />}
+        gateReason={lifecycleGate}
         onClick={() =>
           setAction({
             label: `Restart ${server.getName()}`,
@@ -499,9 +551,7 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
             args: { name: server.getName() },
           })
         }
-      >
-        Restart
-      </Button>
+      />
       <Button
         size="small"
         startIcon={<DeleteOutline />}
