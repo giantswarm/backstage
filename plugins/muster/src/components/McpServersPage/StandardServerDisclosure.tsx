@@ -205,15 +205,19 @@ export function StandardServerDisclosure({
           behind it would just 401. */}
       {authenticated && (
         <Box className={classes.sessionActions}>
-          {servers.map(instance => (
-            <ServerAuthActions
-              key={instance.getName()}
-              serverName={instance.getName()}
-              installation={instance.cluster}
-              showName
-              oauthConfigured={instance.getAuth()?.type === 'oauth'}
-            />
-          ))}
+          {servers
+            // A sigv4 instance has no user sign-in at all; AuthChain above
+            // explains the machine identity instead.
+            .filter(instance => instance.canAuthenticateInteractively())
+            .map(instance => (
+              <ServerAuthActions
+                key={instance.getName()}
+                serverName={instance.getName()}
+                installation={instance.cluster}
+                showName
+                oauthConfigured={instance.getAuth()?.type === 'oauth'}
+              />
+            ))}
         </Box>
       )}
     </DisclosureAccordion>

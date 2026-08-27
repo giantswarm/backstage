@@ -485,13 +485,16 @@ export function ServerMutationActions({
   const managed = isGitOpsManaged(server);
   const suspended = server.getSuspended();
 
-  const authActions = authenticated ? (
-    <ServerAuthActions
-      serverName={server.getName()}
-      installation={server.cluster}
-      oauthConfigured={server.getAuth()?.type === 'oauth'}
-    />
-  ) : null;
+  // Only for a server a user CAN sign in to -- a sigv4 server signs as
+  // muster's own machine identity, and the auth-chain detail says so.
+  const authActions =
+    authenticated && server.canAuthenticateInteractively() ? (
+      <ServerAuthActions
+        serverName={server.getName()}
+        installation={server.cluster}
+        oauthConfigured={server.getAuth()?.type === 'oauth'}
+      />
+    ) : null;
 
   // muster refuses a reconnect (core_service_restart) for an OAuth server in
   // `Auth Required`: authentication is session-scoped, so only the sign-in

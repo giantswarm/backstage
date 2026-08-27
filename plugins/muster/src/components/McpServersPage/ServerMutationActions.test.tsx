@@ -11,7 +11,7 @@ import {
 
 function makeServer(options: {
   state?: MCPServerState;
-  authType?: 'oauth' | 'none';
+  authType?: 'oauth' | 'none' | 'sigv4';
   suspended?: boolean;
   /** Marks the CR GitOps-managed (Helm provenance label). */
   managed?: boolean;
@@ -144,6 +144,16 @@ describe('ServerMutationActions lifecycle affordances', () => {
     // The underlying tool stays visible for transparency.
     expect(screen.getByText('core_service_stop')).toBeInTheDocument();
   });
+
+  it('keeps Reconnect live for a sigv4 server: reconnecting is the remedy', async () => {
+    // A sigv4 server has no per-user sign-in, so nothing about it is waiting on
+    // a session. muster keeps a rejected credential in `Failed` and retries;
+    // reconnecting after fixing the region or the role is exactly the right
+    // move, and the OAuth sign-in gate must not swallow it.
+    await renderActions(makeServer({ state: 'Failed', authType: 'sigv4' }));
+
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeEnabled();
+  });
 });
 
 /**
@@ -214,6 +224,22 @@ describe('ServerMutationActions session auth affordances', () => {
       await screen.findByRole('button', { name: 'Sign in' }),
     ).toBeInTheDocument();
     expect(screen.getByText('GitOps-managed (read-only)')).toBeInTheDocument();
+  });
+
+  it('offers no auth actions for a sigv4 server', async () => {
+    // sigv4 signs as muster's own machine identity: no user sign-in exists,
+    // and a Sign in/Sign out here could never help (mirrors muster's
+    // CanAuthenticateInteractively).
+    await renderActions(
+      makeServer({ state: 'Failed', authType: 'sigv4' }),
+      // auth://status should not even matter, but make it maximally tempting.
+      { authenticated: true, authStatus: AUTH_REQUIRED },
+    );
+
+    expect(await screen.findByRole('button', { name: 'Delete' })).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps the row auth-free without a muster session', async () => {

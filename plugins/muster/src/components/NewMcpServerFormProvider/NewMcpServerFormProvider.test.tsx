@@ -148,6 +148,102 @@ describe('NewMcpServerFormProvider', () => {
     ]);
   });
 
+  it('offers the signing configuration only for AWS SigV4 on streamable-http', () => {
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+
+    expect(result.current.authFields.sigv4.available).toBe(false);
+
+    act(() => result.current.setAuthMode('sigv4'));
+    expect(result.current.authFields.sigv4.available).toBe(true);
+    // The per-user auth fields are the ones the CRD rejects next to sigv4.
+    expect(result.current.authFields.authorizationServer.available).toBe(false);
+    expect(result.current.authFields.requiredAudiences.available).toBe(false);
+
+    act(() => result.current.setTransport('sse'));
+    expect(result.current.authFields.sigv4).toEqual({
+      available: false,
+      reason: expect.stringContaining('Streamable HTTP transport'),
+    });
+  });
+
+  it('blocks an incomplete or misplaced sigv4 answer', () => {
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setAuthMode('sigv4'));
+
+    expect(result.current.isComplete).toBe(false);
+    expect(result.current.validationErrors).toEqual([
+      'Signing region is required for AWS SigV4',
+    ]);
+
+    act(() => result.current.setSigv4Region('eu-central-1'));
+    expect(result.current.isComplete).toBe(true);
+
+    act(() => result.current.setTransport('sse'));
+    expect(result.current.validationErrors).toEqual([
+      expect.stringContaining(
+        'AWS SigV4 signing needs the Streamable HTTP transport',
+      ),
+    ]);
+  });
+
+  it('advises about the wrong-region traps without blocking on them', () => {
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setAuthMode('sigv4'));
+    act(() => result.current.setSigv4Region('eu-central-1'));
+
+    // weather.example.com carries no region, and no AWS_REGION is set.
+    expect(result.current.authAdvisories).toEqual([
+      expect.stringContaining('The URL does not mention eu-central-1'),
+      expect.stringContaining('No AWS_REGION in request metadata'),
+    ]);
+    expect(result.current.isComplete).toBe(true);
+
+    act(() => {
+      result.current.setUrl('https://aws-mcp.eu-central-1.api.aws/mcp');
+      result.current.setMeta([{ key: 'AWS_REGION', value: 'eu-central-1' }]);
+    });
+    expect(result.current.authAdvisories).toEqual([]);
+  });
+
+  it('drops the sigv4 answer when the mode changes', () => {
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setAuthMode('sigv4'));
+    act(() => {
+      result.current.setSigv4Region('eu-central-1');
+      result.current.setSigv4RoleArn('arn:aws:iam::123456789012:role/muster');
+    });
+    expect(result.current.definition.auth).toEqual({
+      type: 'sigv4',
+      sigv4: {
+        region: 'eu-central-1',
+        roleArn: 'arn:aws:iam::123456789012:role/muster',
+      },
+    });
+
+    act(() => result.current.setAuthMode('none'));
+    expect(result.current.state.sigv4Region).toBe('');
+    expect(result.current.definition).not.toHaveProperty('auth');
+  });
+
+  it('keeps request metadata across an auth-mode change', () => {
+    // `spec.meta` belongs to the endpoint, not the auth answer, so switching
+    // modes must not drop it the way it drops the mode's own fields.
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() =>
+      result.current.setMeta([{ key: 'AWS_REGION', value: 'eu-north-1' }]),
+    );
+    act(() => result.current.setAuthMode('sigv4'));
+
+    expect(result.current.definition.meta).toEqual({
+      AWS_REGION: 'eu-north-1',
+    });
+  });
+
   it('exposes the composed definition for the review step', () => {
     const { result, fillDetails } = renderForm();
     fillDetails();

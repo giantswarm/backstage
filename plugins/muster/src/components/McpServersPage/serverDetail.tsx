@@ -104,6 +104,7 @@ export function DetailBlock({
 /** CRD-sourced configuration (always available, no muster session needed). */
 export function ServerConfig({ server }: { server: MCPServer }) {
   const classes = useStyles();
+  const metaEntries = Object.entries(server.getMeta() ?? {});
   return (
     <Box className={classes.grid}>
       <DefRow label="Type">{server.getType() ?? '-'}</DefRow>
@@ -120,6 +121,15 @@ export function ServerConfig({ server }: { server: MCPServer }) {
         <DefRow label="Timeout">{server.getTimeout()}s</DefRow>
       )}
       <DefRow label="Auto start">{server.getAutoStart() ? 'yes' : 'no'}</DefRow>
+      {/* `spec.meta`: merged into `params._meta` of every request. Worth its
+          own row rather than a footnote — an AWS-hosted server reads the region
+          it operates in from here, and a wrong value produces confident answers
+          about the wrong account region rather than an error. */}
+      {metaEntries.map(([key, value]) => (
+        <DefRow key={key} label={`Meta ${key}`}>
+          <span className={classes.mono}>{value}</span>
+        </DefRow>
+      ))}
     </Box>
   );
 }
@@ -146,15 +156,53 @@ export function AuthChain({ server }: { server: MCPServer }) {
     );
   }
 
-  const { tokenExchange, localMint, authorizationServer } = auth;
+  const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
   return (
     <>
+      {/* sigv4 is the one auth type with no user in it at all. Said before the
+          fields, because everything below reads like per-user auth otherwise —
+          and "who does this act as" is the question an operator is here to
+          answer. */}
+      {sigv4 && (
+        <Typography variant="body2" className={classes.note}>
+          Requests are signed with muster's own AWS machine identity, not the
+          calling user's. All users share this identity, and CloudTrail
+          attributes their actions to muster. There is no user sign-in.
+        </Typography>
+      )}
       <Box className={classes.grid}>
         <DefRow label="Type">{auth.type}</DefRow>
-        <DefRow label="Forward token">
-          {auth.forwardToken ? 'yes' : 'no'}
-        </DefRow>
+        {sigv4 && (
+          <>
+            <DefRow label="Signing region">
+              <span className={classes.mono}>{sigv4.region}</span>
+            </DefRow>
+            <DefRow label="Signing service">
+              {sigv4.service ? (
+                <span className={classes.mono}>{sigv4.service}</span>
+              ) : (
+                <span className={classes.note}>derived from the URL host</span>
+              )}
+            </DefRow>
+            <DefRow label="Assumed role">
+              {sigv4.roleArn ? (
+                <span className={classes.mono}>{sigv4.roleArn}</span>
+              ) : (
+                <span className={classes.note}>
+                  none — signs as muster's own identity
+                </span>
+              )}
+            </DefRow>
+          </>
+        )}
+        {/* Meaningless for sigv4 — the CRD rejects the two together, so the
+            row could only ever read "no". */}
+        {!sigv4 && (
+          <DefRow label="Forward token">
+            {auth.forwardToken ? 'yes' : 'no'}
+          </DefRow>
+        )}
         {auth.requiredAudiences && auth.requiredAudiences.length > 0 && (
           <DefRow label="Required audiences">
             <span className={classes.mono}>
@@ -398,7 +446,11 @@ export function ServerTools({
     // `Auth Required` is a session state, not a degraded one (ADR D3): the
     // server exposes no tools because this user's session lacks the audience,
     // not because it "may be down".
-    const authGated = server.getState() === 'Auth Required';
+    // ...and only where a sign-in exists to point at: a sigv4 server signs as
+    // muster itself, so "sign in" would be advice nobody can act on.
+    const authGated =
+      server.getState() === 'Auth Required' &&
+      server.canAuthenticateInteractively();
     return (
       <Typography variant="body2" className={classes.note}>
         {authGated
