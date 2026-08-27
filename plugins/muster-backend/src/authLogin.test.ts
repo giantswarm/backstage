@@ -1,4 +1,8 @@
-import { isInfrastructureError, parseAuthLoginResult } from './authLogin';
+import {
+  isInfrastructureError,
+  parseAuthLoginResult,
+  parseAuthLogoutResult,
+} from './authLogin';
 
 describe('parseAuthLoginResult', () => {
   it('takes the sign-in URL from structuredContent.authUrl', () => {
@@ -139,6 +143,38 @@ describe('parseAuthLoginResult', () => {
         structuredContent: { authUrl: 42 },
       }),
     ).toEqual({ status: 'unknown', message: 'odd' });
+  });
+});
+
+describe('parseAuthLogoutResult', () => {
+  it('recognises muster’s logout confirmation', () => {
+    // Verbatim from muster's handleAuthLogout.
+    const message = [
+      "Successfully logged out from 'miro'.",
+      '',
+      "The server's tools are now hidden. Use core_auth_login with server='miro' to re-authenticate.",
+    ].join('\n');
+
+    expect(parseAuthLogoutResult({ text: message })).toEqual({
+      status: 'signed_out',
+      message,
+    });
+  });
+
+  it('flags an unrecognised answer instead of guessing', () => {
+    expect(
+      parseAuthLogoutResult({ text: 'Something new muster might say.' }),
+    ).toEqual({
+      status: 'unknown',
+      message: 'Something new muster might say.',
+    });
+  });
+
+  it('handles a result with no text at all', () => {
+    expect(parseAuthLogoutResult({})).toEqual({
+      status: 'unknown',
+      message: '',
+    });
   });
 });
 

@@ -31,7 +31,7 @@ import {
   toMcpServerDefinition,
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
-import { StateBadge } from '../shared';
+import { ServerAuthActions, StateBadge } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   actions: {
@@ -405,6 +405,12 @@ export function AdHocServerDialog({
 
 export interface ServerMutationActionsProps {
   server: MCPServer;
+  /**
+   * Whether there is an authenticated muster session for this installation.
+   * The per-server sign-in/sign-out affordance is scoped to that session, and
+   * without one the status read behind it would just 401.
+   */
+  authenticated?: boolean;
 }
 
 /**
@@ -413,8 +419,8 @@ export interface ServerMutationActionsProps {
  */
 export const OAUTH_SIGN_IN_GATE =
   'This server authenticates per user session (OAuth), and reconnecting ' +
-  'cannot sign a session in — muster refuses it. Sign in under ' +
-  '“Authentication / token chain” above instead.';
+  'cannot sign a session in — muster refuses it. Use “Sign in” in this ' +
+  'row instead.';
 
 /** A lifecycle button, disabled with an explanatory tooltip when gated. */
 function LifecycleButton({
@@ -455,6 +461,13 @@ function LifecycleButton({
  * Add/Edit/Delete through a GitOps PR/manifest; manually-added (ad-hoc) servers
  * allow live core_mcpserver_* CRUD + lifecycle behind a confirm dialog.
  *
+ * The row also carries the per-session auth actions (Sign in / Sign out --
+ * {@link ServerAuthActions}), in BOTH branches: signing in to an OAuth server
+ * is a session action, not a CRD mutation, so GitOps provenance does not
+ * restrict it. Sign in renders prominent (primary) because it is the single
+ * action an Auth Required server needs, while everything else in the row is
+ * secondary.
+ *
  * The lifecycle verbs are named for what muster actually does with a remote
  * server, not for its start/stop/restart tool names (process vocabulary from
  * the stdio days): Deactivate suspends the connection durably
@@ -464,10 +477,21 @@ function LifecycleButton({
  * Reconnect only renders for an active server — muster refuses it while
  * suspended.
  */
-export function ServerMutationActions({ server }: ServerMutationActionsProps) {
+export function ServerMutationActions({
+  server,
+  authenticated,
+}: ServerMutationActionsProps) {
   const classes = useStyles();
   const managed = isGitOpsManaged(server);
   const suspended = server.getSuspended();
+
+  const authActions = authenticated ? (
+    <ServerAuthActions
+      serverName={server.getName()}
+      installation={server.cluster}
+      oauthConfigured={server.getAuth()?.type === 'oauth'}
+    />
+  ) : null;
 
   // muster refuses a reconnect (core_service_restart) for an OAuth server in
   // `Auth Required`: authentication is session-scoped, so only the sign-in
@@ -488,6 +512,7 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
     return (
       <Box className={classes.actions}>
         <StateBadge tone="info" label="GitOps-managed (read-only)" />
+        {authActions}
         <Typography variant="body2" className={classes.managedNote}>
           Changes are made by committing a manifest to the GitOps repo.
         </Typography>
@@ -519,6 +544,7 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
   return (
     <Box className={classes.actions}>
       <StateBadge tone="neutral" label="Manually added" />
+      {authActions}
       <Button
         size="small"
         startIcon={<Edit />}

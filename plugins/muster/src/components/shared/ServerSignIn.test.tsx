@@ -8,8 +8,9 @@ import {
   musterApiRef,
   ServerAuthStatus,
   ServerSignInResult,
+  ServerSignOutResult,
 } from '../../apis';
-import { ServerSignIn } from './ServerSignIn';
+import { ServerAuthActions, ServerSignIn } from './ServerSignIn';
 
 const CHALLENGE = [
   'Authentication Required',
@@ -21,11 +22,12 @@ const CHALLENGE = [
   'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
 ].join('\n');
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer'>;
+type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
 
 function makeApi(options: {
   status?: ServerAuthStatus;
   signIn?: ServerSignInResult;
+  signOut?: ServerSignOutResult;
 }): jest.Mocked<Api> {
   const response: AuthStatusResponse = {
     servers: options.status ? [options.status] : [],
@@ -42,12 +44,34 @@ function makeApi(options: {
         },
       ),
     ),
+    signOutServer: jest.fn((_server: string, _installation?: string) =>
+      Promise.resolve(
+        options.signOut ?? {
+          status: 'signed_out',
+          message: "Successfully logged out from 'pro'.",
+        },
+      ),
+    ),
   };
 }
 
-async function renderSignIn(
+async function renderSignIn(api: Api) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const rendered = await renderInTestApp(
+    <TestApiProvider apis={[[musterApiRef, api]]}>
+      <QueryClientProvider client={queryClient}>
+        <ServerSignIn serverName="pro" installation="gazelle" showName />
+      </QueryClientProvider>
+    </TestApiProvider>,
+  );
+  return { queryClient, ...rendered };
+}
+
+async function renderAuthActions(
   api: Api,
-  props: { onlyWhenRequired?: boolean } = {},
+  props: { oauthConfigured?: boolean } = {},
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -55,12 +79,7 @@ async function renderSignIn(
   const rendered = await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <ServerSignIn
-          serverName="pro"
-          installation="gazelle"
-          showName
-          {...props}
-        />
+        <ServerAuthActions serverName="pro" installation="gazelle" {...props} />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -303,29 +322,10 @@ describe('ServerSignIn', () => {
   });
 
   /**
-   * The MCP servers page renders this above its own "connect to muster" gate, so
-   * a 401 from the status read must not conjure a row (with a button that would
-   * 401 too) next to every expanded server.
-   */
-  it('stays hidden on a status error when only shown on demand', async () => {
-    const api = makeApi({});
-    api.getAuthStatus.mockRejectedValue(
-      new Error("installation 'gazelle' requires a user token"),
-    );
-    await renderSignIn(api, { onlyWhenRequired: true });
-
-    await waitFor(() => {
-      expect(api.getAuthStatus).toHaveBeenCalled();
-    });
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.queryByText(/requires a user token/)).not.toBeInTheDocument();
-  });
-
-  /**
-   * The tool explorer renders rows without `onlyWhenRequired` because muster
-   * already said these servers are auth-gated. An SSO server whose status is not
-   * one of the auth-required values must still explain itself rather than
-   * leaving the alert with no name, action, or reason.
+   * The tool explorer renders these rows because muster already said the
+   * servers are auth-gated. An SSO server whose status is not one of the
+   * auth-required values must still explain itself rather than leaving the
+   * alert with no name, action, or reason.
    */
   it('explains an SSO server whose status is not auth-required', async () => {
     const api = makeApi({
@@ -340,17 +340,6 @@ describe('ServerSignIn', () => {
     expect(
       await screen.findByText(/authenticates through SSO/),
     ).toBeInTheDocument();
-  });
-
-  it('renders nothing for a connected server when only shown on demand', async () => {
-    const api = makeApi({ status: { name: 'pro', status: 'connected' } });
-    await renderSignIn(api, { onlyWhenRequired: true });
-
-    await waitFor(() => {
-      expect(api.getAuthStatus).toHaveBeenCalled();
-    });
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.queryByText('pro')).not.toBeInTheDocument();
   });
 
   /**
@@ -389,14 +378,135 @@ describe('ServerSignIn', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Rate limit exceeded/)).toBeInTheDocument();
   });
+});
+
+/**
+ * The MCP servers page's action-row variant: gates itself on `auth://status`
+ * (the connected majority renders nothing), signs in prominently, and adds
+ * the sign-out affordance for connected per-user OAuth servers.
+ */
+describe('ServerAuthActions', () => {
+  it('offers a sign-in for a server muster reports as needing one', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+    });
+    await renderAuthActions(api);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Sign in' }),
+    );
+
+    await waitFor(() => {
+      expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
+    });
+    expect(
+      await screen.findByRole('link', { name: /Open sign-in page/ }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The MCP servers page renders this above its own "connect to muster" gate,
+   * so a 401 from the status read must not conjure a row (with a button that
+   * would 401 too) next to every expanded server.
+   */
+  it('stays hidden on a status error', async () => {
+    const api = makeApi({});
+    api.getAuthStatus.mockRejectedValue(
+      new Error("installation 'gazelle' requires a user token"),
+    );
+    await renderAuthActions(api);
+
+    await waitFor(() => {
+      expect(api.getAuthStatus).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByText(/requires a user token/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * `connected` alone is not enough for a sign-out: `auth://status` reports a
+   * no-auth server as connected too, and muster's logout would be a no-op the
+   * user cannot interpret. The CR's declared `spec.auth.type` is the signal
+   * that the connection is a user sign-in that can be undone.
+   */
+  it('renders nothing for a connected server without declared OAuth', async () => {
+    const api = makeApi({ status: { name: 'pro', status: 'connected' } });
+    await renderAuthActions(api);
+
+    await waitFor(() => {
+      expect(api.getAuthStatus).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByText('pro')).not.toBeInTheDocument();
+  });
+
+  it('signs a connected OAuth server out and re-gates on muster’s answer', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'connected' },
+      signOut: {
+        status: 'signed_out',
+        message: "Successfully logged out from 'pro'.",
+      },
+    });
+    await renderAuthActions(api, { oauthConfigured: true });
+
+    // The sign-out re-gates the server: the invalidated status read now says
+    // auth_required, so the affordance must flip back to a sign-in.
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'pro', status: 'auth_required', auth_tool: 'core_auth_login' },
+      ],
+    });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Sign out' }),
+    );
+
+    await waitFor(() => {
+      expect(api.signOutServer).toHaveBeenCalledWith('pro', 'gazelle');
+    });
+    expect(
+      await screen.findByRole('button', { name: 'Sign in' }),
+    ).toBeInTheDocument();
+    // Muster's confirmation stays visible next to the flipped affordance.
+    expect(
+      screen.getByText(/Successfully logged out from 'pro'/),
+    ).toBeInTheDocument();
+  });
+
+  it('surfaces muster’s own message when it refuses the logout', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'connected' },
+      signOut: {
+        status: 'error',
+        message: "Server 'pro' not found.",
+      },
+    });
+    await renderAuthActions(api, { oauthConfigured: true });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Sign out' }),
+    );
+
+    expect(
+      await screen.findByText("Server 'pro' not found."),
+    ).toBeInTheDocument();
+    // A refusal changed nothing, so the affordance stays a sign-out.
+    expect(
+      screen.getByRole('button', { name: 'Sign out' }),
+    ).toBeInTheDocument();
+  });
 
   /**
    * `sso_attempt_failed` names a concrete misconfiguration, and the MCP servers
-   * page -- the only surface that passes `onlyWhenRequired` -- is where an
-   * operator would look for it, so the gate must let it through even though
-   * `failed` is not an auth-required status.
+   * page is where an operator would look for it, so the idle gate must let it
+   * through even though `failed` is not an auth-required status.
    */
-  it('shows the SSO failure diagnosis even when only shown on demand', async () => {
+  it('shows the SSO failure diagnosis', async () => {
     const api = makeApi({
       status: {
         name: 'pro',
@@ -405,12 +515,12 @@ describe('ServerSignIn', () => {
         sso_attempt_failed: true,
       },
     });
-    await renderSignIn(api, { onlyWhenRequired: true });
+    await renderAuthActions(api);
 
     expect(await screen.findByText(/trusted audiences/)).toBeInTheDocument();
   });
 
-  it('stays hidden for a healthy SSO server when only shown on demand', async () => {
+  it('stays hidden for a healthy SSO server', async () => {
     const api = makeApi({
       status: {
         name: 'pro',
@@ -418,11 +528,14 @@ describe('ServerSignIn', () => {
         token_exchange_enabled: true,
       },
     });
-    await renderSignIn(api, { onlyWhenRequired: true });
+    // Standard SSO servers can also declare `spec.auth` -- the SSO gate must
+    // outrank the sign-out affordance, since muster refuses their logout.
+    await renderAuthActions(api, { oauthConfigured: true });
 
     await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
     expect(
       screen.queryByText(/authenticates through SSO/),
     ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

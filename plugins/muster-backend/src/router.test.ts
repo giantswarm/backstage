@@ -435,6 +435,87 @@ describe('createRouter', () => {
       expect(callToolWithStructured).not.toHaveBeenCalled();
     });
 
+    // The inverse flow, same error contract as /auth/login.
+    describe('/auth/logout', () => {
+      const logout = (body: JsonObject) =>
+        request(authApp)
+          .post('/auth/logout?installation=gazelle')
+          .set(MUSTER_AUTH_HEADER, TOKEN)
+          .send(body);
+
+      it('reports a completed logout as signed_out', async () => {
+        // Verbatim from muster's handleAuthLogout.
+        const message = [
+          "Successfully logged out from 'pro'.",
+          '',
+          "The server's tools are now hidden. Use core_auth_login with server='pro' to re-authenticate.",
+        ].join('\n');
+        callToolWithStructured.mockResolvedValue({ text: message });
+
+        const response = await logout({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ status: 'signed_out', message });
+        expect(callToolWithStructured).toHaveBeenCalledWith(
+          'core_auth_logout',
+          { server: 'pro' },
+          { authToken: TOKEN },
+        );
+      });
+
+      /**
+       * Muster refuses a logout for unknown servers and SSO-managed servers as
+       * MCP tool errors. Expected outcomes of this route, so structured 200s
+       * rather than Sentry-bound 5xxs -- same contract as /auth/login.
+       */
+      it.each([
+        "Server 'pro' not found.",
+        "Server 'pro' uses SSO and is managed automatically.",
+      ])('returns the tool-level refusal %j as a structured 200', async msg => {
+        callToolWithStructured.mockRejectedValue(new Error(msg));
+
+        const response = await logout({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ status: 'error', message: msg });
+      });
+
+      it('lets an infrastructure fault keep its 5xx', async () => {
+        callToolWithStructured.mockRejectedValue(new TypeError('fetch failed'));
+
+        const response = await logout({ server: 'pro' });
+
+        expect(response.status).toBeGreaterThanOrEqual(500);
+      });
+
+      it('requires a server name', async () => {
+        const response = await logout({});
+
+        expect(response.status).toBe(400);
+        expect(callToolWithStructured).not.toHaveBeenCalled();
+      });
+
+      it('fails with 401 when the user token is missing', async () => {
+        const response = await request(authApp)
+          .post('/auth/logout?installation=gazelle')
+          .send({ server: 'pro' });
+
+        expect(response.status).toBe(401);
+        expect(callToolWithStructured).not.toHaveBeenCalled();
+      });
+
+      it('refuses on an installation without per-user auth', async () => {
+        const response = await request(app)
+          .post('/auth/logout')
+          .send({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.status).toBe('error');
+        expect(response.body.message).toContain('without an authProvider');
+        expect(callToolWithStructured).not.toHaveBeenCalled();
+      });
+    });
+
     /**
      * Without an authProvider there is no per-user token to key the MCP session
      * cache on, so every portal user shares one muster session -- and one user's

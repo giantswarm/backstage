@@ -9,9 +9,11 @@ import express from 'express';
 import Router from 'express-promise-router';
 import {
   AUTH_LOGIN_TOOL,
+  AUTH_LOGOUT_TOOL,
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
   parseAuthLoginResult,
+  parseAuthLogoutResult,
 } from './authLogin';
 import {
   MusterInstallationConfig,
@@ -388,6 +390,59 @@ export async function createRouter(
     }
 
     res.json(parseAuthLoginResult(payload));
+  });
+
+  /**
+   * Disconnect one aggregated MCP server from the calling user's muster
+   * session via `core_auth_logout` -- the inverse of /auth/login. Muster
+   * revokes the session's auth state for the server (and clears its issuer's
+   * tokens when no other server shares them), so the server's tools re-gate
+   * until the next sign-in.
+   *
+   * Same error contract as /auth/login: muster's refusals (unknown server,
+   * SSO-managed server) are MCP tool errors returned as structured 200s so
+   * MiddlewareFactory doesn't ship expected outcomes to Sentry, while
+   * infrastructure faults keep their 5xx.
+   */
+  router.post('/auth/logout', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { server } = req.body ?? {};
+
+    if (typeof server !== 'string' || server === '') {
+      throw new InputError('server is required in the request body');
+    }
+    if (!hasPerUserSession(installation)) {
+      res.json({
+        status: 'error',
+        message: `The muster installation '${installation.name}' is configured without an authProvider, so it has no per-user session to sign a downstream server out of.`,
+      });
+      return;
+    }
+
+    const callOptions = readCallOptions(req, installation);
+
+    let payload: { text?: string };
+    try {
+      payload = await client.callToolWithStructured(
+        AUTH_LOGOUT_TOOL,
+        { server },
+        callOptions,
+      );
+    } catch (error) {
+      if (isInfrastructureError(error)) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      logger.info(`${AUTH_LOGOUT_TOOL} declined to sign out the server`, {
+        installation: installation.name,
+        server,
+        message,
+      });
+      res.json({ status: 'error', message });
+      return;
+    }
+
+    res.json(parseAuthLogoutResult(payload));
   });
 
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------

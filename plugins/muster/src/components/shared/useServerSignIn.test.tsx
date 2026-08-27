@@ -19,13 +19,19 @@ const CHALLENGE: ServerSignInResult = {
   message: `Please sign in to connect to this server:\n\n${AUTH_URL}`,
 };
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer'>;
+type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
 
 function makeApi(initial: AuthStatusResponse): jest.Mocked<Api> {
   return {
     getAuthStatus: jest.fn(() => Promise.resolve(initial)),
     signInServer: jest.fn((_server: string, _installation?: string) =>
       Promise.resolve(CHALLENGE),
+    ),
+    signOutServer: jest.fn((_server: string, _installation?: string) =>
+      Promise.resolve({
+        status: 'signed_out' as const,
+        message: "Successfully logged out from 'pro'.",
+      }),
     ),
   };
 }
@@ -260,6 +266,61 @@ describe('useServerSignIn', () => {
 
     await waitFor(() =>
       expect(result.current.status?.status).toBe('connected'),
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The inverse flow: a completed logout must invalidate every muster query so
+   * the server's tools re-gate and the sign-in affordance comes back -- there
+   * is nothing to poll for, muster revokes the session's auth synchronously.
+   */
+  it('re-gates everything after a completed sign-out', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    await act(async () => result.current.signOut());
+
+    expect(api.signOutServer).toHaveBeenCalledWith('pro', 'gazelle');
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
+    );
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    // Muster's confirmation is surfaced so the flip is attributable.
+    expect(result.current.note).toContain('Successfully logged out');
+  });
+
+  /** A refusal changed nothing, so nothing is refetched -- only reported. */
+  it('surfaces a refused sign-out without invalidating anything', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    api.signOutServer.mockResolvedValue({
+      status: 'error',
+      message: "Server 'pro' not found.",
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+    await act(async () => result.current.signOut());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe("Server 'pro' not found."),
     );
     expect(invalidate).not.toHaveBeenCalled();
   });
