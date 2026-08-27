@@ -24,6 +24,13 @@ jest.mock('../McpServersPage', () => ({
   McpServersPage: () => <div>servers-list</div>,
 }));
 
+// Transport detection on the details step needs the muster API and session
+// providers this test doesn't set up; it has its own tests in
+// NewMcpServerPage.test.tsx.
+jest.mock('../NewMcpServerPage/useTransportDetection', () => ({
+  useTransportDetection: () => ({ detected: undefined, probing: false }),
+}));
+
 function renderWizard(path: string) {
   return renderInTestApp(
     <Routes>

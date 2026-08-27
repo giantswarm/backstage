@@ -88,6 +88,15 @@ export const emptyFormState: NewMcpServerFormState = {
 /** `spec.url` pattern from the CRD. */
 const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/;
 
+/**
+ * Whether a URL is complete enough to act on -- the same predicate details
+ * validation applies to `spec.url`, shared so transport detection only probes
+ * URLs that would pass validation anyway.
+ */
+export function isCompleteMcpUrl(url: string): boolean {
+  return URL_PATTERN.test(url.trim());
+}
+
 /** `spec.auth.authorizationServer.issuer` pattern from the CRD. */
 const ISSUER_PATTERN = /^https:\/\/[^/?#]+(\/[^?#]*[^/?#])?$/;
 
