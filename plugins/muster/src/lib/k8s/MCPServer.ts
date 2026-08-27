@@ -51,6 +51,7 @@ interface MCPServerInterface extends KubeObjectInterface {
     family?: MCPServerFamily;
     description?: string;
     autoStart?: boolean;
+    suspended?: boolean;
     command?: string;
     url?: string;
     timeout?: number;
@@ -93,6 +94,16 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
 
   getAutoStart() {
     return this.jsonData.spec?.autoStart ?? false;
+  }
+
+  /**
+   * Whether the server is deactivated (`spec.suspended`): muster's reconciler
+   * keeps it disconnected until it is activated again (`core_service_start`
+   * clears the flag; `core_service_stop` sets it). Level-based and durable,
+   * unlike the transient `.status.state`.
+   */
+  getSuspended() {
+    return this.jsonData.spec?.suspended ?? false;
   }
 
   getTimeout() {

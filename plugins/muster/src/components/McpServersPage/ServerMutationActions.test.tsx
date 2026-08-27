@@ -11,6 +11,7 @@ import {
 function makeServer(options: {
   state?: MCPServerState;
   authType?: 'oauth' | 'none';
+  suspended?: boolean;
 }): MCPServer {
   return new MCPServer(
     {
@@ -20,6 +21,9 @@ function makeServer(options: {
       spec: {
         type: 'streamable-http',
         url: 'https://mcp.miro.com/',
+        ...(options.suspended !== undefined
+          ? { suspended: options.suspended }
+          : {}),
         ...(options.authType ? { auth: { type: options.authType } } : {}),
       },
       ...(options.state ? { status: { state: options.state } } : {}),
@@ -37,43 +41,81 @@ async function renderActions(server: MCPServer) {
   );
 }
 
-describe('ServerMutationActions OAuth lifecycle gate', () => {
-  it('disables Start/Restart for an OAuth server waiting on sign-in', async () => {
+describe('ServerMutationActions lifecycle affordances', () => {
+  it('shows Deactivate + Reconnect (never Activate) for an active server', async () => {
+    await renderActions(makeServer({ state: 'Connected' }));
+
+    expect(screen.getByRole('button', { name: 'Deactivate' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Activate' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows only Activate for a suspended server', async () => {
+    // Activate/Deactivate are two directions of one durable switch
+    // (spec.suspended), so exactly one renders; Reconnect is hidden because
+    // muster refuses core_service_restart while suspended.
+    await renderActions(
+      makeServer({ state: 'Disconnected', suspended: true, authType: 'oauth' }),
+    );
+
+    expect(screen.getByRole('button', { name: 'Activate' })).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Deactivate' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Reconnect' }),
+    ).not.toBeInTheDocument();
+    // Delete stays live regardless of lifecycle state.
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+  });
+
+  it('disables Reconnect for an OAuth server waiting on sign-in', async () => {
     await renderActions(
       makeServer({ state: 'Auth Required', authType: 'oauth' }),
     );
 
-    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Restart' })).toBeDisabled();
-    // Stop (suspend) and Delete stay live: both are valid for OAuth servers.
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeDisabled();
+    // Deactivate (suspend) is always a valid write for OAuth servers.
+    expect(screen.getByRole('button', { name: 'Deactivate' })).toBeEnabled();
   });
 
-  it('explains the gate and points at the sign-in flow', async () => {
+  it('explains the Reconnect gate and points at the sign-in flow', async () => {
     await renderActions(
       makeServer({ state: 'Auth Required', authType: 'oauth' }),
     );
 
     await userEvent.hover(
-      screen.getByRole('button', { name: 'Start' }).parentElement as Element,
+      screen.getByRole('button', { name: 'Reconnect' })
+        .parentElement as Element,
     );
     expect(await screen.findByText(OAUTH_SIGN_IN_GATE)).toBeInTheDocument();
   });
 
-  it('keeps Start/Restart for a stopped OAuth server (resume path)', async () => {
-    // Starting a stopped/suspended OAuth server is a valid CR write and the
-    // only way to resume it -- the gate must be state-scoped, not type-scoped.
-    await renderActions(makeServer({ state: 'Stopped', authType: 'oauth' }));
+  it('keeps Reconnect live for a failed OAuth server (retry path)', async () => {
+    // The gate is state-scoped, not type-scoped: reconnecting a *failed*
+    // OAuth server is a valid retry that muster accepts.
+    await renderActions(makeServer({ state: 'Failed', authType: 'oauth' }));
 
-    expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Restart' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeEnabled();
   });
 
-  it('keeps Start/Restart for non-OAuth servers regardless of state', async () => {
+  it('keeps Reconnect live for non-OAuth servers regardless of state', async () => {
     await renderActions(makeServer({ state: 'Auth Required' }));
 
-    expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Restart' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeEnabled();
+  });
+
+  it('says what muster will do in the confirm dialog', async () => {
+    await renderActions(makeServer({ state: 'Connected' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+
+    expect(
+      await screen.findByText(/keep it deactivated until it is activated/),
+    ).toBeInTheDocument();
+    // The underlying tool stays visible for transparency.
+    expect(screen.getByText('core_service_stop')).toBeInTheDocument();
   });
 });
