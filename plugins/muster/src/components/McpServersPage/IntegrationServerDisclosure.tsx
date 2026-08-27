@@ -93,8 +93,10 @@ export function IntegrationServerDisclosure({
       <DetailBlock title="Authentication / token chain">
         <AuthChain server={server} />
         {/* Only meaningful with a muster session: the downstream flow is scoped
-            to it, and without one the status read would just 401. */}
-        {authenticated && (
+            to it, and without one the status read would just 401. And only for
+            a server a user CAN sign in to — a sigv4 server signs as muster's
+            own machine identity, and AuthChain above says so. */}
+        {authenticated && server.canAuthenticateInteractively() && (
           <ServerSignIn
             serverName={server.getName()}
             installation={server.cluster}

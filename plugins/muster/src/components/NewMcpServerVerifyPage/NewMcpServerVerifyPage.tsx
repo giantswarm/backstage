@@ -126,7 +126,12 @@ export function NewMcpServerVerifyPage() {
   const serverState = (runtime?.state ?? cr?.getState()) as
     MCPServerState | undefined;
   const severity = mcpServerStateSeverity(serverState);
-  const authRequired = serverState === 'Auth Required';
+  // `Auth Required` only means "you can sign in" where a sign-in exists.
+  // A sigv4 server signs as muster's own machine identity, so muster keeps it
+  // in `Failed` on a 401 rather than reporting it here — and if it ever did,
+  // offering a login would send the user somewhere that cannot help.
+  const authRequired =
+    serverState === 'Auth Required' && state.authMode !== 'sigv4';
   const connected = serverState === 'Connected' || serverState === 'Running';
   const failed = severity === 'error';
   const toolsCount = runtime?.toolsCount;

@@ -10,7 +10,7 @@ import {
 
 function makeServer(options: {
   state?: MCPServerState;
-  authType?: 'oauth' | 'none';
+  authType?: 'oauth' | 'none' | 'sigv4';
   suspended?: boolean;
 }): MCPServer {
   return new MCPServer(
@@ -117,5 +117,15 @@ describe('ServerMutationActions lifecycle affordances', () => {
     ).toBeInTheDocument();
     // The underlying tool stays visible for transparency.
     expect(screen.getByText('core_service_stop')).toBeInTheDocument();
+  });
+
+  it('keeps Reconnect live for a sigv4 server: reconnecting is the remedy', async () => {
+    // A sigv4 server has no per-user sign-in, so nothing about it is waiting on
+    // a session. muster keeps a rejected credential in `Failed` and retries;
+    // reconnecting after fixing the region or the role is exactly the right
+    // move, and the OAuth sign-in gate must not swallow it.
+    await renderActions(makeServer({ state: 'Failed', authType: 'sigv4' }));
+
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeEnabled();
   });
 });

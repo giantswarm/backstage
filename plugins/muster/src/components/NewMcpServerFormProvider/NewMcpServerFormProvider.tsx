@@ -11,11 +11,13 @@ import {
   composeMcpServerDefinition,
   deriveSlug,
   emptyFormState,
+  sigv4Advisories,
   validateMcpServerAuth,
   validateMcpServerDetails,
   type FieldAvailability,
   type McpServerAuthMode,
   type McpServerDefinition,
+  type McpServerMetaEntry,
   type McpServerTransport,
   type NewMcpServerFormState,
 } from '../../lib/mcpServerDefinition';
@@ -32,6 +34,10 @@ export type NewMcpServerFormContextValue = {
   setIssuer: (issuer: string) => void;
   setScopes: (scopes: string) => void;
   setRequiredAudiences: (requiredAudiences: string[]) => void;
+  setSigv4Region: (region: string) => void;
+  setSigv4Service: (service: string) => void;
+  setSigv4RoleArn: (roleArn: string) => void;
+  setMeta: (meta: McpServerMetaEntry[]) => void;
   /**
    * The CR name this wizard run has already registered, set by the review
    * step's successful create. While set, saving again is an update to that CR
@@ -62,7 +68,15 @@ export type NewMcpServerFormContextValue = {
     authorizationServer: FieldAvailability;
     scopes: FieldAvailability;
     requiredAudiences: FieldAvailability;
+    sigv4: FieldAvailability;
   };
+  /**
+   * Non-blocking advisories about the chosen auth mode — a sigv4 server that
+   * every rule accepts but that would fail at request time, or worse, answer
+   * about the wrong AWS region. Shown alongside the fields, never gating
+   * Continue.
+   */
+  authAdvisories: string[];
   /** The definition passed to muster's validate/create tools. */
   definition: McpServerDefinition;
 };
@@ -127,11 +141,21 @@ export function NewMcpServerFormProvider({
           issuer: '',
           scopes: '',
           requiredAudiences: [],
+          sigv4Region: '',
+          sigv4Service: '',
+          sigv4RoleArn: '',
         })),
       setIssuer: issuer => setState(prev => ({ ...prev, issuer })),
       setScopes: scopes => setState(prev => ({ ...prev, scopes })),
       setRequiredAudiences: requiredAudiences =>
         setState(prev => ({ ...prev, requiredAudiences })),
+      setSigv4Region: sigv4Region =>
+        setState(prev => ({ ...prev, sigv4Region })),
+      setSigv4Service: sigv4Service =>
+        setState(prev => ({ ...prev, sigv4Service })),
+      setSigv4RoleArn: sigv4RoleArn =>
+        setState(prev => ({ ...prev, sigv4RoleArn })),
+      setMeta: meta => setState(prev => ({ ...prev, meta })),
       registeredName,
       setRegisteredName,
       reset: () => {
@@ -143,6 +167,7 @@ export function NewMcpServerFormProvider({
       validationErrors,
       detailsErrors,
       authFields: authFieldAvailability(state),
+      authAdvisories: sigv4Advisories(state),
       definition: composeMcpServerDefinition(state),
     };
   }, [state, slugEdited, registeredName]);

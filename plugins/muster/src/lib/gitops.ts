@@ -44,6 +44,7 @@ export function toMcpServerDefinition(
     'url',
     'env',
     'headers',
+    'meta',
     'timeout',
     'auth',
   ]) {
