@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import {
   useMutation,
@@ -12,11 +12,14 @@ import { musterApiRef, ServerAuthStatus } from '../../apis';
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
 /**
- * How long to keep polling for an unfinished sign-in. Generous enough for an
- * IdP round-trip with an MFA prompt, bounded so an abandoned flow stops
- * polling.
+ * How long to keep polling for an unfinished sign-in. A real IdP round-trip
+ * comfortably outlives the 3 minutes this used to be (Miro's flow alone walks
+ * through an organization picker, a team picker, and a consent page, before
+ * any MFA prompt), and a deadline that fires mid-flow made a *successful*
+ * sign-in look like nothing had happened. Still bounded so an abandoned flow
+ * eventually stops polling.
  */
-const DEFAULT_POLL_TIMEOUT_MS = 3 * 60 * 1_000;
+const DEFAULT_POLL_TIMEOUT_MS = 15 * 60 * 1_000;
 
 /** Statuses that mean the user themselves can still act (sign in). */
 const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
@@ -152,6 +155,16 @@ export function useServerSignIn(
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
     refetchInterval: isWaiting ? pollIntervalMs : false,
+    // The flow completes while the user is on the IdP's tab -- which is
+    // precisely when react-query pauses interval refetches by default
+    // (refetchIntervalInBackground: false). Poll through it, so the wait can
+    // end while the user is still looking at the other tab.
+    refetchIntervalInBackground: true,
+    // Returning from the IdP tab is THE moment to re-read status. The muster
+    // QueryClient turns focus refetches off globally, so opt this one cheap
+    // query back in; it is also what lets a sign-in that outlived the
+    // deadline below resolve instead of leaving a stale "Sign in" affordance.
+    refetchOnWindowFocus: true,
     // An unavailable status resource, or a 401 before the user has connected to
     // muster, are expected answers -- retrying each three times only multiplies
     // the noise.
@@ -193,11 +206,10 @@ export function useServerSignIn(
 
   // At the deadline the entry is CLEARED, not rewritten. Keeping it would leave
   // the row permanently visible (`authUrl` truthy defeats `onlyWhenRequired`)
-  // with polling stopped and no way to re-read status -- the muster QueryClient
-  // has refetchOnWindowFocus off -- so a user who finished the IdP round-trip
-  // just after the deadline would be stuck looking at stale state. Clearing
-  // returns the row to a plain `Sign in`, which is the only action that can
-  // recover anyway (the old challenge's `state` is expired or consumed by now).
+  // offering a challenge whose `state` is expired or consumed by now. Clearing
+  // returns the row to a plain `Sign in`; a flow that completes even later is
+  // still picked up by the focus refetch above plus the transition effect
+  // below.
   useEffect(() => {
     if (!pending) {
       return undefined;
@@ -214,11 +226,35 @@ export function useServerSignIn(
   // (`waitForServerAuthWithClient`). Any other status means the flow hasn't
   // landed yet, so keep polling until the deadline rather than silently dropping
   // the sign-in link.
+  //
+  // The needs-login -> connected transition is tracked independently of the
+  // pending entry: a sign-in that outlived the deadline (or was completed from
+  // another view sharing this muster session) must still unblock the page when
+  // a later read -- the focus refetch above -- reports it connected. Keyed on
+  // the last KNOWN status so an `unavailable` gap between reads cannot fake a
+  // transition, and NOT on first sight of an already-connected server, which
+  // would invalidate every muster query on every page load.
+  const lastKnownStatusRef = useRef<ServerAuthStatus['status'] | undefined>(
+    undefined,
+  );
   useEffect(() => {
-    if (!pending || status?.status !== 'connected') {
+    const current = status?.status;
+    if (current === undefined) {
       return;
     }
-    setPending(null);
+    const previous = lastKnownStatusRef.current;
+    lastKnownStatusRef.current = current;
+    if (current !== 'connected') {
+      return;
+    }
+    const signedInFromNeedsLogin =
+      previous !== undefined && NEEDS_LOGIN.includes(previous);
+    if (!pending && !signedInFromNeedsLogin) {
+      return;
+    }
+    if (pending) {
+      setPending(null);
+    }
     queryClient.invalidateQueries({ queryKey: ['muster'] });
   }, [pending, status, queryClient, setPending]);
 

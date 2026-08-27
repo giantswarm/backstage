@@ -156,11 +156,10 @@ describe('useServerSignIn', () => {
   });
 
   /**
-   * The deadline CLEARS the entry rather than marking it timed out. Keeping it
-   * would leave the row visible with polling stopped and nothing able to re-read
-   * status (the muster QueryClient has refetchOnWindowFocus off), so a user who
-   * finished the IdP round-trip just after the deadline would be stuck looking at
-   * stale state.
+   * The deadline CLEARS the entry rather than marking it timed out: the old
+   * challenge's `state` is expired or consumed by then, so the link is not
+   * worth keeping. A flow that still completes afterwards is recovered by the
+   * transition test below.
    */
   it('clears a pending sign-in at the deadline so the row can act again', async () => {
     const api = makeApi({
@@ -191,5 +190,77 @@ describe('useServerSignIn', () => {
     expect(
       queryClient.getQueryData(['muster', 'pending-sign-in', 'gazelle', 'pro']),
     ).toBeNull();
+  });
+
+  /**
+   * A real IdP round-trip can outlive the deadline (Miro's flow walks through
+   * an organization picker, a team picker, and a consent page). When the user
+   * then finishes signing in, the next status read -- in production the
+   * window-focus refetch as they return to this tab -- must still unblock the
+   * page instead of leaving a stale "Sign in" affordance over a connected
+   * server.
+   */
+  it('unblocks when the sign-in completes after the deadline cleared the wait', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(
+      () =>
+        useServerSignIn('pro', 'gazelle', {
+          pollIntervalMs: 20,
+          timeoutMs: 150,
+        }),
+      { wrapper: wrapper(api, queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    // The deadline passes mid-flow and drops the wait...
+    await waitFor(() => expect(result.current.authUrl).toBeUndefined(), {
+      timeout: 3_000,
+    });
+    invalidate.mockClear();
+
+    // ...then the user finishes the IdP round-trip, and returning to the tab
+    // re-reads the status (simulated by refetching the query directly).
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: ['muster', 'auth-status', 'gazelle'],
+      });
+    });
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(false));
+    // The muster queries are invalidated so gated tools/runtime views unblock.
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
+    );
+  });
+
+  /**
+   * The transition detection must not misfire on first sight of a server that
+   * was connected all along -- that would invalidate every muster query on
+   * every page load, once per rendered row.
+   */
+  it('leaves already-connected servers alone on first read', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() =>
+      expect(result.current.status?.status).toBe('connected'),
+    );
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });
