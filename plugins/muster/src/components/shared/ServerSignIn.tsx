@@ -132,8 +132,8 @@ export function ServerSignIn({
             Waiting for you to finish signing in…
           </Text>
           {/* muster#1083: the challenge says how muster identifies itself to
-              the authorization server. Only the fallback deserves a warning —
-              it is the one case where the AS may reject the sign-in as an
+              the authorization server. Only the fallbacks deserve a warning —
+              they are the cases where the AS may reject the sign-in as an
               unregistered client. DCR gets a quiet note because the consent
               screen will show an auto-registered client rather than a
               pre-provisioned one, which can otherwise look suspicious. */}
@@ -142,6 +142,16 @@ export function ServerSignIn({
               This server's authorization server advertises neither support for
               muster's client identity (CIMD) nor automatic client registration
               — the sign-in may be rejected as an unregistered client.
+            </Text>
+          ) : null}
+          {/* muster#1086: distinct from cimd-fallback — the AS does offer
+              client registration but rejected muster's request (its actual
+              rejection is in muster's challenge message and logs). */}
+          {clientIdMethod === 'dcr-failed' ? (
+            <Text variant="body-small" color="warning">
+              This server's authorization server rejected muster's automatic
+              client registration — the sign-in may be rejected as an
+              unregistered client.
             </Text>
           ) : null}
           {clientIdMethod === 'dcr' ? (

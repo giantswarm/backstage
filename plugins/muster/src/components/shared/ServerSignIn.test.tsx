@@ -125,6 +125,35 @@ describe('ServerSignIn', () => {
     ).toBeInTheDocument();
   });
 
+  /**
+   * muster#1086: a rejected registration is its own case — the AS does offer
+   * client registration, so the cimd-fallback wording ("advertises neither")
+   * would be false. The warning names the rejection instead.
+   */
+  it('warns when the AS rejected the automatic client registration', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'auth_required',
+        authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=x',
+        message: CHALLENGE,
+        clientIdMethod: 'dcr-failed',
+      },
+    });
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(
+      await screen.findByText(
+        /rejected muster's automatic client registration/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Open sign-in page/ }),
+    ).toBeInTheDocument();
+  });
+
   it('notes when muster registered itself via Dynamic Client Registration', async () => {
     const api = makeApi({
       status: { name: 'pro', status: 'auth_required' },

@@ -31,7 +31,7 @@ describe('parseAuthLoginResult', () => {
   // muster#1083: the challenge says how muster identifies itself to the
   // authorization server, so the UI can warn when the AS supports neither
   // CIMD nor DCR.
-  it.each(['cimd', 'dcr', 'cimd-fallback'] as const)(
+  it.each(['cimd', 'dcr', 'cimd-fallback', 'dcr-failed'] as const)(
     'passes through clientIdMethod %j',
     method => {
       expect(
