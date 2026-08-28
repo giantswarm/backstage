@@ -91,7 +91,7 @@
     "@assistant-ui/core": "^0.2.0",
     "assistant-stream": "^0.3.0",
     "@giantswarm/backstage-plugin-ai-chat-backend/ai": "7.0.62",
-    "vm2": "3.11.5",
+    "vm2": "3.11.6",
     "sha.js": "2.4.12",
     "basic-ftp": "6.0.2",
     "jsonpath-plus": "10.4.0",
