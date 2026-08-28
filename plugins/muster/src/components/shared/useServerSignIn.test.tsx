@@ -53,6 +53,18 @@ function newQueryClient() {
 }
 
 describe('useServerSignIn', () => {
+  let windowOpen: jest.SpyInstance;
+
+  beforeEach(() => {
+    // jsdom does not implement window.open; null is the popup-blocked answer,
+    // which signIn() must tolerate (the URL then renders as a link).
+    windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    windowOpen.mockRestore();
+  });
+
   /**
    * The completion signal. Driven with an injected poll interval so it runs in
    * milliseconds -- the real 5 s tick made this a flake risk on loaded CI

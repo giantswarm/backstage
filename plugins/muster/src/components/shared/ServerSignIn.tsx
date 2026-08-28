@@ -1,5 +1,5 @@
 import { makeStyles, Theme } from '@material-ui/core';
-import { Button, ButtonLink, Text } from '@backstage/ui';
+import { Button, ButtonLink, Link, Text } from '@backstage/ui';
 import { ServerSignInState, useServerSignIn } from './useServerSignIn';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -8,6 +8,23 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: theme.spacing(1),
+  },
+  // ServerAuthActions renders inside the servers page's action row, itself a
+  // wrapping flex. Dissolving this wrapper keeps the short affordances inline
+  // with the lifecycle buttons while the long texts (fullRow) wrap to their
+  // own line -- as a nested flex item the whole cluster would grow wide and
+  // jumble the row instead.
+  inActionRow: {
+    display: 'contents',
+  },
+  // Explanatory sentences are far wider than any button: give them the full
+  // row rather than letting them squeeze between the buttons. `order` moves
+  // them after every default-order sibling, so in the action row they wrap
+  // below the buttons instead of pushing them onto a following line.
+  fullRow: {
+    flexBasis: '100%',
+    minWidth: 0,
+    order: 1,
   },
   name: {
     fontFamily: theme.typography.fontFamily,
@@ -21,6 +38,7 @@ const useStyles = makeStyles((theme: Theme) => ({
  * confirmation must not swap out the action the user would take next.
  */
 function Messages({ state }: { state: ServerSignInState }) {
+  const classes = useStyles();
   const { error, note } = state;
   if (!error && !note) {
     return null;
@@ -28,12 +46,16 @@ function Messages({ state }: { state: ServerSignInState }) {
   return (
     <>
       {note ? (
-        <Text variant="body-small" color="secondary">
+        <Text
+          variant="body-small"
+          color="secondary"
+          className={classes.fullRow}
+        >
           {note}
         </Text>
       ) : null}
       {error ? (
-        <Text variant="body-small" color="danger">
+        <Text variant="body-small" color="danger" className={classes.fullRow}>
           {error}
         </Text>
       ) : null}
@@ -53,8 +75,14 @@ function SsoExplanation({
   serverName: string;
   state: ServerSignInState;
 }) {
+  const classes = useStyles();
   return (
-    <Text as="p" variant="body-small" color="secondary">
+    <Text
+      as="p"
+      variant="body-small"
+      color="secondary"
+      className={classes.fullRow}
+    >
       {serverName} authenticates through SSO from muster's own session, so there
       is nothing to sign in to here.
       {state.status?.sso_attempt_failed
@@ -66,10 +94,12 @@ function SsoExplanation({
 
 /**
  * The sign-in affordance: a button that asks muster for a sign-in URL
- * (`core_auth_login`), then the URL as a link once muster has issued a
- * challenge -- completing the flow in the other tab connects the server for
- * this muster session and the surrounding content unblocks on its own (see
- * {@link useServerSignIn}).
+ * (`core_auth_login`) and opens it directly in a new tab -- completing the
+ * flow there connects the server for this muster session and the surrounding
+ * content unblocks on its own (see {@link useServerSignIn}). While the flow is
+ * outstanding this renders the wait, with the URL as a link -- quiet when the
+ * tab is already open (closed it, lost it behind others), prominent when the
+ * popup was blocked and the link is the only way in.
  */
 function SignInFlow({
   state,
@@ -83,7 +113,8 @@ function SignInFlow({
    */
   prominent?: boolean;
 }) {
-  const { authUrl, clientIdMethod, isPending, signIn } = state;
+  const classes = useStyles();
+  const { authUrl, clientIdMethod, isPending, signIn, signInTabOpened } = state;
 
   if (!authUrl) {
     return (
@@ -100,18 +131,36 @@ function SignInFlow({
 
   return (
     <>
-      <ButtonLink
-        href={authUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        variant={prominent ? 'primary' : 'secondary'}
-        size="small"
-      >
-        Open sign-in page ↗
-      </ButtonLink>
-      <Text variant="body-small" color="secondary">
-        Waiting for you to finish signing in…
-      </Text>
+      {signInTabOpened ? (
+        <>
+          <Text variant="body-small" color="secondary">
+            Waiting for you to finish signing in…
+          </Text>
+          <Link
+            href={authUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="body-small"
+          >
+            Reopen sign-in page ↗
+          </Link>
+        </>
+      ) : (
+        <>
+          <ButtonLink
+            href={authUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant={prominent ? 'primary' : 'secondary'}
+            size="small"
+          >
+            Open sign-in page ↗
+          </ButtonLink>
+          <Text variant="body-small" color="secondary">
+            Waiting for you to finish signing in…
+          </Text>
+        </>
+      )}
       {/* muster#1083: the challenge says how muster identifies itself to
           the authorization server. Only the fallbacks deserve a warning —
           they are the cases where the AS may reject the sign-in as an
@@ -119,7 +168,7 @@ function SignInFlow({
           screen will show an auto-registered client rather than a
           pre-provisioned one, which can otherwise look suspicious. */}
       {clientIdMethod === 'cimd-fallback' ? (
-        <Text variant="body-small" color="warning">
+        <Text variant="body-small" color="warning" className={classes.fullRow}>
           This server's authorization server advertises neither support for
           muster's client identity (CIMD) nor automatic client registration —
           the sign-in may be rejected as an unregistered client.
@@ -129,13 +178,17 @@ function SignInFlow({
           client registration but rejected muster's request (its actual
           rejection is in muster's challenge message and logs). */}
       {clientIdMethod === 'dcr-failed' ? (
-        <Text variant="body-small" color="warning">
+        <Text variant="body-small" color="warning" className={classes.fullRow}>
           This server's authorization server rejected muster's automatic client
           registration — the sign-in may be rejected as an unregistered client.
         </Text>
       ) : null}
       {clientIdMethod === 'dcr' ? (
-        <Text variant="body-small" color="secondary">
+        <Text
+          variant="body-small"
+          color="secondary"
+          className={classes.fullRow}
+        >
           muster registered itself with this server's authorization server
           automatically (Dynamic Client Registration).
         </Text>
@@ -243,7 +296,7 @@ export function ServerAuthActions({
       return null;
     }
     return (
-      <div className={classes.root}>
+      <div className={classes.inActionRow}>
         <SsoExplanation serverName={serverName} state={state} />
         <Messages state={state} />
       </div>
@@ -254,7 +307,7 @@ export function ServerAuthActions({
   // outstanding, whatever the polled status currently claims.
   if (needsLogin || authUrl) {
     return (
-      <div className={classes.root}>
+      <div className={classes.inActionRow}>
         {showName ? <code className={classes.name}>{serverName}</code> : null}
         <SignInFlow state={state} prominent />
         <Messages state={state} />
@@ -264,7 +317,7 @@ export function ServerAuthActions({
 
   if (oauthConfigured && isConnected) {
     return (
-      <div className={classes.root}>
+      <div className={classes.inActionRow}>
         {showName ? <code className={classes.name}>{serverName}</code> : null}
         <Button
           variant="secondary"

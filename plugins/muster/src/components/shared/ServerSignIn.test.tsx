@@ -24,6 +24,42 @@ const CHALLENGE = [
 
 type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
 
+/**
+ * The tab pre-opened by the Sign in click, which the hook navigates once
+ * muster's challenge arrives.
+ */
+interface FakeTab {
+  closed: boolean;
+  opener: unknown;
+  close: jest.Mock;
+  location: { href: string };
+}
+
+function makeTab(): FakeTab {
+  const tab: FakeTab = {
+    closed: false,
+    opener: window,
+    close: jest.fn(() => {
+      tab.closed = true;
+    }),
+    location: { href: 'about:blank' },
+  };
+  return tab;
+}
+
+let windowOpen: jest.SpyInstance;
+
+beforeEach(() => {
+  // jsdom does not implement window.open. null is the popup-blocked answer,
+  // so by default these tests exercise the link fallback; tests for the
+  // direct-open path install a FakeTab instead.
+  windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
+});
+
+afterEach(() => {
+  windowOpen.mockRestore();
+});
+
 function makeApi(options: {
   status?: ServerAuthStatus;
   signIn?: ServerSignInResult;
@@ -90,7 +126,66 @@ async function renderAuthActions(
 }
 
 describe('ServerSignIn', () => {
-  it('offers muster’s sign-in URL as a link after starting the flow', async () => {
+  it('opens the sign-in page directly in a tab pre-opened by the click', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+    });
+    const tab = makeTab();
+    windowOpen.mockReturnValue(tab as unknown as Window);
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => {
+      expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
+    });
+    // The tab is opened synchronously in the click (popup blockers only allow
+    // that) and navigated once muster's challenge arrives.
+    expect(windowOpen).toHaveBeenCalledWith('', '_blank');
+    await waitFor(() => {
+      expect(tab.location.href).toBe(
+        'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+      );
+    });
+    expect(tab.opener).toBeNull();
+    expect(
+      await screen.findByText(/Waiting for you to finish signing in/),
+    ).toBeInTheDocument();
+    // The wait offers a quiet re-open link, not a second button to click.
+    const link = screen.getByRole('link', { name: /Reopen sign-in page/ });
+    expect(link).toHaveAttribute(
+      'href',
+      'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(
+      screen.queryByRole('link', { name: /Open sign-in page/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('closes the pre-opened tab when muster answers without a sign-in page', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'connected',
+        message: "Server 'pro' is already authenticated and connected.",
+      },
+    });
+    const tab = makeTab();
+    windowOpen.mockReturnValue(tab as unknown as Window);
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // The tab would just strand the user on about:blank.
+    await waitFor(() => expect(tab.close).toHaveBeenCalled());
+  });
+
+  it('falls back to a prominent sign-in link when the popup was blocked', async () => {
     const api = makeApi({
       status: {
         name: 'pro',

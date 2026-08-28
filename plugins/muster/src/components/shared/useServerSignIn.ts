@@ -52,6 +52,11 @@ interface PendingSignIn {
   deadline: number;
   /** How muster identifies itself to the AS, when it reported one. */
   clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
+  /**
+   * Whether the click already opened the sign-in page in another tab. False
+   * means the popup was blocked, so the URL itself must be the affordance.
+   */
+  opened: boolean;
 }
 
 function pendingKey(installation: string | undefined, serverName: string) {
@@ -92,6 +97,12 @@ export interface ServerSignInState {
   clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
   /** True while polling for the browser sign-in to complete. */
   isWaiting: boolean;
+  /**
+   * Whether the sign-in page is already open in another tab (the click opens
+   * it directly). False while waiting means the popup was blocked, so the UI
+   * must offer the URL prominently instead of a mere re-open affordance.
+   */
+  signInTabOpened: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
   error?: string;
   /** Muster's message for an outcome that isn't a failure (already connected). */
@@ -124,12 +135,12 @@ export interface UseServerSignInOptions {
  *
  * Signing in to muster (`musterApi.signIn`) says nothing about the servers
  * muster aggregates: each OAuth-protected server needs its own flow, started by
- * muster's `core_auth_login`. That returns a sign-in URL the user opens in a
- * browser; muster's OAuth callback then connects the server for this muster
- * session, with no further tool call. There is no push signal for that, so this
- * hook polls `auth://status` while the flow is outstanding and clears itself
- * (invalidating every muster query, so hidden tools appear) once the server
- * reports `connected`.
+ * muster's `core_auth_login`. That returns a sign-in URL, which the click opens
+ * directly in a new tab; muster's OAuth callback then connects the server for
+ * this muster session, with no further tool call. There is no push signal for
+ * that, so this hook polls `auth://status` while the flow is outstanding and
+ * clears itself (invalidating every muster query, so hidden tools appear) once
+ * the server reports `connected`.
  *
  * The `auth://status` query is keyed per installation, so several rows on the
  * same page share one request.
@@ -165,6 +176,7 @@ export function useServerSignIn(
   const authUrl = pending?.authUrl;
   const clientIdMethod = pending?.clientIdMethod;
   const isWaiting = Boolean(authUrl);
+  const signInTabOpened = pending?.opened ?? false;
 
   const { data, error: statusError } = useQuery({
     queryKey: ['muster', 'auth-status', installation],
@@ -202,21 +214,42 @@ export function useServerSignIn(
         }`
       : undefined;
 
+  // The sign-in tab is pre-opened synchronously in the click handler (see
+  // `signIn` below) and navigated here once muster's challenge arrives:
+  // window.open from this callback would be outside the user gesture's call
+  // stack, which is exactly what popup blockers block. A ref, not state --
+  // only the click that opened the tab ever needs the handle again.
+  const signInTabRef = useRef<Window | null>(null);
+
   const signIn = useMutation({
     mutationFn: () => musterApi.signInServer(serverName, installation),
     onSuccess: result => {
+      const tab = signInTabRef.current;
+      signInTabRef.current = null;
       if (result.status === 'auth_required' && result.authUrl) {
+        const opened = Boolean(tab && !tab.closed);
+        if (tab && !tab.closed) {
+          tab.location.href = result.authUrl;
+        }
         setPending({
           authUrl: result.authUrl,
           deadline: Date.now() + timeoutMs,
           clientIdMethod: result.clientIdMethod,
+          opened,
         });
         return;
       }
+      // No sign-in page to show (already connected, or a refusal) -- the
+      // pre-opened tab would just strand the user on a blank page.
+      tab?.close();
       setPending(null);
       if (result.status === 'connected') {
         queryClient.invalidateQueries({ queryKey: ['muster'] });
       }
+    },
+    onError: () => {
+      signInTabRef.current?.close();
+      signInTabRef.current = null;
     },
   });
 
@@ -317,6 +350,7 @@ export function useServerSignIn(
     authUrl,
     clientIdMethod,
     isWaiting,
+    signInTabOpened,
     // Muster's own words for a refusal, or the mutation's transport error. A
     // failed status read is only worth showing while a sign-in is outstanding:
     // then it explains a wait that can never end, whereas outside a flow it is
@@ -348,6 +382,15 @@ export function useServerSignIn(
     // just happened (and vice versa) -- only the latest action gets to speak.
     signIn: () => {
       signOut.reset();
+      // Opened now, while still inside the user gesture (see signInTabRef);
+      // it shows about:blank until muster's challenge navigates it.
+      const tab = window.open('', '_blank') ?? null;
+      if (tab) {
+        // Same hygiene as a rel="noopener" link: the sign-in page never
+        // needs a handle back to this tab.
+        tab.opener = null;
+      }
+      signInTabRef.current = tab;
       signIn.mutate();
     },
     signOut: () => {
