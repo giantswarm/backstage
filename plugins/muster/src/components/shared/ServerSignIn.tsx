@@ -46,7 +46,11 @@ function Messages({ state }: { state: ServerSignInState }) {
   return (
     <>
       {note ? (
-        <Text variant="body-small" color="secondary" className={classes.fullRow}>
+        <Text
+          variant="body-small"
+          color="secondary"
+          className={classes.fullRow}
+        >
           {note}
         </Text>
       ) : null}
