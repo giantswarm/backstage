@@ -30,7 +30,9 @@ function makeApi(initial: AuthStatusResponse): jest.Mocked<Api> {
     signOutServer: jest.fn((_server: string, _installation?: string) =>
       Promise.resolve({
         status: 'signed_out' as const,
-        message: "Successfully logged out from 'pro'.",
+        message:
+          "Successfully logged out from 'pro'.\n\nThe server's tools are now " +
+          "hidden. Use core_auth_login with server='pro' to re-authenticate.",
       }),
     ),
   };
@@ -297,8 +299,12 @@ describe('useServerSignIn', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
     );
     await waitFor(() => expect(result.current.needsLogin).toBe(true));
-    // Muster's confirmation is surfaced so the flip is attributable.
-    expect(result.current.note).toContain('Successfully logged out');
+    // The flip is attributed by a UI-authored note, not muster's verbatim
+    // confirmation -- that one tells portal users to run core_auth_login.
+    expect(result.current.note).toBe(
+      "Signed out — the server's tools are hidden until you sign in again.",
+    );
+    expect(result.current.note).not.toContain('core_auth_login');
   });
 
   /** A refusal changed nothing, so nothing is refetched -- only reported. */

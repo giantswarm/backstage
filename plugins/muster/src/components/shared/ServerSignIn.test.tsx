@@ -48,7 +48,10 @@ function makeApi(options: {
       Promise.resolve(
         options.signOut ?? {
           status: 'signed_out',
-          message: "Successfully logged out from 'pro'.",
+          message:
+            "Successfully logged out from 'pro'.\n\nThe server's tools are " +
+            "now hidden. Use core_auth_login with server='pro' to " +
+            're-authenticate.',
         },
       ),
     ),
@@ -449,7 +452,10 @@ describe('ServerAuthActions', () => {
       status: { name: 'pro', status: 'connected' },
       signOut: {
         status: 'signed_out',
-        message: "Successfully logged out from 'pro'.",
+        message:
+          "Successfully logged out from 'pro'.\n\nThe server's tools are " +
+          "now hidden. Use core_auth_login with server='pro' to " +
+          're-authenticate.',
       },
     });
     await renderAuthActions(api, { oauthConfigured: true });
@@ -472,10 +478,15 @@ describe('ServerAuthActions', () => {
     expect(
       await screen.findByRole('button', { name: 'Sign in' }),
     ).toBeInTheDocument();
-    // Muster's confirmation stays visible next to the flipped affordance.
+    // A UI-authored confirmation stays visible next to the flipped affordance.
+    // Muster's verbatim text is not shown: it tells the user to run
+    // core_auth_login, CLI advice that contradicts the Sign in button.
     expect(
-      screen.getByText(/Successfully logged out from 'pro'/),
+      screen.getByText(
+        "Signed out — the server's tools are hidden until you sign in again.",
+      ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/core_auth_login/)).not.toBeInTheDocument();
   });
 
   it('surfaces muster’s own message when it refuses the logout', async () => {
