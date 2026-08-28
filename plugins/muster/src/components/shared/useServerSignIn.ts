@@ -259,12 +259,23 @@ export function useServerSignIn(
   // the truth must be re-read), invalidating every muster query is what
   // re-gates the server's tools and brings the sign-in affordance back. An
   // 'error' answer is a refusal -- nothing changed, so nothing is refetched.
+  //
+  // A THROWN error is different from a refusal: it means the request or the
+  // response was lost (network fault, a backend pod terminated by a rollout
+  // mid-request), and by then muster may well have already revoked the auth --
+  // observed live: muster logged the logout as successful while the answer
+  // died with the pod, leaving the row claiming "Sign out" for a session that
+  // was in fact signed out. The outcome is unknown either way, so re-read the
+  // truth instead of trusting the stale row.
   const signOut = useMutation({
     mutationFn: () => musterApi.signOutServer(serverName, installation),
     onSuccess: result => {
       if (result.status !== 'error') {
         queryClient.invalidateQueries({ queryKey: ['muster'] });
       }
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ['muster'] });
     },
   });
 
@@ -352,15 +363,22 @@ export function useServerSignIn(
     isWaiting,
     signInTabOpened,
     // Muster's own words for a refusal, or the mutation's transport error. A
-    // failed status read is only worth showing while a sign-in is outstanding:
-    // then it explains a wait that can never end, whereas outside a flow it is
-    // just noise next to content the user didn't ask about (the servers page
-    // renders this above its own "connect to muster" gate).
+    // transport error is prefixed with the action it belongs to: a raw
+    // "Failed to fetch" next to the button reads as the page being broken,
+    // not as this click's request having been lost. A failed status read is
+    // only worth showing while a sign-in is outstanding: then it explains a
+    // wait that can never end, whereas outside a flow it is just noise next
+    // to content the user didn't ask about (the servers page renders this
+    // above its own "connect to muster" gate).
     error:
       (isFailure ? signInResult?.message : undefined) ??
-      signIn.error?.message ??
+      (signIn.error
+        ? `Sign-in request failed: ${signIn.error.message}`
+        : undefined) ??
       (isSignOutFailure ? signOutResult?.message : undefined) ??
-      signOut.error?.message ??
+      (signOut.error
+        ? `Sign-out request failed: ${signOut.error.message}`
+        : undefined) ??
       (pending ? statusUnreadable : undefined),
     // 'connected' with the alert still up is a real combination (the two come
     // from different muster state), and silence there is indistinguishable from

@@ -342,4 +342,43 @@ describe('useServerSignIn', () => {
     );
     expect(invalidate).not.toHaveBeenCalled();
   });
+
+  /**
+   * A thrown error is not a refusal: the request or its answer was lost
+   * (network fault, a backend pod terminated by a rollout mid-request), and
+   * muster may well have completed the logout by then -- observed live as a
+   * row still offering "Sign out" for a session that was already signed out.
+   * The outcome is unknown, so the status must be re-read, and the error must
+   * name the action it belongs to instead of a bare "Failed to fetch".
+   */
+  it('re-reads auth status when the sign-out transport fails', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    api.signOutServer.mockRejectedValue(new TypeError('Failed to fetch'));
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+
+    // What the re-read finds is muster's business (here: the logout had in
+    // fact landed); the hook's job is only to ask again.
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    await act(async () => result.current.signOut());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Sign-out request failed: Failed to fetch',
+      ),
+    );
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
+    );
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+  });
 });
