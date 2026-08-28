@@ -31,6 +31,7 @@ import {
   toWorkflowDefinition,
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
+import { useMusterMutationRefresh } from '../MusterInstanceProvider';
 import { StateBadge } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -159,6 +160,7 @@ function ConfirmDeleteDialog({
 }) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
+  const refresh = useMusterMutationRefresh(workflow.cluster);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [done, setDone] = useState(false);
@@ -179,6 +181,11 @@ function ConfirmDeleteDialog({
         { name: workflow.getName() },
         workflow.cluster,
       );
+      // muster deletes the CR synchronously, so refetching now removes the
+      // row instead of waiting for the next 30s poll. The workflow list is
+      // fed entirely by the provider's CRD reads (no runtime aggregator query
+      // like the servers page), so the provider retry covers everything.
+      refresh();
       setDone(true);
     } catch (e) {
       setError(mutationErrorMessage(e));
@@ -206,7 +213,7 @@ function ConfirmDeleteDialog({
         {done && (
           <Box mt={2}>
             <Typography variant="body2" className={classes.ok}>
-              Done. The change may take a moment to reflect in the CRD list.
+              Done. The workflow list has been refreshed.
             </Typography>
           </Box>
         )}
@@ -257,6 +264,7 @@ export function AdHocWorkflowDialog({
   const musterApi = useApi(musterApiRef);
   const isEdit = Boolean(workflow);
   const target = workflow?.cluster ?? installation;
+  const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -325,7 +333,13 @@ export function AdHocWorkflowDialog({
         def,
         target,
       );
-      setMessage('Saved. The CRD list will refresh shortly.');
+      // muster writes the CR synchronously, so refetching now shows the new
+      // or updated workflow instead of waiting for the next 30s poll; the
+      // reconciler-trailing availability badge settles on the follow-up read.
+      refresh();
+      setMessage(
+        'Saved. The workflow list has been refreshed; availability may take a few seconds to settle.',
+      );
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {
