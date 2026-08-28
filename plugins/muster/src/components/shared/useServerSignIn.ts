@@ -28,6 +28,17 @@ const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
 ];
 
 /**
+ * Muster's own `signed_out` confirmation is written for CLI users -- it ends
+ * with "Use core_auth_login with server='x' to re-authenticate", an
+ * instruction that reads as wrong advice next to the returning Sign in
+ * button. Unlike a refusal, where muster's words carry the reason and are
+ * surfaced verbatim, this note only confirms what the flipped affordance
+ * already shows, so it is UI-authored.
+ */
+const SIGNED_OUT_NOTE =
+  "Signed out — the server's tools are hidden until you sign in again.";
+
+/**
  * A sign-in this browser tab started and is still waiting on. Held in the
  * react-query cache rather than component state so it outlives the row that
  * started it: on the MCP servers page the affordance lives inside a
@@ -325,9 +336,7 @@ export function useServerSignIn(
       (signInResult?.status === 'connected'
         ? signInResult.message
         : undefined) ??
-      (signOutResult?.status === 'signed_out'
-        ? signOutResult.message
-        : undefined),
+      (signOutResult?.status === 'signed_out' ? SIGNED_OUT_NOTE : undefined),
     isSsoManaged: Boolean(
       status?.token_forwarding_enabled || status?.token_exchange_enabled,
     ),
