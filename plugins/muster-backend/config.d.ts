@@ -34,6 +34,13 @@ export interface Config {
       authProvider?: string;
       /** Static headers added to every request to this installation. */
       headers?: { [key: string]: string };
+      /**
+       * Name of the MCP server (as registered in muster) fronting this
+       * installation's own Prometheus/Mimir, used by the MCP usage view.
+       * Defaults to the `<name>-mcp-prometheus` naming convention, then to
+       * the only prometheus-ish server registered.
+       */
+      prometheusServer?: string;
     }>;
   };
 }

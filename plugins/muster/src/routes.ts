@@ -43,6 +43,11 @@ export const toolExplorerRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
+export const usageRouteRef = createSubRouteRef({
+  path: '/usage',
+  parent: rootRouteRef,
+});
+
 export const workflowDetailRouteRef = createSubRouteRef({
   path: '/workflows/:name',
   parent: rootRouteRef,

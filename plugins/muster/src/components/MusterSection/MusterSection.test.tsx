@@ -22,6 +22,9 @@ jest.mock('../WorkflowsRouter', () => ({
 jest.mock('../ToolExplorerPage', () => ({
   ToolExplorerPage: () => <div>tools-view</div>,
 }));
+jest.mock('../UsagePage', () => ({
+  UsagePage: () => <div>usage-view</div>,
+}));
 
 // MusterInstanceProvider is deliberately NOT stubbed: its `?installation=` write
 // is what used to clobber the index redirect. Only its data sources are.
@@ -117,6 +120,17 @@ describe('MusterSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
         '/agent-platform/muster/dashboard?installation=alpha',
+      );
+    });
+  });
+
+  it('routes the MCP usage view', async () => {
+    renderSection('/agent-platform/muster/usage?installation=alpha');
+
+    expect(await screen.findByText('usage-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/muster/usage?installation=alpha',
       );
     });
   });

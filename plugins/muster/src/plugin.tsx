@@ -19,6 +19,7 @@ import {
   newMcpServerRouteRef,
   rootRouteRef,
   toolExplorerRouteRef,
+  usageRouteRef,
   workflowDetailRouteRef,
   workflowsRouteRef,
 } from './routes';
@@ -87,5 +88,6 @@ export const musterPlugin = createFrontendPlugin({
     workflows: workflowsRouteRef,
     toolExplorer: toolExplorerRouteRef,
     workflowDetail: workflowDetailRouteRef,
+    usage: usageRouteRef,
   },
 });
