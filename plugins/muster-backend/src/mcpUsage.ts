@@ -250,7 +250,6 @@ export async function getMcpUsage(
   // Align the window to whole steps so bucket edges are stable across reloads.
   const endSeconds = Math.ceil(nowSeconds / stepSeconds) * stepSeconds;
   const startSeconds = endSeconds - hours * 3600;
-  const range = `${hours}h`;
   const step = `${stepHours}h`;
 
   const runQuery = async (
