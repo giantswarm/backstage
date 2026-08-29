@@ -389,10 +389,13 @@ export async function getMcpUsage(
     }
     toolRows.set(tool, row);
   }
-  for (const [tool, buckets] of bucketTotals(latencyBucketsByTool, 'tool')) {
-    const row = toolRows.get(tool);
+  for (const [toolName, toolBuckets] of bucketTotals(
+    latencyBucketsByTool,
+    'tool',
+  )) {
+    const row = toolRows.get(toolName);
     if (row) {
-      row.p95_seconds = quantileFromBuckets(0.95, buckets);
+      row.p95_seconds = quantileFromBuckets(0.95, toolBuckets);
     }
   }
 
