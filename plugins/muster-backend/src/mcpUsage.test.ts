@@ -1,4 +1,8 @@
-import { getMcpUsage, pickPrometheusServer } from './mcpUsage';
+import {
+  getMcpUsage,
+  pickPrometheusServer,
+  quantileFromBuckets,
+} from './mcpUsage';
 import { MusterInstallationConfig, MusterMcpClient } from './MusterMcpClient';
 
 const INSTALLATION: MusterInstallationConfig = {
@@ -55,6 +59,39 @@ describe('pickPrometheusServer', () => {
   });
 });
 
+describe('quantileFromBuckets', () => {
+  it('interpolates within the bucket containing the rank', () => {
+    const buckets = new Map<number, number>([
+      [1, 60],
+      [5, 95],
+      [Infinity, 100],
+    ]);
+    expect(quantileFromBuckets(0.95, buckets)).toBe(5);
+    expect(quantileFromBuckets(0.5, buckets)).toBeCloseTo(50 / 60);
+  });
+
+  it('caps at the highest finite bound when the quantile is in +Inf', () => {
+    const buckets = new Map<number, number>([
+      [1, 10],
+      [Infinity, 100],
+    ]);
+    expect(quantileFromBuckets(0.95, buckets)).toBe(1);
+  });
+
+  it('returns null for empty or zero-count histograms', () => {
+    expect(quantileFromBuckets(0.95, new Map())).toBeNull();
+    expect(
+      quantileFromBuckets(
+        0.95,
+        new Map([
+          [1, 0],
+          [Infinity, 0],
+        ]),
+      ),
+    ).toBeNull();
+  });
+});
+
 describe('getMcpUsage', () => {
   it('reports unavailable when no prometheus server is registered', async () => {
     const client = fakeClient(tool => {
@@ -70,16 +107,17 @@ describe('getMcpUsage', () => {
     expect(usage.totals.calls).toBe(0);
   });
 
-  it('aggregates buckets, tools and servers from the family tools', async () => {
+  it('aggregates buckets, tools and servers from step-split range queries', async () => {
     const calls: Array<{ tool: string; args: Record<string, unknown> }> = [];
     const client = fakeClient((tool, args) => {
       calls.push({ tool, args });
       if (tool === 'core_mcpserver_list') {
         return SERVER_LIST;
       }
-      if (tool === 'x_prometheus_execute_range_query') {
-        // start/end are RFC3339 strings; samples come back in Unix seconds.
-        const end = Date.parse(String(args.end)) / 1000;
+      // start/end are RFC3339 strings; samples come back in Unix seconds.
+      const end = Date.parse(String(args.end)) / 1000;
+      const query = String(args.query);
+      if (query.includes('sum by (outcome)')) {
         return [
           'Result Type: matrix',
           'Result: {outcome="ok"} =>',
@@ -89,30 +127,53 @@ describe('getMcpUsage', () => {
           `1 @[${end}]`,
         ].join('\n');
       }
-      const query = String(args.query);
       if (query.includes('sum by (tool, outcome)')) {
         return [
-          'Result Type: vector',
-          'Result: {outcome="ok", tool="x_kubernetes_list_pods"} => 25 @[1]',
-          '{outcome="error", tool="x_kubernetes_list_pods"} => 1 @[1]',
-          '{outcome="ok", tool="x_prometheus_execute_query"} => 5 @[1]',
+          'Result Type: matrix',
+          'Result: {outcome="ok", tool="x_kubernetes_list_pods"} =>',
+          `10 @[${end - 3600}]`,
+          `15 @[${end}]`,
+          '{outcome="error", tool="x_kubernetes_list_pods"} =>',
+          `1 @[${end}]`,
+          '{outcome="ok", tool="x_prometheus_execute_query"} =>',
+          `5 @[${end}]`,
         ].join('\n');
       }
       if (query.includes('sum by (mcpserver_name, outcome)')) {
         return [
-          'Result Type: vector',
-          'Result: {mcpserver_name="gazelle-mcp-kubernetes", outcome="ok"} => 25 @[1]',
-          '{mcpserver_name="gazelle-mcp-kubernetes", outcome="error"} => 1 @[1]',
-          '{mcpserver_name="gazelle-mcp-prometheus", outcome="ok"} => 5 @[1]',
+          'Result Type: matrix',
+          'Result: {mcpserver_name="gazelle-mcp-kubernetes", outcome="ok"} =>',
+          `10 @[${end - 3600}]`,
+          `15 @[${end}]`,
+          '{mcpserver_name="gazelle-mcp-kubernetes", outcome="error"} =>',
+          `1 @[${end}]`,
+          '{mcpserver_name="gazelle-mcp-prometheus", outcome="ok"} =>',
+          `5 @[${end}]`,
         ].join('\n');
       }
       if (query.includes('sum by (le)')) {
-        return 'Result Type: vector\nResult: {} => 4.75 @[1]';
+        return [
+          'Result Type: matrix',
+          `Result: {le="1"} =>`,
+          `30 @[${end - 3600}]`,
+          `30 @[${end}]`,
+          '{le="5"} =>',
+          `45 @[${end - 3600}]`,
+          `50 @[${end}]`,
+          '{le="+Inf"} =>',
+          `50 @[${end - 3600}]`,
+          `50 @[${end}]`,
+        ].join('\n');
       }
       if (query.includes('sum by (tool, le)')) {
         return [
-          'Result Type: vector',
-          'Result: {tool="x_kubernetes_list_pods"} => 2.5 @[1]',
+          'Result Type: matrix',
+          'Result: {le="1", tool="x_kubernetes_list_pods"} =>',
+          `50 @[${end}]`,
+          '{le="5", tool="x_kubernetes_list_pods"} =>',
+          `100 @[${end}]`,
+          '{le="+Inf", tool="x_kubernetes_list_pods"} =>',
+          `100 @[${end}]`,
         ].join('\n');
       }
       throw new Error(`unexpected query ${query}`);
@@ -158,7 +219,9 @@ describe('getMcpUsage', () => {
       calls: 31,
       errors: 1,
       error_ratio: 1 / 31,
-      p95_seconds: 4.75,
+      // Client-side histogram_quantile over the summed buckets:
+      // le1=60, le5=95, +Inf=100 → rank 95 lands exactly on le=5.
+      p95_seconds: 5,
       distinct_tools: 2,
     });
 
@@ -167,7 +230,8 @@ describe('getMcpUsage', () => {
         tool: 'x_kubernetes_list_pods',
         calls: 26,
         errors: 1,
-        p95_seconds: 2.5,
+        // le1=50, le5=100 → rank 95 → 1 + 4 * (45/50).
+        p95_seconds: 4.6,
       },
       {
         tool: 'x_prometheus_execute_query',
@@ -210,6 +274,36 @@ describe('getMcpUsage', () => {
           call.args.management_cluster === undefined,
       ),
     ).toBe(true);
+  });
+
+  it('degrades to empty rollups when only the secondary queries fail', async () => {
+    const client = fakeClient((tool, args) => {
+      if (tool === 'core_mcpserver_list') {
+        return SERVER_LIST;
+      }
+      const query = String(args.query);
+      if (query.includes('sum by (outcome)')) {
+        const end = Date.parse(String(args.end)) / 1000;
+        return [
+          'Result Type: matrix',
+          'Result: {outcome="ok"} =>',
+          `7 @[${end}]`,
+        ].join('\n');
+      }
+      throw new Error('server_error: server error: 500');
+    });
+
+    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    expect(usage.available).toBe(true);
+    expect(usage.totals).toEqual({
+      calls: 7,
+      errors: 0,
+      error_ratio: 0,
+      p95_seconds: null,
+      distinct_tools: 0,
+    });
+    expect(usage.top_tools).toEqual([]);
+    expect(usage.servers).toEqual([]);
   });
 
   it('reports unavailable with the failure reason when queries error', async () => {
