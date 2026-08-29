@@ -142,6 +142,54 @@ export interface WorkflowStats {
   per_day: WorkflowStatsPerDay[];
 }
 
+/** One time bucket of MCP usage, labeled by its start timestamp. */
+export interface McpUsageBucket {
+  start: string;
+  ok: number;
+  error: number;
+  error_result: number;
+}
+
+/** Per-tool usage rollup over the selected range. */
+export interface McpUsageToolRow {
+  tool: string;
+  calls: number;
+  errors: number;
+  p95_seconds: number | null;
+}
+
+/** Per-MCP-server usage rollup over the selected range. */
+export interface McpUsageServerRow {
+  server: string;
+  calls: number;
+  errors: number;
+}
+
+/**
+ * MCP usage statistics (`/usage`), derived by the muster-backend from
+ * muster's downstream dispatch metrics via the prometheus MCP server
+ * federated behind the same installation. `available: false` (with a
+ * `reason`) means the installation has no queryable prometheus server —
+ * an expected state, not an error.
+ */
+export interface McpUsage {
+  available: boolean;
+  reason?: string;
+  source?: { server: string; tool: string };
+  range_hours: number;
+  step_hours: number;
+  buckets: McpUsageBucket[];
+  totals: {
+    calls: number;
+    errors: number;
+    error_ratio: number | null;
+    p95_seconds: number | null;
+    distinct_tools: number;
+  };
+  top_tools: McpUsageToolRow[];
+  servers: McpUsageServerRow[];
+}
+
 /** One configured muster installation, as reported by `/installations`. */
 export interface MusterInstallationInfo {
   name: string;
@@ -419,6 +467,11 @@ export interface MusterApi {
   ): Promise<WorkflowExecution>;
   /** Derived run statistics for a workflow (one installation). */
   getWorkflowStats(name: string, installation?: string): Promise<WorkflowStats>;
+  /** MCP usage statistics derived from muster's metrics (one installation). */
+  getMcpUsage(options?: {
+    installation?: string;
+    hours?: number;
+  }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */

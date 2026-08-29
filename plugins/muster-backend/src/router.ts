@@ -20,6 +20,7 @@ import {
   MusterMcpClient,
   readMusterInstallationsFromConfig,
 } from './MusterMcpClient';
+import { getMcpUsage } from './mcpUsage';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -501,6 +502,32 @@ export async function createRouter(
       readCallOptions(req, installation),
     );
     res.json(result);
+  });
+
+  // --- MCP usage (derived from muster's own Prometheus metrics) ------------
+
+  /**
+   * Usage statistics for the installation's muster: tool calls per bucket by
+   * outcome, top tools, and per-server rollups. Sourced from muster's
+   * downstream dispatch metrics via the prometheus MCP server federated
+   * behind the same muster (no separate Prometheus access path). Answers
+   * `available: false` with a reason instead of erroring when the
+   * installation has no queryable prometheus server.
+   */
+  router.get('/usage', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const hours = parseOptionalInt(req.query.hours, 'hours') ?? 24;
+    if (hours < 1 || hours > 24 * 90) {
+      throw new InputError('hours must be between 1 and 2160');
+    }
+    res.json(
+      await getMcpUsage(
+        client,
+        installation,
+        readCallOptions(req, installation),
+        hours,
+      ),
+    );
   });
 
   // --- Workflows -----------------------------------------------------------

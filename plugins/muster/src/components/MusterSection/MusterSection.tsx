@@ -15,6 +15,7 @@ import { DashboardPage } from '../DashboardPage';
 import { McpServersRouter } from '../McpServersRouter';
 import { WorkflowsRouter } from '../WorkflowsRouter';
 import { ToolExplorerPage } from '../ToolExplorerPage';
+import { UsagePage } from '../UsagePage';
 
 // The muster views. This used to be four SubPageBlueprint tabs on a standalone
 // muster page; muster is now a section embedded under the Agent Platform page's
@@ -22,6 +23,7 @@ import { ToolExplorerPage } from '../ToolExplorerPage';
 // Dashboard is first, so the section index redirects to it.
 const VIEWS = [
   { path: 'dashboard', title: 'Dashboard' },
+  { path: 'usage', title: 'MCP usage' },
   { path: 'servers', title: 'Servers' },
   { path: 'workflows', title: 'Workflows' },
   { path: 'tools', title: 'Tool explorer' },
@@ -91,6 +93,7 @@ const MusterViews = () => {
       </Box>
       <Routes>
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="usage" element={<UsagePage />} />
         <Route path="servers/*" element={<McpServersRouter />} />
         <Route path="workflows/*" element={<WorkflowsRouter />} />
         <Route path="tools" element={<ToolExplorerPage />} />

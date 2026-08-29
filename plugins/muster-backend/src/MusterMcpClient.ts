@@ -50,6 +50,13 @@ export interface MusterServerConfig {
 export interface MusterInstallationConfig extends MusterServerConfig {
   /** Stable installation id used for routing and as the client cache scope. */
   name: string;
+  /**
+   * Name of the MCP server (as registered in muster) that fronts this
+   * installation's own Prometheus/Mimir, used by the `/usage` route. When
+   * unset, the route falls back to the `<name>-mcp-prometheus` convention,
+   * then to the only prometheus-ish server.
+   */
+  prometheusServer?: string;
 }
 
 /**
@@ -144,6 +151,7 @@ export function readMusterInstallationsFromConfig(
         url,
         authProvider: entry.getOptionalString('authProvider'),
         headers: readHeaders(entry.getOptionalConfig('headers')),
+        prometheusServer: entry.getOptionalString('prometheusServer'),
       });
     }
     return installations;

@@ -24,6 +24,7 @@ import {
   WorkflowExecutionListResponse,
   WorkflowGetResponse,
   WorkflowListResponse,
+  McpUsage,
   WorkflowStats,
 } from './types';
 
@@ -133,6 +134,20 @@ export class MusterApiClient implements MusterApi {
     return this.get<WorkflowStats>(
       `/workflows/${encodeURIComponent(name)}/stats`,
       installation,
+    );
+  }
+
+  async getMcpUsage(
+    options: { installation?: string; hours?: number } = {},
+  ): Promise<McpUsage> {
+    const searchParams = new URLSearchParams();
+    if (options.hours !== undefined) {
+      searchParams.set('hours', String(options.hours));
+    }
+    const query = searchParams.toString();
+    return this.get<McpUsage>(
+      `/usage${query ? `?${query}` : ''}`,
+      options.installation,
     );
   }
 

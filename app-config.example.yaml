@@ -137,6 +137,12 @@ muster:
       # blocked with 403 unless this is true. Leave unset for GitOps-managed
       # installations; opt a single installation in only when you mean it.
       # allowMutations: false
+      #
+      # MCP server (as registered in muster) fronting this installation's own
+      # Prometheus/Mimir, used by the "MCP usage" view. Defaults to the
+      # `<name>-mcp-prometheus` naming convention, then to the only
+      # prometheus-ish server registered; set it only when neither applies.
+      # prometheusServer: main-mcp-prometheus
     - name: example
       url: ${MUSTER_EXAMPLE_URL}
       authProvider: oidc-example
