@@ -1,5 +1,5 @@
 import { MusterInstallationConfig, MusterMcpClient } from './MusterMcpClient';
-import { finiteValue, parsePromToolText, PromSeries } from './promText';
+import { parsePromToolText, PromSeries } from './promText';
 
 /**
  * MCP usage statistics derived from muster's own Prometheus metrics
@@ -104,15 +104,103 @@ export function pickPrometheusServer(
   return prometheusLike.find(name => name.startsWith(installation.name));
 }
 
+/** Sum of every finite sample across all series (a range-query rollup). */
 function sumPoints(series: PromSeries[]): number {
   let total = 0;
   for (const s of series) {
-    const value = s.points[0]?.value;
-    if (value !== undefined && Number.isFinite(value)) {
-      total += value;
+    for (const point of s.points) {
+      if (Number.isFinite(point.value)) {
+        total += point.value;
+      }
     }
   }
   return total;
+}
+
+function parseLe(le: string | undefined): number | undefined {
+  if (le === undefined) {
+    return undefined;
+  }
+  if (le === '+Inf' || le === 'Inf') {
+    return Infinity;
+  }
+  const parsed = Number(le);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * Sum histogram-bucket increases per (group, le) across every time step.
+ * Prometheus `_bucket` series are cumulative in `le`, and both `increase()`
+ * and summation over time preserve that, so the totals stay a valid
+ * cumulative histogram per group.
+ */
+function bucketTotals(
+  series: PromSeries[],
+  groupLabel?: string,
+): Map<string, Map<number, number>> {
+  const groups = new Map<string, Map<number, number>>();
+  for (const s of series) {
+    const le = parseLe(s.labels.le);
+    if (le === undefined) {
+      continue;
+    }
+    const key = groupLabel ? (s.labels[groupLabel] ?? '') : '';
+    const buckets = groups.get(key) ?? new Map<number, number>();
+    let count = buckets.get(le) ?? 0;
+    for (const point of s.points) {
+      if (Number.isFinite(point.value)) {
+        count += point.value;
+      }
+    }
+    buckets.set(le, count);
+    groups.set(key, buckets);
+  }
+  return groups;
+}
+
+/**
+ * The Prometheus histogram_quantile algorithm over cumulative bucket
+ * totals, run client-side. Computing the quantile here (from per-step
+ * `increase()` sums) instead of via `histogram_quantile(rate(...[24h]))`
+ * keeps every query step-sized — Mimir splits step-aligned range queries,
+ * while instant queries with a multi-hour lookback go to the long-range
+ * store path, which is exactly what breaks when a store-gateway degrades.
+ */
+export function quantileFromBuckets(
+  q: number,
+  buckets: Map<number, number>,
+): number | null {
+  const entries = [...buckets.entries()].sort((a, b) => a[0] - b[0]);
+  if (entries.length === 0) {
+    return null;
+  }
+  const total = entries[entries.length - 1][1];
+  if (!(total > 0)) {
+    return null;
+  }
+  const rank = q * total;
+  let prevLe = 0;
+  let prevCount = 0;
+  for (const [le, count] of entries) {
+    if (count >= rank) {
+      if (!Number.isFinite(le)) {
+        // The quantile falls in the +Inf bucket: cap at the highest
+        // finite bound, like Prometheus does.
+        return prevLe;
+      }
+      if (count === prevCount) {
+        return le;
+      }
+      return (
+        prevLe + (le - prevLe) * ((rank - prevCount) / (count - prevCount))
+      );
+    }
+    if (Number.isFinite(le)) {
+      prevLe = le;
+    }
+    prevCount = count;
+  }
+  return prevLe;
 }
 
 function unavailable(hours: number, reason: string): McpUsageResponse {
@@ -162,7 +250,6 @@ export async function getMcpUsage(
   // Align the window to whole steps so bucket edges are stable across reloads.
   const endSeconds = Math.ceil(nowSeconds / stepSeconds) * stepSeconds;
   const startSeconds = endSeconds - hours * 3600;
-  const range = `${hours}h`;
   const step = `${stepHours}h`;
 
   const runQuery = async (
@@ -191,35 +278,58 @@ export async function getMcpUsage(
     }
   };
 
+  // Every aggregate is derived from step-split RANGE queries with a
+  // step-sized lookback, never from instant queries with a range-long
+  // lookback: Mimir's query-frontend splits range queries into short
+  // subqueries, while `increase(x[24h])` at an instant needs one long-range
+  // read from the store-gateway path — which is exactly what degrades when a
+  // store-gateway has a bad day (observed on gazelle: [1h] fine, [12h]+
+  // returning 500 while the equivalent range query kept working).
+  const rangeQuery = (query: string): Promise<PromSeries[]> =>
+    runQuery(RANGE_TOOL, {
+      query,
+      // RFC3339, not Unix seconds: mcp-prometheus documents both but its
+      // deployed versions only parse RFC3339.
+      start: new Date(startSeconds * 1000).toISOString(),
+      end: new Date(endSeconds * 1000).toISOString(),
+      step,
+    });
+  // The secondary rollups degrade to empty on failure instead of taking the
+  // whole view down.
+  const optional = (promise: Promise<PromSeries[]>): Promise<PromSeries[]> =>
+    promise.catch(() => []);
+
   let byOutcomeOverTime: PromSeries[];
   let byToolOutcome: PromSeries[];
   let byServerOutcome: PromSeries[];
-  let p95Overall: PromSeries[];
-  let p95ByTool: PromSeries[];
+  let latencyBuckets: PromSeries[];
+  let latencyBucketsByTool: PromSeries[];
   try {
-    [byOutcomeOverTime, byToolOutcome, byServerOutcome, p95Overall, p95ByTool] =
-      await Promise.all([
-        runQuery(RANGE_TOOL, {
-          query: `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`,
-          // RFC3339, not Unix seconds: mcp-prometheus documents both but its
-          // deployed versions only parse RFC3339.
-          start: new Date(startSeconds * 1000).toISOString(),
-          end: new Date(endSeconds * 1000).toISOString(),
-          step,
-        }),
-        runQuery(QUERY_TOOL, {
-          query: `sum by (tool, outcome) (increase(${METRIC_CALLS}[${range}]))`,
-        }),
-        runQuery(QUERY_TOOL, {
-          query: `sum by (mcpserver_name, outcome) (increase(${METRIC_CALLS}[${range}]))`,
-        }),
-        runQuery(QUERY_TOOL, {
-          query: `histogram_quantile(0.95, sum by (le) (rate(${METRIC_DURATION}[${range}])))`,
-        }),
-        runQuery(QUERY_TOOL, {
-          query: `histogram_quantile(0.95, sum by (tool, le) (rate(${METRIC_DURATION}[${range}])))`,
-        }),
-      ]);
+    [
+      byOutcomeOverTime,
+      byToolOutcome,
+      byServerOutcome,
+      latencyBuckets,
+      latencyBucketsByTool,
+    ] = await Promise.all([
+      rangeQuery(`sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`),
+      optional(
+        rangeQuery(
+          `sum by (tool, outcome) (increase(${METRIC_CALLS}[${step}]))`,
+        ),
+      ),
+      optional(
+        rangeQuery(
+          `sum by (mcpserver_name, outcome) (increase(${METRIC_CALLS}[${step}]))`,
+        ),
+      ),
+      optional(
+        rangeQuery(`sum by (le) (increase(${METRIC_DURATION}[${step}]))`),
+      ),
+      optional(
+        rangeQuery(`sum by (tool, le) (increase(${METRIC_DURATION}[${step}]))`),
+      ),
+    ]);
   } catch (error) {
     return unavailable(
       hours,
@@ -258,14 +368,14 @@ export async function getMcpUsage(
     }
   }
 
-  // Per-tool rollup.
+  // Per-tool rollup (sum every step's increase per series).
   const toolRows = new Map<string, McpUsageToolRow>();
   for (const series of byToolOutcome) {
     const tool = series.labels.tool;
-    const value = series.points[0]?.value;
-    if (!tool || value === undefined || !Number.isFinite(value)) {
+    if (!tool) {
       continue;
     }
+    const value = sumPoints([series]);
     const row = toolRows.get(tool) ?? {
       tool,
       calls: 0,
@@ -278,10 +388,13 @@ export async function getMcpUsage(
     }
     toolRows.set(tool, row);
   }
-  for (const series of p95ByTool) {
-    const row = series.labels.tool && toolRows.get(series.labels.tool);
+  for (const [toolName, toolBuckets] of bucketTotals(
+    latencyBucketsByTool,
+    'tool',
+  )) {
+    const row = toolRows.get(toolName);
     if (row) {
-      row.p95_seconds = finiteValue(series) ?? null;
+      row.p95_seconds = quantileFromBuckets(0.95, toolBuckets);
     }
   }
 
@@ -289,10 +402,10 @@ export async function getMcpUsage(
   const serverRows = new Map<string, McpUsageServerRow>();
   for (const series of byServerOutcome) {
     const server = series.labels.mcpserver_name;
-    const value = series.points[0]?.value;
-    if (!server || value === undefined || !Number.isFinite(value)) {
+    if (!server) {
       continue;
     }
+    const value = sumPoints([series]);
     const row = serverRows.get(server) ?? { server, calls: 0, errors: 0 };
     row.calls += value;
     if (series.labels.outcome !== 'ok') {
@@ -301,12 +414,13 @@ export async function getMcpUsage(
     serverRows.set(server, row);
   }
 
-  const totalCalls = sumPoints(
-    byToolOutcome.filter(series => series.labels.outcome !== undefined),
-  );
+  // Totals come from the (required) outcome buckets, so they stay correct
+  // even when the optional per-tool rollup degraded to empty.
+  const totalCalls = sumPoints(byOutcomeOverTime);
   const totalErrors = sumPoints(
-    byToolOutcome.filter(series => series.labels.outcome !== 'ok'),
+    byOutcomeOverTime.filter(series => series.labels.outcome !== 'ok'),
   );
+  const overallBuckets = bucketTotals(latencyBuckets).get('');
 
   return {
     available: true,
@@ -318,7 +432,9 @@ export async function getMcpUsage(
       calls: totalCalls,
       errors: totalErrors,
       error_ratio: totalCalls > 0 ? totalErrors / totalCalls : null,
-      p95_seconds: finiteValue(p95Overall[0]) ?? null,
+      p95_seconds: overallBuckets
+        ? quantileFromBuckets(0.95, overallBuckets)
+        : null,
       distinct_tools: toolRows.size,
     },
     top_tools: [...toolRows.values()]
