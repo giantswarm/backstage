@@ -26663,21 +26663,21 @@ __metadata:
   linkType: hard
 
 "assistant-stream@npm:^0.3.0":
-  version: 0.3.36
-  resolution: "assistant-stream@npm:0.3.36"
+  version: 0.3.40
+  resolution: "assistant-stream@npm:0.3.40"
   dependencies:
     "@standard-schema/spec": "npm:^1.1.0"
     nanoid: "npm:^6.0.1"
     secure-json-parse: "npm:^4.1.0"
   peerDependencies:
-    ioredis: ^5.10.1
+    ioredis: ^5.10.1 || ^6.0.0
     redis: ^5.12.1
   peerDependenciesMeta:
     ioredis:
       optional: true
     redis:
       optional: true
-  checksum: 10c0/38efcbdb817fb49931ba9b040b8e1def3087771c3ad580c1385671488ca17067036471a3f56a31c5cdc271da15962e065361012d4ea27717e544139f1ca174c6
+  checksum: 10c0/d9b66dc4b0ca6fabeffbf16ddf882f2280bf9b6fdfcea23269670c7227212c10358249cbb3cf7a50d703a656d459258cc58f9fd7b06a126432fb6de9a925fb3e
   languageName: node
   linkType: hard
 
