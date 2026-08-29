@@ -201,8 +201,10 @@ export async function getMcpUsage(
       await Promise.all([
         runQuery(RANGE_TOOL, {
           query: `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`,
-          start: String(startSeconds),
-          end: String(endSeconds),
+          // RFC3339, not Unix seconds: mcp-prometheus documents both but its
+          // deployed versions only parse RFC3339.
+          start: new Date(startSeconds * 1000).toISOString(),
+          end: new Date(endSeconds * 1000).toISOString(),
           step,
         }),
         runQuery(QUERY_TOOL, {
