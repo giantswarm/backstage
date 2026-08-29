@@ -78,7 +78,8 @@ describe('getMcpUsage', () => {
         return SERVER_LIST;
       }
       if (tool === 'x_prometheus_execute_range_query') {
-        const end = Number(args.end);
+        // start/end are RFC3339 strings; samples come back in Unix seconds.
+        const end = Date.parse(String(args.end)) / 1000;
         return [
           'Result Type: matrix',
           'Result: {outcome="ok"} =>',
@@ -130,6 +131,14 @@ describe('getMcpUsage', () => {
         call => call.args.management_cluster === 'gazelle-mcp-prometheus',
       ),
     ).toBe(true);
+
+    // The range query sends RFC3339 timestamps — deployed mcp-prometheus
+    // versions do not parse Unix seconds despite documenting them.
+    const rangeCall = calls.find(
+      call => call.tool === 'x_prometheus_execute_range_query',
+    );
+    expect(String(rangeCall?.args.start)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(String(rangeCall?.args.end)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
     expect(usage.available).toBe(true);
     expect(usage.source).toEqual({
