@@ -24,8 +24,6 @@ backend.add(
 backend.add(
   import('@giantswarm/backstage-plugin-scaffolder-backend-module-gs'),
 );
-backend.add(import('@aws/aws-core-plugin-for-backstage-scaffolder-actions'));
-backend.add(import('@devangelista/backstage-scaffolder-kubernetes'));
 backend.add(import('@roadiehq/scaffolder-backend-module-utils'));
 
 // techdocs plugin

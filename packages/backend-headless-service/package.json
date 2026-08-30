@@ -15,7 +15,6 @@
     "clean": "backstage-cli package clean"
   },
   "dependencies": {
-    "@aws/aws-core-plugin-for-backstage-scaffolder-actions": "^0.6.0",
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/plugin-auth-backend": "backstage:^",
     "@backstage/plugin-auth-node": "backstage:^",
@@ -23,7 +22,6 @@
     "@backstage/plugin-scaffolder-backend": "backstage:^",
     "@backstage/plugin-scaffolder-backend-module-github": "backstage:^",
     "@backstage/plugin-scaffolder-backend-module-notifications": "backstage:^",
-    "@devangelista/backstage-scaffolder-kubernetes": "^0.5.0",
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "^0.15.0",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.12.0",
     "@internal/backend-common": "workspace:^",

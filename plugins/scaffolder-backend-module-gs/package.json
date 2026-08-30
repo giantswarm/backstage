@@ -28,6 +28,7 @@
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/plugin-scaffolder-node": "backstage:^",
+    "@kubernetes/client-node": "^1.4.0",
     "js-yaml": "^5.0.0"
   },
   "devDependencies": {
