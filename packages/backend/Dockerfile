@@ -94,6 +94,24 @@ RUN --mount=type=bind,source=packages/backend/dist/bundle.tar.gz,target=/tmp/bac
 RUN --mount=type=bind,source=packages/backend-headless-service/dist/bundle.tar.gz,target=/tmp/backend-headless-service-bundle.tar.gz \
     tar xzf /tmp/backend-headless-service-bundle.tar.gz
 
+# Prune runtime-dead files from node_modules: source maps, TypeScript
+# declarations, isolated-vm's bundled sources and foreign-platform prebuilds,
+# and node-gyp (install-time-only). This must NOT delete the config schema
+# files the backend compiles at startup — @backstage/config-loader resolves
+# each package's package.json "configSchema" (conventionally config.d.ts) and
+# type-checks it with the `typescript` package, following imports into other
+# packages' declarations. The script computes that exact file closure, keeps
+# it, and fails the build if the compiler's view of the schemas changes or if
+# config-loader's real loadConfigSchema() breaks on the pruned tree. It runs
+# after the bundle extraction above because the bundles overwrite the skeleton
+# package.json files with their published form (configSchema rewritten to the
+# precompiled config.schema.json). Pruning in the build stage means the
+# runtime stage's COPY --from=build never sees the deleted files — no
+# whiteout layers.
+RUN --mount=type=bind,source=packages/backend/prune-node-modules.cjs,target=/tmp/prune-node-modules.cjs \
+    node /tmp/prune-node-modules.cjs /app && \
+    node --no-node-snapshot -e "require('isolated-vm'); require('better-sqlite3'); console.log('native modules load after prune')"
+
 # The runtime stage starts fresh from the same pinned base, leaving the apt
 # build toolchain (~370 MB) behind in the build stage.
 FROM node:24.19.0-trixie-slim@sha256:ab3eebe934147fee049b5eb83c570f68c849a13c930bdfa482de99fcdfa3b3de
