@@ -19,6 +19,7 @@ const CLUSTERS_CONFIG = {
         {
           name: 'gazelle',
           url: 'https://api.gazelle.example',
+          caFile: '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
           authProvider: 'oidc',
         },
         {
@@ -58,6 +59,19 @@ describe('KubernetesClientFactory', () => {
     );
     expect(kubeConfig.getCurrentUser()?.token).toBe('user-oidc-token');
     expect(loadFromDefault).not.toHaveBeenCalled();
+  });
+
+  it('carries the cluster CA file into the OIDC cluster config', () => {
+    const factory = makeFactory(CLUSTERS_CONFIG);
+
+    const kubeConfig = factory.getKubeConfig({
+      clusterName: 'gazelle',
+      token: 'user-oidc-token',
+    });
+
+    expect(kubeConfig.getCurrentCluster()?.caFile).toBe(
+      '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+    );
   });
 
   it('uses the static token for serviceAccount clusters', () => {
