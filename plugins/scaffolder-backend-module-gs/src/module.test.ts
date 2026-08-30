@@ -1,6 +1,9 @@
 import { startTestBackend } from '@backstage/backend-test-utils';
 import { scaffolderActionsExtensionPoint } from '@backstage/plugin-scaffolder-node';
-import { scaffolderTemplatingExtensionPoint } from '@backstage/plugin-scaffolder-node/alpha';
+import {
+  scaffolderTemplatingExtensionPoint,
+  ScaffolderTemplatingExtensionPoint,
+} from '@backstage/plugin-scaffolder-node/alpha';
 import { scaffolderModuleGS } from './module';
 
 describe('scaffolderModuleGS', () => {
@@ -21,8 +24,16 @@ describe('scaffolderModuleGS', () => {
         [
           scaffolderTemplatingExtensionPoint,
           {
-            addTemplateFilters: (filters: Record<string, unknown>) => {
-              filterNames.push(...Object.keys(filters));
+            addTemplateFilters: (
+              filters: Parameters<
+                ScaffolderTemplatingExtensionPoint['addTemplateFilters']
+              >[0],
+            ) => {
+              filterNames.push(
+                ...(Array.isArray(filters)
+                  ? filters.map(filter => filter.id)
+                  : Object.keys(filters)),
+              );
             },
             addTemplateGlobals: () => {},
           },
