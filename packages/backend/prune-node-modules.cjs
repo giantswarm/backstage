@@ -269,7 +269,13 @@ for (const file of candidates) {
     keptCount += 1;
     continue;
   }
-  prunedBytes += fs.lstatSync(file).size;
+  let stat;
+  try {
+    stat = fs.lstatSync(file);
+  } catch {
+    continue; // already gone with the isolated-vm/node-gyp removals above
+  }
+  prunedBytes += stat.size;
   fs.unlinkSync(file);
   prunedCount += 1;
 }
