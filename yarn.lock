@@ -42985,12 +42985,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"protobufjs@npm:8.7.1":
-  version: 8.7.1
-  resolution: "protobufjs@npm:8.7.1"
+"protobufjs@npm:8.7.2":
+  version: 8.7.2
+  resolution: "protobufjs@npm:8.7.2"
   dependencies:
     long: "npm:^5.3.2"
-  checksum: 10c0/2d5e0355301657e671c9dd7a84ed80a908e2c6172f38ede8e5df8a4455fa3eb5eb7edfda16c3072b2a9e23c16c657774bca962942125047c21a347534ea07083
+  checksum: 10c0/8bc6837f4a4bb59b63fb07575726274d8ac1ea6dd44cfb1ef517f34465885ce7f3468195142dfbf7c62f2b40497c3a3177f11fe00e0a2fde5268b29349af7f3c
   languageName: node
   linkType: hard
 

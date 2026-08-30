@@ -95,7 +95,7 @@
     "sha.js": "2.4.12",
     "basic-ftp": "6.0.2",
     "jsonpath-plus": "10.4.0",
-    "protobufjs": "8.7.1",
+    "protobufjs": "8.7.2",
     "@protobufjs/inquire": "1.1.2",
     "tar": "7.5.22",
     "multer": "2.2.0",
