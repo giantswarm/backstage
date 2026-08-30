@@ -51,6 +51,7 @@ export class KubernetesClientFactory {
           skipTLSVerify:
             clusterConfig.getOptionalBoolean('skipTLSVerify') ?? false,
           caData: clusterConfig.getOptionalString('caData'),
+          caFile: clusterConfig.getOptionalString('caFile'),
         });
 
         switch (authProvider) {
