@@ -1,3 +1,4 @@
+import './configureProxy';
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
 import {
