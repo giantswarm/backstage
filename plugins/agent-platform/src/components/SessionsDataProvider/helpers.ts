@@ -36,6 +36,17 @@ export type SessionRow = {
    * Undefined when no CR matched — callers fall back to initials.
    */
   agentTechnicalName?: string;
+  /**
+   * Matched `Agent` CR's namespace. Undefined when no CR matched.
+   *
+   * Together with {@link agentTechnicalName} this is the agent's real identity,
+   * needed to address it — sending a message goes to
+   * `/a2a/<namespace>/<name>`. It deliberately comes from the CR and not from
+   * decoding the session's `agent_id`: that encoding rewrites every `-` to `_`,
+   * so decoding cannot round-trip a name that genuinely contains an underscore.
+   * No match therefore means "we cannot address this agent", not "guess".
+   */
+  agentNamespace?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -119,6 +130,7 @@ export function toSessionRow(
     title: session.title ?? SESSION_TITLE_FALLBACK,
     agentName,
     agentTechnicalName: match?.technicalName,
+    agentNamespace: match?.namespace,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

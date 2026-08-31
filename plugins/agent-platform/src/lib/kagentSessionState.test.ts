@@ -1,4 +1,10 @@
-import { deriveSessionState, describeSessionState } from './kagentSessionState';
+import {
+  ACTIVE_MAX_AGE_MS,
+  deriveSessionState,
+  describeSessionState,
+  isAgentWorking,
+  readNewestTaskState,
+} from './kagentSessionState';
 import { normalizeTaskList } from './kagentSessionDetail';
 
 import kagentPrefixed from './__fixtures__/tasks.v0-9-9.json';
@@ -92,5 +98,98 @@ describe('deriveSessionState', () => {
     // kagent could report, so it must not be flattened into one of them.
     expect(stateFor(emptyNoData)).toBeUndefined();
     expect(deriveSessionState([])).toBeUndefined();
+  });
+});
+
+describe('isAgentWorking', () => {
+  const NOW = Date.parse('2026-08-31T12:00:00Z');
+
+  /** One task, with a state and an age relative to `NOW`. */
+  function task(state: string, options: { ageMs?: number } = {}) {
+    const { ageMs = 0 } = options;
+    return {
+      status: {
+        state,
+        timestamp: new Date(NOW - ageMs).toISOString(),
+      },
+    };
+  }
+
+  function working(tasks: unknown[]) {
+    return isAgentWorking(normalizeTaskList({ data: tasks }).tasks, NOW);
+  }
+
+  it('is true for a state that is active and moving', () => {
+    expect(working([task('working')])).toBe(true);
+    expect(working([task('submitted')])).toBe(true);
+  });
+
+  it('is false for every terminal state', () => {
+    expect(working([task('completed')])).toBe(false);
+    expect(working([task('failed')])).toBe(false);
+    expect(working([task('canceled')])).toBe(false);
+  });
+
+  it('is false while the agent waits on a human', () => {
+    // Both are `isActive` — the session may still produce output — but nothing
+    // moves until someone answers, so a spinner would promise progress that
+    // cannot arrive on its own.
+    expect(working([task('input-required')])).toBe(false);
+    expect(working([task('auth-required')])).toBe(false);
+  });
+
+  it('expires once the state has not moved for the age bound', () => {
+    // An agent that died mid-turn without writing a terminal state would
+    // otherwise look busy for as long as the tab stays open.
+    expect(
+      working([task('working', { ageMs: ACTIVE_MAX_AGE_MS - 1_000 })]),
+    ).toBe(true);
+    expect(
+      working([task('working', { ageMs: ACTIVE_MAX_AGE_MS + 1_000 })]),
+    ).toBe(false);
+  });
+
+  it('reads the newest task, not the whole session', () => {
+    expect(
+      working([task('completed', { ageMs: 60_000 }), task('working')]),
+    ).toBe(true);
+    expect(
+      working([task('working', { ageMs: 60_000 }), task('completed')]),
+    ).toBe(false);
+  });
+
+  it('keeps working when nothing carries a usable time', () => {
+    // There is nothing to measure against, and never showing progress for a
+    // kagent that omits `timestamp` is the worse of the two failures.
+    expect(working([{ status: { state: 'working' } }])).toBe(true);
+  });
+
+  it('falls back to the conversation’s newest time when the newest task has none', () => {
+    // The state and the timestamp then come from different tasks, deliberately:
+    // treating a missing timestamp as just-changed would make the bound unbounded.
+    const stale = task('completed', { ageMs: ACTIVE_MAX_AGE_MS + 1_000 });
+    expect(working([stale, { status: { state: 'working' } }])).toBe(false);
+  });
+
+  it('is false for a session with no tasks', () => {
+    expect(working([])).toBe(false);
+  });
+});
+
+describe('readNewestTaskState', () => {
+  it('takes the state and its timestamp from the same task', () => {
+    // A trailing task carrying no state must not lend its timestamp to an
+    // earlier task's state.
+    const tasks = normalizeTaskList({
+      data: [
+        { status: { state: 'working', timestamp: '2026-08-31T11:00:00Z' } },
+        { status: { timestamp: '2026-08-31T11:59:00Z' } },
+      ],
+    }).tasks;
+
+    expect(readNewestTaskState(tasks)).toEqual({
+      state: expect.objectContaining({ raw: 'working' }),
+      changedAt: Date.parse('2026-08-31T11:00:00Z'),
+    });
   });
 });

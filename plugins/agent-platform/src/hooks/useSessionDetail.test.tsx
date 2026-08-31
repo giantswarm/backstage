@@ -4,7 +4,10 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
-import { ACTIVE_REFETCH_INTERVAL_MS } from '../lib/kagentSessionPolling';
+import {
+  ACTIVE_MAX_AGE_MS,
+  ACTIVE_REFETCH_INTERVAL_MS,
+} from '../lib/kagentSessionPolling';
 import {
   sessionQueryKey,
   sessionTasksQueryKey,
@@ -280,5 +283,57 @@ describe('useSessionDetail', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  describe('isAgentWorking', () => {
+    /** A task in `state`, whose status last moved `ageMs` ago. */
+    function taskAged(state: string, ageMs: number) {
+      return {
+        id: 'task-1',
+        contextId: 'abc',
+        kind: 'task',
+        status: {
+          state,
+          timestamp: new Date(Date.now() - ageMs).toISOString(),
+        },
+        history: [],
+      };
+    }
+
+    it('is true while a task is working and moving', async () => {
+      getSessionDetail.mockResolvedValue(SESSION);
+      listSessionTasks.mockResolvedValue([taskAged('working', 1_000)]);
+
+      const { result } = renderWith();
+
+      await waitFor(() => expect(result.current.isAgentWorking).toBe(true));
+    });
+
+    it('is false once the task has not moved for the age bound', async () => {
+      // Judged against the read's own timestamp, which is what makes this expire
+      // at all: a stalled turn is precisely the case where nothing re-renders the
+      // page, so a `Date.now()` read at render time would never be re-evaluated.
+      getSessionDetail.mockResolvedValue(SESSION);
+      listSessionTasks.mockResolvedValue([
+        taskAged('working', ACTIVE_MAX_AGE_MS + 60_000),
+      ]);
+
+      const { result } = renderWith();
+
+      await waitFor(() => expect(result.current.hasConversation).toBe(true));
+      expect(result.current.isAgentWorking).toBe(false);
+      // Still reported as active, so the badge keeps saying "Working" — the state
+      // is what kagent says, while this is what we are willing to claim about it.
+      expect(result.current.state).toMatchObject({ raw: 'working' });
+    });
+
+    it('is false before the conversation has been read', async () => {
+      getSessionDetail.mockResolvedValue(SESSION);
+      listSessionTasks.mockImplementation(neverSettles);
+
+      const { result } = renderWith();
+
+      expect(result.current.isAgentWorking).toBe(false);
+    });
   });
 });

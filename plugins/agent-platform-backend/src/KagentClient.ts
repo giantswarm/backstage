@@ -23,6 +23,25 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
 
 /**
+ * Timeout for one A2A turn, which is a different order of magnitude from every
+ * other call here.
+ *
+ * `message/send` answers only once the agent has finished — a turn with many tool
+ * calls routinely runs minutes — so the 10 s read timeout would abort every
+ * non-trivial one. 5 minutes matches `ACTIVE_MAX_AGE_MS` in the frontend's
+ * polling, which is calibrated to the same thing.
+ *
+ * **A gateway in front of kagent usually gives up first**, so this is a backstop
+ * rather than the operative bound: gazelle's `agent-platform-connectivity-ui`
+ * route carries an Envoy `BackendTrafficPolicy` with `requestTimeout: 60s`, which
+ * no turn of any substance survives. That is handled, not avoided — see
+ * {@link KagentClient.sendMessage}.
+ *
+ * Exceeding it is not a failure: see {@link turnPendingError}.
+ */
+export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 5 * 60_000;
+
+/**
  * Longest session name this proxy will store.
  *
  * kagent imposes no limit of its own — `session.name` is Postgres `TEXT`
@@ -36,6 +55,21 @@ export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
  * Must match SESSION_NAME_MAX_LENGTH in plugins/agent-platform.
  */
 export const SESSION_NAME_MAX_LENGTH = 255;
+
+/**
+ * Longest message this proxy will forward to an agent.
+ *
+ * Ours, not kagent's — nothing upstream validates the text. Generous on purpose,
+ * because pasting logs or a manifest into a prompt is a normal thing to do; it
+ * exists to keep an absurd payload from becoming an agent's whole context window.
+ *
+ * Counts UTF-16 code units (JavaScript's `String.length`), so a character
+ * outside the BMP costs two. The router raises its JSON body limit to keep this
+ * the bound a caller actually meets, rather than the body parser's.
+ *
+ * Must match MESSAGE_TEXT_MAX_LENGTH in plugins/agent-platform.
+ */
+export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
 
 /** One installation's kagent endpoint. */
 export interface KagentInstallationConfig {
@@ -151,6 +185,60 @@ function isBadRequestError(error: unknown): boolean {
   return (error as Error | undefined)?.name === BAD_REQUEST_ERROR_NAME;
 }
 
+/** Name of the error thrown when an A2A turn outlives its timeout. */
+export const TURN_PENDING_ERROR_NAME = 'KagentTurnPendingError';
+
+/**
+ * The turn was dispatched and is still running.
+ *
+ * Deliberately not an upstream failure. `message/send` holds the connection until
+ * the agent finishes, so losing that connection — to our own timeout, or to the
+ * gateway's 60 s one — says "nobody waited long enough", not "broken". The turn is
+ * already recorded against the session, which is what
+ * {@link KagentClient.sendMessage} confirms before reporting this, and the
+ * conversation poll will show it progress and finish.
+ *
+ * The router turns this into a 202 rather than a 5xx, which
+ * `MiddlewareFactory.error()` would forward to Sentry: one issue per long turn,
+ * for the thing an agent is supposed to do.
+ */
+function turnPendingError(message: string): Error {
+  const error = new Error(message);
+  error.name = TURN_PENDING_ERROR_NAME;
+  return error;
+}
+
+export function isTurnPendingError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === TURN_PENDING_ERROR_NAME;
+}
+
+function isUpstreamError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === 'UpstreamError';
+}
+
+/**
+ * Whether any task in a `GET /sessions/<id>/tasks` payload holds this message.
+ *
+ * Walked defensively rather than parsed: the only question asked of it is
+ * "is this id in there", and a payload shape we do not recognise should answer
+ * "cannot tell" — i.e. false — not throw.
+ */
+function payloadHasMessageId(payload: unknown, messageId: string): boolean {
+  const tasks = (payload as { data?: unknown })?.data ?? payload;
+  if (!Array.isArray(tasks)) {
+    return false;
+  }
+  return tasks.some(task => {
+    const history = (task as { history?: unknown })?.history;
+    if (!Array.isArray(history)) {
+      return false;
+    }
+    return history.some(
+      entry => (entry as { messageId?: unknown })?.messageId === messageId,
+    );
+  });
+}
+
 /** Whether a configured URL is absolute and http(s), so `fetch` can use it. */
 function isAbsoluteHttpUrl(url: string): boolean {
   try {
@@ -242,6 +330,8 @@ export class KagentClient {
     /** Overridable for tests; defaults to the global fetch. */
     private readonly fetchFn: typeof fetch = fetch,
     private readonly timeoutMs: number = DEFAULT_KAGENT_TIMEOUT_MS,
+    /** Separate budget for {@link sendMessage}, which waits out a whole turn. */
+    private readonly turnTimeoutMs: number = DEFAULT_KAGENT_TURN_TIMEOUT_MS,
   ) {}
 
   /** `GET <apiBaseUrl>/sessions` — the user's sessions, kagent's JSON verbatim. */
@@ -321,6 +411,140 @@ export class KagentClient {
         notFound: {
           missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
           endpoint: 'session tasks',
+        },
+      },
+    );
+  }
+
+  /**
+   * Send one message to an agent, as a turn of an existing session.
+   *
+   * `POST <apiBaseUrl>/a2a/<namespace>/<name>`, A2A JSON-RPC `message/send`, with
+   * `contextId` set to the session id — which is the *only* thing tying the turn
+   * to the session. Sessions themselves hold history but cannot send anything, so
+   * this is a different endpoint family from every other method here.
+   *
+   * **The agent's namespace and name are passed in, never derived from the
+   * session's `agent_id`.** That id is kagent's "python identifier" encoding,
+   * which rewrites every `-` to `_`; decoding it cannot tell an original `_` from
+   * a rewritten `-`, so a name containing an underscore would resolve to an agent
+   * that does not exist. The caller knows the real names from the `Agent`
+   * resource and sends those.
+   *
+   * Two behaviours worth knowing, both observed against v0.9.9 on gazelle:
+   *
+   * - **It answers with the finished task**, not an acknowledgement:
+   *   `result.kind === 'task'`, carrying `status.state` and the full `history`.
+   *   Waiting that out is usually impossible — see the gateway note below — so a
+   *   transport failure is verified against the session's history rather than
+   *   reported as a failed message.
+   * - **A failed turn is still a 200.** The JSON-RPC result carries
+   *   `status.state === 'failed'` and a readable reason on `status.message` (an
+   *   agent that cannot reach its MCP server reports it there). So the HTTP status
+   *   says only whether the turn was accepted; the caller reads the task for what
+   *   became of it.
+   *
+   * Sends no `A2A-Version` header, matching `listSessionTasks` deliberately — the
+   * write and the reads must agree on a wire version or the states will not line
+   * up. TODO(kagent-0.11): the legacy v0 wire is marked for removal there, at
+   * which point both need pinning together.
+   */
+  async sendMessage(
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    message: { messageId: string; text: string },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    try {
+      return await this.postMessage(sessionId, agent, message, options);
+    } catch (error) {
+      // A transport failure is not a failed message. The gateway in front of
+      // kagent cuts the request off long before an agent is done — 60 s on
+      // gazelle's `agent-platform-connectivity-ui` route, against turns that run
+      // minutes — and the turn keeps running regardless: verified on gazelle,
+      // where the agent answered a message whose own request had already died
+      // with a 502.
+      //
+      // So the only honest way to report this is to go and look. If the message
+      // reached the session's history, it was dispatched and the conversation
+      // poll will show it finish; if it did not, the failure was real.
+      if (!isUpstreamError(error) && !isTurnPendingError(error)) {
+        throw error;
+      }
+
+      if (
+        !(await this.hasMessageLanded(sessionId, message.messageId, options))
+      ) {
+        throw error;
+      }
+
+      this.logger.debug(
+        `A kagent turn outlived its transport on installation '${this.installation.name}'; the message was dispatched and is still running`,
+      );
+      throw turnPendingError(
+        `The agent on installation '${this.installation.name}' is still working on the message; the connection closed before it finished.`,
+      );
+    }
+  }
+
+  /**
+   * Whether a message we sent is in the session's history.
+   *
+   * Only asked after the send's transport failed, so there has been ample time
+   * for kagent to have written it — and a read failure here answers "cannot
+   * tell", which keeps the original error rather than inventing a second one.
+   */
+  private async hasMessageLanded(
+    sessionId: string,
+    messageId: string,
+    options: KagentRequestOptions,
+  ): Promise<boolean> {
+    try {
+      const payload = await this.listSessionTasks(sessionId, options);
+      return payloadHasMessageId(payload, messageId);
+    } catch (error) {
+      this.logger.debug(
+        `Could not confirm whether a message reached installation '${this.installation.name}'`,
+        { error: String(error) },
+      );
+      return false;
+    }
+  }
+
+  private async postMessage(
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    message: { messageId: string; text: string },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    return this.request(
+      `${this.installation.apiBaseUrl}/a2a/${encodeURIComponent(
+        agent.namespace,
+      )}/${encodeURIComponent(agent.name)}`,
+      options,
+      {
+        method: 'POST',
+        body: {
+          jsonrpc: '2.0',
+          // The JSON-RPC correlation id. Reusing the message id keeps a single
+          // identifier across our logs, kagent's, and the stored history.
+          id: message.messageId,
+          method: 'message/send',
+          params: {
+            message: {
+              kind: 'message',
+              messageId: message.messageId,
+              role: 'user',
+              parts: [{ kind: 'text', text: message.text }],
+              contextId: sessionId,
+            },
+          },
+        },
+        timeoutMs: this.turnTimeoutMs,
+        timeoutIsPending: true,
+        notFound: {
+          missingResource: `Agent '${agent.namespace}/${agent.name}' does not exist on installation '${this.installation.name}'.`,
+          endpoint: 'agent messaging',
         },
       },
     );
@@ -591,10 +815,25 @@ export class KagentClient {
        * failure. Opt-in, like {@link badRequest}.
        */
       conflict?: boolean;
+      /** Overrides the client's read timeout. Only {@link sendMessage} needs this. */
+      timeoutMs?: number;
+      /**
+       * Report a timeout as {@link turnPendingError} rather than an upstream
+       * failure, for a call whose work continues after we stop waiting.
+       */
+      timeoutIsPending?: boolean;
       notFound?: NotFoundContext;
     } = {},
   ): Promise<unknown> {
-    const { method = 'GET', body, badRequest, conflict, notFound } = extra;
+    const {
+      method = 'GET',
+      body,
+      badRequest,
+      conflict,
+      timeoutIsPending,
+      notFound,
+    } = extra;
+    const timeoutMs = extra.timeoutMs ?? this.timeoutMs;
 
     let response: Response;
     try {
@@ -612,7 +851,7 @@ export class KagentClient {
         // forwarded token was not accepted, and following it would yield an
         // HTML sign-in page with a 200.
         redirect: 'manual',
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       // A timeout means something *is* listening but did not answer in time —
@@ -622,10 +861,17 @@ export class KagentClient {
       if ((error as Error)?.name === 'TimeoutError') {
         this.logger.debug(
           `kagent request timed out for installation '${this.installation.name}'`,
-          { timeoutMs: this.timeoutMs },
+          { timeoutMs },
         );
+        // A turn that outlasts its budget is still running upstream, so it is not
+        // reported as a failure. See `turnPendingError`.
+        if (timeoutIsPending) {
+          throw turnPendingError(
+            `The agent on installation '${this.installation.name}' has not finished within ${timeoutMs}ms; the turn is still running.`,
+          );
+        }
         throw upstreamError(
-          `The kagent API for installation '${this.installation.name}' did not respond within ${this.timeoutMs}ms.`,
+          `The kagent API for installation '${this.installation.name}' did not respond within ${timeoutMs}ms.`,
         );
       }
 

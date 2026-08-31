@@ -1,6 +1,7 @@
 import { A2aTaskWire } from './kagentTaskSchema';
 import { readKagentMetadataString } from './kagentMetadata';
 import { normalizeTimestamp } from './kagentSessions';
+import { AWAITING_INPUT_STATES } from './kagentSessionState';
 import {
   addTokenUsage,
   ASK_USER_TOOL_NAME,
@@ -34,6 +35,18 @@ type TimelineItemBase = {
   author?: string;
   /** Index of the task this belongs to, so the UI can group by turn. */
   taskIndex: number;
+  /**
+   * The A2A `messageId` this came from, when it came from a message.
+   *
+   * Distinct from {@link id}, which is positional and only stable for React.
+   * This is kagent's own identity for the message, and the only way to recognise
+   * a specific message across reads — used to tell when a message we sent
+   * ourselves has come back, so an optimistically rendered copy can be dropped.
+   *
+   * Absent on items that are not one message: a pending question read off
+   * `status.message`, and answers recovered from a decision payload.
+   */
+  messageId?: string;
 };
 
 export type TimelineItem =
@@ -115,13 +128,9 @@ const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
 
 /**
  * The A2A states in which `status.message` is a prompt the task is *waiting on*,
- * rather than incidental status text.
- *
- * The legacy (v0) spellings, which is what this client reads: `listSessionTasks`
- * deliberately sends no `A2A-Version` header, and kagent treats a missing header
- * as the legacy wire.
+ * rather than incidental status text. Shared with the composer, which withholds
+ * itself in exactly these states — see `kagentSessionState`.
  */
-const AWAITING_INPUT_STATES = new Set(['input-required', 'auth-required']);
 
 /**
  * A task's history, plus the question it is currently waiting on.
@@ -351,6 +360,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           at,
           author,
           taskIndex,
+          messageId: message.messageId,
           kind,
           text,
         });

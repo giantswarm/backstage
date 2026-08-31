@@ -581,6 +581,114 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('sendMessage', () => {
+    const AGENT = { namespace: 'kagent', name: 'issue-tracker' };
+    const MESSAGE = { messageId: 'msg-1', text: 'why is the ingress failing?' };
+
+    it('POSTs the message as JSON, with the installation and the token', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123/messages?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+        messageId: 'msg-1',
+        text: 'why is the ingress failing?',
+      });
+    });
+
+    it('sends the agent’s real names rather than anything decoded', async () => {
+      // kagent's stored `agent_id` rewrites every `-` to `_`, so a name containing
+      // an underscore cannot be recovered from it. These come from the Agent
+      // resource and must travel untouched.
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().sendMessage(
+        'gazelle',
+        'abc123',
+        { namespace: 'my_ns', name: 'my_agent-1' },
+        MESSAGE,
+      );
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+        agentNamespace: 'my_ns',
+        agentName: 'my_agent-1',
+      });
+    });
+
+    it('does not label a rejected message as a missing kagent', async () => {
+      // Same guard as the rename: this route answers 400 for a message it
+      // refuses, which must not be renamed to `NotFoundError` and silenced.
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'text must not be empty' } }, 400),
+      );
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).rejects.toMatchObject({
+        name: 'Error',
+        message: 'text must not be empty',
+      });
+    });
+
+    it('treats a 202 as a success', async () => {
+      // The turn outlived the backend's turn timeout and is still running. There
+      // is nothing for the caller to do differently: the conversation poll is
+      // what reports how it ends.
+      fetchMock.mockResolvedValue(jsonResponse({ status: 'pending' }, 202));
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).resolves.toBeUndefined();
+    });
+
+    it('encodes an awkward session id into the path', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().sendMessage('gazelle', 'a/b?c=d', AGENT, MESSAGE);
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb%3Fc%3Dd/messages?installation=gazelle',
+      );
+    });
+
+    it('throws on an error reported in-band on a 200', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, message: 'agent unreachable' }),
+      );
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: 'agent unreachable',
+      });
+    });
+
+    it.each([
+      [401, 'UnauthorizedError'],
+      [403, 'ForbiddenError'],
+      [404, 'NotFoundError'],
+      [503, 'ServiceUnavailableError'],
+    ])('maps %i to %s', async (status, expectedName) => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'nope' } }, status),
+      );
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).rejects.toMatchObject({ name: expectedName, message: 'nope' });
+    });
+  });
+
   describe('getIdentity', () => {
     it('reads the subject kagent resolved', async () => {
       fetchMock.mockResolvedValue(

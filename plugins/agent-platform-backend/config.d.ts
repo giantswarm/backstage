@@ -27,6 +27,22 @@ export interface Config {
       timeoutMs?: number;
 
       /**
+       * How long, in milliseconds, to wait for an agent to finish one turn when
+       * a message is sent to it. Separate from `timeoutMs` because kagent's
+       * `message/send` answers only once the agent is done, and a turn with many
+       * tool calls routinely runs minutes.
+       *
+       * Usually a backstop rather than the real bound: the gateway in front of
+       * kagent tends to give up first (60s on a stock Giant Swarm route). Either
+       * way it is not an error — the message is checked against the session's
+       * history, and a turn that was dispatched answers 202 and keeps running,
+       * with the outcome arriving through the conversation poll.
+       *
+       * Defaults to 300000 (5 minutes).
+       */
+      turnTimeoutMs?: number;
+
+      /**
        * Installations to proxy kagent for, keyed by installation name — the
        * same keys as `gs.installations`.
        *

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { sessionsRouteRef } from '../../routes';
 import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
+import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { buildTimeline } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '../../lib/kagentSessionDetail';
 import { normalizeSessionDetail } from '../../lib/kagentSessionDetail';
@@ -66,6 +67,27 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
 
+// Stubbed for the same reason as the mutations above: no query client is mounted.
+const mockSendMessage = jest.fn();
+const mockUseSendMessage = jest.fn<UseSendMessageResult, []>();
+jest.mock('../../hooks/useSendMessage', () => ({
+  useSendMessage: () => mockUseSendMessage(),
+}));
+
+/** The hook's idle state, which most tests want. */
+function idleSend(
+  overrides: Partial<UseSendMessageResult> = {},
+): UseSendMessageResult {
+  return {
+    sendMessage: mockSendMessage,
+    isSending: false,
+    pending: null,
+    error: null,
+    reset: jest.fn(),
+    ...overrides,
+  };
+}
+
 /** What the page handed to the shared header slot on the last render. */
 const providedActions = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
@@ -81,6 +103,10 @@ const loadedView: SessionDetailView = {
   detail,
   timeline,
   state: deriveSessionState(tasks),
+  // The fixture's newest task is `working`. Its timestamp is long past the
+  // staleness bound, so the real hook would call it stale — set explicitly here so
+  // these tests describe a live turn rather than depending on a fixture's age.
+  isAgentWorking: true,
   taskCount: tasks.length,
   hasConversation: true,
   isLoading: false,
@@ -110,6 +136,9 @@ describe('SessionDetailPage', () => {
   beforeEach(() => {
     providedActions.mockClear();
     mockRenameSession.mockReset();
+    mockSendMessage.mockReset();
+    mockSendMessage.mockResolvedValue(undefined);
+    mockUseSendMessage.mockReturnValue(idleSend());
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
       rows: [
@@ -399,6 +428,196 @@ describe('SessionDetailPage', () => {
       expect(
         screen.getByRole('textbox', { name: /Session name/ }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the composer', () => {
+    const composer = () => screen.queryByRole('textbox', { name: 'Message' });
+
+    /** The fixture's newest task is `working`; most of these want a settled one. */
+    const settledView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: {
+        raw: 'completed',
+        label: 'Completed',
+        tone: 'success' as const,
+        isActive: false,
+      },
+    };
+
+    it('is offered on a session whose agent can be addressed', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      expect(composer()).toBeInTheDocument();
+      expect(composer()).toBeEnabled();
+    });
+
+    it('sends what was typed', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      await userEvent.type(composer()!, 'why is the ingress failing?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'why is the ingress failing?',
+      );
+    });
+
+    it('is present but closed while the agent is mid-turn', async () => {
+      // The fixture's newest task is `working`, which is exactly this case.
+      await render();
+
+      expect(composer()).toBeDisabled();
+    });
+
+    it('is withheld on a read-only session, and says so', async () => {
+      // A read-only share rejects every non-GET under /api/sessions with a 403,
+      // so the box would only fail on use.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: { ...loadedView.detail!, readOnly: true },
+      });
+      await render();
+
+      expect(composer()).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/shared read-only, so you cannot add to it/),
+      ).toBeInTheDocument();
+    });
+
+    it('is withheld when no Agent matched the session, naming the agent', async () => {
+      // Without the CR there is no trustworthy namespace/name, and the session's
+      // encoded `agent_id` cannot be decoded back into one.
+      mockUseAgents.mockReturnValue({
+        rows: [],
+        isLoading: false,
+        isLoadingMore: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      } as unknown as AgentsContextValue);
+      await render();
+
+      expect(composer()).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/could not be found on gazelle/),
+      ).toBeInTheDocument();
+    });
+
+    it('is withheld while the agent is waiting for an answer', async () => {
+      // Deliberately not offered: a plain message does not answer a pending
+      // confirmation. kagent opens a new task and leaves the question waiting
+      // forever, so the box would quietly strand the conversation.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: {
+          raw: 'input-required',
+          label: 'Waiting for input',
+          tone: 'warning',
+          isActive: true,
+        },
+      });
+      await render();
+
+      expect(composer()).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/waiting for an answer to the agent’s question/),
+      ).toBeInTheDocument();
+    });
+
+    it('says the agent is working while a turn is in flight', async () => {
+      // The fixture's newest task is `working`.
+      await render();
+
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('says so from the moment of sending, before any poll has seen it', async () => {
+      // The A2A state takes up to 10 s to report the new task, and the send's own
+      // request is cut off by the gateway before a long turn ends — so neither
+      // signal spans the turn alone.
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+      await render();
+
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('does not claim the agent is working when it is waiting for an answer', async () => {
+      // `input-required` is `isActive`, so keying the spinner off that alone would
+      // promise progress that never comes without a human.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: {
+          raw: 'input-required',
+          label: 'Waiting for input',
+          tone: 'warning',
+          isActive: true,
+        },
+      });
+      await render();
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    });
+
+    it('stops claiming a stalled turn is working, and frees the composer', async () => {
+      // An agent that died mid-turn never writes a terminal state, so the session
+      // stays `working` forever. Once `isAgentWorking` expires, the page must stop
+      // promising progress — and must not hold the composer shut on a turn that is
+      // never going to end.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      await render();
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+    });
+
+    it('stops saying so once the turn is finished', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    });
+
+    it('shows a message that has been sent but not yet read back', async () => {
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: { messageId: 'pending-1', text: 'a message in flight' },
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('a message in flight')).toBeInTheDocument();
+    });
+
+    it('stops showing the pending copy once kagent returns the real one', async () => {
+      // Recognised by `messageId`, not by timing — a poll can deliver the stored
+      // message long before the turn ends, and showing both would double it for
+      // the rest of the turn.
+      const realMessageId = timeline.items.find(
+        item => item.messageId,
+      )?.messageId;
+      expect(realMessageId).toBeTruthy();
+
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: { messageId: realMessageId!, text: 'a duplicate stand-in' },
+        }),
+      );
+      await render();
+
+      expect(
+        screen.queryByText('a duplicate stand-in'),
+      ).not.toBeInTheDocument();
     });
   });
 });
