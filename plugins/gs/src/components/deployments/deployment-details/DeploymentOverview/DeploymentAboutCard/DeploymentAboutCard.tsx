@@ -44,7 +44,8 @@ import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 export function DeploymentAboutCard() {
   const { deployment, installationName } = useCurrentDeployment();
 
-  const clusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
+  // The clusters page can be disabled, in which case there is no route to link to.
+  const clusterRouteLink = useRouteRef(clusterDetailsRouteRef);
 
   const {
     catalogEntity,
@@ -130,18 +131,22 @@ export function DeploymentAboutCard() {
 
         <AboutField label="Installation" value={installationName}>
           <AboutFieldValue>
-            <Tooltip title="Open management cluster">
-              <Link
-                component={RouterLink}
-                to={clusterRouteLink({
-                  installationName: installationName,
-                  namespace: Constants.MANAGEMENT_CLUSTER_NAMESPACE,
-                  name: installationName,
-                })}
-              >
-                {installationName}
-              </Link>
-            </Tooltip>
+            {clusterRouteLink ? (
+              <Tooltip title="Open management cluster">
+                <Link
+                  component={RouterLink}
+                  to={clusterRouteLink({
+                    installationName: installationName,
+                    namespace: Constants.MANAGEMENT_CLUSTER_NAMESPACE,
+                    name: installationName,
+                  })}
+                >
+                  {installationName}
+                </Link>
+              </Tooltip>
+            ) : (
+              installationName
+            )}
           </AboutFieldValue>
         </AboutField>
         <AboutField label="Cluster" value={clusterName}>

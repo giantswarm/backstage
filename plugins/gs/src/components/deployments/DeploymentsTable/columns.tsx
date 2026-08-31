@@ -99,7 +99,18 @@ export const getInitialColumns = ({
         }
 
         const LinkWrapper = () => {
-          const routeLink = useRouteRef(deploymentDetailsRouteRef)!;
+          // The deployments page can be disabled, in which case there is no
+          // route to link to.
+          const routeLink = useRouteRef(deploymentDetailsRouteRef);
+
+          if (!routeLink) {
+            return (
+              <Typography variant="inherit" noWrap>
+                {row.name}
+              </Typography>
+            );
+          }
+
           return (
             <Link
               component={RouterLink}
@@ -149,7 +160,13 @@ export const getInitialColumns = ({
       render: row => {
         if (row.clusterName && row.clusterNamespace) {
           const LinkWrapper = () => {
-            const routeLink = useRouteRef(clusterDetailsRouteRef)!;
+            // The clusters page can be disabled, in which case there is no
+            // route to link to.
+            const routeLink = useRouteRef(clusterDetailsRouteRef);
+
+            if (!routeLink) {
+              return <>{row.clusterName}</>;
+            }
 
             return (
               <Link
