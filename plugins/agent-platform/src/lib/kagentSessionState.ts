@@ -197,18 +197,42 @@ function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
 export function readNewestTaskState(
   tasks: A2aTaskWire[],
 ): NewestTaskState | undefined {
+  const index = findNewestStatefulTaskIndex(tasks);
+  if (index === undefined) {
+    return undefined;
+  }
+
+  const status = tasks[index]?.status;
+  const state = describeSessionState(status?.state);
+  if (!state) {
+    return undefined;
+  }
+
+  const own = normalizeTimestamp(status?.timestamp);
+  const changedAt =
+    own === undefined ? newestUsableTimestamp(tasks) : Date.parse(own);
+
+  return { state, changedAt };
+}
+
+/**
+ * Index of the task whose state **is** the session's state.
+ *
+ * The newest task that reports a state at all, skipping any trailing task that
+ * carries none. Exported so that everything deciding "what is this session doing
+ * right now" reads the same task: the state badge, the working indicator and
+ * `readPendingConfirmation` disagreeing about which turn is current is not a
+ * cosmetic bug. It cost us one — the answer panel offered to answer an older
+ * stranded question while the newest task had already completed, because it looked
+ * for the newest *awaiting* task rather than the newest one full stop.
+ */
+export function findNewestStatefulTaskIndex(
+  tasks: A2aTaskWire[],
+): number | undefined {
   for (let index = tasks.length - 1; index >= 0; index -= 1) {
-    const status = tasks[index]?.status;
-    const state = describeSessionState(status?.state);
-    if (!state) {
-      continue;
+    if (describeSessionState(tasks[index]?.status?.state)) {
+      return index;
     }
-
-    const own = normalizeTimestamp(status?.timestamp);
-    const changedAt =
-      own === undefined ? newestUsableTimestamp(tasks) : Date.parse(own);
-
-    return { state, changedAt };
   }
   return undefined;
 }

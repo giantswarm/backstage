@@ -3,6 +3,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { AgentRow } from '../components/AgentsDataProvider';
+import { sessionsQueryKey } from '../lib/queryKeys';
 import {
   buildAgentIndex,
   isListableSession,
@@ -61,7 +62,7 @@ export function useAgentSessions(
     isError,
   } = useQuery({
     // Same key as SessionsDataProvider, deliberately — see the note above.
-    queryKey: ['agent-platform', 'kagent', 'sessions', installation],
+    queryKey: sessionsQueryKey(installation),
     queryFn: () => kagentApi.listSessions(installation),
     enabled: Boolean(installation),
   });

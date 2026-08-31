@@ -30,6 +30,17 @@ export type SessionComposerProps = {
    * means — a finished session is resumed by it rather than continued.
    */
   isFinished: boolean;
+  /**
+   * Why the composer cannot be used right now, when it cannot.
+   *
+   * Disables the field and replaces the caption, rather than the caller removing
+   * the composer altogether. Used while a confirmation is open: a plain message
+   * genuinely cannot move the session on then, but taking the message box off the
+   * screen reads as the feature being missing rather than blocked. kagent's own UI
+   * makes the same call — it leaves the box in place with `Awaiting approval…` in
+   * it.
+   */
+  disabledReason?: string;
   error?: string;
   /**
    * A message whose send failed, whose text is put back into the box.
@@ -63,6 +74,7 @@ export type SessionComposerProps = {
 export function SessionComposer({
   isAgentWorking,
   isFinished,
+  disabledReason,
   error,
   restore,
   onSubmit,
@@ -80,7 +92,8 @@ export function SessionComposer({
 
   const text = value.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
-  const canSubmit = Boolean(text) && !isTooLong && !isAgentWorking;
+  const isDisabled = isAgentWorking || Boolean(disabledReason);
+  const canSubmit = Boolean(text) && !isTooLong && !isDisabled;
 
   const submit = () => {
     if (!canSubmit) {
@@ -103,7 +116,9 @@ export function SessionComposer({
   };
 
   let caption: string;
-  if (isAgentWorking) {
+  if (disabledReason) {
+    caption = disabledReason;
+  } else if (isAgentWorking) {
     caption = 'The agent is working. You can reply once this turn finishes.';
   } else if (isFinished) {
     caption = 'Sending a message resumes this finished session.';
@@ -128,7 +143,7 @@ export function SessionComposer({
           value={value}
           onChange={setValue}
           onKeyDown={handleKeyDown}
-          isDisabled={isAgentWorking}
+          isDisabled={isDisabled}
           rows={3}
         />
 

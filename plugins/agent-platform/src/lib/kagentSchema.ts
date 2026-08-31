@@ -84,6 +84,30 @@ export const kagentSessionListSchema = z.union([
 ]);
 
 /**
+ * kagent's answer to `POST /api/sessions` — one session inside the envelope.
+ *
+ * Separate from {@link kagentSessionListSchema} because the shapes differ in the
+ * one way that matters: there, an absent `data` is an empty result and perfectly
+ * normal; here it is a failure, since a create with nothing in `data` leaves us
+ * no session id to navigate to.
+ *
+ * `data` is caught to `undefined` rather than failing the parse, so the caller
+ * decides what an unreadable body means and can say so in its own words.
+ */
+export const kagentCreatedSessionSchema = z
+  .looseObject({
+    error: z.unknown().optional(),
+    message: z.unknown().optional(),
+    data: z.unknown().optional().catch(undefined),
+  })
+  .transform(envelope => ({
+    session: envelope.data,
+    isError: envelope.error === true,
+    message:
+      typeof envelope.message === 'string' ? envelope.message : undefined,
+  }));
+
+/**
  * kagent `GET /api/me`.
  *
  * Under `trusted-proxy` this reflects the forwarded token's claims; under

@@ -9,7 +9,11 @@ import malformed from './__fixtures__/sessions.malformed.json';
 import realV0_9_9 from './__fixtures__/sessions.real-v0-9-9.json';
 import v0_10 from './__fixtures__/sessions.v0-10.json';
 import v0_9_9 from './__fixtures__/sessions.v0-9-9.json';
-import { normalizeSessionList, normalizeTimestamp } from './kagentSessions';
+import {
+  normalizeSessionList,
+  normalizeTimestamp,
+  parseCreatedSessionId,
+} from './kagentSessions';
 
 describe('normalizeSessionList — version matrix', () => {
   // The contract this whole layer exists for: kagent ships no OpenAPI spec and
@@ -200,5 +204,56 @@ describe('normalizeTimestamp', () => {
     expect(sessions).toHaveLength(1);
     expect(sessions[0].createdAt).toBeUndefined();
     expect(sessions[0].updatedAt).toBeUndefined();
+  });
+});
+
+describe('parseCreatedSessionId', () => {
+  it('reads the id out of the envelope', () => {
+    expect(
+      parseCreatedSessionId({
+        error: false,
+        data: { id: 'abc123', name: 'Why is the ingress failing?' },
+        message: 'Successfully created session',
+      }),
+    ).toBe('abc123');
+  });
+
+  it('ignores everything else in the payload', () => {
+    // The rest of the session is re-read from the list and the detail endpoint,
+    // both of which normalize it. Only the id is needed to navigate.
+    expect(
+      parseCreatedSessionId({
+        error: false,
+        data: {
+          id: 'abc123',
+          agent_id: 'kagent__NS__sre_agent',
+          share_token: 'something-from-a-future-version',
+        },
+      }),
+    ).toBe('abc123');
+  });
+
+  it.each([
+    ['an error envelope', { error: true, message: 'nope' }],
+    ['no data key at all', { error: false }],
+    ['a null data', { error: false, data: null }],
+    ['a data that is not an object', { error: false, data: 'abc123' }],
+    ['a session without an id', { error: false, data: { name: 'Titled' } }],
+    ['an empty id', { error: false, data: { id: '' } }],
+    ['a non-string id', { error: false, data: { id: 42 } }],
+    ['a bare string', 'abc123'],
+    ['nothing', undefined],
+  ])('yields undefined for %s', (_label, payload) => {
+    // Unlike the list, this cannot degrade to an empty result: without an id
+    // there is nowhere to navigate, so the caller has to say so.
+    expect(parseCreatedSessionId(payload)).toBeUndefined();
+  });
+
+  it('refuses an id reported alongside error: true', () => {
+    // kagent reports some refusals with a 200 and `{error: true}`, which the
+    // status code alone would let through.
+    expect(
+      parseCreatedSessionId({ error: true, data: { id: 'abc123' } }),
+    ).toBeUndefined();
   });
 });

@@ -179,9 +179,11 @@ const BAD_REQUEST_ERROR_NAME = 'KagentBadRequestError';
  *
  * Only thrown when a caller passes `badRequest: true`, because for every other
  * endpoint a 400 is a coding error on our side and belongs on the generic
- * upstream-failure path. {@link KagentClient.updateSessionName} opts in because
- * there a 400 is *diagnostic*: it is how a kagent too old to rename announces
- * itself. See that method.
+ * upstream-failure path. Two methods opt in, and in both a 400 is *diagnostic*
+ * rather than a fault: for {@link KagentClient.updateSessionName} it is how a
+ * kagent too old to rename announces itself, and for
+ * {@link KagentClient.createSession} it is how kagent reports an `agent_ref` it
+ * cannot resolve. See those methods.
  */
 function badRequestError(message: string): Error {
   const error = new Error(message);
@@ -415,6 +417,68 @@ export class KagentClient {
   }
 
   /**
+   * `POST <apiBaseUrl>/sessions` — start a session for one agent.
+   *
+   * `agent_ref` is the only field kagent requires; `name` is ours to supply
+   * because **the controller does not auto-title**. A create with no `name` comes
+   * back with no `name` field at all (verified against 0.9.9) — the short titles
+   * in kagent's own list are its *UI* deriving them from the first message, not
+   * something the API does. See "Starting a session" in docs/agent-platform.md.
+   *
+   * **The session id is kagent's to generate, and deliberately so.** The handler
+   * behind this route is an upsert on `(id, user_id)`
+   * (`go/core/database/queries/sessions.sql`), which is what
+   * {@link updateSessionName}'s v0.9.x fallback exploits — so a client-supplied
+   * `id` would silently overwrite whatever session already had it, including its
+   * agent. Omitting it is what makes this a create.
+   *
+   * `agent_ref` is built from the namespace and name the *caller* passed, never
+   * from decoding a session's `agent_id`: kagent's "python identifier" encoding
+   * replaces every `-` with `_`, so decoding is lossy and an agent whose name
+   * contains an underscore comes back wrong.
+   *
+   * Both opt-ins below keep an expected outcome off the >= 500 path that
+   * `MiddlewareFactory.error()` forwards to Sentry:
+   *
+   * - **400** is how kagent reports an `agent_ref` it cannot resolve — the agent
+   *   was deleted, or lives on another installation than the one we asked. That
+   *   is a stale picker, not a fault, so it becomes a 409 naming the agent.
+   * - **409** means a sandbox-workload agent already holds its one permitted
+   *   session. Passed through as itself.
+   */
+  async createSession(
+    agent: { namespace: string; name: string },
+    name: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const agentRef = `${agent.namespace}/${agent.name}`;
+
+    try {
+      return await this.request(
+        `${this.installation.apiBaseUrl}/sessions`,
+        options,
+        {
+          method: 'POST',
+          body: { agent_ref: agentRef, name, source: 'user' },
+          badRequest: true,
+          conflict: true,
+          notFound: {
+            missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agentRef}'.`,
+            endpoint: 'session create',
+          },
+        },
+      );
+    } catch (error) {
+      if (!isBadRequestError(error)) {
+        throw error;
+      }
+      throw new ConflictError(
+        `kagent on installation '${this.installation.name}' did not accept the agent '${agentRef}'. It may have been deleted, or it may not be deployed there.`,
+      );
+    }
+  }
+
+  /**
    * `GET <apiBaseUrl>/sessions/<id>` — the session object.
    *
    * kagent scopes this by the forwarded token's user id, so a session belonging
@@ -530,6 +594,30 @@ export class KagentClient {
     message: { messageId: string; text: string },
     options: KagentRequestOptions,
   ): Promise<unknown> {
+    return this.dispatch(
+      sessionId,
+      agent,
+      {
+        messageId: message.messageId,
+        parts: [{ kind: 'text', text: message.text }],
+      },
+      options,
+    );
+  }
+
+  /**
+   * Post one A2A message and report honestly on what became of it.
+   *
+   * Shared by {@link sendMessage} and {@link answerConfirmation} because the hard
+   * part is identical for both and must not drift: a turn outliving its transport,
+   * and a JSON-RPC failure arriving inside a 200. Only the parts differ.
+   */
+  private async dispatch(
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    message: { messageId: string; parts: unknown[]; taskId?: string },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
     let result: unknown;
     try {
       result = await this.postMessage(sessionId, agent, message, options);
@@ -595,6 +683,83 @@ export class KagentClient {
   }
 
   /**
+   * Answer the confirmation an agent is suspended on, resuming **the same task**.
+   *
+   * A pending confirmation is not answerable with a plain message, and this is the
+   * single most important thing about this method. ADK suspends the task on a
+   * long-running `adk_request_confirmation` call; a reply with no `taskId` starts a
+   * *new* task, so the agent reads the words but the original call never gets its
+   * function response — leaving the task `input-required` forever and the model
+   * history holding a `tool_use` with no `tool_result`. Naming the task is what
+   * turns the reply into a resume.
+   *
+   * What the wire needs, verified against kagent's source and against live traffic
+   * on gazelle:
+   *
+   * - **`decision_type` is mandatory, including for a question.** Both the Go and
+   *   Python executors read it *before* they look at anything else and bail out of
+   *   the resume path entirely when it is absent (`BuildResumeHITLMessage` in
+   *   `go/adk/pkg/a2a/hitl.go`, `_process_hitl_decision` in the Python executor).
+   *   Answers without it are silently ignored.
+   * - **`ask_user_answers` is positional**, one entry per question in the order
+   *   asked, and each `answer` is an array even for a single-select — kagent's
+   *   `ask_user` tool indexes into it and treats a short array as "unanswered"
+   *   rather than an error.
+   * - An answer carries the **choice text verbatim**, not an index.
+   * - A `text` part is transcript-only. Both executors discard the whole inbound
+   *   message and substitute a synthesised function response, so nothing in it
+   *   reaches the model. It is sent so the conversation reads correctly.
+   * - A rejection's reason is a **flat** `rejection_reason` string. The per-call
+   *   `rejection_reasons` map belongs to `decision_type: 'batch'`, which we
+   *   deliberately do not send: a batch key that does not match an
+   *   `originalFunctionCall.id` **defaults to approve**, so a mistake there would
+   *   silently permit a side-effecting tool. One confirmation is open at a time, so
+   *   the uniform form is sufficient.
+   *
+   * The confirmation's own id is never echoed: kagent re-derives it from the stored
+   * task and fans the decision out over every pending call itself.
+   */
+  async answerConfirmation(
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    answer: {
+      messageId: string;
+      taskId: string;
+      decision: 'approve' | 'reject';
+      /** Positional, one entry per question. Empty for an approval. */
+      answers?: string[][];
+      rejectionReason?: string;
+      /** What to show in the transcript as the user's words. */
+      text?: string;
+    },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const data: Record<string, unknown> = {
+      decision_type: answer.decision,
+    };
+    if (answer.answers && answer.answers.length > 0) {
+      data.ask_user_answers = answer.answers.map(values => ({
+        answer: values,
+      }));
+    }
+    if (answer.decision === 'reject' && answer.rejectionReason) {
+      data.rejection_reason = answer.rejectionReason;
+    }
+
+    const parts: unknown[] = [{ kind: 'data', data }];
+    if (answer.text) {
+      parts.push({ kind: 'text', text: answer.text });
+    }
+
+    return this.dispatch(
+      sessionId,
+      agent,
+      { messageId: answer.messageId, parts, taskId: answer.taskId },
+      options,
+    );
+  }
+
+  /**
    * Whether a message we sent is in the session's history.
    *
    * Only asked after the send's transport failed, so there has been ample time
@@ -621,7 +786,7 @@ export class KagentClient {
   private async postMessage(
     sessionId: string,
     agent: { namespace: string; name: string },
-    message: { messageId: string; text: string },
+    message: { messageId: string; parts: unknown[]; taskId?: string },
     options: KagentRequestOptions,
   ): Promise<unknown> {
     return this.request(
@@ -642,8 +807,20 @@ export class KagentClient {
               kind: 'message',
               messageId: message.messageId,
               role: 'user',
-              parts: [{ kind: 'text', text: message.text }],
+              parts: message.parts,
               contextId: sessionId,
+              // **On the message, never on `params`.** The A2A server picks the
+              // task from `params.message.taskId`
+              // (`internal/taskexec/local_manager.go`): empty means "start a new
+              // task", set means "resume this one". A `params.taskId` is not a
+              // field of `MessageSendParams` in any A2A version and is silently
+              // dropped by the v0 -> v1 conversion — which is exactly the bug that
+              // makes klaus-gateway's Slack answers open a new task and strand the
+              // suspended one forever.
+              //
+              // Omitted entirely for an ordinary message: a plain reply *should*
+              // open a new task, and naming a terminal one is rejected outright.
+              ...(message.taskId && { taskId: message.taskId }),
             },
           },
         },

@@ -233,9 +233,10 @@ the open TODOs.
 ## The Sessions tab
 
 `/agent-platform/sessions` lists the signed-in user's kagent chat sessions across
-the fleet. The list itself carries no actions: a session opens into its detail page,
-where it can be **deleted** (see "Deleting a session"), but nothing here creates or
-renames one.
+the fleet, with a composer above it that **starts a new one** (see "Starting a
+session"). A session opens into its detail page, where it can be **renamed** and
+**deleted** (see "Renaming a session" and "Deleting a session"); the list rows
+themselves carry no actions.
 
 ### Why it needs a backend proxy
 
@@ -313,6 +314,36 @@ Two consequences worth knowing:
 - **Titles are short and lossy.** kagent derives them from the first message and
   truncates to 20 characters (`"What issues are assi..."`), and the full text is
   unrecoverable — so the Agent column carries much of a row's meaning.
+
+#### Session ids come in two shapes, and neither is ours
+
+Nothing here generates a session id, but the fleet holds two formats and it is worth
+knowing why before anyone writes a validator or a route guard against one of them.
+
+A session id **is** its A2A `contextId`, and whoever first names that context decides
+the format:
+
+- **Dashed UUIDv7** — `01a0587c-3955-790d-bf5f-e3e8427cdaa4`. What kagent generates
+  when a client calls `POST /api/sessions` without an `id`: `HandleCreateSession` falls
+  back to `a2a.NewContextID()`, which is `uuid.NewV7().String()` (a2a-go v2.4.0). This
+  plugin and the kagent UI both take that path. The `01a0…` prefix is a 48-bit
+  millisecond timestamp, so these sort by creation time.
+- **64 hex characters, no dashes** —
+  `986c786b60148810eff0757e49d56fc72f315609c715d392f97ad0df6fcb8cc5`. klaus-gateway's,
+  and **deterministic rather than random**: `SynthesizeContextID` in its
+  `pkg/channels/contextid.go` is a SHA-256 over the five routing dimensions (channel,
+  channel id, user id, thread id, agent ref). That is how a Slack thread resumes the
+  same kagent session without klaus-gateway storing any mapping. It only ever sets
+  `contextId` on the A2A message and never calls `POST /api/sessions`, so kagent's
+  generator never runs for it.
+
+So an id is **opaque**: never parse one, never assume hex or a UUID, and never derive
+anything from its shape. This code only ever `encodeURIComponent`s it.
+
+One asymmetry follows from the split, and it is why the empty-session TODO exists: a
+deterministic id can be recomputed after a lost response, a generated one cannot. If
+our create succeeds but its response never arrives, the session is orphaned — so
+`createSession` fails loudly and says to check the list, rather than inventing an id.
 
 ### Fleet behaviour
 
@@ -955,6 +986,270 @@ route's JSON body limit is raised to 256 kB so that cap is what a caller meets: 
 code units of CJK is ~96 kB, clearing the 100 kB default by too little to rely on, and
 a body-parser 413 explains nothing.
 
+### Answering the agent's question
+
+An agent can stop and ask. kagent surfaces that as a task in `input-required`, and
+the session cannot move on until it is answered — a plain message will not do it. So
+whenever a confirmation is open the detail page shows an **answer panel**, and leaves
+the reply composer on screen **disabled**, saying why.
+
+Disabled rather than removed, deliberately: a message box that vanishes reads as the
+reply feature being missing, when in fact it is blocked, and the difference matters
+because the block is temporary. kagent's own UI makes the same call — it greys its box
+out with `Awaiting approval…` in it.
+
+#### A reply that does not name the task strands the agent
+
+This is the whole difficulty, and it fails silently, so it is worth stating exactly.
+
+ADK suspends the task on a **long-running `adk_request_confirmation` call**. The A2A
+server decides what a message continues from `params.message.taskId`
+(`internal/taskexec/local_manager.go`):
+
+```go
+if req.Message == nil || len(req.Message.TaskID) == 0 {
+    tid = a2a.NewTaskID()      // a brand-new task
+} else {
+    tid = req.Message.TaskID   // resume this one
+}
+```
+
+With no task id, kagent opens a new task. The agent still _reads_ the words — the
+session history gives it the context of its own question — so the conversation looks
+fine. But the suspended call never receives its function response: the old task stays
+`input-required` for ever, and the model history holds a `tool_use` with no matching
+`tool_result`.
+
+**klaus-gateway has this bug today.** It sends the id as `params.taskId`
+(`pkg/a2a/kagent_client.go`), which is not a field of `MessageSendParams` in any A2A
+version and is dropped by the v0→v1 conversion. Every question answered from Slack
+therefore leaves its task suspended. Verified on gazelle: a session with three
+questions answered from Slack holds **seven tasks, three of them stranded**. The same
+session answered from here holds **one task**, resumed in place, with its history
+grown from 6 entries to 11. The fix on their side is one line — move it onto the
+message.
+
+Two constraints come with naming the task: the message's `contextId` must match the
+task's, and the task must not be in a terminal state. So an ordinary reply keeps
+sending **no** `taskId` — a plain message _should_ open a new task, and naming a
+finished one is rejected outright.
+
+#### The wire format
+
+Verified twice over: read out of kagent's own source, and observed on live traffic on
+gazelle. `POST <apiBaseUrl>/a2a/{ns}/{name}`, `method: "message/send"`, no
+`A2A-Version` header (matching every other call here):
+
+```json
+{
+  "params": {
+    "message": {
+      "kind": "message",
+      "messageId": "<uuid>",
+      "role": "user",
+      "contextId": "<session id>",
+      "taskId": "<the input-required task's id>",
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "decision_type": "approve",
+            "ask_user_answers": [{ "answer": ["Rideable proof-of-concept"] }]
+          }
+        },
+        { "kind": "text", "text": "Rideable proof-of-concept" }
+      ]
+    }
+  }
+}
+```
+
+Four things about it are easy to get wrong:
+
+- **`decision_type` is mandatory, including for a question.** Both the Go and Python
+  executors read it _before_ they look at anything else and abandon the resume path
+  entirely when it is missing. An answer sent without it is silently ignored.
+- **`ask_user_answers` is positional** — one entry per question, in the order asked —
+  and each `answer` is an **array even for a single choice**. kagent indexes into it
+  and treats a short array as "that question was not answered" rather than an error,
+  so a partial set resumes the agent on a premise nobody supplied. The panel refuses
+  to submit until every question has something for exactly this reason.
+- **An answer carries the choice's own text, not its index.** Confirmed on the wire:
+  a question whose choices were `["2","3","4","5","6"]` was answered `["5"]`.
+- **The text part is transcript-only.** Both executors discard the inbound message and
+  substitute a synthesised function response, so nothing in it reaches the model. It
+  is sent so the conversation reads correctly, and for no other reason.
+
+Nothing echoes the confirmation's own id: kagent re-derives it from the stored task
+and fans one decision out over every pending call itself.
+
+A refusal is `decision_type: "reject"` with a **flat** `rejection_reason` string. The
+per-call `rejection_reasons` map belongs to `decision_type: "batch"`, which this code
+deliberately never sends — a batch key that matches no `originalFunctionCall.id`
+**defaults to approve**, so one wrong key would silently permit a side-effecting tool.
+Only one confirmation is open at a time, so the uniform form is sufficient.
+
+#### What the question looks like, and what the panel does with it
+
+`readPendingConfirmation` (`lib/kagentHitl.ts`) reads it from the suspended task's
+`status.message`, never from `history`: a confirmation request stays in history for
+the rest of the session even after it is answered, so only `status.message` means
+"still waiting".
+
+**It reads the task whose state _is_ the session's state** — the same one the badge
+and the working indicator use, via the shared `findNewestStatefulTaskIndex`. Not "the
+newest task that awaits input", which is a real and tempting mistake: because
+klaus-gateway strands every question it answers, a perfectly healthy session routinely
+holds several old `input-required` tasks behind a completed newest one, and searching
+for those offered to answer a question the agent had moved past long ago.
+
+ADK wraps two different things in the same request, discriminated by
+`originalFunctionCall.name`:
+
+- **`ask_user`** — one or more questions, each either a **choice list** (radio, or
+  checkboxes when `multiple`) or **free text**. Both shapes occur on the same
+  installation.
+- **anything else** — a tool the agent wants permission to run, which takes Approve or
+  Decline rather than an answer.
+
+**Every question gets a free-text box, choices or not.** A choice list is not
+exhaustive — the live examples end in "Something else (I'll explain)" — and typed words
+do reach the agent, because they are sent inside the `answer` array rather than as the
+message's text part. (Only the _text part_ is discarded; that distinction is easy to
+get backwards, and getting it backwards is what first led this panel to offer choices
+alone.) kagent's own UI puts a "Type your own answer" input beside every choice list
+for the same reason.
+
+Choices and typed words are not alternatives: `answer` is a list of strings, so a
+question can be answered with a choice, with prose, or with both — "I picked this, and
+here is the caveat". They are sent choices-first, the order they appear on screen. A
+question counts as answered when it has either.
+
+A single question is **not** repeated in the panel — the timeline renders it directly
+above, as prose in the conversation where it belongs. With several, each is labelled,
+because the pairing of choices to question is not otherwise recoverable.
+
+When the session is waiting but the request cannot be read — an unrecognised payload,
+or a task with no id — the panel is withheld and the page says so. Answering then
+would be submitting a guess about what was asked.
+
+### Starting a session
+
+A session is started from a **composer**: a prompt, an agent, and "Start". There is
+deliberately no new-session _screen_ — that is the prototype's shape, and the prompt
+is the only thing the spec treats as required.
+
+It appears in two places. **Inline above the sessions list**, collapsed to a single
+line and expanding on focus, because that list is the prototype's "Mine" scope, where
+creating is the job of the view rather than a secondary action — and kagent scoping
+sessions to the signed-in user is exactly what makes our one list that scope. And in a
+**dialog on the agent detail page**, opened by "Start a session" in the header, with
+that agent preselected and the picker offering only it. Neither placement puts a
+button in the shared page header for anything but opening the dialog: that slot renders
+outside the plugin's `QueryClientProvider`, so the create mutation would have no client
+there.
+
+Expansion is **one-way**. Nothing collapses the inline composer again, because
+collapsing on blur would hide the agent just chosen, and re-collapsing under the cursor
+reads as a glitch. Enter inserts a newline and **Cmd/Ctrl+Enter starts**, matching the
+reply composer.
+
+#### Create, navigate, then send — in that order
+
+Three steps, and the order is the whole design:
+
+1. `POST /api/sessions` with `{agent_ref, name, source: 'user'}` — one fast call.
+2. Navigate to the session's detail page, carrying the prompt in the router state.
+3. The **detail page** sends the prompt as the session's first message.
+
+The reason the send is not done by the composer is that `message/send` blocks for the
+whole turn (see "Continuing a session"): awaiting it before navigating would leave the
+user on the list for up to `turnTimeoutMs`, half a minute. Firing it un-awaited and
+navigating anyway loses the optimistic echo instead, because `useSendMessage`'s pending
+state lives in the component that just unmounted — the user would land on an empty
+conversation with no sign their prompt existed until a poll caught up 10 s later.
+
+Handing the prompt over means the machinery that already exists for a reply does all of
+it: the optimistic user message, the "Working…" row, and a failure landing back in the
+composer with the text intact. The agent's namespace and name travel **with** the
+prompt rather than being resolved from the session, so the send can be dispatched on the
+first render: resolving it the normal way needs both the session read and its join
+against the fleet-wide `Agent` list, which is a beat later.
+
+The router state is consumed exactly once and then cleared with a replacing navigation
+(`useNewSessionHandoff`). This is not tidiness — router state survives a reload and a
+Back navigation, so a page that read it on every render would silently start a second
+paid turn with the same prompt every time the user came back.
+
+**A session can be left empty.** If the tab is closed between the create and the send,
+the session exists with no messages. It is a real session — it opens, and the composer
+works on it — so nothing is broken, but it will sit in the list untitled-looking until
+someone uses or deletes it.
+
+#### Titles are ours to derive
+
+kagent does **not** auto-title. A create with no `name` comes back with no `name` field
+at all (verified against 0.9.9), so the short titles in kagent's own list are its _UI_
+truncating the first message to 20 characters — which is why sessions started there look
+the way they do in our list, and why that is unrecoverable. Since the spec has users
+never naming sessions, `deriveSessionTitle` produces one from the prompt: whitespace
+collapsed to single spaces (a prompt may be paragraphs; a title is one line), cut to 60
+characters at a word boundary where that doesn't throw most of it away, with trailing
+punctuation stripped before the ellipsis. Deliberately mechanical rather than a summary —
+anything cleverer would mean a model call on the way to creating a session, and the
+title is renameable afterwards.
+
+#### The agent implies the installation
+
+An agent's identity _is_ installation/namespace/name, so picking one picks the
+installation too; the composer has no separate installation control. `agent_ref` is
+built from the agent's **technical** name (its `Agent` resource name), never its display
+annotation and never by decoding a session's `agent_id` — that encoding replaces every
+`-` with `_` and cannot be reversed.
+
+The picker lists every agent the fleet offers, grouped by installation when there is
+more than one, each with the same deterministic avatar the sessions table and the
+agent's own page show. Past eight agents it gains a search box. **Only ready agents can
+be chosen**: the rest are listed but disabled, with their readiness message as the
+reason — truncated to one short line, because a `notAccepted` agent's message is the
+controller's raw reconcile error, and a real one on gazelle is a 400-character
+multi-line Postgres dial failure that would push every other agent off the screen. Offering them would create a session whose
+first turn then fails at tool-listing, with nothing on screen explaining why — and
+withholding them silently would make a broken agent indistinguishable from one that
+never existed. When the fleet offers no agent at all, the composer is replaced by a
+sentence saying so, and that sentence distinguishes "none deployed" from "none could be
+read".
+
+**Sandbox agents need no exclusion here**, which is worth stating because it looks like
+an omission. They are a separate `SandboxAgent` kind, and there is no `workloadType` on
+the `Agent` v1alpha2 CRD at all — so the fleet-wide list this picker reads
+(`AgentsDataProvider`, `Agent` CRs only) cannot contain one. No filter, and no extra
+field on `AgentRow`.
+
+#### The default agent is the last one used
+
+Remembered per browser in `localStorage` (`useLastUsedAgent`, via
+`use-local-storage-state` — the same mechanism as `useTableColumns`), stored as the
+agent's id so it is re-resolved against the live fleet on every visit. An agent that has
+since been deleted, or has stopped being ready, resolves to nothing and the composer
+asks for a choice.
+
+There is no preselection on the very first use, and that is a deliberate departure from
+the prototype, which pins one canonical "general purpose agent" as the default. We have
+no equivalent — just however many agents the fleet happens to run — and the two obvious
+substitutes are both worse: preselecting the first agent alphabetically always offers
+_something_, but the something is arbitrary, and a hasty Cmd+Enter then spends money on
+an agent that can act on a cluster; preselecting nothing every time is safe but makes
+the common case, the same agent as last time, cost two extra clicks.
+
+#### What is not carried over
+
+The prototype's composer also has a combined **visibility/team selector**, defaulting to
+Private, with a lock-icon hint below the box. It has no kagent equivalent — a session is
+owned by one user and there is no sharing model on 0.9.x — so it and the hint are
+dropped. So is the favourites-first ordering and the star badge in its picker: we have
+no favourites concept.
+
 ## The agent detail page
 
 `/agent-platform/agents/<installation>/<namespace>/<name>`, reached by clicking an
@@ -1257,36 +1552,54 @@ above). What remains is a separate, deeper concern:
   form driven from an existing agent, plus a decision about whether that produces
   a live apply or a PR (GitOps-managed agents are read-only, see "GitOps
   provenance").
-- **Starting a new session.** Now the concrete next step rather than an open one,
-  since the send path exists (see "Continuing a session"): `POST /api/sessions` with
-  `{agent_ref}`, then the same send with the new session's id as `contextId`, then
-  navigate to it. Two things are settled by measurement. The controller does **not**
-  auto-title: a create with no `name` comes back with no `name` field at all (verified
-  against 0.9.9), so the truncated titles in the list are kagent's _UI_ deriving them
-  from the first message — we have to derive our own, from the first prompt, since the
-  prototype's spec has users never naming sessions. And the prototype has no
-  new-session _screen_: it is a composer (prompt, agent picker, "Start"), inline on the
-  sessions list and modal elsewhere, with the prompt the only required field. Its
-  visibility/team selector has no kagent equivalent and is dropped. Picking an agent
-  should imply the installation, since an agent's identity is
-  installation/namespace/name.
+- **An empty session is possible.** Starting one is a create followed by a separate
+  send (see "Starting a session"), so closing the tab in between leaves a session with
+  no messages. Harmless — it opens and can be continued or deleted — but a session that
+  is _reliably_ either used or gone would need the send to happen server-side, which
+  means a route that dispatches a turn it does not wait for.
+- **The agent version is not pinned to the session.** The prototype's
+  `model-session.md` requires it: a session references one agent _at a specific
+  version_, pinned at launch and immutable for the session's life. kagent's session
+  record has no such field — only `agent_ref` — so upgrading an agent silently changes
+  what every existing session is talking to. Nothing here can fix that; it is a kagent
+  data-model gap worth raising upstream rather than working around.
+- **No favourites in the agent picker.** The prototype sorts favourited agents to the
+  top of the composer's picker and marks them with a star. We have no per-user
+  favourites concept at all, so the picker is plain installation-then-name order.
+  Worth revisiting if the fleet grows past what one dropdown can present — the search
+  box that appears past eight agents is the current stopgap.
+- **The composer cannot offer to create an agent.** When the fleet has none, it is
+  replaced by a sentence saying so, with no route onward — even though the Agents tab's
+  create flow is one tab away. A link would be an easy improvement.
 - **Session list row actions.** Deleting from a list row is unimplemented —
   deliberately, since a destructive action on a row someone is scanning past is easy to
   hit by accident. Renaming from a list row is merely unbuilt, and would be
   reasonable.
-- **Answering the agent's question.** The composer is withheld while a task is
-  `input-required`/`auth-required` (see "Continuing a session") because a plain message
-  does not answer a pending confirmation: kagent opens a new task and leaves the old
-  one waiting forever. Answering needs the structured reply — `decision_type` and
-  `ask_user_answers[]` — which resumes the **same** task. Until it exists, the page
-  says so and points at kagent's own UI.
+- **Batch decisions are not supported.** Answering sends the uniform
+  `decision_type: 'approve'|'reject'` (see "Answering the agent's question"), never
+  `'batch'` with a per-call `decisions` map. kagent suspends the task on one
+  confirmation at a time, so the uniform form has always been sufficient here — and
+  the batch form is actively dangerous to get wrong: a key that matches no
+  `originalFunctionCall.id` **defaults to approve**, so one mistyped id silently
+  permits a side-effecting tool. If parallel tool calls ever do arrive in one
+  confirmation, the per-call ids come from `originalFunctionCall.id` (the _inner_ ones
+  for sub-agent HITL), and this needs implementing deliberately rather than by
+  extension.
+- **Sub-agent HITL is untested.** A confirmation raised inside a delegated agent
+  carries `toolConfirmation.payload.hitl_parts`, and the uniform decision we send is
+  documented to fan out over those too — but no agent on the fleet has produced one, so
+  it has never been exercised.
 - **No stop or cancel of a running turn**, which the prototype offers as a header
   action. A2A has a cancel method; nothing is wired to it, so a turn that has gone
   wrong can only be waited out.
-- **Sandbox agents cannot be messaged.** They need `/api/a2a-sandboxes/…` rather than
-  `/api/a2a/…`, require `contextId`, and 409 on a second session. Excluded from the
-  send path; gazelle runs none today (every agent there is the default workload type),
-  so nothing is hidden by it yet.
+- **Sandbox agents cannot be messaged or started.** They need `/api/a2a-sandboxes/…`
+  rather than `/api/a2a/…`, require `contextId`, and 409 on a second session. Nothing
+  filters them out, and nothing needs to: they are a separate `SandboxAgent` kind, so
+  the `Agent` CRs both the send path and the composer's picker read cannot contain one
+  (see "The agent implies the installation"). Supporting them means reading that kind
+  as well, plus the sandbox A2A path and handling the one-session 409. gazelle runs none
+  today — every agent there is the default workload type — so nothing is hidden by it
+  yet.
 - **Sending depends on a token muster also accepts.** An agent forwards the caller's
   `Authorization` header to its MCP servers (`allowedHeaders: ["authorization"]`), so a
   token good enough for kagent but not for muster fails the turn at tool-listing rather
@@ -1299,15 +1612,6 @@ above). What remains is a separate, deeper concern:
   (see "Renaming a session"). Everything propping that up is marked
   `TODO(kagent-0.9)` and should be deleted once no installation runs v0.9.x, leaving
   the plain `PUT /api/sessions/:id`.
-- **An unanswered question is not shown.** When a task is `input-required`, the
-  question the agent is waiting on lives in `status.message` — the wire schema
-  already parses it and says so — but `buildTimeline` only ever reads
-  `status.timestamp`, so nothing renders it. The page shows a "Waiting for input"
-  badge above a conversation that just stops, with no indication of what was asked.
-  Observed live on gazelle. The fix is a timeline entry (or a panel above it) for the
-  pending prompt; note it is not part of task `history`, so it needs handling of its
-  own rather than falling out of the existing walk. Answering it is a separate gap —
-  see "Answering the agent's question" above.
 - **No streaming.** The send waits out the turn and the conversation poll shows it
   progress (see "Continuing a session"). A relayed A2A `message/stream` would feel
   live, and the reasons it was not built are cost, not doubt:

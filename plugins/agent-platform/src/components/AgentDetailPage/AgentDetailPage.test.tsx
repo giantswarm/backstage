@@ -55,6 +55,20 @@ jest.mock('../../hooks/useDeleteAgent', () => ({
   }),
 }));
 
+// Stubbed for the same reason: it reads `kagentApiRef`, and this page's APIs and
+// react-query client are not part of the test. What it drives — the "Start a
+// session" button and its dialog — is covered by `NewSessionComposer`'s own tests
+// and end to end.
+const mockCreateSession = jest.fn();
+jest.mock('../../hooks/useCreateSession', () => ({
+  useCreateSession: () => ({
+    createSession: mockCreateSession,
+    isCreating: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+
 const mockParams: {
   installation: string;
   namespace: string;

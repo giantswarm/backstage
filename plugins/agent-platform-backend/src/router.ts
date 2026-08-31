@@ -36,6 +36,44 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
   return value;
 }
 
+/**
+ * A required, non-empty string field from a JSON body.
+ *
+ * Trimmed before the emptiness check, so a field of pure whitespace is rejected
+ * rather than forwarded to kagent as an empty value. An `InputError` answers 400
+ * — `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry, and a
+ * malformed body is the caller's mistake, not a fault anyone can act on.
+ */
+function readRequiredString(
+  body: Record<string, unknown>,
+  field: string,
+): string {
+  const value = body[field];
+  if (typeof value !== 'string') {
+    throw new InputError(`${field} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new InputError(`${field} must not be empty`);
+  }
+  return trimmed;
+}
+
+/**
+ * A session title, bounded. Shared by the create and rename routes so the two
+ * cannot drift apart — a title accepted by one and refused by the other would be
+ * a create the user could not undo by renaming.
+ */
+function readSessionName(body: Record<string, unknown>): string {
+  const name = readRequiredString(body, 'name');
+  if (name.length > SESSION_NAME_MAX_LENGTH) {
+    throw new InputError(
+      `name must be at most ${SESSION_NAME_MAX_LENGTH} characters`,
+    );
+  }
+  return name;
+}
+
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
@@ -196,6 +234,47 @@ export async function createRouter(
   });
 
   /**
+   * Start a session for one agent.
+   *
+   * The agent's real namespace and name come from the body rather than being
+   * decoded from anything: kagent's "python identifier" encoding of `agent_id`
+   * replaces every `-` with `_`, so decoding it is lossy. The caller picked the
+   * agent and knows both, so it says so.
+   *
+   * `name` is required here even though kagent's own API treats it as optional,
+   * because the controller does not auto-title — a session created without one
+   * has no title at all. The frontend derives it from the first prompt; see
+   * "Starting a session" in docs/agent-platform.md.
+   *
+   * The token is **required**, for the same reason the other writes require it:
+   * kagent decides whose session this is from the token alone.
+   *
+   * Nothing expected reaches a 5xx. A malformed body is a 400, an agent kagent
+   * cannot resolve becomes a 409, and a sandbox agent that already holds its one
+   * permitted session stays a 409 — `MiddlewareFactory.error()` forwards anything
+   * `>= 500` to Sentry.
+   */
+  router.post('/kagent/sessions', async (req, res) => {
+    const { client } = resolveInstallation(req);
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const agentNamespace = readRequiredString(body, 'agentNamespace');
+    const agentName = readRequiredString(body, 'agentName');
+    const name = readSessionName(body);
+
+    const result = await client.createSession(
+      { namespace: agentNamespace, name: agentName },
+      name,
+      { userToken: readUserToken(req, { required: true }) },
+    );
+
+    // 201, matching kagent's own answer to this route. The body is its envelope
+    // verbatim: the frontend needs the generated session id out of it, and this
+    // proxy stays transport.
+    res.status(201).json(result);
+  });
+
+  /**
    * One session's metadata and stored events. Express matches these paths
    * exactly, so this and the list route above do not shadow each other.
    *
@@ -264,23 +343,7 @@ export async function createRouter(
   router.put('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);
 
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const rawName = body.name;
-    if (typeof rawName !== 'string') {
-      throw new InputError('name must be a string');
-    }
-
-    // Trimmed before the emptiness check so a name of pure whitespace is
-    // rejected rather than stored as a title nothing can display.
-    const name = rawName.trim();
-    if (!name) {
-      throw new InputError('name must not be empty');
-    }
-    if (name.length > SESSION_NAME_MAX_LENGTH) {
-      throw new InputError(
-        `name must be at most ${SESSION_NAME_MAX_LENGTH} characters`,
-      );
-    }
+    const name = readSessionName((req.body ?? {}) as Record<string, unknown>);
 
     const result = await client.updateSessionName(readSessionId(req), name, {
       userToken: readUserToken(req, { required: true }),
@@ -329,21 +392,9 @@ export async function createRouter(
 
     const body = (req.body ?? {}) as Record<string, unknown>;
 
-    const readRequiredString = (field: string): string => {
-      const value = body[field];
-      if (typeof value !== 'string') {
-        throw new InputError(`${field} must be a string`);
-      }
-      const trimmed = value.trim();
-      if (!trimmed) {
-        throw new InputError(`${field} must not be empty`);
-      }
-      return trimmed;
-    };
-
-    const agentNamespace = readRequiredString('agentNamespace');
-    const agentName = readRequiredString('agentName');
-    const messageId = readRequiredString('messageId');
+    const agentNamespace = readRequiredString(body, 'agentNamespace');
+    const agentName = readRequiredString(body, 'agentName');
+    const messageId = readRequiredString(body, 'messageId');
 
     // The one field not trimmed to its bounds check: leading and trailing
     // whitespace is insignificant for a prompt, but interior formatting is not,
@@ -395,6 +446,108 @@ export async function createRouter(
    * be wrong: a `sub` that differs from the one kagent recorded (empty list),
    * and a controller running in `unsecure` mode (shared list).
    */
+  /**
+   * Answer the confirmation a session is suspended on.
+   *
+   * Separate from the messages route because it is a different act, not a variant
+   * of one: this resumes a named task, and getting that wrong strands the agent
+   * rather than merely failing. Folding it into `POST …/messages` would have made
+   * `taskId` an optional field there, and an optional field that silently changes
+   * a reply into a resume is the wrong shape for something this consequential.
+   *
+   * `answers` is positional — one entry per question, in the order asked — and each
+   * entry is a list even for a single-select. The frontend derives it from the same
+   * `questions` array it rendered, so the ordering is the one kagent asked in.
+   *
+   * The token is **required**, like every other write: kagent decides whose session
+   * this is from it alone.
+   *
+   * Nothing expected reaches a 5xx — `MiddlewareFactory.error()` forwards anything
+   * `>= 500` to Sentry. A malformed body is a 400, a task kagent will not resume is
+   * a 409, and a turn that outlives its transport is a 202.
+   */
+  router.post('/kagent/sessions/:sessionId/answer', async (req, res) => {
+    const { client } = resolveInstallation(req);
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const agentNamespace = readRequiredString(body, 'agentNamespace');
+    const agentName = readRequiredString(body, 'agentName');
+    const messageId = readRequiredString(body, 'messageId');
+    const taskId = readRequiredString(body, 'taskId');
+
+    const rawDecision = body.decision;
+    if (rawDecision !== 'approve' && rawDecision !== 'reject') {
+      throw new InputError("decision must be 'approve' or 'reject'");
+    }
+
+    // Positional and nested, so it needs its own check rather than
+    // `readRequiredString`: a malformed answer would otherwise reach kagent as a
+    // decision with no answers, which it accepts — resuming the task with the
+    // question silently unanswered.
+    let answers: string[][] | undefined;
+    if (body.answers !== undefined) {
+      if (!Array.isArray(body.answers)) {
+        throw new InputError('answers must be an array');
+      }
+      answers = body.answers.map(entry => {
+        if (!Array.isArray(entry)) {
+          throw new InputError('each answer must be an array of strings');
+        }
+        return entry.map(value => {
+          if (typeof value !== 'string') {
+            throw new InputError('each answer must be an array of strings');
+          }
+          return value;
+        });
+      });
+    }
+
+    const readOptionalBounded = (field: string): string | undefined => {
+      const value = body[field];
+      if (value === undefined) {
+        return undefined;
+      }
+      if (typeof value !== 'string') {
+        throw new InputError(`${field} must be a string`);
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return undefined;
+      }
+      if (trimmed.length > MESSAGE_TEXT_MAX_LENGTH) {
+        throw new InputError(
+          `${field} must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
+        );
+      }
+      return trimmed;
+    };
+
+    try {
+      const result = await client.answerConfirmation(
+        readSessionId(req),
+        { namespace: agentNamespace, name: agentName },
+        {
+          messageId,
+          taskId,
+          decision: rawDecision,
+          answers,
+          rejectionReason: readOptionalBounded('rejectionReason'),
+          text: readOptionalBounded('text'),
+        },
+        { userToken: readUserToken(req, { required: true }) },
+      );
+      res.json(result);
+    } catch (error) {
+      // Same contract as the messages route: a turn still running is a 202, not a
+      // failure. The answer has been accepted by then; only the agent's reply is
+      // outstanding.
+      if (!isTurnPendingError(error)) {
+        throw error;
+      }
+      res.status(202).json({ status: 'pending' });
+    }
+  });
+
   router.get('/kagent/me', async (req, res) => {
     const { client } = resolveInstallation(req);
     const result = await client.getMe({

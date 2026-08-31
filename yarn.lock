@@ -7370,6 +7370,7 @@ __metadata:
     js-yaml: "npm:^5.0.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
     react-use: "npm:^17.2.4"
+    use-local-storage-state: "npm:^19.5.0"
     zod: "npm:^4.4.3"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0

@@ -62,6 +62,31 @@ export interface KagentApi {
   ): Promise<A2aTaskWire[]>;
 
   /**
+   * Start a session with one agent, and return its id.
+   *
+   * A session is only a shell: creating one does not say anything to the agent.
+   * Talking happens through {@link sendMessage} with the returned id, which is
+   * the A2A `contextId` — the only link between the two.
+   *
+   * `name` is required even though kagent treats it as optional, because the
+   * controller does not auto-title: a session created without one has no title at
+   * all. Derive it with `deriveSessionTitle`.
+   *
+   * The agent's namespace and name are its **real** ones, as read from its
+   * `Agent` CR — never decoded from a session's `agent_id`, whose encoding is
+   * lossy.
+   *
+   * As with {@link renameSession}, a 400 here does **not** mean "kagent isn't
+   * available on this installation": it is how kagent reports an agent it cannot
+   * resolve, which the backend turns into a 409.
+   */
+  createSession(
+    installation: string,
+    agent: { namespace: string; name: string },
+    name: string,
+  ): Promise<{ sessionId: string }>;
+
+  /**
    * Delete one session.
    *
    * kagent scopes this by the forwarded token's user id and deletes **softly**:
@@ -118,6 +143,39 @@ export interface KagentApi {
     sessionId: string,
     agent: { namespace: string; name: string },
     message: { messageId: string; text: string },
+  ): Promise<void>;
+
+  /**
+   * Answer the confirmation a session is suspended on, resuming the same task.
+   *
+   * **Not a variant of {@link sendMessage}.** A pending confirmation cannot be
+   * answered with a plain message: without naming the task, kagent opens a new one
+   * and the agent's original tool call never gets its response, leaving the task
+   * suspended forever. `taskId` is what makes this a resume — read it from
+   * `readPendingConfirmation`.
+   *
+   * `answers` is **positional**, one entry per question in the order asked, and
+   * each entry is a list even for a single-select. Each value is the choice's own
+   * text, not its index. Omit for an approval, which carries no answers.
+   *
+   * `decision` is required even for a question — kagent reads it before it looks at
+   * the answers and ignores an answer that arrives without one.
+   *
+   * Resolving means kagent accepted the answer, not that the agent has finished
+   * reacting to it; like `sendMessage`, a still-running turn also resolves.
+   */
+  answerConfirmation(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    answer: {
+      messageId: string;
+      taskId: string;
+      decision: 'approve' | 'reject';
+      answers?: string[][];
+      rejectionReason?: string;
+      text?: string;
+    },
   ): Promise<void>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
