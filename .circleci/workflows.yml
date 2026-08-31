@@ -96,7 +96,9 @@ workflows:
         context: architect
         name: push-to-registries
         dockerfile: packages/backend/Dockerfile
-        platforms: linux/amd64
+        # TEST ONLY (do not merge): exercise the multi-arch QEMU build on the
+        # branch path to validate giantswarm/github#5848 before it merges.
+        platforms: linux/amd64,linux/arm64
         requires:
         - node-build
         filters:
