@@ -9,6 +9,7 @@ import {
   getWorkloadPodPrefix,
 } from '../../../utils/getWorkloadIdentifiers';
 import { useMimirResourceUsage } from '../../../../hooks/useMimirResourceUsage';
+import { useMimirAvailable } from '../../../../hooks/useMimirAvailable';
 
 const useStyles = makeStyles(theme => ({
   metricRow: {
@@ -135,7 +136,11 @@ export function DeploymentResourceUsageCard() {
     refetchInterval: 30_000,
   });
 
-  if (!clusterName) {
+  // This card is metrics-only: on an installation without Mimir
+  // (`mimirEnabled: false`) there is nothing it could ever show, so it
+  // disappears entirely rather than rendering a permanent placeholder.
+  const mimirAvailable = useMimirAvailable(installationName);
+  if (!clusterName || mimirAvailable === false) {
     return null;
   }
 

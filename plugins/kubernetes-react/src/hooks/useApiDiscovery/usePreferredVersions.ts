@@ -183,6 +183,17 @@ export function usePreferredVersions(
           return;
         }
 
+        // A 404 on `/apis/{group}` means the cluster does not serve this API
+        // group at all — a legitimate installation shape (e.g. no app-platform
+        // or no kustomize-controller on standalone installations). Resolving a
+        // fallback GVK would only send a list query destined to 404 again, so
+        // resolve nothing: the cluster simply has no resources of this type.
+        // The NotFoundError stays in `discoveryErrors`, so callers can still
+        // tell "not installed" (via `isNotFoundError`) from "couldn't read".
+        if (query.error?.name === 'NotFoundError') {
+          return;
+        }
+
         const resolved = resolvePreferredVersion({
           gvk,
           clientVersions: supportedVersions,

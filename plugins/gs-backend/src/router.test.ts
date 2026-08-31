@@ -42,6 +42,7 @@ describe('GET /installations', () => {
             backendUrl: 'https://golem.example.com',
             baseDomain: 'golem.example.com',
             region: 'eu-central-1',
+            mimirEnabled: false,
             apiVersionOverrides: {
               clusters: 'v1beta1',
             },
@@ -64,6 +65,7 @@ describe('GET /installations', () => {
         backendUrl: 'https://golem.example.com',
         baseDomain: 'golem.example.com',
         region: 'eu-central-1',
+        mimirEnabled: false,
         apiVersionOverrides: {
           clusters: 'v1beta1',
         },

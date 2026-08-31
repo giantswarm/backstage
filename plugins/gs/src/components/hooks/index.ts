@@ -27,6 +27,7 @@ export * from './useNodePoolsForCluster';
 export * from './useTemplateString';
 export * from './useProviderClustersForClusters';
 export * from './useProviderClusterIdentitiesForProviderClusters';
+export * from './useMimirAvailable';
 export * from './useMimirQuery';
 export * from './useMimirResourceUsage';
 export * from './useMimirWorkloadDiagnostics';

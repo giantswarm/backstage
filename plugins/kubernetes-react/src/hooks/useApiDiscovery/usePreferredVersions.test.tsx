@@ -283,6 +283,54 @@ describe('usePreferredVersions', () => {
     );
   });
 
+  it('resolves no GVK when the API group is not served (404)', async () => {
+    const gvk = makeGVK({
+      group: 'application.giantswarm.io',
+      apiVersion: 'v1alpha1',
+      plural: 'apps',
+    });
+
+    // 'cluster-a' serves the group; 'cluster-b' 404s on it (e.g. a standalone
+    // installation without app-platform). The mock's default response for
+    // unknown paths is a 404.
+    const api = createMockKubernetesApi({
+      'cluster-a': {
+        '/apis/application.giantswarm.io': makeApiGroupResponse(
+          'application.giantswarm.io',
+          ['v1alpha1'],
+        ),
+        '/apis/application.giantswarm.io/v1alpha1': makeApiResourceResponse(
+          'application.giantswarm.io',
+          'v1alpha1',
+          ['apps'],
+        ),
+      },
+      'cluster-b': {},
+    });
+
+    const { result } = renderHook(
+      () => usePreferredVersions(['cluster-a', 'cluster-b'], gvk),
+      { wrapper: createWrapper(api) },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isDiscovering).toBe(false);
+    });
+
+    // The missing group is absence, not an error to fall back from: no GVK is
+    // resolved for cluster-b, so no list query will ever be started there.
+    expect(Object.keys(result.current.clustersGVKs)).toEqual(['cluster-a']);
+
+    // The NotFoundError stays visible in discoveryErrors so callers can still
+    // distinguish "not installed" from "couldn't read".
+    expect(result.current.discoveryErrors).toEqual([
+      expect.objectContaining({
+        cluster: 'cluster-b',
+        error: expect.objectContaining({ name: 'NotFoundError' }),
+      }),
+    ]);
+  });
+
   it('reports incompatibility when resource exists only in incompatible versions', async () => {
     const gvk = makeMultiVersionGVK(['v1beta1'], {
       group: 'test.example.io',

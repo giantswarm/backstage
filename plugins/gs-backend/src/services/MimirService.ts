@@ -52,6 +52,19 @@ export class MimirService {
   }): Promise<MimirQueryResponse> {
     const { installationName, query, oidcToken } = options;
 
+    // `mimirEnabled: false` opts an installation out of the observability
+    // integration entirely (standalone installations have no Mimir at
+    // `observability.<baseDomain>`, even though `baseDomain` is set for other
+    // features). Refusing here keeps the frontend gate honest.
+    const mimirEnabled = this.config.getOptionalBoolean(
+      `gs.installations.${installationName}.mimirEnabled`,
+    );
+    if (mimirEnabled === false) {
+      throw new NotFoundError(
+        `Mimir is not enabled for installation "${installationName}"`,
+      );
+    }
+
     const baseDomain = this.config.getOptionalString(
       `gs.installations.${installationName}.baseDomain`,
     );
