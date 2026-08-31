@@ -30,6 +30,7 @@ import { ClusterColumns } from '../ClustersTable/columns';
 import {
   AWSClusterRoleIdentity,
   Cluster,
+  isNotFoundError,
   useResources,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -173,11 +174,16 @@ export const ClustersDataProvider = ({
     providerClusterIdentityErrors,
   ]);
 
+  // A 404 (`NotFoundError`) means the installation doesn't serve the API
+  // group at all — e.g. no Cluster API on a standalone installation with the
+  // Clusters page enabled. That's an expected shape, rendered as an empty
+  // cluster list, not an error banner.
   const displayErrors = useMemo(() => {
     return errors.filter(
       errorInfo =>
         errorInfo.type === 'incompatibility' ||
-        errorInfo.error.name !== 'RejectedError',
+        (errorInfo.error.name !== 'RejectedError' &&
+          !isNotFoundError(errorInfo)),
     );
   }, [errors]);
 
@@ -196,6 +202,13 @@ export const ClustersDataProvider = ({
         continue;
       }
       if (errorInfo.error.name === 'RejectedError') {
+        continue;
+      }
+      // A 404 means the apiserver answered authoritatively — access to the
+      // installation works, it just doesn't serve Cluster API. Healthy, not
+      // degraded.
+      if (isNotFoundError(errorInfo)) {
+        clusterAccessStatusApi.recordHealthy(errorInfo.cluster);
         continue;
       }
       clusterAccessStatusApi.recordDegraded(
