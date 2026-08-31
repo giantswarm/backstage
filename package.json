@@ -93,7 +93,7 @@
     "@giantswarm/backstage-plugin-ai-chat-backend/ai": "7.0.66",
     "vm2": "3.11.6",
     "sha.js": "2.4.12",
-    "basic-ftp": "6.0.2",
+    "basic-ftp": "6.2.0",
     "jsonpath-plus": "10.4.0",
     "protobufjs": "8.7.2",
     "@protobufjs/inquire": "1.1.2",
