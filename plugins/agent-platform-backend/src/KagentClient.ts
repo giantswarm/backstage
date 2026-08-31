@@ -23,23 +23,31 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
 
 /**
- * Timeout for one A2A turn, which is a different order of magnitude from every
- * other call here.
+ * How long to wait for an A2A turn before answering "still running".
  *
- * `message/send` answers only once the agent has finished — a turn with many tool
- * calls routinely runs minutes — so the 10 s read timeout would abort every
- * non-trivial one. 5 minutes matches `ACTIVE_MAX_AGE_MS` in the frontend's
- * polling, which is calibrated to the same thing.
+ * `message/send` answers only once the agent has finished, so this is not "how
+ * long a turn may take" — it is how long we are willing to hold a response open
+ * before reporting the turn as dispatched. **The turn survives us stopping**
+ * (verified on gazelle: an agent answered a message whose request had already died
+ * with a 502), so waiting longer buys nothing except a held-open socket.
  *
- * **A gateway in front of kagent usually gives up first**, so this is a backstop
- * rather than the operative bound: gazelle's `agent-platform-connectivity-ui`
- * route carries an Envoy `BackendTrafficPolicy` with `requestTimeout: 60s`, which
- * no turn of any substance survives. That is handled, not avoided — see
- * {@link KagentClient.sendMessage}.
+ * **It must stay below the timeout of whatever fronts Backstage**, and that is the
+ * whole reason it is short. The browser's request traverses its own door — an
+ * nginx-ingress defaults to `proxy_read_timeout 60s`, and an Envoy Gateway route
+ * inherits Envoy's route default unless a `BackendTrafficPolicy` says otherwise. If
+ * that door fires first, the frontend gets a 502/504 that no amount of care *here*
+ * can turn into "still running", because this process never got to answer. At 30 s
+ * we always win that race against a 60 s door; a longer value would reintroduce, one
+ * hop further out, exactly the failure {@link KagentClient.sendMessage} exists to
+ * prevent.
+ *
+ * Short enough, too, that a genuine immediate rejection (a bad request, an
+ * unresolvable agent, a JSON-RPC error) still surfaces inline rather than as a
+ * pending turn that never appears.
  *
  * Exceeding it is not a failure: see {@link turnPendingError}.
  */
-export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 5 * 60_000;
+export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 30_000;
 
 /**
  * Longest session name this proxy will store.
@@ -212,8 +220,75 @@ export function isTurnPendingError(error: unknown): boolean {
   return (error as Error | undefined)?.name === TURN_PENDING_ERROR_NAME;
 }
 
+/**
+ * Marks a `NotFoundError` that came from the **transport** rather than from
+ * kagent.
+ *
+ * `request` reports an unreachable host as a 404 deliberately (see the catch
+ * there): on a fleet where most installations run no kagent, that is the normal
+ * outcome and must stay off the 5xx path. But the same branch also catches a socket
+ * that died *mid-request* — an Envoy drain, a keepalive expiry, a TLS reset — which
+ * for a send is a lost connection, not an absent kagent.
+ *
+ * Carried as a property rather than a distinct error name because the name is
+ * load-bearing: the frontend keys "no kagent here, stay silent" off `NotFoundError`,
+ * and renaming it would make every kagent-less installation noisy.
+ */
+const TRANSPORT_FAILURE = Symbol.for('kagent.transportFailure');
+
+function transportFailure(message: string): Error {
+  const error = new NotFoundError(message);
+  (error as unknown as Record<symbol, boolean>)[TRANSPORT_FAILURE] = true;
+  return error;
+}
+
+export function isTransportFailure(error: unknown): boolean {
+  return Boolean(
+    (error as unknown as Record<symbol, boolean> | undefined)?.[
+      TRANSPORT_FAILURE
+    ],
+  );
+}
+
 function isUpstreamError(error: unknown): boolean {
   return (error as Error | undefined)?.name === 'UpstreamError';
+}
+
+/**
+ * The failure a JSON-RPC response reports **inside a 200**.
+ *
+ * A2A is JSON-RPC, so `POST /a2a/...` answers `{"jsonrpc":"2.0","error":{"code":
+ * -32602,"message":"…"}}` with a 200 for an invalid parameter, an unsupported
+ * operation, a task-store failure, or an agent whose A2A server is not ready. None
+ * of that is visible in the HTTP status, and none of it is kagent's REST envelope
+ * — whose `error` is the boolean `true` — so a check for that boolean lets every
+ * one of these through as a successful send.
+ *
+ * Both shapes are read here, plus a bare string, because this one route is the only
+ * place the two conventions meet and guessing wrong means a message that silently
+ * never happened.
+ *
+ * Returns the message to report, or undefined when the response carries no error.
+ */
+function readInBandError(payload: unknown): string | undefined {
+  if (typeof payload !== 'object' || payload === null) {
+    return undefined;
+  }
+  const error = (payload as { error?: unknown }).error;
+  if (!error) {
+    return undefined;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (typeof error === 'object') {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message) {
+      return message;
+    }
+  }
+  // `error: true`, or an object that named no message.
+  return 'the agent rejected the message without saying why';
 }
 
 /**
@@ -455,20 +530,32 @@ export class KagentClient {
     message: { messageId: string; text: string },
     options: KagentRequestOptions,
   ): Promise<unknown> {
+    let result: unknown;
     try {
-      return await this.postMessage(sessionId, agent, message, options);
+      result = await this.postMessage(sessionId, agent, message, options);
     } catch (error) {
-      // A transport failure is not a failed message. The gateway in front of
-      // kagent cuts the request off long before an agent is done — 60 s on
-      // gazelle's `agent-platform-connectivity-ui` route, against turns that run
-      // minutes — and the turn keeps running regardless: verified on gazelle,
-      // where the agent answered a message whose own request had already died
-      // with a 502.
+      // A lost connection is not a failed message. The gateway in front of kagent
+      // cuts the request off long before an agent is done — 60 s on gazelle's
+      // `agent-platform-connectivity-ui` route, against turns that run minutes —
+      // and the turn keeps running regardless: verified on gazelle, where the
+      // agent answered a message whose own request had already died with a 502.
       //
       // So the only honest way to report this is to go and look. If the message
       // reached the session's history, it was dispatched and the conversation
       // poll will show it finish; if it did not, the failure was real.
-      if (!isUpstreamError(error) && !isTurnPendingError(error)) {
+      //
+      // Three ways the connection can be lost, and all three verify: an upstream
+      // status (502/504), our own turn timeout, and a socket that simply died
+      // mid-turn — an Envoy drain, a keepalive expiry, a TLS reset. That last one
+      // is reported as a `NotFoundError` by `request`, which is why it needs
+      // {@link isTransportFailure} to tell it from kagent's *own* JSON 404 for an
+      // agent that does not exist. That 404 is a decision, and decisions are not
+      // verified: neither is a 401, a 403, or a rejected request.
+      if (
+        !isUpstreamError(error) &&
+        !isTurnPendingError(error) &&
+        !isTransportFailure(error)
+      ) {
         throw error;
       }
 
@@ -485,6 +572,26 @@ export class KagentClient {
         `The agent on installation '${this.installation.name}' is still working on the message; the connection closed before it finished.`,
       );
     }
+
+    // Outside the catch on purpose: a JSON-RPC failure arrives inside a 200, so the
+    // status has told us nothing — but it is a *decision*, not a lost connection,
+    // and must not be run through the verification above and reported as a turn
+    // still in flight.
+    //
+    // Left unchecked entirely, the caller clears its optimistic copy of the message
+    // and the invalidated read returns no new task: the message simply vanishes from
+    // the page, with the only record of why in a body nobody read.
+    const inBandError = readInBandError(result);
+    if (inBandError) {
+      this.logger.debug(
+        `The kagent A2A endpoint for installation '${this.installation.name}' rejected a message in-band`,
+      );
+      throw upstreamError(
+        `The agent on installation '${this.installation.name}' did not accept the message: ${inBandError}`,
+      );
+    }
+
+    return result;
   }
 
   /**
@@ -894,7 +1001,10 @@ export class KagentClient {
         `kagent is not reachable for installation '${this.installation.name}'`,
         { error: String(error) },
       );
-      throw new NotFoundError(
+      // Marked as transport-borne, because this same branch catches a socket that
+      // died mid-request as well as a host that was never there. A send verifies the
+      // former rather than reporting it; see `sendMessage`.
+      throw transportFailure(
         `The kagent API is not available for installation '${this.installation.name}'.`,
       );
     }

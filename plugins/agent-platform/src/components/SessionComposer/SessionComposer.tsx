@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useState } from 'react';
+import { FormEvent, KeyboardEvent, useRef, useState } from 'react';
 import { Alert, Button, Flex, Text, TextAreaField } from '@backstage/ui';
 
 /**
@@ -31,6 +31,15 @@ export type SessionComposerProps = {
    */
   isFinished: boolean;
   error?: string;
+  /**
+   * A message whose send failed, whose text is put back into the box.
+   *
+   * The field is cleared on submit, so after a failure this is the only remaining
+   * copy — without it a pasted manifest is gone for good. Identified rather than
+   * passed as a bare string so that resubmitting the *same* text and failing again
+   * restores it again; each attempt carries its own `messageId`.
+   */
+  restore?: { messageId: string; text: string } | null;
   /** Receives the trimmed text. Failure is reported through `error`. */
   onSubmit: (text: string) => void;
 };
@@ -38,11 +47,15 @@ export type SessionComposerProps = {
 /**
  * The message box at the foot of a session.
  *
- * The field is cleared on submit rather than when the request succeeds. The
- * message is rendered into the conversation optimistically at the same moment, so
- * it stays visible either way — and a turn runs for minutes, which is far too
- * long to hold a user's text hostage in a disabled box. When a send does fail the
- * caller surfaces `error`, and the message it names is still in the transcript.
+ * The field is cleared on submit rather than when the request succeeds: the message
+ * is rendered into the conversation optimistically at that moment, and a turn runs
+ * for minutes, which is far too long to hold a user's text hostage in a disabled
+ * box.
+ *
+ * That optimistic copy is dropped when a send *fails*, though — nothing was
+ * recorded, so the transcript must not keep showing it — which would leave the text
+ * nowhere at all. Hence `restore`: on failure the caller hands it back and it
+ * returns to the box, next to the error saying why.
  *
  * Enter inserts a newline; **Cmd/Ctrl+Enter submits**. A prompt is often
  * multi-line, so Enter-to-send would truncate more messages than it saved.
@@ -51,9 +64,19 @@ export function SessionComposer({
   isAgentWorking,
   isFinished,
   error,
+  restore,
   onSubmit,
 }: SessionComposerProps) {
   const [value, setValue] = useState('');
+
+  // Put a failed message's text back, once per attempt. Tracked by id rather than
+  // by comparing text so that a second failure of the same text restores it again,
+  // and so that a restore never fires twice and overwrites an edit in progress.
+  const restoredId = useRef<string | undefined>(undefined);
+  if (restore && restoredId.current !== restore.messageId) {
+    restoredId.current = restore.messageId;
+    setValue(restore.text);
+  }
 
   const text = value.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;

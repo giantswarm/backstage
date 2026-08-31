@@ -1116,6 +1116,57 @@ describe('KagentClient', () => {
         ).rejects.toMatchObject({ name: 'KagentTurnPendingError' });
       });
 
+      it('verifies a socket that died mid-turn, reported as a 404', async () => {
+        // `request` maps any non-timeout fetch rejection to NotFoundError, and that
+        // branch catches an Envoy drain or a TLS reset just as much as a host that
+        // was never there. For a send those are lost connections, not an absent
+        // kagent, so they must be looked into rather than reported.
+        const fetchFn = jest
+          .fn()
+          .mockRejectedValueOnce(new Error('ECONNRESET'))
+          .mockResolvedValueOnce(jsonResponse(tasksHolding('msg-1')));
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'KagentTurnPendingError' });
+      });
+
+      it('still reports an unreachable installation when nothing landed', async () => {
+        // The other half: a host that genuinely is not there must keep answering
+        // 404, which the frontend silences per installation.
+        const fetchFn = jest
+          .fn()
+          .mockRejectedValueOnce(new Error('ENOTFOUND'))
+          .mockRejectedValueOnce(new Error('ENOTFOUND'));
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'NotFoundError' });
+      });
+
+      it('does not verify kagent’s own 404 for a missing agent', async () => {
+        // That is a decision, not a lost connection — and it is a JSON 404, which is
+        // how `request` tells the two apart.
+        const fetchFn = jest.fn().mockResolvedValue(
+          new Response(JSON.stringify({ error: 'no such agent' }), {
+            status: 404,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'NotFoundError' });
+
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+      });
+
       it('does not go looking when the send failed outright', async () => {
         // A 403 or a 404 is a decision, not a lost connection: there is nothing
         // to verify and no reason to spend a second request on it.
@@ -1140,6 +1191,102 @@ describe('KagentClient', () => {
             userToken: 't',
           }),
         ).rejects.toMatchObject({ name: 'UpstreamError' });
+      });
+    });
+
+    describe('a failure reported inside a 200', () => {
+      it('rejects a JSON-RPC error rather than passing it off as sent', async () => {
+        // A2A is JSON-RPC, so this is how invalid params, an unsupported operation
+        // or an agent whose server is not ready arrive. Unchecked, the caller drops
+        // its optimistic copy and the message vanishes from the page with no error
+        // anywhere.
+        const fetchFn = jest.fn().mockResolvedValue(
+          jsonResponse({
+            jsonrpc: '2.0',
+            id: 'msg-1',
+            error: { code: -32602, message: 'invalid params' },
+          }),
+        );
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({
+          name: 'UpstreamError',
+          message: expect.stringContaining('invalid params'),
+        });
+      });
+
+      it('is not mistaken for a lost connection', async () => {
+        // A rejection is a decision: it must not be run through the "did it land?"
+        // check and come back as a turn still in flight.
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValueOnce(
+            jsonResponse({
+              jsonrpc: '2.0',
+              error: { code: -32602, message: 'invalid params' },
+            }),
+          )
+          // Would satisfy the verification, if it were ever reached.
+          .mockResolvedValueOnce(
+            jsonResponse({
+              data: [{ id: 't1', history: [{ messageId: 'msg-1' }] }],
+            }),
+          );
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'UpstreamError' });
+
+        // No verification read was made.
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+      });
+
+      it('reads kagent’s REST-envelope error shape too', async () => {
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValue(jsonResponse({ error: true, message: 'nope' }));
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({ name: 'UpstreamError' });
+      });
+
+      it('says something useful when the error names no message', async () => {
+        const fetchFn = jest
+          .fn()
+          .mockResolvedValue(jsonResponse({ error: { code: -32603 } }));
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).rejects.toMatchObject({
+          message: expect.stringContaining('without saying why'),
+        });
+      });
+
+      it('passes a successful result through untouched', async () => {
+        const fetchFn = jest.fn().mockResolvedValue(
+          jsonResponse({
+            jsonrpc: '2.0',
+            result: { kind: 'task', status: { state: 'completed' } },
+          }),
+        );
+
+        await expect(
+          build(fetchFn).sendMessage('sess-1', AGENT, MESSAGE, {
+            userToken: 't',
+          }),
+        ).resolves.toMatchObject({
+          result: { status: { state: 'completed' } },
+        });
       });
     });
 

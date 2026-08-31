@@ -27,18 +27,21 @@ export interface Config {
       timeoutMs?: number;
 
       /**
-       * How long, in milliseconds, to wait for an agent to finish one turn when
-       * a message is sent to it. Separate from `timeoutMs` because kagent's
-       * `message/send` answers only once the agent is done, and a turn with many
-       * tool calls routinely runs minutes.
+       * How long, in milliseconds, to wait for an agent to finish one turn before
+       * answering "still running". Separate from `timeoutMs` because kagent's
+       * `message/send` answers only once the agent is done.
        *
-       * Usually a backstop rather than the real bound: the gateway in front of
-       * kagent tends to give up first (60s on a stock Giant Swarm route). Either
-       * way it is not an error — the message is checked against the session's
-       * history, and a turn that was dispatched answers 202 and keeps running,
-       * with the outcome arriving through the conversation poll.
+       * Not a limit on how long a turn may take: the turn continues regardless,
+       * and the outcome arrives through the conversation poll. Exceeding this is
+       * not an error — the message is checked against the session's history, and a
+       * turn that was dispatched answers 202.
        *
-       * Defaults to 300000 (5 minutes).
+       * **Keep it below the request timeout of whatever fronts Backstage** (often
+       * 60s). If that door fires first the browser gets a 502/504 instead of the
+       * 202, and no handling here can help, because this service never got to
+       * answer.
+       *
+       * Defaults to 30000 (30 seconds).
        */
       turnTimeoutMs?: number;
 

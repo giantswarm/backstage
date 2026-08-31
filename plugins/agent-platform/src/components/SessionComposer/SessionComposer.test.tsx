@@ -132,6 +132,75 @@ describe('SessionComposer', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('puts a failed message’s text back in the box', async () => {
+    // The field clears on submit and the optimistic copy is dropped on failure, so
+    // without this the text is gone for good — the case the generous length limit
+    // exists to permit.
+    const { rerender } = renderComposer();
+
+    await userEvent.type(field(), 'a long and expensive prompt');
+    await userEvent.click(sendButton());
+    expect(field()).toHaveValue('');
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        error="kagent said no"
+        restore={{ messageId: 'msg-1', text: 'a long and expensive prompt' }}
+      />,
+    );
+
+    expect(field()).toHaveValue('a long and expensive prompt');
+    expect(screen.getByText('kagent said no')).toBeInTheDocument();
+  });
+
+  it('restores the same text again after a second failure', async () => {
+    // Keyed on the attempt's id, not the text: resubmitting an identical message
+    // and failing again has to hand it back a second time.
+    const { rerender } = renderComposer({
+      restore: { messageId: 'msg-1', text: 'same text' },
+    });
+    expect(field()).toHaveValue('same text');
+
+    await userEvent.click(sendButton());
+    expect(field()).toHaveValue('');
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        restore={{ messageId: 'msg-2', text: 'same text' }}
+      />,
+    );
+
+    expect(field()).toHaveValue('same text');
+  });
+
+  it('does not overwrite an edit in progress by restoring twice', async () => {
+    const { rerender } = renderComposer({
+      restore: { messageId: 'msg-1', text: 'restored' },
+    });
+    expect(field()).toHaveValue('restored');
+
+    await userEvent.clear(field());
+    await userEvent.type(field(), 'something else entirely');
+
+    // An unrelated rerender carrying the same failed attempt.
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        restore={{ messageId: 'msg-1', text: 'restored' }}
+      />,
+    );
+
+    expect(field()).toHaveValue('something else entirely');
+  });
+
   it('shows why a send failed', () => {
     renderComposer({ error: 'kagent said no' });
 

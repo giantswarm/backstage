@@ -187,6 +187,61 @@ describe('useSendMessage', () => {
     expect(result.current.pending).toBeNull();
   });
 
+  it('hands the failed message back so its text is not lost', async () => {
+    // The stand-in is dropped — nothing was recorded — but the composer cleared
+    // itself on submit, so this is the only remaining copy of what was typed.
+    sendMessage.mockRejectedValue(new Error('kagent said no'));
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(
+        result.current.sendMessage('an expensive prompt'),
+      ).rejects.toThrow();
+    });
+
+    await waitFor(() =>
+      expect(result.current.failed).toEqual(
+        expect.objectContaining({ text: 'an expensive prompt' }),
+      ),
+    );
+    expect(result.current.pending).toBeNull();
+  });
+
+  it('carries a fresh id per failed attempt, so the same text restores again', async () => {
+    sendMessage.mockRejectedValue(new Error('nope'));
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(result.current.sendMessage('same')).rejects.toThrow();
+    });
+    const first = result.current.failed?.messageId;
+
+    await act(async () => {
+      await expect(result.current.sendMessage('same')).rejects.toThrow();
+    });
+
+    await waitFor(() =>
+      expect(result.current.failed?.messageId).not.toBe(first),
+    );
+  });
+
+  it('clears the failed message when a later send succeeds', async () => {
+    sendMessage.mockRejectedValueOnce(new Error('nope'));
+    const { result } = renderWith();
+
+    await act(async () => {
+      await expect(result.current.sendMessage('first try')).rejects.toThrow();
+    });
+    await waitFor(() => expect(result.current.failed).not.toBeNull());
+
+    sendMessage.mockResolvedValue(undefined);
+    await act(async () => {
+      await result.current.sendMessage('second try');
+    });
+
+    await waitFor(() => expect(result.current.failed).toBeNull());
+  });
+
   it('does not invalidate anything when the send failed', async () => {
     sendMessage.mockRejectedValue(new Error('nope'));
     const { result, invalidateQueries } = renderWith();

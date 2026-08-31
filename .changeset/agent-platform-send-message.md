@@ -28,19 +28,43 @@ where the composer is withheld rather than offered.
 0.9.9 on gazelle: the reply is the whole finished task, `result.kind === 'task'`, with
 `status.state` and full `history`.
 
-**That wait cannot be completed through the door we use, and does not need to be.**
-Gazelle's `agent-platform-connectivity-ui` HTTPRoute carries an Envoy
-`BackendTrafficPolicy` with `requestTimeout: 60s`, so any turn of substance is cut off
-with a 502 well before it ends; our own `agentPlatform.kagent.turnTimeoutMs` (default 5
-minutes) is a backstop for doors without such a limit. **The turn survives the cut** —
-observed live, an agent answered a message whose request had already died with a 502.
+**That wait can neither be completed nor is needed.** Gazelle's
+`agent-platform-connectivity-ui` HTTPRoute carries an Envoy `BackendTrafficPolicy` with
+`requestTimeout: 60s`, so any turn of substance is cut off with a 502 well before it
+ends — and **the turn survives the cut**, observed live where an agent answered a
+message whose request had already died with a 502.
+
+Since it survives, waiting buys nothing but a held-open socket, and
+`agentPlatform.kagent.turnTimeoutMs` defaults to a deliberately short **30 seconds**.
+That value is chosen to lose a race rather than to bound a turn: the browser's request
+traverses a door of its own in front of Backstage, and if that fires first the frontend
+gets a 502/504 nothing here can reinterpret, because this service never got to answer.
+30 s always beats a 60 s door. (Gazelle's Backstage route sets `requestTimeout: 0s`,
+disabling it — but the send path must not rely on that holding everywhere.)
 
 So a lost connection is not a failed message, and the client does not guess: on a
-502/504 or its own timeout it re-reads `GET /sessions/{id}/tasks` and checks whether the
-`messageId` it generated is in the history. Present means dispatched-and-running, which
-answers **202**; absent — or unreadable — keeps the original failure, because "cannot
-tell" must not be read as "it worked". A send refused outright (403, 404) is a decision
-rather than a lost connection, so nothing is re-read.
+502/504, its own timeout, **or a socket that simply died**, it re-reads
+`GET /sessions/{id}/tasks` and checks whether the `messageId` it generated is in the
+history. Present means dispatched-and-running, which answers **202**; absent — or
+unreadable — keeps the original failure, because "cannot tell" must not be read as "it
+worked".
+
+That last case needs care: `request` maps any non-timeout fetch rejection to a 404,
+since on a fleet where most installations run no kagent that is the normal outcome and
+must stay off the 5xx path — but the same branch catches an Envoy drain or a TLS reset
+mid-turn. Those are marked transport-borne so a send verifies them, while kagent's own
+JSON 404 for a missing agent stays a decision. Decisions are never verified: not a 401,
+a 403, a rejected request, nor a JSON-RPC error.
+
+**A JSON-RPC failure arrives inside a 200, and would otherwise pass for a sent
+message.** A2A is JSON-RPC, so invalid params, an unsupported operation, a task-store
+failure or an agent whose server is not ready come back as
+`{"jsonrpc":"2.0","error":{…}}` with a 200 — an `error` _object_, where kagent's REST
+envelope uses the boolean `true`. Checking only the boolean let all of them through, and
+the consequence was specific: the caller drops its optimistic copy, the invalidated read
+returns no new task, and the message vanishes from the page with no error shown
+anywhere. Both shapes are now read, outside the verification path so a rejection cannot
+come back as a turn still in flight.
 
 202 rather than a 5xx also keeps this off the path `MiddlewareFactory.error()` forwards
 to Sentry, which would otherwise mean one issue per long turn, for the thing an agent
@@ -119,7 +143,17 @@ Smaller decisions:
 - Enter inserts a newline, **Cmd/Ctrl+Enter sends**. Prompts are often multi-line, so
   Enter-to-send would truncate more messages than it saved.
 - The field clears on submit, not on success. The message is in the transcript from
-  that moment, and a turn is far too long to hold someone's text in a disabled box.
+  that moment, and a turn is far too long to hold someone's text in a disabled box. **On
+  failure the text is handed back into the box**: the optimistic copy is dropped at the
+  same time — nothing was recorded, so the transcript must not keep showing it — which
+  would otherwise leave a pasted manifest nowhere at all. Handed back by attempt id, so
+  resubmitting identical text and failing again restores it again, and a re-render never
+  overwrites an edit in progress.
+- `SessionState` gains `key`, the normalised state, and the two places that ask "is the
+  agent waiting on a human?" compare against it. `describeSessionState` matches
+  case-insensitively but keeps `raw` verbatim, so comparing against `raw` would miss an
+  `Input-Required` — and then both promise progress and offer the composer on the one
+  session a plain message strands.
 - Messages are capped at 32,000 UTF-16 code units — ours, not kagent's, which
   validates nothing. Generous because pasting logs or a manifest into a prompt is
   normal; the backend enforces it too, and its JSON body limit is raised to 256 kB so

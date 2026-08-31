@@ -330,7 +330,7 @@ export function SessionDetailPage() {
     composerWithheldReason = row.agentName
       ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message. It may have been deleted.`
       : 'This session records no agent, so there is nowhere to send a message.';
-  } else if (state && AWAITING_INPUT_STATES.has(state.raw)) {
+  } else if (state && AWAITING_INPUT_STATES.has(state.key)) {
     // Withheld deliberately, and it is the opposite of "busy": the agent asked
     // something and nothing moves until it is answered. A plain message here does
     // not answer it — kagent opens a *new* task and leaves the question pending
@@ -466,9 +466,12 @@ export function SessionDetailPage() {
             isAgentWorking={showWorking}
             isFinished={Boolean(state && !state.isActive)}
             error={send.error?.message}
+            // On failure the optimistic copy is dropped, so this is the only place
+            // the user's text still exists.
+            restore={send.failed}
             onSubmit={text => {
               // Errors are surfaced through the hook's `error`, which the composer
-              // renders; the message itself stays in the transcript either way.
+              // renders beside the text it hands back.
               send.sendMessage(text).catch(() => {});
             }}
           />

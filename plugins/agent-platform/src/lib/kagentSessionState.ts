@@ -6,8 +6,23 @@ export type SessionStateTone =
   'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
 export type SessionState = {
-  /** The A2A state verbatim, so an unrecognised one is still visible. */
+  /**
+   * The A2A state verbatim, so an unrecognised one is still visible.
+   *
+   * **For display only.** Comparing against it is a bug waiting to happen: the
+   * lookup below is case-insensitive, so `raw` can be `'Input-Required'` while the
+   * state resolved is `input-required`. Use {@link key}.
+   */
   raw: string;
+  /**
+   * The normalised state, as matched against the known set — what to compare.
+   *
+   * Carried rather than left to callers to lower-case, because the two call sites
+   * that need it decide whether to promise progress and whether to offer the
+   * composer, and getting it wrong offers both on a session that is waiting for a
+   * human.
+   */
+  key: string;
   label: string;
   tone: SessionStateTone;
   /** True while the session may still produce output. */
@@ -88,9 +103,9 @@ export function describeSessionState(
     ? KNOWN_STATES[key]
     : undefined;
   if (known) {
-    return { raw: state, ...known };
+    return { raw: state, key, ...known };
   }
-  return { raw: state, label: state, tone: 'neutral', isActive: false };
+  return { raw: state, key, label: state, tone: 'neutral', isActive: false };
 }
 
 /**
@@ -222,7 +237,7 @@ export function isAgentWorking(tasks: A2aTaskWire[], now: number): boolean {
   if (!newest?.state.isActive) {
     return false;
   }
-  if (AWAITING_INPUT_STATES.has(newest.state.raw)) {
+  if (AWAITING_INPUT_STATES.has(newest.state.key)) {
     return false;
   }
   if (newest.changedAt === undefined) {

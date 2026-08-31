@@ -44,6 +44,7 @@ export function useSendMessage(
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<PendingMessage | null>(null);
+  const [failed, setFailed] = useState<PendingMessage | null>(null);
 
   const mutation = useMutation({
     mutationFn: async (message: PendingMessage) => {
@@ -71,8 +72,19 @@ export function useSendMessage(
         queryKey: sessionQueryKey(installation, sessionId),
       });
     },
-    onSuccess: () => setPending(null),
-    onError: () => setPending(null),
+    onSuccess: () => {
+      setPending(null);
+      setFailed(null);
+    },
+    // The stand-in goes — nothing was recorded, so the transcript must not keep
+    // showing a message that was never sent — but the *text* is handed back, because
+    // the composer cleared itself on submit and this is the only remaining copy.
+    // Losing a pasted manifest to a 502 is exactly what the generous length limit
+    // exists to permit.
+    onError: (_error, message) => {
+      setPending(null);
+      setFailed(message);
+    },
   });
 
   const { mutateAsync, reset } = mutation;
@@ -84,6 +96,7 @@ export function useSendMessage(
         text,
       };
       setPending(message);
+      setFailed(null);
       await mutateAsync(message);
     },
     [mutateAsync],
@@ -95,10 +108,16 @@ export function useSendMessage(
       /** True for the whole turn, not just the write. See the note above. */
       isSending: mutation.isPending,
       pending,
+      /**
+       * The last message that failed to send, so its text can be given back to
+       * the composer. Distinct `messageId` per attempt, which is what lets the
+       * same text be restored again after a second failure.
+       */
+      failed,
       error: mutation.error as Error | null,
       reset,
     }),
-    [sendMessage, mutation.isPending, pending, mutation.error, reset],
+    [sendMessage, mutation.isPending, pending, failed, mutation.error, reset],
   );
 }
 

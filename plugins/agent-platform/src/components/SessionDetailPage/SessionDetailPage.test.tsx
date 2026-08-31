@@ -82,6 +82,7 @@ function idleSend(
     sendMessage: mockSendMessage,
     isSending: false,
     pending: null,
+    failed: null,
     error: null,
     reset: jest.fn(),
     ...overrides,
@@ -440,6 +441,7 @@ describe('SessionDetailPage', () => {
       isAgentWorking: false,
       state: {
         raw: 'completed',
+        key: 'completed',
         label: 'Completed',
         tone: 'success' as const,
         isActive: false,
@@ -515,6 +517,7 @@ describe('SessionDetailPage', () => {
         isAgentWorking: false,
         state: {
           raw: 'input-required',
+          key: 'input-required',
           label: 'Waiting for input',
           tone: 'warning',
           isActive: true,
@@ -554,6 +557,7 @@ describe('SessionDetailPage', () => {
         isAgentWorking: false,
         state: {
           raw: 'input-required',
+          key: 'input-required',
           label: 'Waiting for input',
           tone: 'warning',
           isActive: true,

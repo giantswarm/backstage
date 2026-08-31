@@ -39,6 +39,7 @@ describe('describeSessionState', () => {
     // interpret would show a spinner that never resolves.
     expect(describeSessionState('quantum-superposition')).toEqual({
       raw: 'quantum-superposition',
+      key: 'quantum-superposition',
       label: 'quantum-superposition',
       tone: 'neutral',
       isActive: false,
@@ -58,6 +59,7 @@ describe('describeSessionState', () => {
       // badge with an undefined label and tone.
       expect(describeSessionState(state)).toEqual({
         raw: state,
+        key: state,
         label: state,
         tone: 'neutral',
         isActive: false,
@@ -130,6 +132,15 @@ describe('isAgentWorking', () => {
     expect(working([task('canceled')])).toBe(false);
   });
 
+  it('is false while the agent waits on a human, whatever the casing', () => {
+    // `describeSessionState` matches case-insensitively but keeps `raw` verbatim,
+    // so comparing against `raw` would miss here — and then a spinner would
+    // promise progress that cannot arrive, and the composer would be offered on a
+    // session a plain message strands.
+    expect(working([task('Input-Required')])).toBe(false);
+    expect(working([task('AUTH-REQUIRED')])).toBe(false);
+  });
+
   it('is false while the agent waits on a human', () => {
     // Both are `isActive` — the session may still produce output — but nothing
     // moves until someone answers, so a spinner would promise progress that
@@ -190,6 +201,25 @@ describe('readNewestTaskState', () => {
     expect(readNewestTaskState(tasks)).toEqual({
       state: expect.objectContaining({ raw: 'working' }),
       changedAt: Date.parse('2026-08-31T11:00:00Z'),
+    });
+  });
+});
+
+describe('describeSessionState normalisation', () => {
+  it('carries the normalised key beside the verbatim state', () => {
+    // `raw` is for display, `key` is for comparing. Keeping both means a caller
+    // cannot accidentally compare against the un-normalised one.
+    expect(describeSessionState('Input-Required')).toMatchObject({
+      raw: 'Input-Required',
+      key: 'input-required',
+      label: 'Waiting for input',
+    });
+  });
+
+  it('carries a key for an unknown state too', () => {
+    expect(describeSessionState('Quantum-Superposition')).toMatchObject({
+      raw: 'Quantum-Superposition',
+      key: 'quantum-superposition',
     });
   });
 });

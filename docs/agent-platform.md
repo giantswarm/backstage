@@ -825,21 +825,45 @@ has no addressable agent at all.
 gazelle: the reply is the finished task (`result.kind === 'task'`, with `status.state`
 and the full `history`).
 
-**Waiting that out is not possible through the door we use, and does not need to be.**
-Gazelle's `agent-platform-connectivity-ui` HTTPRoute carries an Envoy
-`BackendTrafficPolicy` with `requestTimeout: 60s`, so any turn of substance is cut off
-with a **502** long before it finishes — our own budget
-(`agentPlatform.kagent.turnTimeoutMs`, default 5 minutes) is a backstop for doors
-without such a limit, not the operative bound. **The turn survives the cut**: observed
-live, an agent answered a message whose own request had already died with a 502.
+**Waiting that out is neither possible nor necessary.** Gazelle's
+`agent-platform-connectivity-ui` HTTPRoute carries an Envoy `BackendTrafficPolicy` with
+`requestTimeout: 60s`, so any turn of substance is cut off with a **502** long before it
+finishes. And **the turn survives the cut**: observed live, an agent answered a message
+whose own request had already died with a 502.
+
+Since the turn survives, waiting buys nothing but a held-open socket, and
+`agentPlatform.kagent.turnTimeoutMs` is deliberately **short — 30 seconds**. That
+number is not about how long a turn may take; it is chosen to lose a race. The
+browser's request traverses a door of its own in front of _Backstage_, and if that door
+fires first the frontend gets a 502/504 that nothing here can turn into "still
+running", because this process never got to answer. At 30 s we always answer before a
+60 s door. (Gazelle's Backstage route happens to set `requestTimeout: 0s`, disabling
+it — but the send path must not depend on that being true everywhere.) It is also short
+enough that a genuine rejection still surfaces inline.
 
 So a lost connection is not a failed message, and the client does not guess — **it goes
-and looks**. On a 502/504 or its own timeout, `sendMessage` re-reads
-`GET /sessions/<id>/tasks` and checks whether the `messageId` it generated is in the
-history. Present means the turn was dispatched and is running, which answers **202**;
-absent, or unreadable, keeps the original failure. "Cannot tell" is deliberately not
-read as "it worked" — that would swallow a real outage. A send that failed outright
-(403, 404) is a decision rather than a lost connection, so nothing is re-read.
+and looks**. On a 502/504, its own timeout, **or a socket that simply died**,
+`sendMessage` re-reads `GET /sessions/<id>/tasks` and checks whether the `messageId` it
+generated is in the history. Present means the turn was dispatched and is running,
+which answers **202**; absent, or unreadable, keeps the original failure. "Cannot tell"
+is deliberately not read as "it worked" — that would swallow a real outage.
+
+That third case needs care. `request` maps _any_ non-timeout fetch rejection to a 404,
+because on a fleet where most installations run no kagent that is the normal outcome and
+must stay off the 5xx path — but the same branch catches an Envoy drain or a TLS reset
+mid-turn. Those are marked as transport-borne so a send verifies them, while kagent's
+_own_ JSON 404 for an agent that does not exist stays a decision. Decisions are never
+verified: not a 401, a 403, a rejected request, nor the JSON-RPC case below.
+
+**A JSON-RPC failure arrives inside a 200.** A2A is JSON-RPC, so an invalid parameter,
+an unsupported operation, a task-store failure or an agent whose server is not ready
+comes back as `{"jsonrpc":"2.0","error":{…}}` with a 200 — and that `error` is an
+_object_, where kagent's REST envelope uses the boolean `true`. Checking only for the
+boolean let every one of these through as a successful send, with a specific
+consequence: the caller drops its optimistic copy, the invalidated read returns no new
+task, and **the message simply vanishes from the page** with the only record of why in a
+body nobody read. Both shapes are now read, and the check sits outside the verification
+above, since a rejection is a decision and must not come back as a turn in flight.
 
 202 rather than a 5xx also keeps this off the path `MiddlewareFactory.error()` forwards
 to Sentry, which would otherwise mean one issue per long turn.
@@ -883,7 +907,10 @@ in `lib/kagentSessionState.ts`, which the composer also closes on):
 1. the newest task is in an active state;
 2. that state is not one of `AWAITING_INPUT_STATES` — `input-required` is _active_ but
    the agent is blocked on a human, and a spinner there promises progress that cannot
-   arrive on its own;
+   arrive on its own. Compared against `state.key`, the **normalised** state, never
+   `state.raw`: the lookup is case-insensitive while `raw` keeps kagent's spelling, so
+   comparing against `raw` would miss an `Input-Required` and then both promise progress
+   and offer the composer on the one session a plain message strands;
 3. the state has moved within `ACTIVE_MAX_AGE_MS`. An agent that dies mid-turn never
    writes a terminal state, so without this a stalled turn would look like a slow one
    for as long as the tab stayed open.
@@ -918,7 +945,11 @@ with the first.
 Enter inserts a newline and **Cmd/Ctrl+Enter sends**, because prompts are routinely
 multi-line. The field clears on submit rather than on success — the message is in the
 transcript from that moment, and a turn is far too long to hold someone's text in a
-disabled box. Messages are capped at 32,000 UTF-16 code units, ours rather than
+disabled box. **On failure the text is handed back into the box**, since the optimistic
+copy is dropped at the same time (nothing was recorded, so the transcript must not keep
+showing it) and would otherwise leave a pasted manifest nowhere at all. It is handed
+back by attempt id rather than as a bare string, so resubmitting identical text and
+failing again restores it again, and a re-render never overwrites an edit in progress. Messages are capped at 32,000 UTF-16 code units, ours rather than
 kagent's (which validates nothing), enforced in the route as well as the box. The
 route's JSON body limit is raised to 256 kB so that cap is what a caller meets: 32,000
 code units of CJK is ~96 kB, clearing the 100 kB default by too little to rely on, and
