@@ -29,6 +29,20 @@ export interface Config {
     };
 
     /**
+     * Sign-in page card of the main login provider. The defaults name Dex,
+     * the Giant Swarm fleet's IdP; a deployment backed by another OIDC
+     * issuer (Google, Keycloak, Entra ID) overrides these so the card
+     * matches what actually handles the login.
+     * @deepVisibility frontend
+     */
+    signInProvider?: {
+      /** Card title. Default: `Dex`. */
+      title?: string;
+      /** Card message. Default: `Sign in using Dex`. */
+      message?: string;
+    };
+
+    /**
      * Cluster token broker (muster) used to silently mint per-management-cluster
      * tokens from the user's main Dex session, replacing the per-cluster OAuth
      * popups for covered installations.
