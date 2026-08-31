@@ -1,4 +1,5 @@
 .env
 app-config.local.yaml
 certificate.yaml
-github-app-credentials.yam
+github-app*credentials.yaml
+catalog/**
