@@ -15,8 +15,18 @@ export interface Config {
      */
     auth?: {
       /**
-       * OIDC scopes requested on top of the fixed `openid profile email groups
-       * offline_access` set. Applies to every login provider, and has no
+       * Full replacement for the default base scope set (`openid profile
+       * email groups offline_access`), for issuers that reject scopes they
+       * don't know. Google fails the whole authorization request on
+       * `groups`/`offline_access` and needs `[openid, profile, email]` here.
+       * Unset keeps the default base set.
+       */
+      scopes?: string[];
+
+      /**
+       * OIDC scopes requested on top of the base scope set (`openid profile
+       * email groups offline_access`, or `scopes` when set). Applies to every
+       * login provider, and has no
        * default: an issuer-specific scope belongs to the deployment.
        *
        * A Dex deployment needs `federated:id`, which carries the

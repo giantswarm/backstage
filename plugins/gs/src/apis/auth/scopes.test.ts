@@ -44,4 +44,23 @@ describe('getOIDCScopes', () => {
       scopes({ gs: { auth: { extraScopes: ['groups', 'roles'] } } }),
     ).toEqual([...BASE, 'roles']);
   });
+
+  it('replaces the base set with gs.auth.scopes', () => {
+    expect(
+      scopes({ gs: { auth: { scopes: ['openid', 'profile', 'email'] } } }),
+    ).toEqual(['openid', 'profile', 'email']);
+  });
+
+  it('appends extra scopes to a replaced base set', () => {
+    expect(
+      scopes({
+        gs: {
+          auth: {
+            scopes: ['openid', 'profile', 'email'],
+            extraScopes: ['roles'],
+          },
+        },
+      }),
+    ).toEqual(['openid', 'profile', 'email', 'roles']);
+  });
 });
