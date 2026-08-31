@@ -96,7 +96,7 @@ workflows:
         context: architect
         name: push-to-registries
         dockerfile: packages/backend/Dockerfile
-        platforms: linux/amd64
+        platforms: linux/amd64,linux/arm64
         requires:
         - node-build
         filters:
@@ -112,7 +112,7 @@ workflows:
         name: push-to-registries-release
         dockerfile: packages/backend/Dockerfile
         split-china-push: true
-        platforms: linux/amd64
+        platforms: linux/amd64,linux/arm64
         requires:
         - node-build
         filters:
