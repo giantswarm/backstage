@@ -279,6 +279,50 @@ export class KagentApiClient implements KagentApi {
     }
   }
 
+  async sendMessage(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    message: { messageId: string; text: string },
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}/messages`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentNamespace: agent.namespace,
+        agentName: agent.name,
+        messageId: message.messageId,
+        text: message.text,
+      }),
+    });
+
+    // `badRequestIsMissing: false` for the same reason as the rename: this route
+    // answers 400 for a rejected message, which is nothing like "kagent is absent
+    // from this installation".
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // A 202 means the turn outlived the backend's turn timeout and is still
+    // running. Deliberately indistinguishable from a completed turn here: the
+    // caller's next move — refresh the conversation and let the poll follow it —
+    // is identical, and the task itself is the honest record of what happened.
+    //
+    // Same envelope tolerance as the other writes: nothing worth returning, an
+    // empty body is still a success, but a `200 error: true` is a failure
+    // reported in-band and must not pass for one.
+    const body = await response.json().catch(() => undefined);
+    if (isErrorEnvelope(body)) {
+      throw upstreamError(
+        typeof body.message === 'string' && body.message
+          ? body.message
+          : 'kagent reported an error while sending the message, without saying what.',
+      );
+    }
+  }
+
   async getIdentity(installation: string): Promise<KagentIdentity> {
     // Best-effort token: the backend reads it as optional here, so a broker or
     // Dex-session failure must not stop the probe. This is the one installation

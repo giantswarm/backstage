@@ -27,6 +27,25 @@ export interface Config {
       timeoutMs?: number;
 
       /**
+       * How long, in milliseconds, to wait for an agent to finish one turn before
+       * answering "still running". Separate from `timeoutMs` because kagent's
+       * `message/send` answers only once the agent is done.
+       *
+       * Not a limit on how long a turn may take: the turn continues regardless,
+       * and the outcome arrives through the conversation poll. Exceeding this is
+       * not an error — the message is checked against the session's history, and a
+       * turn that was dispatched answers 202.
+       *
+       * **Keep it below the request timeout of whatever fronts Backstage** (often
+       * 60s). If that door fires first the browser gets a 502/504 instead of the
+       * 202, and no handling here can help, because this service never got to
+       * answer.
+       *
+       * Defaults to 30000 (30 seconds).
+       */
+      turnTimeoutMs?: number;
+
+      /**
        * Installations to proxy kagent for, keyed by installation name — the
        * same keys as `gs.installations`.
        *

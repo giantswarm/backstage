@@ -6,7 +6,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { CircularProgress, makeStyles } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
 import { SessionTimeline as Timeline } from '../../lib/kagentTimeline';
@@ -30,12 +30,27 @@ const useStyles = makeStyles(theme => ({
     height: 1,
     backgroundColor: theme.palette.divider,
   },
+  working: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    paddingTop: theme.spacing(1),
+  },
 }));
 
 export type SessionTimelineProps = {
   timeline: Timeline;
   /** Display name of the session's agent, used to label its messages. */
   agentName?: string;
+  /**
+   * Whether the agent is mid-turn, in which case the conversation ends with a
+   * "Working…" row where the reply will appear.
+   *
+   * Must mean *working* and not merely "not finished": a task waiting on a human
+   * (`input-required`) is also unfinished, and a spinner there would promise
+   * progress that will never come on its own. The page derives this.
+   */
+  isAgentWorking?: boolean;
 };
 
 /**
@@ -47,7 +62,11 @@ export type SessionTimelineProps = {
  * is the finest granularity that exists, and it is shown once per turn rather than
  * repeated on every item, which would imply precision we don't have.
  */
-export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
+export function SessionTimeline({
+  timeline,
+  agentName,
+  isAgentWorking = false,
+}: SessionTimelineProps) {
   const classes = useStyles();
   // Collapsed by default: the agent's working is why this screen is worth opening,
   // but a wall of expanded tool payloads is unreadable.
@@ -88,6 +107,18 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
     />
   );
 
+  // Rendered in both branches: the reply to a session's *first* message has an
+  // empty conversation to appear into, which is exactly when the user has least
+  // other evidence that anything is happening.
+  const workingRow = isAgentWorking && (
+    <div className={classes.working} aria-live="polite">
+      <CircularProgress size={14} aria-hidden />
+      <Text variant="body-small" color="secondary">
+        Working…
+      </Text>
+    </div>
+  );
+
   if (timeline.items.length === 0) {
     return (
       <Flex direction="column" gap="3">
@@ -99,6 +130,7 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
               'None of this session’s messages could be displayed.'
             : 'This session has no messages yet.'}
         </Text>
+        {workingRow}
       </Flex>
     );
   }
@@ -184,6 +216,7 @@ export function SessionTimeline({ timeline, agentName }: SessionTimelineProps) {
           </Flex>
         );
       })}
+      {workingRow}
     </Flex>
   );
 }

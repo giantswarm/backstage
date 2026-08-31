@@ -802,6 +802,159 @@ Verified against the kagent source at both `v0.9.9` (what the fleet runs) and
 `v0.10.0-rc1`: the handler, the SQL and the 200-with-envelope response are identical
 in both.
 
+### Continuing a session
+
+`SessionComposer` + `useSendMessage`, at the foot of the page.
+
+**A session cannot send anything.** kagent's session endpoints hold history only;
+talking to an agent is A2A JSON-RPC `message/send` to
+`POST <apiBaseUrl>/a2a/<namespace>/<name>` with `contextId` set to the session id,
+which is the only link between the two. So this is a different endpoint family from
+the rest of the proxy, and the route is `POST /kagent/sessions/:sessionId/messages` —
+session-shaped, because the session is what the user is looking at. The JSON-RPC
+envelope is built in `KagentClient`, so the frontend never learns A2A.
+
+**The agent's namespace and name come from the `Agent` resource, never from decoding
+`agent_id`.** kagent's encoding rewrites every `-` to `_`, so decoding cannot tell an
+original underscore from a rewritten hyphen — an agent whose name contains one would
+resolve to an agent that does not exist. `SessionRow` therefore carries
+`agentNamespace` next to `agentTechnicalName`, and a session whose agent matched no CR
+has no addressable agent at all.
+
+**`message/send` answers only when the agent has finished.** Verified against 0.9.9 on
+gazelle: the reply is the finished task (`result.kind === 'task'`, with `status.state`
+and the full `history`).
+
+**Waiting that out is neither possible nor necessary.** Gazelle's
+`agent-platform-connectivity-ui` HTTPRoute carries an Envoy `BackendTrafficPolicy` with
+`requestTimeout: 60s`, so any turn of substance is cut off with a **502** long before it
+finishes. And **the turn survives the cut**: observed live, an agent answered a message
+whose own request had already died with a 502.
+
+Since the turn survives, waiting buys nothing but a held-open socket, and
+`agentPlatform.kagent.turnTimeoutMs` is deliberately **short — 30 seconds**. That
+number is not about how long a turn may take; it is chosen to lose a race. The
+browser's request traverses a door of its own in front of _Backstage_, and if that door
+fires first the frontend gets a 502/504 that nothing here can turn into "still
+running", because this process never got to answer. At 30 s we always answer before a
+60 s door. (Gazelle's Backstage route happens to set `requestTimeout: 0s`, disabling
+it — but the send path must not depend on that being true everywhere.) It is also short
+enough that a genuine rejection still surfaces inline.
+
+So a lost connection is not a failed message, and the client does not guess — **it goes
+and looks**. On a 502/504, its own timeout, **or a socket that simply died**,
+`sendMessage` re-reads `GET /sessions/<id>/tasks` and checks whether the `messageId` it
+generated is in the history. Present means the turn was dispatched and is running,
+which answers **202**; absent, or unreadable, keeps the original failure. "Cannot tell"
+is deliberately not read as "it worked" — that would swallow a real outage.
+
+That third case needs care. `request` maps _any_ non-timeout fetch rejection to a 404,
+because on a fleet where most installations run no kagent that is the normal outcome and
+must stay off the 5xx path — but the same branch catches an Envoy drain or a TLS reset
+mid-turn. Those are marked as transport-borne so a send verifies them, while kagent's
+_own_ JSON 404 for an agent that does not exist stays a decision. Decisions are never
+verified: not a 401, a 403, a rejected request, nor the JSON-RPC case below.
+
+**A JSON-RPC failure arrives inside a 200.** A2A is JSON-RPC, so an invalid parameter,
+an unsupported operation, a task-store failure or an agent whose server is not ready
+comes back as `{"jsonrpc":"2.0","error":{…}}` with a 200 — and that `error` is an
+_object_, where kagent's REST envelope uses the boolean `true`. Checking only for the
+boolean let every one of these through as a successful send, with a specific
+consequence: the caller drops its optimistic copy, the invalidated read returns no new
+task, and **the message simply vanishes from the page** with the only record of why in a
+body nobody read. Both shapes are now read, and the check sits outside the verification
+above, since a rejection is a decision and must not come back as a turn in flight.
+
+202 rather than a 5xx also keeps this off the path `MiddlewareFactory.error()` forwards
+to Sentry, which would otherwise mean one issue per long turn.
+
+**A failed turn is still a 200**, with the reason on `status.message` (an agent that
+cannot reach its MCP server reports it there). The HTTP status says only whether the
+turn was accepted; the task says what became of it. Nothing in the client inspects the
+result.
+
+**No streaming.** A send invalidates the conversation and the existing 10 s active
+tier follows the turn (see "Refreshing"). A relayed A2A SSE stream was considered and
+rejected for this: `KagentClient.request` is a one-shot `fetch` + `.json()` with no
+pass-through mode, Backstage's global `compression()` middleware buffers `res.write()`
+until `res.end()` (the trap `ai-chat-backend`'s router documents), and a client-side
+consumer would need reconnect handling — none of which the poll needs for a turn
+measured in tens of seconds.
+
+**The sent message appears at once and vanishes by recognition.** The composer
+generates the `messageId` before sending, so the optimistic copy is dropped exactly
+when a poll returns a message carrying it — which happens well before the turn ends,
+and would otherwise double the message for the rest of it. `TimelineItem.messageId`
+exists for this; its `id` is positional and stable only for React. The stats strip
+still reports the server's turn count, so "Turns" lags by one until kagent confirms —
+which is honest, since no task exists yet.
+
+**The conversation ends with a "Working…" row while the agent is mid-turn**, where its
+reply will appear — otherwise a sent message sits there with nothing to say anything is
+happening, which is most acute on a session's first message, where the conversation is
+empty.
+
+That indicator takes **two** signals, because neither spans a turn:
+
+- `isAgentWorking` from `useSessionDetail` is the conversation's own verdict, but only
+  once a poll has seen the new task — up to 10 s after sending;
+- the in-flight send covers exactly that gap, and cannot carry the rest, since the
+  gateway cuts the request off well before a long turn ends.
+
+**`isActive` is not the same question, and three things narrow it** (`isAgentWorking`
+in `lib/kagentSessionState.ts`, which the composer also closes on):
+
+1. the newest task is in an active state;
+2. that state is not one of `AWAITING_INPUT_STATES` — `input-required` is _active_ but
+   the agent is blocked on a human, and a spinner there promises progress that cannot
+   arrive on its own. Compared against `state.key`, the **normalised** state, never
+   `state.raw`: the lookup is case-insensitive while `raw` keeps kagent's spelling, so
+   comparing against `raw` would miss an `Input-Required` and then both promise progress
+   and offer the composer on the one session a plain message strands;
+3. the state has moved within `ACTIVE_MAX_AGE_MS`. An agent that dies mid-turn never
+   writes a terminal state, so without this a stalled turn would look like a slow one
+   for as long as the tab stayed open.
+
+The state badge deliberately still reads "Working" in case 3: `state` is what kagent
+says, while this is what we are willing to claim about it. Freeing the composer is the
+other half of the same decision — a turn that is never going to end must not hold the
+box shut forever.
+
+**It is judged as of the last successful read, not `Date.now()`** — tied to
+`dataUpdatedAt`. That is what makes it expire at all: with a render-time clock the
+answer would only change when something re-rendered the page, and a stalled turn is
+exactly the case where the data stops changing. It also never asserts progress at a
+moment we have no data for.
+
+`ACTIVE_MAX_AGE_MS` and the backwards walk that resolves the age basis
+(`readNewestTaskState`) live in `kagentSessionState` so that this and the poll tier
+cannot drift apart. They do disagree on one point, on purpose: a state with **no
+usable timestamp anywhere** counts as working but polls on the baseline. An unbounded
+fast poll costs every reader bandwidth for as long as the tab is open, while an
+indicator that cannot expire only misleads the one person looking at it.
+
+The composer is **withheld with a reason** rather than offered and left to fail: on a
+read-only shared session (which 403s every non-GET under `/api/sessions`), when the
+agent cannot be found, and while a task is `input-required`/`auth-required`. That last
+one is the opposite of "busy" and the reason matters: a plain message does not answer
+the agent's question — kagent opens a _new_ task and leaves the old one pending
+forever — so the box would quietly strand the conversation. It is also closed while
+the agent is mid-turn, since kagent has no queued follow-up: a second message competes
+with the first.
+
+Enter inserts a newline and **Cmd/Ctrl+Enter sends**, because prompts are routinely
+multi-line. The field clears on submit rather than on success — the message is in the
+transcript from that moment, and a turn is far too long to hold someone's text in a
+disabled box. **On failure the text is handed back into the box**, since the optimistic
+copy is dropped at the same time (nothing was recorded, so the transcript must not keep
+showing it) and would otherwise leave a pasted manifest nowhere at all. It is handed
+back by attempt id rather than as a bare string, so resubmitting identical text and
+failing again restores it again, and a re-render never overwrites an edit in progress. Messages are capped at 32,000 UTF-16 code units, ours rather than
+kagent's (which validates nothing), enforced in the route as well as the box. The
+route's JSON body limit is raised to 256 kB so that cap is what a caller meets: 32,000
+code units of CJK is ~96 kB, clearing the 100 kB default by too little to rely on, and
+a body-parser 413 explains nothing.
+
 ## The agent detail page
 
 `/agent-platform/agents/<installation>/<namespace>/<name>`, reached by clicking an
@@ -1103,13 +1256,44 @@ above). What remains is a separate, deeper concern:
   changing the values its HelmRelease renders from — so it needs the create flow's
   form driven from an existing agent, plus a decision about whether that produces
   a live apply or a PR (GitOps-managed agents are read-only, see "GitOps
-  provenance"). "Launch session" also has no write path today.
-- **Continuing a session.** The detail view, rename and delete exist (see "Renaming a
-  session" and "Deleting a session"); kagent's chat endpoint still has no UI, so a
-  session can be read and named but not carried on. Deleting from a list row is also
-  unimplemented — deliberately, since a destructive action on a row someone is
-  scanning past is easy to hit by accident. Renaming from a list row is merely
-  unbuilt, and would be reasonable.
+  provenance").
+- **Starting a new session.** Now the concrete next step rather than an open one,
+  since the send path exists (see "Continuing a session"): `POST /api/sessions` with
+  `{agent_ref}`, then the same send with the new session's id as `contextId`, then
+  navigate to it. Two things are settled by measurement. The controller does **not**
+  auto-title: a create with no `name` comes back with no `name` field at all (verified
+  against 0.9.9), so the truncated titles in the list are kagent's _UI_ deriving them
+  from the first message — we have to derive our own, from the first prompt, since the
+  prototype's spec has users never naming sessions. And the prototype has no
+  new-session _screen_: it is a composer (prompt, agent picker, "Start"), inline on the
+  sessions list and modal elsewhere, with the prompt the only required field. Its
+  visibility/team selector has no kagent equivalent and is dropped. Picking an agent
+  should imply the installation, since an agent's identity is
+  installation/namespace/name.
+- **Session list row actions.** Deleting from a list row is unimplemented —
+  deliberately, since a destructive action on a row someone is scanning past is easy to
+  hit by accident. Renaming from a list row is merely unbuilt, and would be
+  reasonable.
+- **Answering the agent's question.** The composer is withheld while a task is
+  `input-required`/`auth-required` (see "Continuing a session") because a plain message
+  does not answer a pending confirmation: kagent opens a new task and leaves the old
+  one waiting forever. Answering needs the structured reply — `decision_type` and
+  `ask_user_answers[]` — which resumes the **same** task. Until it exists, the page
+  says so and points at kagent's own UI.
+- **No stop or cancel of a running turn**, which the prototype offers as a header
+  action. A2A has a cancel method; nothing is wired to it, so a turn that has gone
+  wrong can only be waited out.
+- **Sandbox agents cannot be messaged.** They need `/api/a2a-sandboxes/…` rather than
+  `/api/a2a/…`, require `contextId`, and 409 on a second session. Excluded from the
+  send path; gazelle runs none today (every agent there is the default workload type),
+  so nothing is hidden by it yet.
+- **Sending depends on a token muster also accepts.** An agent forwards the caller's
+  `Authorization` header to its MCP servers (`allowedHeaders: ["authorization"]`), so a
+  token good enough for kagent but not for muster fails the turn at tool-listing rather
+  than doing anything — `failed to list MCP tools … Unauthorized`, observed while
+  probing with a hand-made token. Every agent on gazelle depends on muster, so this is
+  a real dependency of the send path and not a corner case, even though the Dex token
+  the proxy forwards is expected to satisfy both.
 - **The rename fallback is waiting on a kagent bump.** Rename works on v0.9.x only
   through the session upsert, because `HandleUpdateSession` there cannot rename at all
   (see "Renaming a session"). Everything propping that up is marked
@@ -1123,7 +1307,19 @@ above). What remains is a separate, deeper concern:
   Observed live on gazelle. The fix is a timeline entry (or a panel above it) for the
   pending prompt; note it is not part of task `history`, so it needs handling of its
   own rather than falling out of the existing walk. Answering it is a separate gap —
-  see "Continuing a session" for the missing write path.
+  see "Answering the agent's question" above.
+- **No streaming.** The send waits out the turn and the conversation poll shows it
+  progress (see "Continuing a session"). A relayed A2A `message/stream` would feel
+  live, and the reasons it was not built are cost, not doubt:
+  `KagentClient.request` is a one-shot `fetch` + `.json()` with no pass-through mode,
+  and Backstage's global `compression()` buffers `res.write()` until `res.end()`, so
+  the relay would need the flush-wrapping `ai-chat-backend`'s router already documents.
+  Neither is hard; neither pays for itself while a turn takes tens of seconds and the
+  poll is already at 10 s.
+- **`A2A-Version` is still unsent**, on the send as well as the reads, so both speak
+  the legacy v0 wire kagent defaults to. They have to agree, or the states will not
+  line up. `TODO(kagent-0.11)`: legacy is marked for removal there, at which point both
+  need pinning together.
 - **No manual refresh on the session detail page.** The page polls now (see
   "Refreshing"), so staleness is capped at 60 s and there is nothing frozen to
   rescue — but there is still no way to say "check again, now", which is the one

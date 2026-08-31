@@ -23,6 +23,7 @@ describe('createRouter', () => {
 
   const deleteSession = jest.fn();
   const updateSessionName = jest.fn();
+  const sendMessage = jest.fn();
 
   const mockClient = {
     listSessions,
@@ -31,6 +32,7 @@ describe('createRouter', () => {
     listSessionTasks,
     deleteSession,
     updateSessionName,
+    sendMessage,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -63,6 +65,7 @@ describe('createRouter', () => {
     listSessionTasks.mockReset();
     deleteSession.mockReset();
     updateSessionName.mockReset();
+    sendMessage.mockReset();
     app = await buildApp();
   });
 
@@ -825,6 +828,149 @@ describe('createRouter', () => {
       .query({ installation: 'gazelle' });
 
     expect(response.status).toBe(404);
+  });
+
+  describe('POST /kagent/sessions/:sessionId/messages', () => {
+    const sentBody = {
+      jsonrpc: '2.0',
+      result: { kind: 'task', status: { state: 'completed' } },
+    };
+
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'issue-tracker',
+      messageId: 'msg-1',
+      text: 'why is the ingress failing?',
+    };
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions/abc/messages')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('forwards the session, agent, message and token, echoing the body', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(sentBody);
+      expect(sendMessage).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('trims the ends of the message but keeps its formatting', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      await post({ ...validBody, text: '  line one\n\n  line two  ' });
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        'abc',
+        expect.anything(),
+        { messageId: 'msg-1', text: 'line one\n\n  line two' },
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      ['missing text', { ...validBody, text: undefined }],
+      ['text not a string', { ...validBody, text: 42 }],
+      ['empty text', { ...validBody, text: '' }],
+      ['whitespace-only text', { ...validBody, text: '   ' }],
+      ['text over the limit', { ...validBody, text: 'x'.repeat(32_001) }],
+      ['missing agentNamespace', { ...validBody, agentNamespace: undefined }],
+      ['empty agentName', { ...validBody, agentName: '  ' }],
+      ['missing messageId', { ...validBody, messageId: undefined }],
+    ])('rejects a body with %s as a 400', async (_, body) => {
+      const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('accepts a full-length message of multibyte text', async () => {
+      // The worst case for the body parser: 32,000 UTF-16 code units of CJK are
+      // three UTF-8 bytes each, ~96 kB, which only just clears the 100 kB default
+      // the router deliberately raises. A 413 here would refuse a message the
+      // proxy itself considers valid.
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({ ...validBody, text: '漢'.repeat(32_000) });
+
+      expect(response.status).toBe(200);
+      expect(sendMessage).toHaveBeenCalled();
+    });
+
+    it('counts the limit in UTF-16 code units, as both ends do', async () => {
+      // An astral character costs two, so this is 32,002 by the rule and refused
+      // — the same arithmetic the composer disables its button on, so the two
+      // never disagree about what fits.
+      const response = await post({
+        ...validBody,
+        text: `${'a'.repeat(31_998)}😀😀`,
+      });
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('requires a user token', async () => {
+      // kagent decides whose session this is from the token alone.
+      const response = await request(app)
+        .post('/kagent/sessions/abc/messages')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('requires an installation', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/messages')
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(validBody);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('answers 202 when the turn outlived its timeout', async () => {
+      // Never a 5xx: the turn is still running, and `MiddlewareFactory.error()`
+      // forwards anything >= 500 to Sentry — one issue per long turn.
+      const pending = new Error('still running');
+      pending.name = 'KagentTurnPendingError';
+      sendMessage.mockRejectedValue(pending);
+
+      const response = await post();
+
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'pending' });
+    });
+
+    it('passes a failed turn through as a 200', async () => {
+      // The HTTP status says only whether the turn was accepted. What became of
+      // it lives on the task.
+      sendMessage.mockResolvedValue({
+        jsonrpc: '2.0',
+        result: {
+          kind: 'task',
+          status: { state: 'failed', message: 'MCP server unreachable' },
+        },
+      });
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.body.result.status.state).toBe('failed');
+    });
   });
 
   describe('GET /kagent/me', () => {

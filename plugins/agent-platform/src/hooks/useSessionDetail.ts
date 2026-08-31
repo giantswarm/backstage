@@ -4,7 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentSessionDetail } from '../lib/kagentSessionDetail';
 import { buildTimeline, SessionTimeline } from '../lib/kagentTimeline';
-import { deriveSessionState, SessionState } from '../lib/kagentSessionState';
+import {
+  deriveSessionState,
+  isAgentWorking,
+  SessionState,
+} from '../lib/kagentSessionState';
 import {
   BASELINE_REFETCH_INTERVAL_MS,
   getSessionTasksRefetchInterval,
@@ -26,6 +30,13 @@ export type SessionDetailView = {
   timeline: SessionTimeline;
   /** From the most recent task; undefined for a session that never ran. */
   state?: SessionState;
+  /**
+   * Whether the agent is working on a reply, as of the last successful read.
+   *
+   * Narrower than `state.isActive`: it excludes waiting on a human, and expires
+   * once the state has not moved for `ACTIVE_MAX_AGE_MS`. See `isAgentWorking`.
+   */
+  isAgentWorking: boolean;
   /** Number of A2A tasks — the session's turn count. */
   taskCount: number;
   /**
@@ -129,6 +140,19 @@ export function useSessionDetail(
     [tasks],
   );
 
+  // Judged as of the last successful read rather than `Date.now()`, which is both
+  // more honest and what makes it expire at all: with `Date.now()` the answer would
+  // only change when something re-rendered the page, and a turn that stalled is
+  // precisely the case where the data stops changing — so a stalled agent would
+  // keep claiming to work for as long as the tab stayed open. Tying it to
+  // `dataUpdatedAt` re-evaluates it on every poll, and never asserts progress at a
+  // moment we have no data for.
+  const tasksUpdatedAt = tasksQuery.dataUpdatedAt;
+  const agentWorking = useMemo(
+    () => (tasks ? isAgentWorking(tasks, tasksUpdatedAt) : false),
+    [tasks, tasksUpdatedAt],
+  );
+
   // The last session we read successfully. `getSessionDetail` resolves `undefined`
   // for any 200 whose body does not parse — an expired oauth2-proxy answering with
   // an HTML sign-in page is the realistic case — and react-query stores that
@@ -172,6 +196,7 @@ export function useSessionDetail(
     detail,
     timeline,
     state,
+    isAgentWorking: agentWorking,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,
     // `isNotFound` short-circuits loading, because it is decided by the session

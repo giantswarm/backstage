@@ -17,11 +17,14 @@ import {
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { useRenameSession } from '../../hooks/useRenameSession';
+import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { AWAITING_INPUT_STATES } from '../../lib/kagentSessionState';
 import { sessionsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
+import { SessionComposer } from '../SessionComposer';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
@@ -130,6 +133,7 @@ export function SessionDetailPage() {
     detail,
     timeline,
     state,
+    isAgentWorking: agentIsWorking,
     taskCount,
     hasConversation,
     isLoading,
@@ -162,6 +166,56 @@ export function SessionDetailPage() {
   // query has no client there. The capabilities probe is a cached `/me` read with an
   // hour's staleTime, so asking for it on this page is free.
   const rename = useRenameSession(installation, sessionId);
+
+  // Undefined when no `Agent` CR matched the session's encoded `agent_id`, which
+  // is what withholds the composer: without the agent's real namespace and name
+  // there is no A2A endpoint to address, and the encoding cannot be safely
+  // decoded back into one.
+  const agent = useMemo(
+    () =>
+      row?.agentNamespace && row.agentTechnicalName
+        ? { namespace: row.agentNamespace, name: row.agentTechnicalName }
+        : undefined,
+    [row?.agentNamespace, row?.agentTechnicalName],
+  );
+  const send = useSendMessage(installation, sessionId, agent);
+
+  // The message the user just sent, shown as the newest turn before kagent's copy
+  // of it has been read back — a turn can run for minutes, and a conversation that
+  // did not visibly change would look like the send was lost.
+  //
+  // Appended to the items rather than rendered separately so it groups, styles and
+  // reads exactly like any other user message. It disappears by *recognition*, not
+  // by timing: once a poll returns a message carrying the same `messageId`, the
+  // real one is already on screen and this stand-in must go, or the message shows
+  // twice for the rest of the turn.
+  const timelineWithPending = useMemo(() => {
+    const pending = send.pending;
+    if (!pending) {
+      return timeline;
+    }
+    if (timeline.items.some(item => item.messageId === pending.messageId)) {
+      return timeline;
+    }
+
+    // A new turn of its own: this message is what opens one. The stats strip still
+    // reports the server's turn count, so "Turns" lags by one until kagent
+    // confirms — which is the honest reading, since no task exists yet.
+    const lastTaskIndex = timeline.items.at(-1)?.taskIndex ?? -1;
+    return {
+      ...timeline,
+      items: [
+        ...timeline.items,
+        {
+          kind: 'user-message' as const,
+          id: `pending:${pending.messageId}`,
+          messageId: pending.messageId,
+          taskIndex: lastTaskIndex + 1,
+          text: pending.text,
+        },
+      ],
+    };
+  }, [timeline, send.pending]);
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
@@ -246,6 +300,43 @@ export function SessionDetailPage() {
         </Flex>
       </Content>
     );
+  }
+
+  /**
+   * Whether to say the agent is working.
+   *
+   * Two signals, because neither covers a whole turn on its own:
+   *
+   * - the conversation's own verdict (`isAgentWorking` — active, not waiting on a
+   *   human, and moved recently), which only arrives once a poll has seen the new
+   *   task, up to 10 s after sending;
+   * - the in-flight send, which covers exactly that gap and cannot carry the rest:
+   *   the gateway cuts the request off well before a long turn ends (60 s on a
+   *   stock route), so it goes false mid-turn while the agent works on.
+   */
+  const showWorking = send.isSending || agentIsWorking;
+
+  /**
+   * Why the composer is not offered, when it is not.
+   *
+   * Each case withholds the control and says so, rather than showing one that
+   * fails on use — and each is a different thing the user can act on.
+   */
+  let composerWithheldReason: string | undefined;
+  if (detail.readOnly) {
+    composerWithheldReason =
+      'This session was shared read-only, so you cannot add to it.';
+  } else if (!agent) {
+    composerWithheldReason = row.agentName
+      ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message. It may have been deleted.`
+      : 'This session records no agent, so there is nowhere to send a message.';
+  } else if (state && AWAITING_INPUT_STATES.has(state.key)) {
+    // Withheld deliberately, and it is the opposite of "busy": the agent asked
+    // something and nothing moves until it is answered. A plain message here does
+    // not answer it — kagent opens a *new* task and leaves the question pending
+    // forever — so offering the box would quietly strand the conversation.
+    composerWithheldReason =
+      'This session is waiting for an answer to the agent’s question. Answering one is not supported here yet — use the kagent UI to reply.';
   }
 
   const avatarUrl = row.agentTechnicalName
@@ -360,7 +451,31 @@ export function SessionDetailPage() {
           />
         </Box>
 
-        <SessionTimeline timeline={timeline} agentName={row.agentName} />
+        <SessionTimeline
+          timeline={timelineWithPending}
+          agentName={row.agentName}
+          isAgentWorking={showWorking}
+        />
+
+        {composerWithheldReason ? (
+          <Text variant="body-small" color="secondary">
+            {composerWithheldReason}
+          </Text>
+        ) : (
+          <SessionComposer
+            isAgentWorking={showWorking}
+            isFinished={Boolean(state && !state.isActive)}
+            error={send.error?.message}
+            // On failure the optimistic copy is dropped, so this is the only place
+            // the user's text still exists.
+            restore={send.failed}
+            onSubmit={text => {
+              // Errors are surfaced through the hook's `error`, which the composer
+              // renders beside the text it hands back.
+              send.sendMessage(text).catch(() => {});
+            }}
+          />
+        )}
       </Flex>
 
       {/* One dialog for both entry points, rendered here rather than inside the

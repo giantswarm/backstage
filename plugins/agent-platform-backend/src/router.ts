@@ -9,9 +9,12 @@ import express from 'express';
 import Router from 'express-promise-router';
 import {
   DEFAULT_KAGENT_TIMEOUT_MS,
+  DEFAULT_KAGENT_TURN_TIMEOUT_MS,
+  isTurnPendingError,
   KAGENT_AUTH_HEADER,
   KagentClient,
   KagentInstallationConfig,
+  MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
@@ -42,6 +45,9 @@ export async function createRouter(
   const timeoutMs =
     config.getOptionalNumber('agentPlatform.kagent.timeoutMs') ??
     DEFAULT_KAGENT_TIMEOUT_MS;
+  const turnTimeoutMs =
+    config.getOptionalNumber('agentPlatform.kagent.turnTimeoutMs') ??
+    DEFAULT_KAGENT_TURN_TIMEOUT_MS;
 
   // One client per installation. When a client is injected (tests), reuse it
   // for every installation, synthesizing one if none is configured so routing
@@ -61,7 +67,7 @@ export async function createRouter(
     for (const [name, installation] of installations) {
       clients.set(
         name,
-        new KagentClient(installation, logger, fetch, timeoutMs),
+        new KagentClient(installation, logger, fetch, timeoutMs, turnTimeoutMs),
       );
       logger.info(
         `kagent proxy installation '${name}' pointed at ${installation.apiBaseUrl}`,
@@ -76,7 +82,14 @@ export async function createRouter(
   }
 
   const router = Router();
-  router.use(express.json());
+
+  // Raised from the 100 kB default for headroom, so that
+  // `MESSAGE_TEXT_MAX_LENGTH` is the limit a caller actually meets. That bound
+  // counts UTF-16 code units, whose worst case in UTF-8 is three bytes each
+  // (CJK) — 32,000 of them is ~96 kB, which clears the default by only a few kB
+  // once the rest of the body is counted. Too close to rely on: a message the
+  // proxy considers valid would be refused with a 413 that explains nothing.
+  router.use(express.json({ limit: '256kb' }));
 
   router.get('/health', (_, res) => {
     res.json({ status: 'ok', configured: clients.size });
@@ -290,6 +303,86 @@ export async function createRouter(
       userToken: readUserToken(req, { required: true }),
     });
     res.json(result);
+  });
+
+  /**
+   * Send a message to the session's agent — one turn of the conversation.
+   *
+   * Session-shaped rather than agent-shaped (`/a2a/:ns/:name`) because the session
+   * is what the caller is looking at, and because `contextId` is the only thing
+   * binding a turn to a session. The A2A JSON-RPC envelope is built in the client,
+   * so the frontend never has to know A2A.
+   *
+   * **The agent's namespace and name come from the body, not from the session.**
+   * kagent's stored `agent_id` is an encoding that rewrites `-` to `_`, so
+   * decoding it cannot round-trip a name that legitimately contains `_`. The
+   * caller resolved the real names from the `Agent` resource; this trusts them and
+   * lets kagent 404 if they are wrong.
+   *
+   * Nothing expected here reaches a 5xx, which `MiddlewareFactory.error()` would
+   * forward to Sentry: a malformed body is a 400, an unknown agent a 404, a
+   * read-only session a 403, and a turn that outruns its timeout a **202** — it is
+   * still running, and the conversation poll will show it land.
+   */
+  router.post('/kagent/sessions/:sessionId/messages', async (req, res) => {
+    const { client } = resolveInstallation(req);
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const readRequiredString = (field: string): string => {
+      const value = body[field];
+      if (typeof value !== 'string') {
+        throw new InputError(`${field} must be a string`);
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        throw new InputError(`${field} must not be empty`);
+      }
+      return trimmed;
+    };
+
+    const agentNamespace = readRequiredString('agentNamespace');
+    const agentName = readRequiredString('agentName');
+    const messageId = readRequiredString('messageId');
+
+    // The one field not trimmed to its bounds check: leading and trailing
+    // whitespace is insignificant for a prompt, but interior formatting is not,
+    // so only the ends go. Checked after trimming so a message of pure
+    // whitespace is rejected rather than sent as an empty turn.
+    const rawText = body.text;
+    if (typeof rawText !== 'string') {
+      throw new InputError('text must be a string');
+    }
+    const text = rawText.trim();
+    if (!text) {
+      throw new InputError('text must not be empty');
+    }
+    if (text.length > MESSAGE_TEXT_MAX_LENGTH) {
+      throw new InputError(
+        `text must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
+      );
+    }
+
+    try {
+      const result = await client.sendMessage(
+        readSessionId(req),
+        { namespace: agentNamespace, name: agentName },
+        { messageId, text },
+        { userToken: readUserToken(req, { required: true }) },
+      );
+      res.json(result);
+    } catch (error) {
+      if (!isTurnPendingError(error)) {
+        throw error;
+      }
+      // Accepted, not finished. The caller stops waiting and reads the outcome
+      // from the conversation poll like any other progress.
+      logger.debug(
+        'A kagent turn outlived its timeout; answering 202 and leaving it running',
+        { turnTimeoutMs },
+      );
+      res.status(202).json({ status: 'pending' });
+    }
   });
 
   // There is no version route. kagent serves `/version` at the server root, and
