@@ -185,6 +185,7 @@ type HelmReleaseConditionsProps = {
   workloadsLoading?: boolean;
   workloadsEnabled?: boolean;
   workloadsError?: Error | null;
+  workloadsAvailable?: boolean;
   workloadsLabelSelector?: string;
 };
 
@@ -194,6 +195,7 @@ export const HelmReleaseConditions = ({
   workloadsLoading = false,
   workloadsEnabled = true,
   workloadsError = null,
+  workloadsAvailable = true,
   workloadsLabelSelector,
 }: HelmReleaseConditionsProps) => {
   const conditions = helmrelease.getStatusConditions();
@@ -233,6 +235,7 @@ export const HelmReleaseConditions = ({
             workloadsLoading={workloadsLoading}
             workloadsEnabled={workloadsEnabled}
             workloadsError={workloadsError}
+            workloadsAvailable={workloadsAvailable}
             workloadsLabelSelector={workloadsLabelSelector}
           />
         </Grid>

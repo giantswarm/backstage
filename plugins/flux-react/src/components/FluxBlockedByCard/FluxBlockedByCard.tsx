@@ -7,6 +7,7 @@ import { ExternalRouteRef, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   App,
   HelmRelease,
+  isNotFoundError,
   Kustomization,
   useResources,
   useShowErrors,
@@ -62,7 +63,16 @@ export function FluxBlockedByCard({
     { enabled: isGitOpsManaged, staleTime: KUSTOMIZATIONS_STALE_TIME_MS },
   );
 
-  useShowErrors(errors);
+  // A 404 (`NotFoundError`) means the cluster doesn't serve the Kustomization
+  // API group at all — kustomize-controller isn't installed there, which is a
+  // legitimate shape for standalone installations. Nothing can be blocked by a
+  // Kustomization then, so the card just renders nothing instead of reporting
+  // an error banner. Genuine failures are still reported.
+  const reportableErrors = useMemo(
+    () => errors.filter(errorInfo => !isNotFoundError(errorInfo)),
+    [errors],
+  );
+  useShowErrors(reportableErrors);
 
   const blockedAncestors = useMemo(
     () =>

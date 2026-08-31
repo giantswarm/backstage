@@ -21,6 +21,7 @@ export function DeploymentStatusCard() {
     isLoading: workloadsLoading,
     isEnabled: workloadsEnabled,
     error: workloadsError,
+    isAvailable: workloadsAvailable,
   } = useMimirWorkloadStatus({
     installationName,
     clusterName,
@@ -34,6 +35,9 @@ export function DeploymentStatusCard() {
     workloadsLoading,
     workloadsEnabled,
     workloadsError,
+    // `undefined` means "still resolving" and is covered by `workloadsLoading`;
+    // only an explicit opt-out renders the neutral "unavailable" state.
+    workloadsAvailable: workloadsAvailable !== false,
     workloadsLabelSelector: `cluster_id="${clusterName}", namespace="${namespace}", name=~"${podPrefix}.*"`,
   };
 

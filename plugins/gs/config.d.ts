@@ -132,6 +132,15 @@ export interface Config {
         backendUrl?: string;
         baseDomain?: string;
         region?: string;
+        /**
+         * Whether the installation runs the Giant Swarm observability stack
+         * (Mimir at `observability.<baseDomain>`). Defaults to true. Standalone
+         * installations set this to false so metrics-backed UI renders neutral
+         * "unavailable" states instead of errors — `baseDomain` alone can't
+         * carry this meaning because other features (e.g. agent avatars)
+         * require it on every installation.
+         */
+        mimirEnabled?: boolean;
         apiVersionOverrides?: {
           [pluralKind: string]: string;
         };

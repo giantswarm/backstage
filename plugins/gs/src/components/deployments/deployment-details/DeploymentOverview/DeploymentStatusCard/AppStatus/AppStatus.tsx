@@ -57,6 +57,7 @@ type AppStatusProps = {
   workloadsLoading?: boolean;
   workloadsEnabled?: boolean;
   workloadsError?: Error | null;
+  workloadsAvailable?: boolean;
   workloadsLabelSelector?: string;
 };
 
@@ -66,6 +67,7 @@ export const AppStatus = ({
   workloadsLoading = false,
   workloadsEnabled = true,
   workloadsError = null,
+  workloadsAvailable = true,
   workloadsLabelSelector,
 }: AppStatusProps) => {
   const status = getStatus(app);
@@ -101,6 +103,7 @@ export const AppStatus = ({
           workloadsLoading={workloadsLoading}
           workloadsEnabled={workloadsEnabled}
           workloadsError={workloadsError}
+          workloadsAvailable={workloadsAvailable}
           workloadsLabelSelector={workloadsLabelSelector}
         />
       </Box>

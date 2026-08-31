@@ -87,6 +87,12 @@ type WorkloadStatusSummaryProps = {
   workloadsLoading: boolean;
   workloadsEnabled: boolean;
   workloadsError: Error | null;
+  /**
+   * False when the installation has no Mimir (`mimirEnabled: false`) —
+   * metrics are legitimately absent, so render a neutral "unavailable" state
+   * instead of an error.
+   */
+  workloadsAvailable?: boolean;
   workloadsLabelSelector?: string;
 };
 
@@ -95,6 +101,7 @@ export const WorkloadStatusSummary = ({
   workloadsLoading,
   workloadsEnabled,
   workloadsError,
+  workloadsAvailable = true,
   workloadsLabelSelector,
 }: WorkloadStatusSummaryProps) => {
   const classes = useStyles();
@@ -105,7 +112,11 @@ export const WorkloadStatusSummary = ({
     ? workloads.filter(w => !isWorkloadReady(w)).length
     : 0;
   const isUnavailable = !hasData && !workloadsLoading;
-  const shouldAutoExpand = hasData ? !allReady : isUnavailable;
+  // The neutral "no Mimir on this installation" state is expected and carries
+  // no action for the reader — don't auto-expand it on every page view.
+  const shouldAutoExpand = hasData
+    ? !allReady
+    : isUnavailable && workloadsAvailable;
 
   const [expanded, setExpanded] = useState(false);
   const hasResolved = useRef(false);
@@ -121,6 +132,9 @@ export const WorkloadStatusSummary = ({
 
   if (workloadsLoading) {
     headline = 'Workloads (loading\u2026)';
+    icon = <StyledHelpOutlineIcon />;
+  } else if (!workloadsAvailable) {
+    headline = 'Workloads (unavailable)';
     icon = <StyledHelpOutlineIcon />;
   } else if (!workloadsEnabled) {
     headline = 'Workloads (unavailable)';
@@ -140,7 +154,10 @@ export const WorkloadStatusSummary = ({
   }
 
   let diagnosticContent: React.ReactNode | undefined;
-  if (!workloadsEnabled) {
+  if (!workloadsAvailable) {
+    diagnosticContent =
+      'Workload metrics are not available on this installation.';
+  } else if (!workloadsEnabled) {
     diagnosticContent =
       'Cannot determine target cluster for this deployment. Workload metrics are not available.';
   } else if (workloadsError) {
