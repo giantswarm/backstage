@@ -54,6 +54,25 @@ gs:
         - capa
 ```
 
+### Installations without Mimir (`mimirEnabled`)
+
+Metrics-backed features (workload status, resource usage, HTTPRoute hostnames,
+node pool nodes) query the Giant Swarm observability stack at
+`observability.<baseDomain>`. Every Giant Swarm management cluster runs it, so
+the integration defaults to on. Standalone installations set
+
+```yaml
+gs:
+  installations:
+    example:
+      mimirEnabled: false
+```
+
+to opt out: the frontend then sends no Mimir queries for that installation and
+renders neutral "metrics unavailable" states instead of errors, and the backend
+Mimir proxy refuses queries for it. `baseDomain` cannot carry this meaning
+because other features (e.g. agent avatars) require it on every installation.
+
 ### Cluster-access status element
 
 A sidebar status element shows the per-installation access state -- connecting
