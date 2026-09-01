@@ -36,19 +36,12 @@ function toolTrigger(): HTMLElement {
 }
 
 /**
- * The disclosure panel a trigger controls.
- *
- * bui renders the panel as `role="group"` inside the same accordion, so it is
- * reached through the DOM rather than by an accessible name — the panel has none.
+ * The disclosure panel a trigger controls, found through `aria-controls` — the
+ * same association assistive tech follows.
  */
 function panelFor(trigger: HTMLElement): HTMLElement {
-  // Scoped to the *group* container, not `[class*="bui-Accordion"]` — that also
-  // matches the trigger's own `bui-AccordionTrigger`, so `closest` would return the
-  // trigger and find no panel inside it. Each timeline entry renders its own
-  // group, so the container holds exactly one panel.
-  const panel = trigger
-    .closest('[class*="AccordionGroup"]')
-    ?.querySelector('[role="group"]');
+  const id = trigger.getAttribute('aria-controls');
+  const panel = id ? document.getElementById(id) : null;
   if (!(panel instanceof HTMLElement)) {
     throw new Error('no disclosure panel found for the trigger');
   }

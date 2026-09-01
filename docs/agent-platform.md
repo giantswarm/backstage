@@ -602,6 +602,17 @@ full; the agent's internal work is collapsible, with a Hidden/Collapsed/Expanded
 control — collapsed by default, because the working is the point of the screen but a
 wall of tool payloads is unreadable.
 
+Presentation follows the conventions of chat surfaces, shared with the AI chat
+plugin's visual language. The user's messages are right-aligned bubbles and
+deliberately **not** markdown — prompts quote logs and `#`-prefixed lines that must
+stay the characters typed. The agent's side of a turn opens with its avatar and
+name once, and its prose renders as GFM markdown (tables, code blocks, entity-aware
+links). Internal work renders as one-line disclosure rows whose payloads are
+JSON-highlighted, with JSON hiding inside result strings inlined rather than shown
+as a wall of `\"` escapes. The composer docks to the bottom of the viewport, and
+the page follows a streaming reply only while already scrolled to the end — never
+yanking someone who scrolled up out of what they were reading.
+
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |
 | User / agent message | `role` plus text parts, rendered as markdown                               |

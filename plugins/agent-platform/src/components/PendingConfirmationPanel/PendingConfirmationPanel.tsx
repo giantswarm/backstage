@@ -11,7 +11,7 @@ import {
   TextAreaField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
+import { MessageMarkdown } from '../SessionTimeline/MessageMarkdown';
 import type {
   ConfirmationAnswer,
   PendingAnswer,
@@ -289,7 +289,7 @@ export function PendingConfirmationPanel({
                   Markdown, because these are written for a chat client and use
                   it freely — the live examples contain bold and hard breaks. */}
               {showQuestionText && (
-                <GSMarkdownContent content={question.question} />
+                <MessageMarkdown text={question.question} />
               )}
 
               {question.choices &&
