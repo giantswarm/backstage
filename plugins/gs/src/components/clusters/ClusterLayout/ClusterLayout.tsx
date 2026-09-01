@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Content, Progress } from '@backstage/core-components';
+import { Content, EmptyState, Progress } from '@backstage/core-components';
 import {
   attachComponentData,
   useElementFilter,
@@ -38,11 +38,17 @@ attachComponentData(Route, 'core.gatherMountPoints', true);
 
 const PageContent = ({
   isLoading,
+  notFound,
+  clusterName,
+  installationName,
   error,
   clusterApp,
   element,
 }: {
   isLoading: boolean;
+  notFound: boolean;
+  clusterName: string;
+  installationName: string;
   error: Error | null;
   clusterApp?: App;
   element: ReactNode;
@@ -51,6 +57,18 @@ const PageContent = ({
     return (
       <Content>
         <Progress />
+      </Content>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <Content>
+        <EmptyState
+          missing="data"
+          title="Cluster not found"
+          description={`Installation "${installationName}" has no cluster named "${clusterName}" in this namespace. The cluster may have been deleted, or this installation doesn't manage clusters at all.`}
+        />
       </Content>
     );
   }
@@ -93,6 +111,7 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
     clusterApp,
     installationName,
     loading: clusterIsLoading,
+    notFound,
     error: error,
   } = useAsyncCluster();
 
@@ -162,6 +181,9 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
       />
       <PageContent
         isLoading={isLoading}
+        notFound={notFound}
+        clusterName={name}
+        installationName={installationName}
         error={error}
         clusterApp={clusterApp}
         element={element}

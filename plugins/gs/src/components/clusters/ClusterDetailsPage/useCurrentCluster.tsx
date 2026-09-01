@@ -7,6 +7,7 @@ export type ClusterLoadingStatus = {
   cluster?: Cluster;
   clusterApp?: App;
   loading: boolean;
+  notFound: boolean;
   error: Error | null;
 };
 
@@ -15,6 +16,7 @@ const ClusterContext = createContext<ClusterLoadingStatus>({
   cluster: undefined,
   clusterApp: undefined,
   loading: false,
+  notFound: false,
   error: null,
 });
 
@@ -30,10 +32,17 @@ export interface AsyncClusterProviderProps {
 export const AsyncClusterProvider = ({
   children,
 }: AsyncClusterProviderProps) => {
-  const { installationName, cluster, clusterApp, loading, error } =
+  const { installationName, cluster, clusterApp, loading, notFound, error } =
     useClusterFromUrl();
 
-  const value = { installationName, cluster, clusterApp, loading, error };
+  const value = {
+    installationName,
+    cluster,
+    clusterApp,
+    loading,
+    notFound,
+    error,
+  };
 
   return (
     <ClusterContext.Provider value={value}>{children}</ClusterContext.Provider>
@@ -82,7 +91,8 @@ export function useAsyncCluster(): ClusterLoadingStatus {
     throw new Error('ClusterContext not available');
   }
 
-  const { installationName, cluster, clusterApp, loading, error } = value;
+  const { installationName, cluster, clusterApp, loading, notFound, error } =
+    value;
 
-  return { installationName, cluster, clusterApp, loading, error };
+  return { installationName, cluster, clusterApp, loading, notFound, error };
 }
