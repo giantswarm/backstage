@@ -78,6 +78,15 @@ export type PayloadBlockProps = {
 };
 
 /**
+ * Longest payload that gets syntax highlighting.
+ *
+ * The highlighter emits a styled span per token; a 100KB tool result becomes
+ * ~10k spans and visibly janks the page. Past this size the color stops adding
+ * anything anyway — plain monospace scrolls smoothly at any length.
+ */
+const HIGHLIGHT_MAX_LENGTH = 20_000;
+
+/**
  * One labelled payload inside an expanded activity row.
  *
  * JSON — including JSON hiding inside result strings — is highlighted;
@@ -98,6 +107,7 @@ export function PayloadBlock({ label, content }: PayloadBlockProps) {
   } catch {
     /* plain text payload */
   }
+  const highlight = isJson && display.length <= HIGHLIGHT_MAX_LENGTH;
 
   return (
     <div>
@@ -108,7 +118,7 @@ export function PayloadBlock({ label, content }: PayloadBlockProps) {
         <CopyButton text={display} />
       </Flex>
       <div className={classes.scroll}>
-        {isJson ? (
+        {highlight ? (
           <JsonHighlight
             customStyle={{ margin: 0, padding: 0, background: 'none' }}
             codeTagProps={{ className: classes.code }}
