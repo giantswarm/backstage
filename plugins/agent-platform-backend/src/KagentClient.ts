@@ -606,6 +606,168 @@ export class KagentClient {
   }
 
   /**
+   * Send one message as a turn of an existing session, **streaming** the turn's
+   * events as kagent produces them.
+   *
+   * A2A JSON-RPC `message/stream` on the same endpoint {@link sendMessage} posts
+   * to; kagent answers with an SSE stream whose `data:` frames are JSON-RPC
+   * responses carrying the legacy-wire events (`task`, `status-update`,
+   * `artifact-update`, `message`) — the same stream its own UI renders from. The
+   * returned {@link Response} has been status- and content-type-checked; the
+   * caller relays its body and owns its lifetime through `signal`.
+   *
+   * This client deliberately does **not** parse the stream. The split is the same
+   * as everywhere else here — backend = transport, frontend = schema — and it is
+   * what lets a kagent event-shape change ship without a backend release.
+   *
+   * Three transport behaviours worth knowing:
+   *
+   * - **Headers arrive immediately.** kagent writes the SSE headers before the
+   *   agent has done anything (`sseWriter.WriteHeaders()` runs first in a2a-go's
+   *   `handleStreamingRequest`), so the connect phase is guarded by the ordinary
+   *   request timeout, not the turn timeout — a slow connect means kagent is
+   *   unwell, not that the agent is thinking.
+   * - **An early rejection can be a JSON body instead of a stream.** a2a-go
+   *   answers an invalid request or an unknown method with a plain JSON-RPC error
+   *   (`Content-Type: application/json`) before upgrading to SSE. That is a
+   *   decision, reported as an upstream failure with kagent's own message — never
+   *   something to relay as a broken stream.
+   * - **A rejection can also be the stream's first frame.** Once the headers are
+   *   out, a2a-go reports failures as `data: {"jsonrpc":…,"error":{…}}` frames.
+   *   Those pass through to the frontend verbatim, which is the right place for
+   *   them: it knows whether anything was dispatched before the error and can
+   *   verify against the session history — the same verify-not-report contract
+   *   {@link dispatch} implements for the non-streaming path.
+   *
+   * The turn survives the stream exactly as it survives a cut `message/send`
+   * (see {@link dispatch}): losing this connection — a gateway's 60 s door, a
+   * client that navigated away — does not stop the agent, and the conversation
+   * poll shows the turn finish.
+   */
+  async streamMessage(
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    message: { messageId: string; text: string },
+    options: KagentRequestOptions,
+    /**
+     * Aborts the upstream request and, after the headers, its body — wired by
+     * the router to the client connection, so a browser that goes away stops
+     * the relay without stopping the turn.
+     */
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const abortUpstream = () => controller.abort();
+    if (signal.aborted) {
+      abortUpstream();
+    } else {
+      // Never removed on success, deliberately: the listener is what lets the
+      // caller's signal abort the *body* long after this method returned, and
+      // both signal and controller live exactly as long as the one request.
+      signal.addEventListener('abort', abortUpstream);
+    }
+
+    // Guards only the connect phase; cleared as soon as the headers are in. The
+    // stream itself is unbounded here — its lifetime belongs to the caller.
+    let connectTimedOut = false;
+    const connectTimer = setTimeout(() => {
+      connectTimedOut = true;
+      controller.abort();
+    }, this.timeoutMs);
+
+    let response: Response;
+    try {
+      response = await this.fetchFn(
+        `${this.installation.apiBaseUrl}/a2a/${encodeURIComponent(
+          agent.namespace,
+        )}/${encodeURIComponent(agent.name)}`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'text/event-stream, application/json',
+            'Content-Type': 'application/json',
+            ...(options.userToken && {
+              Authorization: `Bearer ${options.userToken}`,
+            }),
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: message.messageId,
+            method: 'message/stream',
+            params: {
+              message: {
+                kind: 'message',
+                messageId: message.messageId,
+                role: 'user',
+                parts: [{ kind: 'text', text: message.text }],
+                // The only thing tying this turn to the session — see
+                // `postMessage`. No `taskId`: a plain message opens a new task.
+                contextId: sessionId,
+              },
+            },
+          }),
+          redirect: 'manual',
+          signal: controller.signal,
+        },
+      );
+    } catch (error) {
+      if (connectTimedOut) {
+        throw upstreamError(
+          `The kagent API for installation '${this.installation.name}' did not respond within ${this.timeoutMs}ms.`,
+        );
+      }
+      if (signal.aborted) {
+        // The caller hung up before kagent answered. Nothing to report to
+        // anyone — rethrown for the router to swallow as a closed connection.
+        throw error;
+      }
+      this.logger.debug(
+        `kagent is not reachable for installation '${this.installation.name}'`,
+        { error: String(error) },
+      );
+      // Same mapping as `request`, for the same fleet reason — and marked
+      // transport-borne for the same one: the frontend verifies a send whose
+      // transport died rather than reporting it failed.
+      throw transportFailure(
+        `The kagent API is not available for installation '${this.installation.name}'.`,
+      );
+    } finally {
+      clearTimeout(connectTimer);
+    }
+
+    this.throwForErrorStatus(response, {
+      notFound: {
+        missingResource: `Agent '${agent.namespace}/${agent.name}' does not exist on installation '${this.installation.name}'.`,
+        endpoint: 'agent messaging',
+      },
+    });
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('text/event-stream')) {
+      return response;
+    }
+
+    // a2a-go rejected the request before starting the stream — an invalid
+    // envelope, an unknown method. Its message is worth carrying: unlike the
+    // REST envelope's, it never wraps database internals.
+    if (contentType.includes('application/json')) {
+      const body = await response.json().catch(() => undefined);
+      const inBandError = readInBandError(body);
+      throw upstreamError(
+        `The agent on installation '${this.installation.name}' did not accept the message: ${
+          inBandError ?? 'kagent answered without a stream'
+        }`,
+      );
+    }
+
+    // A 2xx that is neither a stream nor JSON is oauth2-proxy serving its
+    // sign-in page, exactly as on the JSON path.
+    throw new AuthenticationError(
+      `The kagent API for installation '${this.installation.name}' returned a non-stream response (content-type '${contentType}'), which usually means a sign-in page was served instead.`,
+    );
+  }
+
+  /**
    * Post one A2A message and report honestly on what became of it.
    *
    * Shared by {@link sendMessage} and {@link answerConfirmation} because the hard
@@ -1186,6 +1348,63 @@ export class KagentClient {
       );
     }
 
+    this.throwForErrorStatus(response, { badRequest, conflict, notFound });
+
+    // `204 No Content` is a success with nothing to parse, and must be handled
+    // before the guards below: it carries no content-type, so the sign-in-page
+    // check would call it an authentication failure, and `response.json()` would
+    // throw on the empty body. Nothing kagent serves today answers 204 — its
+    // delete returns 200 with the usual envelope on both v0.9.9 and v0.10 — but
+    // getting this wrong is expensive in one specific direction: a future version
+    // that answered 204 to the DELETE would have *performed* the deletion while
+    // this told the user a sign-in page was served, and the frontend would leave
+    // the confirmation dialog open on an error for a session that is already gone.
+    if (response.status === 204) {
+      return undefined;
+    }
+
+    // A 2xx with a non-JSON body is oauth2-proxy serving its sign-in page
+    // rather than kagent answering.
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('application/json')) {
+      throw new AuthenticationError(
+        `The kagent API for installation '${this.installation.name}' returned a non-JSON response (content-type '${contentType}'), which usually means a sign-in page was served instead.`,
+      );
+    }
+
+    // Reading the body is a second chance to fail: the abort signal is still
+    // armed after the headers arrive, so a slow or large response can abort
+    // mid-stream, the connection can reset, or the body can be truncated /
+    // invalid JSON. kagent answered in all of those cases, so they are upstream
+    // failures worth surfacing — not "kagent isn't deployed here".
+    try {
+      return await response.json();
+    } catch (error) {
+      this.logger.debug(
+        `Failed to read the kagent API response body for installation '${this.installation.name}'`,
+        { error: String(error) },
+      );
+      throw upstreamError(
+        `Could not read the response from the kagent API for installation '${this.installation.name}'.`,
+      );
+    }
+  }
+
+  /**
+   * Map an error status onto the error the caller should see. Shared by
+   * {@link request} and {@link streamMessage}, whose transports differ but whose
+   * reading of kagent's statuses must not.
+   */
+  private throwForErrorStatus(
+    response: Response,
+    extra: {
+      badRequest?: boolean;
+      conflict?: boolean;
+      notFound?: NotFoundContext;
+    },
+  ): void {
+    const { badRequest, conflict, notFound } = extra;
+
     if (response.status >= 300 && response.status < 400) {
       throw new AuthenticationError(
         `The kagent API for installation '${this.installation.name}' redirected to a sign-in page; the forwarded token was not accepted.`,
@@ -1268,45 +1487,6 @@ export class KagentClient {
       );
       throw upstreamError(
         `The kagent API for installation '${this.installation.name}' returned status ${response.status}.`,
-      );
-    }
-
-    // `204 No Content` is a success with nothing to parse, and must be handled
-    // before the guards below: it carries no content-type, so the sign-in-page
-    // check would call it an authentication failure, and `response.json()` would
-    // throw on the empty body. Nothing kagent serves today answers 204 — its
-    // delete returns 200 with the usual envelope on both v0.9.9 and v0.10 — but
-    // getting this wrong is expensive in one specific direction: a future version
-    // that answered 204 to the DELETE would have *performed* the deletion while
-    // this told the user a sign-in page was served, and the frontend would leave
-    // the confirmation dialog open on an error for a session that is already gone.
-    if (response.status === 204) {
-      return undefined;
-    }
-
-    // A 2xx with a non-JSON body is oauth2-proxy serving its sign-in page
-    // rather than kagent answering.
-    const contentType = response.headers.get('content-type') ?? '';
-    if (!contentType.includes('application/json')) {
-      throw new AuthenticationError(
-        `The kagent API for installation '${this.installation.name}' returned a non-JSON response (content-type '${contentType}'), which usually means a sign-in page was served instead.`,
-      );
-    }
-
-    // Reading the body is a second chance to fail: the abort signal is still
-    // armed after the headers arrive, so a slow or large response can abort
-    // mid-stream, the connection can reset, or the body can be truncated /
-    // invalid JSON. kagent answered in all of those cases, so they are upstream
-    // failures worth surfacing — not "kagent isn't deployed here".
-    try {
-      return await response.json();
-    } catch (error) {
-      this.logger.debug(
-        `Failed to read the kagent API response body for installation '${this.installation.name}'`,
-        { error: String(error) },
-      );
-      throw upstreamError(
-        `Could not read the response from the kagent API for installation '${this.installation.name}'.`,
       );
     }
   }

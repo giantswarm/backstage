@@ -1,6 +1,7 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import {
   deriveKagentApiBaseUrl,
+  isTransportFailure,
   KagentClient,
   readKagentInstallationsFromConfig,
 } from './KagentClient';
@@ -1632,6 +1633,238 @@ describe('KagentClient', () => {
       ).rejects.toMatchObject({
         name: 'NotFoundError',
         message: expect.stringContaining('kagent/issue-tracker'),
+      });
+    });
+  });
+
+  describe('streamMessage', () => {
+    const AGENT = { namespace: 'kagent', name: 'issue-tracker' };
+    const MESSAGE = { messageId: 'msg-1', text: 'why is the ingress failing?' };
+
+    function sseResponse(body = 'data: {"jsonrpc":"2.0","result":{}}\n\n') {
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+
+    function neverAborted() {
+      return new AbortController().signal;
+    }
+
+    it('posts message/stream to the agent, with the session as contextId', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(sseResponse());
+
+      await build(fetchFn).streamMessage(
+        'sess-1',
+        AGENT,
+        MESSAGE,
+        { userToken: 'user-token' },
+        neverAborted(),
+      );
+
+      const [url, init] = fetchFn.mock.calls[0];
+      expect(url).toBe(
+        'https://kagent.gazelle.example.io/api/a2a/kagent/issue-tracker',
+      );
+      expect(init.method).toBe('POST');
+      // The SSE Accept comes first, but JSON stays acceptable: a2a-go answers
+      // an early rejection as plain JSON before it upgrades to a stream.
+      expect(init.headers.Accept).toBe('text/event-stream, application/json');
+      expect(init.headers.Authorization).toBe('Bearer user-token');
+      expect(init.redirect).toBe('manual');
+      expect(JSON.parse(init.body)).toEqual({
+        jsonrpc: '2.0',
+        id: 'msg-1',
+        method: 'message/stream',
+        params: {
+          message: {
+            kind: 'message',
+            messageId: 'msg-1',
+            role: 'user',
+            parts: [{ kind: 'text', text: 'why is the ingress failing?' }],
+            contextId: 'sess-1',
+          },
+        },
+      });
+    });
+
+    it('returns the upstream response for the caller to relay', async () => {
+      const upstream = sseResponse('data: {"jsonrpc":"2.0","result":{}}\n\n');
+      const fetchFn = jest.fn().mockResolvedValue(upstream);
+
+      const response = await build(fetchFn).streamMessage(
+        'sess-1',
+        AGENT,
+        MESSAGE,
+        { userToken: 't' },
+        neverAborted(),
+      );
+
+      expect(response).toBe(upstream);
+    });
+
+    it('reports an early JSON-RPC rejection with its own message', async () => {
+      // a2a-go answers an invalid request as plain JSON before starting the
+      // stream — a decision, not a broken pipe.
+      const fetchFn = jest.fn().mockResolvedValue(
+        jsonResponse({
+          jsonrpc: '2.0',
+          error: { code: -32602, message: 'invalid parameters' },
+        }),
+      );
+
+      await expect(
+        build(fetchFn).streamMessage(
+          'sess-1',
+          AGENT,
+          MESSAGE,
+          { userToken: 't' },
+          neverAborted(),
+        ),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: expect.stringContaining('invalid parameters'),
+      });
+    });
+
+    it('maps error statuses exactly as the JSON path does', async () => {
+      const cases: [Response, string][] = [
+        [new Response(null, { status: 401 }), 'AuthenticationError'],
+        [new Response(null, { status: 403 }), 'NotAllowedError'],
+        [new Response(null, { status: 500 }), 'UpstreamError'],
+      ];
+      for (const [response, name] of cases) {
+        const fetchFn = jest.fn().mockResolvedValue(response);
+        await expect(
+          build(fetchFn).streamMessage(
+            'sess-1',
+            AGENT,
+            MESSAGE,
+            { userToken: 't' },
+            neverAborted(),
+          ),
+        ).rejects.toMatchObject({ name });
+      }
+    });
+
+    it('reports an unknown agent as not found', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: 'no such agent' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+      await expect(
+        build(fetchFn).streamMessage(
+          'sess-1',
+          AGENT,
+          MESSAGE,
+          { userToken: 't' },
+          neverAborted(),
+        ),
+      ).rejects.toMatchObject({
+        name: 'NotFoundError',
+        message: expect.stringContaining('kagent/issue-tracker'),
+      });
+    });
+
+    it('treats a non-stream, non-JSON 200 as a sign-in page', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(
+        new Response('<html>sign in</html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        }),
+      );
+
+      await expect(
+        build(fetchFn).streamMessage(
+          'sess-1',
+          AGENT,
+          MESSAGE,
+          { userToken: 't' },
+          neverAborted(),
+        ),
+      ).rejects.toMatchObject({ name: 'AuthenticationError' });
+    });
+
+    it('marks an unreachable host as a transport-borne 404', async () => {
+      const fetchFn = jest
+        .fn()
+        .mockRejectedValue(new TypeError('fetch failed'));
+
+      const attempt = build(fetchFn).streamMessage(
+        'sess-1',
+        AGENT,
+        MESSAGE,
+        { userToken: 't' },
+        neverAborted(),
+      );
+
+      await expect(attempt).rejects.toMatchObject({ name: 'NotFoundError' });
+      const caught = await attempt.then(
+        () => undefined,
+        error => error,
+      );
+      expect(isTransportFailure(caught)).toBe(true);
+    });
+
+    it("aborts the connect through the caller's signal, without inventing a failure", async () => {
+      // The browser hung up while we were still connecting. The rejection is
+      // rethrown raw for the router to swallow — mapping it to "kagent is not
+      // available" would be a lie about a healthy installation.
+      const controller = new AbortController();
+      const abortError = new DOMException('aborted', 'AbortError');
+      const fetchFn = jest.fn().mockImplementation(
+        (_url, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(abortError));
+          }),
+      );
+
+      const attempt = build(fetchFn).streamMessage(
+        'sess-1',
+        AGENT,
+        MESSAGE,
+        { userToken: 't' },
+        controller.signal,
+      );
+      controller.abort();
+
+      await expect(attempt).rejects.toBe(abortError);
+    });
+
+    it('reports a connect that outlives the read timeout as kagent being unwell', async () => {
+      // Headers arrive immediately from a healthy kagent (a2a-go writes them
+      // before the agent does anything), so a slow connect is the ordinary
+      // request timeout's business — not the turn's.
+      const fetchFn = jest.fn().mockImplementation(
+        (_url, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          }),
+      );
+      const client = new KagentClient(
+        installation,
+        logger,
+        fetchFn as unknown as typeof fetch,
+        10,
+      );
+
+      await expect(
+        client.streamMessage(
+          'sess-1',
+          AGENT,
+          MESSAGE,
+          { userToken: 't' },
+          neverAborted(),
+        ),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: expect.stringContaining('did not respond within 10ms'),
       });
     });
   });
