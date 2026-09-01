@@ -238,33 +238,84 @@ export function SessionDetailPage() {
   // by timing: once a poll returns a message carrying the same `messageId`, the
   // real one is already on screen and this stand-in must go, or the message shows
   // twice for the rest of the turn.
-  const timelineWithPending = useMemo(() => {
+  //
+  // The agent's side of that same turn follows the identical pattern, live: while
+  // a send streams, its completed items (text, reasoning, tool calls) and the text
+  // still being produced are appended after the stand-in, so the reply appears as
+  // it is written rather than when the turn ends. The preview coexists with the
+  // 10 s poll rather than replacing it: a streamed item whose `messageId` the poll
+  // has already delivered is dropped by recognition — exactly like the stand-in —
+  // and the whole preview is discarded once the send's awaited invalidation has
+  // put the canonical history on screen (`useSendMessage` clears `stream` then).
+  const timelineWithLive = useMemo(() => {
     const pending = send.pending;
-    if (!pending) {
-      return timeline;
-    }
-    if (timeline.items.some(item => item.messageId === pending.messageId)) {
+    const stream = send.stream;
+
+    const pendingVisible =
+      pending &&
+      !timeline.items.some(item => item.messageId === pending.messageId);
+    const streamVisible =
+      stream &&
+      (stream.items.length > 0 || stream.liveText || stream.liveReasoning);
+
+    if (!pendingVisible && !streamVisible) {
       return timeline;
     }
 
-    // A new turn of its own: this message is what opens one. The stats strip still
-    // reports the server's turn count, so "Turns" lags by one until kagent
-    // confirms — which is the honest reading, since no task exists yet.
-    const lastTaskIndex = timeline.items.at(-1)?.taskIndex ?? -1;
-    return {
-      ...timeline,
-      items: [
-        ...timeline.items,
-        {
-          kind: 'user-message' as const,
-          id: `pending:${pending.messageId}`,
-          messageId: pending.messageId,
-          taskIndex: lastTaskIndex + 1,
-          text: pending.text,
-        },
-      ],
-    };
-  }, [timeline, send.pending]);
+    // The turn these additions belong to. Once a poll has seen the sent message,
+    // its task exists and carries the real index; before that the turn is new,
+    // and the stats strip still reports the server's count — "Turns" lags by one
+    // until kagent confirms, which is the honest reading, since no task exists
+    // yet.
+    const sentMessageId = stream?.sentMessageId ?? pending?.messageId;
+    const sentItem = sentMessageId
+      ? timeline.items.find(item => item.messageId === sentMessageId)
+      : undefined;
+    const taskIndex =
+      sentItem?.taskIndex ?? (timeline.items.at(-1)?.taskIndex ?? -1) + 1;
+
+    const items = [...timeline.items];
+
+    if (pendingVisible) {
+      items.push({
+        kind: 'user-message' as const,
+        id: `pending:${pending.messageId}`,
+        messageId: pending.messageId,
+        taskIndex,
+        text: pending.text,
+      });
+    }
+
+    if (streamVisible) {
+      const polled = new Set(
+        timeline.items.map(item => item.messageId).filter(Boolean),
+      );
+      for (const item of stream.items) {
+        if (item.messageId && polled.has(item.messageId)) {
+          continue;
+        }
+        items.push({ ...item, taskIndex });
+      }
+      if (stream.liveReasoning.trim()) {
+        items.push({
+          kind: 'reasoning' as const,
+          id: 'stream:live-reasoning',
+          taskIndex,
+          text: stream.liveReasoning,
+        });
+      }
+      if (stream.liveText.trim()) {
+        items.push({
+          kind: 'agent-message' as const,
+          id: 'stream:live-text',
+          taskIndex,
+          text: stream.liveText,
+        });
+      }
+    }
+
+    return { ...timeline, items };
+  }, [timeline, send.pending, send.stream]);
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
@@ -567,7 +618,7 @@ export function SessionDetailPage() {
         </Box>
 
         <SessionTimeline
-          timeline={timelineWithPending}
+          timeline={timelineWithLive}
           agentName={row.agentName}
           isAgentWorking={showWorking}
         />

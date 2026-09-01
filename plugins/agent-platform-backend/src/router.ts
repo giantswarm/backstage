@@ -74,6 +74,56 @@ function readSessionName(body: Record<string, unknown>): string {
   return name;
 }
 
+/**
+ * The body both send routes take. Shared so the streaming route cannot accept a
+ * message its non-streaming sibling would refuse, or vice versa — the two are
+ * one act over two transports.
+ */
+function readMessageBody(req: express.Request): {
+  agentNamespace: string;
+  agentName: string;
+  messageId: string;
+  text: string;
+} {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+
+  const agentNamespace = readRequiredString(body, 'agentNamespace');
+  const agentName = readRequiredString(body, 'agentName');
+  const messageId = readRequiredString(body, 'messageId');
+
+  // The one field not trimmed to its bounds check: leading and trailing
+  // whitespace is insignificant for a prompt, but interior formatting is not,
+  // so only the ends go. Checked after trimming so a message of pure
+  // whitespace is rejected rather than sent as an empty turn.
+  const rawText = body.text;
+  if (typeof rawText !== 'string') {
+    throw new InputError('text must be a string');
+  }
+  const text = rawText.trim();
+  if (!text) {
+    throw new InputError('text must not be empty');
+  }
+  if (text.length > MESSAGE_TEXT_MAX_LENGTH) {
+    throw new InputError(
+      `text must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
+    );
+  }
+
+  return { agentNamespace, agentName, messageId, text };
+}
+
+/**
+ * Upper bound on how long the streaming route holds its relay open.
+ *
+ * Not a turn timeout — cutting the stream does not stop the turn, and the
+ * frontend reconciles through the poll exactly as if a gateway had cut it. This
+ * exists only so an agent that never writes a terminal state cannot pin a socket
+ * (and its upstream connection) open for as long as a tab stays on the page.
+ * Generous on purpose: a legitimate turn with many tool calls runs many minutes,
+ * and every gateway we know of gives up long before this does.
+ */
+const STREAM_MAX_DURATION_MS = 30 * 60_000;
+
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
@@ -390,29 +440,7 @@ export async function createRouter(
   router.post('/kagent/sessions/:sessionId/messages', async (req, res) => {
     const { client } = resolveInstallation(req);
 
-    const body = (req.body ?? {}) as Record<string, unknown>;
-
-    const agentNamespace = readRequiredString(body, 'agentNamespace');
-    const agentName = readRequiredString(body, 'agentName');
-    const messageId = readRequiredString(body, 'messageId');
-
-    // The one field not trimmed to its bounds check: leading and trailing
-    // whitespace is insignificant for a prompt, but interior formatting is not,
-    // so only the ends go. Checked after trimming so a message of pure
-    // whitespace is rejected rather than sent as an empty turn.
-    const rawText = body.text;
-    if (typeof rawText !== 'string') {
-      throw new InputError('text must be a string');
-    }
-    const text = rawText.trim();
-    if (!text) {
-      throw new InputError('text must not be empty');
-    }
-    if (text.length > MESSAGE_TEXT_MAX_LENGTH) {
-      throw new InputError(
-        `text must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
-      );
-    }
+    const { agentNamespace, agentName, messageId, text } = readMessageBody(req);
 
     try {
       const result = await client.sendMessage(
@@ -435,6 +463,129 @@ export async function createRouter(
       res.status(202).json({ status: 'pending' });
     }
   });
+
+  /**
+   * Send a message to the session's agent, streaming the turn's events back.
+   *
+   * The streaming sibling of the messages route above: same body, same
+   * validation, same trust in the caller's agent names — but A2A `message/stream`
+   * instead of `message/send`, and kagent's SSE relayed byte-for-byte instead of
+   * a single JSON answer. The backend never parses the events; the frontend
+   * interprets them and reconciles with the conversation poll, which stays the
+   * source of truth.
+   *
+   * Failure semantics split at the headers, which is inherent to streaming:
+   *
+   * - **Before the upstream stream opens**, errors surface exactly as on the
+   *   non-streaming route — a malformed body is a 400, an unknown agent a 404, a
+   *   rejected token a 401. Nothing has been dispatched, and the caller hears so.
+   * - **After it opens**, this route has already answered 200 and can only relay
+   *   or stop. A relay that ends without a terminal event — kagent cut off by a
+   *   gateway, this response cut off by the browser's own door, the duration
+   *   bound below — is not reported as anything, because the turn survives it:
+   *   the frontend treats an unterminated stream as "still running" and follows
+   *   the poll, the same contract as the 202 above.
+   *
+   * The relay is flush-wrapped because Backstage's root router applies
+   * `compression()` globally, which buffers `res.write()` until `res.end()` —
+   * every event would arrive at once, after the turn. Same trap and same fix as
+   * `ai-chat-backend`'s chat route.
+   */
+  router.post(
+    '/kagent/sessions/:sessionId/messages/stream',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+
+      const { agentNamespace, agentName, messageId, text } =
+        readMessageBody(req);
+      const userToken = readUserToken(req, { required: true });
+
+      // One signal governs the whole relay: the browser going away and the
+      // duration bound both abort the upstream read. Neither stops the turn.
+      const upstreamControl = new AbortController();
+      const stopRelay = () => upstreamControl.abort();
+      res.on('close', stopRelay);
+      const maxDurationTimer = setTimeout(stopRelay, STREAM_MAX_DURATION_MS);
+
+      let upstream: Response;
+      try {
+        upstream = await client.streamMessage(
+          readSessionId(req),
+          { namespace: agentNamespace, name: agentName },
+          { messageId, text },
+          { userToken },
+          upstreamControl.signal,
+        );
+      } catch (error) {
+        clearTimeout(maxDurationTimer);
+        // The browser hung up while we were still connecting: there is nobody
+        // to answer, and the error middleware writing to a closed response
+        // would only log noise about it.
+        if (res.writableEnded || upstreamControl.signal.aborted) {
+          return;
+        }
+        throw error;
+      }
+
+      res.status(200);
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      // Backstage's root HTTP router applies compression() middleware globally,
+      // which buffers res.write() calls — for SSE that means every event is held
+      // until res.end(), defeating the point of this route. Wrap res.write to
+      // flush after each write so events reach the browser as kagent produces
+      // them. Same fix as ai-chat-backend's chat route.
+      const originalWrite = res.write;
+      res.write = function flushingWrite(
+        ...args: Parameters<typeof originalWrite>
+      ) {
+        const ret = originalWrite.apply(res, args);
+        const flush = (res as { flush?: () => void }).flush;
+        if (typeof flush === 'function') {
+          flush.call(res);
+        }
+        return ret;
+      } as typeof originalWrite;
+
+      res.flushHeaders();
+
+      const body = upstream.body;
+      if (!body) {
+        // Cannot happen for a 200 SSE response from a real kagent, but the type
+        // allows it, and ending an empty stream is the honest degradation: the
+        // frontend verifies and falls back to the poll.
+        clearTimeout(maxDurationTimer);
+        res.end();
+        return;
+      }
+
+      const reader = body.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          res.write(value);
+        }
+      } catch (error) {
+        // The upstream connection died mid-turn (a gateway's request timeout,
+        // an Envoy drain) or the relay was aborted. Either way there is nothing
+        // more to relay and nothing to report: an unterminated stream is the
+        // frontend's cue to fall back to the poll, and the turn keeps running
+        // regardless.
+        logger.debug(
+          'A kagent event stream ended before the turn did; the client falls back to polling',
+          { error: String(error) },
+        );
+      } finally {
+        clearTimeout(maxDurationTimer);
+        res.end();
+      }
+    },
+  );
 
   // There is no version route. kagent serves `/version` at the server root, and
   // neither supported door proxies the root to the controller — the derived

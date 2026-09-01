@@ -904,13 +904,88 @@ cannot reach its MCP server reports it there). The HTTP status says only whether
 turn was accepted; the task says what became of it. Nothing in the client inspects the
 result.
 
-**No streaming.** A send invalidates the conversation and the existing 10 s active
-tier follows the turn (see "Refreshing"). A relayed A2A SSE stream was considered and
-rejected for this: `KagentClient.request` is a one-shot `fetch` + `.json()` with no
-pass-through mode, Backstage's global `compression()` middleware buffers `res.write()`
-until `res.end()` (the trap `ai-chat-backend`'s router documents), and a client-side
-consumer would need reconnect handling — none of which the poll needs for a turn
-measured in tens of seconds.
+**The turn streams — as a preview, never as a second source of truth.** The send
+goes over A2A `message/stream` on the same endpoint, relayed by
+`POST /kagent/sessions/:sessionId/messages/stream`, so the reply appears as the
+agent produces it: text token by token, tool calls as they happen. See "Streaming
+the turn" below for the design and its failure semantics. Everything above about
+`message/send` still holds — it remains the transport for answering a
+confirmation, and its verify-not-report contract is exactly what the stream
+degrades to when something cuts it.
+
+### Streaming the turn
+
+kagent serves A2A `message/stream` beside `message/send` — its own UI streams
+with it — answering with an SSE stream whose `data:` frames are JSON-RPC
+responses carrying the legacy-wire events: a `task` snapshot, `status-update`s
+(whose `status.message` carries the agent's output), `artifact-update`s (the Go
+executor streams response text this way, stamped `{adk,kagent}_partial`), and
+the odd bare `message`. kagent's nginx sidecar sets `proxy_buffering off` and
+a2a-go sends `X-Accel-Buffering: no`, so the frames genuinely arrive live.
+
+**The backend relays bytes; the frontend owns the schema.** The streaming route
+validates exactly what the messages route validates (one shared reader — the two
+are one act over two transports), opens the upstream stream through
+`KagentClient.streamMessage`, and pipes it through verbatim. It parses nothing.
+Two transport details are load-bearing:
+
+- Backstage's global `compression()` buffers `res.write()` until `res.end()`, so
+  the relay flush-wraps `res.write` — the same trap and the same fix
+  `ai-chat-backend`'s router documents.
+- The connect phase is guarded by the ordinary request timeout, not the turn
+  timeout: a2a-go writes the SSE headers before the agent does anything, so a
+  slow connect means kagent is unwell. After the headers the relay is unbounded
+  except for a generous duration cap and the client hanging up, both of which
+  abort the upstream read — and neither of which stops the turn.
+
+**The frontend folds events into a live overlay** (`lib/kagentStreamTurn.ts`,
+rendered by the session detail page after the polled timeline): completed items
+— text, reasoning, tool calls with their results folded in, the same
+`TimelineItem` shapes `buildTimeline` produces — plus a live buffer for the text
+still being produced. The reducer mirrors kagent's own UI, and both executors'
+dialects are handled: the Python flow streams text chunks on non-final
+status-updates with the terminal event carrying the complete message, the Go
+flow streams `partial: true` artifact chunks with a `partial: false` complete
+message and a `lastChunk` sentinel. The same reply arriving twice (complete
+artifact, then repeated on the terminal status-update) is deduped by adjacent
+identical text, because only one of the two carries a `messageId`.
+
+**The poll stays the source of truth, and the overlay is disposable.** A
+streamed item whose `messageId` a poll has already delivered is dropped by
+recognition — the same rule as the optimistic user message — and the whole
+overlay is discarded once the send's awaited invalidation has put the canonical
+history on screen. This is also the backgrounded-tab story: `refetchInterval`
+pauses in hidden tabs while the fetch stream keeps delivering, and whichever is
+behind on refocus, reconciliation squares it.
+
+**A lost stream is not a lost message**, and the classification mirrors the
+backend's dispatch rule precisely:
+
+- Any event at all means the turn was dispatched: a later failure — the 60 s
+  gateway door, a network drop, even an in-band A2A error frame — only cut the
+  preview short. The send resolves like a 202 and the poll follows the turn.
+- A **transport** failure before any event (named `StreamTransportError` by the
+  API client: a dead connection, a 5xx, a response that is not a stream)
+  triggers one read of the session history to check whether the sent
+  `messageId` landed. Present resolves as dispatched; absent — or unreadable —
+  keeps the original failure, because "cannot tell" must not be read as "it
+  worked".
+- A **decision** (a 4xx, an in-band JSON-RPC error before anything ran) is
+  reported as made, never verified away.
+
+**Confirmations deliberately do not stream.** A confirmation request seen on the
+stream is not previewed: the answer panel works off the polled task's
+`status.message`, which is the one that can actually resume the task, and a
+preview would invite answering a question that is not yet answerable. Answers
+themselves still go over `message/send`.
+
+**What a gateway timeout does to this.** agent-platform-standalone's backstage
+and kagent controller routes set `timeouts.request: "0s"`, so there the stream
+lives as long as the turn. gazelle's `agent-platform-connectivity-ui` route
+carries its 60 s Envoy `BackendTrafficPolicy`, so a long turn's stream dies at
+60 s — which lands in the first bullet above: preview ends, poll takes over,
+nothing is reported. Streaming is strictly additive; where a door cuts it, the
+page behaves exactly as it did before streaming existed.
 
 **The sent message appears at once and vanishes by recognition.** The composer
 generates the `messageId` before sending, so the optimistic copy is dropped exactly
@@ -1629,14 +1704,12 @@ above). What remains is a separate, deeper concern:
   (see "Renaming a session"). Everything propping that up is marked
   `TODO(kagent-0.9)` and should be deleted once no installation runs v0.9.x, leaving
   the plain `PUT /api/sessions/:id`.
-- **No streaming.** The send waits out the turn and the conversation poll shows it
-  progress (see "Continuing a session"). A relayed A2A `message/stream` would feel
-  live, and the reasons it was not built are cost, not doubt:
-  `KagentClient.request` is a one-shot `fetch` + `.json()` with no pass-through mode,
-  and Backstage's global `compression()` buffers `res.write()` until `res.end()`, so
-  the relay would need the flush-wrapping `ai-chat-backend`'s router already documents.
-  Neither is hard; neither pays for itself while a turn takes tens of seconds and the
-  poll is already at 10 s.
+- **Streaming covers only the turn this tab sent.** A turn started elsewhere — a
+  Slack thread, kagent's own UI, another browser tab — still arrives through the
+  10 s poll, because following it live needs a cheap way to notice and subscribe
+  to a running task (`tasks/resubscribe` exists, but knowing _when_ to call it is
+  the poll again). Upstream work on incremental session reads
+  (giantswarm/giantswarm#37361) is the real unlock; revisit then.
 - **`A2A-Version` is still unsent**, on the send as well as the reads, so both speak
   the legacy v0 wire kagent defaults to. They have to agree, or the states will not
   line up. `TODO(kagent-0.11)`: legacy is marked for removal there, at which point both

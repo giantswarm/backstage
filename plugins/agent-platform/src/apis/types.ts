@@ -146,6 +146,37 @@ export interface KagentApi {
   ): Promise<void>;
 
   /**
+   * {@link sendMessage} over A2A `message/stream`: the same act, but the turn's
+   * events are handed to `onEvent` as kagent produces them, so the caller can
+   * show the reply while it is being written.
+   *
+   * `onEvent` receives each JSON-RPC frame's `result` verbatim — a legacy-wire
+   * `task` / `status-update` / `artifact-update` / `message` event; interpret it
+   * with `applyStreamEvent`. The stream is a preview only: everything it carries
+   * is also written to the task history the poll reads, which stays the source
+   * of truth.
+   *
+   * Resolving means the stream ended — **not** that the turn did. Gateways cut
+   * long-lived responses (60 s on a stock route) and the turn survives the cut,
+   * so a resolve without a terminal event means "still running, follow the
+   * poll", the exact contract of {@link sendMessage}'s 202.
+   *
+   * Rejections split the same way the backend splits them: a **decision** (a
+   * rejected request, an unknown agent, an in-band A2A error) throws its mapped
+   * error, while a **transport** failure — the connection died, an unexpected
+   * response shape — throws an error named `StreamTransportError`, which is the
+   * caller's cue to verify against the session history rather than report a
+   * failure that may not have happened.
+   */
+  streamMessage(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    message: { messageId: string; text: string },
+    onEvent: (result: unknown) => void,
+  ): Promise<void>;
+
+  /**
    * Answer the confirmation a session is suspended on, resuming the same task.
    *
    * **Not a variant of {@link sendMessage}.** A pending confirmation cannot be

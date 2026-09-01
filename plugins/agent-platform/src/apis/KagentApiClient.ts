@@ -20,6 +20,7 @@ import {
   normalizeSessionDetail,
   normalizeTaskList,
 } from '../lib/kagentSessionDetail';
+import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
 import { A2aTaskWire } from '../lib/kagentTaskSchema';
 import { KAGENT_AUTH_HEADER, KagentApi, KagentIdentity } from './types';
 
@@ -54,6 +55,29 @@ function upstreamError(message: string): Error {
   const error = new Error(message);
   error.name = 'UpstreamError';
   return error;
+}
+
+/**
+ * A streaming send failed in a way that says nothing about whether the message
+ * reached kagent: the connection died, a gateway answered in kagent's stead, a
+ * 5xx swallowed the outcome.
+ *
+ * The name is the contract with `useSendMessage`: this — and only this — is the
+ * failure it verifies against the session history before deciding whether
+ * anything actually went wrong, mirroring `KagentClient.dispatch`'s
+ * verify-not-report rule in the backend. Every other error is a decision and is
+ * reported as made.
+ */
+export const STREAM_TRANSPORT_ERROR_NAME = 'StreamTransportError';
+
+function streamTransportError(message: string): Error {
+  const error = new Error(message);
+  error.name = STREAM_TRANSPORT_ERROR_NAME;
+  return error;
+}
+
+export function isStreamTransportError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === STREAM_TRANSPORT_ERROR_NAME;
 }
 
 /**
@@ -364,6 +388,121 @@ export class KagentApiClient implements KagentApi {
           ? body.message
           : 'kagent reported an error while sending the message, without saying what.',
       );
+    }
+  }
+
+  async streamMessage(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    message: { messageId: string; text: string },
+    onEvent: (result: unknown) => void,
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}/messages/stream`,
+      installation,
+    );
+
+    let response: Response;
+    try {
+      response = await this.fetchApi.fetch(url, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentNamespace: agent.namespace,
+          agentName: agent.name,
+          messageId: message.messageId,
+          text: message.text,
+        }),
+      });
+    } catch (error) {
+      // The request never got an answer — a dropped connection, a door that
+      // reset it. Whether the message was dispatched is unknowable from here,
+      // which is exactly what this name tells the caller to go and check.
+      throw streamTransportError(
+        `The connection failed while sending the message: ${String(error)}`,
+      );
+    }
+
+    if (!response.ok) {
+      if (response.status >= 500) {
+        // A 502/504 is the shape a gateway cut takes when it fires before the
+        // stream opens. The backend's own 5xx looks identical from here. Either
+        // way the send may or may not have reached kagent — verify, don't
+        // report.
+        throw streamTransportError(
+          `The streaming send failed with status ${response.status}.`,
+        );
+      }
+      // 4xx: a decision — a malformed message, a rejected token, an unknown
+      // agent. Mapped to the same names as every other write, so callers
+      // classify them identically.
+      await this.throwIfNotOk(response, { badRequestIsMissing: false });
+    }
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('text/event-stream') || !response.body) {
+      // A 200 that is not a stream is something between us and the backend
+      // answering in its stead — nothing kagent decided. Verify, don't report.
+      throw streamTransportError(
+        `Expected an event stream but received '${contentType || 'no content type'}'.`,
+      );
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const sse = createSseDataDecoder();
+    let sawEvent = false;
+
+    const consumeFrame = (data: string) => {
+      const frame = readStreamFrame(data);
+      if (frame.kind === 'event') {
+        sawEvent = true;
+        onEvent(frame.result);
+        return;
+      }
+      if (frame.kind === 'error') {
+        // A2A reports failures in-band. Before any event this is kagent
+        // declining the turn — a decision, reported with its own words. After
+        // events have flowed, the turn already exists: the task history is the
+        // honest record of what became of it, so the caller reconciles through
+        // the poll rather than hearing a failure that may only have cut the
+        // preview short.
+        if (!sawEvent) {
+          throw upstreamError(
+            `The agent on ${installation} did not accept the message: ${frame.message}`,
+          );
+        }
+      }
+      // 'unreadable' frames cost their own liveness and nothing else.
+    };
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        for (const data of sse.push(decoder.decode(value, { stream: true }))) {
+          consumeFrame(data);
+        }
+      }
+      const tail = decoder.decode();
+      for (const data of [...sse.push(tail), ...sse.end()]) {
+        consumeFrame(data);
+      }
+    } catch (error) {
+      if ((error as Error)?.name === 'UpstreamError') {
+        throw error;
+      }
+      // The stream died mid-read — the gateway's request timeout is the routine
+      // cause. With events already seen the turn is dispatched and the poll
+      // finishes the job; without any, the caller verifies.
+      if (!sawEvent) {
+        throw streamTransportError(
+          `The event stream ended before the agent produced anything: ${String(error)}`,
+        );
+      }
     }
   }
 

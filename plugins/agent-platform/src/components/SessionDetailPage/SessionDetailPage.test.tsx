@@ -115,6 +115,7 @@ function idleSend(
     sendMessage: mockSendMessage,
     isSending: false,
     pending: null,
+    stream: null,
     failed: null,
     error: null,
     reset: jest.fn(),

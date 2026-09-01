@@ -1,5 +1,6 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
+import { NotFoundError } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
 import { KAGENT_AUTH_HEADER, KagentClient } from './KagentClient';
@@ -24,6 +25,7 @@ describe('createRouter', () => {
   const deleteSession = jest.fn();
   const updateSessionName = jest.fn();
   const sendMessage = jest.fn();
+  const streamMessage = jest.fn();
   const createSession = jest.fn();
   const answerConfirmation = jest.fn();
 
@@ -35,6 +37,7 @@ describe('createRouter', () => {
     deleteSession,
     updateSessionName,
     sendMessage,
+    streamMessage,
     createSession,
     answerConfirmation,
   } as unknown as KagentClient;
@@ -70,6 +73,7 @@ describe('createRouter', () => {
     deleteSession.mockReset();
     updateSessionName.mockReset();
     sendMessage.mockReset();
+    streamMessage.mockReset();
     createSession.mockReset();
     answerConfirmation.mockReset();
     app = await buildApp();
@@ -1087,6 +1091,132 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.result.status.state).toBe('failed');
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/messages/stream', () => {
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'issue-tracker',
+      messageId: 'msg-1',
+      text: 'why is the ingress failing?',
+    };
+
+    /** An upstream SSE response carrying the given frames. */
+    function sseUpstream(frames: string[]) {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) {
+            controller.enqueue(encoder.encode(frame));
+          }
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions/abc/messages/stream')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('relays the upstream SSE stream byte for byte', async () => {
+      const frames = [
+        'data: {"jsonrpc":"2.0","id":"msg-1","result":{"kind":"task","id":"task-1"}}\n\n',
+        'data: {"jsonrpc":"2.0","id":"msg-1","result":{"kind":"status-update","final":true}}\n\n',
+      ];
+      streamMessage.mockResolvedValue(sseUpstream(frames));
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      expect(response.text).toBe(frames.join(''));
+      expect(streamMessage).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { userToken: 'user-token' },
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('validates the body exactly as the non-streaming route does', async () => {
+      // One act over two transports: a message the messages route would refuse
+      // must not slip through its streaming sibling.
+      for (const body of [
+        { ...validBody, text: '   ' },
+        { ...validBody, text: 'x'.repeat(32_001) },
+        { ...validBody, agentName: undefined },
+        { ...validBody, messageId: undefined },
+      ]) {
+        const response = await post(body);
+        expect(response.status).toBe(400);
+      }
+      expect(streamMessage).not.toHaveBeenCalled();
+    });
+
+    it('requires the forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/messages/stream')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(streamMessage).not.toHaveBeenCalled();
+    });
+
+    it('maps a pre-stream failure through the ordinary error middleware', async () => {
+      // Before the upstream stream opens nothing has been dispatched, so the
+      // caller hears exactly what the non-streaming route would say.
+      streamMessage.mockRejectedValue(
+        new NotFoundError('no such agent on gazelle'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.message).toContain('no such agent');
+    });
+
+    it('ends the relay cleanly when the upstream body dies mid-stream', async () => {
+      // A gateway cutting the upstream connection must not crash the route or
+      // surface as anything: an unterminated stream is the frontend's cue to
+      // fall back to the poll.
+      // Erroring in start() would discard the queued chunk with the stream,
+      // so the failure arrives on the second pull — after the frame was read.
+      const encoder = new TextEncoder();
+      let pulls = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1;
+          if (pulls === 1) {
+            controller.enqueue(
+              encoder.encode('data: {"jsonrpc":"2.0","result":{}}\n\n'),
+            );
+            return;
+          }
+          controller.error(new Error('upstream reset'));
+        },
+      });
+      streamMessage.mockResolvedValue(
+        new Response(body, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.text).toBe('data: {"jsonrpc":"2.0","result":{}}\n\n');
     });
   });
 
