@@ -131,7 +131,9 @@ export function ActivityRow({
         <div
           id={panelId}
           role="group"
-          className={variant === 'card' ? classes.panelCard : classes.panelPlain}
+          className={
+            variant === 'card' ? classes.panelCard : classes.panelPlain
+          }
         >
           {children}
         </div>

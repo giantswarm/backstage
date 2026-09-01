@@ -288,9 +288,7 @@ export function PendingConfirmationPanel({
 
                   Markdown, because these are written for a chat client and use
                   it freely — the live examples contain bold and hard breaks. */}
-              {showQuestionText && (
-                <MessageMarkdown text={question.question} />
-              )}
+              {showQuestionText && <MessageMarkdown text={question.question} />}
 
               {question.choices &&
                 (question.multiple ? (
