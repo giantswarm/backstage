@@ -48,6 +48,9 @@ const useStyles = makeStyles(theme => ({
   heading6: { fontSize: '0.875rem', fontWeight: 400 },
   codeBlock: {
     backgroundColor: 'var(--bui-bg-neutral-1)',
+    // Outlined for the same reason as the user bubble: the light theme's
+    // neutrals are nearly the page background.
+    border: `1px solid ${theme.palette.divider}`,
     padding: theme.spacing(2),
     borderRadius: 'var(--bui-radius-3)',
     overflowX: 'auto',
@@ -103,6 +106,7 @@ const useStyles = makeStyles(theme => ({
   },
   details: {
     backgroundColor: 'var(--bui-bg-neutral-1)',
+    border: `1px solid ${theme.palette.divider}`,
     borderRadius: 'var(--bui-radius-3)',
     padding: theme.spacing(1, 2),
     margin: theme.spacing(2, 0),

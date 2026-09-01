@@ -24,6 +24,9 @@ const useStyles = makeStyles(theme => ({
   userBubble: {
     maxWidth: '85%',
     backgroundColor: 'var(--bui-bg-neutral-2)',
+    // The bui neutrals sit within a couple of points of the light theme's page
+    // background, so without an outline the bubble dissolves into the page.
+    border: `1px solid ${theme.palette.divider}`,
     padding: theme.spacing(1.25, 2),
     borderRadius: 'var(--bui-radius-3)',
   },
