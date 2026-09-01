@@ -55,6 +55,24 @@ export const sessionDetailRouteRef = createSubRouteRef({
   parent: sessionsRouteRef,
 });
 
+// The "Models" tab (`/agent-platform/models`): the kagent ModelConfigs agents
+// run on, and the platform-admin flows that manage them.
+export const modelsRouteRef = createRouteRef();
+
+export const newModelRouteRef = createSubRouteRef({
+  path: '/new',
+  parent: modelsRouteRef,
+});
+
+// One model (`/agent-platform/models/<installation>/<namespace>/<name>`), as
+// an editable form (read-only when a tool owns the CR). Three segments for the
+// same reason as `agentDetailRouteRef`: all three are part of the identity,
+// and the segment count keeps it clear of `/new`.
+export const modelDetailRouteRef = createSubRouteRef({
+  path: '/:installation/:namespace/:name',
+  parent: modelsRouteRef,
+});
+
 /**
  * muster's Tool Explorer, where an agent's Muster-provided tools can actually be
  * inspected and tried.

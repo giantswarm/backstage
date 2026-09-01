@@ -42,11 +42,16 @@ export function getK8sGetPath(
   return url.pathname;
 }
 
-export function getK8sCreatePath(gvk: CustomResourceMatcher) {
+export function getK8sCreatePath(
+  gvk: CustomResourceMatcher,
+  namespace?: string,
+) {
   const url = k8sUrl.create({
     baseUrl,
-    apiVersion: `${gvk.group}/${gvk.apiVersion}`,
+    isCore: gvk.isCore,
+    apiVersion: gvk.isCore ? undefined : `${gvk.group}/${gvk.apiVersion}`,
     kind: gvk.plural,
+    namespace,
   });
 
   return url.pathname;

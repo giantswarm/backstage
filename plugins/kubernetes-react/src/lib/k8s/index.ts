@@ -33,7 +33,12 @@ export { ImagePolicy } from './ImagePolicy';
 export { ImageRepository } from './ImageRepository';
 export { ImageUpdateAutomation } from './ImageUpdateAutomation';
 export { Kustomization } from './Kustomization';
-export { ModelConfig } from './ModelConfig';
+export {
+  deriveModelConfigReadiness,
+  ModelConfig,
+  ModelConfigConditionType,
+} from './ModelConfig';
+export type { ModelConfigReadiness } from './ModelConfig';
 export { OCIRepository } from './OCIRepository';
 export { Organization } from './Organization';
 export { ProviderConfig } from './ProviderConfig';

@@ -17,10 +17,13 @@ import {
   agentDetailRouteRef,
   agentsRouteRef,
   deploymentDetailsExternalRouteRef,
+  modelDetailRouteRef,
+  modelsRouteRef,
   musterToolExplorerExternalRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
+  newModelRouteRef,
   rootRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
@@ -78,6 +81,23 @@ const sessionsSubPage = SubPageBlueprint.make({
   },
 });
 
+// The "Models" tab: the kagent ModelConfigs agents run on — list, create,
+// edit, delete. A platform-admin capability, placed after the tabs everyone
+// uses; the muster plugin's "MCP Servers" tab follows it (registration order,
+// see App.tsx).
+const modelsSubPage = SubPageBlueprint.make({
+  name: 'models',
+  params: {
+    path: 'models',
+    title: 'Models',
+    routeRef: modelsRouteRef,
+    loader: async () => {
+      const { ModelsRouter } = await import('./components/ModelsRouter');
+      return <ModelsRouter />;
+    },
+  },
+});
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -100,7 +120,13 @@ const kagentApi = ApiBlueprint.make({
 
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
-  extensions: [agentPlatformPage, agentsSubPage, sessionsSubPage, kagentApi],
+  extensions: [
+    agentPlatformPage,
+    agentsSubPage,
+    sessionsSubPage,
+    modelsSubPage,
+    kagentApi,
+  ],
   routes: {
     root: rootRouteRef,
     agents: agentsRouteRef,
@@ -110,6 +136,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
+    models: modelsRouteRef,
+    modelDetail: modelDetailRouteRef,
+    newModel: newModelRouteRef,
   },
   // Both carry a `defaultTarget`, so they resolve without an app-config binding
   // and are simply unbound when the target plugin is disabled. Every call site
