@@ -154,14 +154,34 @@ describe('applyStreamEvent', () => {
   });
 
   describe('the Python executor flow: text chunks on status updates', () => {
-    it('accumulates non-final text into the live buffer', () => {
+    it('accumulates non-final text of one message into the open run', () => {
       const turn = fold([
         statusUpdate(agentMessage([textPart('The ingress ')])),
         statusUpdate(agentMessage([textPart('is failing because…')])),
       ]);
 
-      expect(turn.liveText).toBe('The ingress is failing because…');
+      expect(turn.live?.text).toBe('The ingress is failing because…');
       expect(turn.items).toEqual([]);
+    });
+
+    it('closes the run when a new message starts, rather than gluing them', () => {
+      // Two sentences the agent produced as two messages are two paragraphs,
+      // not one: concatenating them ran the end of the first straight into the
+      // start of the second, with no separator anywhere.
+      const turn = fold([
+        statusUpdate(agentMessage([textPart('Looking that up now.')], 'm-1')),
+        statusUpdate(agentMessage([textPart('Here is the answer.')], 'm-2')),
+      ]);
+
+      expect(turn.items).toEqual([
+        expect.objectContaining({
+          kind: 'agent-message',
+          text: 'Looking that up now.',
+          messageId: 'm-1',
+        }),
+      ]);
+      expect(turn.live?.text).toBe('Here is the answer.');
+      expect(turn.live?.messageId).toBe('m-2');
     });
 
     it('separates reasoning chunks from prose chunks', () => {
@@ -170,8 +190,20 @@ describe('applyStreamEvent', () => {
         statusUpdate(agentMessage([textPart('Checking now.')])),
       ]);
 
-      expect(turn.liveReasoning).toBe('Let me check the service.');
-      expect(turn.liveText).toBe('Checking now.');
+      // The reasoning is closed at its own position the moment prose starts, so
+      // it stays above the reply instead of being emitted after it.
+      expect(turn.items).toEqual([
+        expect.objectContaining({
+          kind: 'reasoning',
+          text: 'Let me check the service.',
+        }),
+      ]);
+      expect(turn.live).toEqual(
+        expect.objectContaining({
+          kind: 'agent-message',
+          text: 'Checking now.',
+        }),
+      );
     });
 
     it('replaces the buffers with the complete message on the final event', () => {
@@ -185,7 +217,7 @@ describe('applyStreamEvent', () => {
 
       expect(turn.isFinal).toBe(true);
       expect(turn.stateKey).toBe('completed');
-      expect(turn.liveText).toBe('');
+      expect(turn.live).toBeUndefined();
       expect(turn.items).toEqual([
         expect.objectContaining({
           kind: 'agent-message',
@@ -196,13 +228,40 @@ describe('applyStreamEvent', () => {
       ]);
     });
 
-    it('flushes the buffers when the final event carries no readable message', () => {
+    it('keeps an earlier message the terminal event does not repeat', () => {
+      // The terminal event supersedes its *own* message's chunks and nothing
+      // else. Clearing the run unconditionally erased the sentence the agent
+      // said before it went to work, which then reappeared out of nowhere when
+      // the poll caught up.
+      const turn = fold([
+        statusUpdate(agentMessage([textPart('Let me look that up.')], 'm-1')),
+        statusUpdate(agentMessage([textPart('It is four nodes.')], 'm-2'), {
+          final: true,
+          state: 'completed',
+        }),
+      ]);
+
+      expect(turn.items).toEqual([
+        expect.objectContaining({
+          kind: 'agent-message',
+          text: 'Let me look that up.',
+          messageId: 'm-1',
+        }),
+        expect.objectContaining({
+          kind: 'agent-message',
+          text: 'It is four nodes.',
+          messageId: 'm-2',
+        }),
+      ]);
+    });
+
+    it('flushes the run when the final event carries no readable message', () => {
       const turn = fold([
         statusUpdate(agentMessage([textPart('Partial answer')])),
         { kind: 'status-update', final: true, status: { state: 'completed' } },
       ]);
 
-      expect(turn.liveText).toBe('');
+      expect(turn.live).toBeUndefined();
       expect(turn.items).toEqual([
         expect.objectContaining({
           kind: 'agent-message',
@@ -226,23 +285,23 @@ describe('applyStreamEvent', () => {
       }),
     });
 
-    it('accumulates partial chunks into the live buffer', () => {
+    it('accumulates partial chunks into the open run', () => {
       const turn = fold([
         artifactUpdate([textPart('Token by ')], { partial: true }),
         artifactUpdate([textPart('token.')], { partial: true }),
       ]);
 
-      expect(turn.liveText).toBe('Token by token.');
+      expect(turn.live?.text).toBe('Token by token.');
       expect(turn.items).toEqual([]);
     });
 
-    it('emits the complete artifact as an item and clears the buffer', () => {
+    it('emits the complete artifact as an item and closes the run', () => {
       const turn = fold([
         artifactUpdate([textPart('Token by ')], { partial: true }),
         artifactUpdate([textPart('Token by token.')], { partial: false }),
       ]);
 
-      expect(turn.liveText).toBe('');
+      expect(turn.live).toBeUndefined();
       expect(turn.items).toEqual([
         expect.objectContaining({
           kind: 'agent-message',
@@ -275,14 +334,78 @@ describe('applyStreamEvent', () => {
         artifactUpdate([{ kind: 'data', data: {} }], { lastChunk: true }),
       ]);
 
-      // The sentinel closes the artifact stream; the buffer it leaves behind is
-      // cleared rather than duplicated by whatever follows.
+      // The sentinel closes the artifact stream; the run it leaves behind is
+      // dropped rather than duplicated by whatever follows.
       expect(turn.items).toEqual([]);
-      expect(turn.liveText).toBe('');
+      expect(turn.live).toBeUndefined();
     });
   });
 
   describe('tool activity', () => {
+    it('keeps a call behind the sentence that introduced it', () => {
+      // Both travel in one message, text part first — and part order is
+      // chronology. Buffering the text while the call became an item straight
+      // away inverted every such pair, so a busy turn rendered as a block of
+      // tool rows with all the prose collected underneath it.
+      const turn = fold([
+        statusUpdate(
+          agentMessage(
+            [
+              textPart('Making a live call to fetch the node list.'),
+              callPart('call-1', 'kubectl_get'),
+            ],
+            'm-1',
+          ),
+        ),
+      ]);
+
+      expect(turn.items).toEqual([
+        expect.objectContaining({
+          kind: 'agent-message',
+          text: 'Making a live call to fetch the node list.',
+          messageId: 'm-1',
+        }),
+        expect.objectContaining({
+          kind: 'tool-call',
+          toolName: 'kubectl_get',
+          messageId: 'm-1',
+        }),
+      ]);
+      expect(turn.live).toBeUndefined();
+    });
+
+    it('renders a whole turn in the order it happened', () => {
+      // The shape kagent's Python executor actually produces: a sentence and a
+      // call in one message, the response in the next, the reply in a third.
+      const turn = fold([
+        statusUpdate(
+          agentMessage(
+            [
+              textPart('Fetching the nodes.'),
+              callPart('call-1', 'kubectl_get'),
+            ],
+            'm-1',
+          ),
+        ),
+        statusUpdate(
+          agentMessage([responsePart('call-1', 'kubectl_get', 'ok')], 'm-2'),
+        ),
+        statusUpdate(agentMessage([textPart('There are seven.')], 'm-3')),
+      ]);
+
+      expect(
+        turn.items.map(item =>
+          item.kind === 'tool-call'
+            ? `tool:${item.toolName}`
+            : `text:${item.kind}`,
+        ),
+      ).toEqual(['text:agent-message', 'tool:kubectl_get']);
+      expect(turn.items[1]).toEqual(
+        expect.objectContaining({ isPending: false, result: 'ok' }),
+      );
+      expect(turn.live?.text).toBe('There are seven.');
+    });
+
     it('shows a call as pending, then folds its response in', () => {
       const afterCall = fold([
         statusUpdate(agentMessage([callPart('call-1', 'kubectl_get')])),
@@ -386,7 +509,7 @@ describe('applyStreamEvent', () => {
     ]);
 
     expect(turn.items).toEqual([]);
-    expect(turn.liveText).toBe('');
+    expect(turn.live).toBeUndefined();
   });
 
   it('skips a complete message it has already ingested', () => {

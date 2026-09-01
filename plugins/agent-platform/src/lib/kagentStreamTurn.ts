@@ -34,9 +34,10 @@ import { TimelineItem } from './kagentTimeline';
  * which is the only consumer of this wire that upstream keeps working. Both of
  * kagent's executors are covered, and they stream *differently*:
  *
- * - the **Python** executor sends response text as chunks on non-final
- *   `status-update` events, with the terminal (`final: true`) event carrying the
- *   complete message;
+ * - the **Python** executor sends response text on non-final `status-update`
+ *   events — one event per message it completes, each with its own `messageId`,
+ *   and a message's tool calls travel in that same event *after* its text parts
+ *   — with the terminal (`final: true`) event carrying the complete message;
  * - the **Go** executor sends response text as `artifact-update` events stamped
  *   `{adk,kagent}_partial: true` for chunks and `false` for the complete
  *   message, with `lastChunk` on a final (possibly empty) sentinel.
@@ -45,6 +46,23 @@ import { TimelineItem } from './kagentTimeline';
  * `function_response` data parts on `status-update` messages, complete from the
  * start — those become ordinary `tool-call` / `agent-call` items immediately.
  */
+
+/** Text still being produced, and the message whose parts it came from. */
+export type LiveRun = {
+  kind: 'agent-message' | 'reasoning';
+  /** Chunks as received; rendered trimmed, so no chunk boundary is lost. */
+  text: string;
+  /**
+   * The message these chunks belong to, when the event named one.
+   *
+   * Two jobs: it tells the terminal event "these are that same message's chunks,
+   * which its complete copy supersedes" from "these are an *earlier* message's,
+   * which must keep their place"; and it is carried onto the finished item, so
+   * the poll's copy of that message is recognised and the preview dropped.
+   */
+  messageId?: string;
+  author?: string;
+};
 
 /** The state of one streamed turn, as of the last event applied. */
 export type StreamTurn = {
@@ -68,10 +86,15 @@ export type StreamTurn = {
    * merging (as it already does for the optimistic user message).
    */
   items: TimelineItem[];
-  /** Response text still being produced — no complete message carries it yet. */
-  liveText: string;
-  /** Reasoning still being produced. */
-  liveReasoning: string;
+  /**
+   * The text run still being produced — no complete message carries it yet.
+   *
+   * At most one is ever open, and it is always **newer than every entry in**
+   * {@link items}: anything else that arrives closes it first. That invariant is
+   * what makes "items, then the open run" the chronological order, so the page
+   * can render it by appending and nothing has to be sorted.
+   */
+  live?: LiveRun;
   /** A terminal `status-update` was seen: the turn is over. */
   isFinal: boolean;
   /** Newest A2A state the stream reported, lowercased. */
@@ -87,8 +110,6 @@ export function createStreamTurn(sentMessageId: string): StreamTurn {
     sentMessageId,
     dispatched: false,
     items: [],
-    liveText: '',
-    liveReasoning: '',
     isFinal: false,
     openCalls: [],
     nextItemId: 0,
@@ -139,18 +160,23 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       const message = readAgentMessage(event.status?.message);
       if (message) {
         if (isFinal) {
-          // The terminal event carries the complete message; whatever the
-          // buffers hold is that message's earlier chunks.
+          // The terminal event carries the complete message, which supersedes
+          // that same message's chunks — but only its own. A run left open by an
+          // *earlier* message is a different sentence entirely, and dropping it
+          // would erase it from the live view until the poll restored it.
+          if (next.live && next.live.messageId === message.messageId) {
+            next.live = undefined;
+          } else {
+            flushLiveRun(next);
+          }
           ingestCompleteMessage(next, message);
-          next.liveText = '';
-          next.liveReasoning = '';
         } else {
           ingestIncrementalMessage(next, message);
         }
       } else if (isFinal) {
         // A terminal event with no readable message still ends the live view —
-        // leaving the buffers up would show "still typing" over a finished turn.
-        flushLiveBuffers(next);
+        // leaving the run open would show "still typing" over a finished turn.
+        flushLiveRun(next);
       }
       return next;
     }
@@ -178,12 +204,12 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         }
         // Tool activity can travel on artifacts too; it is complete whenever it
         // appears, whatever the partial stamp says about the text.
-        ingestDataPart(next, part, undefined);
+        ingestDataPart(next, part, undefined, undefined);
       }
 
       if (partial === true) {
         if (text) {
-          next.liveText = next.liveText + text;
+          appendLiveText(next, 'agent-message', text, undefined, undefined);
         }
         return next;
       }
@@ -191,10 +217,25 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       if (partial === false || event.lastChunk === true) {
         // The complete response message (Go executor), or the closing sentinel
         // (whose text, when present, is the complete message — Python flow).
+        // Either way it supersedes the open run, which holds this same message's
+        // chunks — so the run is replaced rather than flushed, or a partial
+        // prefix would be left standing next to the whole.
+        const live = next.live;
+        next.live = undefined;
         if (text) {
-          pushTextItem(next, 'agent-message', text, undefined, undefined);
+          // Where the run turns out to be that same complete text (the Python
+          // flow: the message arrived whole on a status-update, and this event
+          // only repeats it), it carries the `messageId` this artifact has not
+          // got — and that is what later lets the poll recognise the item.
+          const repeats = live?.text.trim() === text.trim();
+          pushTextItem(
+            next,
+            'agent-message',
+            text,
+            repeats ? live?.messageId : undefined,
+            repeats ? live?.author : undefined,
+          );
         }
-        next.liveText = '';
         return next;
       }
 
@@ -235,6 +276,9 @@ function readAgentMessage(value: unknown): A2aMessageWire | undefined {
  * merges them, data parts become call items.
  */
 function ingestCompleteMessage(turn: StreamTurn, message: A2aMessageWire) {
+  // Already rendered, part for part: the terminal event repeats a message whose
+  // text and calls the incremental pass has emitted. Every streamed item carries
+  // the id of the message it came from, so one match is the whole message.
   if (
     message.messageId &&
     turn.items.some(item => item.messageId === message.messageId)
@@ -280,15 +324,21 @@ function ingestCompleteMessage(turn: StreamTurn, message: A2aMessageWire) {
       continue;
     }
     flushRun();
-    ingestDataPart(turn, part, author);
+    ingestDataPart(turn, part, author, message.messageId);
   }
   flushRun();
 }
 
 /**
- * A non-final `status-update` message: its text parts are **chunks** of a
- * message still being produced, so they accumulate in the live buffers, while
- * its data parts are complete from the start.
+ * A non-final `status-update` message: its text parts are text still being
+ * produced, so they accumulate in the open run, while its data parts are
+ * complete from the start.
+ *
+ * **Part order is chronology.** A message that both says something and calls a
+ * tool carries the text part first, so the open run is closed before the call
+ * becomes an item — otherwise the call overtakes the sentence that introduced
+ * it, which is what the whole turn then looks like: every tool row bunched
+ * above every sentence.
  */
 function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
   const author = readKagentMetadataString(message.metadata, 'author');
@@ -300,14 +350,16 @@ function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
     }
     const text = readPartText(part);
     if (text !== undefined) {
-      if (isThoughtPart(part)) {
-        turn.liveReasoning = turn.liveReasoning + text;
-      } else {
-        turn.liveText = turn.liveText + text;
-      }
+      appendLiveText(
+        turn,
+        isThoughtPart(part) ? 'reasoning' : 'agent-message',
+        text,
+        message.messageId,
+        author,
+      );
       continue;
     }
-    ingestDataPart(turn, part, author);
+    ingestDataPart(turn, part, author, message.messageId);
   }
 }
 
@@ -324,6 +376,7 @@ function ingestDataPart(
   turn: StreamTurn,
   part: NonNullable<ReturnType<typeof parsePart>>,
   author: string | undefined,
+  messageId: string | undefined,
 ) {
   if (isFunctionResponsePart(part)) {
     const response = readFunctionResponse(part);
@@ -362,6 +415,7 @@ function ingestDataPart(
       result: response.response,
       isPending: false,
       author,
+      messageId,
     });
     return;
   }
@@ -374,7 +428,6 @@ function ingestDataPart(
     return;
   }
   const effective = unwrapProxiedCall(call);
-  const itemIndex = turn.items.length;
   pushCallItem(turn, {
     name: effective.name,
     via: effective.via,
@@ -382,34 +435,54 @@ function ingestDataPart(
     result: undefined,
     isPending: true,
     author,
+    messageId,
   });
   if (call.id) {
+    // Read after the push, not before: `pushCallItem` closes any open text run
+    // first, so the call does not land at the index it would have without one.
+    const itemIndex = turn.items.length - 1;
     turn.openCalls = [...turn.openCalls, { callId: call.id, itemIndex }];
   }
 }
 
-/** Move whatever the live buffers hold into completed items. */
-function flushLiveBuffers(turn: StreamTurn) {
-  if (turn.liveReasoning.trim()) {
-    pushTextItem(
-      turn,
-      'reasoning',
-      turn.liveReasoning.trim(),
-      undefined,
-      undefined,
-    );
+/**
+ * Accumulate a chunk into the open run, starting one if none is open.
+ *
+ * A run ends where its text stops being one continuous thing: reasoning giving
+ * way to a reply, or a new message. Either closes the run at its own position,
+ * which is what stops two consecutive messages being rendered glued into one
+ * paragraph.
+ */
+function appendLiveText(
+  turn: StreamTurn,
+  kind: 'agent-message' | 'reasoning',
+  text: string,
+  messageId: string | undefined,
+  author: string | undefined,
+) {
+  const live = turn.live;
+  if (live && (live.kind !== kind || live.messageId !== messageId)) {
+    flushLiveRun(turn);
   }
-  if (turn.liveText.trim()) {
-    pushTextItem(
-      turn,
-      'agent-message',
-      turn.liveText.trim(),
-      undefined,
-      undefined,
-    );
+  const open = turn.live;
+  turn.live = open
+    ? { ...open, text: open.text + text }
+    : { kind, text, messageId, author };
+}
+
+/**
+ * Close the open run as a completed item, at the position it holds now.
+ *
+ * Called before anything else is appended to {@link StreamTurn.items} — that is
+ * the whole of how the preview stays in order.
+ */
+function flushLiveRun(turn: StreamTurn) {
+  const live = turn.live;
+  if (!live) {
+    return;
   }
-  turn.liveText = '';
-  turn.liveReasoning = '';
+  turn.live = undefined;
+  pushTextItem(turn, live.kind, live.text, live.messageId, live.author);
 }
 
 function pushTextItem(
@@ -444,6 +517,15 @@ function pushTextItem(
   turn.nextItemId += 1;
 }
 
+/**
+ * Append a call item, closing whatever text was still open first.
+ *
+ * The close lives here rather than at the call sites because this is the exact
+ * moment the ordering matters: a call item takes a position, and the text it
+ * follows must have taken its own already. Data parts that yield no item — a
+ * response folded into its pending call, ADK plumbing, an artifact sentinel's
+ * placeholder — leave the run alone, because nothing overtook it.
+ */
 function pushCallItem(
   turn: StreamTurn,
   input: {
@@ -453,12 +535,15 @@ function pushCallItem(
     result: unknown;
     isPending: boolean;
     author: string | undefined;
+    messageId: string | undefined;
   },
 ) {
+  flushLiveRun(turn);
   const base = {
     id: `stream:${turn.nextItemId}`,
     taskIndex: 0,
     author: input.author,
+    messageId: input.messageId,
     args: input.args,
     result: input.result,
     isPending: input.isPending,

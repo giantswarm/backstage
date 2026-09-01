@@ -274,8 +274,7 @@ export function SessionDetailPage() {
       pending &&
       !timeline.items.some(item => item.messageId === pending.messageId);
     const streamVisible =
-      stream &&
-      (stream.items.length > 0 || stream.liveText || stream.liveReasoning);
+      stream && (stream.items.length > 0 || Boolean(stream.live));
 
     if (!pendingVisible && !streamVisible) {
       return timeline;
@@ -315,20 +314,21 @@ export function SessionDetailPage() {
         }
         items.push({ ...item, taskIndex });
       }
-      if (stream.liveReasoning.trim()) {
+      // Appended, never sorted: the reducer keeps the open run newer than every
+      // completed item, so the end of the list is where it belongs.
+      const live = stream.live;
+      if (
+        live &&
+        live.text.trim() &&
+        !(live.messageId && polled.has(live.messageId))
+      ) {
         items.push({
-          kind: 'reasoning' as const,
-          id: 'stream:live-reasoning',
+          kind: live.kind,
+          id: 'stream:live',
           taskIndex,
-          text: stream.liveReasoning,
-        });
-      }
-      if (stream.liveText.trim()) {
-        items.push({
-          kind: 'agent-message' as const,
-          id: 'stream:live-text',
-          taskIndex,
-          text: stream.liveText,
+          messageId: live.messageId,
+          author: live.author,
+          text: live.text.trim(),
         });
       }
     }
@@ -380,9 +380,7 @@ export function SessionDetailPage() {
   // Someone scrolled up through the history must not have the page yanked away
   // under them by every arriving token.
   const streamTick = send.stream
-    ? send.stream.items.length +
-      send.stream.liveText.length +
-      send.stream.liveReasoning.length
+    ? send.stream.items.length + (send.stream.live?.text.length ?? 0)
     : 0;
   useEffect(() => {
     if (streamTick === 0) {

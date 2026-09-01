@@ -443,6 +443,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
               at,
               author,
               taskIndex,
+              messageId: message.messageId,
               name: response.name,
               args: undefined,
               result: response.response,
@@ -514,6 +515,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             at,
             author,
             taskIndex,
+            messageId: message.messageId,
             name: effective.name,
             args: effective.args,
             result: undefined,
@@ -550,6 +552,12 @@ function makeCallItem(input: {
   at?: string;
   author?: string;
   taskIndex: number;
+  /**
+   * The message the call travelled in. Carried so a streamed preview of this
+   * same call — which knows the id too — is recognised once the poll delivers
+   * it, and dropped instead of rendering a second time beside it.
+   */
+  messageId?: string;
   name: string | undefined;
   args: unknown;
   result: unknown;
