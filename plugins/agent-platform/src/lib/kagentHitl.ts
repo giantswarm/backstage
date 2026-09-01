@@ -6,6 +6,7 @@ import {
 import { A2aTaskWire } from './kagentTaskSchema';
 import {
   AWAITING_INPUT_STATES,
+  describeSessionState,
   findNewestStatefulTaskIndex,
 } from './kagentSessionState';
 
@@ -123,8 +124,14 @@ export function readPendingConfirmation(
   }
 
   const task = tasks[index];
-  const state = task.status?.state;
-  if (typeof state !== 'string' || !AWAITING_INPUT_STATES.has(state)) {
+  // The **normalised** key, never the raw string. `describeSessionState` lowercases,
+  // and `SessionState.raw` carries a warning saying exactly this: comparing against
+  // the raw value is a bug waiting to happen. A task reporting `Input-Required`
+  // would take the page's awaiting-input branch (which reads `state.key`) while
+  // failing here, so the page would claim the request could not be read on a
+  // confirmation this could have rendered perfectly.
+  const state = describeSessionState(task.status?.state)?.key;
+  if (!state || !AWAITING_INPUT_STATES.has(state)) {
     return undefined;
   }
 
@@ -171,12 +178,25 @@ export function readPendingConfirmation(
           ? proposedRecord.name
           : undefined;
       const isQuestion = toolName === ASK_USER_TOOL_NAME;
+      const questions = isQuestion ? readQuestions(proposedRecord?.args) : [];
+
+      // An `ask_user` whose questions we could not read is **not** answerable, and
+      // must not degrade into the approval UI. `readQuestions` returns `[]` for any
+      // shape it does not recognise, and an `input` with no questions renders as
+      // "the agent is asking permission to run ask_user" with an Approve button —
+      // which sends a decision carrying no `ask_user_answers`. kagent treats that as
+      // "not answered" rather than an error, so it resumes the task with the
+      // question silently dropped: precisely the strand this whole feature exists to
+      // prevent, reached through the fallback path.
+      if (isQuestion && questions.length === 0) {
+        return undefined;
+      }
 
       return {
         taskId,
         asks: isQuestion ? 'input' : 'approval',
         toolName,
-        questions: isQuestion ? readQuestions(proposedRecord?.args) : [],
+        questions,
       };
     }
 

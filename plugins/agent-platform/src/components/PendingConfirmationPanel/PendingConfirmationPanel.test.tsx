@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { PendingConfirmation } from '../../lib/kagentHitl';
+import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { PendingConfirmationPanel } from './PendingConfirmationPanel';
 
 const onAnswer = jest.fn();
@@ -352,6 +353,144 @@ describe('PendingConfirmationPanel', () => {
 
       expect(sendButton()).toBeDisabled();
     });
+  });
+
+  describe('when the agent asks a follow-up', () => {
+    // Same task id on purpose: answering *resumes* the task, so a task that
+    // suspends again to ask the next question keeps its id. Keying a reset on the
+    // id would therefore not fire here.
+    const followUp: PendingConfirmation = {
+      taskId: 'task-1',
+      asks: 'input',
+      toolName: 'ask_user',
+      questions: [
+        {
+          question: 'Delete the namespace?',
+          choices: ['yes', 'no'],
+          multiple: false,
+        },
+      ],
+    };
+
+    function rerenderWith(
+      pending: PendingConfirmation,
+      rerender: ReturnType<typeof renderPanel>['rerender'],
+    ) {
+      rerender(
+        <PendingConfirmationPanel
+          pending={pending}
+          isAnswering={false}
+          onAnswer={onAnswer}
+        />,
+      );
+    }
+
+    it('clears the previous answer instead of carrying it into the new question', async () => {
+      // The panel does not unmount between two consecutive confirmations —
+      // `bottomControl` renders the same element type throughout, so React
+      // reconciles. Without a reset the old answer survives: it matches none of the
+      // new choices so nothing looks selected, yet the question counts as answered
+      // and Send would submit the *previous* answer against the *new* question.
+      const { rerender } = renderPanel(singleChoice);
+      await userEvent.click(screen.getByLabelText('A rideable bike'));
+      expect(sendButton()).toBeEnabled();
+
+      rerenderWith(followUp, rerender);
+
+      expect(sendButton()).toBeDisabled();
+    });
+
+    it('clears typed words too', async () => {
+      const { rerender } = renderPanel(singleChoice);
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Answer' }),
+        'a cardboard unicycle',
+      );
+
+      rerenderWith(followUp, rerender);
+
+      expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveValue('');
+    });
+
+    it('answers the new question, not the old one', async () => {
+      const { rerender } = renderPanel(singleChoice);
+      await userEvent.click(screen.getByLabelText('A rideable bike'));
+      rerenderWith(followUp, rerender);
+
+      await userEvent.click(screen.getByLabelText('no'));
+      await userEvent.click(sendButton());
+
+      expect(onAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ answers: [['no']] }),
+      );
+    });
+
+    it('does not restore a failed attempt from the previous question', async () => {
+      // `confirmation.failed` outlives the question it belonged to, so a reset has
+      // to treat any outstanding restore as already consumed.
+      const { rerender } = renderPanel(singleChoice);
+
+      rerender(
+        <PendingConfirmationPanel
+          pending={followUp}
+          isAnswering={false}
+          onAnswer={onAnswer}
+          restore={{
+            messageId: 'msg-old',
+            taskId: 'task-1',
+            decision: 'approve',
+            answers: [['A rideable bike']],
+          }}
+        />,
+      );
+
+      expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveValue('');
+    });
+  });
+
+  it('restores a failed attempt that arrives after mount', async () => {
+    // The runtime path, and the one the original seeding missed: `restore` is
+    // `confirmation.failed`, which is null at mount and only becomes set once an
+    // attempt has failed — with the panel still mounted throughout. A `useState`
+    // initializer therefore never saw it.
+    const { rerender } = renderPanel(singleChoice);
+    expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveValue('');
+
+    rerender(
+      <PendingConfirmationPanel
+        pending={singleChoice}
+        isAnswering={false}
+        onAnswer={onAnswer}
+        error="kagent refused the answer"
+        restore={{
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['A rideable bike']],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveValue(
+      'A rideable bike',
+    );
+  });
+
+  it('refuses an answer over the message limit and says how long it is', async () => {
+    // Sent as the message's `text`, which the route rejects above the same limit —
+    // so without an up-front bound this came back as a raw validator message for a
+    // limit the panel never mentioned.
+    renderPanel(freeText);
+
+    await userEvent.click(screen.getByRole('textbox', { name: 'Answer' }));
+    await userEvent.paste('x'.repeat(MESSAGE_TEXT_MAX_LENGTH + 1));
+
+    expect(sendButton()).toBeDisabled();
+    expect(
+      screen.getByText(
+        `That answer is ${MESSAGE_TEXT_MAX_LENGTH + 1} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('warns when the question may not have been put to this user', () => {

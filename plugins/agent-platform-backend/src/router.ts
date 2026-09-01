@@ -446,6 +446,14 @@ export async function createRouter(
    * be wrong: a `sub` that differs from the one kagent recorded (empty list),
    * and a controller running in `unsecure` mode (shared list).
    */
+  router.get('/kagent/me', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.getMe({
+      userToken: readUserToken(req, { required: false }),
+    });
+    res.json(result);
+  });
+
   /**
    * Answer the confirmation a session is suspended on.
    *
@@ -546,14 +554,6 @@ export async function createRouter(
       }
       res.status(202).json({ status: 'pending' });
     }
-  });
-
-  router.get('/kagent/me', async (req, res) => {
-    const { client } = resolveInstallation(req);
-    const result = await client.getMe({
-      userToken: readUserToken(req, { required: false }),
-    });
-    res.json(result);
   });
 
   return router;

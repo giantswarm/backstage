@@ -3,6 +3,7 @@ import {
   KeyboardEvent,
   useCallback,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -145,6 +146,22 @@ export function NewSessionComposer({
     defaultAgent?.id,
   );
 
+  // Adopt the default when it *arrives*, not only if it happened to be resolved at
+  // mount. The fleet-wide list resolves progressively — `useAgents().isLoading`
+  // goes false as soon as the first installation answers, while `isLoadingMore`
+  // is still true for the rest — so a remembered agent on a slower installation is
+  // routinely absent at mount and shows up a moment later. Seeding once meant the
+  // picker still said "Select an agent", defeating the whole point of remembering.
+  //
+  // Render-phase, and gated on the user not having touched the picker, so this can
+  // never overwrite a deliberate choice — including a deliberate *clearing*.
+  const touched = useRef(false);
+  const adopted = useRef(defaultAgent?.id);
+  if (!touched.current && defaultAgent && adopted.current !== defaultAgent.id) {
+    adopted.current = defaultAgent.id;
+    setSelectedId(defaultAgent.id);
+  }
+
   const selectedAgent = useMemo(
     () => agents.find(agent => agent.id === selectedId),
     [agents, selectedId],
@@ -280,9 +297,10 @@ export function NewSessionComposer({
                 icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
                 options={options}
                 selectedKey={selectedId ?? null}
-                onSelectionChange={key =>
-                  setSelectedId(key ? String(key) : undefined)
-                }
+                onSelectionChange={key => {
+                  touched.current = true;
+                  setSelectedId(key ? String(key) : undefined);
+                }}
                 placeholder="Select an agent"
                 searchable={agents.length > SEARCHABLE_THRESHOLD}
                 isDisabled={isStarting}

@@ -243,6 +243,66 @@ describe('NewSessionComposer', () => {
       expect(description).toContain('…');
     });
 
+    describe('a default that resolves after mount', () => {
+      // The fleet-wide list resolves progressively: `useAgents().isLoading` goes
+      // false as soon as the *first* installation answers, so a remembered agent on
+      // a slower installation is routinely absent when the composer mounts.
+      function rerenderWith(
+        rerender: ReturnType<typeof renderComposer>['rerender'],
+        props: Partial<Parameters<typeof NewSessionComposer>[0]>,
+      ) {
+        rerender(
+          <NewSessionComposer
+            agents={[sre]}
+            isStarting={false}
+            onStart={onStart}
+            {...props}
+          />,
+        );
+      }
+
+      it('adopts it when it arrives, rather than ignoring it', () => {
+        // Seeding `selectedId` only at mount left the picker saying "Select an
+        // agent" whenever the remembered agent was not on the fastest installation
+        // — defeating the whole point of remembering one.
+        const { rerender } = renderComposer({
+          agents: [],
+          defaultAgent: undefined,
+        });
+
+        rerenderWith(rerender, { agents: [sre], defaultAgent: sre });
+
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
+      });
+
+      it('does not overwrite an agent the user already chose', async () => {
+        renderComposer({ agents: [sre, platform] });
+        await userEvent.click(agentPicker());
+        await userEvent.click(
+          screen.getByRole('option', { name: /Platform Agent/ }),
+        );
+
+        // A late-arriving default must lose to a deliberate choice.
+        expect(agentPicker()).toHaveTextContent('Platform Agent');
+      });
+
+      it('does not undo a deliberate clearing', async () => {
+        const { rerender } = renderComposer({
+          agents: [sre],
+          defaultAgent: sre,
+        });
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
+
+        // Touching the picker at all marks the selection as the user's, so a
+        // re-resolved default cannot reinstate itself.
+        await userEvent.click(agentPicker());
+        await userEvent.keyboard('{Escape}');
+        rerenderWith(rerender, { agents: [sre], defaultAgent: sre });
+
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
+      });
+    });
+
     it('offers a non-ready agent disabled, with the reason', async () => {
       // Shown rather than omitted: an agent missing from the list is
       // indistinguishable from one that never existed.

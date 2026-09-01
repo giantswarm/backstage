@@ -214,6 +214,62 @@ describe('readPendingConfirmation', () => {
     });
   });
 
+  describe('a request we cannot read', () => {
+    it('offers nothing for an ask_user whose questions are unreadable', () => {
+      // Must not degrade into the approval UI. An `input` with no questions renders
+      // as "the agent is asking permission to run ask_user" with an Approve button,
+      // and approving sends a decision carrying no answers — which kagent treats as
+      // "not answered", resuming the task with the question silently dropped. That
+      // is the exact strand this feature exists to prevent.
+      const pending = readPendingConfirmation([
+        task('task-1', 'input-required', [
+          confirmationPart({ name: 'ask_user', args: { questions: 'nope' } }),
+        ]),
+      ]);
+
+      expect(pending).toBeUndefined();
+    });
+
+    it('offers nothing for an ask_user with an empty questions array', () => {
+      expect(
+        readPendingConfirmation([
+          task('task-1', 'input-required', [
+            confirmationPart({ name: 'ask_user', args: { questions: [] } }),
+          ]),
+        ]),
+      ).toBeUndefined();
+    });
+
+    it('still offers a tool approval, which legitimately has no questions', () => {
+      // The guard is specific to `ask_user`: an approval never carries questions
+      // and must keep working.
+      expect(
+        readPendingConfirmation([
+          task('task-1', 'input-required', [
+            confirmationPart({ name: 'delete_file', args: { path: '/tmp/x' } }),
+          ]),
+        ]),
+      ).toMatchObject({ asks: 'approval' });
+    });
+  });
+
+  it('matches the state case-insensitively, as the state badge does', () => {
+    // `describeSessionState` lowercases into `key`, and every other consumer
+    // compares that. Comparing the raw string here would make the page take its
+    // awaiting-input branch while this returned nothing, so it would claim the
+    // request could not be read on a confirmation it could render perfectly.
+    expect(
+      readPendingConfirmation([
+        task('task-1', 'Input-Required', [
+          confirmationPart({
+            name: 'ask_user',
+            args: { questions: [{ question: 'Which cluster?' }] },
+          }),
+        ]),
+      ])?.taskId,
+    ).toBe('task-1');
+  });
+
   it('treats auth-required as waiting too', () => {
     // Both states suspend the task on a human; `AWAITING_INPUT_STATES` is shared
     // with the state badge so the two cannot drift.

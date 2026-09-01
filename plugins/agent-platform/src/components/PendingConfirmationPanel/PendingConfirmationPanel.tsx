@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -112,12 +112,57 @@ export function PendingConfirmationPanel({
     pending.questions.map(() => []),
   );
   const [typed, setTyped] = useState<string[]>(() =>
-    pending.questions.map(
-      (_, index) => restore?.answers?.[index]?.join(', ') ?? '',
-    ),
+    pending.questions.map(() => ''),
   );
-  const [reason, setReason] = useState(restore?.rejectionReason ?? '');
+  const [reason, setReason] = useState('');
   const [showReason, setShowReason] = useState(false);
+
+  /**
+   * What is being asked, as a value that changes when the question does.
+   *
+   * **Not `pending.taskId`**: answering resumes the *same* task, so a task that
+   * suspends again to ask a follow-up keeps its id. The id is therefore stable
+   * across exactly the transition this needs to detect.
+   */
+  const questionSignature = JSON.stringify(
+    pending.questions.map(question => [
+      question.question,
+      question.choices ?? [],
+      question.multiple,
+    ]),
+  );
+
+  // Reset when the question changes, in the render phase — the panel does **not**
+  // unmount between two consecutive confirmations. `bottomControl` keeps rendering
+  // the same element type, so React reconciles rather than remounts, and without
+  // this the previous answer survives into the new question: its values match none
+  // of the new choices so nothing looks selected, yet the answer counts as complete
+  // and `Send answer` submits the *old* answer against the *new* question.
+  const seededFor = useRef(questionSignature);
+  const restoredId = useRef<string | undefined>(undefined);
+  if (seededFor.current !== questionSignature) {
+    seededFor.current = questionSignature;
+    // A failed attempt at the previous question must not be restored into this
+    // one, so it counts as already consumed.
+    restoredId.current = restore?.messageId;
+    setChosen(pending.questions.map(() => []));
+    setTyped(pending.questions.map(() => ''));
+    setReason('');
+    setShowReason(false);
+  } else if (restore && restoredId.current !== restore.messageId) {
+    // Applied here rather than from a `useState` initializer, which only ever runs
+    // at mount — and `restore` is null then, because it is the *previous attempt's*
+    // failure and the panel stays mounted across it. Seeding from it at mount was
+    // dead code that only ever "worked" in a test that rendered a fresh panel with
+    // `restore` already set. Same render-phase pattern `SessionComposer` uses.
+    restoredId.current = restore.messageId;
+    setTyped(
+      pending.questions.map(
+        (_, index) => restore.answers?.[index]?.join(', ') ?? '',
+      ),
+    );
+    setReason(restore.rejectionReason ?? '');
+  }
 
   const setChoices = (index: number, values: string[]) =>
     setChosen(current =>
@@ -135,13 +180,25 @@ export function PendingConfirmationPanel({
     return [...(chosen[index] ?? []), ...(words ? [words] : [])];
   });
 
+  /** The words to show in the transcript. Never reaches the model — see above. */
+  const answerText = answers
+    .map(entry => entry.join(', '))
+    .filter(Boolean)
+    .join('\n');
+
+  // Bounded up front, as both composers bound theirs. This text is sent as the
+  // message's `text`, which the route rejects above the same limit — so without
+  // this a pasted log excerpt left Send enabled and came back as a raw validator
+  // message for a limit the panel had never mentioned.
+  const isAnswerTooLong = answerText.length > MESSAGE_TEXT_MAX_LENGTH;
+
   // Every question must have something. kagent treats a short or empty entry as
   // "not answered" rather than an error, so submitting a partial set would resume
   // the task with a question silently dropped — the agent then continues on a
   // premise nobody supplied. Declining is the way to answer nothing.
   const isComplete = answers.every(entry => entry.length > 0);
   const isReasonTooLong = reason.trim().length > MESSAGE_TEXT_MAX_LENGTH;
-  const canSubmit = isComplete && !isReasonTooLong && !isAnswering;
+  const canSubmit = isComplete && !isAnswerTooLong && !isAnswering;
 
   // "Approve" for a permission request, "Send answer" for a question: the two read
   // completely differently, and calling a question's reply an approval would
@@ -153,11 +210,14 @@ export function PendingConfirmationPanel({
     submitLabel = isQuestion ? 'Send answer' : 'Approve';
   }
 
-  /** The words to show in the transcript. Never reaches the model — see above. */
-  const answerText = answers
-    .map(entry => entry.join(', '))
-    .filter(Boolean)
-    .join('\n');
+  let caption: string;
+  if (isAnswerTooLong) {
+    caption = `That answer is ${answerText.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
+  } else if (isReasonTooLong) {
+    caption = `That reason is ${reason.trim().length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
+  } else {
+    caption = 'Answering resumes the agent where it stopped.';
+  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -292,9 +352,7 @@ export function PendingConfirmationPanel({
 
         <Flex align="center" justify="between" gap="2">
           <Text variant="body-small" color="secondary">
-            {isReasonTooLong
-              ? `That reason is ${reason.trim().length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
-              : 'Answering resumes the agent where it stopped.'}
+            {caption}
           </Text>
           <Flex align="center" gap="2">
             <Button
