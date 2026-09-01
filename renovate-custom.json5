@@ -101,6 +101,27 @@
       allowedVersions: '<1.3.41',
     },
     {
+      // Hold @assistant-ui/tap below 0.9.13. tap is assistant-ui's internal
+      // runtime, released in lockstep with the monorepo: 0.9.13 shipped with
+      // @assistant-ui/react 0.15.15, so it and everything after it are built
+      // for the 0.15 line the core/react holds above keep us off. On our 0.14
+      // line its new commit-time re-check in useSyncExternalStore throws
+      // "Maximum update depth exceeded. The result of getSnapshot should be
+      // cached to avoid an infinite loop" and the frontend never renders.
+      //
+      // The exact version in root package.json's `resolutions` does not hold
+      // this on its own -- a pin is still an update target, and Renovate has
+      // bumped past it (#2176 undid the #2136 pin). This rule is what stops the
+      // PR being raised.
+      //
+      // Upstream assistant-ui/assistant-ui#6133 is open and its fix PR #6138
+      // was closed unmerged, so 0.9.14/0.9.15 carry the same guard. Lift with
+      // the core/react holds above, in the PR that moves the frontend to the
+      // assistant-ui 0.15 / ai@7 line.
+      matchPackageNames: ['@assistant-ui/tap'],
+      allowedVersions: '<0.9.13',
+    },
+    {
       groupName: 'backstage packages',
       matchPackageNames: ['@backstage{/,}**'],
     },
