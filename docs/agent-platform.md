@@ -1207,13 +1207,30 @@ built from the agent's **technical** name (its `Agent` resource name), never its
 annotation and never by decoding a session's `agent_id` — that encoding replaces every
 `-` with `_` and cannot be reversed.
 
-The picker lists every agent the fleet offers, grouped by installation when there is
-more than one, each with the same deterministic avatar the sessions table and the
-agent's own page show. Past eight agents it gains a search box. **Only ready agents can
-be chosen**: the rest are listed but disabled, with their readiness message as the
-reason — truncated to one short line, because a `notAccepted` agent's message is the
-controller's raw reconcile error, and a real one on gazelle is a 400-character
-multi-line Postgres dial failure that would push every other agent off the screen. Offering them would create a session whose
+The picker lists the agents that can actually be started — **ready ones only** —
+grouped by installation when there is more than one, each with the same deterministic
+avatar the sessions table and the agent's own page show. Past eight agents it gains a
+search box, and descriptions are truncated to one short line so a wordy one cannot push
+the rest off the screen.
+
+Non-ready agents are **omitted rather than shown disabled**. A picker is for choosing,
+and an entry that cannot be chosen is noise in it; readiness and its reason belong on
+the Agents tab and each agent's own page, which is where someone goes to find out why
+an agent is unavailable. `isStartableAgent` is exported and shared, so the picker's
+filter and the callers deciding whether to _offer_ a picker at all cannot disagree —
+otherwise a page would either show an empty dropdown or withhold a usable one.
+
+When there is exactly one agent to offer it is preselected and **the control is
+disabled**: a dropdown with a single item is not a choice. It still names the agent,
+which is the point inside the agent-page dialog — it confirms the target before a paid
+turn is committed to it. `InstallationSelect` makes the same call for a
+one-installation fleet. A lone _non-ready_ agent is never selected this way, or Start
+would be offered for something that fails at the first message.
+
+The sessions list distinguishes three reasons for having no composer at all, because
+they send the reader to different places: nothing could be read (see the warning),
+nothing is deployed (deploy one), or something is deployed but none of it is ready (the
+Agents tab says why). Offering them would create a session whose
 first turn then fails at tool-listing, with nothing on screen explaining why — and
 withholding them silently would make a broken agent indistinguishable from one that
 never existed. When the fleet offers no agent at all, the composer is replaced by a

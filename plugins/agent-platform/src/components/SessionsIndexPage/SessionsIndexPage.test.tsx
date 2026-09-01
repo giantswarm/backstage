@@ -60,6 +60,13 @@ function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
 }
 
 const sre = agentRow();
+// A second ready agent, so the picker offers a real choice: with one agent it is
+// preselected and disabled, which would make "the chosen agent" meaningless here.
+const issues = agentRow({
+  id: 'gazelle/kagent/issue-tracker',
+  name: 'Issue Tracker',
+  technicalName: 'issue-tracker',
+});
 
 const loadedSessions: SessionsContextValue = {
   rows: [],
@@ -71,7 +78,7 @@ const loadedSessions: SessionsContextValue = {
 };
 
 const loadedAgents: AgentsContextValue = {
-  rows: [sre],
+  rows: [sre, issues],
   isLoading: false,
   isLoadingMore: false,
   hasInstallations: true,
@@ -151,6 +158,60 @@ describe('SessionsIndexPage', () => {
         screen.getByText(
           'No agents could be read, so there is none to start a session with. See the warning below.',
         ),
+      ).toBeInTheDocument();
+    });
+
+    it('distinguishes deployed-but-not-ready from nothing deployed', async () => {
+      // Different places to look: "none deployed" means deploy one, "none ready"
+      // means go and read why on the Agents tab. Conflating them sends the user to
+      // the wrong screen.
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [
+          agentRow({
+            readiness: 'notReady',
+            readinessMessage: '0/1 pods ready',
+          }),
+          agentRow({ id: 'gazelle/kagent/other', readiness: 'notAccepted' }),
+        ],
+      });
+      await render();
+
+      expect(
+        screen.getByText(
+          'None of the 2 agents on the fleet are ready, so there is none to start a session with. The Agents tab says why.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('textbox', { name: 'Prompt' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('reads naturally when the fleet holds exactly one unready agent', async () => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [agentRow({ readiness: 'notReady' })],
+      });
+      await render();
+
+      expect(
+        screen.getByText(
+          'The only agent on the fleet is not ready, so there is none to start a session with. The Agents tab says why.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('offers the composer when at least one agent is ready', async () => {
+      // The other half of the same rule: one usable agent behind any number of
+      // unusable ones must not withhold the composer.
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [agentRow({ readiness: 'notReady' }), issues],
+      });
+      await render();
+
+      expect(
+        screen.getByRole('textbox', { name: 'Prompt' }),
       ).toBeInTheDocument();
     });
 

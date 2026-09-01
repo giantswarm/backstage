@@ -44,6 +44,14 @@ const broken = agentRow({
   readiness: 'notReady',
   readinessMessage: '0/1 pods are ready',
 });
+// A second ready agent on gazelle, so a test can exercise a real choice without
+// dragging in a second installation's group heading.
+const issues = agentRow({
+  id: 'gazelle/kagent/issue-tracker',
+  name: 'Issue Tracker',
+  technicalName: 'issue-tracker',
+  description: 'Manages GitHub issues',
+});
 
 function renderComposer(
   props: Partial<Parameters<typeof NewSessionComposer>[0]> = {},
@@ -114,7 +122,8 @@ describe('NewSessionComposer', () => {
     it('is disabled with a prompt but no agent selected', async () => {
       // Unlike the prototype there is no canonical default agent, and a wrong
       // guess starts a paid turn against something that can act on a cluster.
-      renderComposer();
+      // Two agents, because a sole agent is preselected — see the picker tests.
+      renderComposer({ agents: [sre, issues] });
 
       await userEvent.type(field(), 'why is the ingress failing?');
 
@@ -211,35 +220,45 @@ describe('NewSessionComposer', () => {
       expect(agentPicker()).toHaveTextContent('Select an agent');
     });
 
-    it('ignores a default that is not in the list', async () => {
-      // A remembered agent can have been deleted since it was last used.
+    it('ignores a default that is not on offer', async () => {
+      // A remembered agent can have been deleted, stopped being ready, or simply
+      // not have arrived yet from a slower installation.
+      renderComposer({ agents: [sre, issues], defaultAgent: platform });
+
+      await userEvent.type(field(), 'check');
+
+      expect(agentPicker()).toHaveTextContent('Select an agent');
+      expect(startButton()).toBeDisabled();
+    });
+
+    it('falls back to a sole agent when the default is not on offer', async () => {
+      // Otherwise this is a dead end: one agent available, none selected, and the
+      // picker disabled because there is nothing to choose.
       renderComposer({ agents: [sre], defaultAgent: platform });
 
       await userEvent.type(field(), 'check');
 
-      expect(startButton()).toBeDisabled();
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
+      expect(startButton()).toBeEnabled();
     });
 
     it('bounds a description to one short line', async () => {
-      // A `notAccepted` agent's readinessMessage is the controller's raw reconcile
-      // error — a real one on gazelle is a 400-character multi-line Postgres dial
-      // failure, which would push every other agent off the screen.
-      const unwell = agentRow({
-        id: 'gazelle/kagent/unwell-agent',
-        name: 'Unwell Agent',
-        technicalName: 'unwell-agent',
-        readiness: 'notAccepted',
-        readinessMessage: `failed to upsert agent:\n\tdial error: ${'x'.repeat(400)}`,
+      // Descriptions are free text and a couple on gazelle run to several
+      // sentences, which would push the other options off the screen.
+      const chatty = agentRow({
+        id: 'gazelle/kagent/chatty-agent',
+        name: 'Chatty Agent',
+        technicalName: 'chatty-agent',
+        description: `First sentence.\nSecond one, at length: ${'x'.repeat(400)}`,
       });
-      renderComposer({ agents: [sre, unwell] });
+      renderComposer({ agents: [sre, chatty] });
 
       await userEvent.click(agentPicker());
 
-      const option = screen.getByRole('option', { name: /Unwell Agent/ });
+      const option = screen.getByRole('option', { name: /Chatty Agent/ });
       const description = option.textContent ?? '';
       expect(description.length).toBeLessThan(160);
       expect(description).not.toContain('\n');
-      expect(description).toContain('Not accepted');
       expect(description).toContain('…');
     });
 
@@ -303,16 +322,55 @@ describe('NewSessionComposer', () => {
       });
     });
 
-    it('offers a non-ready agent disabled, with the reason', async () => {
-      // Shown rather than omitted: an agent missing from the list is
-      // indistinguishable from one that never existed.
-      renderComposer({ agents: [sre, broken] });
+    it('omits a non-ready agent entirely', async () => {
+      // A picker is for choosing, and an entry that cannot be chosen is noise in
+      // it. Readiness and its reason live on the Agents tab and the agent's page.
+      renderComposer({ agents: [sre, issues, broken] });
 
       await userEvent.click(agentPicker());
 
-      const option = screen.getByRole('option', { name: /Broken Agent/ });
-      expect(option).toHaveAttribute('aria-disabled', 'true');
-      expect(option).toHaveTextContent('0/1 pods are ready');
+      expect(
+        screen.queryByRole('option', { name: /Broken Agent/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('option', { name: /Issue Tracker/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('never selects a non-ready agent, even as the only one on the fleet', async () => {
+      // It must not be preselected into a Start that would fail at the first
+      // message, and the picker must stay usable rather than disabled-and-empty.
+      renderComposer({ agents: [broken] });
+
+      await userEvent.type(field(), 'check');
+
+      expect(agentPicker()).toHaveTextContent('Select an agent');
+      expect(startButton()).toBeDisabled();
+    });
+
+    describe('a picker with nothing to choose', () => {
+      it('preselects a sole agent and disables the control', () => {
+        // A dropdown with a single item is not a choice. It still names the agent,
+        // which is what confirms the target inside the agent-page dialog.
+        renderComposer({ agents: [sre] });
+
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        expect(agentPicker()).toBeDisabled();
+      });
+
+      it('stays enabled once there is a real choice', () => {
+        renderComposer({ agents: [sre, issues] });
+
+        expect(agentPicker()).toBeEnabled();
+      });
+
+      it('counts only startable agents when deciding that', () => {
+        // Two agents but one non-ready is still no choice at all.
+        renderComposer({ agents: [sre, broken] });
+
+        expect(agentPicker()).toBeDisabled();
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
+      });
     });
 
     it('groups by installation when the fleet has more than one', async () => {
@@ -325,7 +383,7 @@ describe('NewSessionComposer', () => {
     });
 
     it('does not repeat a single installation as a group heading', async () => {
-      renderComposer({ agents: [sre, broken] });
+      renderComposer({ agents: [sre, issues] });
 
       await userEvent.click(agentPicker());
 

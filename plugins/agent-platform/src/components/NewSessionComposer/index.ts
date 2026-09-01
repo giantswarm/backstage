@@ -1,2 +1,2 @@
-export { NewSessionComposer } from './NewSessionComposer';
+export { isStartableAgent, NewSessionComposer } from './NewSessionComposer';
 export type { NewSessionComposerProps } from './NewSessionComposer';

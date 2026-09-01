@@ -19,7 +19,6 @@ import { makeStyles } from '@material-ui/core';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 import type { AgentRow } from '../AgentsDataProvider';
-import { READINESS_PRESENTATION } from '../AgentsTable/readinessStatus';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 
 /** Rows the textarea shows before and after it expands. */
@@ -49,12 +48,25 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/**
+ * Whether a session can be started with this agent.
+ *
+ * Exported so the picker and the callers that decide whether to *offer* a picker
+ * at all share one predicate — a page withholding the composer on a different rule
+ * than the picker filters on would either show an empty dropdown or hide a usable
+ * one.
+ */
+export function isStartableAgent(agent: AgentRow): boolean {
+  return agent.readiness === 'ready';
+}
+
 export type NewSessionComposerProps = {
   /**
-   * Every agent the fleet offers, in display order. Non-ready ones are expected
-   * to be included: they are shown disabled, with the reason, rather than left
-   * out — an agent missing from the list is indistinguishable from one that never
-   * existed.
+   * Agents to offer, in display order. Non-ready ones are filtered out here rather
+   * than shown disabled: a picker is for choosing, and an entry that cannot be
+   * chosen is noise in it. Readiness and its reason live on the Agents tab and on
+   * each agent's own page, which is where someone goes to find out why an agent is
+   * unavailable.
    */
   agents: AgentRow[];
   /** Some installations are still being queried, so more agents may appear. */
@@ -90,19 +102,13 @@ const DESCRIPTION_MAX_LENGTH = 100;
 
 /** What to say about an agent under its name in the picker. */
 function describeAgent(agent: AgentRow): string | undefined {
-  const detail =
-    agent.readiness === 'ready'
-      ? agent.description
-      : [READINESS_PRESENTATION[agent.readiness].label, agent.readinessMessage]
-          .filter(Boolean)
-          .join(' — ');
-
-  if (!detail) {
+  if (!agent.description) {
     return undefined;
   }
 
-  // One line: a reconcile error is several, and an option is a single row.
-  const collapsed = detail.replace(/\s+/g, ' ').trim();
+  // One line, bounded: a description is free text and a couple on gazelle run to
+  // several sentences, which would push the other options off the screen.
+  const collapsed = agent.description.replace(/\s+/g, ' ').trim();
   return collapsed.length > DESCRIPTION_MAX_LENGTH
     ? `${collapsed.slice(0, DESCRIPTION_MAX_LENGTH).trimEnd()}…`
     : collapsed;
@@ -142,8 +148,34 @@ export function NewSessionComposer({
   const buildAvatarUrl = useAgentAvatarUrl();
   const [prompt, setPrompt] = useState('');
   const [expanded, setExpanded] = useState(!collapsible);
+  // Filtered once; every decision below reads the filtered list — what is offered,
+  // what counts as a sole option, and whether a default is still valid.
+  const offered = useMemo(() => agents.filter(isStartableAgent), [agents]);
+
+  /**
+   * The only agent on offer, when there is exactly one.
+   *
+   * A dropdown with a single item is not a choice, so it is preselected and the
+   * control disabled. It still *names* the agent, which is worth keeping: the dialog
+   * on an agent's page is about that agent, and seeing it named confirms the target
+   * before you commit a paid turn to it. `InstallationSelect` makes the same call
+   * for a one-installation fleet.
+   */
+  const soleAgent = offered.length === 1 ? offered[0] : undefined;
+
+  // A `defaultAgent` only counts if it is actually on offer. `useLastUsedAgent`
+  // already drops one that has gone or stopped being ready, but it resolves against
+  // whichever installations have answered so far, so a stale one does reach here.
+  // Without this check it would suppress the sole-agent selection *and* leave the
+  // picker disabled: one agent available, none selected, no way to pick it.
+  const offeredDefault =
+    defaultAgent && offered.some(agent => agent.id === defaultAgent.id)
+      ? defaultAgent
+      : undefined;
+  const effectiveDefault = offeredDefault ?? soleAgent;
+
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    defaultAgent?.id,
+    effectiveDefault?.id,
   );
 
   // Adopt the default when it *arrives*, not only if it happened to be resolved at
@@ -156,15 +188,19 @@ export function NewSessionComposer({
   // Render-phase, and gated on the user not having touched the picker, so this can
   // never overwrite a deliberate choice — including a deliberate *clearing*.
   const touched = useRef(false);
-  const adopted = useRef(defaultAgent?.id);
-  if (!touched.current && defaultAgent && adopted.current !== defaultAgent.id) {
-    adopted.current = defaultAgent.id;
-    setSelectedId(defaultAgent.id);
+  const adopted = useRef(effectiveDefault?.id);
+  if (
+    !touched.current &&
+    effectiveDefault &&
+    adopted.current !== effectiveDefault.id
+  ) {
+    adopted.current = effectiveDefault.id;
+    setSelectedId(effectiveDefault.id);
   }
 
   const selectedAgent = useMemo(
-    () => agents.find(agent => agent.id === selectedId),
-    [agents, selectedId],
+    () => offered.find(agent => agent.id === selectedId),
+    [offered, selectedId],
   );
 
   // The same deterministic avatar the sessions table and the agent's own page
@@ -197,24 +233,22 @@ export function NewSessionComposer({
       label: agent.name,
       description: describeAgent(agent),
       leadingIcon: renderAvatar(agent),
-      // Withheld rather than offered-then-failed: kagent would accept a session
-      // for an agent whose pods are down, and the turn would then fail at the
-      // first message with nothing explaining why.
-      disabled: agent.readiness !== 'ready',
     });
 
-    const installations = [...new Set(agents.map(agent => agent.installation))];
+    const installations = [
+      ...new Set(offered.map(agent => agent.installation)),
+    ];
     if (installations.length <= 1) {
-      return agents.map(toOption);
+      return offered.map(toOption);
     }
 
     return installations.map(installation => ({
       title: installation,
-      options: agents
+      options: offered
         .filter(agent => agent.installation === installation)
         .map(toOption),
     }));
-  }, [agents, renderAvatar]);
+  }, [offered, renderAvatar]);
 
   const text = prompt.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
@@ -302,8 +336,8 @@ export function NewSessionComposer({
                   setSelectedId(key ? String(key) : undefined);
                 }}
                 placeholder="Select an agent"
-                searchable={agents.length > SEARCHABLE_THRESHOLD}
-                isDisabled={isStarting}
+                searchable={offered.length > SEARCHABLE_THRESHOLD}
+                isDisabled={isStarting || Boolean(soleAgent)}
               />
               <Button type="submit" isDisabled={!canStart}>
                 {isStarting ? 'Starting…' : 'Start'}

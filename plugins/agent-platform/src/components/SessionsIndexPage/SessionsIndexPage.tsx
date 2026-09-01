@@ -10,7 +10,7 @@ import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
-import { NewSessionComposer } from '../NewSessionComposer';
+import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -87,12 +87,32 @@ function StartNewSession() {
     return null;
   }
 
-  if (agents.length === 0) {
+  // The same predicate the picker filters on, so the composer is never offered with
+  // an empty dropdown and never withheld while a usable agent exists.
+  const startable = agents.filter(isStartableAgent);
+
+  if (startable.length === 0) {
+    // Three distinct situations, and conflating them would tell the user to look in
+    // the wrong place: nothing could be read (look at the warning), nothing is
+    // deployed (deploy one), or something is deployed but none of it is ready (look
+    // at the Agents tab, where the reason is).
+    let reason: string;
+    if (unreachableInstallations.length > 0 && agents.length === 0) {
+      reason =
+        'No agents could be read, so there is none to start a session with. See the warning below.';
+    } else if (agents.length === 0) {
+      reason =
+        'No agents are deployed on the reachable installations, so there is none to start a session with.';
+    } else {
+      reason =
+        agents.length === 1
+          ? 'The only agent on the fleet is not ready, so there is none to start a session with. The Agents tab says why.'
+          : `None of the ${agents.length} agents on the fleet are ready, so there is none to start a session with. The Agents tab says why.`;
+    }
+
     return (
       <Text variant="body-small" color="secondary">
-        {unreachableInstallations.length > 0
-          ? 'No agents could be read, so there is none to start a session with. See the warning below.'
-          : 'No agents are deployed on the reachable installations, so there is none to start a session with.'}
+        {reason}
       </Text>
     );
   }
