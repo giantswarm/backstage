@@ -65,6 +65,73 @@ one `ModelConfig`, resolving them incrementally as the fleet-wide query returns.
   distinguishable from a failed one. The "No installations with models" message
   only appears when reads actually succeeded and found nothing.
 
+### Model management (the Models tab)
+
+The **Models** tab (`/agent-platform/models`) is where the ModelConfigs the
+picker offers come from: it lists them across the fleet (reusing
+`ModelConfigsProvider`) and lets a platform admin create, edit and delete them
+— parity with kagent's own UI, without leaving the portal. The row's status
+column is the controller's `Accepted` condition (a ModelConfig has no
+workload, so there is no separate `Ready`), with the condition's message as
+the tooltip — typically "which Secret is missing".
+
+The create/edit form (`NewModelPage` / `ModelDetailPage`, sharing
+`ModelConfigFormFields`) speaks four providers — **OpenAI** (which covers
+every OpenAI-compatible endpoint: vLLM, llama.cpp, OpenRouter, …),
+**Anthropic**, **Gemini** and **Ollama** — plus a per-provider endpoint
+(`spec.openAI.baseUrl` / `spec.anthropic.baseUrl` / `spec.ollama.host`) and
+`spec.tls.disableVerify` for self-signed lab endpoints. CRs using the CRD's
+other providers (AzureOpenAI, Bedrock, the VertexAI variants, SAPAICore)
+render read-only. The detail page doubles as the read view: a CR the portal
+must not write renders the same form disabled, with an alert saying why.
+
+**Key Secrets follow the agentlab contract** (`platform.extraModels`,
+giantswarm/agentlab#44), so models provisioned by either tool look the same on
+the cluster: the Secret is `kagent-<model name>` in the ModelConfig's
+namespace, and its one key is the provider's **canonical env-var name**
+(`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`). That key name is
+not configurable — the kagent controller injects it as an env var of the same
+name into agent pods, and the ADK runtime looks up exactly those names.
+Corollary: a keyless endpoint (a local vLLM, say) still gets a
+placeholder-valued Secret, because an agent pod without the env var
+crashloops even against an endpoint that never checks the value. Ollama is
+the one truly keyless provider (no Secret at all).
+
+**The API key is write-only.** The portal never reads Secret values back: the
+edit form's key field is empty and means "leave the Secret alone"; entering a
+value replaces the Secret's contents (`data: null` + `stringData` in one merge
+patch, so a provider switch does not leave the old canonical key behind). This
+is also why changing a model's provider requires re-entering the key: the old
+Secret holds the old provider's env-var name, and the portal cannot carry a
+value it refuses to read. The portal only ever writes Secrets named by its own
+convention — a CR referencing a hand-provisioned (possibly shared) Secret
+keeps that reference untouched, and such a Secret never rides along on delete.
+
+**Writes go through the Kubernetes proxy, not the scaffolder.** Unlike agent
+creation, model writes use direct `createResource`/`patchResource`/
+`deleteResource` calls with the caller's own OIDC token. Deliberate: a
+scaffolder task persists its `values` and echoes the applied manifest into the
+task output, so routing a Secret through `kube:apply` would store the API key
+in plain text in the scaffolder task store. Direct writes also give the form
+inline apiserver errors (`ConflictError` on a taken name) instead of a
+scaffolder-task detour. Authorization stays the apiserver's — the
+`SelfSubjectAccessReview` gates only decide what is _shown_.
+
+**Ownership guards.** Editing and deleting are withheld for tool-owned CRs:
+rendered by Helm (the chart's default ModelConfig), applied by a Flux
+Kustomization, or labeled `app.kubernetes.io/managed-by` by anything but the
+portal (agentlab prunes and re-asserts its models on every run). A CR with no
+markers — hand-applied with kubectl — is editable: adopting those into portal
+management is the point, and the portal stamps its own
+`app.kubernetes.io/managed-by: giantswarm-backstage` on what it creates.
+
+**Delete refuses while referenced.** The mutation lists the namespace's
+`Agent`s **fresh** at mutation time (not from the query cache) and refuses to
+delete a model any of them still references — and unlike `useDeleteAgent`'s
+shared chart source (where a failed read safely resolves to "keep"), a failed
+read here refuses the delete: proceeding is the unsafe direction, since
+deleting a referenced model breaks every agent on it.
+
 ### Skill discovery
 
 Skills are discovered from the GitHub repositories configured in

@@ -1,5 +1,8 @@
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
+import { Link } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 
+import { newModelRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import {
@@ -13,6 +16,7 @@ export function ModelConfigPicker() {
   const { state, selectModelConfig } = useNewAgentForm();
   const { isLoading, modelConfigsFor, unreachableInstallations } =
     useModelConfigs();
+  const newModelLink = useRouteRef(newModelRouteRef);
   const installation = state.installation;
 
   const label = (
@@ -59,11 +63,21 @@ export function ModelConfigPicker() {
       )}
 
       {!isLoading && modelConfigs.length === 0 && !hasError && (
-        <Alert
-          status="info"
-          title="No models found"
-          description={`No ModelConfigs are provisioned on ${installation}. A platform admin needs to add one before you can create an agent here.`}
-        />
+        <>
+          <Alert
+            status="info"
+            title="No models found"
+            description={`No ModelConfigs are provisioned on ${installation}. A platform admin needs to add one before you can create an agent here.`}
+          />
+          {/* Leaving the create flow here loses this form's state, which is
+              fine: without a model, nothing on it can proceed anyway. */}
+          {newModelLink && (
+            <Text variant="body-small" color="secondary">
+              Platform admins can <Link to={newModelLink()}>add a model</Link>{' '}
+              in the Models tab.
+            </Text>
+          )}
+        </>
       )}
 
       {modelConfigs.length > 0 && (

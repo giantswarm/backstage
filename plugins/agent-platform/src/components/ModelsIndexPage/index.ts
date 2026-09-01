@@ -1,0 +1,1 @@
+export { ModelsIndexPage } from './ModelsIndexPage';
