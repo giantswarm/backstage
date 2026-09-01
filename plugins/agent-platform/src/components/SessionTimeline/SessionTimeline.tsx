@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Flex,
   Text,
   ToggleButton,
@@ -13,6 +14,7 @@ import { SessionTimeline as Timeline } from '../../lib/kagentTimeline';
 import { TimelineEntry } from './TimelineEntry';
 import {
   ActivityDetail,
+  authorLabel,
   groupIntoTurns,
   hasExpandableDetail,
   isActivityItem,
@@ -22,13 +24,25 @@ const useStyles = makeStyles(theme => ({
   turnMarker: {
     display: 'flex',
     alignItems: 'center',
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(1),
+    gap: theme.spacing(1.5),
+    marginTop: theme.spacing(2),
+  },
+  turnTime: {
+    whiteSpace: 'nowrap',
   },
   rule: {
     flex: 1,
     height: 1,
     backgroundColor: theme.palette.divider,
+  },
+  authorHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+  },
+  authorName: {
+    fontSize: '0.875rem',
+    fontWeight: 600,
   },
   working: {
     display: 'flex',
@@ -36,12 +50,63 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1),
     paddingTop: theme.spacing(1),
   },
+  // The agent is doing something unseen; a light sheen across the label says
+  // "in motion" the way a static spinner alone does not.
+  workingText: {
+    fontSize: '0.8125rem',
+    backgroundImage: `linear-gradient(90deg, ${theme.palette.text.secondary} 0%, ${theme.palette.text.primary} 50%, ${theme.palette.text.secondary} 100%)`,
+    backgroundSize: '200% 100%',
+    backgroundClip: 'text',
+    WebkitBackgroundClip: 'text',
+    color: 'transparent',
+    WebkitTextFillColor: 'transparent',
+    animation: '$shimmer 2.2s linear infinite',
+    '@media (prefers-reduced-motion)': {
+      animation: 'none',
+      color: theme.palette.text.secondary,
+      WebkitTextFillColor: 'unset',
+    },
+  },
+  '@keyframes shimmer': {
+    '0%': { backgroundPosition: '200% 0' },
+    '100%': { backgroundPosition: '-200% 0' },
+  },
 }));
+
+/**
+ * Who is speaking, at the start of the agent's side of a turn.
+ *
+ * Once per block rather than on every message: between the header and the next
+ * user bubble, everything is the agent's — repeating its name over each
+ * paragraph and tool row is noise.
+ */
+function AgentHeader({
+  name,
+  avatarUrl,
+}: {
+  name: string;
+  avatarUrl?: string;
+}) {
+  const classes = useStyles();
+  return (
+    <div className={classes.authorHeader}>
+      <Avatar
+        size="small"
+        purpose="decoration"
+        name={name}
+        src={avatarUrl ?? ''}
+      />
+      <span className={classes.authorName}>{name}</span>
+    </div>
+  );
+}
 
 export type SessionTimelineProps = {
   timeline: Timeline;
   /** Display name of the session's agent, used to label its messages. */
   agentName?: string;
+  /** The agent's avatar, shown where its side of a turn begins. */
+  agentAvatarUrl?: string;
   /**
    * Whether the agent is mid-turn, in which case the conversation ends with a
    * "Working…" row where the reply will appear.
@@ -65,6 +130,7 @@ export type SessionTimelineProps = {
 export function SessionTimeline({
   timeline,
   agentName,
+  agentAvatarUrl,
   isAgentWorking = false,
 }: SessionTimelineProps) {
   const classes = useStyles();
@@ -113,9 +179,7 @@ export function SessionTimeline({
   const workingRow = isAgentWorking && (
     <div className={classes.working} aria-live="polite">
       <CircularProgress size={14} aria-hidden />
-      <Text variant="body-small" color="secondary">
-        Working…
-      </Text>
+      <span className={classes.workingText}>Working…</span>
     </div>
   );
 
@@ -186,6 +250,37 @@ export function SessionTimeline({
         if (visible.length === 0) {
           return null;
         }
+
+        // The agent's side of the turn opens with its name and face, once —
+        // everything until the next user bubble is then implicitly the agent's.
+        const entries: ReactNode[] = [];
+        let needsHeader = true;
+        for (const item of visible) {
+          if (item.kind === 'user-message') {
+            needsHeader = true;
+          } else if (needsHeader) {
+            entries.push(
+              <AgentHeader
+                key={`author:${item.id}`}
+                name={authorLabel(item, agentName) ?? 'Agent'}
+                avatarUrl={agentAvatarUrl}
+              />,
+            );
+            needsHeader = false;
+          }
+          entries.push(
+            <TimelineEntry
+              // Keyed on the detail setting as well as the item: an entry's
+              // expanded state is only read on mount, so the global control
+              // takes effect by remounting the entries.
+              key={`${item.id}:${detail}`}
+              item={item}
+              defaultExpanded={detail === 'expanded'}
+              isAgentWorking={isAgentWorking}
+            />,
+          );
+        }
+
         return (
           // Keyed on the position in `turns`, not on `taskIndex`: `groupIntoTurns`
           // deliberately emits two turns with the same index if a task index ever
@@ -197,22 +292,16 @@ export function SessionTimeline({
                 and hid the progression entirely. An exact time shows how the
                 session actually unfolded. */}
             <div className={classes.turnMarker}>
-              <Text variant="body-small" color="secondary">
+              <Text
+                variant="body-small"
+                color="secondary"
+                className={classes.turnTime}
+              >
                 {turn.at ? <DateComponent value={turn.at} /> : '—'}
               </Text>
               <span className={classes.rule} />
             </div>
-            {visible.map(item => (
-              <TimelineEntry
-                // Keyed on the detail setting as well as the item: an
-                // AccordionGroup's expanded set is only read on mount, so the
-                // global control takes effect by remounting the entries.
-                key={`${item.id}:${detail}`}
-                item={item}
-                resolvedAgentName={agentName}
-                defaultExpanded={detail === 'expanded'}
-              />
-            ))}
+            {entries}
           </Flex>
         );
       })}

@@ -52,6 +52,25 @@ import {
 const AVATAR_SIZE: AvatarSize = 48;
 
 const useStyles = makeStyles(theme => ({
+  // One readable column, like any chat surface: full-bleed prose is hard to
+  // scan, and the conversation is what this page is for.
+  column: {
+    width: '100%',
+    maxWidth: 920,
+    margin: '0 auto',
+  },
+  // The composer stays reachable however long the conversation gets. Only the
+  // composer docks: a pending confirmation panel can be tall, and pinning it
+  // would cover the very conversation it asks about.
+  bottomDock: {
+    position: 'sticky',
+    bottom: 0,
+    zIndex: 1,
+    backgroundColor: `var(--bui-bg-app, ${theme.palette.background.default})`,
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(2),
+    marginBottom: theme.spacing(-2),
+  },
   stats: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -349,6 +368,33 @@ export function SessionDetailPage() {
   );
   useProvidePageHeaderActions(actions);
 
+  // The page scrolls the document, so that is what "to the bottom" means here.
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      const el = document.scrollingElement ?? document.documentElement;
+      el.scrollTop = el.scrollHeight;
+    });
+  }, []);
+
+  // Follow the reply as it streams in — but only when already reading the end.
+  // Someone scrolled up through the history must not have the page yanked away
+  // under them by every arriving token.
+  const streamTick = send.stream
+    ? send.stream.items.length +
+      send.stream.liveText.length +
+      send.stream.liveReasoning.length
+    : 0;
+  useEffect(() => {
+    if (streamTick === 0) {
+      return;
+    }
+    const el = document.scrollingElement ?? document.documentElement;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
+    if (nearBottom) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [streamTick]);
+
   if (isLoading) {
     return (
       <Content>
@@ -489,19 +535,23 @@ export function SessionDetailPage() {
     );
   } else {
     bottomControl = (
-      <SessionComposer
-        isAgentWorking={showWorking}
-        isFinished={Boolean(state && !state.isActive)}
-        error={send.error?.message}
-        // On failure the optimistic copy is dropped, so this is the only place the
-        // user's text still exists.
-        restore={send.failed}
-        onSubmit={text => {
-          // Errors are surfaced through the hook's `error`, which the composer
-          // renders beside the text it hands back.
-          send.sendMessage(text).catch(() => {});
-        }}
-      />
+      <div className={classes.bottomDock}>
+        <SessionComposer
+          isAgentWorking={showWorking}
+          isFinished={Boolean(state && !state.isActive)}
+          error={send.error?.message}
+          // On failure the optimistic copy is dropped, so this is the only place the
+          // user's text still exists.
+          restore={send.failed}
+          onSubmit={text => {
+            // Errors are surfaced through the hook's `error`, which the composer
+            // renders beside the text it hands back.
+            send.sendMessage(text).catch(() => {});
+            // The optimistic echo appears at the very bottom; go where it is.
+            scrollToBottom();
+          }}
+        />
+      </div>
     );
   }
 
@@ -513,7 +563,7 @@ export function SessionDetailPage() {
 
   return (
     <Content>
-      <Flex direction="column" gap="4">
+      <Flex direction="column" gap="4" className={classes.column}>
         {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}
@@ -620,6 +670,7 @@ export function SessionDetailPage() {
         <SessionTimeline
           timeline={timelineWithLive}
           agentName={row.agentName}
+          agentAvatarUrl={avatarUrl}
           isAgentWorking={showWorking}
         />
 

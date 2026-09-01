@@ -1,20 +1,13 @@
-import {
-  Accordion,
-  AccordionGroup,
-  AccordionPanel,
-  AccordionTrigger,
-  Badge,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Badge } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
+import LoopIcon from '@material-ui/icons/Loop';
 
 import { TimelineItem } from '../../lib/kagentTimeline';
-import { CodeBlock } from '../CodeBlock';
+import { ActivityRow, InertActivityRow } from './ActivityRow';
+import { MessageMarkdown } from './MessageMarkdown';
+import { PayloadBlock } from './PayloadBlock';
 import {
   agentCallLabel,
-  authorLabel,
   expandablePayloads,
   formatTokens,
   hasExpandableDetail,
@@ -22,57 +15,119 @@ import {
 } from './helpers';
 
 const useStyles = makeStyles(theme => ({
-  entry: {
-    // A left rule ties an entry's parts together and keeps the agent's internal
-    // work visually subordinate to the conversation.
-    paddingLeft: theme.spacing(1.5),
-    borderLeft: `2px solid ${theme.palette.divider}`,
+  // The user's message is a bubble on the right, the agent's prose plain on the
+  // left — the alignment carries who speaks, the way every chat surface does.
+  userRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
   },
-  userEntry: {
-    borderLeftColor: theme.palette.primary.main,
+  userBubble: {
+    maxWidth: '85%',
+    backgroundColor: 'var(--bui-bg-neutral-2)',
+    // The bui neutrals sit within a couple of points of the light theme's page
+    // background, so without an outline the bubble dissolves into the page.
+    border: `1px solid ${theme.palette.divider}`,
+    padding: theme.spacing(1.25, 2),
+    borderRadius: 'var(--bui-radius-3)',
+  },
+  // Deliberately not markdown: prompts quote logs, manifests and `#` headings
+  // that must stay the characters the user typed.
+  userText: {
+    margin: 0,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    fontSize: '0.875rem',
+    lineHeight: 1.6,
+    fontFamily: 'inherit',
+  },
+  // The bubble says "you" visually; this keeps saying it to assistive tech.
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+    border: 0,
+  },
+  triggerContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    minWidth: 0,
+    flex: 1,
+  },
+  rowName: {
+    fontFamily: 'monospace',
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+  },
+  rowTitle: {
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
   },
   summary: {
     fontFamily: 'monospace',
-    fontSize: '0.8rem',
+    fontSize: '0.75rem',
     color: theme.palette.text.secondary,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     minWidth: 0,
+    flex: 1,
   },
-  // AccordionTrigger has no bottom padding, so an expanded header sits flush
-  // against its panel and reads top-heavy.
-  accordion: {
-    '& [aria-expanded="true"]': {
-      paddingBottom: theme.spacing(0.75),
+  spinner: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: theme.palette.text.secondary,
+    animation: '$spin 1s linear infinite',
+    '@media (prefers-reduced-motion)': {
+      animation: 'none',
     },
   },
-  payloadLabel: {
-    display: 'block',
-    marginBottom: theme.spacing(0.5),
+  '@keyframes spin': {
+    from: { transform: 'rotate(0deg)' },
+    to: { transform: 'rotate(-360deg)' },
   },
-  // Matches an AccordionTrigger's vertical rhythm, so a row with nothing to expand
-  // still lines up with the ones that do.
-  inertSummary: {
-    paddingTop: theme.spacing(0.75),
-    paddingBottom: theme.spacing(0.75),
+  reasoningBody: {
+    borderLeft: `2px solid ${theme.palette.divider}`,
+    paddingLeft: theme.spacing(1.5),
+    color: theme.palette.text.secondary,
+    fontStyle: 'italic',
+    maxHeight: 320,
+    overflowY: 'auto',
+  },
+  payloads: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
+  },
+  questions: {
+    // Indented to hang under the row's text, past the chevron gutter.
+    paddingLeft: theme.spacing(3),
   },
 }));
 
 export type TimelineEntryProps = {
   item: TimelineItem;
-  /**
-   * Display name of the `Agent` CR this session belongs to, when one matched.
-   * Preferred over the raw author, since decoding a python identifier is lossy.
-   */
-  resolvedAgentName?: string;
   /** Whether a collapsible entry starts open. */
   defaultExpanded?: boolean;
+  /**
+   * Whether the agent is mid-turn. A pending call then shows a spinner —
+   * it is genuinely running — where a pending call in a finished session
+   * shows "no result": nothing is coming.
+   */
+  isAgentWorking?: boolean;
 };
 
-/** Prose from the user or the agent, rendered as markdown. */
+/** Prose from the agent, rendered as markdown. */
 function MessageBody({ text }: { text: string }) {
-  return <GSMarkdownContent content={text} />;
+  return <MessageMarkdown text={text} />;
 }
 
 /**
@@ -99,92 +154,101 @@ function CallDetail({ item }: { item: TimelineItem }) {
   const { args, result } = payloads;
 
   return (
-    <Flex direction="column" gap="2">
-      {args && (
-        <div>
-          <Text
-            variant="body-small"
-            color="secondary"
-            className={classes.payloadLabel}
-          >
-            {argsLabel(item)}
-          </Text>
-          <CodeBlock content={args} />
-        </div>
-      )}
-      {result && (
-        <div>
-          <Text
-            variant="body-small"
-            color="secondary"
-            className={classes.payloadLabel}
-          >
-            Result
-          </Text>
-          <CodeBlock content={result} />
-        </div>
-      )}
-    </Flex>
+    <div className={classes.payloads}>
+      {args && <PayloadBlock label={argsLabel(item)} content={args} />}
+      {result && <PayloadBlock label="Result" content={result} />}
+    </div>
   );
 }
 
+/**
+ * Whether a pending call should read as running.
+ *
+ * `isPending` only says kagent recorded no result. While the agent works that
+ * means "in flight"; once the session is done it means the result never came.
+ */
+function PendingMarker({
+  isPending,
+  isAgentWorking,
+}: {
+  isPending: boolean;
+  isAgentWorking: boolean;
+}) {
+  const classes = useStyles();
+  if (!isPending) {
+    return null;
+  }
+  if (isAgentWorking) {
+    return <LoopIcon className={classes.spinner} aria-label="running" />;
+  }
+  return <Badge size="small">no result</Badge>;
+}
+
 /** The one-line header of a collapsible entry. */
-function CollapsedSummary({ item }: { item: TimelineItem }) {
+function CollapsedSummary({
+  item,
+  isAgentWorking = false,
+}: {
+  item: TimelineItem;
+  isAgentWorking?: boolean;
+}) {
   const classes = useStyles();
 
   switch (item.kind) {
     case 'reasoning':
       return (
-        <Flex align="center" gap="2" style={{ minWidth: 0 }}>
-          <Text variant="body-medium" weight="bold">
-            Reasoning
-          </Text>
+        <span className={classes.triggerContent}>
+          <span className={classes.rowTitle}>Reasoning</span>
           <span className={classes.summary}>
             {item.text.replace(/\s+/g, ' ').trim()}
           </span>
-        </Flex>
+        </span>
       );
     case 'tool-call':
       return (
-        <Flex align="center" gap="2" style={{ minWidth: 0 }}>
-          <Text variant="body-medium" weight="bold">
-            {item.toolName}
-          </Text>
+        <span className={classes.triggerContent}>
+          <span className={classes.rowName}>{item.toolName}</span>
           {/* Agents reach most MCP tools through muster's `call_tool`, so the
               parser looks through that wrapper and names the real tool. The badge
               keeps the fact that it was proxied, which is otherwise lost. */}
           {item.via && <Badge size="small">via {item.via}</Badge>}
-          {item.isPending && <Badge size="small">no result</Badge>}
+          <PendingMarker
+            isPending={item.isPending}
+            isAgentWorking={isAgentWorking}
+          />
           <span className={classes.summary}>{summarizeArgs(item.args)}</span>
-        </Flex>
+        </span>
       );
     case 'agent-call':
       return (
-        <Flex align="center" gap="2" style={{ minWidth: 0 }}>
-          <Text variant="body-medium" weight="bold">
+        <span className={classes.triggerContent}>
+          <span className={classes.rowTitle}>
             Delegated to {agentCallLabel(item.agentId)}
-          </Text>
+          </span>
           {item.tokens && (
             <Badge size="small">{formatTokens(item.tokens.total)} tokens</Badge>
           )}
-          {item.isPending && <Badge size="small">no result</Badge>}
-        </Flex>
+          <PendingMarker
+            isPending={item.isPending}
+            isAgentWorking={isAgentWorking}
+          />
+        </span>
       );
     case 'approval':
       return (
-        <Flex align="center" gap="2" style={{ minWidth: 0 }}>
-          <Text variant="body-medium" weight="bold">
+        <span className={classes.triggerContent}>
+          <span className={classes.rowTitle}>
             {item.asks === 'input'
               ? 'User input requested'
               : 'Approval requested'}
-          </Text>
+          </span>
           {/* The proposed tool names what needs approving, which is the point of
               the row. For a question it is always `ask_user` — noise. */}
           {item.asks === 'approval' && item.toolName && (
             <span className={classes.summary}>{item.toolName}</span>
           )}
           <ApprovalVerdict item={item} />
-        </Flex>
+        </span>
       );
     default:
       return null;
@@ -224,93 +288,90 @@ function ApprovalVerdict({ item }: { item: TimelineItem }) {
 /**
  * One entry in the session timeline.
  *
- * Conversation messages render in full; everything else — reasoning, tool calls,
- * delegations, approvals — is collapsible, because the agent's working is what
- * makes this screen worth opening but a wall of tool payloads is unreadable.
+ * Conversation messages render in full — the user's as a right-aligned bubble,
+ * the agent's as prose. Everything else — reasoning, tool calls, delegations,
+ * approvals — is a quiet one-line disclosure row, because the agent's working is
+ * what makes this screen worth opening but a wall of tool payloads is unreadable.
  *
- * `defaultExpanded` only applies on mount, which is a bui `AccordionGroup`
- * constraint. The list keys each group on the global detail setting so changing it
- * remounts them and the new default takes effect.
+ * `defaultExpanded` only applies on mount; the list keys each entry on the
+ * global detail setting so changing it remounts them and the new default takes
+ * effect.
  */
 export function TimelineEntry({
   item,
-  resolvedAgentName,
   defaultExpanded = false,
+  isAgentWorking = false,
 }: TimelineEntryProps) {
   const classes = useStyles();
-  const author = authorLabel(item, resolvedAgentName);
 
   // Narrowed on the kinds rather than through `isCollapsible`, so the compiler
   // knows `text` exists in this branch.
-  if (item.kind === 'user-message' || item.kind === 'agent-message') {
-    const isUser = item.kind === 'user-message';
+  if (item.kind === 'user-message') {
     return (
-      <div
-        className={`${classes.entry} ${isUser ? classes.userEntry : ''}`}
-        data-testid={`timeline-${item.kind}`}
-      >
-        <Text
-          variant="body-small"
-          color="secondary"
-          style={{ display: 'block' }}
-        >
-          {isUser ? 'You' : (author ?? 'Agent')}
-        </Text>
+      <div className={classes.userRow} data-testid="timeline-user-message">
+        <div className={classes.userBubble}>
+          <span className={classes.srOnly}>You</span>
+          <pre className={classes.userText}>{item.text}</pre>
+        </div>
+      </div>
+    );
+  }
+
+  if (item.kind === 'agent-message') {
+    return (
+      <div data-testid="timeline-agent-message">
         <MessageBody text={item.text} />
       </div>
     );
   }
 
-  // No expander when there is nothing behind it. An accordion that opens onto an
+  // No expander when there is nothing behind it. A disclosure that opens onto an
   // empty panel invites a click and answers with nothing.
   if (!hasExpandableDetail(item)) {
     const questions =
       item.kind === 'approval' ? (item.questions ?? []) : undefined;
     return (
-      <div className={classes.entry} data-testid={`timeline-${item.kind}`}>
-        <div className={classes.inertSummary}>
-          <CollapsedSummary item={item} />
-        </div>
+      <div data-testid={`timeline-${item.kind}`}>
+        <InertActivityRow>
+          <CollapsedSummary item={item} isAgentWorking={isAgentWorking} />
+        </InertActivityRow>
         {/* A question is the last thing the agent said, so it reads as prose in
             the conversation rather than as a payload to go looking for. Several
             questions can arrive in one `ask_user`; they are numbered so a reply
             can refer to them. */}
         {questions && questions.length > 0 && (
-          <MessageBody
-            text={
-              questions.length === 1
-                ? questions[0]
-                : questions.map((text, i) => `${i + 1}. ${text}`).join('\n\n')
-            }
-          />
+          <div className={classes.questions}>
+            <MessageBody
+              text={
+                questions.length === 1
+                  ? questions[0]
+                  : questions.map((text, i) => `${i + 1}. ${text}`).join('\n\n')
+              }
+            />
+          </div>
         )}
       </div>
     );
   }
 
   return (
-    <div className={classes.entry} data-testid={`timeline-${item.kind}`}>
-      {/* `defaultExpandedKeys` on the group rather than `defaultExpanded` on the
-          item: inside a DisclosureGroup react-aria owns the expanded set, so the
-          per-item prop is not what takes effect. It applies on mount only, which is
-          why the list keys each group on the global detail setting. */}
-      <AccordionGroup
-        className={classes.accordion}
-        defaultExpandedKeys={defaultExpanded ? new Set([item.id]) : new Set()}
+    <div data-testid={`timeline-${item.kind}`}>
+      <ActivityRow
+        id={item.id}
+        defaultExpanded={defaultExpanded}
+        variant={item.kind === 'reasoning' ? 'plain' : 'card'}
+        trigger={
+          <CollapsedSummary item={item} isAgentWorking={isAgentWorking} />
+        }
       >
-        <Accordion id={item.id}>
-          <AccordionTrigger>
-            <CollapsedSummary item={item} />
-          </AccordionTrigger>
-          <AccordionPanel>
-            {item.kind === 'reasoning' ? (
-              <MessageBody text={item.text} />
-            ) : (
-              <CallDetail item={item} />
-            )}
-          </AccordionPanel>
-        </Accordion>
-      </AccordionGroup>
+        {item.kind === 'reasoning' ? (
+          <div className={classes.reasoningBody}>
+            <MessageBody text={item.text} />
+          </div>
+        ) : (
+          <CallDetail item={item} />
+        )}
+      </ActivityRow>
     </div>
   );
 }

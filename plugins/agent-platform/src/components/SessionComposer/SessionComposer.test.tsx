@@ -111,7 +111,7 @@ describe('SessionComposer', () => {
       screen.getByPlaceholderText('Send a message to this session…'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Your reply is added to the conversation.'),
+      screen.getByText(/Your reply is added to the conversation/),
     ).toBeInTheDocument();
   });
 

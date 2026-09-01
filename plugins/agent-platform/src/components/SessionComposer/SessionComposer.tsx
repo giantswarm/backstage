@@ -1,5 +1,7 @@
 import { FormEvent, KeyboardEvent, useRef, useState } from 'react';
-import { Alert, Button, Flex, Text, TextAreaField } from '@backstage/ui';
+import { Alert, Flex } from '@backstage/ui';
+import { IconButton, InputBase, makeStyles } from '@material-ui/core';
+import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 
 /**
  * Longest message this composer will submit.
@@ -14,6 +16,58 @@ import { Alert, Button, Flex, Text, TextAreaField } from '@backstage/ui';
  * Must match MESSAGE_TEXT_MAX_LENGTH in plugins/agent-platform-backend.
  */
 export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
+
+const useStyles = makeStyles(theme => ({
+  card: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1.5, 1.5, 1, 1.5),
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 'var(--bui-radius-3)',
+    backgroundColor: theme.palette.background.paper,
+    transition: theme.transitions.create(['border-color', 'box-shadow']),
+    '&:focus-within': {
+      borderColor: theme.palette.primary.main,
+    },
+  },
+  cardDisabled: {
+    opacity: 0.7,
+  },
+  input: {
+    fontSize: '0.875rem',
+    lineHeight: 1.6,
+    padding: 0,
+  },
+  controls: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+  },
+  caption: {
+    fontSize: '0.75rem',
+    color: theme.palette.text.secondary,
+    lineHeight: 1.5,
+  },
+  captionError: {
+    color: theme.palette.error.main,
+  },
+  send: {
+    flexShrink: 0,
+    width: 32,
+    height: 32,
+    color: theme.palette.primary.contrastText,
+    backgroundColor: theme.palette.primary.main,
+    '&:hover': {
+      backgroundColor: theme.palette.primary.dark,
+    },
+    '&.Mui-disabled': {
+      color: theme.palette.action.disabled,
+      backgroundColor: theme.palette.action.disabledBackground,
+    },
+  },
+}));
 
 export type SessionComposerProps = {
   /**
@@ -79,6 +133,7 @@ export function SessionComposer({
   restore,
   onSubmit,
 }: SessionComposerProps) {
+  const classes = useStyles();
   const [value, setValue] = useState('');
 
   // Put a failed message's text back, once per attempt. Tracked by id rather than
@@ -123,7 +178,7 @@ export function SessionComposer({
   } else if (isFinished) {
     caption = 'Sending a message resumes this finished session.';
   } else {
-    caption = 'Your reply is added to the conversation.';
+    caption = 'Your reply is added to the conversation. ⌘/Ctrl+Enter sends.';
   }
 
   return (
@@ -133,30 +188,44 @@ export function SessionComposer({
           <Alert status="danger" title="Message not sent" description={error} />
         )}
 
-        <TextAreaField
-          aria-label="Message"
-          placeholder={
-            isFinished
-              ? 'Send a message to resume this session…'
-              : 'Send a message to this session…'
-          }
-          value={value}
-          onChange={setValue}
-          onKeyDown={handleKeyDown}
-          isDisabled={isDisabled}
-          rows={3}
-        />
-
-        <Flex align="center" justify="between" gap="2">
-          <Text variant="body-small" color="secondary">
-            {isTooLong
-              ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
-              : caption}
-          </Text>
-          <Button type="submit" isDisabled={!canSubmit}>
-            Send
-          </Button>
-        </Flex>
+        <div
+          className={`${classes.card} ${isDisabled ? classes.cardDisabled : ''}`}
+        >
+          <InputBase
+            className={classes.input}
+            fullWidth
+            multiline
+            minRows={2}
+            maxRows={12}
+            placeholder={
+              isFinished
+                ? 'Send a message to resume this session…'
+                : 'Send a message to this session…'
+            }
+            value={value}
+            onChange={event => setValue(event.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isDisabled}
+            inputProps={{ 'aria-label': 'Message' }}
+          />
+          <div className={classes.controls}>
+            <span
+              className={`${classes.caption} ${isTooLong ? classes.captionError : ''}`}
+            >
+              {isTooLong
+                ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
+                : caption}
+            </span>
+            <IconButton
+              type="submit"
+              aria-label="Send"
+              className={classes.send}
+              disabled={!canSubmit}
+            >
+              <ArrowUpwardIcon fontSize="small" />
+            </IconButton>
+          </div>
+        </div>
       </Flex>
     </form>
   );
