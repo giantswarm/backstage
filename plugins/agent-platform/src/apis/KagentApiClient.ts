@@ -12,6 +12,7 @@ import { kagentMeWireSchema } from '../lib/kagentSchema';
 import {
   KagentSession,
   normalizeSessionList,
+  parseCreatedSessionId,
   SessionListDrift,
 } from '../lib/kagentSessions';
 import {
@@ -246,6 +247,49 @@ export class KagentApiClient implements KagentApi {
     }
   }
 
+  async createSession(
+    installation: string,
+    agent: { namespace: string; name: string },
+    name: string,
+  ): Promise<{ sessionId: string }> {
+    const { url, headers } = await this.prepare(
+      '/kagent/sessions',
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentNamespace: agent.namespace,
+        agentName: agent.name,
+        name,
+      }),
+    });
+
+    // `badRequestIsMissing: false` for the same reason as the rename: this route
+    // answers 400 for a rejected title, which is nothing like "kagent is absent
+    // from this installation".
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // The one write whose body is **required**. The others tolerate an empty
+    // response because nothing in it is needed; here the generated session id is
+    // the entire point, and without it there is nowhere to navigate — so an
+    // unreadable body has to fail rather than resolve into a broken link.
+    const body = await response.json().catch(() => undefined);
+    const sessionId = parseCreatedSessionId(body);
+    if (!sessionId) {
+      throw upstreamError(
+        isErrorEnvelope(body) &&
+          typeof body.message === 'string' &&
+          body.message
+          ? body.message
+          : 'kagent accepted the new session but did not say which one it created, so it cannot be opened. It may still have been created — check the list.',
+      );
+    }
+
+    return { sessionId };
+  }
+
   async renameSession(
     installation: string,
     sessionId: string,
@@ -319,6 +363,58 @@ export class KagentApiClient implements KagentApi {
         typeof body.message === 'string' && body.message
           ? body.message
           : 'kagent reported an error while sending the message, without saying what.',
+      );
+    }
+  }
+
+  async answerConfirmation(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    answer: {
+      messageId: string;
+      taskId: string;
+      decision: 'approve' | 'reject';
+      answers?: string[][];
+      rejectionReason?: string;
+      text?: string;
+    },
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}/answer`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentNamespace: agent.namespace,
+        agentName: agent.name,
+        messageId: answer.messageId,
+        taskId: answer.taskId,
+        decision: answer.decision,
+        ...(answer.answers && { answers: answer.answers }),
+        ...(answer.rejectionReason && {
+          rejectionReason: answer.rejectionReason,
+        }),
+        ...(answer.text && { text: answer.text }),
+      }),
+    });
+
+    // `badRequestIsMissing: false` for the same reason as the other writes: this
+    // route answers 400 for a rejected body, which is nothing like "kagent is
+    // absent from this installation".
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // A 202 means the agent is still working on what it was told; the answer
+    // itself has landed. Deliberately indistinguishable from a finished turn, as
+    // on the messages route.
+    const body = await response.json().catch(() => undefined);
+    if (isErrorEnvelope(body)) {
+      throw upstreamError(
+        typeof body.message === 'string' && body.message
+          ? body.message
+          : 'kagent reported an error while answering the question, without saying what.',
       );
     }
   }

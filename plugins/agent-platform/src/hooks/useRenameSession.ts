@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
+import { sessionsQueryKey } from '../lib/queryKeys';
 import { sessionQueryKey } from './useSessionDetail';
 
 /**
@@ -44,7 +45,7 @@ export function useRenameSession(installation: string, sessionId: string) {
       // that nothing here can reach. It needs no help: a fresh client starts
       // empty and these keys are excluded from persistence.
       await queryClient.invalidateQueries({
-        queryKey: ['agent-platform', 'kagent', 'sessions', installation],
+        queryKey: sessionsQueryKey(installation),
       });
     },
   });

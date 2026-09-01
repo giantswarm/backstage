@@ -400,6 +400,124 @@ describe('KagentClient', () => {
     });
   });
 
+  describe('session create', () => {
+    it('POSTs agent_ref, name and source to the sessions path', async () => {
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ error: false, data: { id: 'new-session' } }, 201),
+        );
+
+      await build(fetchFn).createSession(
+        { namespace: 'kagent', name: 'sre-agent' },
+        'Why is the ingress failing?',
+        { userToken: 'user-token' },
+      );
+
+      const [url, init] = fetchFn.mock.calls[0];
+      expect(url).toBe('https://kagent.gazelle.example.io/api/sessions');
+      expect(init.method).toBe('POST');
+      expect(init.headers).toEqual({
+        Accept: 'application/json',
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      });
+      expect(JSON.parse(init.body)).toEqual({
+        agent_ref: 'kagent/sre-agent',
+        name: 'Why is the ingress failing?',
+        source: 'user',
+      });
+    });
+
+    it('never sends an id, so the upsert behind this route cannot overwrite a session', async () => {
+      // `POST /api/sessions` is an upsert on `(id, user_id)` — the same statement
+      // the v0.9.x rename fallback relies on. A client-supplied id would replace
+      // an existing session's agent rather than create anything.
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ error: false, data: { id: 'generated' } }, 201),
+        );
+
+      await build(fetchFn).createSession(
+        { namespace: 'kagent', name: 'sre-agent' },
+        'Title',
+        { userToken: 't' },
+      );
+
+      expect(JSON.parse(fetchFn.mock.calls[0][1].body)).not.toHaveProperty(
+        'id',
+      );
+    });
+
+    it('returns kagent’s envelope verbatim, leaving the schema to the frontend', async () => {
+      const envelope = {
+        error: false,
+        data: { id: 'abc', name: 'Title', agent_id: 'kagent__NS__sre_agent' },
+        message: 'Successfully created session',
+      };
+      const fetchFn = jest.fn().mockResolvedValue(jsonResponse(envelope, 201));
+
+      await expect(
+        build(fetchFn).createSession({ namespace: 'kagent', name: 'a' }, 'T', {
+          userToken: 't',
+        }),
+      ).resolves.toEqual(envelope);
+    });
+
+    it('turns a 400 into a 409 naming the agent, not an upstream failure', async () => {
+      // kagent answers 400 for an `agent_ref` it cannot resolve. That is a stale
+      // picker, not a fault — and an upstream failure would be a 500, which
+      // `MiddlewareFactory.error()` forwards to Sentry.
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'invalid agent' }, 400));
+
+      await expect(
+        build(fetchFn).createSession(
+          { namespace: 'kagent', name: 'gone-agent' },
+          'T',
+          { userToken: 't' },
+        ),
+      ).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: expect.stringContaining('kagent/gone-agent'),
+      });
+    });
+
+    it('passes a 409 through — a sandbox agent already holds its one session', async () => {
+      const fetchFn = jest
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'session exists' }, 409));
+
+      await expect(
+        build(fetchFn).createSession(
+          { namespace: 'kagent', name: 'sandbox' },
+          'T',
+          { userToken: 't' },
+        ),
+      ).rejects.toMatchObject({ name: 'ConflictError' });
+    });
+
+    it('reports a kagent without the route as a version gap, not a missing agent', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(
+        new Response('404 page not found', {
+          status: 404,
+          headers: { 'content-type': 'text/plain' },
+        }),
+      );
+
+      await expect(
+        build(fetchFn).createSession({ namespace: 'kagent', name: 'a' }, 'T', {
+          userToken: 't',
+        }),
+      ).rejects.toMatchObject({
+        name: 'NotFoundError',
+        message: expect.stringContaining('has no session create endpoint'),
+      });
+    });
+  });
+
   describe('session rename', () => {
     it('PUTs the name to the session path, with the forwarded token', async () => {
       const fetchFn = jest
@@ -888,6 +1006,215 @@ describe('KagentClient', () => {
             userToken: 't',
           }),
         ).rejects.toMatchObject({ name: 'UpstreamError' });
+      });
+    });
+  });
+
+  describe('answering a confirmation', () => {
+    const okResponse = () =>
+      jsonResponse({ jsonrpc: '2.0', result: { kind: 'task' } });
+
+    function body(fetchFn: jest.Mock) {
+      return JSON.parse(fetchFn.mock.calls[0][1].body);
+    }
+
+    it('puts taskId on the message, which is what makes it a resume', async () => {
+      // **The whole point.** The A2A server picks the task from
+      // `params.message.taskId` (`internal/taskexec/local_manager.go`): empty means
+      // "new task". A `params.taskId` is not a field of `MessageSendParams` in any
+      // A2A version and is dropped by the v0 -> v1 conversion — which is exactly
+      // why klaus-gateway's Slack answers strand the task they meant to resume.
+      const fetchFn = jest.fn().mockResolvedValue(okResponse());
+
+      await build(fetchFn).answerConfirmation(
+        'ctx-1',
+        { namespace: 'kagent', name: 'grill-master' },
+        { messageId: 'msg-1', taskId: 'task-1', decision: 'approve' },
+        { userToken: 't' },
+      );
+
+      const sent = body(fetchFn);
+      expect(sent.params.message.taskId).toBe('task-1');
+      expect(sent.params).not.toHaveProperty('taskId');
+      expect(sent.params.message.contextId).toBe('ctx-1');
+    });
+
+    it('always sends decision_type, even for a question', async () => {
+      // Both executors read it *before* they look at the answers and bail out of
+      // the resume path entirely when it is absent — an answer without it is
+      // silently ignored.
+      const fetchFn = jest.fn().mockResolvedValue(okResponse());
+
+      await build(fetchFn).answerConfirmation(
+        'ctx-1',
+        { namespace: 'kagent', name: 'grill-master' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['Rideable proof-of-concept']],
+        },
+        { userToken: 't' },
+      );
+
+      const [dataPart] = body(fetchFn).params.message.parts;
+      expect(dataPart).toEqual({
+        kind: 'data',
+        data: {
+          decision_type: 'approve',
+          ask_user_answers: [{ answer: ['Rideable proof-of-concept'] }],
+        },
+      });
+    });
+
+    it('maps answers positionally, one entry per question', async () => {
+      // kagent indexes into this array and treats a short one as "unanswered"
+      // rather than an error, so the order is load-bearing.
+      const fetchFn = jest.fn().mockResolvedValue(okResponse());
+
+      await build(fetchFn).answerConfirmation(
+        'ctx-1',
+        { namespace: 'kagent', name: 'a' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['first'], ['second-a', 'second-b']],
+        },
+        { userToken: 't' },
+      );
+
+      expect(
+        body(fetchFn).params.message.parts[0].data.ask_user_answers,
+      ).toEqual([{ answer: ['first'] }, { answer: ['second-a', 'second-b'] }]);
+    });
+
+    it('adds the user’s words as a text part, for the transcript', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(okResponse());
+
+      await build(fetchFn).answerConfirmation(
+        'ctx-1',
+        { namespace: 'kagent', name: 'a' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['yes']],
+          text: 'yes',
+        },
+        { userToken: 't' },
+      );
+
+      expect(body(fetchFn).params.message.parts).toEqual([
+        expect.objectContaining({ kind: 'data' }),
+        { kind: 'text', text: 'yes' },
+      ]);
+    });
+
+    it('sends a flat rejection_reason for a refusal, not the batch map', async () => {
+      // `rejection_reasons` (plural) belongs to `decision_type: 'batch'`, which we
+      // never send: a batch key that matches no `originalFunctionCall.id` defaults
+      // to **approve**, so a mistake there would silently permit the tool.
+      const fetchFn = jest.fn().mockResolvedValue(okResponse());
+
+      await build(fetchFn).answerConfirmation(
+        'ctx-1',
+        { namespace: 'kagent', name: 'a' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'reject',
+          rejectionReason: 'not on production',
+        },
+        { userToken: 't' },
+      );
+
+      expect(body(fetchFn).params.message.parts[0].data).toEqual({
+        decision_type: 'reject',
+        rejection_reason: 'not on production',
+      });
+    });
+
+    it('drops a rejection reason given alongside an approval', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(okResponse());
+
+      await build(fetchFn).answerConfirmation(
+        'ctx-1',
+        { namespace: 'kagent', name: 'a' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          rejectionReason: 'stale value from a previous attempt',
+        },
+        { userToken: 't' },
+      );
+
+      expect(body(fetchFn).params.message.parts[0].data).toEqual({
+        decision_type: 'approve',
+      });
+    });
+
+    it('targets the agent’s A2A endpoint with the forwarded token', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(okResponse());
+
+      await build(fetchFn).answerConfirmation(
+        'ctx-1',
+        { namespace: 'kagent', name: 'grill-master' },
+        { messageId: 'msg-1', taskId: 'task-1', decision: 'approve' },
+        { userToken: 'user-token' },
+      );
+
+      const [url, init] = fetchFn.mock.calls[0];
+      expect(url).toBe(
+        'https://kagent.gazelle.example.io/api/a2a/kagent/grill-master',
+      );
+      expect(init.headers.Authorization).toBe('Bearer user-token');
+    });
+
+    it('reports a turn that outlived its transport as pending, not failed', async () => {
+      // Same contract as the send: the answer has landed by then; only the agent's
+      // reaction is outstanding. Verified by going and looking, not guessed.
+      const fetchFn = jest
+        .fn()
+        .mockImplementationOnce(async () => {
+          throw new Error('socket hang up');
+        })
+        .mockImplementationOnce(async () =>
+          jsonResponse({
+            error: false,
+            data: [{ history: [{ messageId: 'msg-1' }] }],
+          }),
+        );
+
+      await expect(
+        build(fetchFn).answerConfirmation(
+          'ctx-1',
+          { namespace: 'kagent', name: 'a' },
+          { messageId: 'msg-1', taskId: 'task-1', decision: 'approve' },
+          { userToken: 't' },
+        ),
+      ).rejects.toMatchObject({ name: 'KagentTurnPendingError' });
+    });
+
+    it('fails on a JSON-RPC error inside a 200 rather than losing it', async () => {
+      const fetchFn = jest.fn().mockResolvedValue(
+        jsonResponse({
+          jsonrpc: '2.0',
+          error: { code: -32602, message: 'task in a terminal state' },
+        }),
+      );
+
+      await expect(
+        build(fetchFn).answerConfirmation(
+          'ctx-1',
+          { namespace: 'kagent', name: 'a' },
+          { messageId: 'msg-1', taskId: 'task-1', decision: 'approve' },
+          { userToken: 't' },
+        ),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: expect.stringContaining('task in a terminal state'),
       });
     });
   });

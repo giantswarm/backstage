@@ -3,6 +3,10 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { KagentSessionDetail } from '../lib/kagentSessionDetail';
+import {
+  PendingConfirmation,
+  readPendingConfirmation,
+} from '../lib/kagentHitl';
 import { buildTimeline, SessionTimeline } from '../lib/kagentTimeline';
 import {
   deriveSessionState,
@@ -37,6 +41,15 @@ export type SessionDetailView = {
    * once the state has not moved for `ACTIVE_MAX_AGE_MS`. See `isAgentWorking`.
    */
   isAgentWorking: boolean;
+  /**
+   * The confirmation the agent is suspended on, when it is.
+   *
+   * Carried alongside `state` rather than derived from the timeline because
+   * answering has to name the **task** it resumes, and a timeline item only knows
+   * its index. Undefined for a session that is not waiting, and for one waiting on
+   * a payload we cannot read — in which case no answer must be offered.
+   */
+  pendingConfirmation?: PendingConfirmation;
   /** Number of A2A tasks — the session's turn count. */
   taskCount: number;
   /**
@@ -153,6 +166,11 @@ export function useSessionDetail(
     [tasks, tasksUpdatedAt],
   );
 
+  const pendingConfirmation = useMemo(
+    () => (tasks ? readPendingConfirmation(tasks) : undefined),
+    [tasks],
+  );
+
   // The last session we read successfully. `getSessionDetail` resolves `undefined`
   // for any 200 whose body does not parse — an expired oauth2-proxy answering with
   // an HTML sign-in page is the realistic case — and react-query stores that
@@ -197,6 +215,7 @@ export function useSessionDetail(
     timeline,
     state,
     isAgentWorking: agentWorking,
+    pendingConfirmation,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,
     // `isNotFound` short-circuits loading, because it is decided by the session

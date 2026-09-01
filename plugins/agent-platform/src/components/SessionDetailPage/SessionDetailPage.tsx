@@ -1,4 +1,11 @@
-import { ReactNode, useCallback, useMemo, useState } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Content,
@@ -16,6 +23,8 @@ import {
 
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
+import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
+import { useNewSessionHandoff } from '../../hooks/useNewSessionHandoff';
 import { useRenameSession } from '../../hooks/useRenameSession';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
@@ -24,6 +33,7 @@ import { AvatarSize } from '../../lib/agentAvatar';
 import { AWAITING_INPUT_STATES } from '../../lib/kagentSessionState';
 import { sessionsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
+import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
@@ -107,10 +117,14 @@ function Stat({ label, value }: { label: string; value: string }) {
 /**
  * One kagent session: what it was, how it ended, and what the agent did.
  *
- * The session can be **renamed** — from the header's actions menu or by clicking the
- * title — and **deleted** from that menu (see "Renaming a session" and "Deleting a
- * session" in docs/agent-platform.md). Continuing a session, which the prototype also
- * offers, is not wired up here.
+ * The session can be **continued** through the composer at the bottom (see
+ * "Continuing a session" in docs/agent-platform.md), **renamed** — from the header's
+ * actions menu or by clicking the title — and **deleted** from that menu.
+ *
+ * It is also where a session's **first** message is sent. Starting a session creates it
+ * on the previous screen and hands the prompt over through the router state, because
+ * `message/send` blocks for the whole turn; see "Starting a session" in the same
+ * document for why the send lands here rather than there.
  *
  * What the prototype shows and this cannot, because kagent stores none of it:
  * cost, tokens-per-second, context-window usage, the owning team, the trigger that
@@ -134,6 +148,7 @@ export function SessionDetailPage() {
     timeline,
     state,
     isAgentWorking: agentIsWorking,
+    pendingConfirmation,
     taskCount,
     hasConversation,
     isLoading,
@@ -167,18 +182,52 @@ export function SessionDetailPage() {
   // hour's staleTime, so asking for it on this page is free.
   const rename = useRenameSession(installation, sessionId);
 
+  // The prompt this session was started with, if the user arrived here by
+  // starting it. Read once and cleared, so returning to the session later cannot
+  // re-send it. See `useNewSessionHandoff`.
+  const handoff = useNewSessionHandoff();
+
   // Undefined when no `Agent` CR matched the session's encoded `agent_id`, which
   // is what withholds the composer: without the agent's real namespace and name
   // there is no A2A endpoint to address, and the encoding cannot be safely
   // decoded back into one.
-  const agent = useMemo(
-    () =>
-      row?.agentNamespace && row.agentTechnicalName
-        ? { namespace: row.agentNamespace, name: row.agentTechnicalName }
-        : undefined,
-    [row?.agentNamespace, row?.agentTechnicalName],
-  );
+  //
+  // A handoff supplies it directly, and takes precedence for one render's worth of
+  // reason: the join above needs both the session read and the fleet-wide Agent
+  // list, so on a session created a moment ago it resolves a beat late — and the
+  // first message has to be dispatchable immediately. The two agree by
+  // construction, since the composer created the session against this agent.
+  const agent = useMemo(() => {
+    if (row?.agentNamespace && row.agentTechnicalName) {
+      return { namespace: row.agentNamespace, name: row.agentTechnicalName };
+    }
+    return handoff
+      ? { namespace: handoff.agentNamespace, name: handoff.agentName }
+      : undefined;
+  }, [row?.agentNamespace, row?.agentTechnicalName, handoff]);
   const send = useSendMessage(installation, sessionId, agent);
+  const confirmation = useAnswerConfirmation(installation, sessionId, agent);
+
+  // Dispatch the session's first message, once.
+  //
+  // The create and the send are two kagent calls, and only the create happened
+  // before we got here: a session is a shell, and `message/send` blocks for the
+  // whole turn — so making the composer wait for it would have meant staring at
+  // the list for up to half a minute. Sending from here instead means the
+  // optimistic echo, the "Working…" row and the failure path are all the ones that
+  // already exist for a reply.
+  const { sendMessage } = send;
+  const dispatched = useRef(false);
+  useEffect(() => {
+    if (!handoff || dispatched.current) {
+      return;
+    }
+    dispatched.current = true;
+    // Errors surface through `send.error` and `send.failed`, exactly as they do
+    // for a reply typed into the composer — which is also what hands the text
+    // back so it is not lost.
+    sendMessage(handoff.text).catch(() => {});
+  }, [handoff, sendMessage]);
 
   // The message the user just sent, shown as the newest turn before kagent's copy
   // of it has been read back — a turn can run for minutes, and a conversation that
@@ -334,9 +383,75 @@ export function SessionDetailPage() {
     // Withheld deliberately, and it is the opposite of "busy": the agent asked
     // something and nothing moves until it is answered. A plain message here does
     // not answer it — kagent opens a *new* task and leaves the question pending
-    // forever — so offering the box would quietly strand the conversation.
-    composerWithheldReason =
-      'This session is waiting for an answer to the agent’s question. Answering one is not supported here yet — use the kagent UI to reply.';
+    // forever — so the composer is replaced by the answer panel below, which
+    // resumes the suspended task instead.
+    //
+    // This reason is only reached when the confirmation itself could not be read:
+    // a shape we do not recognise, or a task with no id to resume. Answering then
+    // would be guessing at what the agent asked.
+    composerWithheldReason = pendingConfirmation
+      ? undefined
+      : 'This session is waiting for input, but the request could not be read — use the kagent UI to reply.';
+  }
+
+  /**
+   * What sits below the conversation: nothing, an answer panel, or the composer.
+   *
+   * Assembled here rather than as a ternary chain in the JSX — there are three
+   * outcomes and two of them are multi-element.
+   */
+  let bottomControl: ReactNode;
+  if (composerWithheldReason) {
+    bottomControl = (
+      <Text variant="body-small" color="secondary">
+        {composerWithheldReason}
+      </Text>
+    );
+  } else if (pendingConfirmation && agent) {
+    // The panel *and* the composer, the latter disabled. A plain message cannot
+    // answer a confirmation — it opens a new task and strands this one — so the
+    // composer must not submit. But removing it outright reads as the reply feature
+    // being missing rather than blocked, so it stays in place saying why. kagent's
+    // own UI makes the same call, leaving its box on screen with
+    // `Awaiting approval…` in it.
+    bottomControl = (
+      <Flex direction="column" gap="4">
+        <PendingConfirmationPanel
+          pending={pendingConfirmation}
+          isAnswering={confirmation.isAnswering}
+          error={confirmation.error?.message}
+          restore={confirmation.failed}
+          isUserScoped={isUserScoped}
+          onAnswer={answer => {
+            // Errors surface through the hook's `error`, which the panel renders
+            // above the choices it hands back.
+            confirmation.answer(answer).catch(() => {});
+          }}
+        />
+        <SessionComposer
+          isAgentWorking={false}
+          isFinished={false}
+          disabledReason="Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
+          onSubmit={() => {}}
+        />
+      </Flex>
+    );
+  } else {
+    bottomControl = (
+      <SessionComposer
+        isAgentWorking={showWorking}
+        isFinished={Boolean(state && !state.isActive)}
+        error={send.error?.message}
+        // On failure the optimistic copy is dropped, so this is the only place the
+        // user's text still exists.
+        restore={send.failed}
+        onSubmit={text => {
+          // Errors are surfaced through the hook's `error`, which the composer
+          // renders beside the text it hands back.
+          send.sendMessage(text).catch(() => {});
+        }}
+      />
+    );
   }
 
   const avatarUrl = row.agentTechnicalName
@@ -457,25 +572,7 @@ export function SessionDetailPage() {
           isAgentWorking={showWorking}
         />
 
-        {composerWithheldReason ? (
-          <Text variant="body-small" color="secondary">
-            {composerWithheldReason}
-          </Text>
-        ) : (
-          <SessionComposer
-            isAgentWorking={showWorking}
-            isFinished={Boolean(state && !state.isActive)}
-            error={send.error?.message}
-            // On failure the optimistic copy is dropped, so this is the only place
-            // the user's text still exists.
-            restore={send.failed}
-            onSubmit={text => {
-              // Errors are surfaced through the hook's `error`, which the composer
-              // renders beside the text it hands back.
-              send.sendMessage(text).catch(() => {});
-            }}
-          />
-        )}
+        {bottomControl}
       </Flex>
 
       {/* One dialog for both entry points, rendered here rather than inside the
