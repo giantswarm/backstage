@@ -476,6 +476,63 @@ describe('PendingConfirmationPanel', () => {
     );
   });
 
+  it('does not double the answer when restoring a failed attempt', async () => {
+    // `restore` is the *submitted payload*, so each entry already holds the picked
+    // options followed by the typed words — and the panel stayed mounted across the
+    // failure, so `chosen` still holds that same selection. Seeding only `typed`
+    // therefore fed every choice in twice.
+    //
+    // A rerender, not a fresh mount: mounting fresh leaves `chosen` empty, which is
+    // the one arrangement in which restoring only `typed` happens to be correct.
+    const { rerender } = renderPanel(singleChoice);
+    await userEvent.click(screen.getByLabelText('A rideable bike'));
+    await userEvent.click(sendButton());
+
+    const submitted = onAnswer.mock.calls[0][0];
+    expect(submitted.answers).toEqual([['A rideable bike']]);
+
+    rerender(
+      <PendingConfirmationPanel
+        pending={singleChoice}
+        isAnswering={false}
+        onAnswer={onAnswer}
+        error="kagent refused the answer"
+        restore={{ messageId: 'msg-1', ...submitted }}
+      />,
+    );
+
+    // The whole previous answer now lives in the text box, and nothing is left
+    // selected to be added to it a second time.
+    expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveValue(
+      'A rideable bike',
+    );
+    expect(screen.getByLabelText('A rideable bike')).not.toBeChecked();
+
+    onAnswer.mockClear();
+    await userEvent.click(sendButton());
+
+    expect(onAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({ answers: [['A rideable bike']] }),
+    );
+  });
+
+  it('will not offer a decline it would silently drop', async () => {
+    // `decline()` early-returns on an over-long reason. Leaving the button enabled
+    // made pressing it do nothing, with only the caption to explain — and an
+    // over-long *answer* outranks the reason there, so that explanation can be
+    // hidden exactly when it is needed.
+    renderPanel(freeText);
+
+    await userEvent.click(declineButton());
+    await userEvent.click(screen.getByRole('textbox', { name: /Reason/ }));
+    await userEvent.paste('x'.repeat(MESSAGE_TEXT_MAX_LENGTH + 1));
+
+    expect(
+      screen.getByRole('button', { name: 'Confirm decline' }),
+    ).toBeDisabled();
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
   it('refuses an answer over the message limit and says how long it is', async () => {
     // Sent as the message's `text`, which the route rejects above the same limit —
     // so without an up-front bound this came back as a raw validator message for a

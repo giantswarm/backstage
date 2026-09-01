@@ -156,6 +156,16 @@ export function PendingConfirmationPanel({
     // dead code that only ever "worked" in a test that rendered a fresh panel with
     // `restore` already set. Same render-phase pattern `SessionComposer` uses.
     restoredId.current = restore.messageId;
+    // The choices go too, and that is the whole point: `restore` is the *submitted
+    // payload*, so each entry already holds the picked options followed by the typed
+    // words. The panel stayed mounted across the failure — the premise of this
+    // branch — so `chosen` still holds that same selection, and seeding only `typed`
+    // fed every choice into the answer twice.
+    //
+    // Putting the lot in `typed` is also the honest rendering: which values were
+    // clicked and which were typed is not recoverable from the payload, so the
+    // field now shows exactly what will be sent.
+    setChosen(pending.questions.map(() => []));
     setTyped(
       pending.questions.map(
         (_, index) => restore.answers?.[index]?.join(', ') ?? '',
@@ -357,7 +367,12 @@ export function PendingConfirmationPanel({
           <Flex align="center" gap="2">
             <Button
               variant="secondary"
-              isDisabled={isAnswering}
+              // Disabled rather than left to `decline()`'s silent early return: a
+              // control that does nothing when pressed is worse than one that is
+              // visibly unavailable, and the caption cannot be relied on to explain
+              // — an over-long *answer* outranks the reason in it, so the decline
+              // path's only explanation can be hidden exactly when it is needed.
+              isDisabled={isAnswering || (showReason && isReasonTooLong)}
               onPress={() => (showReason ? decline() : setShowReason(true))}
             >
               {showReason ? 'Confirm decline' : 'Decline'}
