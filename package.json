@@ -87,7 +87,7 @@
     "@lezer/common": "1.5.2",
     "@lezer/highlight": "1.2.3",
     "codemirror-json-schema": "0.8.1",
-    "@assistant-ui/tap": "0.9.13",
+    "@assistant-ui/tap": "0.9.12",
     "@assistant-ui/core": "^0.2.0",
     "assistant-stream": "^0.3.0",
     "@giantswarm/backstage-plugin-ai-chat-backend/ai": "7.0.66",
