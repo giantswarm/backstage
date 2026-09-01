@@ -379,9 +379,10 @@ export function SessionDetailPage() {
   // Follow the reply as it streams in — but only when already reading the end.
   // Someone scrolled up through the history must not have the page yanked away
   // under them by every arriving token.
-  const streamTick = send.stream
-    ? send.stream.items.length + (send.stream.live?.text.length ?? 0)
-    : 0;
+  // The turn's own event counter, not a size derived from its content: closing
+  // a text run moves length out of `live` into `items`, which can leave any such
+  // size unchanged across a real update and skip the follow for it.
+  const streamTick = send.stream?.revision ?? 0;
   useEffect(() => {
     if (streamTick === 0) {
       return;

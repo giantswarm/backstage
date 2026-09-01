@@ -26,6 +26,19 @@ to a reply, a tool call taking an item slot — closes it first, so "items, then
 the open run" is chronological by construction and the page appends rather than
 sorts.
 
+The same invariant now holds on the artifact path the Go executor uses: text
+parts are appended as they are read, so a `function_call` later in the same event
+cannot overtake them, and an artifact's closing sentinel no longer discards a run
+that belongs to a message rather than to the artifact stream. A message that
+emits items _and_ leaves a run open — text, a call, then more text under one
+`messageId` — keeps that trailing text, which the terminal event used to drop on
+the strength of a complete copy that is skipped as already rendered.
+
+Following the reply as it streams now keys off the turn's own event counter
+rather than a size derived from its content, which was not strictly increasing:
+closing a run hands length from the open text to the item list, so a real update
+could leave the number unchanged and skip the scroll for it.
+
 Streamed items now also carry the `messageId` of the message they came from, and
 `buildTimeline` stamps polled tool-call items with theirs. Both halves of the
 existing recognise-and-drop dedupe therefore line up, which removes the frame

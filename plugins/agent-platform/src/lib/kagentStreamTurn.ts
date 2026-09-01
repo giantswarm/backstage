@@ -99,6 +99,15 @@ export type StreamTurn = {
   isFinal: boolean;
   /** Newest A2A state the stream reported, lowercased. */
   stateKey?: string;
+  /**
+   * Events folded so far — a change counter for anyone following the turn.
+   *
+   * Strictly increasing, which nothing derived from the content is: closing a
+   * run moves text out of {@link live} and into {@link items} one item at a
+   * time, so a size derived from both can hold steady across a real update and
+   * hide it from an effect watching for one.
+   */
+  revision: number;
   /** Calls awaiting their response, by function-call id. Internal. */
   openCalls: { callId: string; itemIndex: number }[];
   /** Monotonic id source for {@link items}. Internal. */
@@ -111,6 +120,7 @@ export function createStreamTurn(sentMessageId: string): StreamTurn {
     dispatched: false,
     items: [],
     isFinal: false,
+    revision: 0,
     openCalls: [],
     nextItemId: 0,
   };
@@ -130,6 +140,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
   const next: StreamTurn = {
     ...turn,
     dispatched: true,
+    revision: turn.revision + 1,
     items: turn.items,
     openCalls: turn.openCalls,
   };
@@ -160,16 +171,22 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       const message = readAgentMessage(event.status?.message);
       if (message) {
         if (isFinal) {
-          // The terminal event carries the complete message, which supersedes
-          // that same message's chunks — but only its own. A run left open by an
-          // *earlier* message is a different sentence entirely, and dropping it
-          // would erase it from the live view until the poll restored it.
-          if (next.live && next.live.messageId === message.messageId) {
-            next.live = undefined;
-          } else {
+          // A run left open by an *earlier* message is a different sentence
+          // entirely: it keeps its place ahead of whatever this event adds.
+          if (next.live && next.live.messageId !== message.messageId) {
             flushLiveRun(next);
           }
-          ingestCompleteMessage(next, message);
+          // What is left is this message's own run, which its complete copy
+          // supersedes — unless that copy is skipped as already rendered, in
+          // which case the run is the tail of it that no item holds yet.
+          // Dropping the run either way lost that tail: text, a call, then more
+          // text under one `messageId` emits items *and* leaves a run open.
+          const live = next.live;
+          next.live = undefined;
+          if (!ingestCompleteMessage(next, message) && live) {
+            next.live = live;
+            flushLiveRun(next);
+          }
         } else {
           ingestIncrementalMessage(next, message);
         }
@@ -190,8 +207,44 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       const partial =
         readKagentMetadata(event.metadata, 'partial') ??
         readKagentMetadata(event.artifact?.metadata, 'partial');
+      // The complete response message (Go executor), or the closing sentinel
+      // (whose text, when present, is the complete message — Python flow).
+      const isComplete = partial === false || event.lastChunk === true;
 
       let text = '';
+      /**
+       * Emit the complete message this event carries, at the position reached
+       * so far.
+       *
+       * Only chunks that arrived *as artifacts* are what a complete artifact
+       * supersedes, and those carry no `messageId`. A run opened by a message is
+       * someone else's sentence: this event has no complete copy of it, so
+       * discarding it would erase it outright.
+       */
+      const emitComplete = () => {
+        const live = next.live;
+        if (!live || live.messageId !== undefined) {
+          flushLiveRun(next);
+        }
+        next.live = undefined;
+        if (!text) {
+          return;
+        }
+        // Where the run turns out to be that same complete text (the Python
+        // flow: the message arrived whole on a status-update, and this event
+        // only repeats it), it carries the `messageId` this artifact has not
+        // got — and that is what later lets the poll recognise the item.
+        const repeats = live?.text.trim() === text.trim();
+        pushTextItem(
+          next,
+          'agent-message',
+          text,
+          repeats ? live?.messageId : undefined,
+          repeats ? live?.author : undefined,
+        );
+        text = '';
+      };
+
       for (const rawPart of parts) {
         const part = parsePart(rawPart);
         if (!part) {
@@ -200,45 +253,32 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         const partText = readPartText(part);
         if (partText !== undefined) {
           text += partText;
+          if (partial === true) {
+            // Appended as the parts are read rather than after the loop: a
+            // `function_call` later in this same event must not take its item
+            // slot ahead of the text that came before it.
+            appendLiveText(
+              next,
+              'agent-message',
+              partText,
+              undefined,
+              undefined,
+            );
+          }
           continue;
         }
         // Tool activity can travel on artifacts too; it is complete whenever it
-        // appears, whatever the partial stamp says about the text.
+        // appears, whatever the partial stamp says about the text. Whatever was
+        // said before it takes its position first.
+        if (isComplete) {
+          emitComplete();
+        }
         ingestDataPart(next, part, undefined, undefined);
       }
 
-      if (partial === true) {
-        if (text) {
-          appendLiveText(next, 'agent-message', text, undefined, undefined);
-        }
-        return next;
+      if (isComplete) {
+        emitComplete();
       }
-
-      if (partial === false || event.lastChunk === true) {
-        // The complete response message (Go executor), or the closing sentinel
-        // (whose text, when present, is the complete message — Python flow).
-        // Either way it supersedes the open run, which holds this same message's
-        // chunks — so the run is replaced rather than flushed, or a partial
-        // prefix would be left standing next to the whole.
-        const live = next.live;
-        next.live = undefined;
-        if (text) {
-          // Where the run turns out to be that same complete text (the Python
-          // flow: the message arrived whole on a status-update, and this event
-          // only repeats it), it carries the `messageId` this artifact has not
-          // got — and that is what later lets the poll recognise the item.
-          const repeats = live?.text.trim() === text.trim();
-          pushTextItem(
-            next,
-            'agent-message',
-            text,
-            repeats ? live?.messageId : undefined,
-            repeats ? live?.author : undefined,
-          );
-        }
-        return next;
-      }
-
       return next;
     }
 
@@ -275,15 +315,19 @@ function readAgentMessage(value: unknown): A2aMessageWire | undefined {
  * A complete message: text parts merge into runs exactly as `buildTimeline`
  * merges them, data parts become call items.
  */
-function ingestCompleteMessage(turn: StreamTurn, message: A2aMessageWire) {
-  // Already rendered, part for part: the terminal event repeats a message whose
-  // text and calls the incremental pass has emitted. Every streamed item carries
-  // the id of the message it came from, so one match is the whole message.
+function ingestCompleteMessage(
+  turn: StreamTurn,
+  message: A2aMessageWire,
+): boolean {
+  // Already rendered: the terminal event repeats a message the incremental pass
+  // has emitted items for. Reported back rather than silently skipped, because
+  // "some of this message is on screen" is not "all of it is" — a caller
+  // holding the rest has to know this copy will not deliver it.
   if (
     message.messageId &&
     turn.items.some(item => item.messageId === message.messageId)
   ) {
-    return;
+    return false;
   }
   const author = readKagentMetadataString(message.metadata, 'author');
   const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -327,6 +371,7 @@ function ingestCompleteMessage(turn: StreamTurn, message: A2aMessageWire) {
     ingestDataPart(turn, part, author, message.messageId);
   }
   flushRun();
+  return true;
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   readStreamFrame,
   StreamTurn,
 } from './kagentStreamTurn';
+import { TimelineItem } from './kagentTimeline';
 
 describe('createSseDataDecoder', () => {
   it('decodes one event per blank-line delimiter', () => {
@@ -121,6 +122,12 @@ describe('applyStreamEvent', () => {
     status: { state: options.state ?? 'working', message },
   });
 
+  /** One item as `kind:detail`, so a whole turn can be asserted as an order. */
+  const describeItem = (item: TimelineItem) =>
+    item.kind === 'tool-call'
+      ? `tool:${item.toolName}`
+      : `text:${'text' in item ? item.text : item.kind}`;
+
   const agentMessage = (parts: unknown[], messageId = 'reply-1') => ({
     kind: 'message',
     messageId,
@@ -134,6 +141,25 @@ describe('applyStreamEvent', () => {
     // is what spares a later stream failure the verification read.
     expect(fold(['garbage']).dispatched).toBe(true);
     expect(fold([{ kind: 'status-update' }]).dispatched).toBe(true);
+  });
+
+  it('counts every folded event, whatever it did to the items', () => {
+    // The page follows the reply by watching this counter, so it has to move on
+    // an update that only redistributes text — closing a run hands length from
+    // the open run to the items, leaving any content-derived size unchanged.
+    const events = [
+      statusUpdate(agentMessage([textPart('Fetching nodes.')], 'm-1')),
+      statusUpdate(agentMessage([callPart('c1', 'kubectl_get')], 'm-1')),
+      statusUpdate(agentMessage([textPart('Seven.')], 'm-2')),
+    ];
+    const revisions: number[] = [];
+    events.reduce<StreamTurn>((turn, event) => {
+      const next = applyStreamEvent(turn, event);
+      revisions.push(next.revision);
+      return next;
+    }, createStreamTurn('sent-1'));
+
+    expect(revisions).toEqual([1, 2, 3]);
   });
 
   it('reads the task id and state from the task snapshot', () => {
@@ -255,6 +281,36 @@ describe('applyStreamEvent', () => {
       ]);
     });
 
+    it('keeps a tail the terminal event will not re-emit', () => {
+      // One message can emit items *and* leave a run open: text, then a call,
+      // then more text, all under the same `messageId`. Its complete copy is
+      // then skipped as already rendered, so dropping the run on the strength of
+      // that copy arriving lost the last sentence until the poll restored it.
+      const turn = fold([
+        statusUpdate(agentMessage([textPart('Fetching nodes.')], 'm-2')),
+        statusUpdate(agentMessage([callPart('c1', 'kubectl_get')], 'm-2')),
+        statusUpdate(agentMessage([textPart('There are seven.')], 'm-2')),
+        statusUpdate(
+          agentMessage(
+            [
+              textPart('Fetching nodes.'),
+              callPart('c1', 'kubectl_get'),
+              textPart('There are seven.'),
+            ],
+            'm-2',
+          ),
+          { final: true, state: 'completed' },
+        ),
+      ]);
+
+      expect(turn.items.map(describeItem)).toEqual([
+        'text:Fetching nodes.',
+        'tool:kubectl_get',
+        'text:There are seven.',
+      ]);
+      expect(turn.live).toBeUndefined();
+    });
+
     it('flushes the run when the final event carries no readable message', () => {
       const turn = fold([
         statusUpdate(agentMessage([textPart('Partial answer')])),
@@ -328,6 +384,51 @@ describe('applyStreamEvent', () => {
       ).toHaveLength(1);
     });
 
+    it('keeps a run a message opened, which no artifact supersedes', () => {
+      // The sentinel closes the *artifact* stream. A run opened by a
+      // status-update message is not part of it, and this event carries no
+      // complete copy of that message — so discarding it erases it outright,
+      // and the terminal event that follows has nothing left to flush.
+      const turn = fold([
+        statusUpdate(agentMessage([textPart('Said before work.')], 'm-1')),
+        artifactUpdate([{ kind: 'data', data: {} }], { lastChunk: true }),
+        { kind: 'status-update', final: true, status: { state: 'completed' } },
+      ]);
+
+      expect(turn.items).toEqual([
+        expect.objectContaining({
+          kind: 'agent-message',
+          text: 'Said before work.',
+          messageId: 'm-1',
+        }),
+      ]);
+    });
+
+    it('keeps a call behind text carried in the same artifact event', () => {
+      // Part order is chronology on this path too. Accumulating the event's text
+      // and appending it only after the loop let a `function_call` in the same
+      // event take its item slot first — the very inversion the status-update
+      // path was fixed for.
+      const turn = fold([
+        artifactUpdate([textPart('Before the call. ')], { partial: true }),
+        artifactUpdate(
+          [textPart('More text. '), callPart('c9', 'kubectl_get')],
+          {
+            partial: true,
+          },
+        ),
+      ]);
+
+      expect(turn.items).toEqual([
+        expect.objectContaining({
+          kind: 'agent-message',
+          text: 'Before the call. More text.',
+        }),
+        expect.objectContaining({ kind: 'tool-call', toolName: 'kubectl_get' }),
+      ]);
+      expect(turn.live).toBeUndefined();
+    });
+
     it('treats an empty lastChunk sentinel as nothing at all', () => {
       const turn = fold([
         artifactUpdate([textPart('Streamed.')], { partial: true }),
@@ -393,13 +494,10 @@ describe('applyStreamEvent', () => {
         statusUpdate(agentMessage([textPart('There are seven.')], 'm-3')),
       ]);
 
-      expect(
-        turn.items.map(item =>
-          item.kind === 'tool-call'
-            ? `tool:${item.toolName}`
-            : `text:${item.kind}`,
-        ),
-      ).toEqual(['text:agent-message', 'tool:kubectl_get']);
+      expect(turn.items.map(describeItem)).toEqual([
+        'text:Fetching the nodes.',
+        'tool:kubectl_get',
+      ]);
       expect(turn.items[1]).toEqual(
         expect.objectContaining({ isPending: false, result: 'ok' }),
       );
@@ -509,6 +607,73 @@ describe('applyStreamEvent', () => {
     ]);
 
     expect(turn.items).toEqual([]);
+    expect(turn.live).toBeUndefined();
+  });
+
+  it('replays a captured production turn in chronological order', () => {
+    // The frame sequence of a real turn on a Giant Swarm installation, kept as
+    // the end-to-end check that the paths above compose: a sentence and its call
+    // in one message, the response in the next, the reply in a third, and the
+    // artifact that repeats that reply before the terminal event.
+    const said = 'Making a live call to fetch the current node list right now!';
+    const answered = 'All 7 nodes are confirmed live and healthy.';
+    const turn = fold([
+      statusUpdate({
+        kind: 'message',
+        messageId: 'sent-1',
+        role: 'user',
+        parts: [textPart('List the nodes.')],
+      }),
+      statusUpdate(undefined),
+      statusUpdate(
+        agentMessage(
+          [
+            textPart(said),
+            {
+              kind: 'data',
+              metadata: { adk_type: 'function_call' },
+              data: {
+                id: 'c1',
+                name: 'call_tool',
+                args: {
+                  name: 'x_kubernetes_list',
+                  arguments: { cluster: 'operations' },
+                },
+              },
+            },
+          ],
+          'A',
+        ),
+      ),
+      statusUpdate(
+        agentMessage([responsePart('c1', 'call_tool', '7 nodes')], 'B'),
+      ),
+      statusUpdate(agentMessage([textPart(answered)], 'C')),
+      {
+        kind: 'artifact-update',
+        taskId: 'task-1',
+        lastChunk: true,
+        artifact: { artifactId: 'a-1', parts: [textPart(answered)] },
+      },
+      { kind: 'status-update', final: true, status: { state: 'completed' } },
+    ]);
+
+    expect(turn.items.map(describeItem)).toEqual([
+      `text:${said}`,
+      'tool:x_kubernetes_list',
+      `text:${answered}`,
+    ]);
+    // The call is unwrapped out of muster's proxy, answered, and stamped with
+    // the message it travelled in — which is what the poll recognises it by.
+    expect(turn.items[1]).toEqual(
+      expect.objectContaining({
+        kind: 'tool-call',
+        via: 'Muster',
+        isPending: false,
+        result: '7 nodes',
+        messageId: 'A',
+      }),
+    );
     expect(turn.live).toBeUndefined();
   });
 
