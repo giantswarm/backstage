@@ -76,10 +76,12 @@ const TOAST_TIMEOUT_MS = 6000;
  *   name. `pull` puts the Pull button and the downloads list here — with
  *   `search` it becomes the Hugging Face import (search, size and fit check
  *   against a node, pre-warm download); load/unload/delete/wire fill the
- *   per-row menu of the rows the source operates on; `nodeInventory` adds the
- *   placement columns. An Ollama-backed installation shows its controls and no
- *   placement; a read-only KServe CR view shows its rows and nothing
- *   operational — both ordinary state.
+ *   per-row menu of the rows the source operates on. An Ollama-backed
+ *   installation shows its controls; a read-only KServe CR view shows its rows
+ *   and nothing operational — both ordinary state. The table's columns follow
+ *   its rows, per installation (ServedModelsTable): Node and GPUs appear on
+ *   the rows that carry a node, never from a capability flag, so a backend
+ *   that merely knows its nodes does not get placement columns.
  * - **Preset-driven** (the KServe CR source): on installations that publish
  *   serving presets, serve a model from a preset — or from a download already
  *   in a node's cache ("Serve…" on that row) — and stop one; once a model the
@@ -167,14 +169,6 @@ export function ServingPage() {
   const downloadInstallations = useMemo(
     () => [...pullTargets, ...importTargets].map(target => target.name),
     [pullTargets, importTargets],
-  );
-
-  const nodeInventoryInstallations = useMemo(
-    () =>
-      installations.filter(
-        installation => capabilitiesFor(installation).nodeInventory,
-      ),
-    [installations, capabilitiesFor],
   );
 
   // --- Serve ---------------------------------------------------------------
@@ -467,16 +461,6 @@ export function ServingPage() {
         ) : (
           <ServedModelsTable
             rows={rows}
-            // A cluster backend keeps its placement columns while its models
-            // are still pending (no node yet); a backend without a node
-            // inventory never shows them.
-            columns={{
-              placement:
-                nodeInventoryInstallations.length > 0 ||
-                rows.some(
-                  row => row.node !== undefined || row.gpuCount !== undefined,
-                ),
-            }}
             renderActions={hasActions ? renderActions : undefined}
           />
         )}
