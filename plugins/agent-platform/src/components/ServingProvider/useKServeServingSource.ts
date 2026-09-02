@@ -9,6 +9,7 @@ import {
 import { useKServeInstallations } from '../../hooks/useKServeInstallations';
 import { usePodLists, type PodListRequest } from '../../hooks/usePodLists';
 import {
+  inferenceServiceRefetchInterval,
   isGpuNode,
   KSERVE_INFERENCESERVICE_LABEL,
   toGpuNode,
@@ -48,12 +49,17 @@ export function useKServeServingSource(
   const installationsKey = installations.join(',');
 
   // Single InferenceService version (v1beta1), so skip API version discovery —
-  // the probe already established the group/version is served.
+  // the probe already established the group/version is served. Polled: a
+  // model's readiness is written into the CR by the controller minutes after
+  // it is created, and the auto-wiring acts on it.
   const inferenceServices = useResources(
     installations,
     InferenceService,
     {},
-    { enableDiscovery: false },
+    {
+      enableDiscovery: false,
+      refetchInterval: inferenceServiceRefetchInterval,
+    },
   );
   const nodes = useResources(
     installations,

@@ -1,18 +1,25 @@
 import { useCallback, useMemo } from 'react';
 import {
+  ButtonIcon,
   Cell,
   CellText,
   ColumnConfig,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
+import StopIcon from '@material-ui/icons/Stop';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { modelDetailRouteRef } from '../../routes';
 import { stopRowPress } from '../../lib/rowPress';
 import type { ServedModel } from '../../lib/serving';
+import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import { ServedReadinessCell } from './servedReadinessStatus';
 
 /** A kagent ModelConfig that fronts a served model. */
@@ -26,7 +33,14 @@ export type ServedModelConsumer = {
 /** One row: the served model plus the ModelConfigs pointing at it. */
 export type ServedModelRow = ServedModel & {
   usedBy: ServedModelConsumer[];
+  /** The auto-wiring's progress for this model, while it has no consumer yet. */
+  wiring?: WiringState;
 };
+
+/** Backends whose served models this portal can stop (delete the CR). */
+export function isStoppable(row: ServedModel): boolean {
+  return row.backend === 'kserve';
+}
 
 /** Human labels for the backends, for the runtime column and tooltips. */
 const BACKEND_LABEL: Record<ServedModel['backend'], string> = {
@@ -73,10 +87,53 @@ export function sortServedModelsBy(
   });
 }
 
+/** What the "Used by" cell says while the auto-wiring is at work, or stuck. */
+function WiringStatus({ wiring }: { wiring: WiringState }) {
+  switch (wiring.status) {
+    case 'wiring':
+      return (
+        <Text variant="body-medium" color="secondary">
+          Creating model config…
+        </Text>
+      );
+    case 'done':
+      return (
+        <Text variant="body-medium" color="secondary">
+          Model config created
+        </Text>
+      );
+    case 'conflict':
+      return (
+        <Text variant="body-medium" color="warning" title={wiring.message}>
+          Model config name taken
+        </Text>
+      );
+    case 'error':
+    default:
+      return (
+        <Text variant="body-medium" color="danger" title={wiring.message}>
+          Model config not created
+        </Text>
+      );
+  }
+}
+
+/** The "Used by" cell of a model no ModelConfig points at (yet). */
+function UsedByNobody({ wiring }: { wiring?: WiringState }) {
+  return wiring ? (
+    <WiringStatus wiring={wiring} />
+  ) : (
+    <Text variant="body-medium" color="secondary">
+      No model config
+    </Text>
+  );
+}
+
 function getColumnConfig(
   hrefFor: (consumer: ServedModelConsumer) => string | undefined,
+  onStop?: (row: ServedModelRow) => void,
 ): ColumnConfig<ServedModelRow>[] {
-  return [
+  const columns: ColumnConfig<ServedModelRow>[] = [
     {
       id: 'name',
       label: 'Served model',
@@ -85,11 +142,13 @@ function getColumnConfig(
       cell: row => (
         <CellText
           title={row.name}
-          description={
-            row.namespace
-              ? `${row.namespace} · ${BACKEND_LABEL[row.backend]}`
-              : BACKEND_LABEL[row.backend]
-          }
+          description={[
+            row.namespace,
+            BACKEND_LABEL[row.backend],
+            row.preset ? `preset ${row.preset}` : undefined,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         />
       ),
     },
@@ -181,9 +240,7 @@ function getColumnConfig(
       cell: row => (
         <Cell>
           {row.usedBy.length === 0 ? (
-            <Text variant="body-medium" color="secondary">
-              No model config
-            </Text>
+            <UsedByNobody wiring={row.wiring} />
           ) : (
             row.usedBy.map(consumer => {
               const href = hrefFor(consumer);
@@ -228,19 +285,58 @@ function getColumnConfig(
       cell: row => <CellText title={row.installation} />,
     },
   ];
+
+  if (onStop) {
+    columns.push({
+      id: 'actions',
+      label: 'Actions',
+      cell: row =>
+        isStoppable(row) ? (
+          <Cell>
+            <MenuTrigger>
+              <ButtonIcon
+                icon={<MoreVertIcon />}
+                aria-label={`Actions for ${row.name}`}
+                variant="tertiary"
+                size="small"
+              />
+              <Menu>
+                <MenuItem
+                  color="danger"
+                  iconStart={<StopIcon />}
+                  onAction={() => onStop(row)}
+                >
+                  Stop serving…
+                </MenuItem>
+              </Menu>
+            </MenuTrigger>
+          </Cell>
+        ) : (
+          <Cell />
+        ),
+    });
+  }
+
+  return columns;
 }
 
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];
+  /**
+   * Offer "Stop serving…" on the rows whose backend supports it. Absent = a
+   * read-only table (portals without write access to the serving layer).
+   */
+  onStop?: (row: ServedModelRow) => void;
 };
 
 /**
- * Presentational, read-only table of served models. The section owns loading
- * and the unreachable-installations notice; this renders rows and the empty
- * state. Rows are not clickable: a served model has no page of its own here,
- * the ModelConfigs fronting it are what link onward.
+ * Presentational table of served models. The section owns loading, the
+ * unreachable-installations notice and the stop confirmation; this renders
+ * rows, the per-row actions and the empty state. Rows are not clickable: a
+ * served model has no page of its own here, the ModelConfigs fronting it are
+ * what link onward.
  */
-export function ServedModelsTable({ rows }: ServedModelsTableProps) {
+export function ServedModelsTable({ rows, onStop }: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
   const hrefFor = useCallback(
@@ -253,7 +349,10 @@ export function ServedModelsTable({ rows }: ServedModelsTableProps) {
     [modelDetailRoute],
   );
 
-  const columnConfig = useMemo(() => getColumnConfig(hrefFor), [hrefFor]);
+  const columnConfig = useMemo(
+    () => getColumnConfig(hrefFor, onStop),
+    [hrefFor, onStop],
+  );
 
   const { tableProps } = useTable<ServedModelRow>({
     mode: 'complete',

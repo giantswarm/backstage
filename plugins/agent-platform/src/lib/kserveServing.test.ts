@@ -8,8 +8,12 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   findPredictorPod,
+  INFERENCESERVICE_POLL_ACTIVE_MS,
+  INFERENCESERVICE_POLL_IDLE_MS,
+  inferenceServiceRefetchInterval,
   isGpuNode,
   KSERVE_INFERENCESERVICE_LABEL,
+  parseModelConfigRef,
   toGpuNode,
   toServedModel,
 } from './kserveServing';
@@ -311,6 +315,7 @@ describe('toGpuNode', () => {
       capacity: 1,
       allocatable: 1,
       requested: 1,
+      schedulable: true,
     });
   });
 
@@ -333,10 +338,110 @@ describe('toGpuNode', () => {
       capacity: undefined,
       allocatable: undefined,
       requested: undefined,
+      schedulable: true,
     });
   });
 
   it('reports zero requested when pods were read but none use a GPU', () => {
     expect(toGpuNode(labelled, []).requested).toBe(0);
+  });
+});
+
+describe('toServedModel portal markers', () => {
+  it('reads the preset label, display name, ownership and wiring promise', () => {
+    const served = toServedModel(
+      isvc({
+        metadata: {
+          name: 'qwen3-14b',
+          namespace: 'model-serving',
+          generation: 1,
+          labels: {
+            'app.kubernetes.io/managed-by': 'giantswarm-backstage',
+            'agent-platform.giantswarm.io/preset': 'qwen3-14b',
+          },
+          annotations: {
+            'agent-platform.giantswarm.io/model-config': 'kagent/qwen3-14b',
+            'ui.giantswarm.io/display-name': 'Qwen3 14B',
+          },
+        },
+      }),
+    );
+
+    expect(served).toMatchObject({
+      preset: 'qwen3-14b',
+      displayName: 'Qwen3 14B',
+      managedByPortal: true,
+      autoWire: { namespace: 'kagent', name: 'qwen3-14b' },
+    });
+  });
+
+  it('leaves the markers unset on a hand-written InferenceService', () => {
+    const served = toServedModel(isvc());
+
+    expect(served.preset).toBeUndefined();
+    expect(served.displayName).toBeUndefined();
+    expect(served.managedByPortal).toBe(false);
+    expect(served.autoWire).toBeUndefined();
+  });
+
+  it('ignores a malformed wiring annotation', () => {
+    expect(parseModelConfigRef('kagent')).toBeUndefined();
+    expect(parseModelConfigRef('a/b/c')).toBeUndefined();
+    expect(parseModelConfigRef('kagent/qwen')).toEqual({
+      namespace: 'kagent',
+      name: 'qwen',
+    });
+  });
+});
+
+describe('toGpuNode memory', () => {
+  it('reports the allocatable memory in bytes and the schedulability', () => {
+    const gpuNode = toGpuNode(
+      new Node(
+        {
+          apiVersion: 'v1',
+          kind: 'Node',
+          metadata: { name: 'spark' },
+          spec: { unschedulable: true },
+          status: {
+            conditions: [{ type: 'Ready', status: 'True' }],
+            allocatable: { memory: '90251888Ki' },
+          },
+        } as NodeInterface,
+        'alpha',
+      ),
+    );
+
+    expect(gpuNode.memoryAllocatableBytes).toBe(90251888 * 1024);
+    expect(gpuNode.schedulable).toBe(false);
+  });
+});
+
+describe('inferenceServiceRefetchInterval', () => {
+  const ready: InferenceServiceInterface = {
+    apiVersion: 'serving.kserve.io/v1beta1',
+    kind: 'InferenceService',
+    metadata: { name: 'a', generation: 1 },
+    status: {
+      observedGeneration: 1,
+      conditions: [{ type: 'Ready', status: 'True' }],
+    },
+  };
+  const pending: InferenceServiceInterface = {
+    apiVersion: 'serving.kserve.io/v1beta1',
+    kind: 'InferenceService',
+    metadata: { name: 'b' },
+  };
+
+  it('polls fast while anything is not ready, slowly once everything is', () => {
+    expect(
+      inferenceServiceRefetchInterval({ state: { data: [ready, pending] } }),
+    ).toBe(INFERENCESERVICE_POLL_ACTIVE_MS);
+    expect(inferenceServiceRefetchInterval({ state: { data: [ready] } })).toBe(
+      INFERENCESERVICE_POLL_IDLE_MS,
+    );
+    expect(inferenceServiceRefetchInterval({ state: {} })).toBe(
+      INFERENCESERVICE_POLL_IDLE_MS,
+    );
   });
 });

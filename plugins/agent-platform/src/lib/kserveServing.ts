@@ -4,12 +4,16 @@
 // `components/ServingProvider/useKServeServingSource.ts`.
 
 import {
+  BACKSTAGE_FIELD_MANAGER,
+  deriveInferenceServiceReadiness,
   InferenceService,
   Node,
   NVIDIA_GPU_RESOURCE,
   Pod,
+  type InferenceServiceInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { GpuNode, ServedModel } from './serving';
+import { AGENT_PLATFORM_PRESET_LABEL } from './servingPresets';
 
 /**
  * Label KServe puts on every predictor pod, valued with the InferenceService
@@ -18,6 +22,50 @@ import type { GpuNode, ServedModel } from './serving';
  */
 export const KSERVE_INFERENCESERVICE_LABEL =
   'serving.kserve.io/inferenceservice';
+
+/** Marks the objects this portal writes (same value as its field manager). */
+export const MANAGED_BY_LABEL = 'app.kubernetes.io/managed-by';
+
+/**
+ * Annotation the serve flow puts on an InferenceService it creates: the kagent
+ * ModelConfig (`<namespace>/<name>`) to create once the model is ready. The
+ * auto-wiring reads it back, so the promise survives a page reload and is kept
+ * by whichever session sees the model ready first.
+ */
+export const MODEL_CONFIG_ANNOTATION =
+  'agent-platform.giantswarm.io/model-config';
+
+/** Friendly name, the same annotation `ModelConfig.getDisplayName()` reads. */
+export const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
+
+/** `<namespace>/<name>` → its parts; `undefined` for anything else. */
+export function parseModelConfigRef(
+  value: string | undefined,
+): { namespace: string; name: string } | undefined {
+  const match = value ? /^([^/\s]+)\/([^/\s]+)$/.exec(value) : null;
+  return match ? { namespace: match[1], name: match[2] } : undefined;
+}
+
+/** Poll cadence for InferenceServices while any of them is still converging. */
+export const INFERENCESERVICE_POLL_ACTIVE_MS = 10_000;
+/** Poll cadence once every InferenceService is ready — a model can still fail later. */
+export const INFERENCESERVICE_POLL_IDLE_MS = 60_000;
+
+/**
+ * `refetchInterval` for the InferenceService lists: readiness comes from the
+ * CR's status, written by the KServe controller minutes after the create — so
+ * the list has to be re-read to see a served model come up (and to complete its
+ * auto-wiring). Fast while something is pending or failed, slow once everything
+ * answers.
+ */
+export function inferenceServiceRefetchInterval(query: {
+  state: { data?: InferenceServiceInterface[] };
+}): number {
+  const items = query.state.data ?? [];
+  return items.some(item => deriveInferenceServiceReadiness(item) !== 'ready')
+    ? INFERENCESERVICE_POLL_ACTIVE_MS
+    : INFERENCESERVICE_POLL_IDLE_MS;
+}
 
 /**
  * Node labels written by NVIDIA gpu-feature-discovery. Present wherever the
@@ -78,6 +126,8 @@ export function toServedModel(
   pods: Pod[] = [],
 ): ServedModel {
   const namespace = inferenceService.getNamespace();
+  const labels = inferenceService.getLabels() ?? {};
+  const annotations = inferenceService.getAnnotations() ?? {};
   const pod = findPredictorPod(inferenceService, pods);
   const podNode = pod?.getNodeName();
   const pinnedNode = inferenceService.getPinnedNode();
@@ -108,6 +158,10 @@ export function toServedModel(
     internalUrl: inferenceService.getInternalUrl(),
     externalUrl: inferenceService.getUrl(),
     endpointHosts: inferenceService.getEndpointHosts(),
+    displayName: annotations[DISPLAY_NAME_ANNOTATION],
+    preset: labels[AGENT_PLATFORM_PRESET_LABEL],
+    managedByPortal: labels[MANAGED_BY_LABEL] === BACKSTAGE_FIELD_MANAGER,
+    autoWire: parseModelConfigRef(annotations[MODEL_CONFIG_ANNOTATION]),
   };
 }
 
@@ -138,5 +192,7 @@ export function toGpuNode(node: Node, pods?: Pod[]): GpuNode {
     capacity: node.getCapacityOf(NVIDIA_GPU_RESOURCE),
     allocatable: node.getAllocatableOf(NVIDIA_GPU_RESOURCE),
     requested,
+    memoryAllocatableBytes: node.getAllocatableMemoryBytes(),
+    schedulable: node.isSchedulable(),
   };
 }

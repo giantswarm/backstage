@@ -16,13 +16,21 @@ export type InferenceServiceResources = {
   limits?: Record<string, string>;
 };
 
+export type InferenceServiceVolumeMount = {
+  name: string;
+  mountPath: string;
+  readOnly?: boolean;
+  subPath?: string;
+};
+
 export type InferenceServiceContainer = {
   name?: string;
   image?: string;
   command?: string[];
   args?: string[];
-  env?: { name: string; value?: string }[];
+  env?: { name: string; value?: string; valueFrom?: unknown }[];
   resources?: InferenceServiceResources;
+  volumeMounts?: InferenceServiceVolumeMount[];
 };
 
 /**
@@ -44,9 +52,14 @@ export type InferenceServicePredictor = {
   nodeSelector?: Record<string, string>;
   nodeName?: string;
   runtimeClassName?: string;
+  tolerations?: Record<string, unknown>[];
   minReplicas?: number;
   maxReplicas?: number;
   deploymentStrategy?: { type?: string };
+  /** Request timeout KServe writes into the predictor route, in seconds. */
+  timeout?: number;
+  /** Pod volumes (a `PredictorSpec` embeds a `PodSpec`). */
+  volumes?: Record<string, unknown>[];
 };
 
 export type InferenceServiceComponentStatus = {
