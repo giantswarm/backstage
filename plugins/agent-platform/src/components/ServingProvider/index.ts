@@ -1,5 +1,6 @@
 export {
   ServingProvider,
+  useOptionalServing,
   useServing,
   type ServingContextValue,
 } from './ServingProvider';

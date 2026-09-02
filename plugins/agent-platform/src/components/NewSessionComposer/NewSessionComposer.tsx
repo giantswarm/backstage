@@ -18,6 +18,12 @@ import {
 import { makeStyles } from '@material-ui/core';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
+import {
+  isServingFailure,
+  SERVED_MODEL_READINESS,
+  SERVING_BACKEND_LABEL,
+  type ClientServingSummary,
+} from '../../lib/serving';
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 
@@ -58,6 +64,22 @@ const useStyles = makeStyles(theme => ({
  */
 export function isStartableAgent(agent: AgentRow): boolean {
   return agent.readiness === 'ready';
+}
+
+/**
+ * The model state worth warning about before a session starts: the serving
+ * layer says nothing answers for the agent's model (`notServing`) or it is
+ * failing (`notReady`), so the first turn will fail. A warning, not a block —
+ * kagent accepts the session either way, the model may be back by the time
+ * the turn runs (a Load is in flight, an InferenceService is rolling out), and
+ * the fix is one click away on the Serving view. `idle` is deliberately not
+ * one: the first turn loads the model.
+ */
+export function modelWarningFor(
+  agent: AgentRow | undefined,
+): ClientServingSummary | undefined {
+  const serving = agent?.modelServing;
+  return serving && isServingFailure(serving.readiness) ? serving : undefined;
 }
 
 export type NewSessionComposerProps = {
@@ -288,6 +310,10 @@ export function NewSessionComposer({
     caption = 'Starts a session and sends this as the first message.';
   }
 
+  // Shown whether or not the composer is expanded: a preselected agent whose
+  // model is gone is exactly what to know before typing a prompt at it.
+  const modelWarning = modelWarningFor(selectedAgent);
+
   return (
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
@@ -296,6 +322,19 @@ export function NewSessionComposer({
             status="danger"
             title="Session not started"
             description={error}
+          />
+        )}
+        {modelWarning && selectedAgent && (
+          <Alert
+            status="warning"
+            title={`${selectedAgent.name}'s model is ${
+              SERVED_MODEL_READINESS[modelWarning.readiness].phrase
+            }`}
+            description={`${SERVING_BACKEND_LABEL[modelWarning.backend]} ${
+              modelWarning.namespace ? `${modelWarning.namespace}/` : ''
+            }${modelWarning.name}: ${
+              modelWarning.message
+            } You can still start the session; its first turn fails until the model serves again. The Serving view on the Models tab has the fix.`}
           />
         )}
 

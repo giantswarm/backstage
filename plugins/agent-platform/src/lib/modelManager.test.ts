@@ -194,3 +194,44 @@ describe('modelManagerJobSchema', () => {
     expect(job.result).toBeUndefined();
   });
 });
+
+describe('modelManagerBackendSchema: loading', () => {
+  it('reads the loading block', () => {
+    const backend = modelManagerBackendSchema.parse({
+      ...backendOllama,
+      loading: {
+        onDemand: true,
+        idleEviction: true,
+        keepAliveDefault: '5m',
+        keepAliveScope: 'request',
+      },
+    });
+    expect(backend.loading).toEqual({
+      onDemand: true,
+      idleEviction: true,
+      keepAliveDefault: '5m',
+      keepAliveScope: 'request',
+    });
+  });
+
+  it('leaves loading undefined when absent or not an object, and degrades bad fields', () => {
+    expect(modelManagerBackendSchema.parse(backendOllama).loading).toBe(
+      undefined,
+    );
+    expect(
+      modelManagerBackendSchema.parse({ ...backendOllama, loading: 'yes' })
+        .loading,
+    ).toBeUndefined();
+    expect(
+      modelManagerBackendSchema.parse({
+        ...backendOllama,
+        loading: { onDemand: 'true', keepAliveScope: 'weekly' },
+      }).loading,
+    ).toEqual({
+      onDemand: false,
+      idleEviction: false,
+      keepAliveDefault: undefined,
+      keepAliveScope: undefined,
+    });
+  });
+});

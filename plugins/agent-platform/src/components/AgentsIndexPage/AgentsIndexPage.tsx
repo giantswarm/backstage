@@ -11,6 +11,7 @@ import { newAgentRouteRef } from '../../routes';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { AgentsTable } from '../AgentsTable';
+import { ServingProvider } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 /**
@@ -105,12 +106,17 @@ function AgentsIndexPageContent() {
   );
 }
 
+// The ServingProvider is what lets the Model column say whether the model
+// behind each agent is serving (the same snapshot the Models tab reads, from
+// the shared query cache); the rows work without it, they just say less.
 export function AgentsIndexPage() {
   return (
     <ModelConfigsProvider>
-      <AgentsDataProvider>
-        <AgentsIndexPageContent />
-      </AgentsDataProvider>
+      <ServingProvider>
+        <AgentsDataProvider>
+          <AgentsIndexPageContent />
+        </AgentsDataProvider>
+      </ServingProvider>
     </ModelConfigsProvider>
   );
 }

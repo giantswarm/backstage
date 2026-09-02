@@ -9,6 +9,11 @@ import {
   KubeObjectInterface,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  summarizeClientServing,
+  type ClientServingState,
+  type ClientServingSummary,
+} from '../../lib/serving';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -167,17 +172,46 @@ export type AgentRow = {
    * support. Independent of readiness — a ready agent can carry one.
    */
   unsupportedFeaturesWarning?: string;
+  /**
+   * What the serving layer says about the model behind the agent's
+   * ModelConfig — the served model's readiness, or that nothing answers for
+   * it any more (`notServing`: the agent's turns fail). Independent of the
+   * agent's own readiness: kagent deploys an agent happily whose model is
+   * gone. `undefined` when the ModelConfig is unknown, points at an external
+   * provider, or no serving layer is in view.
+   */
+  modelServing?: ClientServingSummary;
 };
+
+/**
+ * The ModelConfig an agent's `spec.declarative.modelConfig` references, among
+ * those on the same installation. ModelConfigs are namespaced and must live in
+ * the agent's namespace, so both name and namespace are matched. `undefined`
+ * when the agent references none, or it can't be found (unreadable, not yet
+ * loaded, or on another installation).
+ */
+export function resolveModelConfig(
+  agent: Agent,
+  modelConfigs: ModelConfig[],
+): ModelConfig | undefined {
+  const ref = agent.getModelConfigName();
+  if (!ref) {
+    return undefined;
+  }
+
+  const namespace = agent.getNamespace();
+  return modelConfigs.find(
+    mc => mc.getName() === ref && mc.getNamespace() === namespace,
+  );
+}
 
 /**
  * Resolve an agent's `spec.declarative.modelConfig` reference to a
  * human-readable label by joining against the ModelConfigs on the same
- * installation. ModelConfigs are namespaced and must live in the agent's
- * namespace, so we match on both name and namespace.
+ * installation ({@link resolveModelConfig}).
  *
- * Falls back to the raw reference name when the ModelConfig can't be found
- * (unreadable, not yet loaded, or on another installation), and to `undefined`
- * when the agent references no model at all.
+ * Falls back to the raw reference name when the ModelConfig can't be found,
+ * and to `undefined` when the agent references no model at all.
  */
 export function resolveModelLabel(
   agent: Agent,
@@ -187,23 +221,33 @@ export function resolveModelLabel(
   if (!ref) {
     return undefined;
   }
-
-  const namespace = agent.getNamespace();
-  const match = modelConfigs.find(
-    mc => mc.getName() === ref && mc.getNamespace() === namespace,
-  );
-
-  return match?.getDisplayName() ?? ref;
+  return resolveModelConfig(agent, modelConfigs)?.getDisplayName() ?? ref;
 }
 
-/** Flatten an `Agent` resource into a plain {@link AgentRow}. */
+/**
+ * How a ModelConfig resolves to the serving layer —
+ * `useServing().servingStateFor`, partially applied to the installation.
+ */
+export type ResolveModelServing = (
+  modelConfig: ModelConfig,
+) => ClientServingState | undefined;
+
+/**
+ * Flatten an `Agent` resource into a plain {@link AgentRow}. With a
+ * `resolveServing`, the row also carries the serving state of the model behind
+ * the agent's ModelConfig; without one (no serving layer in view) it does not.
+ */
 export function toAgentRow(
   agent: Agent,
   modelConfigs: ModelConfig[],
+  resolveServing?: ResolveModelServing,
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
   const name = agent.getName();
+  const modelConfig = resolveModelConfig(agent, modelConfigs);
+  const serving =
+    modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
 
   return {
     id: `${installation}/${namespace}/${name}`,
@@ -212,11 +256,12 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
-    model: resolveModelLabel(agent, modelConfigs),
+    model: modelConfig?.getDisplayName() ?? agent.getModelConfigName(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
     unsupportedFeaturesWarning: agent.getUnsupportedFeaturesWarning(),
+    ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
   };
 }
 

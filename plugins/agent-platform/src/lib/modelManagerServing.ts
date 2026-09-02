@@ -8,14 +8,17 @@ import { urlHostname } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type {
   ModelManagerBackend,
   ModelManagerCapabilities,
+  ModelManagerLoading,
   ModelManagerModel,
   ModelManagerNode,
 } from './modelManager';
-import type {
-  GpuNode,
-  ServedModel,
-  ServingBackend,
-  ServingCapabilities,
+import {
+  notLoadedReadiness,
+  type GpuNode,
+  type ServedModel,
+  type ServingBackend,
+  type ServingCapabilities,
+  type ServingLoading,
 } from './serving';
 
 /** `app.kubernetes.io/managed-by` the portal's own writes carry (`BACKSTAGE_FIELD_MANAGER`). */
@@ -61,6 +64,41 @@ export function toServingCapabilities(
 }
 
 /**
+ * model-manager's loading block is already the seam's vocabulary; absent
+ * stays absent (nothing is assumed about an older model-manager).
+ */
+export function toServingLoading(
+  loading: ModelManagerLoading | undefined,
+): ServingLoading | undefined {
+  if (!loading) {
+    return undefined;
+  }
+  return {
+    onDemand: loading.onDemand,
+    idleEviction: loading.idleEviction,
+    keepAliveDefault: loading.keepAliveDefault,
+    keepAliveScope: loading.keepAliveScope,
+  };
+}
+
+/**
+ * The hostnames on which the backend answers for every model it has, for
+ * `ServingSourceSnapshot.sharedHosts`: Ollama's own host. KServe's `endpoint`
+ * is the InferenceService API, not somewhere a model answers, and each
+ * predictor has a host of its own — none. The same rule `endpointHosts` in
+ * {@link toServedModelFromManager} follows.
+ */
+export function sharedHostsOf(
+  backend: ModelManagerBackend & { backend: ServingBackend },
+): string[] {
+  if (backend.backend === 'kserve') {
+    return [];
+  }
+  const host = urlHostname(backend.endpoint);
+  return host ? [host] : [];
+}
+
+/**
  * The namespace of a predictor's in-cluster URL
  * (`http://<name>-predictor.<namespace>.svc.cluster.local`), else `undefined`.
  */
@@ -75,16 +113,19 @@ export function namespaceOfPredictorUrl(
 /**
  * One model of a model-manager inventory as a served model.
  *
- * On Ollama, readiness follows what the backend says about memory: loaded →
- * `ready`, downloaded but not loaded → `available`. On KServe the inventory is
- * the per-node download cache plus the InferenceServices: a served model
- * (`running`) takes the InferenceService's own readiness as model-manager reads
- * it from the CR and is named after the InferenceService — the name agents
- * address it by and the ModelConfig's `spec.model` — so that
- * `findServedModel` and the CR source agree on it; a cached model nobody
- * serves is `available` on its node ("downloaded on …") and named after its
- * repository. Every model is `notReady` while the backend reports itself
- * unhealthy (its inventory may then be stale).
+ * Readiness follows what the backend says about memory and about how it
+ * loads: loaded → `ready`; downloaded but not loaded → what
+ * `notLoadedReadiness` makes of the backend's `loading` block — `idle` on a
+ * backend that loads on demand (Ollama), `notServing` on one that does not
+ * when a ModelConfig points at the model, `available` otherwise or when the
+ * block is absent. On KServe the inventory is the per-node download cache plus
+ * the InferenceServices: a served model (`running`) takes the
+ * InferenceService's own readiness as model-manager reads it from the CR and
+ * is named after the InferenceService — the name agents address it by and the
+ * ModelConfig's `spec.model` — so that `findServedModel` and the CR source
+ * agree on it; a cached model nobody serves sits on its node ("downloaded on
+ * …") and is named after its repository. Every model is `notReady` while the
+ * backend reports itself unhealthy (its inventory may then be stale).
  *
  * The endpoint every model answers on is the backend's own — on a multi-model
  * host that is one hostname for every model, which is why `findServedModel`
@@ -137,14 +178,27 @@ export function toServedModelFromManager(
   } else if (kserve && model.downloaded === false) {
     readiness = 'pending';
     readinessMessage = 'Known from a preset; not downloaded and not serving.';
-  } else if (kserve) {
-    readiness = 'available';
-    readinessMessage = model.node
-      ? `Downloaded on ${model.node}; not serving.`
-      : 'Downloaded; not serving.';
   } else {
-    readiness = 'available';
-    readinessMessage = 'Downloaded; not loaded in memory.';
+    const loading = toServingLoading(backend.loading);
+    readiness = notLoadedReadiness(loading, {
+      hasClient: model.modelConfig !== undefined,
+    });
+    const where = model.node ? `Downloaded on ${model.node}` : 'Downloaded';
+    if (readiness === 'idle') {
+      readinessMessage = `${where}; not loaded. ${
+        backend.backend === 'ollama' ? 'Ollama' : 'The backend'
+      } loads it on the first request, so an agent's first turn pays the cold start${
+        loading?.idleEviction ? ', and it is evicted again after idling' : ''
+      }.`;
+    } else if (readiness === 'notServing') {
+      readinessMessage = `${where}; not serving, and model config ${
+        model.modelConfig?.namespace ?? ''
+      }/${model.modelConfig?.name ?? ''} points at it — agents on it fail until it is served.`;
+    } else {
+      readinessMessage = kserve
+        ? `${where}; not serving.`
+        : 'Downloaded; not loaded in memory.';
+    }
   }
 
   // Ollama: every model answers on the backend's own host. KServe: only a

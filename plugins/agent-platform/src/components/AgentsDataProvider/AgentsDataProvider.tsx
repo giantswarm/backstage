@@ -9,14 +9,18 @@ import {
 import {
   Agent,
   isNotFoundError,
+  ModelConfig,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
+import { clientLookupOf } from '../../lib/serving';
 import { useModelConfigs } from '../ModelConfigsProvider';
+import { useOptionalServing } from '../ServingProvider';
 import {
   AgentRow,
   getAgentsRefetchInterval,
+  ResolveModelServing,
   sortAgentRows,
   toAgentRow,
 } from './helpers';
@@ -87,6 +91,22 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately
   // don't block the agent rows on the ModelConfig query settling.
   const { modelConfigsFor } = useModelConfigs();
+
+  // Likewise the serving state of the model behind each agent — when a
+  // ServingProvider is mounted above (the Agents and Sessions tabs mount one);
+  // without it the rows simply carry none.
+  const serving = useOptionalServing();
+  const resolveServing = useMemo<ResolveModelServing | undefined>(
+    () =>
+      serving
+        ? (modelConfig: ModelConfig) =>
+            serving.servingStateFor(
+              modelConfig.cluster,
+              clientLookupOf(modelConfig),
+            )
+        : undefined,
+    [serving],
+  );
 
   // Sticky, per-installation caches. The set of installations `useResources`
   // queries churns during a session: it starts optimistically wide (every
@@ -206,7 +226,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
-        agents.map(agent => toAgentRow(agent, modelConfigsFor(cluster))),
+        agents.map(agent =>
+          toAgentRow(agent, modelConfigsFor(cluster), resolveServing),
+        ),
       ),
     );
 
@@ -268,6 +290,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     isLoading,
     isProbing,
     modelConfigsFor,
+    resolveServing,
     allInstallationsKey,
     reachableInstallationsKey,
   ]);

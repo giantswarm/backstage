@@ -23,6 +23,10 @@ jest.mock('../ModelConfigsProvider', () => ({
   ),
 }));
 
+jest.mock('../ServingProvider', () => ({
+  ServingProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
 // Stub ui-react so the test doesn't need the PageHeaderActionsProvider (supplied
 // by GSPageLayout in the real app). `StatusLabel` is stubbed to its label only —
 // this suite covers the page's state branches, and the real status rendering is

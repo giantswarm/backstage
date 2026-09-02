@@ -1,15 +1,28 @@
+import { crds } from '@giantswarm/k8s-types';
+import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  clientLookupOf,
   findServedModel,
   findServedModelForEndpoint,
   gpuFree,
   gpuTotal,
   hasServedModelActions,
   isSameServedModel,
+  isServingFailure,
   mergeServingSnapshots,
   NO_SERVING_CAPABILITIES,
+  notLoadedReadiness,
   overlayServedModel,
+  predictorOfHostname,
+  resolveClientServing,
+  SERVED_MODEL_READINESS,
+  SERVED_MODEL_READINESS_SEVERITY,
+  servingShortcutFor,
+  summarizeClientServing,
+  type ClientServingState,
   type GpuNode,
   type ServedModel,
+  type ServedModelReadiness,
   type ServingSourceSnapshot,
 } from './serving';
 
@@ -410,11 +423,404 @@ describe('mergeServingSnapshots', () => {
       isLoading: false,
       installations: [],
       backends: {},
+      sourceBackends: {},
       capabilities: {},
+      loading: {},
+      sharedHosts: {},
       unreachableInstallations: [],
       servedModels: [],
       gpuNodes: [],
       gpuCapacityUnavailable: {},
+    });
+  });
+});
+
+// --- The readiness vocabulary -------------------------------------------------
+
+const EVERY_READINESS: ServedModelReadiness[] = [
+  'ready',
+  'idle',
+  'notServing',
+  'available',
+  'downloading',
+  'notReady',
+  'pending',
+];
+
+describe('SERVED_MODEL_READINESS', () => {
+  it('names every state, with Not serving the only warning', () => {
+    for (const readiness of EVERY_READINESS) {
+      expect(SERVED_MODEL_READINESS[readiness].label).toBeTruthy();
+      expect(SERVED_MODEL_READINESS[readiness].phrase).toBeTruthy();
+      expect(SERVED_MODEL_READINESS[readiness].description).toBeTruthy();
+    }
+    expect(SERVED_MODEL_READINESS.idle).toMatchObject({
+      label: 'Idle',
+      intent: 'neutral',
+      phrase: 'idle — loads on first request',
+    });
+    expect(SERVED_MODEL_READINESS.notServing).toMatchObject({
+      label: 'Not serving',
+      intent: 'warning',
+    });
+    expect(
+      EVERY_READINESS.filter(
+        readiness => SERVED_MODEL_READINESS[readiness].intent === 'warning',
+      ),
+    ).toEqual(['notServing']);
+    expect(SERVED_MODEL_READINESS.ready.intent).toBe('positive');
+    expect(SERVED_MODEL_READINESS.notReady.intent).toBe('negative');
+    expect(SERVED_MODEL_READINESS.available.label).toBe('Available');
+  });
+
+  it('ranks the states that need attention first', () => {
+    const sorted = [...EVERY_READINESS].sort(
+      (a, b) =>
+        SERVED_MODEL_READINESS_SEVERITY[a] - SERVED_MODEL_READINESS_SEVERITY[b],
+    );
+    expect(sorted[0]).toBe('notServing');
+    expect(sorted[sorted.length - 1]).toBe('ready');
+  });
+
+  it('counts only Not serving and Not ready as failures an agent would hit', () => {
+    expect(EVERY_READINESS.filter(isServingFailure)).toEqual([
+      'notServing',
+      'notReady',
+    ]);
+  });
+});
+
+describe('notLoadedReadiness', () => {
+  it('is Idle on a backend that loads on demand, whether or not a client points at the model', () => {
+    const ollama = { onDemand: true, idleEviction: true };
+    expect(notLoadedReadiness(ollama)).toBe('idle');
+    expect(notLoadedReadiness(ollama, { hasClient: true })).toBe('idle');
+  });
+
+  it('is Not serving only when the backend does not load on demand and a client points at the model', () => {
+    const kserve = { onDemand: false, idleEviction: false };
+    expect(notLoadedReadiness(kserve, { hasClient: true })).toBe('notServing');
+    expect(notLoadedReadiness(kserve)).toBe('available');
+  });
+
+  it('stays Available when the backend says nothing about loading', () => {
+    expect(notLoadedReadiness(undefined)).toBe('available');
+    expect(notLoadedReadiness(undefined, { hasClient: true })).toBe(
+      'available',
+    );
+  });
+});
+
+describe('predictorOfHostname', () => {
+  it('reads the InferenceService and namespace out of a predictor host in every form KServe gives it', () => {
+    const expected = { name: 'lab-echo', namespace: 'model-serving' };
+    expect(
+      predictorOfHostname('lab-echo-predictor.model-serving.svc.cluster.local'),
+    ).toEqual(expected);
+    expect(predictorOfHostname('lab-echo-predictor.model-serving.svc')).toEqual(
+      expected,
+    );
+    expect(predictorOfHostname('lab-echo-predictor.model-serving')).toEqual(
+      expected,
+    );
+  });
+
+  it('answers nothing for hosts that are not predictors', () => {
+    expect(predictorOfHostname(undefined)).toBeUndefined();
+    expect(predictorOfHostname('172.21.0.1')).toBeUndefined();
+    expect(predictorOfHostname('api.openai.com')).toBeUndefined();
+    expect(predictorOfHostname('lab-echo.model-serving.svc')).toBeUndefined();
+  });
+});
+
+describe('resolveClientServing', () => {
+  const ollamaHost = ['172.21.0.1'];
+  const qwenSmall: ServedModel = {
+    id: 'lab/ollama//qwen3:0.6b',
+    installation: 'lab',
+    backend: 'ollama',
+    name: 'qwen3:0.6b',
+    readiness: 'idle',
+    readinessMessage: 'Downloaded; not loaded.',
+    endpointHosts: ollamaHost,
+    loaded: false,
+    managerRef: 'qwen3:0.6b',
+    operable: true,
+  };
+  const qwenBig: ServedModel = {
+    id: 'lab/ollama//qwen3.5:9b',
+    installation: 'lab',
+    backend: 'ollama',
+    name: 'qwen3.5:9b',
+    readiness: 'ready',
+    endpointHosts: ollamaHost,
+    loaded: true,
+    operable: true,
+  };
+  const lab = {
+    installation: 'lab',
+    candidates: [qwenSmall, qwenBig],
+    backends: ['ollama' as const],
+    sharedHosts: ollamaHost,
+  };
+
+  it('takes the readiness, name and words of the served model a client fronts', () => {
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'qwen3:0.6b' },
+        lab,
+      ),
+    ).toEqual({
+      installation: 'lab',
+      backend: 'ollama',
+      readiness: 'idle',
+      name: 'qwen3:0.6b',
+      namespace: undefined,
+      message: 'Downloaded; not loaded.',
+      model: qwenSmall,
+    });
+  });
+
+  it('falls back to the vocabulary when the backend gives no reason', () => {
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'qwen3.5:9b' },
+        lab,
+      )?.message,
+    ).toBe(SERVED_MODEL_READINESS.ready.description);
+  });
+
+  it('reports a model gone from a shared host as Not serving, named after what the client asks for', () => {
+    const state = resolveClientServing(
+      { endpoint: 'http://172.21.0.1:11434', model: 'qwen2.5:0.5b' },
+      lab,
+    );
+    expect(state).toMatchObject({
+      installation: 'lab',
+      backend: 'ollama',
+      readiness: 'notServing',
+      name: 'qwen2.5:0.5b',
+    });
+    expect(state?.model).toBeUndefined();
+    expect(state?.message).toMatch(/deleted, or never pulled/);
+  });
+
+  it('knows a shared host from its rows even when the snapshot lists none', () => {
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'gone:1b' },
+        { ...lab, sharedHosts: [] },
+      )?.readiness,
+    ).toBe('notServing');
+  });
+
+  it('reports a KServe predictor nobody serves as Not serving, named after the InferenceService', () => {
+    const state = resolveClientServing(
+      {
+        endpoint:
+          'http://lab-echo-predictor.model-serving.svc.cluster.local/v1',
+        model: 'lab-echo',
+      },
+      {
+        installation: 'gpu',
+        candidates: [],
+        backends: ['kserve'],
+        sharedHosts: [],
+      },
+    );
+    expect(state).toMatchObject({
+      installation: 'gpu',
+      backend: 'kserve',
+      readiness: 'notServing',
+      name: 'lab-echo',
+      namespace: 'model-serving',
+    });
+    expect(state?.message).toMatch(/stopped, or never created/);
+  });
+
+  it('ignores a predictor-shaped host on an installation without a KServe backend', () => {
+    expect(
+      resolveClientServing(
+        {
+          endpoint: 'http://x-predictor.ns.svc.cluster.local/v1',
+          model: 'x',
+        },
+        lab,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('says nothing about provider defaults and external endpoints', () => {
+    expect(resolveClientServing({}, lab)).toBeUndefined();
+    expect(
+      resolveClientServing(
+        { endpoint: 'https://api.openai.com/v1', model: 'gpt-5' },
+        lab,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('drops the row when summarised for a table', () => {
+    const state = resolveClientServing(
+      { endpoint: 'http://172.21.0.1:11434', model: 'qwen3:0.6b' },
+      lab,
+    ) as ClientServingState;
+    expect(summarizeClientServing(state)).toEqual({
+      installation: 'lab',
+      backend: 'ollama',
+      readiness: 'idle',
+      name: 'qwen3:0.6b',
+      namespace: undefined,
+      message: 'Downloaded; not loaded.',
+    });
+  });
+
+  describe('servingShortcutFor', () => {
+    const canLoadAndPull = {
+      ...NO_SERVING_CAPABILITIES,
+      load: true,
+      pull: true,
+    };
+
+    it('offers Load for an idle, operable model on a backend that can load', () => {
+      const state = resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'qwen3:0.6b' },
+        lab,
+      ) as ClientServingState;
+      expect(servingShortcutFor(state, canLoadAndPull)).toEqual({
+        kind: 'load',
+        ref: 'qwen3:0.6b',
+      });
+      expect(
+        servingShortcutFor(state, NO_SERVING_CAPABILITIES),
+      ).toBeUndefined();
+    });
+
+    it('offers nothing for a model that is running', () => {
+      const state = resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'qwen3.5:9b' },
+        lab,
+      ) as ClientServingState;
+      expect(servingShortcutFor(state, canLoadAndPull)).toBeUndefined();
+    });
+
+    it('offers Pull for a model gone from a host that pulls by reference', () => {
+      const state = resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'qwen2.5:0.5b' },
+        lab,
+      ) as ClientServingState;
+      expect(servingShortcutFor(state, canLoadAndPull)).toEqual({
+        kind: 'pull',
+        ref: 'qwen2.5:0.5b',
+      });
+      expect(
+        servingShortcutFor(state, { ...NO_SERVING_CAPABILITIES, load: true }),
+      ).toBeUndefined();
+    });
+
+    it('offers the backend load for a gone InferenceService, and nothing without it', () => {
+      const state = resolveClientServing(
+        {
+          endpoint: 'http://lab-echo-predictor.model-serving.svc/v1',
+          model: 'lab-echo',
+        },
+        {
+          installation: 'gpu',
+          candidates: [],
+          backends: ['kserve'],
+          sharedHosts: [],
+        },
+      ) as ClientServingState;
+      expect(servingShortcutFor(state, canLoadAndPull, 'kserve')).toEqual({
+        kind: 'load',
+        ref: 'lab-echo',
+      });
+      expect(
+        servingShortcutFor(
+          state,
+          { ...NO_SERVING_CAPABILITIES, pull: true },
+          'kserve',
+        ),
+      ).toBeUndefined();
+      // The `load` flag of an Ollama model-manager on the same installation
+      // (its CRs read beside it) cannot bring an InferenceService back.
+      expect(
+        servingShortcutFor(state, canLoadAndPull, 'ollama'),
+      ).toBeUndefined();
+      expect(servingShortcutFor(state, canLoadAndPull)).toBeUndefined();
+    });
+  });
+});
+
+describe('mergeServingSnapshots: loading and shared hosts', () => {
+  const empty: ServingSourceSnapshot = {
+    isLoading: false,
+    installations: [],
+    backends: {},
+    unreachableInstallations: [],
+    servedModels: [],
+    gpuNodes: [],
+    gpuCapacityUnavailable: {},
+  };
+
+  it('keeps every source’s backend while the later one labels the installation', () => {
+    const merged = mergeServingSnapshots([
+      { ...empty, installations: ['lab'], backends: { lab: 'kserve' } },
+      { ...empty, installations: ['lab'], backends: { lab: 'ollama' } },
+    ]);
+    expect(merged.backends).toEqual({ lab: 'ollama' });
+    expect(merged.sourceBackends).toEqual({ lab: ['kserve', 'ollama'] });
+  });
+
+  it('lets the later source have the last word on loading and unions the hosts', () => {
+    const merged = mergeServingSnapshots([
+      {
+        ...empty,
+        installations: ['lab'],
+        backends: { lab: 'kserve' },
+        loading: { lab: { onDemand: false, idleEviction: false } },
+        sharedHosts: { lab: ['a.example'] },
+      },
+      {
+        ...empty,
+        installations: ['lab'],
+        backends: { lab: 'ollama' },
+        loading: { lab: { onDemand: true, idleEviction: true } },
+        sharedHosts: { lab: ['172.21.0.1', 'a.example'] },
+      },
+    ]);
+    expect(merged.loading).toEqual({
+      lab: { onDemand: true, idleEviction: true },
+    });
+    expect(merged.sharedHosts).toEqual({ lab: ['a.example', '172.21.0.1'] });
+  });
+
+  it('answers empty maps when no source reports either', () => {
+    const merged = mergeServingSnapshots([empty]);
+    expect(merged.loading).toEqual({});
+    expect(merged.sharedHosts).toEqual({});
+  });
+});
+
+describe('clientLookupOf', () => {
+  it('reads the endpoint, model and identity off a ModelConfig', () => {
+    const modelConfig = new ModelConfig(
+      {
+        apiVersion: 'kagent.dev/v1alpha2',
+        kind: 'ModelConfig',
+        metadata: { name: 'qwen3-0-6b', namespace: 'kagent' },
+        spec: {
+          provider: 'Ollama',
+          model: 'qwen3:0.6b',
+          ollama: { host: 'http://172.21.0.1:11434' },
+        },
+      } as crds.kagent.v1alpha2.ModelConfig,
+      'lab',
+    );
+    expect(clientLookupOf(modelConfig)).toEqual({
+      endpoint: 'http://172.21.0.1:11434',
+      model: 'qwen3:0.6b',
+      modelConfig: { name: 'qwen3-0-6b', namespace: 'kagent' },
     });
   });
 });

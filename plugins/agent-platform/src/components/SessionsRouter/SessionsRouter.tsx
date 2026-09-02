@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider } from '../AgentsDataProvider';
+import { ServingProvider } from '../ServingProvider';
 import { SessionsIndexPage } from '../SessionsIndexPage';
 import { SessionDetailPage } from '../SessionDetailPage';
 
@@ -25,17 +26,22 @@ export const SessionsRouter = () => {
   return (
     <QueryClientProvider>
       <ModelConfigsProvider>
-        <AgentsDataProvider>
-          <Routes>
-            <Route index element={<SessionsIndexPage />} />
-            {/* Both parameters are needed to resolve a session: kagent ids are
-                only unique within an installation. */}
-            <Route
-              path=":installation/:sessionId"
-              element={<SessionDetailPage />}
-            />
-          </Routes>
-        </AgentsDataProvider>
+        {/* The serving snapshot (shared with the Models and Agents tabs through
+            the query cache) is what the composer's warning about an agent whose
+            model is not serving reads. */}
+        <ServingProvider>
+          <AgentsDataProvider>
+            <Routes>
+              <Route index element={<SessionsIndexPage />} />
+              {/* Both parameters are needed to resolve a session: kagent ids are
+                  only unique within an installation. */}
+              <Route
+                path=":installation/:sessionId"
+                element={<SessionDetailPage />}
+              />
+            </Routes>
+          </AgentsDataProvider>
+        </ServingProvider>
       </ModelConfigsProvider>
     </QueryClientProvider>
   );

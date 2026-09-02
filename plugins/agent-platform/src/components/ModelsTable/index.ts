@@ -1,4 +1,5 @@
 export {
+  isModelRowMuted,
   ModelsTable,
   sortModelsBy,
   toModelRow,

@@ -18,6 +18,7 @@ import {
 } from '../ModelsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { useServing } from '../ServingProvider';
+import { clientLookupOf } from '../../lib/serving';
 
 // The "Model configs" view of the Models tab: every kagent ModelConfig across
 // the fleet, and the entry point for adding one. The section header + tabs
@@ -39,32 +40,41 @@ export function ModelConfigsPage() {
     modelConfigsFor,
     unreachableInstallations,
   } = useModelConfigs();
-  const { servedModelFor } = useServing();
+  const { servingStateFor, capabilitiesFor, backends } = useServing();
 
   // Unlike the agent create flow, the list iterates the *reachable*
   // installations, not just the ones that already have models — an
   // installation with none is exactly where a platform admin goes to add the
-  // first one. Each row is linked to the served model its endpoint points at,
-  // when the installation has a serving layer this portal can see.
+  // first one. Each row carries what the serving layer says about the model
+  // its endpoint points at — the served model and its readiness, or that
+  // nothing answers there any more — with the fix the installation offers.
   const rows = useMemo<ModelRow[]>(
     () =>
       reachableInstallations.flatMap(installation =>
         modelConfigsFor(installation).map(modelConfig => {
-          const served = servedModelFor(installation, {
-            endpoint: modelConfig.getEndpoint(),
-            model: modelConfig.getModel(),
-            modelConfig: {
-              name: modelConfig.getName(),
-              namespace: modelConfig.getNamespace(),
-            },
-          });
+          const state = servingStateFor(
+            installation,
+            clientLookupOf(modelConfig),
+          );
           return toModelRow(
             modelConfig,
-            served ? toModelServedBy(served) : undefined,
+            state
+              ? toModelServedBy(
+                  state,
+                  capabilitiesFor(installation),
+                  backends[installation],
+                )
+              : undefined,
           );
         }),
       ),
-    [reachableInstallations, modelConfigsFor, servedModelFor],
+    [
+      reachableInstallations,
+      modelConfigsFor,
+      servingStateFor,
+      capabilitiesFor,
+      backends,
+    ],
   );
 
   // Memoized so the header actions slot only updates when the handler changes.
