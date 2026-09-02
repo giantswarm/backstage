@@ -154,14 +154,58 @@ backend-agnostic seam: `ServedModel`, `ServingCapabilities`,
 
 **Everything beyond the table renders per capability flag, never per backend
 name.** `pull` puts a _Pull model_ button and the downloads list on the
-section; `load`/`unload`/`delete`/`wire` put a per-row actions menu there;
-`nodeInventory` (which the CR source claims for itself) renders the GPU
-capacity panel. So an Ollama-backed installation shows pull-with-progress,
-load/unload, delete and wiring and no GPU panel, presets or fit-check — that
-is ordinary state, not an error — while a bare KServe CR view shows its GPU
-panel and nothing operational. The table's optional columns follow the data
-the same way (Size, Memory and Features appear when a row carries them; Node
-and GPUs are dropped when no installation schedules onto nodes).
+section — with `search` it becomes _Import from Hugging Face_ instead (below);
+`load`/`unload`/`delete`/`wire` fill the per-row actions menu;
+`nodeInventory` (which the CR source claims for itself, and a KServe-backed
+model-manager reports too) renders the GPU capacity panel. So an Ollama-backed
+installation shows pull-with-progress, load/unload, delete and wiring and no
+GPU panel, presets or fit-check — that is ordinary state, not an error — while
+a bare KServe CR view shows its GPU panel and nothing operational. The table's
+optional columns follow the data the same way (Size, Memory and Features
+appear when a row carries them; Node and GPUs are dropped when no installation
+schedules onto nodes).
+
+**One actions menu per row** (`ServedModelActions`), whatever mix of sources
+listed the row. Its items follow the capabilities and the row's state; on
+KServe the words are the serving layer's: a cached download that nobody
+serves offers _Serve…_ (the portal's serve flow, pre-filled — see below) and
+_Delete…_ (the cache directory), a served InferenceService offers _Stop
+serving…_ — done through model-manager where it operates the row (it also
+removes the ModelConfig it created), by deleting the CR with the user's own
+RBAC otherwise (the ModelConfigs stay) — and wiring only while it serves.
+_Remove model config_ is withheld for a ModelConfig model-manager merely
+recognises (`modelConfig.managed: false`, the portal's own wiring): it never
+deletes what it did not create, and the "Used by" column says who wired each
+one.
+
+**KServe through model-manager** (`backend: kserve`, model-manager ≥ 0.3):
+the inventory is the per-node download cache plus the InferenceServices. A
+cached model nobody serves is an `available` row — "downloaded on `<node>`",
+with its size, cache directory and preset — named after its Hugging Face
+repository; a served one is named after its InferenceService (the name agents
+address it by), takes the CR's readiness and, on an installation whose
+InferenceServices the user can also read as CRs, is **folded onto that CR
+row** (`mergeServingSnapshots`, by predictor hostname) so one row carries the
+CR's status and placement and model-manager's size, cache and controls. The
+GPU panel gains each node's memory budget (what the fit check compares
+against, less what the models served there reserve) and its model cache
+(`GET /api/v1/nodes`), laid over the CR source's device-plugin figures.
+
+**Import from Hugging Face** (`search` + `pull`; `ImportModelDialog`): search
+the hub (`GET /api/v1/search`), pick a hit, choose the serving preset the
+download is for and the node whose cache receives it, and read model-manager's
+own size and fit verdict for exactly that combination
+(`POST /api/v1/models/fit-check`: weights from the hub's file tree plus the
+preset's overhead against the node's memory budget). A model that does not fit
+cannot be submitted, a gated one needs the installation's hub token; the
+download is a pre-warm `pull` with `preset` and `node`, followed in the
+downloads panel like any other job. Serving it afterwards goes through the
+serve flow, whose **Weights** picker offers the cached downloads of the
+installation: picking one names the InferenceService after the cache
+directory (which is where the storage-initializer is redirected to, or —
+without the admission policies — becomes a `pvc://<claim>/<dir>` source) and
+pins it to the node that holds the weights. _Serve…_ on a downloaded row opens
+the dialog seeded that way.
 
 **Readiness** is backend-neutral: `ready` (loaded, serving), `available`
 (downloaded, not in memory — a backend with `load` brings it to ready, and
@@ -187,17 +231,19 @@ with a single served model on a host and no name match, that one (a vLLM
 InferenceService names its model however it likes).
 
 **Mixed installations.** Sources are merged: the served models of both render
-side by side, capabilities are OR-ed per flag, and the later (model-manager)
-source decides the installation's backend label. In agentlab, where the KServe
-CRDs are installed next to an Ollama-backed model-manager, that is exactly the
-state.
+side by side — except a model both list, which is folded into one row (above)
+— capabilities are OR-ed per flag, GPU nodes are one row per node, and the
+later (model-manager) source decides the installation's backend label. In
+agentlab, where the KServe CRDs are installed next to a model-manager, that is
+exactly the state.
 
 **Trust model of the model-manager routes.** The backend
 (`plugins/agent-platform-backend/src/modelManagerRouter.ts`,
 `ModelManagerClient.ts`) exposes `GET /model-manager/installations` (names
 only) and a thin, authenticated pass-through of the model-manager REST under
-`/model-manager/{backend,models,models/*name,loaded,models/{pull,load,unload,wire,unwire},jobs,jobs/:id}`
-per `?installation=`. Every data route **requires** the user's
+`/model-manager/{backend,models,models/*name,loaded,models/{pull,load,unload,wire,unwire,fit-check},jobs,jobs/:id,presets,search,nodes}`
+per `?installation=` (`pull` and `load` forward the kserve fields `preset` and
+`node`; `load` and `fit-check` accept a preset without a model). Every data route **requires** the user's
 per-installation Dex ID token in the `backstage-model-manager-authorization`
 header (a sibling of `backstage-kagent-authorization`: one header per
 upstream), which becomes `Authorization: Bearer` toward model-manager.
@@ -208,8 +254,11 @@ or invalid token, and the proxy decides nothing from it. An `apiBaseUrl` that
 bypasses the gateway (an in-cluster Service URL, the lab shortcut) therefore
 has no boundary: every signed-in portal user can then manage models. Errors
 map `{ error: { code } }` onto `@backstage/errors` (`invalid_request` → 400,
-`not_found` → 404, `conflict` → 409, `unsupported` → 403 "capability not
-supported", `backend_error` and an unreachable model-manager → 503).
+`not_found` → 404, `conflict` → 409, `does_not_fit` → 412
+`PreconditionFailedError` with model-manager's numbers in the message — a
+refused fit is a verdict on the request, not a fault — `unsupported` → 403
+"capability not supported", `backend_error` and an unreachable model-manager →
+503).
 `POST /api/v1/models/load` has its own, longer timeout: on Ollama it blocks
 until several GiB of weights are in memory.
 

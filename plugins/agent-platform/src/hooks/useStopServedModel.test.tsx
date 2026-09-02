@@ -3,10 +3,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { modelManagerApiRef } from '../apis';
+import type { ModelManagerApi } from '../apis/ModelManagerApi';
 import type { ServedModel } from '../lib/serving';
 import { useStopServedModel } from './useStopServedModel';
 
 const mockDeleteResource = jest.fn();
+const unloadModel = jest.fn();
+const modelManagerApi = { unloadModel } as unknown as ModelManagerApi;
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
@@ -25,7 +29,12 @@ const served: ServedModel = {
 
 function setup() {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kubernetesApiRef, { proxy: jest.fn() }]]}>
+    <TestApiProvider
+      apis={[
+        [kubernetesApiRef, { proxy: jest.fn() }],
+        [modelManagerApiRef, modelManagerApi],
+      ]}
+    >
       <QueryClientProvider
         client={
           new QueryClient({ defaultOptions: { mutations: { retry: false } } })
@@ -42,6 +51,8 @@ function setup() {
 beforeEach(() => {
   mockDeleteResource.mockReset();
   mockDeleteResource.mockResolvedValue(undefined);
+  unloadModel.mockReset();
+  unloadModel.mockResolvedValue(undefined);
 });
 
 describe('useStopServedModel', () => {
@@ -109,6 +120,32 @@ describe('useStopServedModel', () => {
       ).rejects.toThrow(/Only KServe/);
     });
 
+    expect(mockDeleteResource).not.toHaveBeenCalled();
+  });
+
+  it('stops through model-manager by the reference it knows, when asked to', async () => {
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.stop({
+        model: { ...served, managerRef: 'Qwen/Qwen3-14B', operable: true },
+        via: 'model-manager',
+      });
+    });
+
+    expect(unloadModel).toHaveBeenCalledWith('gazelle', 'Qwen/Qwen3-14B');
+    expect(mockDeleteResource).not.toHaveBeenCalled();
+  });
+
+  it('refuses the model-manager route for a model it does not list', async () => {
+    const { result } = setup();
+
+    await expect(
+      act(async () => {
+        await result.current.stop({ model: served, via: 'model-manager' });
+      }),
+    ).rejects.toThrow(/does not list qwen3-14b/);
+    expect(unloadModel).not.toHaveBeenCalled();
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 });

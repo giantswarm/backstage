@@ -341,8 +341,7 @@ describe('sortServedModelsBy', () => {
 });
 
 describe('ServedModelsTable actions and wiring', () => {
-  it('offers the stop action only on stoppable backends, and only when asked to', async () => {
-    const onStop = jest.fn();
+  it('renders one actions column only when given a menu, and lets it decide per row', async () => {
     const ollamaRow: ServedModelRow = {
       ...rows[2],
       id: 'inst-2/ollama/qwen3:0.6b',
@@ -353,14 +352,25 @@ describe('ServedModelsTable actions and wiring', () => {
 
     const { unmount } = await renderTable(<ServedModelsTable rows={rows} />);
     expect(
-      screen.queryByRole('button', { name: /Actions for/ }),
+      screen.queryByRole('columnheader', { name: 'Actions' }),
     ).not.toBeInTheDocument();
     unmount();
 
+    // The section's menu decides per row; a row it declines gets an empty cell.
     await renderTable(
-      <ServedModelsTable rows={[rows[0], ollamaRow]} onStop={onStop} />,
+      <ServedModelsTable
+        rows={[rows[0], ollamaRow]}
+        renderActions={row =>
+          row.backend === 'kserve' ? (
+            <button type="button" aria-label={`Actions for ${row.name}`} />
+          ) : null
+        }
+      />,
     );
 
+    expect(
+      screen.getByRole('columnheader', { name: 'Actions' }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Actions for qwen3-14b' }),
     ).toBeInTheDocument();

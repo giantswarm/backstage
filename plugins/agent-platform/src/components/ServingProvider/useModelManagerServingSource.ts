@@ -6,8 +6,10 @@ import { useModelManagerInstallations } from '../../hooks/useModelManagerInstall
 import type {
   ModelManagerBackend,
   ModelManagerModel,
+  ModelManagerNode,
 } from '../../lib/modelManager';
 import {
+  toGpuNodeFromManager,
   toServedModelFromManager,
   toServingBackend,
   toServingCapabilities,
@@ -15,8 +17,10 @@ import {
 import {
   modelManagerBackendQueryKey,
   modelManagerModelsQueryKey,
+  modelManagerNodesQueryKey,
 } from '../../lib/queryKeys';
 import type {
+  GpuCapacityUnavailableReason,
   ServingBackend,
   ServingCapabilities,
   ServingSourceSnapshot,
@@ -35,6 +39,13 @@ export const BACKEND_REFETCH_MS = 60_000;
  * section is visible; mutations invalidate on top.
  */
 export const MODELS_REFETCH_MS = 30_000;
+
+/**
+ * The node view (memory budgets, what served models reserve, the cache
+ * contents) moves with the inventory; model-manager itself reuses a cache scan
+ * for a couple of minutes, so polling faster buys nothing.
+ */
+export const NODES_REFETCH_MS = 60_000;
 
 /** Which backend descriptors were readable, by installation. */
 type BackendByInstallation = Record<
@@ -61,8 +72,12 @@ type BackendByInstallation = Record<
  * installation whose backend is one this portal has no vocabulary for is
  * skipped with a console warning.
  *
- * Contributes no GPU nodes: a backend that has a node inventory says so with
- * `nodeInventory`, and rendering it is a later concern; on Ollama the panel is
+ * Contributes GPU nodes only where the backend reports `nodeInventory`
+ * (KServe): `GET /api/v1/nodes` — each node's memory budget for fit checks,
+ * what the models served there reserve of it, and the download cache on it.
+ * On an installation whose InferenceServices are also read as CRs the
+ * provider lays these rows over the CR source's (device-plugin capacity, pod
+ * requests), so the GPU panel has one row per node. On Ollama the panel is
  * simply absent.
  */
 export function useModelManagerServingSource(
@@ -129,16 +144,35 @@ export function useModelManagerServingSource(
     .map(query => `${query.status}:${query.isLoading}:${query.dataUpdatedAt}`)
     .join('|');
 
+  const nodeQueries = useQueries({
+    queries: installations.map(installation => ({
+      queryKey: modelManagerNodesQueryKey(installation),
+      queryFn: () => modelManagerApi.listNodes(installation),
+      // Only a backend with a node inventory; asking another answers 403.
+      enabled: Boolean(backends[installation]?.capabilities.nodeInventory),
+      staleTime: 30_000,
+      refetchInterval: NODES_REFETCH_MS,
+    })),
+  });
+
+  const nodesSignature = nodeQueries
+    .map(query => `${query.status}:${query.isLoading}:${query.dataUpdatedAt}`)
+    .join('|');
+
   return useMemo<ServingSourceSnapshot>(() => {
     const active: string[] = [];
     const backendByInstallation: Record<string, ServingBackend> = {};
     const capabilities: Record<string, ServingCapabilities> = {};
     const unreachable = new Set<string>();
     const servedModels: ServingSourceSnapshot['servedModels'] = [];
+    const gpuNodes: ServingSourceSnapshot['gpuNodes'] = [];
+    const gpuCapacityUnavailable: Record<string, GpuCapacityUnavailableReason> =
+      {};
 
     installations.forEach((installation, index) => {
       const backendQuery = backendQueries[index];
       const modelQuery = modelQueries[index];
+      const nodeQuery = nodeQueries[index];
       const descriptor = backends[installation];
 
       if (backendQuery?.isError) {
@@ -168,20 +202,35 @@ export function useModelManagerServingSource(
           toServedModelFromManager(installation, descriptor, model),
         );
       }
+
+      if (descriptor.capabilities.nodeInventory) {
+        if (nodeQuery?.isError) {
+          // The inventory is readable but the node view is not: the panel
+          // says so for this installation, the models still render.
+          gpuCapacityUnavailable[installation] =
+            (nodeQuery.error as Error | null)?.name === 'ForbiddenError'
+              ? 'forbidden'
+              : 'error';
+        }
+        for (const node of (nodeQuery?.data ?? []) as ModelManagerNode[]) {
+          gpuNodes.push(toGpuNodeFromManager(installation, node));
+        }
+      }
     });
 
     return {
       isLoading:
         isListing ||
         backendQueries.some(query => query.isLoading) ||
-        modelQueries.some(query => query.isLoading),
+        modelQueries.some(query => query.isLoading) ||
+        nodeQueries.some(query => query.isLoading),
       installations: active,
       backends: backendByInstallation,
       capabilities,
       unreachableInstallations: Array.from(unreachable).sort(),
       servedModels,
-      gpuNodes: [],
-      gpuCapacityUnavailable: {},
+      gpuNodes,
+      gpuCapacityUnavailable,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -190,5 +239,6 @@ export function useModelManagerServingSource(
     backends,
     backendSignature,
     modelsSignature,
+    nodesSignature,
   ]);
 }

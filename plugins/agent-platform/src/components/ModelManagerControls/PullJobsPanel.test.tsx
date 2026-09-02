@@ -14,7 +14,11 @@ import {
   parseModelManagerList,
 } from '../../lib/modelManager';
 import { modelsRouteRef } from '../../routes';
-import { formatJobProgress, PullJobsPanel } from './PullJobsPanel';
+import {
+  formatJobProgress,
+  PullJobsPanel,
+  type ModelConfigExists,
+} from './PullJobsPanel';
 
 const listJobs = jest.fn();
 const cancelJob = jest.fn();
@@ -38,7 +42,10 @@ const running = {
   createdAt: '2026-09-02T13:00:00Z',
 };
 
-function render(installations = ['lab']) {
+function render(
+  installations = ['lab'],
+  modelConfigExists?: ModelConfigExists,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -49,7 +56,10 @@ function render(installations = ['lab']) {
   );
   return renderInTestApp(
     <Wrapper>
-      <PullJobsPanel installations={installations} />
+      <PullJobsPanel
+        installations={installations}
+        modelConfigExists={modelConfigExists}
+      />
     </Wrapper>,
     { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
   );
@@ -178,5 +188,28 @@ describe('PullJobsPanel', () => {
         /Could not read the downloads of lab: token rejected/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('does not link a wired model config that has since been removed', async () => {
+    listJobs.mockResolvedValue([finished[0]]);
+
+    await render(
+      ['lab'],
+      (installation, namespace, name) =>
+        !(
+          installation === 'lab' &&
+          namespace === 'kagent' &&
+          name === 'qwen2-5-0-5b'
+        ),
+    );
+
+    expect(
+      await screen.findByText(
+        /Model config kagent\/qwen2-5-0-5b was created and has since been removed/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'kagent/qwen2-5-0-5b' }),
+    ).not.toBeInTheDocument();
   });
 });

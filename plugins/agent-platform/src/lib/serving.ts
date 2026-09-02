@@ -106,17 +106,40 @@ export type ServedModel = {
     format?: string;
   };
   /**
-   * The kagent ModelConfig the serving backend itself created for this model
-   * (model-manager's auto-wiring), with the controller's verdict on it. Exact
-   * — no endpoint matching involved — so it links even when the user cannot
-   * list ModelConfigs. Absent when the backend created none, or does not say.
+   * The kagent ModelConfig the serving backend knows for this model: the one
+   * it created (model-manager's auto-wiring), or — `managed: false` — one it
+   * recognises as somebody else's wiring of the same predictor (the portal's
+   * serve flow), which it never updates or deletes. With the controller's
+   * verdict on it. Exact — no endpoint matching involved — so it links even
+   * when the user cannot list ModelConfigs. Absent when the backend knows
+   * none, or does not say.
    */
   modelConfig?: {
     name: string;
     namespace: string;
+    /** Created by the backend itself; `undefined` reads as yes (an older backend only ever reported its own). */
+    managed?: boolean;
     ready?: boolean;
     message?: string;
   };
+  /**
+   * The reference the operating source (model-manager) knows this model by
+   * and takes in its requests — an Ollama tag, a Hugging Face repository. Set
+   * by that source only; a row merged from a CR read and a model-manager
+   * inventory keeps the CR's `name` (the InferenceService) and this reference
+   * side by side. Absent means no source operates on the row.
+   */
+  managerRef?: string;
+  /**
+   * KServe through model-manager: whether the weights sit in a node's
+   * download cache. `false` for a model served straight from the hub (its
+   * storage-initializer downloads on every start) or known only from a
+   * preset; `undefined` when the backend has no such notion (Ollama lists
+   * downloads only; a bare CR read knows nothing of caches).
+   */
+  downloaded?: boolean;
+  /** KServe: the cache directory holding the weights — the InferenceService name the storage-initializer uses. */
+  cachePath?: string;
   /**
    * Whether the source that lists this model can also operate on it — load,
    * unload, delete, wire — through the installation's `ServingCapabilities`.
@@ -222,6 +245,30 @@ export type GpuNode = {
   memoryAllocatableBytes?: number;
   /** `false` when the node is cordoned (`spec.unschedulable`). */
   schedulable?: boolean;
+  /**
+   * The memory budget a serving backend fit-checks against on this node —
+   * GPU memory from the labels, else allocatable memory — as model-manager
+   * reports it, with what the models already served there reserve of it and
+   * what is left. Absent from a source that only reads the cluster.
+   */
+  memoryBudgetBytes?: number;
+  /** Where `memoryBudgetBytes` comes from: `gpu-labels` or `allocatable`. */
+  memoryBudgetSource?: string;
+  memoryReservedBytes?: number;
+  memoryFreeBytes?: number;
+  /** The download cache on this node, when a backend keeps one there. */
+  cache?: {
+    claim?: string;
+    mountPath?: string;
+    /** Models (cache directories) held. */
+    models?: number;
+    bytesUsed?: number;
+    scannedAt?: string;
+    /** Network storage visible from every node. */
+    shared?: boolean;
+    /** Last scan failure; the figures may be stale. */
+    error?: string;
+  };
 };
 
 /** Reasons the GPU capacity of an installation could not be read. */
@@ -355,12 +402,71 @@ export function findServedModelForEndpoint(
 }
 
 /**
+ * Whether two rows *of different sources* describe the same served model: the
+ * same installation and backend, answering on a common hostname — a KServe
+ * InferenceService read as a CR and the same predictor in a model-manager's
+ * inventory both list `<name>-predictor.<namespace>.svc.cluster.local`. Rows
+ * without an endpoint (a cached model nobody serves) never coincide. Only
+ * meaningful across sources: within one source, an Ollama host lists every
+ * tag on the same hostname, and those are different models.
+ */
+export function isSameServedModel(a: ServedModel, b: ServedModel): boolean {
+  return (
+    a.installation === b.installation &&
+    a.backend === b.backend &&
+    a.endpointHosts.some(host => b.endpointHosts.includes(host))
+  );
+}
+
+/**
+ * One row from two sources' views of the same served model. The earlier row
+ * (the CR read — identity, status, placement as the cluster reports them)
+ * keeps every field it has; the later one (the operating source) fills in
+ * what it lacks — size, features, the cache, the ModelConfig it knows, the
+ * reference it operates by — and the row is operable if either side is. One
+ * row, one status, one actions menu.
+ */
+export function overlayServedModel(
+  base: ServedModel,
+  overlay: ServedModel,
+): ServedModel {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    // The status and its explanation come from one source: the base's.
+    if (
+      value === undefined ||
+      key === 'endpointHosts' ||
+      key === 'operable' ||
+      key === 'readinessMessage'
+    ) {
+      continue;
+    }
+    if (merged[key] === undefined) {
+      merged[key] = value;
+    }
+  }
+  return {
+    ...(merged as ServedModel),
+    endpointHosts: Array.from(
+      new Set([...base.endpointHosts, ...overlay.endpointHosts]),
+    ),
+    operable: base.operable || overlay.operable || undefined,
+  };
+}
+
+/**
  * Merge per-source snapshots. Later sources win the `backends` label for an
- * installation both claim; served models and GPU nodes are concatenated (a
- * KServe InferenceService and an Ollama model on the same installation both
- * render); capabilities are OR-ed per flag, so an installation offers what any
- * of its sources can do — the CR source's GPU panel next to the
- * model-manager's pull and load.
+ * installation both claim; capabilities are OR-ed per flag, so an
+ * installation offers what any of its sources can do — the CR source's GPU
+ * panel next to the model-manager's pull and load.
+ *
+ * Served models are concatenated (a KServe InferenceService and an Ollama
+ * model on the same installation both render), except that a later source's
+ * row for a model an earlier source already lists — the same predictor, by
+ * hostname ({@link isSameServedModel}) — is folded into that row
+ * ({@link overlayServedModel}) rather than shown twice. GPU nodes are
+ * likewise one row per node, the later source's figures filling in or
+ * refreshing the earlier's.
  */
 export function mergeServingSnapshots(
   snapshots: ServingSourceSnapshot[],
@@ -370,6 +476,8 @@ export function mergeServingSnapshots(
   const gpuCapacityUnavailable: Record<string, GpuCapacityUnavailableReason> =
     {};
   const unreachable = new Set<string>();
+  const servedModels: ServedModel[] = [];
+  const gpuNodes = new Map<string, GpuNode>();
   for (const snapshot of snapshots) {
     Object.assign(backends, snapshot.backends);
     Object.assign(gpuCapacityUnavailable, snapshot.gpuCapacityUnavailable);
@@ -385,6 +493,39 @@ export function mergeServingSnapshots(
       }
       capabilities[installation] = merged;
     }
+
+    // Fold only onto rows of *earlier* sources: within one snapshot every
+    // row is its own model, whatever hosts they share.
+    const earlier = servedModels.length;
+    for (const row of snapshot.servedModels) {
+      let index = -1;
+      for (let i = 0; i < earlier; i += 1) {
+        if (isSameServedModel(servedModels[i], row)) {
+          index = i;
+          break;
+        }
+      }
+      if (index === -1) {
+        servedModels.push(row);
+      } else {
+        servedModels[index] = overlayServedModel(servedModels[index], row);
+      }
+    }
+
+    for (const node of snapshot.gpuNodes) {
+      const existing = gpuNodes.get(node.id);
+      if (!existing) {
+        gpuNodes.set(node.id, node);
+        continue;
+      }
+      const merged: Record<string, unknown> = { ...existing };
+      for (const [key, value] of Object.entries(node)) {
+        if (value !== undefined) {
+          merged[key] = value;
+        }
+      }
+      gpuNodes.set(node.id, merged as GpuNode);
+    }
   }
   return {
     isLoading: snapshots.some(snapshot => snapshot.isLoading),
@@ -392,8 +533,8 @@ export function mergeServingSnapshots(
     backends,
     capabilities,
     unreachableInstallations: Array.from(unreachable).sort(),
-    servedModels: snapshots.flatMap(snapshot => snapshot.servedModels),
-    gpuNodes: snapshots.flatMap(snapshot => snapshot.gpuNodes),
+    servedModels,
+    gpuNodes: Array.from(gpuNodes.values()),
     gpuCapacityUnavailable,
   };
 }

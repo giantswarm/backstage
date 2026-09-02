@@ -4,8 +4,10 @@ import {
   gpuFree,
   gpuTotal,
   hasServedModelActions,
+  isSameServedModel,
   mergeServingSnapshots,
   NO_SERVING_CAPABILITIES,
+  overlayServedModel,
   type GpuNode,
   type ServedModel,
   type ServingSourceSnapshot,
@@ -261,6 +263,146 @@ describe('mergeServingSnapshots', () => {
 
   it('tolerates sources without capabilities', () => {
     expect(mergeServingSnapshots([kserve, ollama]).capabilities).toEqual({});
+  });
+
+  describe('folding two views of one served model', () => {
+    // model-manager's view of the same InferenceService: named the same,
+    // answering on the predictor host, carrying what the CR read lacks.
+    const qwenFromManager: ServedModel = {
+      id: 'alpha/kserve/kserve/qwen3-14b',
+      installation: 'alpha',
+      backend: 'kserve',
+      name: 'qwen3-14b',
+      namespace: 'kserve',
+      readiness: 'pending',
+      readinessMessage: 'InferenceService qwen3-14b has not reported yet.',
+      endpointHosts: ['qwen3-14b-predictor.kserve.svc.cluster.local'],
+      managerRef: 'Qwen/Qwen3-14B',
+      sizeBytes: 29_540_000_000,
+      downloaded: true,
+      cachePath: 'qwen3-14b',
+      loaded: true,
+      modelConfig: { name: 'qwen3-14b', namespace: 'kagent', managed: false },
+      operable: true,
+    };
+    const cached: ServedModel = {
+      id: 'alpha/kserve/cache/gpu-node-1/devstral',
+      installation: 'alpha',
+      backend: 'kserve',
+      name: 'mistralai/Devstral',
+      readiness: 'available',
+      endpointHosts: [],
+      managerRef: 'mistralai/Devstral',
+      downloaded: true,
+      node: 'gpu-node-1',
+      operable: true,
+    };
+    const manager: ServingSourceSnapshot = {
+      ...ollama,
+      isLoading: false,
+      installations: ['alpha'],
+      backends: { alpha: 'kserve' },
+      unreachableInstallations: [],
+      servedModels: [qwenFromManager, cached],
+    };
+
+    it('recognises the same predictor by hostname, never rows without one', () => {
+      expect(isSameServedModel(qwen, qwenFromManager)).toBe(true);
+      expect(isSameServedModel(qwen, cached)).toBe(false);
+      expect(
+        isSameServedModel(qwen, { ...qwenFromManager, installation: 'beta' }),
+      ).toBe(false);
+    });
+
+    it("keeps the CR's identity and status and takes the manager's inventory and controls", () => {
+      const merged = overlayServedModel(qwen, qwenFromManager);
+
+      expect(merged).toMatchObject({
+        id: qwen.id,
+        name: 'qwen3-14b',
+        readiness: 'ready',
+        managerRef: 'Qwen/Qwen3-14B',
+        sizeBytes: 29_540_000_000,
+        downloaded: true,
+        cachePath: 'qwen3-14b',
+        loaded: true,
+        modelConfig: { name: 'qwen3-14b', namespace: 'kagent', managed: false },
+        operable: true,
+      });
+      // The explanation belongs to the status: the CR's (none) stays.
+      expect(merged.readinessMessage).toBeUndefined();
+      expect(merged.endpointHosts).toEqual(
+        expect.arrayContaining([
+          ...qwen.endpointHosts,
+          'qwen3-14b-predictor.kserve.svc.cluster.local',
+        ]),
+      );
+    });
+
+    it('folds a later source onto an earlier one and lists the rest side by side', () => {
+      const merged = mergeServingSnapshots([kserve, manager]);
+
+      expect(merged.servedModels.map(model => model.id)).toEqual([
+        qwen.id,
+        cached.id,
+      ]);
+      expect(merged.servedModels[0]).toMatchObject({
+        readiness: 'ready',
+        operable: true,
+        managerRef: 'Qwen/Qwen3-14B',
+      });
+    });
+
+    it('never folds rows of one source into each other, whatever hosts they share', () => {
+      // Every Ollama tag answers on the same host; they are different models.
+      const tags: ServedModel[] = ['qwen3:0.6b', 'gemma3:270m'].map(name => ({
+        id: `lab/ollama//${name}`,
+        installation: 'lab',
+        backend: 'ollama',
+        name,
+        readiness: 'available',
+        endpointHosts: ['172.21.0.1'],
+      }));
+      const merged = mergeServingSnapshots([
+        kserve,
+        { ...ollama, servedModels: tags },
+      ]);
+
+      expect(merged.servedModels).toHaveLength(3);
+    });
+
+    it('merges GPU nodes by id, the later figures filling in the earlier', () => {
+      const merged = mergeServingSnapshots([
+        kserve,
+        {
+          ...manager,
+          servedModels: [],
+          gpuNodes: [
+            {
+              id: 'alpha/gpu-node-1',
+              installation: 'alpha',
+              name: 'gpu-node-1',
+              ready: true,
+              memoryBudgetBytes: 100,
+              memoryFreeBytes: 40,
+              cache: { models: 2, bytesUsed: 60 },
+            },
+          ],
+        },
+      ]);
+
+      expect(merged.gpuNodes).toEqual([
+        {
+          id: 'alpha/gpu-node-1',
+          installation: 'alpha',
+          name: 'gpu-node-1',
+          ready: true,
+          memoryBudgetBytes: 100,
+          memoryFreeBytes: 40,
+          cache: { models: 2, bytesUsed: 60 },
+        },
+      ]);
+    });
   });
 
   it('is empty and settled with no sources', () => {

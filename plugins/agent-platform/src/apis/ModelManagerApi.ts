@@ -1,9 +1,13 @@
 import type {
   ModelConfigRef,
   ModelManagerBackend,
+  ModelManagerFitResult,
   ModelManagerJob,
   ModelManagerLoadedModel,
   ModelManagerModel,
+  ModelManagerNode,
+  ModelManagerPreset,
+  ModelManagerSearchResult,
 } from '../lib/modelManager';
 
 /**
@@ -28,8 +32,9 @@ export const MODEL_MANAGER_AUTH_HEADER =
  * key on: `NotFoundError` (the installation has no model-manager configured,
  * or the model/job is gone), `UnauthorizedError`, `ForbiddenError` (also how
  * an unsupported capability arrives — the backend never offered it),
- * `ConflictError`, `ServiceUnavailableError` (model-manager or its backend is
- * unreachable).
+ * `ConflictError`, `PreconditionFailedError` (a fit check refused the model —
+ * model-manager's `412 does_not_fit`, with the numbers in the message),
+ * `ServiceUnavailableError` (model-manager or its backend is unreachable).
  */
 export interface ModelManagerApi {
   /** Installations the backend can proxy model-manager for. Names only. */
@@ -47,22 +52,56 @@ export interface ModelManagerApi {
   /**
    * Start importing a model. Answers at once with the job to poll; `created`
    * is false when a pull of the same reference was already running and was
-   * joined instead. `wire` overrides the server's auto-wiring default.
+   * joined instead. `wire` overrides the server's auto-wiring default (a
+   * KServe backend refuses it: models are wired when served). On KServe,
+   * `preset` names the serving preset whose cache directory receives the
+   * download and `node` the node whose cache it lands in; a model that does
+   * not fit the node is refused with `PreconditionFailedError`.
    */
   pullModel(
     installation: string,
-    request: { model: string; wire?: boolean },
+    request: { model: string; wire?: boolean; preset?: string; node?: string },
   ): Promise<{ job: ModelManagerJob; created: boolean }>;
 
   /**
    * Load into memory / start serving. Resolves once the backend has the
    * model, which for a multi-GiB model takes a while — the backend proxy
-   * gives it its own timeout.
+   * gives it its own timeout. On KServe, `preset` picks the serving preset
+   * the InferenceService is composed from (`model` may then be left out) and
+   * `node` pins the predictor.
    */
   loadModel(
     installation: string,
-    request: { model: string; keepAlive?: string },
+    request: {
+      model?: string;
+      keepAlive?: string;
+      preset?: string;
+      node?: string;
+    },
   ): Promise<ModelManagerModel>;
+
+  /**
+   * Whether a model fits a node before downloading or serving it (KServe):
+   * the weights as the hub reports them plus the serving overhead, against the
+   * node's memory budget. `fits: false` is an answer, not an error.
+   */
+  fitCheck(
+    installation: string,
+    request: { model?: string; preset?: string; node?: string },
+  ): Promise<ModelManagerFitResult>;
+
+  /** The curated serving presets, as model-manager resolves them (KServe). */
+  listPresets(installation: string): Promise<ModelManagerPreset[]>;
+
+  /** Search the model hub (KServe — the Hugging Face Hub), most downloaded first. */
+  searchModels(
+    installation: string,
+    query: string,
+    limit?: number,
+  ): Promise<ModelManagerSearchResult[]>;
+
+  /** Every node with its memory budget and download cache (KServe). */
+  listNodes(installation: string): Promise<ModelManagerNode[]>;
 
   /** Evict from memory / stop serving. */
   unloadModel(installation: string, model: string): Promise<void>;

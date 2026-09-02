@@ -2,17 +2,23 @@ import backendOllama from './__fixtures__/model-manager.backend.ollama.json';
 import backendKserve from './__fixtures__/model-manager.backend.kserve.json';
 import modelsOllama from './__fixtures__/model-manager.models.ollama.json';
 import modelsKserve from './__fixtures__/model-manager.models.kserve.json';
+import nodesKserve from './__fixtures__/model-manager.nodes.kserve.json';
 import {
   modelManagerBackendSchema,
   modelManagerModelSchema,
+  modelManagerNodeSchema,
   parseModelManagerList,
 } from './modelManager';
 import {
   describeServedModel,
   formatBytes,
   formatContextLength,
+  isServedInferenceService,
   lacksToolCalling,
+  managerRefOf,
+  namespaceOfPredictorUrl,
   notableCapabilities,
+  toGpuNodeFromManager,
   toServedModelFromManager,
   toServingBackend,
   toServingCapabilities,
@@ -37,6 +43,11 @@ const kserveModels = parseModelManagerList(
   modelsKserve,
   'models',
   modelManagerModelSchema,
+);
+const kserveNodes = parseModelManagerList(
+  nodesKserve,
+  'nodes',
+  modelManagerNodeSchema,
 );
 
 describe('toServingBackend / toServingCapabilities', () => {
@@ -106,6 +117,7 @@ describe('toServedModelFromManager', () => {
       modelConfig: {
         name: 'qwen3-0-6b',
         namespace: 'kagent',
+        managed: true,
         ready: true,
       },
     });
@@ -118,6 +130,7 @@ describe('toServedModelFromManager', () => {
     expect(served.modelConfig).toEqual({
       name: 'qwen3-0-6b',
       namespace: 'kagent',
+      managed: true,
       ready: true,
       message: undefined,
     });
@@ -134,22 +147,130 @@ describe('toServedModelFromManager', () => {
     expect(served.readinessMessage).toBe('dial tcp: connection refused');
   });
 
-  it('maps a KServe-backed model with its node and predictor endpoint', () => {
+  it('maps a served KServe model as its InferenceService, like the CR source does', () => {
     const served = toServedModelFromManager('gpu', kserve, kserveModels[0]);
 
     expect(served).toMatchObject({
+      // Same id and name as the CR read of the same InferenceService, so the
+      // two fold into one row and the ModelConfig's spec.model matches.
+      id: 'gpu/kserve/model-serving/qwen3-14b',
       backend: 'kserve',
-      runtime: 'kserve v0.20.0',
+      name: 'qwen3-14b',
+      namespace: 'model-serving',
+      managerRef: 'Qwen/Qwen3-14B',
+      modelSource: 'Qwen/Qwen3-14B',
       readiness: 'ready',
+      readinessMessage: 'InferenceService qwen3-14b is ready.',
       node: 'gpu-node-1',
+      nodeSource: 'pod',
+      gpuCount: 1,
+      preset: 'qwen3-14b',
+      downloaded: true,
+      cachePath: 'qwen3-14b',
+      managedByPortal: true,
       internalUrl: 'http://qwen3-14b-predictor.model-serving.svc.cluster.local',
-      modelConfig: { name: 'qwen3-14b', namespace: 'kagent', ready: true },
+      // The portal's own wiring, which model-manager recognises but does not own.
+      modelConfig: {
+        name: 'qwen3-14b',
+        namespace: 'kagent',
+        managed: false,
+        ready: true,
+      },
+      operable: true,
     });
-    // Both the predictor's host and the backend's own are answered on.
+    // Only the predictor answers; the backend "endpoint" is the CR API.
     expect(served.endpointHosts).toEqual([
-      'kubernetes.default.svc',
       'qwen3-14b-predictor.model-serving.svc.cluster.local',
     ]);
+    expect(served.runtime).toBeUndefined();
+  });
+
+  it('maps a cached KServe model nobody serves as available on its node', () => {
+    const served = toServedModelFromManager('gpu', kserve, kserveModels[1]);
+
+    expect(served).toMatchObject({
+      id: 'gpu/kserve/cache/gpu-node-1/devstral-small-2',
+      name: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+      managerRef: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+      readiness: 'available',
+      readinessMessage: 'Downloaded on gpu-node-1; not serving.',
+      node: 'gpu-node-1',
+      downloaded: true,
+      cachePath: 'devstral-small-2',
+      preset: 'devstral-small-2',
+      loaded: false,
+    });
+    expect(served.namespace).toBeUndefined();
+    expect(served.endpointHosts).toEqual([]);
+    expect(isServedInferenceService(served)).toBe(false);
+    expect(
+      isServedInferenceService(
+        toServedModelFromManager('gpu', kserve, kserveModels[0]),
+      ),
+    ).toBe(true);
+  });
+
+  it('follows the InferenceService readiness model-manager reads from the CR', () => {
+    const base = kserveModels[0];
+    const pending = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: { ...base.running!, status: 'Pending', message: undefined },
+    });
+    const failing = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: {
+        ...base.running!,
+        status: 'NotReady',
+        message: 'predictor pod is crash-looping',
+      },
+    });
+    const terminating = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: { ...base.running!, status: 'Terminating', message: undefined },
+    });
+
+    expect(pending.readiness).toBe('pending');
+    expect(pending.readinessMessage).toMatch(/has not reported yet/);
+    expect(failing.readiness).toBe('notReady');
+    expect(failing.readinessMessage).toBe('predictor pod is crash-looping');
+    expect(terminating.readiness).toBe('notReady');
+    expect(terminating.readinessMessage).toMatch(/being deleted/);
+  });
+
+  it('maps a node of the kserve inventory with its budget and cache', () => {
+    const node = toGpuNodeFromManager('gpu', kserveNodes[0]);
+
+    expect(node).toEqual({
+      id: 'gpu/gpu-node-1',
+      installation: 'gpu',
+      name: 'gpu-node-1',
+      ready: true,
+      product: 'NVIDIA-GB10',
+      memoryMiB: 122880,
+      labeledCount: 1,
+      memoryAllocatableBytes: 92417933312,
+      memoryBudgetBytes: 92417933312,
+      memoryBudgetSource: 'allocatable',
+      memoryReservedBytes: 62277025792,
+      memoryFreeBytes: 30140907520,
+      cache: {
+        claim: 'hf-cache',
+        mountPath: '/mnt/models',
+        models: 3,
+        bytesUsed: 77540453864,
+        scannedAt: '2026-09-02T16:19:26.157334389Z',
+        shared: false,
+        error: undefined,
+      },
+    });
+    expect(
+      namespaceOfPredictorUrl('http://x-predictor.serving.svc.cluster.local'),
+    ).toBe('serving');
+    expect(namespaceOfPredictorUrl('http://172.21.0.1:11434')).toBeUndefined();
+    expect(
+      managerRefOf({ name: 'qwen3-14b', managerRef: 'Qwen/Qwen3-14B' } as any),
+    ).toBe('Qwen/Qwen3-14B');
+    expect(managerRefOf({ name: 'qwen3:0.6b' } as any)).toBe('qwen3:0.6b');
   });
 
   it('lets a ModelConfig on the shared host resolve to the right model by name', () => {

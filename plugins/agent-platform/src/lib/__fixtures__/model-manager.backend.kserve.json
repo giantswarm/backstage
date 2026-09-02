@@ -1,7 +1,7 @@
 {
   "backend": "kserve",
-  "version": "v0.20.0",
-  "endpoint": "https://kubernetes.default.svc",
+  "version": "serving.kserve.io/v1beta1",
+  "endpoint": "inferenceservices.serving.kserve.io/model-serving",
   "healthy": true,
   "capabilities": {
     "pull": true,

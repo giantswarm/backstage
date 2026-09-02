@@ -6,6 +6,7 @@ import { modelManagerApiRef } from '../apis';
 import {
   modelManagerJobsQueryKey,
   modelManagerModelsQueryKey,
+  modelManagerNodesQueryKey,
 } from '../lib/queryKeys';
 
 /** The per-model operations of the model-manager API, as one union. */
@@ -34,31 +35,46 @@ export const SERVED_MODEL_ACTION_LABEL: Record<
  * creates and removes ModelConfigs behind the portal's back).
  */
 export function useInvalidateModelManagerReads(installation: string) {
+  const invalidate = useInvalidateModelManagerReadsFor();
+  return useCallback(
+    () => invalidate(installation),
+    [invalidate, installation],
+  );
+}
+
+/** {@link useInvalidateModelManagerReads} for a caller that names the installation per call. */
+export function useInvalidateModelManagerReadsFor() {
   const queryClient = useQueryClient();
-  return useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: modelManagerModelsQueryKey(installation),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: modelManagerJobsQueryKey(installation),
-      }),
-      // Same key shape `useDeleteModelConfig` invalidates: the
-      // kubernetes-react resource cache for the ModelConfig list and gets.
-      ...['list', 'get'].map(operation =>
+  return useCallback(
+    async (installation: string) => {
+      await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: [
-            'cluster',
-            installation,
-            operation,
-            ModelConfig.group,
-            ModelConfig.apiVersion,
-            ModelConfig.plural,
-          ],
+          queryKey: modelManagerModelsQueryKey(installation),
         }),
-      ),
-    ]);
-  }, [queryClient, installation]);
+        queryClient.invalidateQueries({
+          queryKey: modelManagerJobsQueryKey(installation),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: modelManagerNodesQueryKey(installation),
+        }),
+        // Same key shape `useDeleteModelConfig` invalidates: the
+        // kubernetes-react resource cache for the ModelConfig list and gets.
+        ...['list', 'get'].map(operation =>
+          queryClient.invalidateQueries({
+            queryKey: [
+              'cluster',
+              installation,
+              operation,
+              ModelConfig.group,
+              ModelConfig.apiVersion,
+              ModelConfig.plural,
+            ],
+          }),
+        ),
+      ]);
+    },
+    [queryClient],
+  );
 }
 
 /**
