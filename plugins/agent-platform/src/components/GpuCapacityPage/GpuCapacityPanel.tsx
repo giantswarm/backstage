@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import {
   Alert,
   Badge,
@@ -205,8 +205,8 @@ function CacheCell({ node }: { node: GpuNode }) {
  * figure, gets the dash that says what it is instead.
  */
 function gpuFigure(
-  render: (node: GpuNode) => ReactNode,
-): (node: GpuNode) => ReactNode {
+  render: (node: GpuNode) => ReactElement,
+): (node: GpuNode) => ReactElement {
   return node =>
     isHostMemoryNode(node) ? (
       <NotReportedCell reason={HOST_NO_GPU_FIGURES} />
