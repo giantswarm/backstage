@@ -1,5 +1,5 @@
 import { KubeObject, KubeObjectInterface } from './KubeObject';
-import { parseIntegerQuantity } from './quantity';
+import { parseIntegerQuantity, parseMemoryQuantity } from './quantity';
 
 /** A `status.conditions` entry as the kubelet writes it. */
 export type NodeCondition = {
@@ -60,6 +60,16 @@ export class Node extends KubeObject<NodeInterface> {
   /** As {@link getCapacityOf}, for the schedulable (`allocatable`) amount. */
   getAllocatableOf(resource: string): number | undefined {
     return parseIntegerQuantity(this.getAllocatable()?.[resource]);
+  }
+
+  /**
+   * Memory the scheduler may hand to pods on this node
+   * (`status.allocatable.memory`), in bytes. The budget a memory fit check
+   * compares against on a node whose GPU shares system memory; `undefined`
+   * when the kubelet has not reported it.
+   */
+  getAllocatableMemoryBytes(): number | undefined {
+    return parseMemoryQuantity(this.getAllocatable()?.memory);
   }
 
   getConditions() {

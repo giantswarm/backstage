@@ -33,9 +33,12 @@ export {
 } from './InferenceService';
 export type {
   InferenceServiceCondition,
+  InferenceServiceContainer,
   InferenceServiceInterface,
   InferenceServicePredictor,
+  InferenceServicePredictorModel,
   InferenceServiceReadiness,
+  InferenceServiceVolumeMount,
 } from './InferenceService';
 export { KubeObject } from './KubeObject';
 export { Namespace } from './Namespace';
@@ -63,7 +66,12 @@ export { ClusterRole, ClusterRoleBinding, Role, RoleBinding } from './Rbac';
 export type { RbacPolicyRule, RbacRoleRef, RbacSubject } from './Rbac';
 export { Release, RELEASE_VERSION_PREFIXES } from './Release';
 export { Secret } from './Secret';
-export { parseIntegerQuantity, sumResourceRequests } from './quantity';
+export {
+  GIB,
+  parseIntegerQuantity,
+  parseMemoryQuantity,
+  sumResourceRequests,
+} from './quantity';
 export { SecretStore } from './SecretStore';
 export * from './KubeObject';
 export {

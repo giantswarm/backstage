@@ -1,4 +1,8 @@
-import { parseIntegerQuantity, sumResourceRequests } from './quantity';
+import {
+  parseIntegerQuantity,
+  parseMemoryQuantity,
+  sumResourceRequests,
+} from './quantity';
 
 describe('parseIntegerQuantity', () => {
   it('parses whole-number strings and numbers', () => {
@@ -39,5 +43,30 @@ describe('sumResourceRequests', () => {
     expect(
       sumResourceRequests([{ requests: { cpu: '1' } }], 'nvidia.com/gpu'),
     ).toBeUndefined();
+  });
+});
+
+describe('parseMemoryQuantity', () => {
+  it('parses binary suffixes into bytes', () => {
+    expect(parseMemoryQuantity('1Ki')).toBe(1024);
+    expect(parseMemoryQuantity('64Gi')).toBe(64 * 2 ** 30);
+    // What a kubelet reports for status.allocatable.memory.
+    expect(parseMemoryQuantity('90251888Ki')).toBe(90251888 * 1024);
+  });
+
+  it('parses decimal suffixes, exponents and plain bytes', () => {
+    expect(parseMemoryQuantity('500M')).toBe(500e6);
+    expect(parseMemoryQuantity('1e9')).toBe(1e9);
+    expect(parseMemoryQuantity('1.5G')).toBe(1.5e9);
+    expect(parseMemoryQuantity('4096')).toBe(4096);
+    expect(parseMemoryQuantity(2048)).toBe(2048);
+  });
+
+  it('refuses values that are not quantities', () => {
+    expect(parseMemoryQuantity('lots')).toBeUndefined();
+    expect(parseMemoryQuantity('1Gib')).toBeUndefined();
+    expect(parseMemoryQuantity('-1Gi')).toBeUndefined();
+    expect(parseMemoryQuantity(undefined)).toBeUndefined();
+    expect(parseMemoryQuantity(null)).toBeUndefined();
   });
 });

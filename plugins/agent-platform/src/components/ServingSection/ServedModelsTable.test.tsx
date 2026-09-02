@@ -163,3 +163,64 @@ describe('sortServedModelsBy', () => {
     ]);
   });
 });
+
+describe('ServedModelsTable actions and wiring', () => {
+  it('offers the stop action only on stoppable backends, and only when asked to', async () => {
+    const onStop = jest.fn();
+    const ollamaRow: ServedModelRow = {
+      ...rows[2],
+      id: 'inst-2/ollama/qwen3:0.6b',
+      backend: 'ollama',
+      name: 'qwen3:0.6b',
+      namespace: undefined,
+    };
+
+    const { unmount } = await renderTable(<ServedModelsTable rows={rows} />);
+    expect(
+      screen.queryByRole('button', { name: /Actions for/ }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    await renderTable(
+      <ServedModelsTable rows={[rows[0], ollamaRow]} onStop={onStop} />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Actions for qwen3-14b' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Actions for qwen3:0.6b' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows where a model came from and how its wiring is going', async () => {
+    await renderTable(
+      <ServedModelsTable
+        rows={[
+          {
+            ...rows[1],
+            preset: 'devstral-small-2',
+            wiring: { status: 'wiring' },
+          },
+          {
+            ...rows[2],
+            wiring: {
+              status: 'conflict',
+              message: 'name taken by another config',
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByText('kserve · KServe · preset devstral-small-2'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Creating model config…')).toBeInTheDocument();
+    expect(screen.getByText('Model config name taken')).toBeInTheDocument();
+    expect(
+      screen.getByTitle('name taken by another config'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No model config')).not.toBeInTheDocument();
+  });
+});

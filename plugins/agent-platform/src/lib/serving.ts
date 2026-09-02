@@ -59,6 +59,22 @@ export type ServedModel = {
    * is matched against to tell which served model it fronts.
    */
   endpointHosts: string[];
+  /** Friendly name, when the backend records one (a preset's display name). */
+  displayName?: string;
+  /** The serving preset this model was served from, when the backend records it. */
+  preset?: string;
+  /**
+   * Whether this portal created the served model. Absent means not ours (or
+   * unknown) — hand-written manifests, GitOps, another tool.
+   */
+  managedByPortal?: boolean;
+  /**
+   * The client config the portal promised to create once the model answers:
+   * a kagent ModelConfig, by namespace and name. Written by the serve flow,
+   * completed by the auto-wiring in whichever session first sees the model
+   * ready. Absent for models the portal did not serve.
+   */
+  autoWire?: { namespace: string; name: string };
 };
 
 /** A GPU-carrying node as the capacity panel shows it. */
@@ -86,6 +102,14 @@ export type GpuNode = {
    * `undefined` until pods were read (or when they could not be).
    */
   requested?: number;
+  /**
+   * `status.allocatable.memory` in bytes — what the scheduler may hand to pods.
+   * The memory budget a fit check uses on a node whose GPU shares system
+   * memory (unified memory), and the fallback when no GPU memory is labelled.
+   */
+  memoryAllocatableBytes?: number;
+  /** `false` when the node is cordoned (`spec.unschedulable`). */
+  schedulable?: boolean;
 };
 
 /** Reasons the GPU capacity of an installation could not be read. */
