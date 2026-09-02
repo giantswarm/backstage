@@ -1,5 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from 'react';
 import {
+  Badge,
   Cell,
   CellText,
   ColumnConfig,
@@ -21,11 +22,14 @@ import {
   formatTime,
   isServedInferenceService,
   lacksToolCalling,
-  notableCapabilities,
 } from '../../lib/modelManagerServing';
-import type { ServedModel } from '../../lib/serving';
+import type { ServedModel, ServingBackend } from '../../lib/serving';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
-import { ServedReadinessCell } from './servedReadinessStatus';
+import { SERVED_READINESS_PRESENTATION } from './servedReadinessStatus';
+import {
+  CopyEndpointButton,
+  ServedModelsGroupHeader,
+} from './ServedModelsGroupHeader';
 
 /** A kagent ModelConfig that fronts a served model. */
 export type ServedModelConsumer = {
@@ -62,15 +66,10 @@ export function isServableDownload(row: ServedModel): boolean {
   );
 }
 
-/** Human labels for the backends, for the runtime column and tooltips. */
-const BACKEND_LABEL: Record<ServedModel['backend'], string> = {
-  kserve: 'KServe',
-  ollama: 'Ollama',
-};
-
 /**
- * Client-side sorting with installation/namespace/name as the stable tiebreaker
- * (same reasoning as ModelsTable).
+ * Client-side sorting with the row id as the stable tiebreaker (same
+ * reasoning as ModelsTable). Sorts within a group — every group is its own
+ * table.
  */
 export function sortServedModelsBy(
   rows: ServedModelRow[],
@@ -92,17 +91,6 @@ export function sortServedModelsBy(
         return row.node ?? '';
       case 'gpuCount':
         return String(row.gpuCount ?? -1).padStart(6, '0');
-      case 'sizeBytes':
-        return String(row.sizeBytes ?? -1).padStart(16, '0');
-      case 'loaded':
-        if (row.loaded === undefined) {
-          return '-';
-        }
-        return row.loaded ? '1' : '0';
-      case 'endpoint':
-        return row.internalUrl ?? row.externalUrl ?? '';
-      case 'installation':
-        return row.installation;
       default:
         return '';
     }
@@ -115,105 +103,247 @@ export function sortServedModelsBy(
 }
 
 /**
- * Which optional columns the rows call for. Every one of them is data the
- * backend either reports or does not: a column nobody has a value for is left
- * out rather than shown as a row of dashes.
+ * The rows of one installation's backend, rendered as one table under one
+ * group header. What every row shares — the runtime, the endpoint — is carried
+ * by the header and leaves the grid; where the rows differ it stays a column
+ * (runtime) or a per-row copy action (endpoint).
+ */
+export type ServedModelGroup = {
+  /** Stable key: installation + backend. */
+  key: string;
+  installation: string;
+  backend: ServingBackend;
+  rows: ServedModelRow[];
+  /** The one runtime every row of the group reports, else `undefined`. */
+  runtime?: string;
+  /** The one endpoint every row of the group answers on, else `undefined`. */
+  endpoint?: string;
+};
+
+/** The one value the rows share; `undefined` when they carry none, or differ. */
+function sharedValue(values: (string | undefined)[]): string | undefined {
+  const defined = Array.from(
+    new Set(values.filter((value): value is string => value !== undefined)),
+  );
+  return defined.length === 1 ? defined[0] : undefined;
+}
+
+/** The URL a client of this row would be pointed at. */
+function endpointOf(row: ServedModel): string | undefined {
+  return row.internalUrl ?? row.externalUrl;
+}
+
+/**
+ * Group the rows by installation and backend, in installation order. An
+ * installation with two serving sources of different backends (InferenceServices
+ * read as CRs next to an Ollama model-manager) is two groups, so a group's
+ * header always describes every row under it.
+ */
+export function groupServedModelRows(
+  rows: ServedModelRow[],
+): ServedModelGroup[] {
+  const groups = new Map<string, ServedModelGroup>();
+  for (const row of rows) {
+    const key = `${row.installation}/${row.backend}`;
+    const group = groups.get(key);
+    if (group) {
+      group.rows.push(row);
+    } else {
+      groups.set(key, {
+        key,
+        installation: row.installation,
+        backend: row.backend,
+        rows: [row],
+      });
+    }
+  }
+  return Array.from(groups.values())
+    .map(group => ({
+      ...group,
+      runtime: sharedValue(group.rows.map(row => row.runtime)),
+      endpoint: sharedValue(group.rows.map(endpointOf)),
+    }))
+    .sort(
+      (a, b) =>
+        a.installation.localeCompare(b.installation) ||
+        a.backend.localeCompare(b.backend),
+    );
+}
+
+/**
+ * Which optional columns a group's rows call for. Every one of them is data
+ * the backend either reports or does not: a column nobody has a value for is
+ * left out rather than shown as a row of dashes — and decided per group, so
+ * a KServe installation's Node column never puts dashes on an Ollama
+ * installation's rows.
  */
 export type ServedModelColumns = {
-  /** Node and GPUs — the placement columns of a cluster-scheduled backend. */
+  /**
+   * Node and GPUs — shown once a row is placed on, or pinned to, a node.
+   * Derived from the rows alone, never from an installation's `nodeInventory`
+   * capability: a backend may know its nodes without scheduling models onto
+   * them (an Ollama host reporting itself as a node).
+   */
   placement: boolean;
-  /** On-disk size. */
-  size: boolean;
-  /** In-memory state (loaded, footprint, expiry). */
-  memory: boolean;
+  /**
+   * Where the weights come from, when that differs from the served name: a
+   * Hugging Face id behind an InferenceService. An Ollama tag is both, so the
+   * column stays out.
+   */
+  model: boolean;
+  /**
+   * The runtime, when the group's rows run on more than one. A single shared
+   * runtime is in the group header instead.
+   */
+  runtime: boolean;
   /** Model features (tools, vision, …). */
   capabilities: boolean;
 };
 
-/**
- * Derive the optional columns from what the rows carry. Placement defaults to
- * shown — a fresh InferenceService has no node *yet* — and is turned off by a
- * caller that knows no installation schedules onto nodes (the section, from
- * the `nodeInventory` capability).
- */
-export function columnsForRows(
-  rows: ServedModelRow[],
-  overrides: Partial<ServedModelColumns> = {},
-): ServedModelColumns {
+/** Derive the optional columns from what the rows carry. */
+export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
   return {
-    placement: overrides.placement ?? true,
-    size: overrides.size ?? rows.some(row => row.sizeBytes !== undefined),
-    memory: overrides.memory ?? rows.some(row => row.loaded !== undefined),
-    capabilities:
-      overrides.capabilities ??
-      rows.some(row => row.capabilities !== undefined),
+    placement: rows.some(row => row.node !== undefined),
+    model: rows.some(
+      row => row.modelSource !== undefined && row.modelSource !== row.name,
+    ),
+    runtime:
+      new Set(
+        rows
+          .map(row => row.runtime)
+          .filter((runtime): runtime is string => runtime !== undefined),
+      ).size > 1,
+    capabilities: rows.some(row => row.capabilities !== undefined),
   };
 }
 
-const NO_TOOLS_TITLE =
-  'Agents cannot use this model: it does not support tool calling.';
-
-/** The features a model reports, with a warning where agents cannot use it. */
-export function ModelCapabilitiesCell({ row }: { row: ServedModelRow }) {
-  if (row.capabilities === undefined) {
-    return <CellText title="—" />;
+/**
+ * The memory line of the status cell, from the row alone: `5.4 GiB in memory
+ * · evicts 22:58` while loaded (the footprint and the eviction time as far as
+ * the backend reports them), `Not loaded` when the backend knows the model
+ * but has not got it in memory, nothing when it has no notion of memory (an
+ * InferenceService read as a CR) or is loaded without figures (its status
+ * already says so).
+ */
+export function memoryLine(
+  row: Pick<ServedModelRow, 'loaded' | 'memoryBytes' | 'loadedUntil'>,
+): string | undefined {
+  if (row.loaded === undefined) {
+    return undefined;
   }
-  const notable = notableCapabilities(row.capabilities);
+  if (!row.loaded) {
+    return 'Not loaded';
+  }
+  if (row.memoryBytes === undefined && !row.loadedUntil) {
+    return undefined;
+  }
+  const parts = [
+    row.memoryBytes !== undefined
+      ? `${formatBytes(row.memoryBytes)} in memory`
+      : 'In memory',
+  ];
+  if (row.loadedUntil) {
+    parts.push(`evicts ${formatTime(row.loadedUntil)}`);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * The lines under the readiness label of {@link ServedModelStatusCell}, each
+ * from the row's fields only — no capabilities, no installation lookups — so
+ * a row says the same thing wherever it renders. Today one line at most, the
+ * {@link memoryLine}. Extension points for the follow-ups building on this
+ * table: a download row's progress is another line here (backstage#2214),
+ * the GPU share of a loaded model joins the memory line (backstage#2216).
+ */
+export function servedModelStatusLines(row: ServedModelRow): string[] {
+  const memory = memoryLine(row);
+  return memory ? [memory] : [];
+}
+
+export type ServedModelStatusCellProps = {
+  row: ServedModelRow;
+};
+
+/**
+ * The one status cell of a served model: the readiness label (vocabulary,
+ * intent and icon from `servedReadinessStatus`, the backend's explanation as
+ * the tooltip) with the memory state under it — `Ready` / `6.6 GiB in memory
+ * · evicts 13:05`, `Available` / `Not loaded` — from
+ * {@link servedModelStatusLines}. What used to be the Memory column, told
+ * where the status is.
+ */
+export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
+  const { label, intent, icon } = SERVED_READINESS_PRESENTATION[row.readiness];
+  const lines = servedModelStatusLines(row);
   return (
     <Cell>
       <Flex direction="column" gap="1">
-        <Text
-          as="p"
-          variant="body-medium"
-          truncate
-          title={row.capabilities.join(', ')}
-        >
-          {notable.length > 0 ? notable.join(', ') : 'completion only'}
-        </Text>
-        {lacksToolCalling(row) && (
-          <StatusLabel
-            label="No tool calling"
-            intent="warning"
-            icon={ReportProblemIcon}
-            title={NO_TOOLS_TITLE}
-          />
-        )}
+        <StatusLabel
+          label={label}
+          intent={intent}
+          icon={icon}
+          title={row.readinessMessage}
+        />
+        {lines.map(line => (
+          <Text key={line} as="p" variant="body-small" color="secondary">
+            {line}
+          </Text>
+        ))}
       </Flex>
     </Cell>
   );
 }
 
-/** Loaded or not, with the footprint and the eviction time while loaded. */
-function MemoryCell({ row }: { row: ServedModelRow }) {
-  if (row.loaded === undefined) {
-    return <CellText title="—" />;
+/**
+ * The features worth a chip — what an agent can do with the model. Everything
+ * else a backend lists (`completion`, `insert`) is either implied or of no
+ * consequence to an agent; the full list stays in the cell's tooltip.
+ */
+export const FEATURE_CHIPS = ['tools', 'vision', 'thinking', 'embedding'];
+
+const NO_TOOLS_TITLE =
+  'Agents cannot use this model: it does not support tool calling.';
+
+/**
+ * The features a model reports, as chips for the ones that matter to agents,
+ * with a warning icon where the one they need — tool calling — is missing.
+ * An empty cell when the backend reports no features for this row.
+ */
+export function ModelFeaturesCell({ row }: { row: ServedModelRow }) {
+  if (row.capabilities === undefined) {
+    return <Cell>{null}</Cell>;
   }
-  if (!row.loaded) {
-    return (
-      <Cell>
-        <Text as="p" variant="body-medium" color="secondary">
-          Not loaded
-        </Text>
-      </Cell>
-    );
-  }
+  const chips = row.capabilities.filter(capability =>
+    FEATURE_CHIPS.includes(capability),
+  );
   return (
     <Cell>
-      <Text as="p" variant="body-medium">
-        Loaded
-        {row.memoryBytes !== undefined
-          ? ` · ${formatBytes(row.memoryBytes)}`
-          : ''}
-      </Text>
-      {row.loadedUntil && (
-        <Text
-          variant="body-small"
-          color="secondary"
-          title={`Evicted from memory at ${row.loadedUntil} unless used`}
-        >
-          until {formatTime(row.loadedUntil)}
-        </Text>
-      )}
+      <Flex
+        align="center"
+        gap="1"
+        style={{ flexWrap: 'wrap' }}
+        title={row.capabilities.join(', ')}
+      >
+        {chips.map(capability => (
+          <Badge key={capability} size="small">
+            {capability}
+          </Badge>
+        ))}
+        {lacksToolCalling(row) && (
+          <span
+            role="img"
+            aria-label="No tool calling"
+            title={NO_TOOLS_TITLE}
+            style={{
+              display: 'inline-flex',
+              color: 'var(--bui-fg-warning)',
+            }}
+          >
+            <ReportProblemIcon fontSize="small" />
+          </span>
+        )}
+      </Flex>
     </Cell>
   );
 }
@@ -333,9 +463,69 @@ function describeCache(row: ServedModelRow): string | undefined {
   return isStoppable(row) ? 'in the cache' : 'downloaded, not serving';
 }
 
+/**
+ * The description under a served model's name: namespace, preset, cache
+ * state, and what kind of model it is — on-disk size, parameter size,
+ * quantisation, context — as far as the backend reports them. The backend
+ * itself is in the group header.
+ */
+export function describeRow(row: ServedModelRow): string {
+  return [
+    row.namespace,
+    row.preset ? `preset ${row.preset}` : undefined,
+    describeCache(row),
+    row.sizeBytes !== undefined ? formatBytes(row.sizeBytes) : undefined,
+    describeServedModel(row.details) || undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * The name cell: the served name with its description line and — where the
+ * row answers on an endpoint of its own rather than the group's — a copy
+ * action for that endpoint, the URL a ModelConfig is pointed at.
+ */
+function NameCell({
+  row,
+  sharedEndpoint,
+}: {
+  row: ServedModelRow;
+  sharedEndpoint?: string;
+}) {
+  const endpoint = endpointOf(row);
+  const description = describeRow(row);
+  if (!endpoint || endpoint === sharedEndpoint) {
+    return <CellText title={row.name} description={description} />;
+  }
+  return (
+    <Cell>
+      <Flex direction="column" gap="1">
+        <Flex align="center" gap="1">
+          <Text as="p" variant="body-medium" truncate title={row.name}>
+            {row.name}
+          </Text>
+          <CopyEndpointButton url={endpoint} />
+        </Flex>
+        {description && (
+          <Text
+            variant="body-medium"
+            color="secondary"
+            truncate
+            title={description}
+          >
+            {description}
+          </Text>
+        )}
+      </Flex>
+    </Cell>
+  );
+}
+
 function getColumnConfig(
   hrefFor: (consumer: ServedModelConsumer) => string | undefined,
   columns: ServedModelColumns,
+  sharedEndpoint: string | undefined,
   renderActions?: (row: ServedModelRow) => ReactNode,
 ): ColumnConfig<ServedModelRow>[] {
   const config: ColumnConfig<ServedModelRow>[] = [
@@ -344,61 +534,37 @@ function getColumnConfig(
       label: 'Served model',
       isSortable: true,
       isRowHeader: true,
-      cell: row => (
-        <CellText
-          title={row.name}
-          description={[
-            row.namespace,
-            BACKEND_LABEL[row.backend],
-            row.preset ? `preset ${row.preset}` : undefined,
-            describeCache(row),
-            describeServedModel(row.details) || undefined,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        />
-      ),
+      cell: row => <NameCell row={row} sharedEndpoint={sharedEndpoint} />,
     },
     {
       id: 'readiness',
       label: 'Status',
       isSortable: true,
-      cell: row => (
-        <ServedReadinessCell
-          readiness={row.readiness}
-          message={row.readinessMessage}
-        />
-      ),
-    },
-    {
-      id: 'modelSource',
-      label: 'Model',
-      isSortable: true,
-      cell: row => <CellText title={row.modelSource || '—'} />,
-    },
-    {
-      id: 'runtime',
-      label: 'Runtime',
-      isSortable: true,
-      cell: row => <CellText title={row.runtime || '—'} />,
+      cell: row => <ServedModelStatusCell row={row} />,
     },
   ];
 
-  if (columns.size) {
+  if (columns.model) {
     config.push({
-      id: 'sizeBytes',
-      label: 'Size',
+      id: 'modelSource',
+      label: 'Model',
       isSortable: true,
-      cell: row => <CellText title={formatBytes(row.sizeBytes)} />,
+      // A row whose source is its own name (a cached repository) says nothing
+      // twice; one that has none yet says so.
+      cell: row => (
+        <CellText
+          title={row.modelSource === row.name ? '' : (row.modelSource ?? '—')}
+        />
+      ),
     });
   }
 
-  if (columns.memory) {
+  if (columns.runtime) {
     config.push({
-      id: 'loaded',
-      label: 'Memory',
+      id: 'runtime',
+      label: 'Runtime',
       isSortable: true,
-      cell: row => <MemoryCell row={row} />,
+      cell: row => <CellText title={row.runtime ?? '—'} />,
     });
   }
 
@@ -406,7 +572,7 @@ function getColumnConfig(
     config.push({
       id: 'capabilities',
       label: 'Features',
-      cell: row => <ModelCapabilitiesCell row={row} />,
+      cell: row => <ModelFeaturesCell row={row} />,
     });
   }
 
@@ -452,85 +618,55 @@ function getColumnConfig(
     );
   }
 
-  config.push(
-    {
-      id: 'endpoint',
-      label: 'Endpoint',
-      isSortable: true,
-      cell: row => (
+  config.push({
+    id: 'usedBy',
+    label: 'Used by',
+    cell: row => {
+      const entries = usedByEntries(row);
+      return (
         <Cell>
-          <Text as="p" variant="body-medium" truncate title={row.internalUrl}>
-            {row.internalUrl || row.externalUrl || '—'}
-          </Text>
-          {row.internalUrl && row.externalUrl && (
-            <Text
-              variant="body-small"
-              color="secondary"
-              truncate
-              title={row.externalUrl}
-            >
-              {row.externalUrl}
-            </Text>
-          )}
-        </Cell>
-      ),
-    },
-    {
-      id: 'usedBy',
-      label: 'Used by',
-      cell: row => {
-        const entries = usedByEntries(row);
-        return (
-          <Cell>
-            {entries.length === 0 ? (
-              <UsedByNobody wiring={row.wiring} />
-            ) : (
-              entries.map(consumer => {
-                const href = hrefFor(consumer);
-                const label = consumer.displayName;
-                const title = describeUsedBy(consumer);
-                return href ? (
-                  <Link
-                    key={`${consumer.namespace}/${consumer.name}`}
-                    to={href}
-                    title={title}
-                    onPointerDown={stopRowPress}
-                    onPointerUp={stopRowPress}
-                    onClick={stopRowPress}
-                  >
-                    <Text
-                      as="p"
-                      variant="body-medium"
-                      truncate
-                      style={{ color: 'inherit' }}
-                    >
-                      {label}
-                    </Text>
-                  </Link>
-                ) : (
+          {entries.length === 0 ? (
+            <UsedByNobody wiring={row.wiring} />
+          ) : (
+            entries.map(consumer => {
+              const href = hrefFor(consumer);
+              const label = consumer.displayName;
+              const title = describeUsedBy(consumer);
+              return href ? (
+                <Link
+                  key={`${consumer.namespace}/${consumer.name}`}
+                  to={href}
+                  title={title}
+                  onPointerDown={stopRowPress}
+                  onPointerUp={stopRowPress}
+                  onClick={stopRowPress}
+                >
                   <Text
-                    key={`${consumer.namespace}/${consumer.name}`}
                     as="p"
                     variant="body-medium"
                     truncate
-                    title={title}
+                    style={{ color: 'inherit' }}
                   >
                     {label}
                   </Text>
-                );
-              })
-            )}
-          </Cell>
-        );
-      },
+                </Link>
+              ) : (
+                <Text
+                  key={`${consumer.namespace}/${consumer.name}`}
+                  as="p"
+                  variant="body-medium"
+                  truncate
+                  title={title}
+                >
+                  {label}
+                </Text>
+              );
+            })
+          )}
+        </Cell>
+      );
     },
-    {
-      id: 'installation',
-      label: 'Installation',
-      isSortable: true,
-      cell: row => <CellText title={row.installation} />,
-    },
-  );
+  });
 
   // One actions column with one menu per row (`renderActions`), whatever mix
   // of sources listed the row; the section decides what each menu offers. A
@@ -552,15 +688,35 @@ function getColumnConfig(
   return config;
 }
 
+/** One group's rows as a table, its columns derived from those rows alone. */
+function ServedModelsGroupTable({
+  group,
+  hrefFor,
+  renderActions,
+}: {
+  group: ServedModelGroup;
+  hrefFor: (consumer: ServedModelConsumer) => string | undefined;
+  renderActions?: (row: ServedModelRow) => ReactNode;
+}) {
+  const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
+  const columnConfig = useMemo(
+    () => getColumnConfig(hrefFor, columns, group.endpoint, renderActions),
+    [hrefFor, columns, group.endpoint, renderActions],
+  );
+
+  const { tableProps } = useTable<ServedModelRow>({
+    mode: 'complete',
+    data: group.rows,
+    sortFn: sortServedModelsBy,
+    initialSort: { column: 'name', direction: 'ascending' },
+    paginationOptions: { type: 'none' },
+  });
+
+  return <Table<ServedModelRow> {...tableProps} columnConfig={columnConfig} />;
+}
+
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];
-  /**
-   * Force optional columns on or off; anything not given is derived from the
-   * rows (`columnsForRows`). The section forces `placement` from the
-   * installations' `nodeInventory` capability, so a cluster backend keeps its
-   * Node/GPU columns while its models are still pending.
-   */
-  columns?: Partial<ServedModelColumns>;
   /**
    * The per-row actions menu (serve, stop, load, unload, wire, delete — per
    * the installation's capabilities and the row's state). Rendered in the
@@ -571,18 +727,21 @@ export type ServedModelsTableProps = {
 };
 
 /**
- * Presentational table of served models. The section owns loading, the
- * unreachable-installations notice, the confirmations and the one actions
- * menu per row; this renders rows, that menu and the empty state. Rows are not clickable: a served
- * model has no page of its own here, the ModelConfigs fronting it are what
- * link onward. Its optional columns follow the data — a backend that reports
- * sizes gets a Size column, one that schedules onto nodes gets Node and GPUs
- * — so a table of Ollama models and a table of InferenceServices each show
- * what they know and no dashes for what they do not.
+ * Presentational table of served models, grouped by installation and backend
+ * ({@link groupServedModelRows}): one header per group with what its rows
+ * share — backend, runtime version, the endpoint they answer on — and one
+ * table under it whose columns follow those rows ({@link columnsForRows}). A
+ * backend that schedules onto nodes gets Node and GPUs, one whose weights
+ * come from somewhere other than the served name gets Model, one that
+ * reports features gets Features; an Ollama installation next to a KServe
+ * one shows what it knows and no dashes for what it does not. The section
+ * owns loading, the unreachable-installations notice, the confirmations and
+ * the one actions menu per row; this renders rows, that menu and the empty
+ * state. Rows are not clickable: a served model has no page of its own here,
+ * the ModelConfigs fronting it are what link onward.
  */
 export function ServedModelsTable({
   rows,
-  columns: columnOverrides,
   renderActions,
 }: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
@@ -597,34 +756,32 @@ export function ServedModelsTable({
     [modelDetailRoute],
   );
 
-  const columns = useMemo(
-    () => columnsForRows(rows, columnOverrides),
-    // Key on the override values, not the object identity a caller re-creates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, JSON.stringify(columnOverrides ?? {})],
-  );
-  const columnConfig = useMemo(
-    () => getColumnConfig(hrefFor, columns, renderActions),
-    [hrefFor, columns, renderActions],
-  );
+  const groups = useMemo(() => groupServedModelRows(rows), [rows]);
+  const installations = new Set(groups.map(group => group.installation)).size;
 
-  const { tableProps } = useTable<ServedModelRow>({
-    mode: 'complete',
-    data: rows,
-    sortFn: sortServedModelsBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
-    paginationOptions: { type: 'none' },
-  });
+  if (groups.length === 0) {
+    return (
+      <Text variant="body-medium" color="secondary">
+        No models are being served.
+      </Text>
+    );
+  }
 
   return (
-    <Table<ServedModelRow>
-      {...tableProps}
-      columnConfig={columnConfig}
-      emptyState={
-        <Text variant="body-medium" color="secondary">
-          No models are being served.
-        </Text>
-      }
-    />
+    <Flex direction="column" gap="4">
+      {groups.map(group => (
+        <Flex key={group.key} direction="column" gap="2">
+          <ServedModelsGroupHeader
+            group={group}
+            showInstallation={installations > 1}
+          />
+          <ServedModelsGroupTable
+            group={group}
+            hrefFor={hrefFor}
+            renderActions={renderActions}
+          />
+        </Flex>
+      ))}
+    </Flex>
   );
 }

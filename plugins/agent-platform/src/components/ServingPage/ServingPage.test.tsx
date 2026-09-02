@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServingContextValue } from '../ServingProvider';
@@ -801,10 +801,44 @@ describe('ServingPage', () => {
       expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
       expect(screen.queryByText('Node')).not.toBeInTheDocument();
       expect(screen.queryByText('GPUs')).not.toBeInTheDocument();
-      // The inventory columns do.
-      expect(screen.getByText('Size')).toBeInTheDocument();
+      // What the backend shares sits in the group header; the size under the
+      // name; the tool-calling gap is an icon. No cell reads "—".
+      expect(
+        screen.getByRole('heading', { name: 'Ollama 0.33.2' }),
+      ).toBeInTheDocument();
       expect(screen.getByText('258 MiB')).toBeInTheDocument();
-      expect(screen.getByText('No tool calling')).toBeInTheDocument();
+      expect(
+        screen.getByRole('img', { name: 'No tool calling' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('—')).not.toBeInTheDocument();
+    });
+
+    it('keeps Node and GPUs on a KServe installation next to it, off the Ollama rows', async () => {
+      mockUseServing.mockReturnValue({
+        ...ollamaServing,
+        installations: ['inst-1', 'inst-2'],
+        backends: { 'inst-1': 'kserve', 'inst-2': 'ollama' },
+        capabilities: {
+          ...ollamaServing.capabilities,
+          'inst-1': {
+            ...KSERVE_CR_CAPABILITIES,
+            nodeInventory: true,
+          },
+        },
+        servedModels: [qwen, smollm],
+      });
+
+      await renderSection();
+
+      const [kserveTable, ollamaTable] = screen.getAllByRole('grid');
+      expect(
+        within(kserveTable).getByRole('columnheader', { name: 'Node' }),
+      ).toBeInTheDocument();
+      expect(within(kserveTable).getByText('gpu-node-1')).toBeInTheDocument();
+      expect(
+        within(ollamaTable).queryByRole('columnheader', { name: 'Node' }),
+      ).toBeNull();
+      expect(within(ollamaTable).queryByText('—')).toBeNull();
     });
 
     it('offers no controls on a read-only source', async () => {
