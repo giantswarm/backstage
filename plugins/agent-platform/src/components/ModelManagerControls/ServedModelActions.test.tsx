@@ -418,7 +418,7 @@ describe('ServedModelActions', () => {
       expect(unloadModel).not.toHaveBeenCalled();
     });
 
-    it('offers to remove a model config model-manager created itself, by the reference it knows', async () => {
+    it('offers to remove a model config model-manager created itself, by the InferenceService name', async () => {
       unwireModel.mockResolvedValue(undefined);
       await render(
         {
@@ -433,7 +433,7 @@ describe('ServedModelActions', () => {
       await userEvent.click(within(menu).getByText('Remove model config'));
 
       await waitFor(() =>
-        expect(unwireModel).toHaveBeenCalledWith('gpu', 'Qwen/Qwen3-14B'),
+        expect(unwireModel).toHaveBeenCalledWith('gpu', 'qwen3-14b'),
       );
     });
 

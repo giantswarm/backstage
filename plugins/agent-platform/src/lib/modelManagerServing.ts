@@ -285,11 +285,18 @@ export function isServedInferenceService(model: ServedModel): boolean {
 }
 
 /**
- * The reference to hand model-manager for a row: what it listed the model as
- * (`managerRef`), else the row's name — right for a row model-manager listed
- * itself, and the best guess for one it did not.
+ * The reference to hand model-manager for a row. A served KServe model goes by
+ * its InferenceService name: model-manager resolves that for every operation
+ * (unload, wire, unwire, delete) and it is unambiguous even when the
+ * InferenceService was composed from another model's preset — the repository
+ * of the cached weights then names nothing model-manager serves. Anything else
+ * goes by what model-manager listed it as (`managerRef`: an Ollama tag, the
+ * repository of a cached download), else the row's name.
  */
 export function managerRefOf(model: ServedModel): string {
+  if (isServedInferenceService(model)) {
+    return model.name;
+  }
   return model.managerRef ?? model.name;
 }
 

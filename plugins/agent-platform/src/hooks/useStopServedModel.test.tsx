@@ -123,7 +123,7 @@ describe('useStopServedModel', () => {
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
-  it('stops through model-manager by the reference it knows, when asked to', async () => {
+  it('stops through model-manager by the InferenceService name, when asked to', async () => {
     const { result } = setup();
 
     await act(async () => {
@@ -133,7 +133,9 @@ describe('useStopServedModel', () => {
       });
     });
 
-    expect(unloadModel).toHaveBeenCalledWith('gazelle', 'Qwen/Qwen3-14B');
+    // The name, not the repository: an InferenceService composed from another
+    // model's preset is still found by its name.
+    expect(unloadModel).toHaveBeenCalledWith('gazelle', 'qwen3-14b');
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 

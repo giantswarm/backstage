@@ -268,9 +268,25 @@ describe('toServedModelFromManager', () => {
     ).toBe('serving');
     expect(namespaceOfPredictorUrl('http://172.21.0.1:11434')).toBeUndefined();
     expect(
-      managerRefOf({ name: 'qwen3-14b', managerRef: 'Qwen/Qwen3-14B' } as any),
+      managerRefOf({
+        backend: 'kserve',
+        name: 'Qwen/Qwen3-14B',
+        managerRef: 'Qwen/Qwen3-14B',
+      } as any),
     ).toBe('Qwen/Qwen3-14B');
-    expect(managerRefOf({ name: 'qwen3:0.6b' } as any)).toBe('qwen3:0.6b');
+    // A served InferenceService goes by its name: model-manager resolves it
+    // whatever preset it was composed from, unlike the cached repository.
+    expect(
+      managerRefOf({
+        backend: 'kserve',
+        name: 'qwen3-14b',
+        namespace: 'model-serving',
+        managerRef: 'Qwen/Qwen3-14B',
+      } as any),
+    ).toBe('qwen3-14b');
+    expect(managerRefOf({ backend: 'ollama', name: 'qwen3:0.6b' } as any)).toBe(
+      'qwen3:0.6b',
+    );
   });
 
   it('lets a ModelConfig on the shared host resolve to the right model by name', () => {
