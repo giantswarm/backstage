@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import {
   Alert,
+  Badge,
   Cell,
   CellText,
   ColumnConfig,
@@ -14,6 +15,7 @@ import { formatBytes, formatTime } from '../../lib/modelManagerServing';
 import {
   gpuFree,
   gpuTotal,
+  isHostMemoryNode,
   type GpuCapacityUnavailableReason,
   type GpuNode,
 } from '../../lib/serving';
@@ -42,13 +44,54 @@ function UnknownCell({ reason }: { reason: string }) {
   );
 }
 
+/**
+ * A figure this kind of node does not have at all — not unknown, not there:
+ * a backend host has no GPU product, count or device-plugin figure to read.
+ * A dash, with what the row is instead on hover.
+ */
+function NotReportedCell({ reason }: { reason: string }) {
+  return (
+    <Cell>
+      <Text as="p" variant="body-medium" color="secondary" title={reason}>
+        —
+      </Text>
+    </Cell>
+  );
+}
+
 const NO_DEVICE_PLUGIN =
   'The node advertises no nvidia.com/gpu resource — no device plugin is running, so only the discovery labels are known.';
 const NO_POD_DATA =
   'The pods on this node could not be read, so scheduled GPU requests are unknown.';
+const HOST_NO_GPU_FIGURES =
+  "The host a serving backend runs on, not a cluster node: the backend's API does not expose the accelerator, so there is no GPU product, count or device-plugin figure for it. Its budget is the host's memory as the serving layer sees it.";
+
+/** What the node name's description says for a backend host. */
+export const HOST_NODE_DESCRIPTION = 'Backend host';
+
+/** The marker on a host where a loaded model sits on the accelerator. */
+export const ACCELERATED_LABEL = 'accelerated';
+const ACCELERATED_TITLE =
+  "At least one loaded model has memory on the accelerator (GPU); the Serving view shows each model's share.";
+
+/** How each memory budget was derived, for the budget cell's tooltip. */
+const BUDGET_SOURCE: Record<string, string> = {
+  'gpu-labels': 'Budget: the GPU memory from the node labels',
+  allocatable:
+    'Budget: the allocatable node memory (no GPU memory label — a unified-memory or CPU node)',
+  annotation: 'Budget: set by the memory-budget annotation on the node',
+  'host-meminfo':
+    "Budget: the host's memory (MemTotal of /proc/meminfo as the serving layer's pod sees it) — the backend's API does not expose the accelerator, so on a unified-memory machine this is what the loaded models share",
+};
 
 /** The optional columns, shown when any node reports the data. */
 export type GpuCapacityColumns = {
+  /**
+   * GPU product, memory, count and the device-plugin figures — what cluster
+   * nodes carry. A fleet of backend hosts alone (an Ollama laptop) has none of
+   * it, and the columns would only read "—".
+   */
+  gpu: boolean;
   /** The memory budget a serving backend fit-checks against (model-manager). */
   budget: boolean;
   /** The download cache on the node (model-manager). */
@@ -57,39 +100,65 @@ export type GpuCapacityColumns = {
 
 export function columnsForNodes(nodes: GpuNode[]): GpuCapacityColumns {
   return {
+    // Kept while nothing is listed yet, so the header does not jump once the
+    // nodes arrive.
+    gpu: nodes.length === 0 || nodes.some(node => !isHostMemoryNode(node)),
     budget: nodes.some(node => node.memoryBudgetBytes !== undefined),
     cache: nodes.some(node => node.cache !== undefined),
   };
 }
 
-/** "86.1 GiB free of 86.1 GiB", with the source and the reservation on hover. */
+/** Under the node name: a fault first, else what kind of node this is when it is not a cluster node. */
+export function describeNode(node: GpuNode): string | undefined {
+  if (!node.ready) {
+    return 'Not ready';
+  }
+  return isHostMemoryNode(node) ? HOST_NODE_DESCRIPTION : undefined;
+}
+
+/**
+ * "80.6 GiB free" / "of 86.1 GiB · 5.0 GiB reserved", with the source of the
+ * budget and the backend's own note on hover, and the accelerated marker on a
+ * host where a loaded model sits on the GPU.
+ */
 function BudgetCell({ node }: { node: GpuNode }) {
   if (node.memoryBudgetBytes === undefined) {
     return <CellText title="—" />;
   }
   const free = node.memoryFreeBytes ?? node.memoryBudgetBytes;
-  let source: string | undefined;
-  if (node.memoryBudgetSource === 'gpu-labels') {
-    source = 'Budget: the GPU memory from the node labels';
-  } else if (node.memoryBudgetSource === 'allocatable') {
-    source =
-      'Budget: the allocatable node memory (no GPU memory label — a unified-memory or CPU node)';
-  }
   const detail = [
-    source,
-    node.memoryReservedBytes !== undefined
-      ? `${formatBytes(node.memoryReservedBytes)} reserved by the models served here`
+    node.memoryBudgetSource
+      ? BUDGET_SOURCE[node.memoryBudgetSource]
       : undefined,
+    node.memoryReservedBytes !== undefined
+      ? `${formatBytes(node.memoryReservedBytes)} reserved by the models ${
+          isHostMemoryNode(node) ? 'loaded' : 'served'
+        } here`
+      : undefined,
+    node.accelerated === false
+      ? 'no loaded model is on the accelerator right now'
+      : undefined,
+    node.memoryBudgetNote,
   ]
     .filter(Boolean)
     .join('; ');
   return (
     <Cell>
-      <Text as="p" variant="body-medium" title={detail}>
-        {formatBytes(free)} free
-      </Text>
+      <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
+        <Text as="p" variant="body-medium" title={detail}>
+          {formatBytes(free)} free
+        </Text>
+        {node.accelerated === true && (
+          <Badge size="small" title={ACCELERATED_TITLE}>
+            {ACCELERATED_LABEL}
+          </Badge>
+        )}
+      </Flex>
       <Text variant="body-small" color="secondary" title={detail}>
         of {formatBytes(node.memoryBudgetBytes)}
+        {node.memoryReservedBytes !== undefined
+          ? ` · ${formatBytes(node.memoryReservedBytes)} reserved`
+          : ''}
       </Text>
     </Cell>
   );
@@ -131,8 +200,23 @@ function CacheCell({ node }: { node: GpuNode }) {
   );
 }
 
+/**
+ * A GPU figure's cell for cluster nodes; a backend host, which has no such
+ * figure, gets the dash that says what it is instead.
+ */
+function gpuFigure(
+  render: (node: GpuNode) => ReactElement,
+): (node: GpuNode) => ReactElement {
+  return node =>
+    isHostMemoryNode(node) ? (
+      <NotReportedCell reason={HOST_NO_GPU_FIGURES} />
+    ) : (
+      render(node)
+    );
+}
+
 function getColumnConfig(
-  columns: GpuCapacityColumns = { budget: false, cache: false },
+  columns: GpuCapacityColumns = { gpu: true, budget: false, cache: false },
 ): ColumnConfig<GpuNode>[] {
   const config: ColumnConfig<GpuNode>[] = [
     {
@@ -141,10 +225,7 @@ function getColumnConfig(
       isRowHeader: true,
       isSortable: true,
       cell: node => (
-        <CellText
-          title={node.name}
-          description={node.ready ? undefined : 'Not ready'}
-        />
+        <CellText title={node.name} description={describeNode(node)} />
       ),
     },
     {
@@ -153,71 +234,78 @@ function getColumnConfig(
       isSortable: true,
       cell: node => <CellText title={node.installation} />,
     },
-    {
-      id: 'product',
-      label: 'GPU',
-      isSortable: true,
-      cell: node => <CellText title={node.product ?? '—'} />,
-    },
-    {
-      id: 'memory',
-      label: 'Memory',
-      cell: node => <CellText title={formatGpuMemory(node.memoryMiB)} />,
-    },
-    {
-      id: 'total',
-      label: 'GPUs',
-      cell: node => {
-        const total = gpuTotal(node);
-        return total === undefined ? (
-          <UnknownCell reason="Neither the device plugin nor gpu-feature-discovery reports a GPU count for this node." />
-        ) : (
-          <CellText title={String(total)} />
-        );
-      },
-    },
-    {
-      id: 'allocatable',
-      label: 'Allocatable',
-      cell: node =>
-        node.allocatable === undefined ? (
-          <UnknownCell reason={NO_DEVICE_PLUGIN} />
-        ) : (
-          <CellText title={String(node.allocatable)} />
-        ),
-    },
-    {
-      id: 'requested',
-      label: 'Requested',
-      cell: node => {
-        if (node.allocatable === undefined) {
-          return <UnknownCell reason={NO_DEVICE_PLUGIN} />;
-        }
-        return node.requested === undefined ? (
-          <UnknownCell reason={NO_POD_DATA} />
-        ) : (
-          <CellText title={String(node.requested)} />
-        );
-      },
-    },
-    {
-      id: 'free',
-      label: 'Free',
-      cell: node => {
-        const free = gpuFree(node);
-        if (free !== undefined) {
-          return <CellText title={String(free)} />;
-        }
-        return (
-          <UnknownCell
-            reason={
-              node.allocatable === undefined ? NO_DEVICE_PLUGIN : NO_POD_DATA
-            }
-          />
-        );
-      },
-    },
   ];
+  if (columns.gpu) {
+    config.push(
+      {
+        id: 'product',
+        label: 'GPU',
+        isSortable: true,
+        cell: gpuFigure(node => <CellText title={node.product ?? '—'} />),
+      },
+      {
+        id: 'memory',
+        label: 'Memory',
+        cell: gpuFigure(node => (
+          <CellText title={formatGpuMemory(node.memoryMiB)} />
+        )),
+      },
+      {
+        id: 'total',
+        label: 'GPUs',
+        cell: gpuFigure(node => {
+          const total = gpuTotal(node);
+          return total === undefined ? (
+            <UnknownCell reason="Neither the device plugin nor gpu-feature-discovery reports a GPU count for this node." />
+          ) : (
+            <CellText title={String(total)} />
+          );
+        }),
+      },
+      {
+        id: 'allocatable',
+        label: 'Allocatable',
+        cell: gpuFigure(node =>
+          node.allocatable === undefined ? (
+            <UnknownCell reason={NO_DEVICE_PLUGIN} />
+          ) : (
+            <CellText title={String(node.allocatable)} />
+          ),
+        ),
+      },
+      {
+        id: 'requested',
+        label: 'Requested',
+        cell: gpuFigure(node => {
+          if (node.allocatable === undefined) {
+            return <UnknownCell reason={NO_DEVICE_PLUGIN} />;
+          }
+          return node.requested === undefined ? (
+            <UnknownCell reason={NO_POD_DATA} />
+          ) : (
+            <CellText title={String(node.requested)} />
+          );
+        }),
+      },
+      {
+        id: 'free',
+        label: 'Free',
+        cell: gpuFigure(node => {
+          const free = gpuFree(node);
+          if (free !== undefined) {
+            return <CellText title={String(free)} />;
+          }
+          return (
+            <UnknownCell
+              reason={
+                node.allocatable === undefined ? NO_DEVICE_PLUGIN : NO_POD_DATA
+              }
+            />
+          );
+        }),
+      },
+    );
+  }
   if (columns.budget) {
     config.push({
       id: 'budget',
@@ -280,7 +368,11 @@ export type GpuCapacityPanelProps = {
  * Per-node GPU capacity on the installations that serve models: what the
  * hardware is (gpu-feature-discovery labels), what the device plugin makes
  * schedulable, and what scheduled pods already hold. Missing device-plugin
- * data is a state the panel explains, not an error.
+ * data is a state the panel explains, not an error. The host a backend runs
+ * on (Ollama, through model-manager) is a row of its own kind: no GPU
+ * figures at all — its API does not expose the accelerator — but the host's
+ * memory as the budget, what the loaded models take of it, and a marker when
+ * one of them sits on the GPU; a fleet of such hosts shows no GPU columns.
  */
 export function GpuCapacityPanel({
   nodes,
@@ -290,6 +382,7 @@ export function GpuCapacityPanel({
 }: GpuCapacityPanelProps) {
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const columnConfig = useMemo(() => getColumnConfig(columns), [columns]);
+  const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',
     data: nodes,
@@ -309,11 +402,12 @@ export function GpuCapacityPanel({
     <InfoCard title="GPU capacity">
       <Flex direction="column" gap="3">
         <Text as="p" variant="body-small" color="secondary">
-          GPU product and memory from the gpu-feature-discovery node labels;
-          allocatable from the device plugin; free is allocatable minus the GPUs
-          scheduled pods request.
+          {columns.gpu &&
+            'GPU product and memory from the gpu-feature-discovery node labels; allocatable from the device plugin; free is allocatable minus the GPUs scheduled pods request.'}
           {columns.budget &&
             ' The memory budget is what the serving layer fit-checks a model against, less what the models already served on the node reserve.'}
+          {hasHost &&
+            " A backend host has no GPU figures — its API does not expose the accelerator: its budget is the host's memory as the serving layer sees it, and accelerated marks a host where a loaded model sits on the GPU."}
           {columns.cache &&
             ' The model cache holds pre-warmed downloads; serving one of them skips the download.'}
         </Text>

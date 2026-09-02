@@ -260,6 +260,7 @@ export function toServedModelFromManager(
     sizeBytes: model.sizeBytes,
     loaded: model.loaded,
     memoryBytes: running?.sizeBytes,
+    memoryVramBytes: running?.vramBytes,
     loadedUntil: running?.expiresAt,
     capabilities: model.capabilities,
     details: {
@@ -293,11 +294,19 @@ export function toServedModelFromManager(
  * it keeps on the node. Device-plugin capacity and pod requests are the CR
  * source's contribution; on an installation with both, `mergeServingSnapshots`
  * lays this over that.
+ *
+ * The host an Ollama-backed model-manager proxies arrives the same way
+ * (`budgetSource: host-meminfo`): budget from the pod's `/proc/meminfo`,
+ * reservation from what is loaded, `accelerated` when a loaded model sits on
+ * the GPU — and no GPU count: Ollama's API cannot count accelerators, so its
+ * `gpuCount: 0` is "not counted", not "none", and is not carried over as a
+ * figure.
  */
 export function toGpuNodeFromManager(
   installation: string,
   node: ModelManagerNode,
 ): GpuNode {
+  const host = node.budgetSource === 'host-meminfo';
   return {
     id: `${installation}/${node.name}`,
     installation,
@@ -308,12 +317,14 @@ export function toGpuNodeFromManager(
       node.gpuMemoryBytes !== undefined
         ? Math.round(node.gpuMemoryBytes / MIB)
         : undefined,
-    labeledCount: node.gpuCount,
+    labeledCount: host ? undefined : node.gpuCount,
     memoryAllocatableBytes: node.allocatableMemoryBytes,
     memoryBudgetBytes: node.budgetBytes,
     memoryBudgetSource: node.budgetSource,
+    memoryBudgetNote: node.message,
     memoryReservedBytes: node.reservedBytes,
     memoryFreeBytes: node.freeBytes,
+    accelerated: node.accelerated,
     cache: node.cache
       ? {
           claim: node.cache.claim,
@@ -395,6 +406,40 @@ export function formatBytes(bytes: number | undefined): string {
   // digits, where a decimal is noise ("498 MiB", "6.1 GiB").
   const digits = unit === 0 || value >= 100 ? 0 : 1;
   return `${value.toFixed(digits)} ${BYTE_UNITS[unit]}`;
+}
+
+/**
+ * The share of a loaded model's footprint that sits on an accelerator, the way
+ * `ollama ps` puts it under PROCESSOR: `100 % GPU` when all of it does, `CPU`
+ * when none of it does, `38 % GPU` in between — never rounded to either end,
+ * a split model is not "100 % GPU". `undefined` when the backend does not say
+ * where the memory sits, or the footprint itself is unknown.
+ */
+export function formatGpuShare(
+  memoryBytes: number | undefined,
+  vramBytes: number | undefined,
+): string | undefined {
+  if (
+    memoryBytes === undefined ||
+    vramBytes === undefined ||
+    !Number.isFinite(memoryBytes) ||
+    !Number.isFinite(vramBytes) ||
+    memoryBytes <= 0 ||
+    vramBytes < 0
+  ) {
+    return undefined;
+  }
+  if (vramBytes === 0) {
+    return 'CPU';
+  }
+  if (vramBytes >= memoryBytes) {
+    return '100 % GPU';
+  }
+  const percent = Math.min(
+    99,
+    Math.max(1, Math.round((100 * vramBytes) / memoryBytes)),
+  );
+  return `${percent} % GPU`;
 }
 
 /** A context window: 262144 → "256k", 40960 → "40k", 4096 → "4k". */

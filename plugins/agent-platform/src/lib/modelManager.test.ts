@@ -3,11 +3,14 @@ import backendKserve from './__fixtures__/model-manager.backend.kserve.json';
 import modelsOllama from './__fixtures__/model-manager.models.ollama.json';
 import modelsKserve from './__fixtures__/model-manager.models.kserve.json';
 import jobs from './__fixtures__/model-manager.jobs.json';
+import nodesKserve from './__fixtures__/model-manager.nodes.kserve.json';
+import nodesOllama from './__fixtures__/model-manager.nodes.ollama.json';
 import {
   isJobActive,
   modelManagerBackendSchema,
   modelManagerJobSchema,
   modelManagerModelSchema,
+  modelManagerNodeSchema,
   parseModelManagerList,
 } from './modelManager';
 
@@ -233,5 +236,53 @@ describe('modelManagerBackendSchema: loading', () => {
       keepAliveDefault: undefined,
       keepAliveScope: undefined,
     });
+  });
+});
+
+describe('modelManagerNodeSchema', () => {
+  it('reads the host an Ollama-backed model-manager reports, accelerated flag included', () => {
+    const [host] = parseModelManagerList(
+      nodesOllama,
+      'nodes',
+      modelManagerNodeSchema,
+    );
+
+    expect(host).toMatchObject({
+      name: '172.21.0.1',
+      ready: true,
+      architecture: 'amd64',
+      allocatableMemoryBytes: 92417933312,
+      gpuCount: 0,
+      accelerated: true,
+      budgetBytes: 92417933312,
+      budgetSource: 'host-meminfo',
+      reservedBytes: 5403658158,
+      freeBytes: 87014275154,
+      message: expect.stringContaining(
+        'host memory as seen from the model-manager pod',
+      ),
+    });
+    expect(host.gpuProduct).toBeUndefined();
+    expect(host.gpuMemoryBytes).toBeUndefined();
+    expect(host.cache).toBeUndefined();
+  });
+
+  it('leaves accelerated unset where the backend does not say', () => {
+    // A KServe node counts its GPUs instead; an older model-manager has no
+    // such field at all. Neither reads as "false".
+    const [node] = parseModelManagerList(
+      nodesKserve,
+      'nodes',
+      modelManagerNodeSchema,
+    );
+    expect(node.accelerated).toBeUndefined();
+    expect(node.message).toBeUndefined();
+
+    const [odd] = parseModelManagerList(
+      { nodes: [{ name: 'n', accelerated: 'yes' }] },
+      'nodes',
+      modelManagerNodeSchema,
+    );
+    expect(odd.accelerated).toBeUndefined();
   });
 });

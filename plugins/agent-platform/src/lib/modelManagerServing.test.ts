@@ -3,6 +3,7 @@ import backendKserve from './__fixtures__/model-manager.backend.kserve.json';
 import modelsOllama from './__fixtures__/model-manager.models.ollama.json';
 import modelsKserve from './__fixtures__/model-manager.models.kserve.json';
 import nodesKserve from './__fixtures__/model-manager.nodes.kserve.json';
+import nodesOllama from './__fixtures__/model-manager.nodes.ollama.json';
 import {
   modelManagerBackendSchema,
   modelManagerModelSchema,
@@ -13,6 +14,7 @@ import {
   describeServedModel,
   formatBytes,
   formatContextLength,
+  formatGpuShare,
   isServedInferenceService,
   lacksToolCalling,
   managerRefOf,
@@ -487,5 +489,115 @@ describe('toServingLoading / sharedHostsOf', () => {
     expect(sharedHostsOf(ollama)).toEqual(['172.21.0.1:11434']);
     expect(sharedHostsOf(kserve)).toEqual([]);
     expect(sharedHostsOf({ ...ollama, endpoint: undefined })).toEqual([]);
+  });
+});
+
+describe('toServedModelFromManager · where the footprint sits', () => {
+  const loaded = (vramBytes: number | undefined) =>
+    toServedModelFromManager('lab', ollama, {
+      ...ollamaModels[1],
+      loaded: true,
+      running: {
+        name: 'qwen3:0.6b',
+        sizeBytes: 5403658158,
+        ...(vramBytes !== undefined ? { vramBytes } : {}),
+        contextLength: 40960,
+        expiresAt: '2026-09-02T13:05:00Z',
+      },
+    });
+
+  it('carries the accelerator share of the footprint next to the footprint', () => {
+    // demiurg: qwen3:0.6b, 5.4 GB loaded, all of it size_vram.
+    expect(loaded(5403658158)).toMatchObject({
+      memoryBytes: 5403658158,
+      memoryVramBytes: 5403658158,
+    });
+    expect(loaded(2000000000).memoryVramBytes).toBe(2000000000);
+    expect(loaded(0).memoryVramBytes).toBe(0);
+  });
+
+  it('leaves the share unset when the backend does not report it (older model-manager)', () => {
+    expect(loaded(undefined).memoryBytes).toBe(5403658158);
+    expect(loaded(undefined).memoryVramBytes).toBeUndefined();
+  });
+
+  it("never places an Ollama model on a node — the host row is the capacity view's, not the row's", () => {
+    expect(loaded(5403658158).node).toBeUndefined();
+    expect(loaded(5403658158).gpuCount).toBeUndefined();
+  });
+});
+
+describe('toGpuNodeFromManager · the host an Ollama-backed model-manager proxies', () => {
+  const ollamaNodes = parseModelManagerList(
+    nodesOllama,
+    'nodes',
+    modelManagerNodeSchema,
+  );
+
+  it('maps the host: budget from host memory, reservation from what is loaded, accelerated, no GPU figures', () => {
+    const host = toGpuNodeFromManager('lab', ollamaNodes[0]);
+
+    expect(host).toEqual({
+      id: 'lab/172.21.0.1',
+      installation: 'lab',
+      name: '172.21.0.1',
+      ready: true,
+      product: undefined,
+      memoryMiB: undefined,
+      // gpuCount 0 means "cannot count", not "none": no figure.
+      labeledCount: undefined,
+      memoryAllocatableBytes: 92417933312,
+      memoryBudgetBytes: 92417933312,
+      memoryBudgetSource: 'host-meminfo',
+      memoryBudgetNote:
+        'host memory as seen from the model-manager pod; per-model accelerator share in running.vramBytes',
+      memoryReservedBytes: 5403658158,
+      memoryFreeBytes: 87014275154,
+      accelerated: true,
+      cache: undefined,
+    });
+  });
+
+  it('keeps a CPU-only host unaccelerated and a KServe node without the flag', () => {
+    const cpuOnly = toGpuNodeFromManager('lab', {
+      ...ollamaNodes[0],
+      accelerated: false,
+      reservedBytes: 0,
+      freeBytes: 92417933312,
+    });
+    expect(cpuOnly.accelerated).toBe(false);
+    expect(cpuOnly.memoryReservedBytes).toBe(0);
+
+    const node = toGpuNodeFromManager('gpu', kserveNodes[0]);
+    expect(node.accelerated).toBeUndefined();
+    expect(node.memoryBudgetNote).toBeUndefined();
+    // A cluster node's count stays a figure, zero included.
+    expect(
+      toGpuNodeFromManager('gpu', { ...kserveNodes[0], gpuCount: 0 })
+        .labeledCount,
+    ).toBe(0);
+  });
+});
+
+describe('formatGpuShare', () => {
+  it('says where the footprint sits the way ollama ps does', () => {
+    expect(formatGpuShare(5403658158, 5403658158)).toBe('100 % GPU');
+    expect(formatGpuShare(5_800_000_000, 2_200_000_000)).toBe('38 % GPU');
+    expect(formatGpuShare(5_800_000_000, 0)).toBe('CPU');
+  });
+
+  it('never rounds a split model to either end', () => {
+    expect(formatGpuShare(100, 99.7)).toBe('99 % GPU');
+    expect(formatGpuShare(1000, 3)).toBe('1 % GPU');
+    // A share above the footprint is a rounding artefact of the backend: all of it.
+    expect(formatGpuShare(100, 150)).toBe('100 % GPU');
+  });
+
+  it('is undefined without a footprint or a share', () => {
+    expect(formatGpuShare(undefined, 100)).toBeUndefined();
+    expect(formatGpuShare(100, undefined)).toBeUndefined();
+    expect(formatGpuShare(0, 0)).toBeUndefined();
+    expect(formatGpuShare(100, -1)).toBeUndefined();
+    expect(formatGpuShare(Number.NaN, 1)).toBeUndefined();
   });
 });

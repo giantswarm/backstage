@@ -7,6 +7,7 @@ import {
   columnsForRows,
   groupServedModelRows,
   memoryLine,
+  memoryLineTitle,
   ServedModelRow,
   ServedModelsTable,
   servedModelStatusLines,
@@ -237,6 +238,109 @@ describe('memoryLine and servedModelStatusLines', () => {
     ).toMatch(/^In memory · evicts \d/);
     expect(servedModelStatusLines(rows[0])).toEqual([]);
     expect(servedModelStatusLines(ollamaRows[1])).toEqual(['Not loaded']);
+  });
+
+  it('says where the footprint sits when the backend reports the split', () => {
+    const footprint = { loaded: true, memoryBytes: 5_800_000_000 };
+    // All of it on the accelerator (demiurg: qwen3:0.6b, size == size_vram).
+    expect(memoryLine({ ...footprint, memoryVramBytes: 5_800_000_000 })).toBe(
+      '5.4 GiB in memory · 100 % GPU',
+    );
+    // Split between the GPU and system memory.
+    expect(memoryLine({ ...footprint, memoryVramBytes: 2_200_000_000 })).toBe(
+      '5.4 GiB in memory · 38 % GPU',
+    );
+    // CPU only.
+    expect(memoryLine({ ...footprint, memoryVramBytes: 0 })).toBe(
+      '5.4 GiB in memory · CPU',
+    );
+    expect(
+      memoryLine({
+        ...footprint,
+        memoryVramBytes: 5_800_000_000,
+        loadedUntil: '2026-09-02T13:05:00Z',
+      }),
+    ).toMatch(/^5\.4 GiB in memory · 100 % GPU · evicts \d/);
+  });
+
+  it("keeps today's line when the backend does not report where the memory sits", () => {
+    // An older model-manager: no vramBytes at all.
+    expect(memoryLine({ loaded: true, memoryBytes: 5_800_000_000 })).toBe(
+      '5.4 GiB in memory',
+    );
+    // A share without a footprint says nothing.
+    expect(
+      memoryLine({ loaded: true, memoryVramBytes: 5_800_000_000 }),
+    ).toBeUndefined();
+    expect(
+      memoryLine({
+        loaded: true,
+        memoryVramBytes: 5_800_000_000,
+        loadedUntil: '2026-09-02T13:05:00Z',
+      }),
+    ).toMatch(/^In memory · evicts \d/);
+  });
+
+  it('explains the footprint and the share on hover', () => {
+    const footprint = {
+      loaded: true,
+      memoryBytes: 5_800_000_000,
+      details: { contextLength: 40960 },
+    };
+    expect(
+      memoryLineTitle({ ...footprint, memoryVramBytes: 5_800_000_000 }),
+    ).toBe(
+      'In memory: the weights plus the KV cache for the 40k context the model is loaded with. All of it is on the accelerator (GPU).',
+    );
+    expect(
+      memoryLineTitle({ ...footprint, memoryVramBytes: 2_200_000_000 }),
+    ).toBe(
+      'In memory: the weights plus the KV cache for the 40k context the model is loaded with. 38 % of it is on the accelerator (GPU), the rest in system memory.',
+    );
+    expect(memoryLineTitle({ ...footprint, memoryVramBytes: 0 })).toBe(
+      'In memory: the weights plus the KV cache for the 40k context the model is loaded with. None of it is on the accelerator — the model runs on the CPU.',
+    );
+    // No split reported: the footprint alone; no context known: said so.
+    expect(memoryLineTitle(footprint)).toBe(
+      'In memory: the weights plus the KV cache for the 40k context the model is loaded with.',
+    );
+    expect(memoryLineTitle({ loaded: true, memoryBytes: 5_800_000_000 })).toBe(
+      'In memory: the weights plus the KV cache for the context length the model is loaded with.',
+    );
+    // Nothing to explain when not loaded or without figures.
+    expect(memoryLineTitle({ loaded: false, memoryBytes: 1 })).toBeUndefined();
+    expect(memoryLineTitle({ loaded: true })).toBeUndefined();
+  });
+});
+
+describe('ServedModelStatusCell · GPU share', () => {
+  it('renders the share in the memory line with the explanation on hover', async () => {
+    await renderTable(
+      <ServedModelsTable
+        rows={[{ ...ollamaRows[0], memoryVramBytes: 7_100_000_000 }]}
+      />,
+    );
+
+    const line = screen.getByText(
+      /^6\.6 GiB in memory · 100 % GPU · evicts \d/,
+    );
+    expect(line).toHaveAttribute(
+      'title',
+      'In memory: the weights plus the KV cache for the 256k context the model is loaded with. All of it is on the accelerator (GPU).',
+    );
+    // The share does not turn the placement columns on: no node on the row.
+    expect(screen.queryByRole('columnheader', { name: 'Node' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'GPUs' })).toBeNull();
+  });
+
+  it('renders CPU when none of the footprint is on the accelerator', async () => {
+    await renderTable(
+      <ServedModelsTable rows={[{ ...ollamaRows[0], memoryVramBytes: 0 }]} />,
+    );
+
+    expect(
+      screen.getByText(/^6\.6 GiB in memory · CPU · evicts \d/),
+    ).toBeInTheDocument();
   });
 });
 

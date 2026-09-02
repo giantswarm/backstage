@@ -35,6 +35,15 @@ const wireBoolean = (fallback: boolean) =>
     .transform(value => value ?? fallback);
 
 /**
+ * A boolean that is present, else `undefined` — for flags whose absence means
+ * "this backend does not say", which is not the same as false.
+ */
+const wireOptionalBoolean = z
+  .unknown()
+  .transform(value => (typeof value === 'boolean' ? value : undefined))
+  .optional();
+
+/**
  * The capability flags `GET /api/v1/backend` reports. A false flag means the
  * matching operation answers `501 unsupported` on this installation, so the
  * UI must not offer it. Absent flags read as false: a backend that does not
@@ -410,19 +419,34 @@ export const modelManagerFitResultSchema = z.looseObject({
 
 export type ModelManagerFitResult = z.infer<typeof modelManagerFitResultSchema>;
 
-/** One entry of `GET /api/v1/nodes` (kserve): a node's memory budget and download cache. */
+/**
+ * One entry of `GET /api/v1/nodes`: a node's memory budget and download cache.
+ * On kserve one per cluster node (GPU labels, device-plugin count, the cache);
+ * on ollama the one host the backend proxies, whose budget is the host's
+ * memory (`budgetSource: host-meminfo`), which counts no GPUs — Ollama's API
+ * does not expose the accelerator — but says whether a loaded model sits on
+ * one (`accelerated`).
+ */
 export const modelManagerNodeSchema = z.looseObject({
   name: z.string(),
   ready: wireBoolean(false),
   architecture: wireString,
   allocatableMemoryBytes: wireNumber,
+  /** Accelerators on the node (kserve); `0` on ollama, which cannot count them. */
   gpuCount: wireNumber,
   /** Memory of one GPU, from the node labels. */
   gpuMemoryBytes: wireNumber,
   gpuProduct: wireString,
+  /**
+   * ollama only: whether any loaded model has memory on the accelerator
+   * (`running.vramBytes` > 0). Absent on backends that count GPUs instead.
+   */
+  accelerated: wireOptionalBoolean,
   budgetBytes: wireNumber,
-  /** `gpu-labels` or `allocatable`. */
+  /** `gpu-labels`, `allocatable` or `annotation` (kserve); `host-meminfo` (ollama). */
   budgetSource: wireString,
+  /** The backend's note on the budget: an ignored annotation, or what the host figures mean. */
+  message: wireString,
   reservedBytes: wireNumber,
   freeBytes: wireNumber,
   /** The download cache on this node; absent when the node holds none. */
