@@ -92,13 +92,27 @@ export const modelManagerBackendSchema = z.looseObject({
 
 export type ModelManagerBackend = z.infer<typeof modelManagerBackendSchema>;
 
-/** The kagent ModelConfig model-manager created for a model. */
+/**
+ * The kagent ModelConfig of a model as model-manager reports it: the one it
+ * created, or — on kserve — one somebody else created for the same predictor
+ * (the portal's serve flow), which it recognises but never touches.
+ */
 export const modelConfigRefSchema = z.looseObject({
   name: z.string(),
   namespace: z.string(),
   apiVersion: wireString,
   provider: wireString,
   model: wireString,
+  /** `spec.model` — the name the provider serves the model under (kserve: the InferenceService name). */
+  providerModel: wireString,
+  /** `openAI.baseUrl` or `ollama.host`. */
+  endpoint: wireString,
+  /**
+   * Whether model-manager created it (only those are updated or deleted by
+   * it). Absent on a model-manager that predates the field, which only ever
+   * reported its own — hence true.
+   */
+  managed: wireBoolean(true),
   /** Mirrors the kagent `Accepted` condition. */
   ready: wireBoolean(false),
   message: wireString,
@@ -119,7 +133,18 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   /** Inference URL (KServe). */
   endpoint: wireString,
   node: wireString,
+  /** Ollama `loaded`; KServe InferenceService readiness `Ready`, `NotReady`, `Pending` or `Terminating`. */
   status: wireString,
+  /** KServe — why the model is not ready. */
+  message: wireString,
+  /** KServe — the InferenceService name (also the served model name). */
+  resource: wireString,
+  /** KServe — the preset the InferenceService was created from. */
+  preset: wireString,
+  /** KServe — accelerators the predictor requests. */
+  gpus: wireNumber,
+  /** KServe — `app.kubernetes.io/managed-by` of the InferenceService (model-manager, backstage, …). */
+  managedBy: wireString,
 });
 
 export type ModelManagerLoadedModel = z.infer<
@@ -149,6 +174,19 @@ export const modelManagerModelSchema = z.looseObject({
     .optional(),
   /** Node holding the cache entry (KServe). */
   node: wireString,
+  /**
+   * KServe — whether the weights are in the node's cache: false for a model
+   * known only from a preset or a running InferenceService whose weights are
+   * not cached yet. Absent (undefined) means the backend lists downloads only.
+   */
+  downloaded: z
+    .unknown()
+    .transform(value => (typeof value === 'boolean' ? value : undefined))
+    .optional(),
+  /** KServe — the cache directory, which is the InferenceService name the storage-initializer uses. */
+  path: wireString,
+  /** KServe — the serving preset whose model this is. */
+  preset: wireString,
   loaded: wireBoolean(false),
   running: z
     .unknown()
@@ -217,6 +255,162 @@ export type ModelManagerJob = z.infer<typeof modelManagerJobSchema>;
 export function isJobActive(job: Pick<ModelManagerJob, 'phase'>): boolean {
   return job.phase === 'pending' || job.phase === 'running';
 }
+
+/** One entry of `GET /api/v1/presets` (kserve): a published ServingPreset, resolved for clients. */
+export const modelManagerPresetSchema = z.looseObject({
+  /** Also the InferenceService name a load creates. */
+  name: z.string(),
+  displayName: wireString,
+  description: wireString,
+  /** `shipped` or `values`. */
+  source: wireString,
+  /** Hugging Face repository (`owner/name`). */
+  model: wireString,
+  storageUri: wireString,
+  format: wireString,
+  runtime: wireString,
+  contextLength: wireNumber,
+  capabilities: z
+    .unknown()
+    .transform(value =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : undefined,
+    )
+    .optional(),
+  gpus: wireNumber,
+  weightsBytes: wireNumber,
+  overheadBytes: wireNumber,
+  requiredBytes: wireNumber,
+});
+
+export type ModelManagerPreset = z.infer<typeof modelManagerPresetSchema>;
+
+/** One hit of `GET /api/v1/search` (kserve — the Hugging Face Hub). */
+export const modelManagerSearchResultSchema = z.looseObject({
+  /** Repository id, `owner/name`. */
+  id: z.string(),
+  author: wireString,
+  downloads: wireNumber,
+  likes: wireNumber,
+  /** Needs a hub token with access to download. */
+  gated: wireBoolean(false),
+  private: wireBoolean(false),
+  pipelineTag: wireString,
+  library: wireString,
+  tags: z
+    .unknown()
+    .transform(value =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : [],
+    )
+    .optional()
+    .transform(value => value ?? []),
+  lastModified: wireString,
+  /** Serving presets that serve exactly this model. */
+  presets: z
+    .unknown()
+    .transform(value =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : [],
+    )
+    .optional()
+    .transform(value => value ?? []),
+});
+
+export type ModelManagerSearchResult = z.infer<
+  typeof modelManagerSearchResultSchema
+>;
+
+/**
+ * `POST /api/v1/models/fit-check` (kserve): weights resolved from the hub,
+ * plus overhead, against a node's memory budget. `fits: false` arrives as a
+ * 200 with `reason`; pull and load refuse such a model with 412.
+ */
+export const modelManagerFitResultSchema = z.looseObject({
+  model: z.string(),
+  fits: wireBoolean(false),
+  /** Human-readable explanation of the numbers. */
+  reason: wireString,
+  /** Preset used for overhead (and weights when the hub could not tell). */
+  preset: wireString,
+  /** Every preset serving the model. */
+  presets: z
+    .unknown()
+    .transform(value =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : [],
+    )
+    .optional()
+    .transform(value => value ?? []),
+  weightsBytes: wireNumber,
+  /** `safetensors-index`, `tree` or `preset`. */
+  weightsSource: wireString,
+  overheadBytes: wireNumber,
+  requiredBytes: wireNumber,
+  /** What a pull fetches (all repository files). */
+  downloadBytes: wireNumber,
+  /** Node the check was made against. */
+  node: wireString,
+  budgetBytes: wireNumber,
+  /** `gpu-labels` or `allocatable`. */
+  budgetSource: wireString,
+  /** Needed by the models already served on the node. */
+  reservedBytes: wireNumber,
+  freeBytes: wireNumber,
+  gated: wireBoolean(false),
+  private: wireBoolean(false),
+  /** A hub token Secret is configured on the installation. */
+  tokenConfigured: wireBoolean(false),
+  /** The model is already in the node's cache. */
+  cached: wireBoolean(false),
+});
+
+export type ModelManagerFitResult = z.infer<typeof modelManagerFitResultSchema>;
+
+/** One entry of `GET /api/v1/nodes` (kserve): a node's memory budget and download cache. */
+export const modelManagerNodeSchema = z.looseObject({
+  name: z.string(),
+  ready: wireBoolean(false),
+  architecture: wireString,
+  allocatableMemoryBytes: wireNumber,
+  gpuCount: wireNumber,
+  /** Memory of one GPU, from the node labels. */
+  gpuMemoryBytes: wireNumber,
+  gpuProduct: wireString,
+  budgetBytes: wireNumber,
+  /** `gpu-labels` or `allocatable`. */
+  budgetSource: wireString,
+  reservedBytes: wireNumber,
+  freeBytes: wireNumber,
+  /** The download cache on this node; absent when the node holds none. */
+  cache: z
+    .unknown()
+    .transform(value => {
+      const parsed = z
+        .looseObject({
+          claim: wireString,
+          mountPath: wireString,
+          models: wireNumber,
+          bytesUsed: wireNumber,
+          scannedAt: wireString,
+          /** Network storage visible from every node. */
+          shared: wireBoolean(false),
+          /** Last scan failure; contents may be stale. */
+          error: wireString,
+        })
+        .safeParse(value);
+      return parsed.success && value !== null && typeof value === 'object'
+        ? parsed.data
+        : undefined;
+    })
+    .optional(),
+});
+
+export type ModelManagerNode = z.infer<typeof modelManagerNodeSchema>;
 
 /**
  * Parse a list envelope (`{ models: [...] }`, `{ jobs: [...] }`, …), dropping

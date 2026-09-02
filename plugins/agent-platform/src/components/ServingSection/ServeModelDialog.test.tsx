@@ -5,7 +5,12 @@ import type {
   ModelServingConfig,
   ServingPreset,
 } from '../../lib/servingPresets';
-import { cacheNotice, ServeModelDialog } from './ServeModelDialog';
+import {
+  cacheNotice,
+  ServeModelDialog,
+  storageUriForDownload,
+  type DownloadedModelOption,
+} from './ServeModelDialog';
 
 const GIB = 2 ** 30;
 
@@ -323,6 +328,92 @@ describe('ServeModelDialog', () => {
     await userEvent.click(screen.getByRole('option', { name: 'inst-2' }));
 
     expect(onInstallationChange).toHaveBeenCalledWith('inst-2');
+  });
+});
+
+describe('ServeModelDialog with cached downloads', () => {
+  const devstralDownload: DownloadedModelOption = {
+    id: 'inst-1/kserve/cache/spark/nemotron',
+    model: 'nvidia/Nemotron',
+    node: 'spark',
+    cachePath: 'nemotron',
+    preset: 'nemotron',
+    sizeBytes: 80 * GIB,
+  };
+
+  it('offers the downloads as weights and, picked, names the InferenceService after the cache directory on that node', async () => {
+    renderDialog({ downloads: [devstralDownload] });
+
+    const weights = screen.getByRole('button', { name: /Weights/ });
+    expect(weights).toHaveTextContent("The preset's source");
+
+    await userEvent.click(weights);
+    await userEvent.click(
+      screen.getByRole('option', {
+        name: 'nvidia/Nemotron · on spark · 80.0 GiB',
+      }),
+    );
+
+    expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
+      'Nemotron 3 Super',
+    );
+    expect(nameField()).toHaveValue('nemotron');
+    // No admission policy on this installation: serve the claim directly.
+    expect(sourceField()).toHaveValue('pvc://hf-cache/nemotron');
+    expect(
+      screen.getByRole('button', { name: /Target node/ }),
+    ).toHaveTextContent('spark');
+  });
+
+  it('starts from the download a row was served from, and reverts to the hub source on request', async () => {
+    renderDialog({
+      downloads: [devstralDownload],
+      seed: { download: devstralDownload },
+    });
+
+    expect(nameField()).toHaveValue('nemotron');
+    expect(sourceField()).toHaveValue('pvc://hf-cache/nemotron');
+    expect(screen.getByRole('button', { name: /Weights/ })).toHaveTextContent(
+      'nvidia/Nemotron · on spark',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Weights/ }));
+    await userEvent.click(
+      screen.getByRole('option', { name: /The preset's source/ }),
+    );
+    expect(sourceField()).toHaveValue('hf://nvidia/Nemotron');
+  });
+
+  it('keeps the preset source when the cache is wired at admission, and falls back without a claim', () => {
+    const withPolicy = {
+      ...config,
+      cache: { ...config.cache, redirectPolicy: true },
+    };
+    expect(storageUriForDownload(devstralDownload, withPolicy, nemotron)).toBe(
+      'hf://nvidia/Nemotron',
+    );
+    expect(storageUriForDownload(devstralDownload, config, nemotron)).toBe(
+      'pvc://hf-cache/nemotron',
+    );
+    expect(
+      storageUriForDownload(
+        devstralDownload,
+        { ...config, cache: { enabled: false, redirectPolicy: false } },
+        nemotron,
+      ),
+    ).toBe('hf://nvidia/Nemotron');
+    // Cached weights serve from the claim even without a preset; without a
+    // known directory there is nothing to point at but the hub.
+    expect(storageUriForDownload(devstralDownload, config, undefined)).toBe(
+      'pvc://hf-cache/nemotron',
+    );
+    expect(
+      storageUriForDownload(
+        { ...devstralDownload, cachePath: undefined },
+        config,
+        undefined,
+      ),
+    ).toBe('hf://nvidia/Nemotron');
   });
 });
 

@@ -3,11 +3,29 @@ import { Config } from '@backstage/config';
 import {
   AuthenticationError,
   ConflictError,
+  CustomErrorBase,
   InputError,
   NotAllowedError,
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
+
+/**
+ * A fit check refused the operation — model-manager's `412 does_not_fit`: the
+ * model's weights plus serving overhead exceed the target node's memory
+ * budget. A verdict about the request, not a fault of the service, so it is
+ * answered as a 4xx with model-manager's own explanation (the numbers) rather
+ * than falling into the 503 an unrecognised status used to become. Backstage's
+ * error middleware reads `statusCode` for classes it does not know.
+ */
+export class PreconditionFailedError extends CustomErrorBase {
+  readonly statusCode = 412;
+
+  constructor(message?: string, cause?: Error | unknown) {
+    super(message, cause);
+    this.name = 'PreconditionFailedError';
+  }
+}
 
 /**
  * Header the agent-platform frontend uses to forward the user's
@@ -60,6 +78,20 @@ export const MODEL_REF_MAX_LENGTH = 255;
  * letting whitespace or path tricks through.
  */
 export const MODEL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._\-:/]*$/;
+
+/**
+ * Shape of the `preset` and `node` fields the kserve backend takes on pull,
+ * load and fit-check: a serving preset name (a DNS label) or a node name (a
+ * DNS subdomain). Lower-case letters, digits, `-` and `.`, starting and
+ * ending alphanumeric.
+ */
+export const KUBERNETES_NAME_PATTERN = /^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/;
+export const KUBERNETES_NAME_MAX_LENGTH = 253;
+
+/** Longest hub search query forwarded (`GET /api/v1/search?q=`). */
+export const SEARCH_QUERY_MAX_LENGTH = 200;
+/** Upper bound of `limit` on a hub search, model-manager's own maximum. */
+export const SEARCH_LIMIT_MAX = 50;
 
 /** One installation's model-manager endpoint. */
 export interface ModelManagerInstallationConfig {
@@ -217,10 +249,12 @@ export class ModelManagerClient {
   /**
    * `POST /api/v1/models/pull` — start importing a model. Answers 202 with the
    * job at once (or the already-running job for the same reference); progress
-   * comes from {@link getJob}.
+   * comes from {@link getJob}. On kserve, `preset` names the serving preset
+   * whose cache directory receives the download and `node` the node whose
+   * cache it lands in; a refused fit answers `412 does_not_fit`.
    */
   async pullModel(
-    body: { model: string; wire?: boolean },
+    body: { model: string; wire?: boolean; preset?: string; node?: string },
     options: ModelManagerRequestOptions,
   ): Promise<unknown> {
     return this.request('/api/v1/models/pull', options, {
@@ -231,10 +265,17 @@ export class ModelManagerClient {
 
   /**
    * `POST /api/v1/models/load` — load into memory / start serving. Blocks
-   * until the backend has the model, hence the separate timeout.
+   * until the backend has the model, hence the separate timeout. On kserve,
+   * `preset` picks the serving preset to compose the InferenceService from
+   * (`model` may then be left out) and `node` pins the predictor.
    */
   async loadModel(
-    body: { model: string; keepAlive?: string },
+    body: {
+      model?: string;
+      keepAlive?: string;
+      preset?: string;
+      node?: string;
+    },
     options: ModelManagerRequestOptions,
   ): Promise<unknown> {
     return this.request('/api/v1/models/load', options, {
@@ -242,6 +283,44 @@ export class ModelManagerClient {
       body,
       timeoutMs: this.loadTimeoutMs,
     });
+  }
+
+  /**
+   * `POST /api/v1/models/fit-check` — whether a model fits a node before
+   * downloading or serving it (kserve). `fits: false` is a 200 with the
+   * explanation; only pull and load answer 412.
+   */
+  async fitCheck(
+    body: { model?: string; preset?: string; node?: string },
+    options: ModelManagerRequestOptions,
+  ): Promise<unknown> {
+    return this.request('/api/v1/models/fit-check', options, {
+      method: 'POST',
+      body,
+    });
+  }
+
+  /** `GET /api/v1/presets` — the curated serving presets (kserve). */
+  async listPresets(options: ModelManagerRequestOptions): Promise<unknown> {
+    return this.request('/api/v1/presets', options);
+  }
+
+  /** `GET /api/v1/search?q=…&limit=…` — model hub search (kserve). */
+  async search(
+    query: string,
+    limit: number | undefined,
+    options: ModelManagerRequestOptions,
+  ): Promise<unknown> {
+    const params = new URLSearchParams({ q: query });
+    if (limit !== undefined) {
+      params.set('limit', String(limit));
+    }
+    return this.request(`/api/v1/search?${params.toString()}`, options);
+  }
+
+  /** `GET /api/v1/nodes` — node memory budgets and download caches (kserve). */
+  async listNodes(options: ModelManagerRequestOptions): Promise<unknown> {
+    return this.request('/api/v1/nodes', options);
   }
 
   /** `POST /api/v1/models/unload` — evict from memory / stop serving. */
@@ -427,6 +506,11 @@ export class ModelManagerClient {
             upstreamMessage ?? 'this backend does not offer the operation.'
           }`,
         );
+      case 'does_not_fit':
+        throw new PreconditionFailedError(
+          upstreamMessage ??
+            `The ${where} refused the model: it does not fit the target node.`,
+        );
       case 'backend_error':
         throw new ServiceUnavailableError(
           upstreamMessage ??
@@ -455,6 +539,11 @@ export class ModelManagerClient {
       case 409:
         throw new ConflictError(
           upstreamMessage ?? `The ${where} reported a conflict.`,
+        );
+      case 412:
+        throw new PreconditionFailedError(
+          upstreamMessage ??
+            `The ${where} refused the model: it does not fit the target node.`,
         );
       case 501:
         throw new NotAllowedError(`Capability not supported by the ${where}.`);

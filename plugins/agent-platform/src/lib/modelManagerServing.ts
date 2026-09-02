@@ -9,12 +9,19 @@ import type {
   ModelManagerBackend,
   ModelManagerCapabilities,
   ModelManagerModel,
+  ModelManagerNode,
 } from './modelManager';
 import type {
+  GpuNode,
   ServedModel,
   ServingBackend,
   ServingCapabilities,
 } from './serving';
+
+/** `app.kubernetes.io/managed-by` the portal's own writes carry (`BACKSTAGE_FIELD_MANAGER`). */
+const PORTAL_MANAGED_BY = 'giantswarm-backstage';
+
+const MIB = 2 ** 20;
 
 /** The model feature agents need: tool calling. */
 export const TOOLS_CAPABILITY = 'tools';
@@ -54,14 +61,36 @@ export function toServingCapabilities(
 }
 
 /**
+ * The namespace of a predictor's in-cluster URL
+ * (`http://<name>-predictor.<namespace>.svc.cluster.local`), else `undefined`.
+ */
+export function namespaceOfPredictorUrl(
+  url: string | undefined,
+): string | undefined {
+  const host = urlHostname(url);
+  const parts = host?.split('.') ?? [];
+  return parts.length >= 3 && parts[2] === 'svc' ? parts[1] : undefined;
+}
+
+/**
  * One model of a model-manager inventory as a served model.
  *
- * Readiness follows what the backend says about memory: loaded → `ready`,
- * downloaded but not loaded → `available`, and every model `notReady` while
- * the backend reports itself unhealthy (its inventory may then be stale). The
- * endpoint every model answers on is the backend's own — on a multi-model
- * host that is one hostname for every model, which is why
- * `findServedModel` disambiguates by name.
+ * On Ollama, readiness follows what the backend says about memory: loaded →
+ * `ready`, downloaded but not loaded → `available`. On KServe the inventory is
+ * the per-node download cache plus the InferenceServices: a served model
+ * (`running`) takes the InferenceService's own readiness as model-manager reads
+ * it from the CR and is named after the InferenceService — the name agents
+ * address it by and the ModelConfig's `spec.model` — so that
+ * `findServedModel` and the CR source agree on it; a cached model nobody
+ * serves is `available` on its node ("downloaded on …") and named after its
+ * repository. Every model is `notReady` while the backend reports itself
+ * unhealthy (its inventory may then be stale).
+ *
+ * The endpoint every model answers on is the backend's own — on a multi-model
+ * host that is one hostname for every model, which is why `findServedModel`
+ * disambiguates by name. On KServe only a served model has an endpoint (the
+ * predictor's), which is also what folds it onto the same InferenceService
+ * read as a CR (`mergeServingSnapshots`).
  */
 export function toServedModelFromManager(
   installation: string,
@@ -69,6 +98,11 @@ export function toServedModelFromManager(
   model: ModelManagerModel,
 ): ServedModel {
   const running = model.running;
+  const kserve = backend.backend === 'kserve';
+  const resource = kserve ? (running?.resource ?? model.path) : undefined;
+  const namespace = kserve
+    ? namespaceOfPredictorUrl(running?.endpoint)
+    : undefined;
 
   let readiness: ServedModel['readiness'];
   let readinessMessage: string | undefined;
@@ -77,38 +111,95 @@ export function toServedModelFromManager(
     readinessMessage =
       backend.message ??
       `The ${backend.backend} backend is not healthy; its inventory may be stale.`;
+  } else if (kserve && running) {
+    // The InferenceService's readiness, as model-manager reads the CR.
+    const status = running.status ?? 'Pending';
+    const what = `InferenceService ${resource ?? model.name}`;
+    if (status === 'Ready') {
+      readiness = 'ready';
+      readinessMessage = `${what} is ready.`;
+    } else if (status === 'Pending') {
+      readiness = 'pending';
+      readinessMessage = running.message ?? `${what} has not reported yet.`;
+    } else {
+      readiness = 'notReady';
+      readinessMessage =
+        running.message ??
+        (status === 'Terminating'
+          ? `${what} is being deleted.`
+          : `${what} is not ready.`);
+    }
   } else if (model.loaded) {
     readiness = 'ready';
     readinessMessage = running?.expiresAt
       ? `Loaded in memory until ${formatTime(running.expiresAt)}.`
       : 'Loaded in memory.';
+  } else if (kserve && model.downloaded === false) {
+    readiness = 'pending';
+    readinessMessage = 'Known from a preset; not downloaded and not serving.';
+  } else if (kserve) {
+    readiness = 'available';
+    readinessMessage = model.node
+      ? `Downloaded on ${model.node}; not serving.`
+      : 'Downloaded; not serving.';
   } else {
     readiness = 'available';
     readinessMessage = 'Downloaded; not loaded in memory.';
   }
 
+  // Ollama: every model answers on the backend's own host. KServe: only a
+  // served model has an endpoint, its predictor's (the backend "endpoint" is
+  // the InferenceService API, not somewhere a model answers).
   const endpointHosts = Array.from(
     new Set(
-      [urlHostname(backend.endpoint), urlHostname(running?.endpoint)].filter(
-        (host): host is string => Boolean(host),
-      ),
+      [
+        kserve ? undefined : urlHostname(backend.endpoint),
+        urlHostname(running?.endpoint),
+      ].filter((host): host is string => Boolean(host)),
     ),
   );
 
+  // Ollama says which server it is; on KServe the runtime is the
+  // InferenceService's, which the CR read reports.
+  let runtime: string | undefined = backend.backend;
+  if (kserve) {
+    runtime = undefined;
+  } else if (backend.version) {
+    runtime = `${backend.backend} ${backend.version}`;
+  }
+
+  // KServe: a served model is identified like the CR source identifies its
+  // InferenceService (same id, same name), a cached one by where it sits.
+  let id = `${installation}/${backend.backend}//${model.name}`;
+  let name = model.name;
+  if (kserve) {
+    if (running && resource) {
+      id = `${installation}/kserve/${namespace ?? ''}/${resource}`;
+      name = resource;
+    } else {
+      id = `${installation}/kserve/cache/${model.node ?? ''}/${model.path ?? model.name}`;
+    }
+  }
+
   return {
-    id: `${installation}/${backend.backend}//${model.name}`,
+    id,
     installation,
     backend: backend.backend,
-    name: model.name,
+    name,
+    namespace,
     modelSource: model.name,
-    runtime: backend.version
-      ? `${backend.backend} ${backend.version}`
-      : backend.backend,
+    runtime,
     readiness,
     readinessMessage,
     node: running?.node ?? model.node,
-    internalUrl: running?.endpoint ?? backend.endpoint,
+    nodeSource: kserve && running?.node ? 'pod' : undefined,
+    gpuCount: running?.gpus,
+    internalUrl: running?.endpoint ?? (kserve ? undefined : backend.endpoint),
     endpointHosts,
+    preset: model.preset ?? running?.preset,
+    managedByPortal: running?.managedBy
+      ? running.managedBy === PORTAL_MANAGED_BY
+      : undefined,
     sizeBytes: model.sizeBytes,
     loaded: model.loaded,
     memoryBytes: running?.sizeBytes,
@@ -125,13 +216,88 @@ export function toServedModelFromManager(
       ? {
           name: model.modelConfig.name,
           namespace: model.modelConfig.namespace,
+          managed: model.modelConfig.managed,
           ready: model.modelConfig.ready,
           message: model.modelConfig.message,
         }
       : undefined,
+    managerRef: model.name,
+    downloaded: model.downloaded,
+    cachePath: model.path,
     // model-manager is the one source that acts on what it lists.
     operable: true,
   };
+}
+
+/**
+ * One node of model-manager's `GET /api/v1/nodes` as a capacity row: the GPU
+ * labels it read, the memory budget it fit-checks against (what the models
+ * already served there reserve of it, what is free) and the download cache
+ * it keeps on the node. Device-plugin capacity and pod requests are the CR
+ * source's contribution; on an installation with both, `mergeServingSnapshots`
+ * lays this over that.
+ */
+export function toGpuNodeFromManager(
+  installation: string,
+  node: ModelManagerNode,
+): GpuNode {
+  return {
+    id: `${installation}/${node.name}`,
+    installation,
+    name: node.name,
+    ready: node.ready,
+    product: node.gpuProduct,
+    memoryMiB:
+      node.gpuMemoryBytes !== undefined
+        ? Math.round(node.gpuMemoryBytes / MIB)
+        : undefined,
+    labeledCount: node.gpuCount,
+    memoryAllocatableBytes: node.allocatableMemoryBytes,
+    memoryBudgetBytes: node.budgetBytes,
+    memoryBudgetSource: node.budgetSource,
+    memoryReservedBytes: node.reservedBytes,
+    memoryFreeBytes: node.freeBytes,
+    cache: node.cache
+      ? {
+          claim: node.cache.claim,
+          mountPath: node.cache.mountPath,
+          models: node.cache.models,
+          bytesUsed: node.cache.bytesUsed,
+          scannedAt: node.cache.scannedAt,
+          shared: node.cache.shared,
+          error: node.cache.error,
+        }
+      : undefined,
+  };
+}
+
+/**
+ * Whether a KServe row is a served model — an InferenceService, whichever
+ * source listed it — as opposed to a cached download or a preset nobody
+ * serves: a CR read always has a namespace; model-manager's inventory marks a
+ * served model `loaded` and names its predictor.
+ */
+export function isServedInferenceService(model: ServedModel): boolean {
+  return (
+    model.backend === 'kserve' &&
+    (model.namespace !== undefined || model.loaded === true)
+  );
+}
+
+/**
+ * The reference to hand model-manager for a row. A served KServe model goes by
+ * its InferenceService name: model-manager resolves that for every operation
+ * (unload, wire, unwire, delete) and it is unambiguous even when the
+ * InferenceService was composed from another model's preset — the repository
+ * of the cached weights then names nothing model-manager serves. Anything else
+ * goes by what model-manager listed it as (`managerRef`: an Ollama tag, the
+ * repository of a cached download), else the row's name.
+ */
+export function managerRefOf(model: ServedModel): string {
+  if (isServedInferenceService(model)) {
+    return model.name;
+  }
+  return model.managerRef ?? model.name;
 }
 
 /**

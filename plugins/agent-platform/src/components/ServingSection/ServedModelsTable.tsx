@@ -1,20 +1,14 @@
 import { useCallback, useMemo, type ReactNode } from 'react';
 import {
-  ButtonIcon,
   Cell,
   CellText,
   ColumnConfig,
   Flex,
-  Menu,
-  MenuItem,
-  MenuTrigger,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
-import StopIcon from '@material-ui/icons/Stop';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
@@ -25,6 +19,7 @@ import {
   describeServedModel,
   formatBytes,
   formatTime,
+  isServedInferenceService,
   lacksToolCalling,
   notableCapabilities,
 } from '../../lib/modelManagerServing';
@@ -47,9 +42,24 @@ export type ServedModelRow = ServedModel & {
   wiring?: WiringState;
 };
 
-/** Backends whose served models this portal can stop (delete the CR). */
+/**
+ * Rows this portal can stop serving: a KServe InferenceService, whichever
+ * source listed it — deleted through model-manager where it operates the row,
+ * else as a CR with the user's RBAC. A cached download nobody serves is not
+ * one.
+ */
 export function isStoppable(row: ServedModel): boolean {
-  return row.backend === 'kserve';
+  return isServedInferenceService(row);
+}
+
+/**
+ * Rows the serve flow can start from: a KServe model whose weights sit in a
+ * node's cache and that nobody serves — "downloaded on <node>".
+ */
+export function isServableDownload(row: ServedModel): boolean {
+  return (
+    row.backend === 'kserve' && row.downloaded === true && !isStoppable(row)
+  );
 }
 
 /** Human labels for the backends, for the runtime column and tooltips. */
@@ -251,42 +261,81 @@ function UsedByNobody({ wiring }: { wiring?: WiringState }) {
 }
 
 /** A ModelConfig to list under "Used by": read from the cluster, or the backend's own. */
-type UsedByEntry = ServedModelConsumer & {
+export type UsedByEntry = ServedModelConsumer & {
   ready?: boolean;
   message?: string;
+  /**
+   * What the serving backend says about it, when it knows the ModelConfig:
+   * created by it (`true`), or recognised as somebody else's wiring of the
+   * same model (`false` — the portal's serve flow, a hand-written one).
+   * `undefined` when only the cluster read knows it.
+   */
+  managed?: boolean;
 };
 
 /**
  * The ModelConfigs whose endpoint resolves to this model, plus the one the
- * backend says it created (exact, and visible even to a user who cannot list
- * ModelConfigs) when the first set does not already have it.
+ * backend knows for it (exact, and visible even to a user who cannot list
+ * ModelConfigs) when the first set does not already have it. Where both know
+ * one, the backend's `managed` verdict is kept on the read entry.
  */
-function usedByEntries(row: ServedModelRow): UsedByEntry[] {
-  const entries: UsedByEntry[] = [...row.usedBy];
+export function usedByEntries(row: ServedModelRow): UsedByEntry[] {
+  const known = row.modelConfig;
+  const entries: UsedByEntry[] = row.usedBy.map(entry =>
+    known && entry.namespace === known.namespace && entry.name === known.name
+      ? { ...entry, managed: known.managed ?? true }
+      : entry,
+  );
   if (
-    row.modelConfig &&
+    known &&
     !entries.some(
-      entry =>
-        entry.namespace === row.modelConfig?.namespace &&
-        entry.name === row.modelConfig?.name,
+      entry => entry.namespace === known.namespace && entry.name === known.name,
     )
   ) {
     entries.push({
       installation: row.installation,
-      namespace: row.modelConfig.namespace,
-      name: row.modelConfig.name,
-      displayName: row.modelConfig.name,
-      ready: row.modelConfig.ready,
-      message: row.modelConfig.message,
+      namespace: known.namespace,
+      name: known.name,
+      displayName: known.name,
+      ready: known.ready,
+      message: known.message,
+      managed: known.managed ?? true,
     });
   }
   return entries;
 }
 
+/** The tooltip of a "Used by" entry: the ModelConfig, who wired it, and the backend's verdict on it. */
+export function describeUsedBy(consumer: UsedByEntry): string {
+  let origin = '';
+  if (consumer.managed === true) {
+    origin = ' · created by model-manager';
+  } else if (consumer.managed === false) {
+    origin = ' · created outside model-manager';
+  }
+  // The backend's verdict on a ModelConfig it knows, when the controller has
+  // not accepted it yet.
+  const verdict =
+    consumer.ready === false
+      ? ` — ${consumer.message ?? 'not accepted yet'}`
+      : '';
+  return `ModelConfig ${consumer.namespace}/${consumer.name}${origin}${verdict}`;
+}
+
+/** The line under a KServe row's name about its cache: where the weights are. */
+function describeCache(row: ServedModelRow): string | undefined {
+  if (row.backend !== 'kserve' || row.downloaded === undefined) {
+    return undefined;
+  }
+  if (!row.downloaded) {
+    return 'not in the cache';
+  }
+  return isStoppable(row) ? 'in the cache' : 'downloaded, not serving';
+}
+
 function getColumnConfig(
   hrefFor: (consumer: ServedModelConsumer) => string | undefined,
   columns: ServedModelColumns,
-  onStop?: (row: ServedModelRow) => void,
   renderActions?: (row: ServedModelRow) => ReactNode,
 ): ColumnConfig<ServedModelRow>[] {
   const config: ColumnConfig<ServedModelRow>[] = [
@@ -302,6 +351,7 @@ function getColumnConfig(
             row.namespace,
             BACKEND_LABEL[row.backend],
             row.preset ? `preset ${row.preset}` : undefined,
+            describeCache(row),
             describeServedModel(row.details) || undefined,
           ]
             .filter(Boolean)
@@ -438,13 +488,7 @@ function getColumnConfig(
               entries.map(consumer => {
                 const href = hrefFor(consumer);
                 const label = consumer.displayName;
-                // The backend's verdict on a ModelConfig it created, when it
-                // reports one and the controller has not accepted it yet.
-                const verdict =
-                  consumer.ready === false
-                    ? ` — ${consumer.message ?? 'not accepted yet'}`
-                    : '';
-                const title = `ModelConfig ${consumer.namespace}/${consumer.name}${verdict}`;
+                const title = describeUsedBy(consumer);
                 return href ? (
                   <Link
                     key={`${consumer.namespace}/${consumer.name}`}
@@ -488,36 +532,17 @@ function getColumnConfig(
     },
   );
 
-  // One actions column, whatever a row's source offers: the stop menu for a
-  // stoppable CR-backed model, the capability-driven menu (`renderActions`)
-  // for a model its source operates on. A row with neither gets an empty cell.
-  if (onStop || renderActions) {
+  // One actions column with one menu per row (`renderActions`), whatever mix
+  // of sources listed the row; the section decides what each menu offers. A
+  // row with nothing to offer gets an empty cell.
+  if (renderActions) {
     config.push({
       id: 'actions',
       label: 'Actions',
       cell: row => (
         <Cell>
           <Flex align="center" gap="1">
-            {renderActions?.(row)}
-            {onStop && isStoppable(row) && (
-              <MenuTrigger>
-                <ButtonIcon
-                  icon={<MoreVertIcon />}
-                  aria-label={`Actions for ${row.name}`}
-                  variant="tertiary"
-                  size="small"
-                />
-                <Menu>
-                  <MenuItem
-                    color="danger"
-                    iconStart={<StopIcon />}
-                    onAction={() => onStop(row)}
-                  >
-                    Stop serving…
-                  </MenuItem>
-                </Menu>
-              </MenuTrigger>
-            )}
+            {renderActions(row)}
           </Flex>
         </Cell>
       ),
@@ -537,22 +562,18 @@ export type ServedModelsTableProps = {
    */
   columns?: Partial<ServedModelColumns>;
   /**
-   * Offer "Stop serving…" on the rows whose backend supports it. Absent = no
-   * stop control (portals without write access to the serving layer).
-   */
-  onStop?: (row: ServedModelRow) => void;
-  /**
-   * Per-row controls of the operating source (the model-manager actions
-   * menu). Rendered in the actions column; the section decides per
-   * installation capabilities whether there is anything to render.
+   * The per-row actions menu (serve, stop, load, unload, wire, delete — per
+   * the installation's capabilities and the row's state). Rendered in the
+   * actions column; absent = no actions column at all (a portal without any
+   * write access to the serving layer).
    */
   renderActions?: (row: ServedModelRow) => ReactNode;
 };
 
 /**
  * Presentational table of served models. The section owns loading, the
- * unreachable-installations notice and the confirmations; this renders rows,
- * the per-row actions and the empty state. Rows are not clickable: a served
+ * unreachable-installations notice, the confirmations and the one actions
+ * menu per row; this renders rows, that menu and the empty state. Rows are not clickable: a served
  * model has no page of its own here, the ModelConfigs fronting it are what
  * link onward. Its optional columns follow the data — a backend that reports
  * sizes gets a Size column, one that schedules onto nodes gets Node and GPUs
@@ -562,7 +583,6 @@ export type ServedModelsTableProps = {
 export function ServedModelsTable({
   rows,
   columns: columnOverrides,
-  onStop,
   renderActions,
 }: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
@@ -584,8 +604,8 @@ export function ServedModelsTable({
     [rows, JSON.stringify(columnOverrides ?? {})],
   );
   const columnConfig = useMemo(
-    () => getColumnConfig(hrefFor, columns, onStop, renderActions),
-    [hrefFor, columns, onStop, renderActions],
+    () => getColumnConfig(hrefFor, columns, renderActions),
+    [hrefFor, columns, renderActions],
   );
 
   const { tableProps } = useTable<ServedModelRow>({

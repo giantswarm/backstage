@@ -6,6 +6,7 @@ import request from 'supertest';
 import {
   MODEL_MANAGER_AUTH_HEADER,
   ModelManagerClient,
+  PreconditionFailedError,
 } from './ModelManagerClient';
 import { createModelManagerRouter } from './modelManagerRouter';
 import { createRouter } from './router';
@@ -36,6 +37,10 @@ describe('createModelManagerRouter', () => {
     listJobs: jest.fn(),
     getJob: jest.fn(),
     cancelJob: jest.fn(),
+    fitCheck: jest.fn(),
+    listPresets: jest.fn(),
+    search: jest.fn(),
+    listNodes: jest.fn(),
   };
   const mockClient = methods as unknown as ModelManagerClient;
 
@@ -228,6 +233,138 @@ describe('createModelManagerRouter', () => {
     expect(methods.pullModel).not.toHaveBeenCalled();
   });
 
+  it('forwards the kserve preset and node of a pull, ignoring blanks', async () => {
+    methods.pullModel.mockResolvedValue({ job: { id: 'j2' }, created: true });
+
+    const response = await request(app)
+      .post('/model-manager/models/pull?installation=gpu')
+      .set(auth)
+      .send({
+        model: 'Qwen/Qwen3-14B',
+        preset: ' qwen3-14b ',
+        node: 'gpu-node-1',
+      });
+    const blanks = await request(app)
+      .post('/model-manager/models/pull?installation=gpu')
+      .set(auth)
+      .send({ model: 'Qwen/Qwen3-14B', preset: '', node: '' });
+
+    expect(response.status).toBe(202);
+    expect(methods.pullModel).toHaveBeenNthCalledWith(
+      1,
+      { model: 'Qwen/Qwen3-14B', preset: 'qwen3-14b', node: 'gpu-node-1' },
+      { userToken: 'dex-token' },
+    );
+    expect(blanks.status).toBe(202);
+    expect(methods.pullModel).toHaveBeenNthCalledWith(
+      2,
+      { model: 'Qwen/Qwen3-14B' },
+      { userToken: 'dex-token' },
+    );
+  });
+
+  it.each([
+    [
+      { model: 'x:1b', preset: 'Has Spaces' },
+      /preset must be a Kubernetes name/,
+    ],
+    [{ model: 'x:1b', node: '../etc' }, /node must be a Kubernetes name/],
+    [{ model: 'x:1b', node: 42 }, /node must be a string/],
+    [{ model: 'x:1b', preset: 'a'.repeat(300) }, /at most 253/],
+  ])('rejects a malformed kserve field %j', async (body, message) => {
+    const response = await request(app)
+      .post('/model-manager/models/pull?installation=gpu')
+      .set(auth)
+      .send(body);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toMatch(message);
+    expect(methods.pullModel).not.toHaveBeenCalled();
+  });
+
+  it('loads by preset alone on kserve, and refuses a load naming neither', async () => {
+    methods.loadModel.mockResolvedValue({
+      name: 'Qwen/Qwen3-14B',
+      loaded: true,
+    });
+
+    const byPreset = await request(app)
+      .post('/model-manager/models/load?installation=gpu')
+      .set(auth)
+      .send({ preset: 'qwen3-14b', node: 'gpu-node-1' });
+    const neither = await request(app)
+      .post('/model-manager/models/load?installation=gpu')
+      .set(auth)
+      .send({ keepAlive: '10m' });
+
+    expect(byPreset.status).toBe(200);
+    expect(methods.loadModel).toHaveBeenCalledWith(
+      { preset: 'qwen3-14b', node: 'gpu-node-1' },
+      { userToken: 'dex-token' },
+    );
+    expect(neither.status).toBe(400);
+    expect(neither.body.error.message).toMatch(/model or preset is required/);
+  });
+
+  it('runs a fit check and answers the verdict verbatim', async () => {
+    methods.fitCheck.mockResolvedValue({
+      model: 'Qwen/Qwen3-14B',
+      fits: false,
+      reason: 'needs 58 GiB, 40 GiB free',
+    });
+
+    const response = await request(app)
+      .post('/model-manager/models/fit-check?installation=gpu')
+      .set(auth)
+      .send({ model: 'Qwen/Qwen3-14B', node: 'gpu-node-1' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      model: 'Qwen/Qwen3-14B',
+      fits: false,
+      reason: 'needs 58 GiB, 40 GiB free',
+    });
+    expect(methods.fitCheck).toHaveBeenCalledWith(
+      { model: 'Qwen/Qwen3-14B', node: 'gpu-node-1' },
+      { userToken: 'dex-token' },
+    );
+  });
+
+  it('serves presets, nodes and a validated hub search', async () => {
+    methods.listPresets.mockResolvedValue({ presets: [{ name: 'qwen3-14b' }] });
+    methods.listNodes.mockResolvedValue({ nodes: [{ name: 'gpu-node-1' }] });
+    methods.search.mockResolvedValue({ results: [{ id: 'Qwen/Qwen3-14B' }] });
+
+    const presets = await request(app)
+      .get('/model-manager/presets?installation=gpu')
+      .set(auth);
+    const nodes = await request(app)
+      .get('/model-manager/nodes?installation=gpu')
+      .set(auth);
+    const search = await request(app)
+      .get(
+        '/model-manager/search?installation=gpu&q=%20qwen3%2014b%20&limit=10',
+      )
+      .set(auth);
+    const noQuery = await request(app)
+      .get('/model-manager/search?installation=gpu')
+      .set(auth);
+    const badLimit = await request(app)
+      .get('/model-manager/search?installation=gpu&q=qwen&limit=500')
+      .set(auth);
+
+    expect(presets.body).toEqual({ presets: [{ name: 'qwen3-14b' }] });
+    expect(nodes.body).toEqual({ nodes: [{ name: 'gpu-node-1' }] });
+    expect(search.status).toBe(200);
+    expect(methods.search).toHaveBeenCalledWith('qwen3 14b', 10, {
+      userToken: 'dex-token',
+    });
+    expect(noQuery.status).toBe(400);
+    expect(noQuery.body.error.message).toMatch(/q query parameter is required/);
+    expect(badLimit.status).toBe(400);
+    expect(badLimit.body.error.message).toMatch(/between 1 and 50/);
+  });
+
   it('accepts Hugging Face GGUF references', async () => {
     methods.pullModel.mockResolvedValue({ job: {}, created: true });
 
@@ -332,6 +469,9 @@ describe('createModelManagerRouter', () => {
     methods.deleteModel.mockRejectedValue(
       new NotAllowedError('Capability not supported by the backend'),
     );
+    methods.loadModel.mockRejectedValue(
+      new PreconditionFailedError('needs 105 GiB, node spark has 86 GiB'),
+    );
 
     const missing = await request(app)
       .get('/model-manager/models/nope?installation=lab')
@@ -339,10 +479,18 @@ describe('createModelManagerRouter', () => {
     const unsupported = await request(app)
       .delete('/model-manager/models/nope?installation=lab')
       .set(auth);
+    const unfit = await request(app)
+      .post('/model-manager/models/load?installation=lab')
+      .set(auth)
+      .send({ preset: 'nemotron' });
 
     expect(missing.status).toBe(404);
     expect(unsupported.status).toBe(403);
     expect(unsupported.body.error.message).toMatch(/Capability not supported/);
+    // A refused fit is the caller's problem to read, not a 503.
+    expect(unfit.status).toBe(412);
+    expect(unfit.body.error.name).toBe('PreconditionFailedError');
+    expect(unfit.body.error.message).toMatch(/needs 105 GiB/);
   });
 });
 

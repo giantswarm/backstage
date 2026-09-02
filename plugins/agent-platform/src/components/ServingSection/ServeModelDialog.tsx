@@ -24,7 +24,8 @@ import {
   validateServeModelRequest,
   type ServeModelRequest,
 } from '../../lib/serveModel';
-import type { GpuNode } from '../../lib/serving';
+import { formatBytes } from '../../lib/modelManagerServing';
+import type { GpuNode, ServedModel } from '../../lib/serving';
 import type {
   ModelServingConfig,
   ServingPreset,
@@ -32,6 +33,84 @@ import type {
 
 /** Select key for "no node pin". */
 export const ANY_NODE = '__any__';
+/** Select key for "the preset's own source" in the weights picker. */
+export const FROM_HUB = '__hub__';
+
+/**
+ * A model whose weights already sit in a node's cache (model-manager's
+ * inventory, "downloaded on <node>"), offered by the serve flow as the source
+ * of an InferenceService instead of a download.
+ */
+export type DownloadedModelOption = {
+  /** Row id, the select key. */
+  id: string;
+  /** Hugging Face repository the cache holds. */
+  model: string;
+  /** Node whose cache holds it. */
+  node?: string;
+  /** Cache directory — the InferenceService name the storage-initializer looks for. */
+  cachePath?: string;
+  /** The serving preset whose model this is, when known. */
+  preset?: string;
+  sizeBytes?: number;
+};
+
+/** A "downloaded on <node>" row as the serve flow's weights option. */
+export function toDownloadedModelOption(
+  model: ServedModel,
+): DownloadedModelOption {
+  return {
+    id: model.id,
+    model: model.managerRef ?? model.modelSource ?? model.name,
+    node: model.node,
+    cachePath: model.cachePath,
+    preset: model.preset,
+    sizeBytes: model.sizeBytes,
+  };
+}
+
+/** What a "Serve…" on a row hands the dialog to start from. */
+export type ServeModelSeed = {
+  download?: DownloadedModelOption;
+  presetName?: string;
+};
+
+/**
+ * The `storageUri` that serves a cached download: with the cache's admission
+ * policies on, the preset's own source — the storage-initializer is redirected
+ * into `<claim>/<InferenceService name>` and finds the files, which is why the
+ * InferenceService takes the cache directory's name; without them, the claim
+ * directly (`pvc://<claim>/<dir>`), so no download happens either way.
+ */
+export function storageUriForDownload(
+  download: DownloadedModelOption,
+  config: ModelServingConfig | undefined,
+  preset: ServingPreset | undefined,
+): string {
+  const fallback = preset?.model.storageUri ?? `hf://${download.model}`;
+  if (!config?.cache.enabled) {
+    return fallback;
+  }
+  if (config.cache.redirectPolicy) {
+    return fallback;
+  }
+  return config.cache.claimName && download.cachePath
+    ? `pvc://${config.cache.claimName}/${download.cachePath}`
+    : fallback;
+}
+
+/** The label of a cached download in the weights picker. */
+export function describeDownload(download: DownloadedModelOption): string {
+  return [
+    download.model,
+    download.node ? `on ${download.node}` : undefined,
+    download.sizeBytes !== undefined
+      ? formatBytes(download.sizeBytes)
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
 
 export type ServeModelConfirmation = {
   preset: ServingPreset;
@@ -54,6 +133,18 @@ export type ServeModelDialogProps = {
   gpuNodes: GpuNode[];
   /** InferenceServices already in the serving namespace there. */
   existingNames: string[];
+  /**
+   * Cached downloads on the selected installation (model-manager's per-node
+   * inventory) the InferenceService can serve from instead of downloading.
+   * Absent or empty: the weights picker is not shown.
+   */
+  downloads?: DownloadedModelOption[];
+  /**
+   * Where to start from when the dialog opens: the download a "Serve…" on a
+   * row was pressed for, and/or a preset. Read on the closed → open
+   * transition only.
+   */
+  seed?: ServeModelSeed;
   /** Whether the user may create InferenceServices there (SelfSubjectAccessReview). */
   permission: { allowed: boolean; isLoading: boolean };
   isServing: boolean;
@@ -115,6 +206,8 @@ export function ServeModelDialog({
   config,
   gpuNodes,
   existingNames,
+  downloads = [],
+  seed,
   permission,
   isServing,
   error,
@@ -122,6 +215,7 @@ export function ServeModelDialog({
 }: ServeModelDialogProps) {
   const [presetName, setPresetName] = useState<string | undefined>();
   const [request, setRequest] = useState<ServeModelRequest | undefined>();
+  const [downloadId, setDownloadId] = useState<string | undefined>();
   const [showValidation, setShowValidation] = useState(false);
 
   const preset = presets.find(candidate => candidate.name === presetName);
@@ -130,26 +224,67 @@ export function ServeModelDialog({
   // scheduler decides unless the user picks one.
   const defaultNode = gpuNodes.length === 1 ? gpuNodes[0].name : undefined;
 
-  // Re-seed on the closed → open transition and whenever the preset changes;
-  // never on live data changes under an open dialog.
-  const wasOpen = useRef(isOpen);
+  /**
+   * The request for serving a cached download: the preset it belongs to (when
+   * published here), the InferenceService named after the cache directory so
+   * the storage-initializer finds the files, pinned to the node that holds
+   * them, with the source that makes the download a no-op.
+   */
+  const requestForDownload = (
+    download: DownloadedModelOption,
+    fromPreset: ServingPreset | undefined,
+  ): ServeModelRequest | undefined => {
+    const chosen =
+      presets.find(candidate => candidate.name === download.preset) ??
+      fromPreset;
+    if (!chosen) {
+      return undefined;
+    }
+    return {
+      ...initialServeModelRequest(chosen, download.node ?? defaultNode),
+      name: download.cachePath ?? chosen.name,
+      storageUri: storageUriForDownload(download, config, chosen),
+    };
+  };
+
+  // Re-seed on the closed → open transition (a dialog mounted open counts)
+  // and whenever the preset changes; never on live data changes under an open
+  // dialog.
+  const wasOpen = useRef(false);
+  // Set by the seeding effect, consumed by the one below it in the same
+  // commit: both read the pre-update state, and the fallback must not undo
+  // the seed it cannot see yet.
+  const justSeeded = useRef(false);
   useEffect(() => {
     if (isOpen && !wasOpen.current) {
+      justSeeded.current = true;
       setShowValidation(false);
-      setPresetName(presets[0]?.name);
+      const seeded =
+        presets.find(
+          candidate =>
+            candidate.name ===
+            (seed?.presetName ?? seed?.download?.preset ?? presets[0]?.name),
+        ) ?? presets[0];
+      setPresetName(seeded?.name);
+      const fromDownload =
+        seed?.download && requestForDownload(seed.download, seeded);
+      setDownloadId(fromDownload ? seed?.download?.id : undefined);
       setRequest(
-        presets[0]
-          ? initialServeModelRequest(presets[0], defaultNode)
-          : undefined,
+        fromDownload ??
+          (seeded ? initialServeModelRequest(seeded, defaultNode) : undefined),
       );
     }
     wasOpen.current = isOpen;
-    // Seeding is tied to the open transition; presets/defaultNode are read then.
+    // Seeding is tied to the open transition; presets/defaultNode/seed are read then.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
+      return;
+    }
+    if (justSeeded.current) {
+      justSeeded.current = false;
       return;
     }
     // The installation changed (or presets arrived): start from its first preset.
@@ -164,8 +299,34 @@ export function ServeModelDialog({
     const next = presets.find(candidate => candidate.name === name);
     if (next) {
       setPresetName(name);
+      setDownloadId(undefined);
       setRequest(initialServeModelRequest(next, request?.node ?? defaultNode));
       setShowValidation(false);
+    }
+  };
+
+  const chooseDownload = (key: string) => {
+    setShowValidation(false);
+    if (key === FROM_HUB) {
+      setDownloadId(undefined);
+      if (preset) {
+        setRequest(previous =>
+          previous
+            ? { ...previous, storageUri: preset.model.storageUri }
+            : previous,
+        );
+      }
+      return;
+    }
+    const download = downloads.find(candidate => candidate.id === key);
+    if (!download) {
+      return;
+    }
+    const next = requestForDownload(download, preset);
+    if (next) {
+      setDownloadId(download.id);
+      setPresetName(next.presetName);
+      setRequest(next);
     }
   };
 
@@ -276,6 +437,29 @@ export function ServeModelDialog({
 
             {request && (
               <>
+                {downloads.length > 0 && (
+                  <Select
+                    label="Weights"
+                    options={[
+                      {
+                        id: FROM_HUB,
+                        label: "The preset's source (download on first start)",
+                      },
+                      ...downloads.map(download => ({
+                        id: download.id,
+                        label: describeDownload(download),
+                      })),
+                    ]}
+                    selectedKey={downloadId ?? FROM_HUB}
+                    onSelectionChange={key => {
+                      if (key) {
+                        chooseDownload(String(key));
+                      }
+                    }}
+                    description="Serve a model already downloaded into a node's cache: the InferenceService takes the cache directory's name and is pinned to that node, so the weights are found instead of fetched again."
+                  />
+                )}
+
                 <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
                   <Grid.Item>
                     <TextField

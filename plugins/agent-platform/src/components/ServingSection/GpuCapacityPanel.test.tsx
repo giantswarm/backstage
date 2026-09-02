@@ -141,4 +141,62 @@ describe('formatGpuMemory', () => {
     expect(formatGpuMemory(23034)).toBe('22.5 GiB');
     expect(formatGpuMemory(undefined)).toBe('—');
   });
+
+  it('adds the memory budget and the model cache when a serving backend reports them', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[
+          {
+            ...withPlugin,
+            memoryBudgetBytes: 92417933312,
+            memoryBudgetSource: 'allocatable',
+            memoryReservedBytes: 62277025792,
+            memoryFreeBytes: 30140907520,
+            cache: {
+              claim: 'hf-cache',
+              mountPath: '/mnt/models',
+              models: 3,
+              bytesUsed: 77540453864,
+              error: 'scan pod timed out',
+            },
+          },
+        ]}
+        installations={['inst-1']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole('columnheader', { name: 'Memory budget' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: 'Model cache' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('28.1 GiB free')).toBeInTheDocument();
+    expect(screen.getByText('of 86.1 GiB')).toBeInTheDocument();
+    expect(screen.getByText('3 models · 72.2 GiB')).toBeInTheDocument();
+    expect(screen.getByText('scan failed')).toBeInTheDocument();
+    expect(
+      screen.getByText(/what the serving layer fit-checks/),
+    ).toBeInTheDocument();
+  });
+
+  it('shows neither column when no node reports them', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[withPlugin]}
+        installations={['inst-1']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('columnheader', { name: 'Memory budget' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: 'Model cache' }),
+    ).not.toBeInTheDocument();
+  });
 });

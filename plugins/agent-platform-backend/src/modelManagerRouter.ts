@@ -10,11 +10,15 @@ import Router from 'express-promise-router';
 import {
   DEFAULT_MODEL_MANAGER_LOAD_TIMEOUT_MS,
   DEFAULT_MODEL_MANAGER_TIMEOUT_MS,
+  KUBERNETES_NAME_MAX_LENGTH,
+  KUBERNETES_NAME_PATTERN,
   MODEL_MANAGER_AUTH_HEADER,
   MODEL_REF_MAX_LENGTH,
   MODEL_REF_PATTERN,
   ModelManagerClient,
   readModelManagerInstallationsFromConfig,
+  SEARCH_LIMIT_MAX,
+  SEARCH_QUERY_MAX_LENGTH,
 } from './ModelManagerClient';
 
 export interface ModelManagerRouterOptions {
@@ -63,6 +67,66 @@ function readModelRef(body: Record<string, unknown>): string {
     );
   }
   return trimmed;
+}
+
+/**
+ * The kserve fields `preset` and `node`: optional, and when given a Kubernetes
+ * object name (a preset is a DNS label, a node a DNS subdomain). An empty
+ * string reads as "not given", so a form that sends its blank fields along is
+ * not refused for it.
+ */
+function readOptionalName(
+  body: Record<string, unknown>,
+  field: 'preset' | 'node',
+): string | undefined {
+  const value = body[field];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new InputError(`${field} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length > KUBERNETES_NAME_MAX_LENGTH) {
+    throw new InputError(
+      `${field} must be at most ${KUBERNETES_NAME_MAX_LENGTH} characters`,
+    );
+  }
+  if (!KUBERNETES_NAME_PATTERN.test(trimmed)) {
+    throw new InputError(
+      `${field} must be a Kubernetes name: lower-case letters, digits, dashes and dots`,
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * `model` and `preset` together, for the kserve operations where one of them
+ * is enough (a preset names its model): a load or a fit check by preset alone
+ * is valid, one with neither is not. `model` is still validated when present.
+ */
+function readModelOrPreset(body: Record<string, unknown>): {
+  model?: string;
+  preset?: string;
+  node?: string;
+} {
+  const preset = readOptionalName(body, 'preset');
+  const node = readOptionalName(body, 'node');
+  const hasModel =
+    body.model !== undefined &&
+    body.model !== null &&
+    !(typeof body.model === 'string' && body.model.trim() === '');
+  if (!hasModel && !preset) {
+    throw new InputError('model or preset is required');
+  }
+  return {
+    ...(hasModel && { model: readModelRef(body) }),
+    ...(preset && { preset }),
+    ...(node && { node }),
+  };
 }
 
 function readOptionalBoolean(
@@ -238,8 +302,15 @@ export function createModelManagerRouter(
     const userToken = readUserToken(req);
     const model = readModelRef(body(req));
     const wire = readOptionalBoolean(body(req), 'wire');
+    const preset = readOptionalName(body(req), 'preset');
+    const node = readOptionalName(body(req), 'node');
     const result = await client.pullModel(
-      { model, ...(wire !== undefined && { wire }) },
+      {
+        model,
+        ...(wire !== undefined && { wire }),
+        ...(preset !== undefined && { preset }),
+        ...(node !== undefined && { node }),
+      },
       { userToken },
     );
     // 202, matching model-manager's own answer: the import has started, the
@@ -250,7 +321,7 @@ export function createModelManagerRouter(
   router.post('/model-manager/models/load', async (req, res) => {
     const client = resolveClient(req);
     const userToken = readUserToken(req);
-    const model = readModelRef(body(req));
+    const target = readModelOrPreset(body(req));
     const rawKeepAlive = body(req).keepAlive;
     let keepAlive: string | undefined;
     if (rawKeepAlive !== undefined) {
@@ -268,9 +339,22 @@ export function createModelManagerRouter(
     }
     res.json(
       await client.loadModel(
-        { model, ...(keepAlive !== undefined && { keepAlive }) },
+        { ...target, ...(keepAlive !== undefined && { keepAlive }) },
         { userToken },
       ),
+    );
+  });
+
+  /**
+   * The kserve fit check: whether a model (by repository, or by the preset
+   * that names it) fits a node's memory budget. Answers model-manager's
+   * verdict verbatim; `fits: false` is a 200 with the numbers.
+   */
+  router.post('/model-manager/models/fit-check', async (req, res) => {
+    const client = resolveClient(req);
+    const userToken = readUserToken(req);
+    res.json(
+      await client.fitCheck(readModelOrPreset(body(req)), { userToken }),
     );
   });
 
@@ -326,6 +410,44 @@ export function createModelManagerRouter(
   router.get('/model-manager/jobs', async (req, res) => {
     const client = resolveClient(req);
     res.json(await client.listJobs({ userToken: readUserToken(req) }));
+  });
+
+  // The kserve capabilities. A backend without them answers `unsupported`,
+  // which the client maps to 403 — the frontend never offers them unless the
+  // capability flag is true, so reaching that is a hand-made request.
+  router.get('/model-manager/presets', async (req, res) => {
+    const client = resolveClient(req);
+    res.json(await client.listPresets({ userToken: readUserToken(req) }));
+  });
+
+  router.get('/model-manager/search', async (req, res) => {
+    const client = resolveClient(req);
+    const userToken = readUserToken(req);
+    const query = singleQueryValue(req.query.q, 'q')?.trim();
+    if (!query) {
+      throw new InputError('q query parameter is required');
+    }
+    if (query.length > SEARCH_QUERY_MAX_LENGTH) {
+      throw new InputError(
+        `q must be at most ${SEARCH_QUERY_MAX_LENGTH} characters`,
+      );
+    }
+    const rawLimit = singleQueryValue(req.query.limit, 'limit');
+    let limit: number | undefined;
+    if (rawLimit !== undefined) {
+      limit = Number(rawLimit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > SEARCH_LIMIT_MAX) {
+        throw new InputError(
+          `limit must be an integer between 1 and ${SEARCH_LIMIT_MAX}`,
+        );
+      }
+    }
+    res.json(await client.search(query, limit, { userToken }));
+  });
+
+  router.get('/model-manager/nodes', async (req, res) => {
+    const client = resolveClient(req);
+    res.json(await client.listNodes({ userToken: readUserToken(req) }));
   });
 
   router.get('/model-manager/jobs/:jobId', async (req, res) => {

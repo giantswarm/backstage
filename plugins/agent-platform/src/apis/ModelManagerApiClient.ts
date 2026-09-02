@@ -11,15 +11,23 @@ import { getInstallationOidcToken } from '../lib/installationOidcToken';
 import {
   modelConfigRefSchema,
   modelManagerBackendSchema,
+  modelManagerFitResultSchema,
   modelManagerJobSchema,
   modelManagerLoadedModelSchema,
   modelManagerModelSchema,
+  modelManagerNodeSchema,
+  modelManagerPresetSchema,
+  modelManagerSearchResultSchema,
   parseModelManagerList,
   type ModelConfigRef,
   type ModelManagerBackend,
+  type ModelManagerFitResult,
   type ModelManagerJob,
   type ModelManagerLoadedModel,
   type ModelManagerModel,
+  type ModelManagerNode,
+  type ModelManagerPreset,
+  type ModelManagerSearchResult,
 } from '../lib/modelManager';
 import { MODEL_MANAGER_AUTH_HEADER, ModelManagerApi } from './ModelManagerApi';
 
@@ -114,7 +122,7 @@ export class ModelManagerApiClient implements ModelManagerApi {
 
   async pullModel(
     installation: string,
-    request: { model: string; wire?: boolean },
+    request: { model: string; wire?: boolean; preset?: string; node?: string },
   ): Promise<{ job: ModelManagerJob; created: boolean }> {
     const body = await this.request<{ job?: unknown; created?: unknown }>(
       'POST',
@@ -132,7 +140,12 @@ export class ModelManagerApiClient implements ModelManagerApi {
 
   async loadModel(
     installation: string,
-    request: { model: string; keepAlive?: string },
+    request: {
+      model?: string;
+      keepAlive?: string;
+      preset?: string;
+      node?: string;
+    },
   ): Promise<ModelManagerModel> {
     const body = await this.request('POST', '/model-manager/models/load', {
       installation,
@@ -141,10 +154,60 @@ export class ModelManagerApiClient implements ModelManagerApi {
     const parsed = modelManagerModelSchema.safeParse(body);
     if (!parsed.success) {
       throw upstreamError(
-        `model-manager on ${installation} loaded ${request.model} but answered a model this portal cannot read.`,
+        `model-manager on ${installation} loaded ${request.model ?? request.preset} but answered a model this portal cannot read.`,
       );
     }
     return parsed.data;
+  }
+
+  async fitCheck(
+    installation: string,
+    request: { model?: string; preset?: string; node?: string },
+  ): Promise<ModelManagerFitResult> {
+    const body = await this.request('POST', '/model-manager/models/fit-check', {
+      installation,
+      body: request,
+    });
+    const parsed = modelManagerFitResultSchema.safeParse(body);
+    if (!parsed.success) {
+      throw upstreamError(
+        `model-manager on ${installation} answered a fit check this portal cannot read.`,
+      );
+    }
+    return parsed.data;
+  }
+
+  async listPresets(installation: string): Promise<ModelManagerPreset[]> {
+    const body = await this.request('GET', '/model-manager/presets', {
+      installation,
+    });
+    return parseModelManagerList(body, 'presets', modelManagerPresetSchema);
+  }
+
+  async searchModels(
+    installation: string,
+    query: string,
+    limit?: number,
+  ): Promise<ModelManagerSearchResult[]> {
+    const body = await this.request('GET', '/model-manager/search', {
+      installation,
+      query: {
+        q: query,
+        ...(limit !== undefined && { limit: String(limit) }),
+      },
+    });
+    return parseModelManagerList(
+      body,
+      'results',
+      modelManagerSearchResultSchema,
+    );
+  }
+
+  async listNodes(installation: string): Promise<ModelManagerNode[]> {
+    const body = await this.request('GET', '/model-manager/nodes', {
+      installation,
+    });
+    return parseModelManagerList(body, 'nodes', modelManagerNodeSchema);
   }
 
   async unloadModel(installation: string, model: string): Promise<void> {
@@ -279,7 +342,8 @@ export class ModelManagerApiClient implements ModelManagerApi {
    * These names matter twice over: the plugin's QueryClientProvider
    * short-circuits its retry predicate on them, and the serving source
    * classifies an installation as unreadable on any of them while the
-   * mutations show the message. A 400 is a request this proxy or
+   * mutations show the message; a 412 (`PreconditionFailedError`) is the
+   * fit check's refusal, shown where it was asked. A 400 is a request this proxy or
    * model-manager refused — the message says which field — and stays a plain
    * error, except that an unknown installation (outside the configured set)
    * reads as "no model-manager here".
@@ -314,6 +378,10 @@ export class ModelManagerApiClient implements ModelManagerApi {
     }
     if (response.status === 409) {
       error.name = 'ConflictError';
+    }
+    if (response.status === 412) {
+      // A fit check refused the model: the message carries the numbers.
+      error.name = 'PreconditionFailedError';
     }
     if (response.status === 503) {
       error.name = 'ServiceUnavailableError';

@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "name": "gpu-node-1",
+      "ready": true,
+      "architecture": "arm64",
+      "allocatableMemoryBytes": 92417933312,
+      "gpuCount": 1,
+      "gpuMemoryBytes": 128849018880,
+      "gpuProduct": "NVIDIA-GB10",
+      "budgetBytes": 92417933312,
+      "budgetSource": "allocatable",
+      "reservedBytes": 62277025792,
+      "freeBytes": 30140907520,
+      "cache": {
+        "claim": "hf-cache",
+        "mountPath": "/mnt/models",
+        "models": 3,
+        "bytesUsed": 77540453864,
+        "scannedAt": "2026-09-02T16:19:26.157334389Z"
+      }
+    }
+  ]
+}

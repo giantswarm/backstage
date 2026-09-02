@@ -10,6 +10,7 @@ import {
   useTable,
 } from '@backstage/ui';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import { formatBytes, formatTime } from '../../lib/modelManagerServing';
 import {
   gpuFree,
   gpuTotal,
@@ -46,8 +47,94 @@ const NO_DEVICE_PLUGIN =
 const NO_POD_DATA =
   'The pods on this node could not be read, so scheduled GPU requests are unknown.';
 
-function getColumnConfig(): ColumnConfig<GpuNode>[] {
-  return [
+/** The optional columns, shown when any node reports the data. */
+export type GpuCapacityColumns = {
+  /** The memory budget a serving backend fit-checks against (model-manager). */
+  budget: boolean;
+  /** The download cache on the node (model-manager). */
+  cache: boolean;
+};
+
+export function columnsForNodes(nodes: GpuNode[]): GpuCapacityColumns {
+  return {
+    budget: nodes.some(node => node.memoryBudgetBytes !== undefined),
+    cache: nodes.some(node => node.cache !== undefined),
+  };
+}
+
+/** "86.1 GiB free of 86.1 GiB", with the source and the reservation on hover. */
+function BudgetCell({ node }: { node: GpuNode }) {
+  if (node.memoryBudgetBytes === undefined) {
+    return <CellText title="—" />;
+  }
+  const free = node.memoryFreeBytes ?? node.memoryBudgetBytes;
+  let source: string | undefined;
+  if (node.memoryBudgetSource === 'gpu-labels') {
+    source = 'Budget: the GPU memory from the node labels';
+  } else if (node.memoryBudgetSource === 'allocatable') {
+    source =
+      'Budget: the allocatable node memory (no GPU memory label — a unified-memory or CPU node)';
+  }
+  const detail = [
+    source,
+    node.memoryReservedBytes !== undefined
+      ? `${formatBytes(node.memoryReservedBytes)} reserved by the models served here`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join('; ');
+  return (
+    <Cell>
+      <Text as="p" variant="body-medium" title={detail}>
+        {formatBytes(free)} free
+      </Text>
+      <Text variant="body-small" color="secondary" title={detail}>
+        of {formatBytes(node.memoryBudgetBytes)}
+      </Text>
+    </Cell>
+  );
+}
+
+/** "3 models · 61 GiB", with the claim and the last scan on hover; a failed scan is flagged. */
+function CacheCell({ node }: { node: GpuNode }) {
+  const cache = node.cache;
+  if (!cache) {
+    return <CellText title="—" />;
+  }
+  const detail = [
+    cache.claim ? `Claim ${cache.claim}` : undefined,
+    cache.mountPath ? `mounted at ${cache.mountPath}` : undefined,
+    cache.shared ? 'shared storage, visible from every node' : undefined,
+    cache.scannedAt ? `scanned at ${formatTime(cache.scannedAt)}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const models = cache.models ?? 0;
+  return (
+    <Cell>
+      <Text as="p" variant="body-medium" title={detail}>
+        {models} model{models === 1 ? '' : 's'}
+        {cache.bytesUsed !== undefined
+          ? ` · ${formatBytes(cache.bytesUsed)}`
+          : ''}
+      </Text>
+      {cache.error && (
+        <Text
+          variant="body-small"
+          color="warning"
+          title={`The last scan failed: ${cache.error}. The figures may be stale.`}
+        >
+          scan failed
+        </Text>
+      )}
+    </Cell>
+  );
+}
+
+function getColumnConfig(
+  columns: GpuCapacityColumns = { budget: false, cache: false },
+): ColumnConfig<GpuNode>[] {
+  const config: ColumnConfig<GpuNode>[] = [
     {
       id: 'name',
       label: 'Node',
@@ -131,6 +218,21 @@ function getColumnConfig(): ColumnConfig<GpuNode>[] {
       },
     },
   ];
+  if (columns.budget) {
+    config.push({
+      id: 'budget',
+      label: 'Memory budget',
+      cell: node => <BudgetCell node={node} />,
+    });
+  }
+  if (columns.cache) {
+    config.push({
+      id: 'cache',
+      label: 'Model cache',
+      cell: node => <CacheCell node={node} />,
+    });
+  }
+  return config;
 }
 
 export function sortGpuNodesBy(
@@ -186,7 +288,8 @@ export function GpuCapacityPanel({
   unavailable,
   isLoading,
 }: GpuCapacityPanelProps) {
-  const columnConfig = useMemo(() => getColumnConfig(), []);
+  const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
+  const columnConfig = useMemo(() => getColumnConfig(columns), [columns]);
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',
     data: nodes,
@@ -209,6 +312,10 @@ export function GpuCapacityPanel({
           GPU product and memory from the gpu-feature-discovery node labels;
           allocatable from the device plugin; free is allocatable minus the GPUs
           scheduled pods request.
+          {columns.budget &&
+            ' The memory budget is what the serving layer fit-checks a model against, less what the models already served on the node reserve.'}
+          {columns.cache &&
+            ' The model cache holds pre-warmed downloads; serving one of them skips the download.'}
         </Text>
 
         {nodes.length > 0 || isLoading || readableInstallations.length === 0 ? (

@@ -3,6 +3,7 @@ import {
   encodeModelRef,
   ModelManagerClient,
   readModelManagerInstallationsFromConfig,
+  PreconditionFailedError,
 } from './ModelManagerClient';
 
 describe('readModelManagerInstallationsFromConfig', () => {
@@ -171,6 +172,56 @@ describe('ModelManagerClient', () => {
     });
   });
 
+  it('forwards the kserve fields of a pull and a load as given', async () => {
+    fetchMock.mockImplementation(async () => jsonResponse({}));
+
+    await buildClient().pullModel(
+      { model: 'Qwen/Qwen3-14B', preset: 'qwen3-14b', node: 'spark' },
+      { userToken: 't' },
+    );
+    await buildClient().loadModel(
+      { preset: 'qwen3-14b', node: 'spark' },
+      { userToken: 't' },
+    );
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      model: 'Qwen/Qwen3-14B',
+      preset: 'qwen3-14b',
+      node: 'spark',
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      preset: 'qwen3-14b',
+      node: 'spark',
+    });
+  });
+
+  it('reaches the kserve routes: fit-check, presets, search and nodes', async () => {
+    fetchMock.mockImplementation(async () => jsonResponse({}));
+    const client = buildClient();
+
+    await client.fitCheck(
+      { model: 'Qwen/Qwen3-14B', node: 'spark' },
+      { userToken: 't' },
+    );
+    await client.listPresets({ userToken: 't' });
+    await client.search('qwen3 14b', 10, { userToken: 't' });
+    await client.search('qwen3', undefined, { userToken: 't' });
+    await client.listNodes({ userToken: 't' });
+
+    const calls = fetchMock.mock.calls.map(([url, init]) => [url, init.method]);
+    expect(calls).toEqual([
+      [`${installation.apiBaseUrl}/api/v1/models/fit-check`, 'POST'],
+      [`${installation.apiBaseUrl}/api/v1/presets`, 'GET'],
+      [`${installation.apiBaseUrl}/api/v1/search?q=qwen3+14b&limit=10`, 'GET'],
+      [`${installation.apiBaseUrl}/api/v1/search?q=qwen3`, 'GET'],
+      [`${installation.apiBaseUrl}/api/v1/nodes`, 'GET'],
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      model: 'Qwen/Qwen3-14B',
+      node: 'spark',
+    });
+  });
+
   it('gives a load its own, longer timeout', async () => {
     fetchMock.mockImplementation(async () =>
       jsonResponse({ name: 'x', loaded: true }),
@@ -197,6 +248,7 @@ describe('ModelManagerClient', () => {
       ['not_found', 404, 'NotFoundError'],
       ['conflict', 409, 'ConflictError'],
       ['unsupported', 501, 'NotAllowedError'],
+      ['does_not_fit', 412, 'PreconditionFailedError'],
       ['backend_error', 502, 'ServiceUnavailableError'],
     ])(
       "maps model-manager's %s envelope to %s",
@@ -213,6 +265,38 @@ describe('ModelManagerClient', () => {
         });
       },
     );
+
+    it('answers a refused fit as a 412 the middleware can read, not a 503', async () => {
+      fetchMock.mockResolvedValue(
+        envelope(
+          'does_not_fit',
+          'Qwen/Qwen3-14B needs 58 GiB, node spark has 40 GiB free',
+          412,
+        ),
+      );
+
+      const failure = await buildClient()
+        .pullModel(
+          { model: 'Qwen/Qwen3-14B', node: 'spark' },
+          { userToken: 't' },
+        )
+        .catch(error => error);
+
+      expect(failure).toBeInstanceOf(PreconditionFailedError);
+      expect(failure).toMatchObject({
+        name: 'PreconditionFailedError',
+        statusCode: 412,
+        message: expect.stringContaining('needs 58 GiB'),
+      });
+    });
+
+    it('reads a bare 412 without an envelope the same way', async () => {
+      fetchMock.mockResolvedValue(new Response('too big', { status: 412 }));
+
+      await expect(
+        buildClient().loadModel({ preset: 'qwen3-14b' }, { userToken: 't' }),
+      ).rejects.toMatchObject({ name: 'PreconditionFailedError' });
+    });
 
     it('names the unsupported capability so the UI can say what is missing', async () => {
       fetchMock.mockResolvedValue(

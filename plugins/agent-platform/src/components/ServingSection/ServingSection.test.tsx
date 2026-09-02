@@ -130,12 +130,37 @@ const withPresets: ServingPresets = {
 };
 
 // The model-manager controls are react-query/API-backed and tested on their
-// own; here only *whether* the section mounts them matters.
+// own; here only *whether* the section mounts them, and what it hands them,
+// matters. The row menu is reduced to one button per offer it received; the
+// gate deciding which rows get a menu at all is the real one.
 jest.mock('../ModelManagerControls', () => ({
+  hasRowActions: jest.requireActual('../ModelManagerControls').hasRowActions,
   PullModelDialog: () => null,
+  ImportModelDialog: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div data-testid="import-dialog" /> : null,
   PullJobsPanel: () => <div data-testid="pull-jobs-panel" />,
-  ServedModelActions: ({ model }: { model: { name: string } }) => (
-    <button type="button" aria-label={`Actions for ${model.name}`} />
+  ServedModelActions: ({
+    model,
+    onServe,
+    onStop,
+  }: {
+    model: ServedModel;
+    onServe?: (model: ServedModel) => void;
+    onStop?: (model: ServedModel) => void;
+  }) => (
+    <>
+      <button type="button" aria-label={`Actions for ${model.name}`} />
+      {onServe && (
+        <button type="button" onClick={() => onServe(model)}>
+          Serve… {model.name}
+        </button>
+      )}
+      {onStop && (
+        <button type="button" onClick={() => onStop(model)}>
+          Stop serving… {model.name}
+        </button>
+      )}
+    </>
   ),
 }));
 
@@ -230,7 +255,7 @@ describe('ServingSection', () => {
       isLoading: false,
     });
     mockServe.mockResolvedValue(undefined);
-    mockStop.mockResolvedValue(undefined);
+    mockStop.mockImplementation(async ({ via }: { via: string }) => ({ via }));
   });
 
   it('asks for presets only on the installations with a KServe backend', async () => {
@@ -314,17 +339,15 @@ describe('ServingSection', () => {
     );
   });
 
-  it('offers "Stop serving…" on KServe rows and asks before stopping', async () => {
+  it('offers "Stop serving…" on KServe rows and asks before deleting the CR', async () => {
     await renderSection();
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Actions for qwen3-14b' }),
-    );
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /Stop serving/ }),
+      screen.getByRole('button', { name: 'Stop serving… qwen3-14b' }),
     );
 
     expect(screen.getByText('Stop serving "qwen3-14b"?')).toBeInTheDocument();
+    // A read-only CR source: the CR is deleted with the user's own RBAC.
     expect(mockUseSelfSubjectAccessReview).toHaveBeenCalledWith(
       'inst-1',
       expect.objectContaining({
@@ -339,12 +362,210 @@ describe('ServingSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Stop serving' }));
 
     await waitFor(() => expect(mockStop).toHaveBeenCalledTimes(1));
-    expect(mockStop.mock.calls[0][0]).toMatchObject({ name: 'qwen3-14b' });
+    expect(mockStop.mock.calls[0][0]).toMatchObject({
+      model: { name: 'qwen3-14b' },
+      via: 'inferenceservice',
+    });
     await waitFor(() =>
       expect(mockToastPost).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Stopped serving "qwen3-14b"' }),
       ),
     );
+  });
+
+  describe('on a KServe installation with a model-manager (one row, one menu)', () => {
+    const kserveManagerCapabilities = {
+      pull: true,
+      pullProgress: true,
+      delete: true,
+      load: true,
+      unload: true,
+      loadedModels: true,
+      wire: true,
+      presets: true,
+      fitCheck: true,
+      nodeInventory: true,
+      search: true,
+    };
+    // The CR row after the provider folded model-manager's view onto it.
+    const qwenFolded: ServedModel = {
+      ...qwen,
+      managerRef: 'Qwen/Qwen3-14B',
+      sizeBytes: 29_540_000_000,
+      downloaded: true,
+      cachePath: 'qwen3-14b',
+      loaded: true,
+      modelConfig: { name: 'qwen3-14b', namespace: 'kagent', managed: false },
+      operable: true,
+    };
+    const devstral: ServedModel = {
+      id: 'inst-1/kserve/cache/gpu-node-1/devstral-small-2',
+      installation: 'inst-1',
+      backend: 'kserve',
+      name: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+      modelSource: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+      readiness: 'available',
+      readinessMessage: 'Downloaded on gpu-node-1; not serving.',
+      node: 'gpu-node-1',
+      endpointHosts: [],
+      managerRef: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+      sizeBytes: 48_000_000_000,
+      downloaded: true,
+      cachePath: 'devstral-small-2',
+      preset: 'devstral-small-2',
+      loaded: false,
+      operable: true,
+    };
+    const mixedServing: ServingContextValue = {
+      ...baseServing,
+      capabilities: { 'inst-1': kserveManagerCapabilities },
+      servedModels: [qwenFolded, devstral],
+      servedModelFor: (_installation, lookup) =>
+        lookup.endpoint?.includes('qwen3-14b-predictor')
+          ? qwenFolded
+          : undefined,
+    };
+    const devstralPreset: ServingPreset = {
+      ...preset,
+      name: 'devstral-small-2',
+      displayName: 'Devstral Small 2',
+      model: {
+        id: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+        storageUri: 'hf://mistralai/Devstral-Small-2-24B-Instruct-2512',
+        format: 'vLLM',
+        capabilities: ['tools'],
+      },
+    };
+
+    beforeEach(() => {
+      mockUseServing.mockReturnValue(mixedServing);
+      mockUseServingPresets.mockReturnValue({
+        ...withPresets,
+        presetsFor: () => [preset, devstralPreset],
+      });
+    });
+
+    it('offers the Hugging Face import instead of the plain pull, and one menu per row', async () => {
+      await renderSection();
+
+      expect(
+        screen.getByRole('button', { name: /Import from Hugging Face/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Pull model/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId('pull-jobs-panel')).toBeInTheDocument();
+      // The served InferenceService: one menu, one stop.
+      expect(
+        screen.getAllByRole('button', { name: 'Actions for qwen3-14b' }),
+      ).toHaveLength(1);
+      expect(
+        screen.getByRole('button', { name: 'Stop serving… qwen3-14b' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Serve… qwen3-14b/ }),
+      ).not.toBeInTheDocument();
+      // The cached download: serve, not stop.
+      expect(
+        screen.getByRole('button', {
+          name: 'Serve… mistralai/Devstral-Small-2-24B-Instruct-2512',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', {
+          name: /Stop serving… mistralai/,
+        }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/downloaded, not serving/)).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /Import from Hugging Face/ }),
+      );
+      expect(screen.getByTestId('import-dialog')).toBeInTheDocument();
+    });
+
+    it('stops a row model-manager operates through model-manager, without asking the cluster', async () => {
+      await renderSection();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop serving… qwen3-14b' }),
+      );
+
+      expect(screen.getByText('Stop serving "qwen3-14b"?')).toBeInTheDocument();
+      expect(
+        screen.getByText(/model-manager deletes the InferenceService/),
+      ).toBeInTheDocument();
+      expect(mockUseSelfSubjectAccessReview).toHaveBeenLastCalledWith(
+        'inst-1',
+        expect.anything(),
+        { enabled: false },
+      );
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop serving' }),
+      );
+
+      await waitFor(() => expect(mockStop).toHaveBeenCalledTimes(1));
+      expect(mockStop.mock.calls[0][0]).toMatchObject({
+        model: { name: 'qwen3-14b', managerRef: 'Qwen/Qwen3-14B' },
+        via: 'model-manager',
+      });
+      await waitFor(() =>
+        expect(mockToastPost).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description: expect.stringContaining('model-manager is removing'),
+          }),
+        ),
+      );
+    });
+
+    it('says what happened when model-manager handed the stop back to the CR delete', async () => {
+      mockStop.mockResolvedValue({ via: 'inferenceservice' });
+      await renderSection();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop serving… qwen3-14b' }),
+      );
+      expect(
+        screen.getByText(/deleted with your own permissions instead/),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop serving' }),
+      );
+
+      await waitFor(() =>
+        expect(mockToastPost).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description:
+              'The predictor is being removed; the weights stay cached on the node.',
+          }),
+        ),
+      );
+    });
+
+    it('opens the serve dialog seeded with a cached download: its preset, cache directory and node', async () => {
+      await renderSection();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Serve… mistralai/Devstral-Small-2-24B-Instruct-2512',
+        }),
+      );
+
+      expect(screen.getByText('Serve a model')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
+        'Devstral Small 2',
+      );
+      expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue(
+        'devstral-small-2',
+      );
+      expect(
+        screen.getByRole('button', { name: /Target node/ }),
+      ).toHaveTextContent('gpu-node-1');
+      expect(screen.getByRole('button', { name: /Weights/ })).toHaveTextContent(
+        'mistralai/Devstral-Small-2-24B-Instruct-2512 · on gpu-node-1 · 44.7 GiB',
+      );
+    });
   });
 
   it('explains a stop the user is not allowed to do', async () => {
@@ -355,10 +576,7 @@ describe('ServingSection', () => {
 
     await renderSection();
     await userEvent.click(
-      screen.getByRole('button', { name: 'Actions for qwen3-14b' }),
-    );
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /Stop serving/ }),
+      screen.getByRole('button', { name: 'Stop serving… qwen3-14b' }),
     );
 
     expect(

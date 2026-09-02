@@ -40,3 +40,7 @@ export function modelManagerModelsQueryKey(installation: string) {
 export function modelManagerJobsQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'jobs', installation] as const;
 }
+
+export function modelManagerNodesQueryKey(installation: string) {
+  return ['agent-platform', 'model-manager', 'nodes', installation] as const;
+}

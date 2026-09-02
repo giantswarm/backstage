@@ -52,20 +52,49 @@ export function formatJobProgress(job: PullJob): string {
   return parts.join(' ');
 }
 
-function PullJobRow({ job }: { job: PullJob }) {
+/**
+ * Whether a ModelConfig still exists on an installation: `true`/`false` when
+ * the caller has read the list, `undefined` when it cannot tell (still
+ * loading, no permission) — then the link is offered as before.
+ */
+export type ModelConfigExists = (
+  installation: string,
+  namespace: string,
+  name: string,
+) => boolean | undefined;
+
+function PullJobRow({
+  job,
+  modelConfigExists,
+}: {
+  job: PullJob;
+  modelConfigExists?: ModelConfigExists;
+}) {
   const cancel = useCancelJob(job.installation);
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
   const presentation = JOB_PHASE_PRESENTATION[job.phase];
   const active = isJobActive(job);
   const progress = formatJobProgress(job);
   const wired = job.result;
+  // A finished job remembers the ModelConfig it wired; the model may since
+  // have been deleted (unwired). Never link to a page that 404s.
+  const wiredExists = wired
+    ? modelConfigExists?.(job.installation, wired.namespace, wired.name)
+    : undefined;
   const wiredHref =
     wired &&
+    wiredExists !== false &&
     modelDetailRoute?.({
       installation: job.installation,
       namespace: wired.namespace,
       name: wired.name,
     });
+  let wiredOutcome = 'was created.';
+  if (wiredExists === false) {
+    wiredOutcome = 'was created and has since been removed.';
+  } else if (wired?.ready) {
+    wiredOutcome = 'is ready for agents.';
+  }
 
   return (
     <Flex direction="column" gap="1" data-testid={`pull-job-${job.id}`}>
@@ -124,7 +153,7 @@ function PullJobRow({ job }: { job: PullJob }) {
           ) : (
             `${wired.namespace}/${wired.name}`
           )}{' '}
-          {wired.ready ? 'is ready for agents.' : 'was created.'}
+          {wiredOutcome}
         </Text>
       )}
 
@@ -140,6 +169,8 @@ function PullJobRow({ job }: { job: PullJob }) {
 export type PullJobsPanelProps = {
   /** Installations whose backend reports the `pull` capability. */
   installations: string[];
+  /** Whether a wired ModelConfig still exists, so a finished job does not link to a deleted one. */
+  modelConfigExists?: ModelConfigExists;
 };
 
 /**
@@ -151,7 +182,10 @@ export type PullJobsPanelProps = {
  * never pulled anything does not carry an empty card. Jobs are model-manager's
  * in-memory list; a restart forgets them, and so does this panel.
  */
-export function PullJobsPanel({ installations }: PullJobsPanelProps) {
+export function PullJobsPanel({
+  installations,
+  modelConfigExists,
+}: PullJobsPanelProps) {
   const { jobs, errors } = usePullJobs(installations);
 
   const shown = useMemo(() => {
@@ -168,7 +202,11 @@ export function PullJobsPanel({ installations }: PullJobsPanelProps) {
     <InfoCard title="Model downloads">
       <Flex direction="column" gap="4">
         {shown.map(job => (
-          <PullJobRow key={`${job.installation}/${job.id}`} job={job} />
+          <PullJobRow
+            key={`${job.installation}/${job.id}`}
+            job={job}
+            modelConfigExists={modelConfigExists}
+          />
         ))}
         {errors.map(({ installation, error }) => (
           <Text key={installation} variant="body-small" color="danger">

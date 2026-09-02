@@ -8,9 +8,11 @@ import backendOllama from '../../lib/__fixtures__/model-manager.backend.ollama.j
 import backendKserve from '../../lib/__fixtures__/model-manager.backend.kserve.json';
 import modelsOllama from '../../lib/__fixtures__/model-manager.models.ollama.json';
 import modelsKserve from '../../lib/__fixtures__/model-manager.models.kserve.json';
+import nodesKserve from '../../lib/__fixtures__/model-manager.nodes.kserve.json';
 import {
   modelManagerBackendSchema,
   modelManagerModelSchema,
+  modelManagerNodeSchema,
   parseModelManagerList,
 } from '../../lib/modelManager';
 import { useModelManagerServingSource } from './useModelManagerServingSource';
@@ -18,11 +20,13 @@ import { useModelManagerServingSource } from './useModelManagerServingSource';
 const listInstallations = jest.fn();
 const getBackend = jest.fn();
 const listModels = jest.fn();
+const listNodes = jest.fn();
 
 const modelManagerApi = {
   listInstallations,
   getBackend,
   listModels,
+  listNodes,
 } as unknown as ModelManagerApi;
 
 const ollama = modelManagerBackendSchema.parse(backendOllama);
@@ -36,6 +40,11 @@ const kserveModels = parseModelManagerList(
   modelsKserve,
   'models',
   modelManagerModelSchema,
+);
+const kserveNodes = parseModelManagerList(
+  nodesKserve,
+  'nodes',
+  modelManagerNodeSchema,
 );
 
 function namedError(name: string, message = name) {
@@ -63,6 +72,8 @@ beforeEach(() => {
   listInstallations.mockReset();
   getBackend.mockReset();
   listModels.mockReset();
+  listNodes.mockReset();
+  listNodes.mockResolvedValue(kserveNodes);
   listInstallations.mockResolvedValue(['lab', 'gpu']);
   getBackend.mockImplementation(async (installation: string) =>
     installation === 'gpu' ? kserve : ollama,
@@ -116,7 +127,7 @@ describe('useModelManagerServingSource', () => {
   it('maps each installation to its backend, capabilities and served models', async () => {
     const { result } = renderSource();
 
-    await waitFor(() => expect(result.current.servedModels).toHaveLength(5));
+    await waitFor(() => expect(result.current.servedModels).toHaveLength(6));
 
     expect(result.current.installations).toEqual(['lab', 'gpu']);
     expect(result.current.backends).toEqual({ lab: 'ollama', gpu: 'kserve' });
@@ -144,13 +155,47 @@ describe('useModelManagerServingSource', () => {
       ['lab', 'ollama', 'qwen3.5:9b', 'available'],
       ['lab', 'ollama', 'qwen3:0.6b', 'available'],
       ['lab', 'ollama', 'gemma3:270m', 'available'],
-      ['gpu', 'kserve', 'Qwen/Qwen3-14B', 'ready'],
-      ['gpu', 'kserve', 'mistralai/Devstral-Small-2', 'available'],
+      // A served KServe model is named after its InferenceService; a cached
+      // one after its repository, "downloaded on <node>".
+      ['gpu', 'kserve', 'qwen3-14b', 'ready'],
+      [
+        'gpu',
+        'kserve',
+        'mistralai/Devstral-Small-2-24B-Instruct-2512',
+        'available',
+      ],
+      ['gpu', 'kserve', 'hf-internal-testing/tiny-random-gpt2', 'available'],
     ]);
-    // The model-manager source never contributes GPU nodes; a backend with a
-    // node inventory says so through its capability flag instead.
-    expect(result.current.gpuNodes).toEqual([]);
+    // Only the backend with a node inventory is asked for its nodes.
+    await waitFor(() => expect(result.current.gpuNodes).toHaveLength(1));
+    expect(listNodes).toHaveBeenCalledTimes(1);
+    expect(listNodes).toHaveBeenCalledWith('gpu');
+    expect(result.current.gpuNodes[0]).toMatchObject({
+      id: 'gpu/gpu-node-1',
+      installation: 'gpu',
+      name: 'gpu-node-1',
+      product: 'NVIDIA-GB10',
+      memoryBudgetBytes: 92417933312,
+      memoryFreeBytes: 30140907520,
+      cache: { claim: 'hf-cache', models: 3 },
+    });
     expect(result.current.gpuCapacityUnavailable).toEqual({});
+  });
+
+  it('keeps the models and flags the panel when the node view cannot be read', async () => {
+    listNodes.mockRejectedValue(
+      namedError('ForbiddenError', 'nodes are not yours'),
+    );
+    const { result } = renderSource(['gpu']);
+
+    await waitFor(() =>
+      expect(result.current.gpuCapacityUnavailable).toEqual({
+        gpu: 'forbidden',
+      }),
+    );
+    expect(result.current.servedModels).toHaveLength(3);
+    expect(result.current.gpuNodes).toEqual([]);
+    expect(result.current.unreachableInstallations).toEqual([]);
   });
 
   it('surfaces an installation whose backend descriptor cannot be read', async () => {
