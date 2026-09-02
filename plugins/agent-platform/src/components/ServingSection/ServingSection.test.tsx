@@ -12,6 +12,7 @@ import type {
 import type { ServingPresets } from '../../hooks/useServingPresets';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import { modelsRouteRef } from '../../routes';
+import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { ServingSection } from './ServingSection';
 
 // Drive the section's state branches through the two contexts it reads.
@@ -152,6 +153,7 @@ const baseServing: ServingContextValue = {
   isLoading: false,
   installations: ['inst-1'],
   backends: { 'inst-1': 'kserve' },
+  capabilities: { 'inst-1': KSERVE_CR_CAPABILITIES },
   unreachableInstallations: [],
   servedModels: [qwen],
   gpuNodes: [
@@ -166,6 +168,8 @@ const baseServing: ServingContextValue = {
     },
   ],
   gpuCapacityUnavailable: {},
+  servedModelFor: (_installation, lookup) =>
+    lookup.endpoint?.includes('qwen3-14b-predictor') ? qwen : undefined,
   servedModelForEndpoint: () => undefined,
 };
 
@@ -485,7 +489,7 @@ describe('ServingSection', () => {
       screen.getByText("Couldn't read 1 installation"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/InferenceServices couldn't be read/),
+      screen.getByText(/served models couldn't be read/),
     ).toBeInTheDocument();
     expect(screen.getByText(/inst-3/)).toBeInTheDocument();
   });

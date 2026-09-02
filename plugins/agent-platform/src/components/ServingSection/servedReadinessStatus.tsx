@@ -1,6 +1,7 @@
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import ErrorIcon from '@material-ui/icons/Error';
 import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
+import StorageIcon from '@material-ui/icons/Storage';
 import { Cell } from '@backstage/ui';
 import {
   StatusLabel,
@@ -9,7 +10,8 @@ import {
 import type { ServedModelReadiness } from '../../lib/serving';
 
 /**
- * How each served-model readiness presents: `ready` positive, `notReady`
+ * How each served-model readiness presents: `ready` positive, `available`
+ * informational (downloaded, not in memory — a disk, not a fault), `notReady`
  * negative (rolling out or failed — the tooltip carries the backend's
  * explanation), `pending` neutral "not known yet". Same vocabulary as the
  * ModelConfig and Agent readiness cells so the tab reads as one.
@@ -19,6 +21,7 @@ export const SERVED_READINESS_PRESENTATION: Record<
   { label: string; intent: StatusLabelIntent; icon: typeof CheckCircleIcon }
 > = {
   ready: { label: 'Ready', intent: 'positive', icon: CheckCircleIcon },
+  available: { label: 'Available', intent: 'info', icon: StorageIcon },
   notReady: { label: 'Not ready', intent: 'negative', icon: ErrorIcon },
   pending: { label: 'Pending', intent: 'neutral', icon: HourglassEmptyIcon },
 };

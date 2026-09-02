@@ -132,6 +132,87 @@ shared chart source (where a failed read safely resolves to "keep"), a failed
 read here refuses the delete: proceeding is the unsafe direction, since
 deleting a referenced model breaks every agent on it.
 
+### The serving layer (the Serving section of the Models tab)
+
+Beneath the ModelConfigs, the **Serving section** shows what is actually
+served — or downloaded and ready to serve — on the installations that have a
+serving layer, and offers the controls that layer supports. It is fed by
+_serving sources_ merged in `ServingProvider` (`lib/serving.ts` is the
+backend-agnostic seam: `ServedModel`, `ServingCapabilities`,
+`ServingSourceSnapshot`, `findServedModel`, `mergeServingSnapshots`):
+
+- **KServe CRs** (`useKServeServingSource`): InferenceServices, nodes and
+  predictor pods read with the user's own RBAC on installations that serve the
+  InferenceService CRD. Read-only, plus the GPU capacity panel.
+- **model-manager** (`useModelManagerServingSource`): the inventory of the
+  installations the backend proxies a
+  [model-manager](https://github.com/giantswarm/model-manager) for, read
+  through `agent-platform-backend`'s `/model-manager/...` pass-through.
+  model-manager fronts a _serving backend_ — Ollama on a laptop agentlab
+  install, KServe on a GPU install — and reports it together with **capability
+  flags** (`GET /api/v1/backend`).
+
+**Everything beyond the table renders per capability flag, never per backend
+name.** `pull` puts a _Pull model_ button and the downloads list on the
+section; `load`/`unload`/`delete`/`wire` put a per-row actions menu there;
+`nodeInventory` (which the CR source claims for itself) renders the GPU
+capacity panel. So an Ollama-backed installation shows pull-with-progress,
+load/unload, delete and wiring and no GPU panel, presets or fit-check — that
+is ordinary state, not an error — while a bare KServe CR view shows its GPU
+panel and nothing operational. The table's optional columns follow the data
+the same way (Size, Memory and Features appear when a row carries them; Node
+and GPUs are dropped when no installation schedules onto nodes).
+
+**Readiness** is backend-neutral: `ready` (loaded, serving), `available`
+(downloaded, not in memory — a backend with `load` brings it to ready, and
+Ollama loads it on the first request anyway), `notReady`, `pending`. A model's
+**features** (`tools`, `vision`, `thinking`, …) are shown, with a warning where
+`tools` is missing: agents cannot use such a model.
+
+**Pulling** starts a job (`POST /api/v1/models/pull` answers 202 with it) that
+the downloads panel polls every 2 s while running (`GET /api/v1/jobs`), showing
+bytes and percent, then the outcome — including the kagent ModelConfig the job
+wired, linked to its detail page. Jobs are model-manager's in-memory list. A
+pull of a reference already downloading is joined, not duplicated.
+
+**ModelConfig linkage** runs in both directions and on one matcher
+(`findServedModel`): a ModelConfig row says which served model its endpoint
+points at ("Served by …"), a served-model row lists the ModelConfigs that use
+it. Three rules, most exact first: the ModelConfig the backend itself created
+for the model (model-manager's `modelConfig` field) wins outright; otherwise
+the endpoint hostname, disambiguated by the ModelConfig's `model` id — an
+Ollama host serves every tag on one hostname, so the id is what tells them
+apart (agentlab's static `qwen35-local` resolves to `qwen3.5:9b` this way);
+with a single served model on a host and no name match, that one (a vLLM
+InferenceService names its model however it likes).
+
+**Mixed installations.** Sources are merged: the served models of both render
+side by side, capabilities are OR-ed per flag, and the later (model-manager)
+source decides the installation's backend label. In agentlab, where the KServe
+CRDs are installed next to an Ollama-backed model-manager, that is exactly the
+state.
+
+**Trust model of the model-manager routes.** The backend
+(`plugins/agent-platform-backend/src/modelManagerRouter.ts`,
+`ModelManagerClient.ts`) exposes `GET /model-manager/installations` (names
+only) and a thin, authenticated pass-through of the model-manager REST under
+`/model-manager/{backend,models,models/*name,loaded,models/{pull,load,unload,wire,unwire},jobs,jobs/:id}`
+per `?installation=`. Every data route **requires** the user's
+per-installation Dex ID token in the `backstage-model-manager-authorization`
+header (a sibling of `backstage-kagent-authorization`: one header per
+upstream), which becomes `Authorization: Bearer` toward model-manager.
+model-manager itself checks no identity: the agentgateway `/model-manager`
+route in front of it — an `AgentgatewayPolicy` with JWT validation, the same
+shape as the kagent controller route — is the boundary that rejects a missing
+or invalid token, and the proxy decides nothing from it. An `apiBaseUrl` that
+bypasses the gateway (an in-cluster Service URL, the lab shortcut) therefore
+has no boundary: every signed-in portal user can then manage models. Errors
+map `{ error: { code } }` onto `@backstage/errors` (`invalid_request` → 400,
+`not_found` → 404, `conflict` → 409, `unsupported` → 403 "capability not
+supported", `backend_error` and an unreachable model-manager → 503).
+`POST /api/v1/models/load` has its own, longer timeout: on Ollama it blocks
+until several GiB of weights are in memory.
+
 ### Skill discovery
 
 Skills are discovered from the GitHub repositories configured in
@@ -1631,20 +1712,25 @@ don't add them speculatively.
 All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 `plugins/agent-platform-backend/config.d.ts`):
 
-| Key                      | Purpose                                                                                                                           |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `chart.ociUrl`           | OCI URL of the agent chart (no tag).                                                                                              |
-| `chart.version`          | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot. |
-| `fluxServiceAccountName` | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                              |
-| `deployTemplateRef`      | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                               |
-| `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                            |
-| `kagent.timeoutMs`       | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                            |
-| `kagent.installations`   | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only. |
+| Key                          | Purpose                                                                                                                                                                                             |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chart.ociUrl`               | OCI URL of the agent chart (no tag).                                                                                                                                                                |
+| `chart.version`              | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot.                                                                   |
+| `fluxServiceAccountName`     | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                                                                                                |
+| `deployTemplateRef`          | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                                                                                                 |
+| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                                                                                              |
+| `kagent.timeoutMs`           | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                                                                                              |
+| `kagent.installations`       | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only.                                                                   |
+| `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only. |
+| `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                       |
+| `modelManager.loadTimeoutMs` | Timeout for `POST /api/v1/models/load`, which blocks until the model is in memory (default 120000). Backend-only.                                                                                   |
 
-The `kagent` keys keep the default **backend** visibility and are never served to
-the frontend: `apiBaseUrl` embeds `baseDomain`, which deanonymises customers (the
-same reason `gs.installations` is backend-only). The frontend learns installation
-_names_ from the authenticated `GET /kagent/installations` instead.
+The `kagent` and `modelManager` keys keep the default **backend** visibility and
+are never served to the frontend: `apiBaseUrl` embeds `baseDomain` (or the
+installation's gateway hostname), which deanonymises customers (the same reason
+`gs.installations` is backend-only). The frontend learns installation _names_
+from the authenticated `GET /kagent/installations` and
+`GET /model-manager/installations` instead.
 
 The plugin's page and nav item are enabled via `app.extensions` in
 `app-config.yaml`.

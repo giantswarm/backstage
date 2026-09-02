@@ -217,6 +217,7 @@ describe('useKServeServingSource', () => {
       isLoading: false,
       installations: [],
       backends: {},
+      capabilities: {},
       unreachableInstallations: [],
       servedModels: [],
       gpuNodes: [],
@@ -239,6 +240,16 @@ describe('useKServeServingSource', () => {
     const { result } = render();
 
     expect(result.current.backends).toEqual({ alpha: 'kserve' });
+    // Reading CRs offers the node inventory (the GPU panel) and no operations.
+    expect(result.current.capabilities).toEqual({
+      alpha: expect.objectContaining({
+        nodeInventory: true,
+        pull: false,
+        load: false,
+        delete: false,
+        wire: false,
+      }),
+    });
     expect(
       result.current.servedModels.map(model => [
         model.name,

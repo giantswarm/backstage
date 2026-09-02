@@ -2,6 +2,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import { modelsRouteRef } from '../../routes';
 import {
+  columnsForRows,
   ServedModelRow,
   ServedModelsTable,
   sortServedModelsBy,
@@ -65,6 +66,71 @@ const rows: ServedModelRow[] = [
     usedBy: [],
   },
 ];
+
+/** Two models of an Ollama-backed model-manager: one loaded and wired, one not. */
+const ollamaRows: ServedModelRow[] = [
+  {
+    id: 'lab/ollama//qwen3.5:9b',
+    installation: 'lab',
+    backend: 'ollama',
+    name: 'qwen3.5:9b',
+    modelSource: 'qwen3.5:9b',
+    runtime: 'ollama 0.33.2',
+    readiness: 'ready',
+    readinessMessage: 'Loaded in memory until 13:05.',
+    internalUrl: 'http://172.21.0.1:11434',
+    endpointHosts: ['172.21.0.1'],
+    sizeBytes: 6594474711,
+    loaded: true,
+    memoryBytes: 7_100_000_000,
+    loadedUntil: '2026-09-02T13:05:00Z',
+    capabilities: ['vision', 'completion', 'tools', 'thinking'],
+    details: {
+      parameterSize: '9.7B',
+      quantization: 'Q4_K_M',
+      contextLength: 262144,
+    },
+    modelConfig: { name: 'qwen3-5-9b', namespace: 'kagent', ready: true },
+    usedBy: [],
+  },
+  {
+    id: 'lab/ollama//gemma3:270m',
+    installation: 'lab',
+    backend: 'ollama',
+    name: 'gemma3:270m',
+    modelSource: 'gemma3:270m',
+    runtime: 'ollama 0.33.2',
+    readiness: 'available',
+    readinessMessage: 'Downloaded; not loaded in memory.',
+    internalUrl: 'http://172.21.0.1:11434',
+    endpointHosts: ['172.21.0.1'],
+    sizeBytes: 291554930,
+    loaded: false,
+    capabilities: ['completion'],
+    details: { parameterSize: '268.10M', quantization: 'Q8_0' },
+    usedBy: [],
+  },
+];
+
+describe('columnsForRows', () => {
+  it('keeps the placement columns by default and derives the rest from the rows', () => {
+    expect(columnsForRows(rows)).toEqual({
+      placement: true,
+      size: false,
+      memory: false,
+      capabilities: false,
+    });
+    expect(columnsForRows(ollamaRows)).toEqual({
+      placement: true,
+      size: true,
+      memory: true,
+      capabilities: true,
+    });
+    expect(columnsForRows(ollamaRows, { placement: false }).placement).toBe(
+      false,
+    );
+  });
+});
 
 describe('ServedModelsTable', () => {
   it('renders the column headers', async () => {
@@ -136,6 +202,116 @@ describe('ServedModelsTable', () => {
     await renderTable(<ServedModelsTable rows={[]} />);
 
     expect(screen.getByText('No models are being served.')).toBeInTheDocument();
+  });
+
+  describe('with an inventory backend (Ollama through model-manager)', () => {
+    it('adds Size, Memory and Features columns and drops placement when told to', async () => {
+      await renderTable(
+        <ServedModelsTable rows={ollamaRows} columns={{ placement: false }} />,
+      );
+
+      for (const header of ['Size', 'Memory', 'Features']) {
+        expect(screen.getByText(header)).toBeInTheDocument();
+      }
+      expect(screen.queryByText('Node')).not.toBeInTheDocument();
+      expect(screen.queryByText('GPUs')).not.toBeInTheDocument();
+    });
+
+    it('humanises sizes and shows the loaded state with footprint and expiry', async () => {
+      await renderTable(
+        <ServedModelsTable rows={ollamaRows} columns={{ placement: false }} />,
+      );
+
+      expect(screen.getByText('6.1 GiB')).toBeInTheDocument();
+      expect(screen.getByText('278 MiB')).toBeInTheDocument();
+      expect(screen.getByText('Loaded · 6.6 GiB')).toBeInTheDocument();
+      expect(screen.getByText(/^until /)).toBeInTheDocument();
+      expect(screen.getByText('Not loaded')).toBeInTheDocument();
+      expect(screen.getByText('Ready')).toBeInTheDocument();
+      expect(screen.getByText('Available')).toBeInTheDocument();
+    });
+
+    it('describes each model from its details under the name', async () => {
+      await renderTable(
+        <ServedModelsTable rows={ollamaRows} columns={{ placement: false }} />,
+      );
+
+      expect(
+        screen.getByText('Ollama · 9.7B · Q4_K_M · 256k ctx'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Ollama · 268.10M · Q8_0')).toBeInTheDocument();
+    });
+
+    it('lists the notable features and warns where agents cannot use the model', async () => {
+      await renderTable(
+        <ServedModelsTable rows={ollamaRows} columns={{ placement: false }} />,
+      );
+
+      expect(screen.getByText('vision, tools, thinking')).toBeInTheDocument();
+      expect(screen.getByText('completion only')).toBeInTheDocument();
+      expect(screen.getByText('No tool calling')).toBeInTheDocument();
+      expect(
+        screen.getByTitle(
+          'Agents cannot use this model: it does not support tool calling.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('links the model config the backend created, even with no matching ModelConfig read', async () => {
+      await renderTable(
+        <ServedModelsTable rows={ollamaRows} columns={{ placement: false }} />,
+      );
+
+      expect(screen.getByRole('link', { name: 'qwen3-5-9b' })).toHaveAttribute(
+        'href',
+        '/agent-platform/models/lab/kagent/qwen3-5-9b',
+      );
+      expect(screen.getByText('No model config')).toBeInTheDocument();
+    });
+
+    it('does not repeat a model config that is both read and backend-created', async () => {
+      await renderTable(
+        <ServedModelsTable
+          rows={[
+            {
+              ...ollamaRows[0],
+              usedBy: [
+                {
+                  installation: 'lab',
+                  namespace: 'kagent',
+                  name: 'qwen3-5-9b',
+                  displayName: 'Qwen 3.5 (lab)',
+                },
+              ],
+            },
+          ]}
+          columns={{ placement: false }}
+        />,
+      );
+
+      expect(
+        screen.getAllByRole('link', { name: /Qwen 3.5 \(lab\)|qwen3-5-9b/ }),
+      ).toHaveLength(1);
+    });
+
+    it('renders the actions slot per row when given', async () => {
+      await renderTable(
+        <ServedModelsTable
+          rows={ollamaRows}
+          columns={{ placement: false }}
+          renderActions={row => (
+            <button type="button">act on {row.name}</button>
+          )}
+        />,
+      );
+
+      expect(
+        screen.getByRole('button', { name: 'act on qwen3.5:9b' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'act on gemma3:270m' }),
+      ).toBeInTheDocument();
+    });
   });
 });
 

@@ -1,0 +1,42 @@
+{
+  "models": [
+    {
+      "name": "Qwen/Qwen3-14B",
+      "sizeBytes": 29540000000,
+      "modifiedAt": "2026-08-30T10:00:00Z",
+      "format": "safetensors",
+      "family": "qwen3",
+      "parameterSize": "14.8B",
+      "contextLength": 40960,
+      "capabilities": ["completion", "tools", "thinking"],
+      "node": "gpu-node-1",
+      "loaded": true,
+      "running": {
+        "name": "qwen3-14b",
+        "sizeBytes": 29540000000,
+        "vramBytes": 31000000000,
+        "endpoint": "http://qwen3-14b-predictor.model-serving.svc.cluster.local",
+        "node": "gpu-node-1",
+        "status": "Ready"
+      },
+      "modelConfig": {
+        "name": "qwen3-14b",
+        "namespace": "kagent",
+        "apiVersion": "kagent.dev/v1alpha2",
+        "provider": "OpenAI",
+        "model": "qwen3-14b",
+        "ready": true
+      }
+    },
+    {
+      "name": "mistralai/Devstral-Small-2",
+      "sizeBytes": 48000000000,
+      "format": "safetensors",
+      "family": "mistral",
+      "parameterSize": "24B",
+      "capabilities": ["completion", "tools"],
+      "node": "gpu-node-1",
+      "loaded": false
+    }
+  ]
+}

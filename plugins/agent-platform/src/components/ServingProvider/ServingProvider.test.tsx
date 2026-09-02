@@ -4,6 +4,10 @@ import type { ServedModel, ServingSourceSnapshot } from '../../lib/serving';
 import { ServingProvider, useServing } from './ServingProvider';
 
 const mockUseKServeServingSource = jest.fn<ServingSourceSnapshot, [string[]]>();
+const mockUseModelManagerServingSource = jest.fn<
+  ServingSourceSnapshot,
+  [string[]]
+>();
 let mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
@@ -20,6 +24,11 @@ jest.mock('../../hooks/useReachableInstallations', () => ({
 jest.mock('./useKServeServingSource', () => ({
   useKServeServingSource: (...args: [string[]]) =>
     mockUseKServeServingSource(...args),
+}));
+
+jest.mock('./useModelManagerServingSource', () => ({
+  useModelManagerServingSource: (...args: [string[]]) =>
+    mockUseModelManagerServingSource(...args),
 }));
 
 const qwen: ServedModel = {
@@ -42,6 +51,26 @@ const snapshot: ServingSourceSnapshot = {
   gpuCapacityUnavailable: {},
 };
 
+const empty: ServingSourceSnapshot = {
+  isLoading: false,
+  installations: [],
+  backends: {},
+  unreachableInstallations: [],
+  servedModels: [],
+  gpuNodes: [],
+  gpuCapacityUnavailable: {},
+};
+
+const smollm: ServedModel = {
+  id: 'alpha/ollama//smollm2:135m',
+  installation: 'alpha',
+  backend: 'ollama',
+  name: 'smollm2:135m',
+  readiness: 'available',
+  endpointHosts: ['172.21.0.1'],
+  modelConfig: { name: 'smollm2-135m', namespace: 'kagent' },
+};
+
 const wrapper = ({ children }: { children: ReactNode }) => (
   <ServingProvider>{children}</ServingProvider>
 );
@@ -50,6 +79,8 @@ describe('ServingProvider', () => {
   beforeEach(() => {
     mockUseKServeServingSource.mockReset();
     mockUseKServeServingSource.mockReturnValue(snapshot);
+    mockUseModelManagerServingSource.mockReset();
+    mockUseModelManagerServingSource.mockReturnValue(empty);
     mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
   });
 
@@ -57,6 +88,73 @@ describe('ServingProvider', () => {
     renderHook(() => useServing(), { wrapper });
 
     expect(mockUseKServeServingSource).toHaveBeenCalledWith(['alpha', 'beta']);
+    expect(mockUseModelManagerServingSource).toHaveBeenCalledWith([
+      'alpha',
+      'beta',
+    ]);
+  });
+
+  it('lists both sources side by side on one installation, the later deciding its backend', () => {
+    // A lab with KServe CRDs and an Ollama-backed model-manager: the
+    // InferenceService and the Ollama model both render; the installation is
+    // labelled by the model-manager source; capabilities are OR-ed.
+    mockUseModelManagerServingSource.mockReturnValue({
+      ...empty,
+      installations: ['alpha'],
+      backends: { alpha: 'ollama' },
+      capabilities: {
+        alpha: {
+          pull: true,
+          pullProgress: true,
+          delete: true,
+          load: true,
+          unload: true,
+          loadedModels: true,
+          wire: true,
+          presets: false,
+          fitCheck: false,
+          nodeInventory: false,
+          search: false,
+        },
+      },
+      servedModels: [smollm],
+    });
+    mockUseKServeServingSource.mockReturnValue({
+      ...snapshot,
+      capabilities: {
+        alpha: {
+          pull: false,
+          pullProgress: false,
+          delete: false,
+          load: false,
+          unload: false,
+          loadedModels: false,
+          wire: false,
+          presets: false,
+          fitCheck: false,
+          nodeInventory: true,
+          search: false,
+        },
+      },
+    });
+
+    const { result } = renderHook(() => useServing(), { wrapper });
+
+    expect(result.current.installations).toEqual(['alpha']);
+    expect(result.current.backends).toEqual({ alpha: 'ollama' });
+    expect(result.current.servedModels).toEqual([qwen, smollm]);
+    expect(result.current.capabilities?.alpha).toMatchObject({
+      pull: true,
+      nodeInventory: true,
+    });
+    // The exact ModelConfig reference wins over hostname matching.
+    expect(
+      result.current.servedModelFor('alpha', {
+        endpoint: 'http://172.21.0.1:11434',
+        model: 'other:1b',
+        modelConfig: { name: 'smollm2-135m', namespace: 'kagent' },
+      }),
+    ).toBe(smollm);
   });
 
   it('exposes the merged snapshot', () => {
