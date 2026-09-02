@@ -17,41 +17,53 @@ import type {
 
 import { modelDetailRouteRef } from '../../routes';
 import { stopRowPress } from '../../lib/rowPress';
-import type { ServedModel, ServedModelReadiness } from '../../lib/serving';
+import {
+  servingShortcutFor,
+  summarizeClientServing,
+  type ClientServingState,
+  type ClientServingSummary,
+  type ServingBackend,
+  type ServingCapabilities,
+  type ServingShortcut,
+} from '../../lib/serving';
+import { ModelServingStatus } from '../ModelServingStatus';
 import { ModelReadinessCell } from './readinessStatus';
 
 /**
- * The served model (e.g. a KServe InferenceService) a ModelConfig's endpoint
- * points at, when it is one this portal can see — the link from the agents'
- * side of the Models tab to the serving side.
+ * What the serving layer says about the model a ModelConfig's endpoint points
+ * at, when the endpoint is the serving layer's — the link from the agents'
+ * side of the Models tab to the serving side: the served model (a KServe
+ * InferenceService, an Ollama model) and its readiness, or `notServing` for a
+ * model that is gone, plus the one-click fix the installation offers for it.
+ * Plain data, so the row stays sortable and serialisable.
  */
-export type ModelServedBy = {
-  name: string;
-  namespace?: string;
-  backend: ServedModel['backend'];
-  readiness: ServedModelReadiness;
+export type ModelServedBy = ClientServingSummary & {
+  shortcut?: ServingShortcut;
 };
 
-export function toModelServedBy(served: ServedModel): ModelServedBy {
+export function toModelServedBy(
+  state: ClientServingState,
+  capabilities: ServingCapabilities,
+  operatingBackend?: ServingBackend,
+): ModelServedBy {
+  const shortcut = servingShortcutFor(state, capabilities, operatingBackend);
   return {
-    name: served.name,
-    namespace: served.namespace,
-    backend: served.backend,
-    readiness: served.readiness,
+    ...summarizeClientServing(state),
+    ...(shortcut ? { shortcut } : {}),
   };
 }
 
-const SERVED_BY_BACKEND_LABEL: Record<ServedModel['backend'], string> = {
-  kserve: 'InferenceService',
-  ollama: 'Ollama model',
-};
+/**
+ * A ModelConfig whose model nothing answers for is still listed — deleting it
+ * is the user's call — but reads as such: its text steps back, the status
+ * label and its fix stay at full strength.
+ */
+export function isModelRowMuted(row: ModelRow): boolean {
+  return row.servedBy?.readiness === 'notServing';
+}
 
-const SERVED_BY_READINESS_LABEL: Record<ServedModelReadiness, string> = {
-  ready: 'ready',
-  available: 'available (not loaded)',
-  notReady: 'not ready',
-  pending: 'pending',
-};
+/** The muted look; opacity rather than colour so links keep reading as links. */
+const MUTED_STYLE = { opacity: 0.55 } as const;
 
 /** One list row — plain data derived once, so sorting works on strings. */
 export type ModelRow = {
@@ -145,7 +157,7 @@ function getColumnConfig(
         // same two affordances (and the same colour handling) as AgentsTable's
         // name cell.
         return (
-          <Cell>
+          <Cell style={isModelRowMuted(row) ? MUTED_STYLE : undefined}>
             {href ? (
               <Link
                 to={href}
@@ -197,13 +209,23 @@ function getColumnConfig(
       id: 'provider',
       label: 'Provider',
       isSortable: true,
-      cell: row => <CellText title={row.provider || '—'} />,
+      cell: row => (
+        <CellText
+          title={row.provider || '—'}
+          color={isModelRowMuted(row) ? 'secondary' : undefined}
+        />
+      ),
     },
     {
       id: 'model',
       label: 'Model',
       isSortable: true,
-      cell: row => <CellText title={row.model || '—'} />,
+      cell: row => (
+        <CellText
+          title={row.model || '—'}
+          color={isModelRowMuted(row) ? 'secondary' : undefined}
+        />
+      ),
     },
     {
       id: 'endpoint',
@@ -211,8 +233,9 @@ function getColumnConfig(
       isSortable: true,
       // Empty means the provider's own default endpoint, which is worth saying
       // rather than leaving a blank that reads as "unknown". When the endpoint
-      // is a served model this portal can see, say which — that is the link
-      // between a ModelConfig and the InferenceService behind it.
+      // is the serving layer's, say which model answers there and whether it
+      // does — that is the link between a ModelConfig and the InferenceService
+      // or Ollama model behind it, with the fix inline where there is one.
       cell: row => (
         <Cell>
           <Text
@@ -220,24 +243,15 @@ function getColumnConfig(
             variant="body-medium"
             truncate
             title={row.endpoint || undefined}
+            style={isModelRowMuted(row) ? MUTED_STYLE : undefined}
           >
             {row.endpoint || 'Provider default'}
           </Text>
           {row.servedBy && (
-            <Text
-              variant="body-small"
-              color="secondary"
-              truncate
-              title={`${SERVED_BY_BACKEND_LABEL[row.servedBy.backend]} ${
-                row.servedBy.namespace ? `${row.servedBy.namespace}/` : ''
-              }${row.servedBy.name} is ${
-                SERVED_BY_READINESS_LABEL[row.servedBy.readiness]
-              } — see the Serving view`}
-            >
-              Served by {SERVED_BY_BACKEND_LABEL[row.servedBy.backend]}{' '}
-              {row.servedBy.namespace ? `${row.servedBy.namespace}/` : ''}
-              {row.servedBy.name}
-            </Text>
+            <ModelServingStatus
+              serving={row.servedBy}
+              shortcut={row.servedBy.shortcut}
+            />
           )}
         </Cell>
       ),
@@ -246,7 +260,12 @@ function getColumnConfig(
       id: 'installation',
       label: 'Installation',
       isSortable: true,
-      cell: row => <CellText title={row.installation} />,
+      cell: row => (
+        <CellText
+          title={row.installation}
+          color={isModelRowMuted(row) ? 'secondary' : undefined}
+        />
+      ),
     },
   ];
 }

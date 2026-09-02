@@ -9,7 +9,11 @@
 // capability flags) plugs in beside it without the table, panel or linking
 // code changing. Keep backend specifics out of here.
 
-import { urlHostname } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  urlHostname,
+  type ModelConfig,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Serving backends a source can report. `kserve` — InferenceServices read as
@@ -18,20 +22,184 @@ import { urlHostname } from '@giantswarm/backstage-plugin-kubernetes-react';
  */
 export type ServingBackend = 'kserve' | 'ollama';
 
+/** How each backend is named in prose ("Served by Ollama model …"). */
+export const SERVING_BACKEND_LABEL: Record<ServingBackend, string> = {
+  kserve: 'InferenceService',
+  ollama: 'Ollama model',
+};
+
 /**
- * Readiness of a served model, backend-neutral.
+ * Readiness of a served model, backend-neutral — the one vocabulary the
+ * Serving view, the Model configs view, the Agents view and the session
+ * composer share. Derived from what the backend reports about the row plus
+ * its loading semantics ({@link ServingLoading}), never from the backend's
+ * name; labels and intents live in {@link SERVED_MODEL_READINESS}.
  *
- * - `ready` — answering requests (loaded, serving).
- * - `available` — present on the backend but not running right now: a
- *   downloaded model that is not loaded into memory. Not a fault; a backend
- *   with `load` brings it to `ready`, and one that loads on demand (Ollama)
- *   answers requests to it anyway.
- * - `notReady` — exists but not serving: rolling out, failed to load, or
- *   scaled to zero; `readinessMessage` says which.
+ * - `ready` — loaded / serving; answering requests.
+ * - `idle` — not loaded, on a backend that loads a model on the first
+ *   request naming it (`loading.onDemand`): an agent on it works, its first
+ *   turn pays the cold start. Ordinary state on Ollama, whose scheduler also
+ *   evicts idle models on its own — not a fault, so not a warning.
+ * - `notServing` — nothing answers for the model although a client (a kagent
+ *   ModelConfig) points at it: a KServe InferenceService stopped or never
+ *   created, an Ollama model deleted while its ModelConfig remains. Agents on
+ *   it fail at their first turn; the fix — Load, Serve, Pull — is offered
+ *   where the user is.
+ * - `available` — downloaded (present on the backend) but not running, and no
+ *   request would start it: a model in a KServe node cache that nothing points
+ *   at, or a not-loaded model on a backend whose loading semantics are unknown
+ *   (a model-manager predating the `loading` block). Inventory, not a fault;
+ *   the PDR's "a download becomes Available".
+ * - `downloading` — a pull in progress; the row becomes `available` or `idle`
+ *   when it completes.
+ * - `notReady` — exists but not serving: rolling out, failed to load, or the
+ *   backend is unhealthy; `readinessMessage` says which.
  * - `pending` — no verdict yet ("not known", not "broken").
  */
 export type ServedModelReadiness =
-  'ready' | 'available' | 'notReady' | 'pending';
+  | 'ready'
+  | 'idle'
+  | 'notServing'
+  | 'available'
+  | 'downloading'
+  | 'notReady'
+  | 'pending';
+
+export type ServedModelReadinessPresentation = {
+  /** The status label. */
+  label: string;
+  /** What the status means; picks the colour (see ui-react's `StatusLabel`). */
+  intent: StatusLabelIntent;
+  /** The state in a sentence: "InferenceService x is <phrase>". */
+  phrase: string;
+  /** What the state means, for a tooltip when the backend has no words of its own. */
+  description: string;
+};
+
+/**
+ * How each readiness presents, in one place so the tables agree. `notServing`
+ * is the only warning: everything else is either fine, a fault the backend
+ * explains (`notReady`), or simply not known yet.
+ */
+export const SERVED_MODEL_READINESS: Record<
+  ServedModelReadiness,
+  ServedModelReadinessPresentation
+> = {
+  ready: {
+    label: 'Ready',
+    intent: 'positive',
+    phrase: 'ready',
+    description: 'Loaded and answering requests.',
+  },
+  idle: {
+    label: 'Idle',
+    intent: 'neutral',
+    phrase: 'idle — loads on first request',
+    description:
+      'Not loaded right now. The backend loads it on the first request naming it, so an agent on it works; its first turn pays the cold start.',
+  },
+  notServing: {
+    label: 'Not serving',
+    intent: 'warning',
+    phrase: 'not serving',
+    description:
+      'Nothing answers for this model, so agents on it fail at their first turn until it is loaded, served or pulled again.',
+  },
+  available: {
+    label: 'Available',
+    intent: 'info',
+    phrase: 'available (not loaded)',
+    description: 'Downloaded but not running. Load or serve it to use it.',
+  },
+  downloading: {
+    label: 'Downloading',
+    intent: 'info',
+    phrase: 'downloading',
+    description: 'Being pulled onto the backend.',
+  },
+  notReady: {
+    label: 'Not ready',
+    intent: 'negative',
+    phrase: 'not ready',
+    description:
+      'Exists but is not serving: rolling out, failed, or the backend is unhealthy.',
+  },
+  pending: {
+    label: 'Pending',
+    intent: 'neutral',
+    phrase: 'pending',
+    description: 'No verdict from the backend yet.',
+  },
+};
+
+/**
+ * Severity order for a readiness column: ascending puts the rows that need
+ * attention first. Alphabetical order on the labels would be meaningless.
+ */
+export const SERVED_MODEL_READINESS_SEVERITY: Record<
+  ServedModelReadiness,
+  number
+> = {
+  notServing: 0,
+  notReady: 1,
+  pending: 2,
+  downloading: 3,
+  available: 4,
+  idle: 5,
+  ready: 6,
+};
+
+/**
+ * Whether a client (an agent) pointing at a model in this state fails at its
+ * first request — what the session composer warns about. `idle` is not a
+ * failure (the request loads the model), nor is `available` (no claim is made
+ * about what a request does when the semantics are unknown).
+ */
+export function isServingFailure(readiness: ServedModelReadiness): boolean {
+  return readiness === 'notServing' || readiness === 'notReady';
+}
+
+/**
+ * How a backend brings a model into memory, as the backend reports itself
+ * (model-manager's `GET /api/v1/backend` `loading` block). Decides the word
+ * for a downloaded model that is not running — see {@link notLoadedReadiness}.
+ * Absent when the backend does not say (a model-manager predating the block):
+ * then nothing is assumed and the wording stays at `available`.
+ */
+export type ServingLoading = {
+  /** A request naming a not-loaded model loads it first (Ollama). */
+  onDemand: boolean;
+  /** The backend evicts idle models by itself. */
+  idleEviction: boolean;
+  /**
+   * The keep-alive model-manager's own load requests carry (a duration such
+   * as `5m`). Not the backend host's default — that is unobservable from
+   * here, and on Ollama every request re-arms the timer with its own value,
+   * so a portal Load only pre-warms.
+   */
+  keepAliveDefault?: string;
+  /** `request` — every request re-arms the timer (Ollama); `server` — fixed. */
+  keepAliveScope?: 'request' | 'server';
+};
+
+/**
+ * The readiness of a model that is downloaded but not running: `idle` when
+ * the backend loads on demand; otherwise `notServing` when a client points at
+ * it (its requests fail) and `available` when nothing does (inventory). With
+ * unknown semantics, `available` — today's wording, nothing claimed.
+ */
+export function notLoadedReadiness(
+  loading: ServingLoading | undefined,
+  options: { hasClient?: boolean } = {},
+): ServedModelReadiness {
+  if (loading?.onDemand) {
+    return 'idle';
+  }
+  if (loading && options.hasClient) {
+    return 'notServing';
+  }
+  return 'available';
+}
 
 export type ServedModel = {
   /** Stable unique key: installation + backend + namespace + name. */
@@ -286,10 +454,40 @@ export type ServingSourceSnapshot = {
   /** The backend per installation in `installations`. */
   backends: Record<string, ServingBackend>;
   /**
+   * Every backend any source reports for an installation. Filled by the
+   * merge (a single source has one backend per installation): where a KServe
+   * CR read and an Ollama model-manager share an installation, `backends`
+   * keeps the operating source's label and this keeps both, so a client
+   * pointing at a KServe predictor is still recognised as the serving
+   * layer's (see {@link resolveClientServing}).
+   */
+  sourceBackends?: Record<string, ServingBackend[]>;
+  /**
    * What the source can do per installation in `installations`. Optional:
    * a source that omits it offers nothing beyond listing there.
    */
   capabilities?: Record<string, ServingCapabilities>;
+  /**
+   * How the backend loads models, per installation in `installations`, where
+   * the source's backend reports it. Optional: a source whose backend says
+   * nothing leaves the installation out, and its not-loaded models read as
+   * `available`.
+   */
+  loading?: Record<string, ServingLoading>;
+  /**
+   * Per installation, the `hostname:port` authorities
+   * ({@link endpointAuthority}) on which the backend answers for *every* model
+   * it has — a multi-model host such as Ollama's. Lets a client whose endpoint
+   * is that host but whose model is not listed be told apart from a client of
+   * an external endpoint: the model is gone (or was never pulled), not
+   * elsewhere — see {@link resolveClientServing}. The port is part of it
+   * because a lab host runs other OpenAI-compatible servers on other ports
+   * (a Lemonade server beside Ollama), which are not this backend's. Backends
+   * with one endpoint per model (KServe predictors) contribute none. A source
+   * lists an installation here only once it has read the installation's
+   * models, so a model still loading is never reported gone.
+   */
+  sharedHosts?: Record<string, string[]>;
   /**
    * Installations with the backend whose served models could not be read
    * (unreachable, or the user lacks permission) — surfaced, never dropped.
@@ -331,6 +529,18 @@ export type ServedModelLookup = {
   /** The client's own identity, to match a backend-created ModelConfig exactly. */
   modelConfig?: { name: string; namespace?: string };
 };
+
+/** The lookup for a kagent ModelConfig: its endpoint, model id and identity. */
+export function clientLookupOf(modelConfig: ModelConfig): ServedModelLookup {
+  return {
+    endpoint: modelConfig.getEndpoint(),
+    model: modelConfig.getModel(),
+    modelConfig: {
+      name: modelConfig.getName(),
+      namespace: modelConfig.getNamespace(),
+    },
+  };
+}
 
 /**
  * The served model a client points at, among `candidates` (which the caller
@@ -472,7 +682,10 @@ export function mergeServingSnapshots(
   snapshots: ServingSourceSnapshot[],
 ): ServingSourceSnapshot {
   const backends: Record<string, ServingBackend> = {};
+  const sourceBackends: Record<string, ServingBackend[]> = {};
   const capabilities: Record<string, ServingCapabilities> = {};
+  const loading: Record<string, ServingLoading> = {};
+  const sharedHosts: Record<string, string[]> = {};
   const gpuCapacityUnavailable: Record<string, GpuCapacityUnavailableReason> =
     {};
   const unreachable = new Set<string>();
@@ -480,6 +693,21 @@ export function mergeServingSnapshots(
   const gpuNodes = new Map<string, GpuNode>();
   for (const snapshot of snapshots) {
     Object.assign(backends, snapshot.backends);
+    for (const [installation, backend] of Object.entries(snapshot.backends)) {
+      const known = sourceBackends[installation] ?? [];
+      if (!known.includes(backend)) {
+        sourceBackends[installation] = [...known, backend];
+      }
+    }
+    // Like the backend label: the later source's word on how models load.
+    Object.assign(loading, snapshot.loading ?? {});
+    for (const [installation, hosts] of Object.entries(
+      snapshot.sharedHosts ?? {},
+    )) {
+      sharedHosts[installation] = Array.from(
+        new Set([...(sharedHosts[installation] ?? []), ...hosts]),
+      );
+    }
     Object.assign(gpuCapacityUnavailable, snapshot.gpuCapacityUnavailable);
     snapshot.unreachableInstallations.forEach(name => unreachable.add(name));
     for (const [installation, flags] of Object.entries(
@@ -531,10 +759,232 @@ export function mergeServingSnapshots(
     isLoading: snapshots.some(snapshot => snapshot.isLoading),
     installations: Object.keys(backends),
     backends,
+    sourceBackends,
     capabilities,
+    loading,
+    sharedHosts,
     unreachableInstallations: Array.from(unreachable).sort(),
     servedModels,
     gpuNodes: Array.from(gpuNodes.values()),
     gpuCapacityUnavailable,
   };
+}
+
+const DEFAULT_PORT: Record<string, string> = { 'http:': '80', 'https:': '443' };
+
+/**
+ * The `hostname:port` a URL addresses, lower-cased, the scheme's default port
+ * filled in — `http://172.21.0.1:11434/v1` → `172.21.0.1:11434`,
+ * `https://x.example/v1` → `x.example:443`. `undefined` for anything that is
+ * not a URL with a host. Where {@link urlHostname} says *which machine*, this
+ * says *which server on it*.
+ */
+export function endpointAuthority(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname) {
+      return undefined;
+    }
+    const port = parsed.port || DEFAULT_PORT[parsed.protocol];
+    return port
+      ? `${parsed.hostname.toLowerCase()}:${port}`
+      : parsed.hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The InferenceService a KServe predictor hostname belongs to
+ * (`<name>-predictor.<namespace>`, optionally `.svc` or `.svc.cluster.local`),
+ * else `undefined`. The shape KServe gives every predictor Service, and what a
+ * ModelConfig's `baseUrl` names when it points at one.
+ */
+export function predictorOfHostname(
+  hostname: string | undefined,
+): { name: string; namespace: string } | undefined {
+  if (!hostname) {
+    return undefined;
+  }
+  const match = /^(.+)-predictor\.([^.]+)(?:\.svc(?:\.cluster\.local)?)?$/.exec(
+    hostname,
+  );
+  return match ? { name: match[1], namespace: match[2] } : undefined;
+}
+
+/**
+ * What a client (a kagent ModelConfig) gets when it talks to its endpoint, as
+ * far as the serving layer can tell: the served model it fronts with that
+ * model's readiness — or `notServing` when the endpoint is the serving layer's
+ * but nothing there answers for the model. The Model configs view, the model
+ * detail, the Agents view and the session composer all read this.
+ */
+export type ClientServingState = {
+  installation: string;
+  backend: ServingBackend;
+  readiness: ServedModelReadiness;
+  /**
+   * Backend-native name of the model the client asks for: an Ollama tag, an
+   * InferenceService name.
+   */
+  name: string;
+  /** Namespace, for backends that have one. */
+  namespace?: string;
+  /** Why, in the backend's words where it has any, else the vocabulary's. */
+  message: string;
+  /** The served model, when the backend lists one. Absent for a model that is gone. */
+  model?: ServedModel;
+};
+
+/** {@link ClientServingState} without the row — plain data for a table row. */
+export type ClientServingSummary = Omit<ClientServingState, 'model'>;
+
+export function summarizeClientServing(
+  state: ClientServingState,
+): ClientServingSummary {
+  const { model: _model, ...summary } = state;
+  return summary;
+}
+
+/** What {@link resolveClientServing} needs to know about the client's installation. */
+export type ClientServingContext = {
+  installation: string;
+  /** The installation's served models. */
+  candidates: ServedModel[];
+  /** The backend(s) the installation's sources report. */
+  backends: ServingBackend[];
+  /**
+   * The installation's multi-model hosts as `hostname:port` authorities —
+   * `ServingSourceSnapshot.sharedHosts`.
+   */
+  sharedHosts: string[];
+};
+
+/**
+ * Resolve a client to the serving layer.
+ *
+ * 1. A served model the client fronts ({@link findServedModel}) — its
+ *    readiness is the client's.
+ * 2. Otherwise, an endpoint on one of the installation's multi-model hosts
+ *    (Ollama's, host *and* port) is a client of that backend whose model is
+ *    not there — deleted while the ModelConfig remained, or never pulled:
+ *    `notServing`, named after the client's `model` (the tag a Pull would
+ *    fetch). Only what the source declared counts: another server on the same
+ *    machine (a different port) is not this backend, whatever the rows' hosts.
+ * 3. Otherwise, an endpoint shaped like a KServe predictor
+ *    ({@link predictorOfHostname}) on an installation with a KServe backend is
+ *    an InferenceService that is stopped or was never created: `notServing`,
+ *    named after the InferenceService.
+ * 4. Anything else — a provider default, an external endpoint, a host nobody
+ *    here knows — is not the serving layer's business: `undefined`.
+ */
+export function resolveClientServing(
+  lookup: ServedModelLookup,
+  context: ClientServingContext,
+): ClientServingState | undefined {
+  const { installation, candidates } = context;
+  const served = findServedModel(lookup, candidates);
+  if (served) {
+    return {
+      installation,
+      backend: served.backend,
+      readiness: served.readiness,
+      name: served.name,
+      namespace: served.namespace,
+      message:
+        served.readinessMessage ??
+        SERVED_MODEL_READINESS[served.readiness].description,
+      model: served,
+    };
+  }
+
+  const hostname = urlHostname(lookup.endpoint);
+  const authority = endpointAuthority(lookup.endpoint);
+  if (!hostname || !authority) {
+    return undefined;
+  }
+
+  if (context.sharedHosts.includes(authority)) {
+    // The one backend that answers on a shared host: the installation's
+    // multi-model one (KServe predictors are never shared).
+    const backend =
+      context.backends.find(name => name !== 'kserve') ?? 'ollama';
+    const name = lookup.model ?? '';
+    return {
+      installation,
+      backend,
+      readiness: 'notServing',
+      name,
+      message: `${SERVING_BACKEND_LABEL[backend]} ${name || '(unnamed)'} is not on the backend at ${authority} — deleted, or never pulled. Agents on this model config fail until it is pulled again.`,
+    };
+  }
+
+  const predictor = predictorOfHostname(hostname);
+  if (predictor && context.backends.includes('kserve')) {
+    return {
+      installation,
+      backend: 'kserve',
+      readiness: 'notServing',
+      name: predictor.name,
+      namespace: predictor.namespace,
+      message: `InferenceService ${predictor.namespace}/${predictor.name} is not serving — stopped, or never created. Agents on this model config fail until it is served again.`,
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * The one-click fix a client's state admits, given what its installation can
+ * do. `load` — bring a downloaded model into memory / create the
+ * InferenceService for it (model-manager's load, by the reference it lists
+ * the model under); `pull` — fetch a model that is gone from a backend that
+ * pulls by reference (the client's own `model`). `undefined` when nothing
+ * applies: ready, still converging, failing with a message of its own, or a
+ * backend without the capability — the Serving view is the fallback.
+ *
+ * `operatingBackend` is the installation's `backends` label — the backend of
+ * the source that *acts* (a model-manager). A gone InferenceService is only
+ * offered its load when that source is KServe: on an installation whose CRs
+ * are read next to an Ollama model-manager, the `load` flag is Ollama's and
+ * would fail on an InferenceService name.
+ */
+export type ServingShortcut = { kind: 'load' | 'pull'; ref: string };
+
+export function servingShortcutFor(
+  state: ClientServingState,
+  capabilities: ServingCapabilities,
+  operatingBackend?: ServingBackend,
+): ServingShortcut | undefined {
+  const { model } = state;
+  if (model) {
+    const notRunning =
+      state.readiness === 'idle' ||
+      state.readiness === 'available' ||
+      state.readiness === 'notServing';
+    if (
+      notRunning &&
+      model.operable &&
+      model.loaded === false &&
+      capabilities.load
+    ) {
+      return { kind: 'load', ref: model.managerRef ?? model.name };
+    }
+    return undefined;
+  }
+  if (state.readiness !== 'notServing' || !state.name) {
+    return undefined;
+  }
+  if (state.backend === 'kserve') {
+    // A gone InferenceService comes back through the backend's load of the
+    // name it was served under (the preset, for one model-manager created) —
+    // when the backend that loads is KServe's model-manager.
+    return capabilities.load && operatingBackend === 'kserve'
+      ? { kind: 'load', ref: state.name }
+      : undefined;
+  }
+  return capabilities.pull ? { kind: 'pull', ref: state.name } : undefined;
 }

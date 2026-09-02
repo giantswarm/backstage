@@ -211,6 +211,8 @@ const baseServing: ServingContextValue = {
   servedModelFor: (_installation, lookup) =>
     lookup.endpoint?.includes('qwen3-14b-predictor') ? qwen : undefined,
   servedModelForEndpoint: () => undefined,
+  servingStateFor: () => undefined,
+  capabilitiesFor: () => KSERVE_CR_CAPABILITIES,
 };
 
 function modelConfig(name: string, baseUrl?: string) {

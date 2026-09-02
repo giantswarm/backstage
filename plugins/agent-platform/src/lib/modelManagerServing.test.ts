@@ -18,10 +18,12 @@ import {
   managerRefOf,
   namespaceOfPredictorUrl,
   notableCapabilities,
+  sharedHostsOf,
   toGpuNodeFromManager,
   toServedModelFromManager,
   toServingBackend,
   toServingCapabilities,
+  toServingLoading,
   validateModelRef,
 } from './modelManagerServing';
 import { findServedModel } from './serving';
@@ -376,5 +378,114 @@ describe('validateModelRef', () => {
     expect(validateModelRef('has space')).toMatch(/no spaces/);
     expect(validateModelRef(':tag')).toMatch(/letters, digits/);
     expect(validateModelRef('x'.repeat(256))).toMatch(/at most 255/);
+  });
+});
+
+// --- Loading semantics ---------------------------------------------------------
+
+describe('toServedModelFromManager with the backend’s loading block', () => {
+  const ollamaOnDemand = {
+    ...ollama,
+    loading: {
+      onDemand: true,
+      idleEviction: true,
+      keepAliveDefault: '5m',
+      keepAliveScope: 'request' as const,
+    },
+  };
+  const kserveExplicit = {
+    ...kserve,
+    loading: { onDemand: false, idleEviction: false },
+  };
+
+  it('reads a not-loaded Ollama model as Idle when the backend loads on demand', () => {
+    const served = toServedModelFromManager(
+      'lab',
+      ollamaOnDemand,
+      ollamaModels[0],
+    );
+
+    expect(served.readiness).toBe('idle');
+    expect(served.readinessMessage).toBe(
+      "Downloaded; not loaded. Ollama loads it on the first request, so an agent's first turn pays the cold start, and it is evicted again after idling.",
+    );
+  });
+
+  it('keeps today’s Available without a loading block — an older model-manager', () => {
+    const served = toServedModelFromManager('lab', ollama, ollamaModels[0]);
+
+    expect(served.readiness).toBe('available');
+    expect(served.readinessMessage).toBe('Downloaded; not loaded in memory.');
+  });
+
+  it('reads a cached KServe model a model config points at as Not serving when the backend does not load on demand', () => {
+    const cached = modelManagerModelSchema.parse({
+      name: 'org/tiny',
+      downloaded: true,
+      loaded: false,
+      node: 'gpu-node-1',
+      path: 'tiny',
+      modelConfig: {
+        name: 'tiny',
+        namespace: 'kagent',
+        managed: false,
+        ready: true,
+      },
+    });
+
+    const pointedAt = toServedModelFromManager('gpu', kserveExplicit, cached);
+    expect(pointedAt.readiness).toBe('notServing');
+    expect(pointedAt.readinessMessage).toBe(
+      'Downloaded on gpu-node-1; not serving, and model config kagent/tiny points at it — agents on it fail until it is served.',
+    );
+
+    // Nothing points at it: inventory, not a fault.
+    const inventory = toServedModelFromManager('gpu', kserveExplicit, {
+      ...cached,
+      modelConfig: undefined,
+    });
+    expect(inventory.readiness).toBe('available');
+    expect(inventory.readinessMessage).toBe(
+      'Downloaded on gpu-node-1; not serving.',
+    );
+
+    // And without the block, the old wording even with a client.
+    expect(toServedModelFromManager('gpu', kserve, cached).readiness).toBe(
+      'available',
+    );
+  });
+
+  it('still reads a loaded model as ready, whatever the loading block says', () => {
+    const served = toServedModelFromManager('lab', ollamaOnDemand, {
+      ...ollamaModels[0],
+      loaded: true,
+      running: { name: ollamaModels[0].name, sizeBytes: 1 },
+    });
+    expect(served.readiness).toBe('ready');
+  });
+});
+
+describe('toServingLoading / sharedHostsOf', () => {
+  it('carries the block over and leaves an absent one absent', () => {
+    expect(toServingLoading(undefined)).toBeUndefined();
+    expect(
+      toServingLoading({
+        onDemand: true,
+        idleEviction: true,
+        keepAliveDefault: '5m',
+        keepAliveScope: 'request',
+      }),
+    ).toEqual({
+      onDemand: true,
+      idleEviction: true,
+      keepAliveDefault: '5m',
+      keepAliveScope: 'request',
+    });
+  });
+
+  it('names Ollama’s host as shared by every model, and none for KServe', () => {
+    expect(sharedHostsOf(ollama)).toEqual(['172.21.0.1:11434']);
+    expect(sharedHostsOf(kserve)).toEqual([]);
+    expect(sharedHostsOf({ ...ollama, endpoint: undefined })).toEqual([]);
   });
 });

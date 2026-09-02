@@ -3,9 +3,11 @@ import {
   Agent,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { ServedModel } from '../../lib/serving';
 import type { AgentRow } from './helpers';
 import {
   getAgentsRefetchInterval,
+  resolveModelConfig,
   resolveModelLabel,
   sortAgentRows,
   sortAgentsBy,
@@ -456,5 +458,73 @@ describe('sortAgentRows', () => {
     expect(sortAgentRows(rows).map(r => `${r.installation}:${r.name}`)).toEqual(
       ['inst-a:Alpha', 'inst-a:Zeta', 'inst-b:Beta'],
     );
+  });
+});
+
+describe('toAgentRow with a serving resolver', () => {
+  const agent = makeAgent({
+    name: 'triager',
+    namespace: 'sre-team',
+    modelConfig: 'qwen',
+  });
+  const modelConfigs = [
+    makeModelConfig({
+      name: 'qwen',
+      namespace: 'sre-team',
+      displayName: 'Qwen 3',
+    }),
+  ];
+  const served: ServedModel = {
+    id: 'installation-1/ollama//qwen3:0.6b',
+    installation: 'installation-1',
+    backend: 'ollama',
+    name: 'qwen3:0.6b',
+    readiness: 'idle',
+    endpointHosts: ['172.21.0.1'],
+  };
+
+  it('carries the serving state of the model behind the agent, without the row object', () => {
+    const resolve = jest.fn(() => ({
+      installation: 'installation-1',
+      backend: 'ollama' as const,
+      readiness: 'idle' as const,
+      name: 'qwen3:0.6b',
+      message: 'Downloaded; not loaded.',
+      model: served,
+    }));
+
+    const row = toAgentRow(agent, modelConfigs, resolve);
+
+    expect(resolve).toHaveBeenCalledWith(modelConfigs[0]);
+    expect(row.model).toBe('Qwen 3');
+    expect(row.modelServing).toEqual({
+      installation: 'installation-1',
+      backend: 'ollama',
+      readiness: 'idle',
+      name: 'qwen3:0.6b',
+      message: 'Downloaded; not loaded.',
+    });
+  });
+
+  it('asks nothing when the ModelConfig is not found, and carries no state when the resolver has none', () => {
+    const resolve = jest.fn(() => undefined);
+
+    expect(toAgentRow(agent, [], resolve).modelServing).toBeUndefined();
+    expect(resolve).not.toHaveBeenCalled();
+
+    expect(toAgentRow(agent, modelConfigs, resolve).modelServing).toBe(
+      undefined,
+    );
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves the ModelConfig itself by name and namespace', () => {
+    expect(resolveModelConfig(agent, modelConfigs)).toBe(modelConfigs[0]);
+    expect(
+      resolveModelConfig(agent, [
+        makeModelConfig({ name: 'qwen', namespace: 'elsewhere' }),
+      ]),
+    ).toBeUndefined();
+    expect(resolveModelConfig(makeAgent({}), modelConfigs)).toBeUndefined();
   });
 });

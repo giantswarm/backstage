@@ -106,12 +106,55 @@ describe('useModelManagerServingSource', () => {
       installations: [],
       backends: {},
       capabilities: {},
+      loading: {},
+      sharedHosts: {},
       unreachableInstallations: [],
       servedModels: [],
       gpuNodes: [],
       gpuCapacityUnavailable: {},
     });
     expect(getBackend).not.toHaveBeenCalled();
+  });
+
+  it('reports how the backend loads and the host every model answers on, once the inventory is read', async () => {
+    getBackend.mockImplementation(async (installation: string) =>
+      installation === 'gpu'
+        ? kserve
+        : modelManagerBackendSchema.parse({
+            ...backendOllama,
+            loading: {
+              onDemand: true,
+              idleEviction: true,
+              keepAliveDefault: '5m',
+              keepAliveScope: 'request',
+            },
+          }),
+    );
+
+    const { result } = renderSource(['lab', 'gpu']);
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // The Ollama installation says how it loads; the KServe fixture predates
+    // the block and says nothing.
+    expect(result.current.loading).toEqual({
+      lab: {
+        onDemand: true,
+        idleEviction: true,
+        keepAliveDefault: '5m',
+        keepAliveScope: 'request',
+      },
+    });
+    // Ollama is a multi-model host; KServe predictors each have their own.
+    expect(result.current.sharedHosts).toEqual({ lab: ['172.21.0.1:11434'] });
+    // And its not-loaded models read as Idle, not Available.
+    const notLoaded = result.current.servedModels.filter(
+      model => model.installation === 'lab' && !model.loaded,
+    );
+    expect(notLoaded.length).toBeGreaterThan(0);
+    expect(new Set(notLoaded.map(model => model.readiness))).toEqual(
+      new Set(['idle']),
+    );
   });
 
   it('stays silent when the configured list itself cannot be read (older backend)', async () => {

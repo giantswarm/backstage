@@ -9,10 +9,12 @@ import type {
   ModelManagerNode,
 } from '../../lib/modelManager';
 import {
+  sharedHostsOf,
   toGpuNodeFromManager,
   toServedModelFromManager,
   toServingBackend,
   toServingCapabilities,
+  toServingLoading,
 } from '../../lib/modelManagerServing';
 import {
   modelManagerBackendQueryKey,
@@ -23,6 +25,7 @@ import type {
   GpuCapacityUnavailableReason,
   ServingBackend,
   ServingCapabilities,
+  ServingLoading,
   ServingSourceSnapshot,
 } from '../../lib/serving';
 
@@ -163,6 +166,8 @@ export function useModelManagerServingSource(
     const active: string[] = [];
     const backendByInstallation: Record<string, ServingBackend> = {};
     const capabilities: Record<string, ServingCapabilities> = {};
+    const loading: Record<string, ServingLoading> = {};
+    const sharedHosts: Record<string, string[]> = {};
     const unreachable = new Set<string>();
     const servedModels: ServingSourceSnapshot['servedModels'] = [];
     const gpuNodes: ServingSourceSnapshot['gpuNodes'] = [];
@@ -189,6 +194,10 @@ export function useModelManagerServingSource(
       capabilities[installation] = toServingCapabilities(
         descriptor.capabilities,
       );
+      const loadingSemantics = toServingLoading(descriptor.loading);
+      if (loadingSemantics) {
+        loading[installation] = loadingSemantics;
+      }
 
       if (modelQuery?.isError) {
         // The backend is known but its inventory is not readable (its host
@@ -201,6 +210,14 @@ export function useModelManagerServingSource(
         servedModels.push(
           toServedModelFromManager(installation, descriptor, model),
         );
+      }
+      // Only once the inventory has been read: a client of the host whose
+      // model is merely not listed *yet* must not read as "gone".
+      if (modelQuery?.data) {
+        const hosts = sharedHostsOf(descriptor);
+        if (hosts.length > 0) {
+          sharedHosts[installation] = hosts;
+        }
       }
 
       if (descriptor.capabilities.nodeInventory) {
@@ -227,6 +244,8 @@ export function useModelManagerServingSource(
       installations: active,
       backends: backendByInstallation,
       capabilities,
+      loading,
+      sharedHosts,
       unreachableInstallations: Array.from(unreachable).sort(),
       servedModels,
       gpuNodes,

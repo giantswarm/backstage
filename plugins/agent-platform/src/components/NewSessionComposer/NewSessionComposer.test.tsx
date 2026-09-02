@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { NewSessionComposer } from './NewSessionComposer';
+import { modelWarningFor, NewSessionComposer } from './NewSessionComposer';
 
 const mockBuildAvatarUrl = jest.fn(
   (installation: string, name: string) =>
@@ -419,5 +419,86 @@ describe('NewSessionComposer', () => {
     expect(
       screen.getByText('kagent did not accept the agent'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('the model behind the agent', () => {
+  const goneModel = agentRow({
+    modelServing: {
+      installation: 'gazelle',
+      backend: 'ollama',
+      readiness: 'notServing',
+      name: 'qwen2.5:0.5b',
+      message:
+        'Ollama model qwen2.5:0.5b is not on the backend at 172.21.0.1 — deleted, or never pulled.',
+    },
+  });
+  const failingModel = agentRow({
+    modelServing: {
+      installation: 'gazelle',
+      backend: 'kserve',
+      readiness: 'notReady',
+      name: 'qwen3-14b',
+      namespace: 'kserve',
+      message: 'InferenceService qwen3-14b is not ready.',
+    },
+  });
+  const idleModel = agentRow({
+    modelServing: {
+      installation: 'gazelle',
+      backend: 'ollama',
+      readiness: 'idle',
+      name: 'qwen3:0.6b',
+      message: 'Downloaded; not loaded.',
+    },
+  });
+
+  it('warns — without blocking — when the selected agent’s model is not serving', async () => {
+    // Collapsed on purpose: the warning is worth seeing before typing at it.
+    renderComposer({ agents: [goneModel], collapsible: true });
+
+    expect(
+      screen.getByText("SRE Agent's model is not serving"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Ollama model qwen2\.5:0\.5b: .* You can still start the session/,
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.type(field(), 'why is the ingress failing?');
+
+    expect(startButton()).toBeEnabled();
+  });
+
+  it('warns when the model is failing', () => {
+    renderComposer({ agents: [failingModel] });
+
+    expect(
+      screen.getByText("SRE Agent's model is not ready"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/InferenceService kserve\/qwen3-14b: /),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing for an idle model — the first turn loads it', () => {
+    renderComposer({ agents: [idleModel] });
+
+    expect(screen.queryByText(/'s model is/)).not.toBeInTheDocument();
+  });
+
+  it('says nothing when the serving layer has no word on the model', () => {
+    renderComposer({ agents: [sre] });
+
+    expect(screen.queryByText(/'s model is/)).not.toBeInTheDocument();
+  });
+
+  it('is decided by modelWarningFor, which only flags the states an agent would hit', () => {
+    expect(modelWarningFor(goneModel)).toBe(goneModel.modelServing);
+    expect(modelWarningFor(failingModel)).toBe(failingModel.modelServing);
+    expect(modelWarningFor(idleModel)).toBeUndefined();
+    expect(modelWarningFor(sre)).toBeUndefined();
+    expect(modelWarningFor(undefined)).toBeUndefined();
   });
 });

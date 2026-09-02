@@ -31,14 +31,17 @@ import { useDeleteAgent } from '../../hooks/useDeleteAgent';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { clientLookupOf } from '../../lib/serving';
 import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
 import {
   AgentRow,
   getAgentRefetchInterval,
+  ResolveModelServing,
   toAgentRow,
 } from '../AgentsDataProvider';
 import { READINESS_PRESENTATION } from '../AgentsTable/readinessStatus';
 import { NewSessionDialog } from '../NewSessionDialog';
+import { ServingProvider, useServing } from '../ServingProvider';
 import { AgentActionsMenu } from './AgentActionsMenu';
 import { AgentConfigurationCard } from './AgentConfigurationCard';
 import { AgentSessionsCard } from './AgentSessionsCard';
@@ -95,12 +98,23 @@ function AgentDetailPageContent() {
     { enabled: Boolean(modelConfigName) },
   );
 
+  // What the serving layer says about the model behind that ModelConfig — the
+  // same verdict the Model configs and Agents views show, so "Idle" here is
+  // "Idle" there.
+  const { servingStateFor } = useServing();
+  const resolveServing = useCallback<ResolveModelServing>(
+    target => servingStateFor(installation, clientLookupOf(target)),
+    [servingStateFor, installation],
+  );
+
   // The row shape the sessions list uses, so this agent's name and avatar resolve
-  // identically in both places.
+  // identically in both places — and, for the composer, the model's state.
   const agentRow = useMemo(
     () =>
-      agent ? toAgentRow(agent, modelConfig ? [modelConfig] : []) : undefined,
-    [agent, modelConfig],
+      agent
+        ? toAgentRow(agent, modelConfig ? [modelConfig] : [], resolveServing)
+        : undefined,
+    [agent, modelConfig, resolveServing],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
@@ -344,7 +358,11 @@ function AgentDetailPageContent() {
             page header, so the state is visible before either card. */}
         <Grid.Root columns={{ initial: '1', lg: '3' }} gap="4">
           <Grid.Item colSpan={{ initial: '1', lg: '2' }}>
-            <AgentConfigurationCard agent={agent} modelConfig={modelConfig} />
+            <AgentConfigurationCard
+              agent={agent}
+              modelConfig={modelConfig}
+              modelServing={agentRow?.modelServing}
+            />
           </Grid.Item>
           <Grid.Item colSpan="1">
             <AgentStatusCard agent={agent} />
@@ -389,11 +407,17 @@ function AgentDetailPageContent() {
  * the failures of its Flux lookups through `useShowErrors`, which throws without
  * this context. Every gs details page wraps its content the same way, and it also
  * gives this page the standard retry/dismiss notice for a failed read.
+ *
+ * `ServingProvider` supplies the serving layer's word on the model behind the
+ * agent (the Model row, the composer's warning) from the same query cache the
+ * Models tab fills; the Agents tab mounts it at its list, this page at itself.
  */
 export function AgentDetailPage() {
   return (
     <ErrorsProvider>
-      <AgentDetailPageContent />
+      <ServingProvider>
+        <AgentDetailPageContent />
+      </ServingProvider>
     </ErrorsProvider>
   );
 }

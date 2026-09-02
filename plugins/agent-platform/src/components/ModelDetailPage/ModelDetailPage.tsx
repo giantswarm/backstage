@@ -24,7 +24,11 @@ import {
 } from '../../lib/modelConfigs';
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
+import { clientLookupOf } from '../../lib/serving';
 import { ModelConfigFormFields } from '../ModelConfigForm';
+import { ModelServingStatus } from '../ModelServingStatus';
+import { toModelServedBy } from '../ModelsTable';
+import { useServing } from '../ServingProvider';
 import { ModelActionsMenu } from './ModelActionsMenu';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -77,6 +81,21 @@ export function ModelDetailPage() {
     ? modelConfigFormValues(modelConfig)
     : undefined;
   const isUnsupportedProvider = Boolean(modelConfig) && !prefilled;
+
+  // The same block the Model configs list shows in its Endpoint cell: what
+  // the serving layer says about the model behind this config, and the fix
+  // where there is one. Nothing for provider defaults and external endpoints.
+  const { servingStateFor, capabilitiesFor, backends } = useServing();
+  const servingState = modelConfig
+    ? servingStateFor(installation, clientLookupOf(modelConfig))
+    : undefined;
+  const servedBy = servingState
+    ? toModelServedBy(
+        servingState,
+        capabilitiesFor(installation),
+        backends[installation],
+      )
+    : undefined;
 
   const { allowed: mayUpdate, isLoading: isCheckingPermission } =
     useSelfSubjectAccessReview(
@@ -231,6 +250,22 @@ export function ModelDetailPage() {
         </Text>
 
         <Flex direction="column" gap="4">
+          {servedBy && (
+            <Card>
+              <CardBody>
+                <Flex direction="column" gap="2">
+                  <ModelServingStatus
+                    serving={servedBy}
+                    shortcut={servedBy.shortcut}
+                    variant="block"
+                  />
+                  <Text variant="body-small" color="secondary">
+                    {servedBy.message}
+                  </Text>
+                </Flex>
+              </CardBody>
+            </Card>
+          )}
           {owner && (
             <Alert
               status="info"

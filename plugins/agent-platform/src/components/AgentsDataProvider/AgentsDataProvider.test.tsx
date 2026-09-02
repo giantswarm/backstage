@@ -30,6 +30,12 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({ modelConfigsFor: () => [], isLoading: false }),
 }));
 
+// No serving layer in view here: the rows carry no model state, which is the
+// provider's contract when nobody mounted a ServingProvider above it.
+jest.mock('../ServingProvider', () => ({
+  useOptionalServing: () => undefined,
+}));
+
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   Agent: class {},
   ModelConfig: class {},

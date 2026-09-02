@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import { crds } from '@giantswarm/k8s-types';
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
+import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
 
 type AgentInterface = crds.kagent.v1alpha2.Agent;
@@ -66,6 +68,19 @@ jest.mock('../../hooks/useCreateSession', () => ({
     isCreating: false,
     error: null,
     reset: jest.fn(),
+  }),
+}));
+
+// The serving layer's word on the model behind the agent is driven per case;
+// the provider (which would read the fleet) becomes a pass-through.
+const mockServingStateFor = jest.fn<
+  ClientServingState | undefined,
+  unknown[]
+>();
+jest.mock('../ServingProvider', () => ({
+  ServingProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useServing: () => ({
+    servingStateFor: (...args: unknown[]) => mockServingStateFor(...args),
   }),
 }));
 
@@ -315,6 +330,7 @@ describe('AgentDetailPage', () => {
     mockUseResource.mockReset();
     mockUseAgentSessions.mockReset();
     mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
+    mockServingStateFor.mockReset();
   });
 
   it('renders every section for a ready agent', async () => {
@@ -833,5 +849,91 @@ describe('AgentDetailPage', () => {
       expect(screen.getByText('PR reviewer')).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('AgentDetailPage: the model behind the agent', () => {
+  // The Serving view lives under the Models tab; mount it too so the Not
+  // serving label has somewhere to link.
+  const renderPageWithModels = () =>
+    renderInTestApp(<AgentDetailPage />, {
+      mountedRoutes: {
+        '/agent-platform/agents': agentsRouteRef,
+        '/agent-platform/models': modelsRouteRef,
+      },
+    });
+
+  beforeEach(() => {
+    mockUseResource.mockReset();
+    mockUseAgentSessions.mockReset();
+    mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
+    mockServingStateFor.mockReset();
+  });
+
+  it('asks the serving layer about the agent’s ModelConfig and shows its verdict', async () => {
+    mockServingStateFor.mockReturnValue({
+      installation: 'gazelle',
+      backend: 'ollama',
+      readiness: 'idle',
+      name: 'qwen3:0.6b',
+      message: 'Downloaded; not loaded.',
+    });
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPageWithModels();
+
+    expect(mockServingStateFor).toHaveBeenCalledWith(
+      'gazelle',
+      expect.objectContaining({
+        model: 'claude-opus-4-7',
+        modelConfig: { name: 'opus-4-7', namespace: 'agent-platform' },
+      }),
+    );
+    expect(screen.getByTestId('model-serving-readiness')).toHaveTextContent(
+      'Idle',
+    );
+    expect(
+      screen.getByText('Served by Ollama model qwen3:0.6b'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Serving view' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('links a model nothing serves to the Serving view', async () => {
+    mockServingStateFor.mockReturnValue({
+      installation: 'gazelle',
+      backend: 'kserve',
+      readiness: 'notServing',
+      name: 'opus',
+      namespace: 'model-serving',
+      message: 'InferenceService model-serving/opus is not serving.',
+    });
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPageWithModels();
+
+    expect(screen.getByTestId('model-serving-readiness')).toHaveTextContent(
+      'Not serving',
+    );
+    expect(
+      screen.getByText('Points at InferenceService model-serving/opus'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
+    );
+  });
+
+  it('shows nothing about serving for a model the layer has no word on', async () => {
+    mockServingStateFor.mockReturnValue(undefined);
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPageWithModels();
+
+    expect(screen.getByText('Claude Opus 4.7')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('model-serving-readiness'),
+    ).not.toBeInTheDocument();
   });
 });

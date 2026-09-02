@@ -68,6 +68,34 @@ export type ModelManagerCapabilities = z.infer<
   typeof modelManagerCapabilitiesSchema
 >;
 
+/**
+ * How the backend brings a model into memory (`GET /api/v1/backend`
+ * `loading`). What the portal's wording for a not-loaded model keys off:
+ * `onDemand` makes it "Idle — loads on first request" instead of a fault. A
+ * model-manager predating the block reports none, and the portal then assumes
+ * nothing.
+ */
+export const modelManagerLoadingSchema = z.looseObject({
+  /** The backend loads a model on the first inference request naming it. */
+  onDemand: wireBoolean(false),
+  /** The backend evicts idle models on its own. */
+  idleEviction: wireBoolean(false),
+  /**
+   * model-manager's default keep-alive for its own load requests (Ollama).
+   * Not the host's `OLLAMA_KEEP_ALIVE`, which is unobservable.
+   */
+  keepAliveDefault: wireString,
+  /** `request` — every request re-arms the timer; `server` — fixed. */
+  keepAliveScope: z
+    .unknown()
+    .transform(value =>
+      value === 'request' || value === 'server' ? value : undefined,
+    )
+    .optional(),
+});
+
+export type ModelManagerLoading = z.infer<typeof modelManagerLoadingSchema>;
+
 /** `GET /api/v1/backend`. */
 export const modelManagerBackendSchema = z.looseObject({
   /** `ollama` or `kserve` today; kept open for what comes next. */
@@ -86,6 +114,17 @@ export const modelManagerBackendSchema = z.looseObject({
       namespace: wireString,
       apiVersion: wireString,
       autoWire: wireBoolean(false),
+    })
+    .optional(),
+  /** Absent on a model-manager that does not report loading semantics. */
+  loading: z
+    .unknown()
+    .transform(value => {
+      if (value === null || typeof value !== 'object') {
+        return undefined;
+      }
+      const parsed = modelManagerLoadingSchema.safeParse(value);
+      return parsed.success ? parsed.data : undefined;
     })
     .optional(),
 });
