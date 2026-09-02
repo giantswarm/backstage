@@ -21,6 +21,19 @@ const DEFAULT_POLL_INTERVAL_MS = 5_000;
  */
 const DEFAULT_POLL_TIMEOUT_MS = 15 * 60 * 1_000;
 
+/**
+ * How long muster honours the sign-in URL it issued. The URL only carries a
+ * lookup key: the `state` behind it lives in muster's state store for 10
+ * minutes (`defaultStateExpiry`, internal/oauth/state_store_valkey.go), after
+ * which the start endpoint answers "Authentication session expired" -- well
+ * inside the wait above. Observed live: a "Reopen sign-in page" link clicked
+ * 12 minutes into a flow landed on that page, four times over. So the URL is
+ * offered for a little less than the TTL (a click at the edge must still
+ * land), and past that the affordance asks muster for a fresh challenge.
+ */
+const MUSTER_STATE_TTL_MS = 10 * 60 * 1_000;
+const DEFAULT_AUTH_URL_LIFETIME_MS = MUSTER_STATE_TTL_MS - 60 * 1_000;
+
 /** Statuses that mean the user themselves can still act (sign in). */
 const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
   'auth_required',
@@ -47,7 +60,14 @@ const SIGNED_OUT_NOTE =
  * this feature exists to fix. Re-mounting the row resumes the same wait.
  */
 interface PendingSignIn {
-  authUrl: string;
+  /**
+   * Muster's sign-in URL, while muster still honours it. Withdrawn on its own
+   * (the entry stays) once the state behind it has expired: the wait goes on,
+   * the URL does not.
+   */
+  authUrl?: string;
+  /** Epoch ms after which muster refuses the URL's state. */
+  authUrlExpiresAt: number;
   /** Epoch ms after which polling gives up. Survives remounts with the entry. */
   deadline: number;
   /** How muster identifies itself to the AS, when it reported one. */
@@ -84,7 +104,13 @@ export interface ServerSignInState {
   status?: ServerAuthStatus;
   /** True while `core_auth_login` is in flight. */
   isPending: boolean;
-  /** Muster's sign-in URL, once it has issued a challenge for this server. */
+  /**
+   * Muster's sign-in URL, while muster still honours it. Only the popup-blocked
+   * fallback renders it (the URL is then the only way into the flow); it is
+   * withdrawn before the state behind it expires, and `signIn` then requests
+   * a fresh challenge instead. `undefined` while `isWaiting` means exactly
+   * that: the wait is still on, the earlier URL is not.
+   */
   authUrl?: string;
   /**
    * How muster identifies itself to the server's authorization server, when
@@ -118,6 +144,13 @@ export interface ServerSignInState {
   isConnected: boolean;
   /** True while `core_auth_logout` is in flight. */
   isSigningOut: boolean;
+  /**
+   * Asks muster for a challenge and opens it in a new tab. Callable while a
+   * flow is outstanding: that is how the sign-in page is reopened, since the
+   * URL muster issued earlier may be expired by then. A fresh challenge
+   * replaces the outstanding entry (and restarts the wait); a refusal leaves
+   * it in place.
+   */
   signIn: () => void;
   signOut: () => void;
 }
@@ -127,6 +160,8 @@ export interface UseServerSignInOptions {
   pollIntervalMs?: number;
   /** Overridable for the same reason: how long to wait before giving up. */
   timeoutMs?: number;
+  /** Overridable for the same reason: how long the issued URL is offered. */
+  authUrlLifetimeMs?: number;
 }
 
 /**
@@ -154,6 +189,8 @@ export function useServerSignIn(
   const queryClient = useQueryClient();
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
+  const authUrlLifetimeMs =
+    options.authUrlLifetimeMs ?? DEFAULT_AUTH_URL_LIFETIME_MS;
 
   // Subscribing via useQuery (rather than reading the cache directly) is what
   // re-renders this row when the pending entry is written or cleared.
@@ -175,7 +212,7 @@ export function useServerSignIn(
 
   const authUrl = pending?.authUrl;
   const clientIdMethod = pending?.clientIdMethod;
-  const isWaiting = Boolean(authUrl);
+  const isWaiting = Boolean(pending);
   const signInTabOpened = pending?.opened ?? false;
 
   const { data, error: statusError } = useQuery({
@@ -231,9 +268,11 @@ export function useServerSignIn(
         if (tab && !tab.closed) {
           tab.location.href = result.authUrl;
         }
+        const now = Date.now();
         setPending({
           authUrl: result.authUrl,
-          deadline: Date.now() + timeoutMs,
+          authUrlExpiresAt: now + authUrlLifetimeMs,
+          deadline: now + timeoutMs,
           clientIdMethod: result.clientIdMethod,
           opened,
         });
@@ -242,10 +281,14 @@ export function useServerSignIn(
       // No sign-in page to show (already connected, or a refusal) -- the
       // pre-opened tab would just strand the user on a blank page.
       tab?.close();
-      setPending(null);
       if (result.status === 'connected') {
+        setPending(null);
         queryClient.invalidateQueries({ queryKey: ['muster'] });
       }
+      // A refusal changes nothing about a flow that is already outstanding:
+      // a reopen that muster rate-limits must not cancel the wait on the tab
+      // opened earlier, which may still complete. The refusal is reported
+      // through `error` below; from idle there was nothing to keep anyway.
     },
     onError: () => {
       signInTabRef.current?.close();
@@ -280,11 +323,10 @@ export function useServerSignIn(
   });
 
   // At the deadline the entry is CLEARED, not rewritten. Keeping it would leave
-  // the row permanently visible (`authUrl` truthy defeats the idle gate)
-  // offering a challenge whose `state` is expired or consumed by now. Clearing
-  // returns the row to a plain `Sign in`; a flow that completes even later is
-  // still picked up by the focus refetch above plus the transition effect
-  // below.
+  // the row permanently visible (`isWaiting` defeats the idle gate) for a flow
+  // nobody is finishing. Clearing returns the row to a plain `Sign in`; a flow
+  // that completes even later is still picked up by the focus refetch above
+  // plus the transition effect below.
   useEffect(() => {
     if (!pending) {
       return undefined;
@@ -292,6 +334,22 @@ export function useServerSignIn(
     const timer = setTimeout(
       () => setPending(null),
       Math.max(0, pending.deadline - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [pending, setPending]);
+
+  // Well before that, the URL alone is withdrawn: muster refuses its `state`
+  // after MUSTER_STATE_TTL_MS, so past that point the link would only ever
+  // land on "Authentication session expired". The entry itself stays -- the
+  // tab opened in time may still complete the flow, so polling continues --
+  // and the affordance falls back to `signIn`, which fetches a fresh URL.
+  useEffect(() => {
+    if (!pending?.authUrl) {
+      return undefined;
+    }
+    const timer = setTimeout(
+      () => setPending({ ...pending, authUrl: undefined }),
+      Math.max(0, pending.authUrlExpiresAt - Date.now()),
     );
     return () => clearTimeout(timer);
   }, [pending, setPending]);
