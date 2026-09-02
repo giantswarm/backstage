@@ -11,7 +11,7 @@ import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type { UseDeleteModelConfigResult } from '../../hooks/useDeleteModelConfig';
-import { modelsRouteRef } from '../../routes';
+import { modelConfigsRouteRef } from '../../routes';
 import { ModelDeleteDialog } from './ModelDeleteDialog';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -35,7 +35,7 @@ export function ModelActionsMenu({
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
-  const modelsRoute = useRouteRef(modelsRouteRef);
+  const modelsRoute = useRouteRef(modelConfigsRouteRef);
 
   const {
     isDeletable,

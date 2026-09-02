@@ -11,11 +11,16 @@ import type {
 } from '../../lib/servingPresets';
 import type { ServingPresets } from '../../hooks/useServingPresets';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
+import {
+  PageHeaderActionsProvider,
+  usePageHeaderActionsSlot,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { modelsRouteRef } from '../../routes';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
-import { ServingSection } from './ServingSection';
+import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
+import { ServingPage } from './ServingPage';
 
-// Drive the section's state branches through the two contexts it reads.
+// Drive the view's state branches through the two contexts it reads.
 const mockUseServing = jest.fn<ServingContextValue, []>();
 const mockUseModelConfigs = jest.fn<ModelConfigsContextValue, []>();
 
@@ -232,12 +237,26 @@ const baseModelConfigs: ModelConfigsContextValue = {
   modelConfigsFor: () => [],
 };
 
-const renderSection = () =>
-  renderInTestApp(<ServingSection />, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
-  });
+// The view's primary actions render into the shared page header, so the tree
+// carries the header slot the app's GSPageLayout would provide — and the real
+// rows provider (its inputs are the mocked contexts above), since what the view
+// shows per row is the point of most cases here.
+const HeaderActions = () => <>{usePageHeaderActionsSlot()}</>;
 
-describe('ServingSection', () => {
+const renderSection = () =>
+  renderInTestApp(
+    <PageHeaderActionsProvider>
+      <HeaderActions />
+      <ServedModelRowsProvider>
+        <ServingPage />
+      </ServedModelRowsProvider>
+    </PageHeaderActionsProvider>,
+    {
+      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    },
+  );
+
+describe('ServingPage', () => {
   beforeEach(() => {
     mockUseServing.mockReset();
     mockUseModelConfigs.mockReset();
@@ -627,7 +646,7 @@ describe('ServingSection', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders nothing when no installation has a serving backend', async () => {
+  it('explains the empty state when no installation has a serving backend', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,
       installations: [],
@@ -638,12 +657,13 @@ describe('ServingSection', () => {
 
     const { container } = await renderSection();
 
-    expect(screen.queryByText('Serving')).not.toBeInTheDocument();
-    expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
+    expect(screen.getByText('No serving layer')).toBeInTheDocument();
     expect(container.querySelector('table')).toBeNull();
+    // Nothing to offer, so nothing goes to the header.
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('renders nothing while probing a fleet that has shown no backend yet', async () => {
+  it('shows progress, not the empty state, while probing a fleet that has shown no backend yet', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,
       isLoading: true,
@@ -655,19 +675,21 @@ describe('ServingSection', () => {
 
     await renderSection();
 
-    expect(screen.queryByText('Serving')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
+    expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
   });
 
-  it('lists the served models and the GPU capacity once a backend is found', async () => {
+  it('lists the served models once a backend is found, without the GPU capacity (its own view)', async () => {
     await renderSection();
 
-    expect(screen.getByText('Serving')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Models served on the installations/),
+    ).toBeInTheDocument();
     expect(screen.getByText('qwen3-14b')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByText('hf://Qwen/Qwen3-14B')).toBeInTheDocument();
-    expect(screen.getByText('GPU capacity')).toBeInTheDocument();
-    expect(screen.getByText('NVIDIA-GB10')).toBeInTheDocument();
+    expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
+    expect(screen.queryByText('NVIDIA-GB10')).not.toBeInTheDocument();
   });
 
   it('links the ModelConfigs whose endpoint points at a served model', async () => {
@@ -687,7 +709,7 @@ describe('ServingSection', () => {
 
     expect(screen.getByRole('link', { name: 'qwen3-14b' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3-14b',
+      '/agent-platform/models/configs/inst-1/kagent/qwen3-14b',
     );
     expect(screen.queryByText('claude')).not.toBeInTheDocument();
     expect(screen.queryByText('other-vllm')).not.toBeInTheDocument();
@@ -765,7 +787,9 @@ describe('ServingSection', () => {
 
       await renderSection();
 
-      expect(screen.getByText('Serving')).toBeInTheDocument();
+      expect(
+        screen.getByText(/pull a model onto a backend/),
+      ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: /Pull model/ }),
       ).toBeInTheDocument();
@@ -814,11 +838,9 @@ describe('ServingSection', () => {
 
     await renderSection();
 
-    expect(screen.getByText('Serving')).toBeInTheDocument();
+    expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
     expect(
       screen.getByText("Couldn't read 1 installation"),
     ).toBeInTheDocument();
-    // No backend confirmed anywhere, so no capacity panel either.
-    expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
   });
 });

@@ -22,7 +22,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 
-import { modelsRouteRef } from '../../routes';
+import { modelConfigsRouteRef } from '../../routes';
 import {
   INITIAL_MODEL_CONFIG_FORM,
   MODEL_CONFIG_NAMESPACE,
@@ -53,7 +53,7 @@ export function NewModelPage() {
   const classes = useStyles();
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
-  const modelsLink = useRouteRef(modelsRouteRef);
+  const modelsLink = useRouteRef(modelConfigsRouteRef);
 
   // Every reachable installation is offered — deliberately not just the ones
   // that already have models (the agent create flow's filter): an installation

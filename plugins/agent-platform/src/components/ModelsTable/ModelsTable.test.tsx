@@ -86,7 +86,7 @@ describe('ModelsTable', () => {
     const link = screen.getByRole('link', { name: /Qwen 3 \(lab vLLM\)/ });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3',
+      '/agent-platform/models/configs/inst-1/kagent/qwen3',
     );
   });
 
@@ -96,7 +96,7 @@ describe('ModelsTable', () => {
     await userEvent.click(screen.getByText('qwen3-8-27b'));
 
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/models/inst-1/kagent/qwen3',
+      '/agent-platform/models/configs/inst-1/kagent/qwen3',
     );
   });
 
@@ -130,7 +130,7 @@ describe('ModelsTable', () => {
     );
     expect(servedBy).toHaveAttribute(
       'title',
-      'InferenceService kserve/qwen3 is ready — see the Serving section below',
+      'InferenceService kserve/qwen3 is ready — see the Serving view',
     );
   });
 

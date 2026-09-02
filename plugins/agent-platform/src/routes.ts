@@ -56,20 +56,44 @@ export const sessionDetailRouteRef = createSubRouteRef({
 });
 
 // The "Models" tab (`/agent-platform/models`): the kagent ModelConfigs agents
-// run on, and the platform-admin flows that manage them.
+// run on, the serving layer beneath them, and the platform-admin flows that
+// manage both. Like the muster section, the tab carries a second-level tab row
+// — one sub-route per view — and its index redirects to the first view.
 export const modelsRouteRef = createRouteRef();
 
-export const newModelRouteRef = createSubRouteRef({
-  path: '/new',
+// The "Model configs" view (`/agent-platform/models/configs`): the ModelConfigs
+// list. The create and detail flows live underneath it, so the view's tab stays
+// active while a model is being added or edited.
+export const modelConfigsRouteRef = createSubRouteRef({
+  path: '/configs',
   parent: modelsRouteRef,
 });
 
-// One model (`/agent-platform/models/<installation>/<namespace>/<name>`), as
-// an editable form (read-only when a tool owns the CR). Three segments for the
-// same reason as `agentDetailRouteRef`: all three are part of the identity,
-// and the segment count keeps it clear of `/new`.
+export const newModelRouteRef = createSubRouteRef({
+  path: '/configs/new',
+  parent: modelsRouteRef,
+});
+
+// One model (`/agent-platform/models/configs/<installation>/<namespace>/<name>`),
+// as an editable form (read-only when a tool owns the CR). Three segments for
+// the same reason as `agentDetailRouteRef`: all three are part of the identity,
+// and the segment count keeps it clear of `/configs/new`.
 export const modelDetailRouteRef = createSubRouteRef({
-  path: '/:installation/:namespace/:name',
+  path: '/configs/:installation/:namespace/:name',
+  parent: modelsRouteRef,
+});
+
+// The "Serving" view (`/agent-platform/models/serving`): the models served on
+// the installations that have a serving layer, and the controls over them.
+export const servingRouteRef = createSubRouteRef({
+  path: '/serving',
+  parent: modelsRouteRef,
+});
+
+// The "GPU capacity" view (`/agent-platform/models/capacity`): per-node GPU
+// inventory on the installations that report one.
+export const gpuCapacityRouteRef = createSubRouteRef({
+  path: '/capacity',
   parent: modelsRouteRef,
 });
 

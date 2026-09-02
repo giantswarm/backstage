@@ -1,5 +1,5 @@
 // The backend-agnostic shape of "a model being served" for the Models tab's
-// Serving section, and the pure helpers over it.
+// Serving view, and the pure helpers over it.
 //
 // This is the seam between the UI and wherever the serving data comes from. A
 // *serving source* (see `components/ServingProvider`) turns one backend's own

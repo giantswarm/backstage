@@ -15,7 +15,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { modelsRouteRef } from '../../routes';
+import { modelConfigsRouteRef } from '../../routes';
 import {
   modelConfigFormValues,
   modelConfigOwner,
@@ -53,7 +53,7 @@ export function ModelDetailPage() {
   const classes = useStyles();
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
-  const modelsLink = useRouteRef(modelsRouteRef);
+  const modelsLink = useRouteRef(modelConfigsRouteRef);
   const {
     installation = '',
     namespace = '',

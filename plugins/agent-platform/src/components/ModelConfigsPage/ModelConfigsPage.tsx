@@ -7,7 +7,7 @@ import AddIcon from '@material-ui/icons/Add';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newModelRouteRef } from '../../routes';
-import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
+import { useModelConfigs } from '../ModelConfigsProvider';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import {
@@ -17,15 +17,16 @@ import {
   toModelServedBy,
 } from '../ModelsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
-import { ServingProvider, useServing } from '../ServingProvider';
-import { ServingSection } from '../ServingSection';
+import { useServing } from '../ServingProvider';
 
-// Content of the "Models" tab: every kagent ModelConfig across the fleet, and
-// the entry point for adding one. The section header + tabs come from the
-// Agent Platform page (GSPageLayout), so this renders content only, with the
-// "Add model" action surfaced in that shared header — same shape as the
-// Agents tab.
-function ModelsIndexPageContent() {
+// The "Model configs" view of the Models tab: every kagent ModelConfig across
+// the fleet, and the entry point for adding one. The section header + tabs
+// come from the Agent Platform page (GSPageLayout) and the second-level tab
+// row from ModelsRouter, so this renders content only, with the "Add model"
+// action surfaced in that shared header — same shape as the Agents tab. Must
+// be mounted inside a ModelConfigsProvider and a ServingProvider (ModelsRouter
+// supplies both).
+export function ModelConfigsPage() {
   const navigate = useNavigate();
   const newModelLink = useRouteRef(newModelRouteRef);
   const { installations } = useInstallations();
@@ -114,21 +115,7 @@ function ModelsIndexPageContent() {
           installations={unreachableInstallations}
           resourceName="Models"
         />
-
-        {/* The serving layer beneath the ModelConfigs. Renders nothing on
-            fleets without one (see ServingSection). */}
-        <ServingSection />
       </Flex>
     </Content>
-  );
-}
-
-export function ModelsIndexPage() {
-  return (
-    <ModelConfigsProvider>
-      <ServingProvider>
-        <ModelsIndexPageContent />
-      </ServingProvider>
-    </ModelConfigsProvider>
   );
 }

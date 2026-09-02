@@ -1,6 +1,6 @@
 // The model-manager serving source's pure half: turning the documents of the
 // model-manager REST API (`lib/modelManager.ts`) into the backend-agnostic
-// shapes in `serving.ts`, plus the formatting the Serving section needs for
+// shapes in `serving.ts`, plus the formatting the Serving view needs for
 // them. The hook that fetches them is
 // `components/ServingProvider/useModelManagerServingSource.ts`.
 

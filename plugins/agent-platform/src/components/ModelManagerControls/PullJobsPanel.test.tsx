@@ -151,7 +151,7 @@ describe('PullJobsPanel', () => {
     const link = screen.getByRole('link', { name: 'kagent/qwen2-5-0-5b' });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/models/lab/kagent/qwen2-5-0-5b',
+      '/agent-platform/models/configs/lab/kagent/qwen2-5-0-5b',
     );
     expect(
       screen.queryByRole('button', { name: 'Cancel' }),

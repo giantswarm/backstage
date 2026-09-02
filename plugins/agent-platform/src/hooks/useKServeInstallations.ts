@@ -79,7 +79,7 @@ export type KServeInstallations = {
 
 /**
  * Narrows installations to those with KServe installed — the gate for the
- * Models tab's Serving section, so portals without a serving layer never
+ * Models tab's Serving view, so portals without a serving layer never
  * list InferenceServices, nodes or pods, and never show the section.
  */
 export function useKServeInstallations(
