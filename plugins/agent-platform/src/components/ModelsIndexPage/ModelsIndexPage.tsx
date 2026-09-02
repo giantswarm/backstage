@@ -10,8 +10,15 @@ import { newModelRouteRef } from '../../routes';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
-import { ModelsTable, ModelRow, toModelRow } from '../ModelsTable';
+import {
+  ModelsTable,
+  ModelRow,
+  toModelRow,
+  toModelServedBy,
+} from '../ModelsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { ServingProvider, useServing } from '../ServingProvider';
+import { ServingSection } from '../ServingSection';
 
 // Content of the "Models" tab: every kagent ModelConfig across the fleet, and
 // the entry point for adding one. The section header + tabs come from the
@@ -31,17 +38,28 @@ function ModelsIndexPageContent() {
     modelConfigsFor,
     unreachableInstallations,
   } = useModelConfigs();
+  const { servedModelForEndpoint } = useServing();
 
   // Unlike the agent create flow, the list iterates the *reachable*
   // installations, not just the ones that already have models — an
   // installation with none is exactly where a platform admin goes to add the
-  // first one.
+  // first one. Each row is linked to the served model its endpoint points at,
+  // when the installation has a serving layer this portal can see.
   const rows = useMemo<ModelRow[]>(
     () =>
       reachableInstallations.flatMap(installation =>
-        modelConfigsFor(installation).map(toModelRow),
+        modelConfigsFor(installation).map(modelConfig => {
+          const served = servedModelForEndpoint(
+            installation,
+            modelConfig.getEndpoint(),
+          );
+          return toModelRow(
+            modelConfig,
+            served ? toModelServedBy(served) : undefined,
+          );
+        }),
       ),
-    [reachableInstallations, modelConfigsFor],
+    [reachableInstallations, modelConfigsFor, servedModelForEndpoint],
   );
 
   // Memoized so the header actions slot only updates when the handler changes.
@@ -92,6 +110,10 @@ function ModelsIndexPageContent() {
           installations={unreachableInstallations}
           resourceName="Models"
         />
+
+        {/* The serving layer beneath the ModelConfigs. Renders nothing on
+            fleets without one (see ServingSection). */}
+        <ServingSection />
       </Flex>
     </Content>
   );
@@ -100,7 +122,9 @@ function ModelsIndexPageContent() {
 export function ModelsIndexPage() {
   return (
     <ModelConfigsProvider>
-      <ModelsIndexPageContent />
+      <ServingProvider>
+        <ModelsIndexPageContent />
+      </ServingProvider>
     </ModelConfigsProvider>
   );
 }

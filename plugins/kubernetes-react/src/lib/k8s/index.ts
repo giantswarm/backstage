@@ -24,8 +24,25 @@ export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
 export { ConfigMap } from './ConfigMap';
 export { Deployment } from './Deployment';
+export {
+  deriveInferenceServiceReadiness,
+  InferenceService,
+  InferenceServiceConditionType,
+  NVIDIA_GPU_RESOURCE,
+  urlHostname,
+} from './InferenceService';
+export type {
+  InferenceServiceCondition,
+  InferenceServiceInterface,
+  InferenceServicePredictor,
+  InferenceServiceReadiness,
+} from './InferenceService';
 export { KubeObject } from './KubeObject';
 export { Namespace } from './Namespace';
+export { Node } from './Node';
+export type { NodeInterface } from './Node';
+export { Pod } from './Pod';
+export type { PodInterface } from './Pod';
 export { HelmRelease } from './HelmRelease';
 export { HelmRepository } from './HelmRepository';
 export { GitRepository } from './GitRepository';
@@ -46,6 +63,7 @@ export { ClusterRole, ClusterRoleBinding, Role, RoleBinding } from './Rbac';
 export type { RbacPolicyRule, RbacRoleRef, RbacSubject } from './Rbac';
 export { Release, RELEASE_VERSION_PREFIXES } from './Release';
 export { Secret } from './Secret';
+export { parseIntegerQuantity, sumResourceRequests } from './quantity';
 export { SecretStore } from './SecretStore';
 export * from './KubeObject';
 export {
